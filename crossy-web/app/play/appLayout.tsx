@@ -1,5 +1,6 @@
 'use client'
 import React, { useState } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import {
   ChevronLeftIcon,
   DiscordLogoIcon,
@@ -7,7 +8,7 @@ import {
   FileIcon,
   HomeIcon,
 } from '@radix-ui/react-icons'
-import { IconButton, Link as RadixLink } from '@radix-ui/themes'
+import { IconButton, Link as RadixLink, Tooltip } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 
@@ -21,24 +22,29 @@ type Props = {
 }
 
 const transition: Transition = {
-  type: 'easeInOut',
+  ease: 'easeInOut',
   duration: 0.2,
 }
 
 const AppLayout: React.FC<Props> = ({ session, children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(true)
+  useHotkeys(
+    'meta+shift+s, ctrl+shift+s',
+    (e) => {
+      e.preventDefault()
+      setIsMenuOpen((prev) => !prev)
+    },
+    [isMenuOpen, setIsMenuOpen],
+  )
+
   return (
     <div className="bg-gray-3 w-full">
-      <nav className="w-64 flex h-full flex-col p-6 pb-4 pr-2 gap-4 justify-between">
-        <ul className="flex gap-4 flex-col">
+      <nav className="w-64 flex h-full flex-col p-4 pr-0 gap-4 justify-between">
+        <ul className="flex gap-4 flex-col px-2">
           <h1 className="text-center text-4 font-serif font-medium">Crossy</h1>
           <hr className="border-dashed border-grayA-5" />
           <li>
-            <Link
-              underline="auto"
-              href="/play"
-              className="flex items-center gap-2"
-            >
+            <Link href="/play" className="flex items-center gap-2">
               <HomeIcon />
               Home
             </Link>
@@ -69,7 +75,9 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           </li>
           <hr className="border-dashed border-grayA-5" />
         </ul>
-        <UserCard session={session} />
+        <div>
+          <UserCard session={session} />
+        </div>
       </nav>
       <motion.div
         initial={false}
@@ -77,10 +85,8 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           marginLeft: isMenuOpen ? '17rem' : '1rem',
           width: isMenuOpen ? 'calc(100vw - 18rem)' : 'calc(100vw - 2rem)',
         }}
-        transition={{
-          duration: 0.2,
-        }}
-        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0  transition shadow-3 rounded-4 m-4 w-full bg-gray-1"
+        transition={transition}
+        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0 shadow-3 rounded-4 m-4 w-full bg-gray-1"
       >
         <div className="absolute inset-y-0 z-10 top-1/2">
           <motion.div
@@ -91,25 +97,27 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
             }}
             transition={transition}
           >
-            <IconButton
-              size="4"
-              variant="ghost"
-              radius="full"
-              onClick={() => {
-                setIsMenuOpen((prev) => !prev)
-              }}
-              className="absolute"
-            >
-              <motion.div
-                animate={{
-                  rotate: isMenuOpen ? 0 : 180,
+            <Tooltip content={'⌘+shift+s'}>
+              <IconButton
+                size="4"
+                variant="ghost"
+                radius="full"
+                onClick={() => {
+                  setIsMenuOpen((prev) => !prev)
                 }}
-                transition={transition}
-                className="absolute p-2"
+                className="absolute"
               >
-                <ChevronLeftIcon height={18} width={18} />
-              </motion.div>
-            </IconButton>
+                <motion.div
+                  animate={{
+                    rotate: isMenuOpen ? 0 : 180,
+                  }}
+                  transition={transition}
+                  className="absolute p-2"
+                >
+                  <ChevronLeftIcon height={18} width={18} />
+                </motion.div>
+              </IconButton>
+            </Tooltip>
           </motion.div>
         </div>
         <div className="h-full overflow-auto py-5">{children}</div>

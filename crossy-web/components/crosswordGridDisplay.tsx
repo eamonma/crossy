@@ -1,16 +1,6 @@
 'use client'
 import React from 'react'
 
-type Answers = {
-  across: string[]
-  down: string[]
-}
-
-type Clues = {
-  across: string[]
-  down: string[]
-}
-
 type Size = {
   cols: number
   rows: number
@@ -35,67 +25,15 @@ type Props = {
   rounded?: boolean
 }
 
-// const CrosswordGrid: React.FC<Props> = ({
-//   crossword,
-//   answers,
-//   shouldShowNumbers = true,
-//   highlights = [],
-// }) => {
-//   const ref = useRef<HTMLDivElement>(null)
-//   console.log(ref)
-
-//   return (
-//     <div
-//       ref={ref}
-//       className={'grid border-4 border-black w-full max-h-full'}
-//       style={{
-//         gridTemplateColumns: `repeat(${crossword.size.cols}, 1fr)`,
-//         gridTemplateRows: `repeat(${crossword.size.rows}, 1fr)`,
-//         aspectRatio: `${crossword.size.cols}/${crossword.size.rows}`,
-//       }}
-//     >
-//       {[...new Array(crossword.size.cols * crossword.size.rows)].map((_, i) => {
-//         let backgroundColor = '#fff'
-//         if (crossword.grid[i] === '.') backgroundColor = 'rgb(24 24 27)'
-//         else if (Object.keys(highlights).includes(i.toString())) {
-//           backgroundColor = highlights[i]
-//         }
-//         return (
-//           <div
-//             key={i}
-//             className={
-//               'relative flex items-center w-full h-full text-3xl font-normal border-neutral-400 border-opacity-60 border-[0.4px] text-zinc-800'
-//             }
-//             style={{
-//               backgroundColor,
-//             }}
-//           >
-//             {shouldShowNumbers && (
-//               <div className="absolute p-0 m-0 font-semibold tracking-tighter text-[10px] leading-[10px] top-[1.2px] left-[2px]">
-//                 {!!crossword.gridnums[i] && crossword.gridnums[i]}
-//               </div>
-//             )}
-//             <div className="relative flex items-center justify-center w-full h-full top-1">
-//               {answers[i] && crossword.grid[i] !== '.' && answers[i]}
-//             </div>
-//           </div>
-//         )
-//       })}
-//     </div>
-//   )
-// }
-
 const CrosswordGrid: React.FC<Props> = ({
   crossword,
   answers,
   shouldShowNumbers = true,
   highlights = [],
 }) => {
-  const cellSize = 38 // This can be adjusted for different cell sizes
+  const cellSize = 36 // This can be adjusted for different cell sizes
   const width = crossword.size.cols * cellSize
   const height = crossword.size.rows * cellSize
-
-  // get browser
 
   return (
     <div
@@ -115,9 +53,11 @@ const CrosswordGrid: React.FC<Props> = ({
       >
         {[...new Array(crossword.size.cols * crossword.size.rows)].map(
           (_, i) => {
-            let backgroundColor = 'rgba(255,255,255,0.9)'
+            // let backgroundColor = 'rgba(255,255,255,0.9)'
+            let backgroundColor = 'var(--gray-1)'
             if (crossword.grid[i] === '.') {
-              backgroundColor = 'rgba(0,0,0,0.8)'
+              // backgroundColor = 'rgba(0,0,0,0.8)'
+              backgroundColor = 'var(--gray-12)'
             } else if (Object.keys(highlights).includes(i.toString())) {
               backgroundColor = highlights[i]
             }
@@ -128,7 +68,7 @@ const CrosswordGrid: React.FC<Props> = ({
             return (
               <g
                 onClick={() => {
-                  alert(i)
+                  alert(answers[i])
                 }}
                 key={i}
               >
@@ -138,26 +78,29 @@ const CrosswordGrid: React.FC<Props> = ({
                   width={cellSize}
                   height={cellSize}
                   fill={backgroundColor}
-                  stroke="rgba(0,0,0,0.3)"
+                  stroke="var(--gray-8)"
                   strokeWidth={0.6}
                 />
                 {shouldShowNumbers && crossword.gridnums[i] && (
-                  <text
-                    x={col * cellSize + 2}
-                    y={row * cellSize + 10}
-                    fontSize={10}
-                    fontWeight="bold"
-                  >
-                    {crossword.gridnums[i]}
-                  </text>
+                  <>
+                    <text
+                      x={col * cellSize + 2}
+                      y={row * cellSize + 10}
+                      fontSize={10}
+                      fontWeight="bold"
+                      fill="var(--gray-11)"
+                    >
+                      {crossword.gridnums[i]}
+                    </text>
+                  </>
                 )}
                 {answers[i] && crossword.grid[i] !== '.' && (
                   <text
                     x={col * cellSize + cellSize / 2}
-                    y={row * cellSize + cellSize / 2 + 12}
+                    y={row * cellSize + cellSize / 2 + 14}
                     textAnchor="middle"
                     fontSize={24}
-                    fill="black"
+                    fill="var(--gray-12)"
                   >
                     {answers[i]}
                   </text>

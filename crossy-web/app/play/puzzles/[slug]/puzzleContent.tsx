@@ -14,8 +14,12 @@ type Props = {
 const PuzzleContent: React.FC<Props> = ({ crosswordData }) => {
   return (
     <motion.div className="flex w-full justify-center">
-      <div className="flex w-full max-h-[75vh] justify-center">
-        <CrosswordGrid crossword={crosswordData} answers={crosswordData.grid} />
+      <div className="flex w-full max-h-[65vh] justify-center">
+        <CrosswordGrid
+          crossword={crosswordData}
+          answers={[]}
+          shouldShowNumbers={false}
+        />
       </div>
     </motion.div>
   )

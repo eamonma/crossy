@@ -1,11 +1,11 @@
 import React from 'react'
 import { cookies } from 'next/headers'
 
-import { type CrosswordData } from '@/components/crosswordGridDisplay'
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/server'
 
-import PuzzleContent from '../../puzzles/[slug]/puzzleContent'
+import { type CrosswordData } from './gameboard'
+import GameLayout from './gameLayout'
 
 const Page = async ({ params }: { params: { slug: string } }) => {
   const { slug } = params
@@ -13,28 +13,33 @@ const Page = async ({ params }: { params: { slug: string } }) => {
   const supabase = createClient<Database>(cookieStore)
 
   // get puzzle
-  const puzzle = await supabase
-    .from('puzzles')
-    .select('*')
+  // const puzzle = await supabase
+  //   .from('puzzles')
+  //   .select('*')
+  //   .eq('id', slug)
+  //   .single()
+
+  const game = await supabase
+    .from('games')
+    .select('*, puzzles(*)')
     .eq('id', slug)
     .single()
 
-  const { data, error } = puzzle
+  const { data, error } = game
 
-  if (data) {
+  console.log(data, error)
+
+  if (data?.puzzles) {
+    const puzzle = data.puzzles
     const crosswordData: CrosswordData = {
-      ...data,
+      ...puzzle,
       size: {
-        cols: data.cols,
-        rows: data.rows,
+        cols: puzzle.cols,
+        rows: puzzle.rows,
       },
     }
 
-    return (
-      <div>
-        <PuzzleContent crosswordData={crosswordData} />
-      </div>
-    )
+    return <GameLayout game={data} crosswordData={crosswordData} />
   }
   return ''
 }

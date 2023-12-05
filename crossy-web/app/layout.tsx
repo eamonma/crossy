@@ -1,6 +1,8 @@
 import { Theme } from '@radix-ui/themes'
 import { Inter } from 'next/font/google'
 
+import Providers from './providers'
+
 import '@radix-ui/themes/styles.css'
 import './globals.css'
 import './theme-config.css'
@@ -28,11 +30,11 @@ export default async function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen">
-        <Theme appearance="dark" accentColor="cyan">
-          {children}
-        </Theme>
+        <Providers>
+          <Theme accentColor="cyan">{children}</Theme>
+        </Providers>
       </body>
     </html>
   )

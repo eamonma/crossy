@@ -3,11 +3,12 @@ import { Button } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 
+import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/server'
 
 export default async function Index() {
   const cookieStore = cookies()
-  const client = createClient(cookieStore)
+  const client = createClient<Database>(cookieStore)
 
   // const canInitSupabaseClient = () => {
   //   // This function is just for the interactive tutorial.
@@ -27,12 +28,19 @@ export default async function Index() {
     error,
   } = await client.auth.getUser()
 
+  // get profile
+  const { data: profile } = await client
+    .from('profiles')
+    .select('*')
+    .eq('id', user?.id)
+    .single()
+
   return (
     <main className="min-h-screen flex flex-col">
       <header className="h-12 items-center px-5 border-b border-grayA-5 flex justify-between">
         <h1 className="font-serif text-xl">Crossy</h1>
         <div className="flex items-center gap-4">
-          {user && <>Welcome, {user.user_metadata?.full_name}!</>}
+          {user && <>Welcome, {profile?.full_name}!</>}
           <Button asChild variant="classic" radius="large">
             <a
               target="_blank"

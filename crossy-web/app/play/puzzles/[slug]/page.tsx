@@ -1,7 +1,7 @@
 import { Button, Heading } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
 import Image from 'next/image'
-import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
 import { type CrosswordData } from '@/components/crosswordGridDisplay'
 import { type Database } from '@/lib/database.types'
@@ -25,10 +25,25 @@ const Page = async ({ params }: { params: { slug: string } }) => {
 
   let content
 
+  const createGame = async () => {
+    'use server'
+    const cookieStore = cookies()
+    const supabase = createClient<Database>(cookieStore)
+
+    const { data: gameData, error: gameError } = await supabase
+      .from('games')
+      .insert([{ puzzle_id: slug }])
+      .select()
+      .single()
+
+    if (gameData) {
+      redirect(`/play/games/${gameData.id}`)
+    }
+  }
+
   if (error) {
     content = (
       <div className="h-full relative">
-        {/* <Heading>404!</Heading> */}
         <div className="flex justify-center items-center absolute inset-0">
           <div className="w-full flex max-w-sm flex-col gap-4 items-center">
             <Image
@@ -58,11 +73,9 @@ const Page = async ({ params }: { params: { slug: string } }) => {
         <div className="flex w-full justify-center items-center h-full flex-1">
           <PuzzleContent crosswordData={crosswordData} />
         </div>
-        <div className="flex w-full justify-end ">
-          <Button asChild>
-            <Link href={`/play/games/${data.id}`}>Start a game</Link>
-          </Button>
-        </div>
+        <form action={createGame} className="flex w-full justify-end">
+          <Button>Start a game</Button>
+        </form>
       </div>
     )
   }

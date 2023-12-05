@@ -45,3 +45,7 @@
 html {
   background-color: #ebebe4;
 }
+
+* {
+  box-sizing: border-box;
+}

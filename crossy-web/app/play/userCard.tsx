@@ -13,6 +13,7 @@ import {
 } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 
+import ThemeSwitcher from '@/components/themeSwitcher'
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
 
@@ -81,6 +82,8 @@ const UserCard = ({ session }: { session: Session }) => {
               </IconButton>
             </DropdownMenu.Trigger>
             <DropdownMenu.Content align="end">
+              <ThemeSwitcher />
+
               <DropdownMenu.Item asChild>
                 <button
                   onClick={() => {
