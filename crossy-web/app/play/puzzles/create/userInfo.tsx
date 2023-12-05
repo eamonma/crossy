@@ -16,7 +16,7 @@ const UserInfo = () => {
 
       setUser(user)
     }
-    getUser()
+    void getUser()
   })
   return <pre>{JSON.stringify(user)}</pre>
 }

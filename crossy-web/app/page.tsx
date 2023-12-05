@@ -25,19 +25,24 @@ export default async function Index() {
 
   const {
     data: { user },
-    error,
+    // error,
   } = await client.auth.getUser()
 
   // get profile
-  const { data: profile } = await client
-    .from('profiles')
-    .select('*')
-    .eq('id', user?.id)
-    .single()
+  let profile
+
+  if (user) {
+    const { data } = await client
+      .from('profiles')
+      .select('*')
+      .eq('id', user?.id)
+      .single()
+    profile = data
+  }
 
   return (
-    <main className="min-h-screen flex flex-col">
-      <header className="h-12 items-center px-5 border-b border-grayA-5 flex justify-between">
+    <main className="flex flex-col min-h-screen">
+      <header className="flex items-center justify-between h-12 px-5 border-b border-grayA-5">
         <h1 className="font-serif text-xl">Crossy</h1>
         <div className="flex items-center gap-4">
           {user && <>Welcome, {profile?.full_name}!</>}
@@ -52,9 +57,9 @@ export default async function Index() {
           </Button>
         </div>
       </header>
-      <div className="h-full flex justify-center items-center flex-1">
-        <div className="max-w-md text-black/70 flex items-start gap-4 flex-col">
-          <h2 className="text-8 leading-8 font-serif">
+      <div className="flex items-center justify-center flex-1 h-full">
+        <div className="flex flex-col items-start max-w-md gap-4 text-black/70">
+          <h2 className="font-serif leading-8 text-8">
             Solve crosswords collaboratively.
           </h2>
           <Button asChild variant="solid" radius="large">

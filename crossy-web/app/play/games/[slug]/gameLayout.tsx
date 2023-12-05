@@ -1,9 +1,9 @@
 'use client'
-import React, { useEffect, useRef, useState } from 'react'
-import { Box, Card, Heading, Separator, Text } from '@radix-ui/themes'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Heading, Text } from '@radix-ui/themes'
+import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
-import { createClient } from '@/utils/supabase/client'
 
 import Gameboard, { type CrosswordData, findBounds } from './gameboard'
 
@@ -13,77 +13,95 @@ type Props = {
 }
 
 const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
-  const supabase = createClient<Database>()
-
   const [currentCell, setCurrentCell] = useState<number>(0)
   const [currentDirection, setCurrentDirection] = useState<'across' | 'down'>(
     'across',
   )
 
-  const acrossRef = useRef<HTMLLIElement[]>([])
-  const downRef = useRef<HTMLLIElement[]>([])
+  const acrossRef = useRef<Array<HTMLLIElement | null>>([])
+  const downRef = useRef<Array<HTMLLIElement | null>>([])
+  const gameboardRef = useRef<SVGElement>(null)
+
+  useEffect(() => {
+    if (gameboardRef.current) {
+      gameboardRef.current.focus()
+    }
+  }, [gameboardRef])
 
   const [clueNum, setClueNum] = useState(1)
 
   useEffect(() => {
-    if (acrossRef.current[clueNum]) {
-      acrossRef.current[clueNum].scrollIntoView({
-        block: 'center',
-        behavior: 'smooth',
-      })
-    }
-    if (downRef.current[clueNum]) {
-      downRef.current[clueNum].scrollIntoView({
-        block: 'center',
-        behavior: 'smooth',
-      })
-    }
+    acrossRef.current[clueNum]?.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth',
+    })
+
+    downRef.current[clueNum]?.scrollIntoView({
+      block: 'center',
+      behavior: 'smooth',
+    })
   }, [clueNum])
 
-  const ref = useRef<SVGElement>(null)
+  const clueNumToClueAcross = useMemo(() => {
+    const clueNumToClueAcross = new Map<number, string>()
 
-  //   console.log(changes)
+    crosswordData.clues.across.forEach((clue) => {
+      const clueNum = parseInt(clue.substring(0, clue.indexOf('. ')))
+      clueNumToClueAcross.set(clueNum, clue)
+    })
 
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.focus()
+    return clueNumToClueAcross
+  }, [crosswordData.clues.across])
+
+  const clueNumToClueDown = useMemo(() => {
+    const clueNumToClueDown = new Map<number, string>()
+
+    crosswordData.clues.down.forEach((clue) => {
+      const clueNum = parseInt(clue.substring(0, clue.indexOf('. ')))
+      clueNumToClueDown.set(clueNum, clue)
+    })
+
+    return clueNumToClueDown
+  }, [crosswordData.clues.down])
+
+  const clueNumToClue = (clueNum: number, direction: 'across' | 'down') => {
+    if (direction === 'across') {
+      return clueNumToClueAcross.get(clueNum)
+    } else {
+      return clueNumToClueDown.get(clueNum)
     }
-  }, [ref])
+  }
 
   return (
     <>
       <div className="px-5 h-full grid grid-cols-[4fr,3fr] items-center justify-center gap-4">
-        <div className="relative flex flex-col justify-center h-full">
-          {/* <div className="flex items-center justify-between px-6 mb-8">
-            <div className="flex items-center gap-4">
-              <div className="text-2xl font-bold">Puzzle Title</div>
-              <Separator orientation="vertical" />
-              <div className="text-lg">Puzzle Author</div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-lg">Timer</div>
-              <Separator orientation="vertical" />
-              <div className="text-lg">Check</div>
-              <Separator orientation="vertical" />
-              <div className="text-lg">Reveal</div>
-            </div>
-          </div> */}
-          <div className="flex justify-start w-full">
-            <div className="w-full max-h-[80vh]">
-              <Gameboard
-                game={game}
-                crossword={crosswordData}
-                currentCell={currentCell}
-                setCurrentCell={setCurrentCell}
-                currentDirection={currentDirection}
-                setCurrentDirection={setCurrentDirection}
-                setCurrentClueNum={setClueNum}
-                boardRef={ref}
-              />
+        <div className="flex flex-col justify-between h-full">
+          <div
+            className="relative flex items-center justify-center w-full h-12 px-6 font-medium text-center text-5 border-gray-5 shadow-3"
+            style={{
+              borderRadius: '999px',
+            }}
+          >
+            {parse(clueNumToClue(clueNum, currentDirection) ?? '&nbsp;')}
+          </div>
+
+          <div className="relative flex flex-col justify-center flex-1 h-full">
+            <div className="flex justify-start w-full">
+              <div className="w-full max-h-[80vh] lg:max-h-[70vh]">
+                <Gameboard
+                  game={game}
+                  crossword={crosswordData}
+                  currentCell={currentCell}
+                  setCurrentCell={setCurrentCell}
+                  currentDirection={currentDirection}
+                  setCurrentDirection={setCurrentDirection}
+                  setCurrentClueNum={setClueNum}
+                  boardRef={gameboardRef}
+                />
+              </div>
             </div>
           </div>
         </div>
-        {/* <div className="flex flex-1 h-full border">Clues</div> */}
         <div className="flex flex-col justify-center h-full overflow-hidden">
           <div className="flex-1 gap-8 justify-between grid-cols-1 w-full h-[calc(100%-2rem)] grid grid-rows-2 text-lg">
             <div className="relative flex flex-col w-full pt-4 border border-gray-5 rounded-3">
@@ -119,16 +137,14 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
                         setCurrentDirection('across')
                         setClueNum(clueNum)
                         setCurrentCell(crosswordData.gridnums.indexOf(clueNum))
-                        ref.current?.focus()
+                        gameboardRef.current?.focus()
                       }}
                       ref={(ref) => (acrossRef.current[clueNum] = ref)}
                     >
                       <div className="text-right">{clueNum}</div>
-                      <Text
-                        dangerouslySetInnerHTML={{
-                          __html: `${clue.substring(clue.indexOf(' '))}`,
-                        }}
-                      ></Text>
+                      <Text>
+                        {parse(`${clue.substring(clue.indexOf(' '))}`)}
+                      </Text>
                     </li>
                   )
                 })}
@@ -183,29 +199,24 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
                         setCurrentDirection('down')
                         setClueNum(clueNum)
                         setCurrentCell(crosswordData.gridnums.indexOf(clueNum))
-                        ref.current?.focus()
+                        gameboardRef.current?.focus()
                       }}
                       ref={(ref) => (downRef.current[clueNum] = ref)}
                     >
                       <div className="text-right">
                         {clue.substring(0, clue.indexOf('. '))}
                       </div>
-                      <Text
-                        dangerouslySetInnerHTML={{
-                          __html: `${clue.substring(clue.indexOf(' '))}`,
-                        }}
-                      ></Text>
+                      <Text>
+                        {parse(`${clue.substring(clue.indexOf(' '))}`)}
+                      </Text>
                     </li>
                   )
                 })}
               </ul>
             </div>
           </div>
-
-          {/* )} */}
         </div>
       </div>
-      {/* <div>GameLayout</div> */}
     </>
   )
 }

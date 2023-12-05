@@ -81,7 +81,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           const res = crosswordJsonSchema.parse(
             JSON.parse(result.target?.result as string),
           )
-          setCrosswordData(JSON.parse(result.target?.result as string))
+          setCrosswordData(res)
         } catch (err) {
           if (err instanceof z.ZodError) {
             setFiles([])
@@ -135,14 +135,14 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   return (
     <form
       onSubmit={onSubmit}
-      className="h-full flex flex-col gap-4 items-start"
+      className="flex flex-col items-start h-full gap-4"
     >
       {files.length > 0 && (
         <Heading size="5" className="w-full truncate">
           {crosswordData.title}
         </Heading>
       )}
-      <section className="border-dashed border border-grayA-5 rounded-4 font-medium w-full">
+      <section className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
         <div
           {...getRootProps({
             className: 'dropzone h-12 px-4 flex cursor-pointer items-center',
@@ -150,7 +150,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
         >
           <input key={files.toString()} {...getInputProps()} />
           {files.length > 0 ? (
-            <div className="flex gap-2 items-center justify-between w-full">
+            <div className="flex items-center justify-between w-full gap-2">
               <Text className="font-mono" trim="both">
                 {files[0].name}
               </Text>

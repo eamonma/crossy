@@ -39,13 +39,17 @@ const Page = async ({ params }: { params: { slug: string } }) => {
     if (gameData) {
       redirect(`/play/games/${gameData.id}`)
     }
+
+    if (gameError) {
+      console.error(gameError)
+    }
   }
 
   if (error) {
     content = (
-      <div className="h-full relative">
-        <div className="flex justify-center items-center absolute inset-0">
-          <div className="w-full flex max-w-sm flex-col gap-4 items-center">
+      <div className="relative h-full">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="flex flex-col items-center w-full max-w-sm gap-4">
             <Image
               src="/404.png"
               alt="404 notice"
@@ -70,17 +74,17 @@ const Page = async ({ params }: { params: { slug: string } }) => {
     content = (
       <div className="flex flex-col h-full gap-4">
         <Heading className="font-serif">{data.name}</Heading>
-        <div className="flex w-full justify-center items-center h-full flex-1">
+        <div className="flex items-center justify-center flex-1 w-full h-full">
           <PuzzleContent crosswordData={crosswordData} />
         </div>
-        <form action={createGame} className="flex w-full justify-end">
+        <form action={createGame} className="flex justify-end w-full">
           <Button>Start a game</Button>
         </form>
       </div>
     )
   }
 
-  return <div className="px-6 h-full">{content}</div>
+  return <div className="h-full px-6">{content}</div>
 }
 
 export default Page

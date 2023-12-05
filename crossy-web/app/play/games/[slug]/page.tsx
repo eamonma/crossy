@@ -27,7 +27,10 @@ const Page = async ({ params }: { params: { slug: string } }) => {
 
   const { data, error } = game
 
-  console.log(data, error)
+  if (error) {
+    console.error(error)
+    return ''
+  }
 
   if (data?.puzzles) {
     const puzzle = data.puzzles
@@ -37,7 +40,7 @@ const Page = async ({ params }: { params: { slug: string } }) => {
         cols: puzzle.cols,
         rows: puzzle.rows,
       },
-    }
+    } as unknown as CrosswordData
 
     return <GameLayout game={data} crosswordData={crosswordData} />
   }

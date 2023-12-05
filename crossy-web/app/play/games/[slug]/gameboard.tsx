@@ -1,7 +1,8 @@
 'use client'
 import React, { type KeyboardEvent, useEffect, useState } from 'react'
 import { useTheme } from 'next-themes'
-import { Database } from '@/lib/database.types'
+
+import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
 
 type Size = {
@@ -168,17 +169,25 @@ const Gameboard: React.FC<Props> = ({
   setCurrentClueNum,
   boardRef,
   shouldShowNumbers = true,
-  // highlights = [],
 }) => {
   const supabase = createClient<Database>()
   const [answers, setAnswers] = useState<string[]>(game.grid)
-  // const [currentCell, setCurrentCell] = useState<number>(0)
+  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('dark')
+  const { resolvedTheme } = useTheme()
+
+  useEffect(() => {
+    if (resolvedTheme === 'dark') {
+      setCurrentTheme('dark')
+    } else {
+      setCurrentTheme('light')
+    }
+  }, [resolvedTheme, setCurrentTheme])
 
   const toggleDirection = () => {
     setCurrentDirection((prev) => (prev === 'across' ? 'down' : 'across'))
   }
 
-  const [highlights, setHighlights] = useState<Record<number, string>>({})
+  const [highlights] = useState<Record<number, string>>({})
   const cellSize = 36 // This can be adjusted for different cell sizes
   const width = crossword.size.cols * cellSize
   const height = crossword.size.rows * cellSize
@@ -215,42 +224,41 @@ const Gameboard: React.FC<Props> = ({
     },
   }) // set your topic here
 
-  // const changes = supabase
-  //   .channel('table-db-changes')
-  //   .on(
-  //     'postgres_changes',
-  //     {
-  //       event: '*',
-  //       schema: 'public',
-  //       table: 'games',
-  //     },
-  //     (payload) => {
-  //       const {
-  //         new: { grid },
-  //       } = payload
-  //       setAnswers(grid)
-  //     },
-  //     // console.log(payload),
-  //   )
-  //   .subscribe()
+  useEffect(() => {
+    const changes = supabase
+      .channel('table-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'games',
+        },
+        (payload) => {
+          const {
+            new: { grid },
+          } = payload
+          setAnswers(grid)
+        },
+        // console.log(payload),
+      )
+      .subscribe()
 
-  // useEffect(() => {
-  //   if (room)
+    return () => {
+      void changes.unsubscribe()
+    }
+  }, [supabase])
+
   room
     .on('broadcast', { event: 'update_grid_element' }, (res) => {
       const { payload } = res
-      const { grid_index, new_value } = payload
+      const { grid_index: gridIndex, new_value: newValue } = payload
       const newAnswers = [...answers]
-      newAnswers[grid_index] = new_value
+
+      newAnswers[gridIndex] = newValue
       setAnswers(newAnswers)
     })
     .subscribe()
-
-  //   return async () => {
-  //     await room.unsubscribe()
-  //   }
-  // }, [answers, room, supabase])
-  // const ref = useRef<SVGElement>(null)
 
   const handleSetCell = (
     i: number,
@@ -266,9 +274,7 @@ const Gameboard: React.FC<Props> = ({
           grid_index: i,
           new_value: value.toUpperCase(),
         })
-        .then((res) => {
-          console.log(res)
-        })
+        .then((res) => {})
 
       void room
         .send({
@@ -278,11 +284,10 @@ const Gameboard: React.FC<Props> = ({
             game_id: game.id,
             grid_index: i,
             new_value: value.toUpperCase(),
+            // grid: newAnswers,
           },
         })
-        .then((res) => {
-          console.log(res)
-        })
+        .then((res) => {})
 
       setAnswers(newAnswers)
 
@@ -299,7 +304,6 @@ const Gameboard: React.FC<Props> = ({
         for (let i = bounds[0]; i <= bounds[1]; i += stride) {
           if (newAnswers[i]) answerForCurrentWord.push(newAnswers[i])
         }
-        console.log(answerForCurrentWord)
 
         if (answerForCurrentWord.length < bounds[1] - bounds[0] + 1) {
           nextCell = bounds[0]
@@ -316,20 +320,16 @@ const Gameboard: React.FC<Props> = ({
 
     if (['Backspace', 'Delete'].includes(value)) {
       const prev = answers[i]
-      setAnswers((prev) => {
-        const newAnswers = [...prev]
-        newAnswers[i] = ''
-        return newAnswers
-      })
+      const newAnswers = [...answers]
+      newAnswers[i] = ''
+      setAnswers(newAnswers)
       void supabase
         .rpc('update_grid_element', {
           game_id: game.id,
           grid_index: i,
           new_value: null as unknown as string,
         })
-        .then((res) => {
-          console.log(res)
-        })
+        .then((res) => {})
 
       void room
         .send({
@@ -339,6 +339,7 @@ const Gameboard: React.FC<Props> = ({
             game_id: game.id,
             grid_index: i,
             new_value: null as unknown as string,
+            // grid: newAnswers,
           },
         })
         .then((res) => {})
@@ -417,17 +418,6 @@ const Gameboard: React.FC<Props> = ({
     }
     setCurrentCell(nextCell)
   }
-
-  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('light')
-  const { resolvedTheme } = useTheme()
-
-  useEffect(() => {
-    if (resolvedTheme === 'dark') {
-      setCurrentTheme('dark')
-    } else {
-      setCurrentTheme('light')
-    }
-  }, [resolvedTheme, setCurrentTheme])
 
   useEffect(() => {
     const bounds = findBounds(
@@ -512,6 +502,7 @@ const Gameboard: React.FC<Props> = ({
                     fontSize={10}
                     fontWeight="bold"
                     fill="var(--gray-11)"
+                    className="select-none"
                   >
                     {crossword.gridnums[i]}
                   </text>
@@ -524,6 +515,7 @@ const Gameboard: React.FC<Props> = ({
                   textAnchor="middle"
                   fontSize={24}
                   fill="var(--gray-12)"
+                  className="select-none"
                 >
                   {answers[i]}
                 </text>

@@ -20,32 +20,29 @@ const AccountForm: React.FC<Props> = ({
   const supabase = createClient<Database>()
   const [loading, setLoading] = useState(true)
   const [fullname, setFullname] = useState<string | null>(null)
-  // const [username, setUsername] = useState<string | null>(null)
-  // const [avatar_url, setAvatarUrl] = useState<string | null>(null)
   const user = session?.user
 
+  void loading
+
   const getProfile = useCallback(async () => {
+    if (!user) return
     try {
       setLoading(true)
 
       const { data, error, status } = await supabase
         .from('profiles')
         .select('full_name, username, avatar_url')
-        .eq('id', user!.id)
+        .eq('id', user.id)
         .single()
 
       if (error && status !== 406) {
-        throw error
+        throw Error(error.message)
       }
 
       if (data) {
         setFullname(data.full_name)
-        // setUsername(data.username)
-        // setWebsite(data.website);
-        // setAvatarUrl(data.avatar_url)
       }
     } catch (error) {
-      //   alert('Error loading user data!');
     } finally {
       setLoading(false)
     }
@@ -62,15 +59,11 @@ const AccountForm: React.FC<Props> = ({
       const { error } = await supabase.from('profiles').upsert({
         id: user?.id as string,
         full_name: fullname,
-        // username,
-        // website,
-        // avatar_url,
         updated_at: new Date().toISOString(),
       })
-      if (error) throw error
+      if (error) throw Error(error.message)
       setOpen(false)
       onUpdateProfile()
-      // alert('Profile updated!');
     } catch (error) {
       console.log(error)
 
@@ -112,7 +105,7 @@ const AccountForm: React.FC<Props> = ({
             <TextField.Input
               id="fullName"
               type="text"
-              value={fullname || ''}
+              value={fullname ?? ''}
               onChange={(e) => {
                 setFullname(e.target.value)
               }}

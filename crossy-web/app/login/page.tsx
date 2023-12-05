@@ -33,29 +33,29 @@ export default function Login({
     return redirect('/')
   }
 
-  const signUp = async (formData: FormData) => {
-    'use server'
+  // const signUp = async (formData: FormData) => {
+  //   'use server'
 
-    const origin = headers().get('origin')
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const cookieStore = cookies()
-    const supabase = createClient(cookieStore)
+  //   const origin = headers().get('origin')
+  //   const email = formData.get('email') as string
+  //   const password = formData.get('password') as string
+  //   const cookieStore = cookies()
+  //   const supabase = createClient(cookieStore)
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${origin}/auth/callback`,
-      },
-    })
+  //   const { error } = await supabase.auth.signUp({
+  //     email,
+  //     password,
+  //     options: {
+  //       emailRedirectTo: `${origin}/auth/callback`,
+  //     },
+  //   })
 
-    if (error) {
-      return redirect('/login?message=Could not authenticate user')
-    }
+  //   if (error) {
+  //     return redirect('/login?message=Could not authenticate user')
+  //   }
 
-    return redirect('/login?message=Check email to continue sign in process')
-  }
+  //   return redirect('/login?message=Check email to continue sign in process')
+  // }
 
   const signInWithDiscord = async () => {
     'use server'
@@ -77,10 +77,10 @@ export default function Login({
   }
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-transparent">
+    <div className="flex items-center justify-center min-h-screen bg-transparent">
       <Link
         href="/"
-        className="absolute left-8 top-8 py-2 px-4 rounded-md no-underline text-black bg-btn-background hover:bg-btn-background-hover flex items-center group text-sm"
+        className="absolute flex items-center px-4 py-2 text-sm text-black no-underline rounded-md left-8 top-8 bg-btn-background hover:bg-btn-background-hover group"
       >
         <ArrowLeftIcon className="mr-2" />
         {/* <svg
@@ -93,20 +93,20 @@ export default function Login({
           strokeWidth='2'
           strokeLinecap='round'
           strokeLinejoin='round'
-          className='mr-2 h-4 w-4 transition-transform group-hover:-translate-x-1'
+          className='w-4 h-4 mr-2 transition-transform group-hover:-translate-x-1'
         >
           <polyline points='15 18 9 12 15 6' />
         </svg>{' '} */}
         Back
       </Link>
 
-      <div className="flex flex-col w-full max-w-sm border border-grayA-1 shadow-2 p-4 rounded-5">
+      <div className="flex flex-col w-full max-w-sm p-4 border border-grayA-1 shadow-2 rounded-5">
         <div className="flex justify-between ">
           <Text asChild>
-            <span className="text-lg font-serif">Crossy</span>
+            <span className="font-serif text-lg">Crossy</span>
           </Text>
           <Text asChild>
-            <span className="text-lg font-serif">Sign in</span>
+            <span className="font-serif text-lg">Sign in</span>
           </Text>
         </div>
         <hr className="my-4 border-grayA-5" />
@@ -114,7 +114,7 @@ export default function Login({
           <Button
             type="submit"
             color="cyan"
-            className="text-black flex items-center gap-2 cursor-pointer"
+            className="flex items-center gap-2 text-black cursor-pointer"
           >
             <DiscordLogoIcon />
             Sign in with Discord
@@ -124,7 +124,7 @@ export default function Login({
         {searchParams?.message && (
           <>
             <hr className="my-4 border-grayA-5" />
-            <p className="mb-4 bg-foreground/10 text-foreground text-center">
+            <p className="mb-4 text-center bg-foreground/10 text-foreground">
               {searchParams.message}
             </p>
           </>
