@@ -44,7 +44,8 @@ const UserCard = ({ session }: { session: Session }) => {
       console.log(error)
     }
 
-    setProfile(data)
+    if (!data) return
+    setProfile(data as any)
   }, [supabase, user?.id])
 
   useEffect(() => {

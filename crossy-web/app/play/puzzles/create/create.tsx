@@ -8,7 +8,7 @@ import { z } from 'zod'
 import CrosswordGrid from '@/components/crosswordGridDisplay'
 import { type CrosswordJson, crosswordJsonSchema } from '@/lib/crosswordJson'
 
-const getRandomGrid = (size: { cols: number, rows: number }) => {
+const getRandomGrid = (size: { cols: number; rows: number }) => {
   const selections = [
     (i: number) => {
       if (Math.floor(i) % Math.floor(size.cols / 2) === 0) return '.'
@@ -45,7 +45,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
       cols: 15,
     },
     grid: getRandomGrid({ cols: 15, rows: 15 }),
-    gridnums: [...new Array(15 * 15)].map((_, i) => 0),
+    gridnums: [...new Array(15 * 15)].map(() => 0),
     answers: {
       across: [],
       down: [],
@@ -59,7 +59,6 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   }
   const [files, setFiles] = useState<File[]>([])
   const [crosswordData, setCrosswordData] = useState<CrosswordJson>(defaultData)
-  // const router = useRouter()
 
   const { getRootProps, getInputProps } = useDropzone({
     maxFiles: 1,

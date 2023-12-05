@@ -12,13 +12,6 @@ const Page = async ({ params }: { params: { slug: string } }) => {
   const cookieStore = cookies()
   const supabase = createClient<Database>(cookieStore)
 
-  // get puzzle
-  // const puzzle = await supabase
-  //   .from('puzzles')
-  //   .select('*')
-  //   .eq('id', slug)
-  //   .single()
-
   const game = await supabase
     .from('games')
     .select('*, puzzles(*)')

@@ -157,7 +157,7 @@ type Props = {
   highlights?: Record<number, string>
   highlightColour?: string
   rounded?: boolean
-  boardRef: React.RefObject<SVGElement>
+  boardRef: React.RefObject<SVGSVGElement>
 }
 const Gameboard: React.FC<Props> = ({
   game,
@@ -235,12 +235,11 @@ const Gameboard: React.FC<Props> = ({
           table: 'games',
         },
         (payload) => {
-          const {
-            new: { grid },
-          } = payload
+          if (!payload) return
+          const { new: newState } = payload as Record<string, any>
+          const grid = newState.grid
           setAnswers(grid)
         },
-        // console.log(payload),
       )
       .subscribe()
 

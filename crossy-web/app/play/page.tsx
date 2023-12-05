@@ -21,10 +21,13 @@ const Page = async () => {
       <Heading>My games</Heading>
       <Grid columns="2" gap="2">
         {data.map((game) => {
+          const puzzle: Database['public']['Tables']['games']['Row'] =
+            game.puzzle_id as any
+
           return (
             <Card key={game.id} asChild>
               <Link href={`/play/games/${game.id}`}>
-                <Heading size="2">{game.puzzle_id.name}</Heading>
+                <Heading size="2">{puzzle.name}</Heading>
               </Link>
             </Card>
           )

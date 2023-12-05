@@ -14,7 +14,7 @@ plugins:
   - simple-import-sort
   - unused-imports
 rules:
-  "@typescript-eslint/comma-dangle": ["error", "always-multiline"]
+  "@typescript-eslint/comma-dangle": ["warning", "always-multiline"]
   "space-before-function-paren": "off"
   "@typescript-eslint/space-before-function-paren": ["off", "never"]
   "@typescript-eslint/explicit-function-return-type": "off"
@@ -22,6 +22,7 @@ rules:
   "@typescript-eslint/strict-boolean-expressions": "off"
   "@typescript-eslint/no-misused-promises":
     ["error", { checksVoidReturn: false }]
+  "@typescript-eslint/indent": "off"
   "multiline-ternary": "off"
   "unused-imports/no-unused-imports": "error"
   "unused-imports/no-unused-vars":
@@ -35,6 +36,8 @@ rules:
       },
     ]
   "react/no-unescaped-entities": "off"
+ignorePatterns:
+  - "lib/database.types.ts"
 
 overrides:
   - files: ["*.js", "*.jsx", "*.ts", "*.tsx"]

@@ -20,7 +20,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
 
   const acrossRef = useRef<Array<HTMLLIElement | null>>([])
   const downRef = useRef<Array<HTMLLIElement | null>>([])
-  const gameboardRef = useRef<SVGElement>(null)
+  const gameboardRef = useRef<SVGSVGElement>(null)
 
   useEffect(() => {
     if (gameboardRef.current) {
