@@ -151,7 +151,7 @@ type Props = {
   currentCell: number
   setCurrentCell: (i: number) => void
   currentDirection: 'across' | 'down'
-  setCurrentDirection: (direction: 'across' | 'down') => void
+  setCurrentDirection: React.Dispatch<React.SetStateAction<'across' | 'down'>>
   setCurrentClueNum: (num: number) => void
   shouldShowNumbers?: boolean
   highlights?: Record<number, string>
