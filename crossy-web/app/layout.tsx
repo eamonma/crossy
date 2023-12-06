@@ -3,8 +3,8 @@ import { Inter } from 'next/font/google'
 
 import Providers from './providers'
 
-import '@radix-ui/themes/styles.css'
 import './globals.css'
+import '@radix-ui/themes/styles.css'
 import './theme-config.css'
 
 const defaultUrl =

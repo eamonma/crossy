@@ -1,11 +1,13 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Heading, Text } from '@radix-ui/themes'
+import { Flex, Heading, Switch, Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
 
-import Gameboard, { type CrosswordData, findBounds } from './gameboard'
+import Gameboard, { type CrosswordData } from './gameboard'
+import Timer from './timer'
+import { findBounds } from './utils'
 
 type Props = {
   game: Database['public']['Tables']['games']['Row']
@@ -30,17 +32,40 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
 
   const [clueNum, setClueNum] = useState(1)
 
-  useEffect(() => {
-    acrossRef.current[clueNum]?.scrollIntoView({
-      block: 'center',
-      behavior: 'smooth',
-    })
+  const acrossBounds = findBounds(
+    crosswordData.grid,
+    crosswordData.size.cols,
+    crosswordData.size.rows,
+    'across',
+    currentCell,
+    crosswordData.id,
+  )
 
-    downRef.current[clueNum]?.scrollIntoView({
-      block: 'center',
-      behavior: 'smooth',
-    })
-  }, [clueNum])
+  const downBounds = findBounds(
+    crosswordData.grid,
+    crosswordData.size.cols,
+    crosswordData.size.rows,
+    'down',
+    currentCell,
+    crosswordData.id,
+  )
+
+  const clueNumAcross = crosswordData.gridnums[acrossBounds[0]] || clueNum
+  const clueNumDown = crosswordData.gridnums[downBounds[0]] || clueNum
+
+  const [isSmoothScrolling, setIsSmoothScrolling] = useState(true)
+
+  acrossRef.current[clueNumAcross]?.scrollIntoView({
+    // block: 'center',
+    block: 'start',
+    behavior: isSmoothScrolling ? 'smooth' : 'instant',
+  })
+
+  downRef.current[clueNumDown]?.scrollIntoView({
+    block: 'start',
+    // block: 'center',
+    behavior: isSmoothScrolling ? 'smooth' : 'instant',
+  })
 
   const clueNumToClueAcross = useMemo(() => {
     const clueNumToClueAcross = new Map<number, string>()
@@ -73,21 +98,38 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
   }
 
   return (
-    <>
-      <div className="px-5 h-full grid grid-cols-[4fr,3fr] items-center justify-center gap-4">
+    <div className="flex flex-col w-full h-full">
+      <div className="relative flex flex-col items-center justify-between w-full h-20 py-2 font-medium text-center border-b border-dashed border-gray-5 text-4">
+        <Flex
+          gap="4"
+          align="center"
+          className="w-full px-5 pb-2 border-gray-5"
+          justify="between"
+        >
+          <time className="text-gray-11">
+            <Timer since={new Date(game.created_at).getTime()} />
+          </time>
+          <label>
+            <Flex gap="2" align="center">
+              <Switch
+                onCheckedChange={(value) => {
+                  setIsSmoothScrolling(value)
+                }}
+                checked={isSmoothScrolling}
+              />
+              <Text size="2">Smooth scrolling</Text>
+            </Flex>
+          </label>
+        </Flex>
+        <Flex className="w-full px-5">
+          <Text>{parse(clueNumToClue(clueNum, currentDirection) ?? '')}</Text>
+        </Flex>
+      </div>
+      <div className="h-[calc(100%-5rem)] grid grid-cols-1 sm:grid-cols-[4fr,3fr] items-center justify-center gap-4">
         <div className="flex flex-col justify-between h-full">
-          <div
-            className="relative flex items-center justify-center w-full h-12 px-6 font-medium text-center text-5 border-gray-5 shadow-3"
-            style={{
-              borderRadius: '999px',
-            }}
-          >
-            {parse(clueNumToClue(clueNum, currentDirection) ?? '&nbsp;')}
-          </div>
-
           <div className="relative flex flex-col justify-center flex-1 h-full">
             <div className="flex justify-start w-full">
-              <div className="w-full max-h-[80vh] lg:max-h-[70vh]">
+              <div className="w-full pl-8 pr-3 max-h-[80vh] md:max-h-[75vh] lg:max-h-[70vh]">
                 <Gameboard
                   game={game}
                   crossword={crosswordData}
@@ -102,15 +144,15 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
             </div>
           </div>
         </div>
-        <div className="flex flex-col justify-center h-full overflow-hidden">
-          <div className="flex-1 gap-8 justify-between grid-cols-1 w-full h-[calc(100%-2rem)] grid grid-rows-2 text-lg">
-            <div className="relative flex flex-col w-full pt-4 border border-gray-5 rounded-3">
+        <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible sm:flex">
+          <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed border-gray-5">
+            <div className="relative flex flex-col w-full border-b border-dashed border-gray-5">
               <div>
-                <Heading className="px-6">Across</Heading>
-                <hr className="border-gray-4" />
+                <Heading className="px-6 py-2">Across</Heading>
+                <hr className="border-dashed border-gray-5" />
               </div>
               <ul className="flex flex-col flex-1 h-[calc(100%-2rem)] overflow-y-auto">
-                {crosswordData.clues.across.map((clue, i) => {
+                {crosswordData.clues.across.map((clue) => {
                   const clueNum = parseInt(
                     clue.substring(0, clue.indexOf('. ')),
                   )
@@ -121,6 +163,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
                     crosswordData.size.rows,
                     'across',
                     crosswordData.gridnums.indexOf(clueNum),
+                    crosswordData.id,
                   )
 
                   const squareIsWithinClueBounds =
@@ -150,14 +193,14 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
                 })}
               </ul>
             </div>
-
-            <div className="relative flex flex-col w-full pt-4 border border-gray-5 rounded-3">
+            {/* <hr className="absolute inset-y-0 w-full m-auto border-dashed" /> */}
+            <div className="relative flex flex-col w-full">
               <div>
-                <Heading className="px-6">Down</Heading>
-                <hr className="border-gray-4" />
+                <Heading className="px-6 py-2">Down</Heading>
+                <hr className="border-dashed border-gray-5" />
               </div>
               <ul className="flex flex-col flex-1 h-[calc(100%-2rem)] overflow-y-auto">
-                {crosswordData.clues.down.map((clue, i) => {
+                {crosswordData.clues.down.map((clue) => {
                   const clueNum = parseInt(
                     clue.substring(0, clue.indexOf('. ')),
                   )
@@ -169,6 +212,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
                     crosswordData.size.rows,
                     'down',
                     crosswordData.gridnums.indexOf(clueNum),
+                    crosswordData.id,
                   )
 
                   const squaresWithinClueBounds = [boundsForClue[0]]
@@ -217,7 +261,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
           </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

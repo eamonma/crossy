@@ -14,7 +14,7 @@ plugins:
   - simple-import-sort
   - unused-imports
 rules:
-  "@typescript-eslint/comma-dangle": ["warning", "always-multiline"]
+  "@typescript-eslint/comma-dangle": ["warn", "always-multiline"]
   "space-before-function-paren": "off"
   "@typescript-eslint/space-before-function-paren": ["off", "never"]
   "@typescript-eslint/explicit-function-return-type": "off"

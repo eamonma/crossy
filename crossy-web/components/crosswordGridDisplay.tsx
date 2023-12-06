@@ -40,7 +40,7 @@ const CrosswordGrid: React.FC<Props> = ({
       style={{
         aspectRatio: `${crossword.size.cols}/${crossword.size.rows}`,
       }}
-      className="relative w-full h-full flex-1 flex justify-center"
+      className="relative flex justify-center flex-1 w-full h-full"
     >
       <svg
         xmlns="http://www.w3.org/2000/svg"
@@ -66,12 +66,7 @@ const CrosswordGrid: React.FC<Props> = ({
             const col = i % crossword.size.cols
 
             return (
-              <g
-                onClick={() => {
-                  alert(answers[i])
-                }}
-                key={i}
-              >
+              <g key={i}>
                 <rect
                   x={col * cellSize}
                   y={row * cellSize}

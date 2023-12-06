@@ -38,10 +38,10 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
   )
 
   return (
-    <div className="bg-gray-3 w-full">
-      <nav className="w-64 flex h-full flex-col p-4 pr-0 gap-4 justify-between">
-        <ul className="flex gap-4 flex-col px-2">
-          <h1 className="text-center text-4 font-serif font-medium">Crossy</h1>
+    <div className="w-full bg-gray-3">
+      <nav className="flex flex-col justify-between w-64 h-full gap-4 p-4 pr-0">
+        <ul className="flex flex-col gap-4 px-2">
+          <h1 className="font-serif font-medium text-center text-4">Crossy</h1>
           <hr className="border-dashed border-grayA-5" />
           <li>
             <Link href="/play" className="flex items-center gap-2">
@@ -120,7 +120,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
             </Tooltip>
           </motion.div>
         </div>
-        <div className="h-full overflow-auto py-5">{children}</div>
+        <div className="h-full overflow-auto">{children}</div>
       </motion.div>
     </div>
   )

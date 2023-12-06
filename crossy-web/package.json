@@ -19,6 +19,7 @@
     "framer-motion": "^10.16.12",
     "geist": "^1.0.0",
     "html-react-parser": "^5.0.7",
+    "lru-cache": "^10.1.0",
     "next": "latest",
     "next-themes": "^0.2.1",
     "postcss": "8.4.29",

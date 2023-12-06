@@ -435,25 +435,39 @@ import { z } from 'zod'
 //     }
 //   }
 
-export const crosswordJsonSchema = z.object({
-  title: z.string(),
-  date: z.string(),
-  grid: z.array(z.string()),
-  gridnums: z.array(z.number()),
-  circles: z.array(z.number()).nullable(),
-  author: z.string().nullable(),
-  size: z.object({
-    cols: z.number(),
-    rows: z.number(),
-  }),
-  clues: z.object({
-    across: z.array(z.string()),
-    down: z.array(z.string()),
-  }),
-  answers: z.object({
-    across: z.array(z.string()),
-    down: z.array(z.string()),
-  }),
-})
+export const crosswordJsonSchema = z
+  .object({
+    title: z.string(),
+    date: z.string(),
+    grid: z.array(z.string()),
+    gridnums: z.array(z.number()),
+    circles: z.array(z.number()).nullable(),
+    author: z.string().nullable(),
+    size: z.object({
+      cols: z.number(),
+      rows: z.number(),
+    }),
+    clues: z.object({
+      across: z.array(z.string()),
+      down: z.array(z.string()),
+    }),
+    answers: z.object({
+      across: z.array(z.string()),
+      down: z.array(z.string()),
+    }),
+  })
+  .refine((data) => data.grid.length === data.size.cols * data.size.rows, {
+    message: 'Grid length does not match size',
+  })
+  .refine((data) => data.gridnums.length === data.size.cols * data.size.rows, {
+    message: 'Gridnums length does not match size',
+  })
+  .refine(
+    (data) =>
+      !data.circles ||
+      data.circles.length === 0 ||
+      data.circles.length === data.size.cols * data.size.rows,
+    { message: 'Circles length does not match size' },
+  )
 
 export type CrosswordJson = z.infer<typeof crosswordJsonSchema>

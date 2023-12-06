@@ -15,7 +15,7 @@ const Page = async () => {
   if (!data) return null
 
   return (
-    <div className="">
+    <div className="py-5">
       <Puzzles puzzles={data} />
     </div>
   )

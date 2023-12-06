@@ -8,7 +8,7 @@ import { z } from 'zod'
 import CrosswordGrid from '@/components/crosswordGridDisplay'
 import { type CrosswordJson, crosswordJsonSchema } from '@/lib/crosswordJson'
 
-const getRandomGrid = (size: { cols: number; rows: number }) => {
+const getRandomGrid = (size: { cols: number, rows: number }) => {
   const selections = [
     (i: number) => {
       if (Math.floor(i) % Math.floor(size.cols / 2) === 0) return '.'
@@ -58,6 +58,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
     date: '2021-10-18',
   }
   const [files, setFiles] = useState<File[]>([])
+  const [error, setError] = useState<string | null>(null)
   const [crosswordData, setCrosswordData] = useState<CrosswordJson>(defaultData)
 
   const { getRootProps, getInputProps } = useDropzone({
@@ -72,6 +73,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
 
   useEffect(() => {
     if (files.length > 0) {
+      setError(null)
       const reader = new FileReader()
       reader.readAsText(files[0])
 
@@ -80,10 +82,14 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           const res = crosswordJsonSchema.parse(
             JSON.parse(result.target?.result as string),
           )
+
           setCrosswordData(res)
         } catch (err) {
           if (err instanceof z.ZodError) {
+            console.log(err)
+
             setFiles([])
+            setError('Invalid crossword file')
           }
         }
       }
@@ -93,6 +99,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   const onClearFiles = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault()
     e.stopPropagation()
+    setError(null)
     setFiles([])
     setCrosswordData(defaultData)
   }
@@ -124,10 +131,8 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   let maxString = ''
 
   if (width >= height) {
-    // Width is the limiting factor
     maxString = 'w-full'
   } else {
-    // Height is the limiting factor
     maxString = 'h-full'
   }
 
@@ -140,6 +145,11 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
         <Heading size="5" className="w-full truncate">
           {crosswordData.title}
         </Heading>
+      )}
+      {error && (
+        <Text weight="medium" color="red">
+          {error}
+        </Text>
       )}
       <section className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
         <div

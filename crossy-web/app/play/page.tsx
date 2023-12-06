@@ -17,7 +17,7 @@ const Page = async () => {
   if (!data || error) return null
 
   return (
-    <div className="flex flex-col gap-4 px-6">
+    <div className="flex flex-col gap-4 p-5">
       <Heading>My games</Heading>
       <Grid columns="2" gap="2">
         {data.map((game) => {

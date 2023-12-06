@@ -1,16 +1,22 @@
 'use client'
-import React, { type KeyboardEvent, useEffect, useState } from 'react'
+import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import {
+  type RealtimePostgresChangesPayload,
+  type RealtimePostgresUpdatePayload,
+} from '@supabase/supabase-js'
 import { useTheme } from 'next-themes'
 
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
+
+import { findBounds, getNextCell, getNextWord } from './utils'
 
 type Size = {
   cols: number
   rows: number
 }
 
-type Clues = {
+export type Clues = {
   across: string[]
   down: string[]
 }
@@ -23,126 +29,23 @@ export type CrosswordData = {
   gridnums: number[]
   // date: string
   size: Size
+  id?: string
 }
 
-export const getNextCell = (
-  // puzzle: CrosswordData,
-  grid: string[],
-  cols: number,
-  rows: number,
-  currentDirection: 'across' | 'down',
-  currentCell: number,
-  direction: 'less' | 'more' = 'more',
-) => {
-  const stride = currentDirection === 'across' ? 1 : cols
-  const incrementor = direction === 'more' ? stride : -stride
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  delay: number,
+): (...args: Parameters<T>) => void {
+  let timer: NodeJS.Timeout | null = null
 
-  let nextCell = currentCell + incrementor
-
-  const puzzleSize = cols * rows
-
-  while (grid[nextCell] === '.') {
-    nextCell += incrementor
-  }
-
-  if (nextCell >= puzzleSize || nextCell < 0) {
-    nextCell = currentCell
-  }
-
-  return nextCell
-}
-
-export const getNextWord = (
-  clues: Clues,
-  grid: string[],
-  gridnums: number[],
-  cols: number,
-  rows: number,
-  currentDirection: 'across' | 'down',
-  currentSquare: number,
-  direction: 'less' | 'more' = 'more',
-) => {
-  const [start] = findBounds(grid, cols, rows, currentDirection, currentSquare)
-  const currentNumber = gridnums[start]
-
-  const index = clues[currentDirection].findIndex(
-    (clue) => clue.split('.')[0] === currentNumber.toString(),
-  )
-
-  const nextIndex = direction === 'more' ? index + 1 : index - 1
-
-  if (nextIndex < 0 || nextIndex >= clues[currentDirection].length) {
-    return grid.findIndex((cell) => cell !== '.')
-  }
-
-  const nextNumber = Number(clues[currentDirection][nextIndex].split('.')[0])
-
-  return gridnums.findIndex((num) => num === nextNumber)
-}
-
-export const findBounds = (
-  grid: string[],
-  cols: number,
-  rows: number,
-  direction: 'across' | 'down',
-  currentCell: number,
-): [number, number] => {
-  const startingSubset = grid.slice(0, currentCell + 1)
-  const endingSubset = grid.slice(currentCell)
-
-  let start = 0
-  let end = 0
-  // Go until find a .
-  if (direction === 'across') {
-    for (let i = startingSubset.length - 1; i >= 0; i--) {
-      if (startingSubset[i] === '.') {
-        start = i + 1
-        break
-      }
-
-      if (i % cols === 0) {
-        start = i
-        break
-      }
+  return (...args: Parameters<T>) => {
+    if (timer) {
+      clearTimeout(timer)
     }
-
-    for (let i = 0; i < endingSubset.length; i++) {
-      if (endingSubset[i] === '.') {
-        end = i + startingSubset.length - 2
-        break
-      }
-
-      if ((i + startingSubset.length) % cols === 0) {
-        end = i + startingSubset.length - 1
-        break
-      }
-    }
-  } else if (direction === 'down') {
-    for (let i = startingSubset.length - 1; i >= 0; i -= cols) {
-      if (startingSubset[i] === '.') {
-        start = i + cols
-        break
-      }
-
-      if (i < cols) {
-        start = i
-        break
-      }
-    }
-
-    for (let i = 0; i < endingSubset.length; i += cols) {
-      if (endingSubset[i] === '.') {
-        end = i + startingSubset.length - cols - 1
-        break
-      }
-
-      if (i + startingSubset.length - 1 >= cols * (rows - 1)) {
-        end = i + startingSubset.length - 1
-      }
-    }
+    timer = setTimeout(() => {
+      func(...args)
+    }, delay)
   }
-
-  return [start, end]
 }
 
 type Props = {
@@ -207,6 +110,7 @@ const Gameboard: React.FC<Props> = ({
     crossword.size.rows,
     currentDirection,
     currentCell,
+    crossword.id,
   )
 
   const inputHighlights: Record<number, boolean> = {}
@@ -216,15 +120,30 @@ const Gameboard: React.FC<Props> = ({
     inputHighlights[i] = true
   }
 
-  const room = supabase.channel(game.id, {
-    config: {
-      broadcast: {
-        ack: true,
-      },
-    },
-  }) // set your topic here
+  // const room = supabase.channel(game.id, {
+  //   config: {
+  //     broadcast: {
+  //       ack: true,
+  //     },
+  //   },
+  // }) // set your topic here
+  const isUpdating = useRef(false)
 
   useEffect(() => {
+    const handleChange = debounce(
+      (
+        payload: RealtimePostgresChangesPayload<Record<string, any>>,
+      ) => {
+        console.log(payload)
+        if (!payload) return
+        const { new: newState } = payload as RealtimePostgresUpdatePayload<Record<string, any>>
+
+        const grid = newState.grid
+        setAnswers(grid)
+      },
+      200,
+    )
+
     const changes = supabase
       .channel('table-db-changes')
       .on(
@@ -234,12 +153,7 @@ const Gameboard: React.FC<Props> = ({
           schema: 'public',
           table: 'games',
         },
-        (payload) => {
-          if (!payload) return
-          const { new: newState } = payload as Record<string, any>
-          const grid = newState.grid
-          setAnswers(grid)
-        },
+        handleChange,
       )
       .subscribe()
 
@@ -248,16 +162,16 @@ const Gameboard: React.FC<Props> = ({
     }
   }, [supabase])
 
-  room
-    .on('broadcast', { event: 'update_grid_element' }, (res) => {
-      const { payload } = res
-      const { grid_index: gridIndex, new_value: newValue } = payload
-      const newAnswers = [...answers]
+  // room
+  //   .on('broadcast', { event: 'update_grid_element' }, (res) => {
+  //     const { payload } = res
+  //     const { grid_index: gridIndex, new_value: newValue } = payload
+  //     const newAnswers = [...answers]
 
-      newAnswers[gridIndex] = newValue
-      setAnswers(newAnswers)
-    })
-    .subscribe()
+  //     newAnswers[gridIndex] = newValue
+  //     setAnswers(newAnswers)
+  //   })
+  //   .subscribe()
 
   const handleSetCell = (
     i: number,
@@ -267,26 +181,6 @@ const Gameboard: React.FC<Props> = ({
     if (value.length === 1 && value.match(/[a-z0-9]/i)) {
       const newAnswers = [...answers]
       newAnswers[i] = value.toUpperCase()
-      void supabase
-        .rpc('update_grid_element', {
-          game_id: game.id,
-          grid_index: i,
-          new_value: value.toUpperCase(),
-        })
-        .then((res) => {})
-
-      void room
-        .send({
-          type: 'broadcast',
-          event: 'update_grid_element',
-          payload: {
-            game_id: game.id,
-            grid_index: i,
-            new_value: value.toUpperCase(),
-            // grid: newAnswers,
-          },
-        })
-        .then((res) => {})
 
       setAnswers(newAnswers)
 
@@ -312,6 +206,30 @@ const Gameboard: React.FC<Props> = ({
       }
 
       setCurrentCell(nextCell)
+      isUpdating.current = true
+
+      void supabase
+        .rpc('update_grid_element', {
+          game_id: game.id,
+          grid_index: i,
+          new_value: value.toUpperCase(),
+        })
+        .then((res) => {
+          console.log(res)
+        })
+
+      // void room
+      //   .send({
+      //     type: 'broadcast',
+      //     event: 'update_grid_element',
+      //     payload: {
+      //       game_id: game.id,
+      //       grid_index: i,
+      //       new_value: value.toUpperCase(),
+      //       // grid: newAnswers,
+      //     },
+      //   })
+      //   .then((res) => {})
       return
     }
 
@@ -322,37 +240,42 @@ const Gameboard: React.FC<Props> = ({
       const newAnswers = [...answers]
       newAnswers[i] = ''
       setAnswers(newAnswers)
+      isUpdating.current = true
+
+      if (!prev) {
+        // move to previous cell
+        nextCell = getNextCell(
+          crossword.grid,
+          crossword.size.cols,
+          crossword.size.rows,
+          currentDirection,
+          i,
+          'less',
+        )
+      }
+
       void supabase
         .rpc('update_grid_element', {
           game_id: game.id,
           grid_index: i,
           new_value: null as unknown as string,
         })
-        .then((res) => {})
-
-      void room
-        .send({
-          type: 'broadcast',
-          event: 'update_grid_element',
-          payload: {
-            game_id: game.id,
-            grid_index: i,
-            new_value: null as unknown as string,
-            // grid: newAnswers,
-          },
+        .then((res) => {
+          console.log(res)
         })
-        .then((res) => {})
 
-      if (prev) return
-      // move to previous cell
-      nextCell = getNextCell(
-        crossword.grid,
-        crossword.size.cols,
-        crossword.size.rows,
-        currentDirection,
-        i,
-        'less',
-      )
+      // void room
+      //   .send({
+      //     type: 'broadcast',
+      //     event: 'update_grid_element',
+      //     payload: {
+      //       game_id: game.id,
+      //       grid_index: i,
+      //       new_value: null as unknown as string,
+      //       // grid: newAnswers,
+      //     },
+      //   })
+      //   .then((res) => {})
     } else if (value === 'ArrowRight') {
       if (currentDirection === 'across') {
         nextCell = getNextCell(
@@ -425,6 +348,7 @@ const Gameboard: React.FC<Props> = ({
       crossword.size.rows,
       currentDirection,
       currentCell,
+      crossword.id,
     )
 
     setCurrentClueNum(crossword.gridnums[bounds[0]])

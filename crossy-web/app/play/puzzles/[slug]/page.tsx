@@ -72,7 +72,7 @@ const Page = async ({ params }: { params: { slug: string } }) => {
     }
 
     content = (
-      <div className="flex flex-col h-full gap-4">
+      <div className="flex flex-col h-full gap-4 py-5">
         <Heading className="font-serif">{data.name}</Heading>
         <div className="flex items-center justify-center flex-1 w-full h-full">
           <PuzzleContent crosswordData={crosswordData} />
