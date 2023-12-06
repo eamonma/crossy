@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, Grid, Heading } from '@radix-ui/themes'
+import { Card, Grid, Heading, Text } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 
@@ -25,9 +25,11 @@ const Page = async () => {
             game.puzzle_id as any
 
           return (
-            <Card key={game.id} asChild>
+            <Card key={game.id} asChild size="3">
               <Link href={`/play/games/${game.id}`}>
-                <Heading size="2">{puzzle.name}</Heading>
+                <Text weight="medium" size="3">
+                  {puzzle.name}
+                </Text>
               </Link>
             </Card>
           )

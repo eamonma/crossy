@@ -10,6 +10,7 @@ import Form from './loginForm'
 
 const getURL = () => {
   let url =
+    process.env.NEXT_PUBLIC_LIVE_DOMAIN ??
     process?.env?.NEXT_PUBLIC_SITE_URL ?? // Set this to your site URL in production env.
     process?.env?.NEXT_PUBLIC_VERCEL_URL ?? // Automatically set by Vercel.
     'http://localhost:3000/'
@@ -17,7 +18,7 @@ const getURL = () => {
   url = url.includes('http') ? url : `https://${url}`
   // Make sure to include a trailing `/`.
   url = url.charAt(url.length - 1) === '/' ? url : `${url}/`
-  console.log(url)
+  console.log(`my url: ${url}`)
 
   return url
 }
@@ -76,13 +77,16 @@ export default function Login({
     const cookieStore = cookies()
     const supabase = createClient(cookieStore)
 
+    const redirectUrl = `${getURL()}auth/callback`
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'discord',
       options: {
-        // redirectTo: `${headers().get('origin')}/auth/callback`,
-        redirectTo: `${getURL()}auth/callback`,
+        redirectTo: redirectUrl,
       },
     })
+
+    console.log(`my redirectUrl: ${redirectUrl}`)
 
     if (error) {
       return redirect('/login?message=Could not authenticate user')
