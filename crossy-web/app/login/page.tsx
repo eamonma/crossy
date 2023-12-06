@@ -80,7 +80,7 @@ export default function Login({
       provider: 'discord',
       options: {
         // redirectTo: `${headers().get('origin')}/auth/callback`,
-        redirectTo: `${getURL()}/auth/callback`,
+        redirectTo: `${getURL()}auth/callback`,
       },
     })
 
