@@ -19,7 +19,6 @@ const getURL = () => {
   url = url.includes('http') ? url : `https://${url}`
   // Make sure to include a trailing `/`.
   url = url.charAt(url.length - 1) === '/' ? url : `${url}/`
-  console.log(`my url: ${url}`)
 
   return url
 }
@@ -87,13 +86,9 @@ export default function Login({
       },
     })
 
-    console.log(`my redirectUrl: ${redirectUrl}`)
-
     if (error) {
       return redirect('/login?message=Could not authenticate user')
     }
-
-    console.log(data)
 
     return redirect(data.url)
   }

@@ -1,26 +1,26 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Flex, Heading, Switch, Text } from '@radix-ui/themes'
-import parse from 'html-react-parser'
-
-import { type Database } from '@/lib/database.types'
-
-import Gameboard, { type CrosswordData } from './gameboard'
-import ShareLink from './shareLink'
-import Timer from './timer'
-import { findBounds } from './utils'
-import Clues from './clues'
-import { createClient } from '@/utils/supabase/client'
+import { Flex, Text } from '@radix-ui/themes'
 import {
   REALTIME_LISTEN_TYPES,
   REALTIME_PRESENCE_LISTEN_EVENTS,
   REALTIME_SUBSCRIBE_STATES,
-  RealtimeChannel,
-  RealtimeChannelSendResponse,
-  User,
+  type RealtimeChannel,
+  type RealtimeChannelSendResponse,
+  type User,
 } from '@supabase/supabase-js'
+import parse from 'html-react-parser'
+
+import { type Database } from '@/lib/database.types'
+import { type Payload } from '@/lib/types'
+import { createClient } from '@/utils/supabase/client'
+
+import Clues from './clues'
+import Gameboard, { type CrosswordData } from './gameboard'
 import OnlineUsers from './onlineUsers'
-import { Payload } from '@/lib/types'
+import ShareLink from './shareLink'
+import Timer from './timer'
+import { findBounds } from './utils'
 
 type Props = {
   game: Database['public']['Tables']['games']['Row']
@@ -179,9 +179,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       },
     )
 
-    messageChannel.subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+    messageChannel.subscribe(async (status: `${REALTIME_SUBSCRIBE_STATES}`) => {
       if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
-        messageChannel.send({
+        await messageChannel.send({
           type: 'broadcast',
           event: 'POS',
           payload: { user_id: user.id, currentCell },
@@ -190,7 +190,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     })
 
     return () => {
-      messageChannel && supabase.removeChannel(messageChannel)
+      if (messageChannel) {
+        void supabase.removeChannel(messageChannel).then()
+      }
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps

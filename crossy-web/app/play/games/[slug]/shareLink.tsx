@@ -18,7 +18,7 @@ type Props = {
 }
 
 const ShareLink: React.FC<Props> = ({ game }) => {
-  const [_, copy] = useCopyToClipboard()
+  const [, copy] = useCopyToClipboard()
   const [link, setLink] = useState('')
 
   useEffect(() => {

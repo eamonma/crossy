@@ -3,9 +3,6 @@ import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import {
   ChevronLeftIcon,
-  Cross1Icon,
-  Cross2Icon,
-  Crosshair1Icon,
   Crosshair2Icon,
   DiscordLogoIcon,
   ExternalLinkIcon,

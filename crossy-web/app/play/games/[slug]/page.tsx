@@ -57,7 +57,7 @@ const Page = async ({
       return <Error />
     }
 
-    const { error: insertError } = await dangerousSupabase
+    await dangerousSupabase
       .from('game_user')
       .insert({
         game_id: dangerousGame.id,

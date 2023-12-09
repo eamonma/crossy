@@ -1,9 +1,8 @@
-import { Database } from '@/lib/database.types'
+import React, { useEffect, useState } from 'react'
+import { Avatar, Box, Flex, Text, Tooltip } from '@radix-ui/themes'
+
+import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
-import { Avatar, Box, Flex, Tooltip, Text } from '@radix-ui/themes'
-import { User } from '@supabase/supabase-js'
-import React from 'react'
-import { useEffect, useState } from 'react'
 
 type Props = {
   userIds: string[]
@@ -23,16 +22,15 @@ const OnlineUsers: React.FC<Props> = ({ userIds }) => {
           .select('*')
           .in('id', userIds)
 
-        if (error) throw error
+        if (error) throw Error(error.message)
 
         setUsers(data)
-        console.log(data)
       } catch (error) {
         console.log(error)
       }
     }
 
-    fetchUsers()
+    void fetchUsers().then(() => {})
   }, [userIds])
 
   const avatars = users.map((user) => {

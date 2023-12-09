@@ -8,7 +8,7 @@ import { z } from 'zod'
 import CrosswordGrid from '@/components/crosswordGridDisplay'
 import { type CrosswordJson, crosswordJsonSchema } from '@/lib/crosswordJson'
 
-const getRandomGrid = (size: { cols: number, rows: number }) => {
+const getRandomGrid = (size: { cols: number; rows: number }) => {
   const selections = [
     (i: number) => {
       if (Math.floor(i) % Math.floor(size.cols / 2) === 0) return '.'
@@ -86,8 +86,6 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           setCrosswordData(res)
         } catch (err) {
           if (err instanceof z.ZodError) {
-            console.log(err)
-
             setFiles([])
             setError('Invalid crossword file')
           }

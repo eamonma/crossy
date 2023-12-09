@@ -23,6 +23,7 @@ rules:
   "@typescript-eslint/no-misused-promises":
     ["error", { checksVoidReturn: false }]
   "@typescript-eslint/indent": "off"
+  "@typescript-eslint/member-delimiter-style": "off"
   "multiline-ternary": "off"
   "unused-imports/no-unused-imports": "error"
   "unused-imports/no-unused-vars":

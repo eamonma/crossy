@@ -1,10 +1,6 @@
 import React from 'react'
+import { Flex } from '@radix-ui/themes'
 
-import { Flex, Text } from '@radix-ui/themes'
-import Clues from './clues'
-import Gameboard from './gameboard'
-import Timer from './timer'
-import CrosswordGrid from '@/components/crosswordGridDisplay'
 import PuzzleContent from '../../puzzles/[slug]/puzzleContent'
 
 const Loading = () => {

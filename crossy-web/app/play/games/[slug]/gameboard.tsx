@@ -1,5 +1,5 @@
 'use client'
-import React, { type KeyboardEvent, useEffect, useState, useRef } from 'react'
+import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import {
   type RealtimePostgresChangesPayload,
   type RealtimePostgresUpdatePayload,
@@ -340,7 +340,7 @@ const Gameboard: React.FC<Props> = ({
   const friendIsHereColour =
     currentTheme === 'dark' ? 'var(--crimson-8)' : 'var(--crimson-5)'
 
-  const friendsCellNumbers = new Set(Object.values(friendsLocations || {}))
+  const friendsCellNumbers = new Set(Object.values(friendsLocations ?? {}))
 
   return (
     <div

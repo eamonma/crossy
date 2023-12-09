@@ -1,8 +1,9 @@
+import React from 'react'
 import { Heading, Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
-import React from 'react'
+
+import { type CrosswordData } from './gameboard'
 import { findBounds } from './utils'
-import { CrosswordData } from './gameboard'
 
 type Props = {
   crosswordData: CrosswordData

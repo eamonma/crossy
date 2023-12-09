@@ -61,10 +61,11 @@ const Timer: React.FC<Props> = ({ since }) => {
   }) => {
     if (years > 0) return `${years}y ${weeks}w`
     if (weeks > 0) return `${weeks}w ${days}d`
-    if (days > 0)
-      return `${days}d ${hours.toString().padStart(2, '0')}:${minutes
+    if (days > 0) {
+ return `${days}d ${hours.toString().padStart(2, '0')}:${minutes
         .toString()
         .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
     return `${hours.toString().padStart(2, '0')}:${minutes
       .toString()
       .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
