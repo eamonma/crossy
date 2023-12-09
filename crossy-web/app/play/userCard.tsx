@@ -63,7 +63,7 @@ const UserCard = ({ session }: { session: Session }) => {
               size="3"
               src={profile?.avatar_url ?? ''}
               radius="full"
-              fallback=""
+              fallback={profile?.full_name?.charAt(0) ?? ''}
             />
             <Box className="min-w-0">
               <Text

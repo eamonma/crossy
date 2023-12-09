@@ -1,5 +1,5 @@
 'use client'
-import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import React, { type KeyboardEvent, useEffect, useState, useRef } from 'react'
 import {
   type RealtimePostgresChangesPayload,
   type RealtimePostgresUpdatePayload,
@@ -50,27 +50,28 @@ function debounce<T extends (...args: any[]) => any>(
 
 type Props = {
   game: Database['public']['Tables']['games']['Row']
-  crossword: CrosswordData
+  crosswordData: CrosswordData
   currentCell: number
   setCurrentCell: (i: number) => void
   currentDirection: 'across' | 'down'
   setCurrentDirection: React.Dispatch<React.SetStateAction<'across' | 'down'>>
-  setCurrentClueNum: (num: number) => void
+  setClueNum: React.Dispatch<React.SetStateAction<number>>
   shouldShowNumbers?: boolean
   highlights?: Record<number, string>
   highlightColour?: string
-  rounded?: boolean
-  boardRef: React.RefObject<SVGSVGElement>
+  friendsLocations?: Record<string, number>
+  gameboardRef: React.RefObject<SVGSVGElement>
 }
 const Gameboard: React.FC<Props> = ({
   game,
-  crossword,
+  crosswordData,
   currentCell,
   setCurrentCell,
   currentDirection,
   setCurrentDirection,
-  setCurrentClueNum,
-  boardRef,
+  setClueNum,
+  gameboardRef,
+  friendsLocations,
   shouldShowNumbers = true,
 }) => {
   const supabase = createClient<Database>()
@@ -92,11 +93,11 @@ const Gameboard: React.FC<Props> = ({
 
   const [highlights] = useState<Record<number, string>>({})
   const cellSize = 36 // This can be adjusted for different cell sizes
-  const width = crossword.size.cols * cellSize
-  const height = crossword.size.rows * cellSize
+  const width = crosswordData.size.cols * cellSize
+  const height = crosswordData.size.rows * cellSize
 
   const handleCellClick = (i: number) => {
-    if (crossword.grid[i] === '.') return
+    if (crosswordData.grid[i] === '.') return
     setCurrentCell(i)
 
     if (currentCell === i) {
@@ -105,39 +106,32 @@ const Gameboard: React.FC<Props> = ({
   }
 
   const bounds = findBounds(
-    crossword.grid,
-    crossword.size.cols,
-    crossword.size.rows,
+    crosswordData.grid,
+    crosswordData.size.cols,
+    crosswordData.size.rows,
     currentDirection,
     currentCell,
-    crossword.id,
+    crosswordData.id,
   )
 
   const inputHighlights: Record<number, boolean> = {}
-  const stride = currentDirection === 'across' ? 1 : crossword.size.cols
+  const stride = currentDirection === 'across' ? 1 : crosswordData.size.cols
 
   for (let i = bounds[0]; i <= bounds[1]; i += stride) {
     inputHighlights[i] = true
   }
 
-  // const room = supabase.channel(game.id, {
-  //   config: {
-  //     broadcast: {
-  //       ack: true,
-  //     },
-  //   },
-  // }) // set your topic here
-  const isUpdating = useRef(false)
+  const anticipated = useRef(0)
 
   useEffect(() => {
     const handleChange = debounce(
-      (
-        payload: RealtimePostgresChangesPayload<Record<string, any>>,
-      ) => {
-        console.log(payload)
+      (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
         if (!payload) return
-        const { new: newState } = payload as RealtimePostgresUpdatePayload<Record<string, any>>
-
+        const { new: newState } = payload as RealtimePostgresUpdatePayload<
+          Record<string, any>
+        >
+        if (anticipated.current < 0) anticipated.current = 0
+        if (anticipated.current > 0) return
         const grid = newState.grid
         setAnswers(grid)
       },
@@ -158,20 +152,9 @@ const Gameboard: React.FC<Props> = ({
       .subscribe()
 
     return () => {
-      void changes.unsubscribe()
+      void changes.unsubscribe().then(() => {})
     }
-  }, [supabase])
-
-  // room
-  //   .on('broadcast', { event: 'update_grid_element' }, (res) => {
-  //     const { payload } = res
-  //     const { grid_index: gridIndex, new_value: newValue } = payload
-  //     const newAnswers = [...answers]
-
-  //     newAnswers[gridIndex] = newValue
-  //     setAnswers(newAnswers)
-  //   })
-  //   .subscribe()
+  }, [answers, supabase])
 
   const handleSetCell = (
     i: number,
@@ -185,11 +168,13 @@ const Gameboard: React.FC<Props> = ({
       setAnswers(newAnswers)
 
       let nextCell = getNextCell(
-        crossword.grid,
-        crossword.size.cols,
-        crossword.size.rows,
+        crosswordData.grid,
+        crosswordData.size.cols,
+        crosswordData.size.rows,
         currentDirection,
         i,
+        'more',
+        newAnswers,
       )
 
       if (nextCell > bounds[1]) {
@@ -206,8 +191,8 @@ const Gameboard: React.FC<Props> = ({
       }
 
       setCurrentCell(nextCell)
-      isUpdating.current = true
 
+      anticipated.current += 1
       void supabase
         .rpc('update_grid_element', {
           game_id: game.id,
@@ -215,45 +200,21 @@ const Gameboard: React.FC<Props> = ({
           new_value: value.toUpperCase(),
         })
         .then((res) => {
-          console.log(res)
+          anticipated.current -= 1
         })
 
-      // void room
-      //   .send({
-      //     type: 'broadcast',
-      //     event: 'update_grid_element',
-      //     payload: {
-      //       game_id: game.id,
-      //       grid_index: i,
-      //       new_value: value.toUpperCase(),
-      //       // grid: newAnswers,
-      //     },
-      //   })
-      //   .then((res) => {})
       return
     }
 
     let nextCell = currentCell
 
     if (['Backspace', 'Delete'].includes(value)) {
-      const prev = answers[i]
+      const isPrevEmpty = answers[i] === '' || !answers[i]
+
       const newAnswers = [...answers]
       newAnswers[i] = ''
-      setAnswers(newAnswers)
-      isUpdating.current = true
 
-      if (!prev) {
-        // move to previous cell
-        nextCell = getNextCell(
-          crossword.grid,
-          crossword.size.cols,
-          crossword.size.rows,
-          currentDirection,
-          i,
-          'less',
-        )
-      }
-
+      anticipated.current += 1
       void supabase
         .rpc('update_grid_element', {
           game_id: game.id,
@@ -261,27 +222,41 @@ const Gameboard: React.FC<Props> = ({
           new_value: null as unknown as string,
         })
         .then((res) => {
-          console.log(res)
+          anticipated.current -= 1
         })
 
-      // void room
-      //   .send({
-      //     type: 'broadcast',
-      //     event: 'update_grid_element',
-      //     payload: {
-      //       game_id: game.id,
-      //       grid_index: i,
-      //       new_value: null as unknown as string,
-      //       // grid: newAnswers,
-      //     },
-      //   })
-      //   .then((res) => {})
+      if (isPrevEmpty) {
+        // move to previous cell
+        nextCell = getNextCell(
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
+          currentDirection,
+          i,
+          'less',
+        )
+
+        newAnswers[nextCell] = ''
+
+        anticipated.current += 1
+        void supabase
+          .rpc('update_grid_element', {
+            game_id: game.id,
+            grid_index: nextCell,
+            new_value: null as unknown as string,
+          })
+          .then((res) => {
+            anticipated.current -= 1
+          })
+      }
+
+      setAnswers(newAnswers)
     } else if (value === 'ArrowRight') {
       if (currentDirection === 'across') {
         nextCell = getNextCell(
-          crossword.grid,
-          crossword.size.cols,
-          crossword.size.rows,
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
           'across',
           currentCell,
         )
@@ -291,9 +266,9 @@ const Gameboard: React.FC<Props> = ({
     } else if (value === 'ArrowLeft') {
       if (currentDirection === 'across') {
         nextCell = getNextCell(
-          crossword.grid,
-          crossword.size.cols,
-          crossword.size.rows,
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
           'across',
           currentCell,
           'less',
@@ -304,9 +279,9 @@ const Gameboard: React.FC<Props> = ({
     } else if (value === 'ArrowDown') {
       if (currentDirection === 'down') {
         nextCell = getNextCell(
-          crossword.grid,
-          crossword.size.cols,
-          crossword.size.rows,
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
           'down',
           currentCell,
         )
@@ -316,9 +291,9 @@ const Gameboard: React.FC<Props> = ({
     } else if (value === 'ArrowUp') {
       if (currentDirection === 'down') {
         nextCell = getNextCell(
-          crossword.grid,
-          crossword.size.cols,
-          crossword.size.rows,
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
           'down',
           currentCell,
           'less',
@@ -328,11 +303,11 @@ const Gameboard: React.FC<Props> = ({
       }
     } else if (value === 'Tab') {
       nextCell = getNextWord(
-        crossword.clues,
-        crossword.grid,
-        crossword.gridnums,
-        crossword.size.cols,
-        crossword.size.rows,
+        crosswordData.clues,
+        crosswordData.grid,
+        crosswordData.gridnums,
+        crosswordData.size.cols,
+        crosswordData.size.rows,
         currentDirection,
         currentCell,
         e?.shiftKey ? 'less' : 'more',
@@ -343,16 +318,16 @@ const Gameboard: React.FC<Props> = ({
 
   useEffect(() => {
     const bounds = findBounds(
-      crossword.grid,
-      crossword.size.cols,
-      crossword.size.rows,
+      crosswordData.grid,
+      crosswordData.size.cols,
+      crosswordData.size.rows,
       currentDirection,
       currentCell,
-      crossword.id,
+      crosswordData.id,
     )
 
-    setCurrentClueNum(crossword.gridnums[bounds[0]])
-  }, [currentCell, setCurrentClueNum, crossword, currentDirection])
+    setClueNum(crosswordData.gridnums[bounds[0]])
+  }, [currentCell, setClueNum, crosswordData, currentDirection])
 
   const blackSquareColour =
     currentTheme === 'dark' ? 'var(--gray-1)' : 'var(--gray-12)'
@@ -362,16 +337,20 @@ const Gameboard: React.FC<Props> = ({
     currentTheme === 'dark' ? 'var(--blue-6)' : 'var(--yellow-5)'
   const currentClueColour =
     currentTheme === 'dark' ? 'var(--violet-3)' : 'var(--blue-4)'
+  const friendIsHereColour =
+    currentTheme === 'dark' ? 'var(--crimson-8)' : 'var(--crimson-5)'
+
+  const friendsCellNumbers = new Set(Object.values(friendsLocations || {}))
 
   return (
     <div
       style={{
-        aspectRatio: `${crossword.size.cols}/${crossword.size.rows}`,
+        aspectRatio: `${crosswordData.size.cols}/${crosswordData.size.rows}`,
       }}
       className="relative flex justify-center flex-1 w-full h-full"
     >
       <svg
-        ref={boardRef}
+        ref={gameboardRef}
         tabIndex={0}
         onKeyDown={(e) => {
           if (e.metaKey || e.ctrlKey) return
@@ -383,14 +362,15 @@ const Gameboard: React.FC<Props> = ({
         preserveAspectRatio="xMidYMin meet"
         className="border-2 outline-none"
         style={{
-          aspectRatio: `${crossword.size.cols}/${crossword.size.rows}`,
+          aspectRatio: `${crosswordData.size.cols}/${crosswordData.size.rows}`,
         }}
       >
-        {crossword.grid.map((gridItem, i) => {
-          // let backgroundColor = 'rgba(255,255,255,0.9)'
+        {crosswordData.grid.map((gridItem, i) => {
           let backgroundColor = defaultColour
           if (gridItem === '.') {
             backgroundColor = blackSquareColour
+          } else if (friendsCellNumbers.has(i)) {
+            backgroundColor = friendIsHereColour
           } else if (Object.keys(highlights).includes(i.toString())) {
             backgroundColor = highlights[i]
           } else if (i === currentCell) {
@@ -399,8 +379,8 @@ const Gameboard: React.FC<Props> = ({
             backgroundColor = currentClueColour
           }
 
-          const row = Math.floor(i / crossword.size.cols)
-          const col = i % crossword.size.cols
+          const row = Math.floor(i / crosswordData.size.cols)
+          const col = i % crosswordData.size.cols
 
           const handleMouseDown = () => {
             handleCellClick(i)
@@ -417,7 +397,7 @@ const Gameboard: React.FC<Props> = ({
                 stroke="var(--gray-8)"
                 strokeWidth={0.6}
               />
-              {shouldShowNumbers && crossword.gridnums[i] && (
+              {shouldShowNumbers && crosswordData.gridnums[i] && (
                 <>
                   <text
                     x={col * cellSize + 2}
@@ -427,11 +407,20 @@ const Gameboard: React.FC<Props> = ({
                     fill="var(--gray-11)"
                     className="select-none"
                   >
-                    {crossword.gridnums[i]}
+                    {crosswordData.gridnums[i]}
                   </text>
                 </>
               )}
-              {answers[i] && crossword.grid[i] !== '.' && (
+              {friendsCellNumbers.has(i) && (
+                <circle
+                  cx={col * cellSize + cellSize - 6}
+                  cy={row * cellSize + 6}
+                  r={2.5}
+                  fill="var(--indigo-9)"
+                  className="select-none"
+                />
+              )}
+              {answers[i] && crosswordData.grid[i] !== '.' && (
                 <text
                   x={col * cellSize + cellSize / 2}
                   y={row * cellSize + cellSize / 2 + 14}

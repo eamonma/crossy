@@ -3,6 +3,10 @@ import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import {
   ChevronLeftIcon,
+  Cross1Icon,
+  Cross2Icon,
+  Crosshair1Icon,
+  Crosshair2Icon,
   DiscordLogoIcon,
   ExternalLinkIcon,
   FileIcon,
@@ -41,7 +45,10 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
     <div className="w-full bg-gray-3">
       <nav className="flex flex-col justify-between w-64 h-full gap-4 p-4 pr-0">
         <ul className="flex flex-col gap-4 px-2">
-          <h1 className="font-serif font-medium text-center text-4">Crossy</h1>
+          <h1 className="flex items-center justify-center gap-1 mt-2 -mb-2 font-serif font-bold text-center">
+            <Crosshair2Icon />
+            Crossy
+          </h1>
           <hr className="border-dashed border-grayA-5" />
           <li>
             <Link href="/play" className="flex items-center gap-2">

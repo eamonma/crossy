@@ -10,6 +10,7 @@ export const getNextCell = (
   currentDirection: 'across' | 'down',
   currentCell: number,
   direction: 'less' | 'more' = 'more',
+  answers?: string[],
 ) => {
   const stride = currentDirection === 'across' ? 1 : cols
   const incrementor = direction === 'more' ? stride : -stride
@@ -20,6 +21,31 @@ export const getNextCell = (
 
   while (grid[nextCell] === '.') {
     nextCell += incrementor
+  }
+
+  if (answers && direction === 'more') {
+    // console.log('nextCell', nextCell, grid[nextCell]);
+    const cellAfterIfWholeWordIsFull = nextCell
+    while (answers[nextCell]) {
+      nextCell += incrementor
+    }
+
+    // console.log('nextCell', nextCell, grid[nextCell]);
+    
+    // console.log('cellAfterIfWholeWordIsFull', cellAfterIfWholeWordIsFull, grid[cellAfterIfWholeWordIsFull]);
+    // console.log(nextCell, grid[nextCell]);
+    
+    // const cellAfter = nextCell + incrementor
+    // const bound = currentDirection === 'across' ? cols : rows
+    // console.log('cellAfter', cellAfter, bound)
+    // if (cellAfter < puzzleSize && cellAfter >= 0) {
+    //   console.log('cellAfter', cellAfter, grid[cellAfter]);
+      
+      if (grid[nextCell] === ".") {
+        nextCell = cellAfterIfWholeWordIsFull
+      }
+    // }
+
   }
 
   if (nextCell >= puzzleSize || nextCell < 0) {

@@ -11,28 +11,66 @@ const Timer: React.FC<Props> = ({ since }) => {
     const interval = setInterval(() => {
       setTime(Date.now() - since)
     }, 1000)
-    return () => { clearInterval(interval) }
+    return () => {
+      clearInterval(interval)
+    }
   }, [since])
 
-  const date = new Date(time)
+  const calculateDuration = (ms: number) => {
+    let remaining = ms
 
-  const hours = date.getUTCHours().toFixed(0).padStart(2, '0')
-  const minutes = date.getUTCMinutes().toFixed(0).padStart(2, '0')
-  const seconds = date.getUTCSeconds().toFixed(0).padStart(2, '0')
+    const msInYear = 1000 * 60 * 60 * 24 * 365
+    const years = Math.floor(remaining / msInYear)
+    remaining %= msInYear
 
-  if (date.getUTCHours() > 0) {
-    return (
-      <>
-        {hours}:{minutes}:{seconds}
-      </>
-    )
-  } else {
-    return (
-      <>
-        {minutes}:{seconds}
-      </>
-    )
+    const msInWeek = 1000 * 60 * 60 * 24 * 7
+    const weeks = Math.floor(remaining / msInWeek)
+    remaining %= msInWeek
+
+    const msInDay = 1000 * 60 * 60 * 24
+    const days = Math.floor(remaining / msInDay)
+    remaining %= msInDay
+
+    const msInHour = 1000 * 60 * 60
+    const hours = Math.floor(remaining / msInHour)
+    remaining %= msInHour
+
+    const msInMinute = 1000 * 60
+    const minutes = Math.floor(remaining / msInMinute)
+    remaining %= msInMinute
+
+    const seconds = Math.floor(remaining / 1000)
+
+    return { years, weeks, days, hours, minutes, seconds }
   }
+
+  const formatTime = ({
+    years,
+    weeks,
+    days,
+    hours,
+    minutes,
+    seconds,
+  }: {
+    years: number
+    weeks: number
+    days: number
+    hours: number
+    minutes: number
+    seconds: number
+  }) => {
+    if (years > 0) return `${years}y ${weeks}w`
+    if (weeks > 0) return `${weeks}w ${days}d`
+    if (days > 0)
+      return `${days}d ${hours.toString().padStart(2, '0')}:${minutes
+        .toString()
+        .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    return `${hours.toString().padStart(2, '0')}:${minutes
+      .toString()
+      .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+  }
+
+  return <>{formatTime(calculateDuration(time))}</>
 }
 
 export default Timer

@@ -1,34 +1,58 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Flex, Heading, Switch, Text } from '@radix-ui/themes'
+import { Badge, Flex, Heading, Switch, Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
 
 import Gameboard, { type CrosswordData } from './gameboard'
+import ShareLink from './shareLink'
 import Timer from './timer'
 import { findBounds } from './utils'
+import Clues from './clues'
+import { createClient } from '@/utils/supabase/client'
+import {
+  REALTIME_LISTEN_TYPES,
+  REALTIME_PRESENCE_LISTEN_EVENTS,
+  REALTIME_SUBSCRIBE_STATES,
+  RealtimeChannel,
+  RealtimeChannelSendResponse,
+  User,
+} from '@supabase/supabase-js'
+import OnlineUsers from './onlineUsers'
+import { Payload } from '@/lib/types'
 
 type Props = {
   game: Database['public']['Tables']['games']['Row']
   crosswordData: CrosswordData
+  user: User
 }
 
-const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
+const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
+  const supabase = createClient<Database>()
   const [currentCell, setCurrentCell] = useState<number>(0)
   const [currentDirection, setCurrentDirection] = useState<'across' | 'down'>(
     'across',
   )
-
+  const [isInitialStateSynced, setIsInitialStateSynced] =
+    useState<boolean>(false)
+  const [friendsLocations, setFriendsLocations] = useState<
+    Record<string, number>
+  >({})
   const acrossRef = useRef<Array<HTMLLIElement | null>>([])
   const downRef = useRef<Array<HTMLLIElement | null>>([])
   const gameboardRef = useRef<SVGSVGElement>(null)
 
-  useEffect(() => {
-    if (gameboardRef.current) {
-      gameboardRef.current.focus()
-    }
-  }, [gameboardRef])
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
+
+  const mapInitialUsers = (userChannel: RealtimeChannel, roomId: string) => {
+    const state = userChannel.presenceState<{ user_id: string }>()
+    const _users = state[roomId]
+
+    if (!_users) return
+
+    setOnlineUserIds(_users.map((user) => user.user_id))
+  }
 
   const [clueNum, setClueNum] = useState(1)
 
@@ -53,18 +77,16 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
   const clueNumAcross = crosswordData.gridnums[acrossBounds[0]] || clueNum
   const clueNumDown = crosswordData.gridnums[downBounds[0]] || clueNum
 
-  const [isSmoothScrolling, setIsSmoothScrolling] = useState(true)
-
   acrossRef.current[clueNumAcross]?.scrollIntoView({
     // block: 'center',
     block: 'start',
-    behavior: isSmoothScrolling ? 'smooth' : 'instant',
+    behavior: 'instant',
   })
 
   downRef.current[clueNumDown]?.scrollIntoView({
-    block: 'start',
     // block: 'center',
-    behavior: isSmoothScrolling ? 'smooth' : 'instant',
+    block: 'start',
+    behavior: 'instant',
   })
 
   const clueNumToClueAcross = useMemo(() => {
@@ -72,7 +94,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
 
     crosswordData.clues.across.forEach((clue) => {
       const clueNum = parseInt(clue.substring(0, clue.indexOf('. ')))
-      clueNumToClueAcross.set(clueNum, clue)
+      clueNumToClueAcross.set(clueNum, clue.substring(clue.indexOf(' ')))
     })
 
     return clueNumToClueAcross
@@ -83,7 +105,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
 
     crosswordData.clues.down.forEach((clue) => {
       const clueNum = parseInt(clue.substring(0, clue.indexOf('. ')))
-      clueNumToClueDown.set(clueNum, clue)
+      clueNumToClueDown.set(clueNum, clue.substring(clue.indexOf(' ')))
     })
 
     return clueNumToClueDown
@@ -97,32 +119,122 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
     }
   }
 
+  useEffect(() => {
+    if (gameboardRef.current) {
+      gameboardRef.current.focus()
+    }
+  }, [gameboardRef])
+
+  const roomId = game.id
+  useEffect(() => {
+    const roomChannel = supabase.channel('rooms', {
+      config: { presence: { key: roomId } },
+    })
+    roomChannel.on(
+      REALTIME_LISTEN_TYPES.PRESENCE,
+      { event: REALTIME_PRESENCE_LISTEN_EVENTS.SYNC },
+      () => {
+        setIsInitialStateSynced(true)
+        mapInitialUsers(roomChannel, roomId)
+      },
+    )
+    roomChannel.subscribe(async (status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+      if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+        const resp: RealtimeChannelSendResponse = await roomChannel.track({
+          user_id: user.id,
+        })
+
+        if (resp === 'ok') {
+          // noop
+        } else {
+          console.error(resp)
+        }
+      }
+    })
+  }, [roomId, supabase])
+
+  useEffect(() => {
+    if (!roomId || !isInitialStateSynced) return
+
+    const userId = user.id
+
+    const messageChannel: RealtimeChannel = supabase.channel(
+      `position:${roomId}`,
+    )
+
+    // Listen for cursor positions from other users in the room
+    messageChannel.on(
+      REALTIME_LISTEN_TYPES.BROADCAST,
+      { event: 'POS' },
+      (payload: Payload<{ user_id: string } & { currentCell: number }>) => {
+        const { payload: res, event, type } = payload
+        if (event !== 'POS' || type !== 'broadcast') return
+        if (!res) return
+        if (res?.user_id === userId) return
+
+        setFriendsLocations((prev) => ({
+          ...prev,
+          [res.user_id]: res.currentCell,
+        }))
+      },
+    )
+
+    messageChannel.subscribe((status: `${REALTIME_SUBSCRIBE_STATES}`) => {
+      if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) {
+        messageChannel.send({
+          type: 'broadcast',
+          event: 'POS',
+          payload: { user_id: user.id, currentCell },
+        })
+      }
+    })
+
+    return () => {
+      messageChannel && supabase.removeChannel(messageChannel)
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, isInitialStateSynced, currentCell])
+
+  const commonProps = {
+    crosswordData,
+    currentCell,
+    setCurrentCell,
+    currentDirection,
+    setCurrentDirection,
+    setClueNum,
+    gameboardRef,
+  }
+
   return (
     <div className="flex flex-col w-full h-full">
       <div className="relative flex flex-col items-center justify-between w-full h-20 py-2 font-medium text-center border-b border-dashed border-gray-5 text-4">
         <Flex
           gap="4"
           align="center"
-          className="w-full px-5 pb-2 border-gray-5"
+          className="w-full px-4 pb-2 border-gray-5"
           justify="between"
         >
-          <time className="text-gray-11">
+          <time className="text-gray-10">
             <Timer since={new Date(game.created_at).getTime()} />
           </time>
-          <label>
-            <Flex gap="2" align="center">
-              <Switch
-                onCheckedChange={(value) => {
-                  setIsSmoothScrolling(value)
-                }}
-                checked={isSmoothScrolling}
-              />
-              <Text size="2">Smooth scrolling</Text>
-            </Flex>
-          </label>
+          <Flex gap="4" align="center">
+            <OnlineUsers userIds={onlineUserIds} />
+            <ShareLink game={game} />
+          </Flex>
         </Flex>
-        <Flex className="w-full px-5">
-          <Text>{parse(clueNumToClue(clueNum, currentDirection) ?? '')}</Text>
+        <Flex justify="between" className="w-full">
+          <Flex className="w-full px-4" align="baseline">
+            <Flex
+              align="center"
+              gap="1"
+              className="text-left w-[5ch] text-gray-10"
+            >
+              <Text>{clueNum}</Text>
+              {currentDirection === 'across' ? 'A' : 'D'}
+            </Flex>
+            <Text>{parse(clueNumToClue(clueNum, currentDirection) ?? '')}</Text>
+          </Flex>
         </Flex>
       </div>
       <div className="h-[calc(100%-5rem)] grid grid-cols-1 sm:grid-cols-[4fr,3fr] items-center justify-center gap-4">
@@ -131,132 +243,26 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData }) => {
             <div className="flex justify-start w-full">
               <div className="w-full pl-8 pr-3 max-h-[80vh] md:max-h-[75vh] lg:max-h-[70vh]">
                 <Gameboard
+                  friendsLocations={friendsLocations}
                   game={game}
-                  crossword={crosswordData}
-                  currentCell={currentCell}
-                  setCurrentCell={setCurrentCell}
-                  currentDirection={currentDirection}
-                  setCurrentDirection={setCurrentDirection}
-                  setCurrentClueNum={setClueNum}
-                  boardRef={gameboardRef}
+                  {...commonProps}
                 />
               </div>
             </div>
           </div>
         </div>
-        <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible sm:flex">
+        <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible sm:flex rounded-4">
           <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed border-gray-5">
             <div className="relative flex flex-col w-full border-b border-dashed border-gray-5">
-              <div>
-                <Heading className="px-6 py-2">Across</Heading>
-                <hr className="border-dashed border-gray-5" />
-              </div>
-              <ul className="flex flex-col flex-1 h-[calc(100%-2rem)] overflow-y-auto">
-                {crosswordData.clues.across.map((clue) => {
-                  const clueNum = parseInt(
-                    clue.substring(0, clue.indexOf('. ')),
-                  )
-
-                  const boundsForClue = findBounds(
-                    crosswordData.grid,
-                    crosswordData.size.cols,
-                    crosswordData.size.rows,
-                    'across',
-                    crosswordData.gridnums.indexOf(clueNum),
-                    crosswordData.id,
-                  )
-
-                  const squareIsWithinClueBounds =
-                    currentCell >= boundsForClue[0] &&
-                    currentCell <= boundsForClue[1]
-
-                  return (
-                    <li
-                      key={clueNum}
-                      className={`grid grid-cols-[4ch,1fr] cursor-pointer gap-4 bg-opacity-30 py-1 ${
-                        squareIsWithinClueBounds && 'bg-amber-4'
-                      }`}
-                      onClick={() => {
-                        setCurrentDirection('across')
-                        setClueNum(clueNum)
-                        setCurrentCell(crosswordData.gridnums.indexOf(clueNum))
-                        gameboardRef.current?.focus()
-                      }}
-                      ref={(ref) => (acrossRef.current[clueNum] = ref)}
-                    >
-                      <div className="text-right">{clueNum}</div>
-                      <Text>
-                        {parse(`${clue.substring(clue.indexOf(' '))}`)}
-                      </Text>
-                    </li>
-                  )
-                })}
-              </ul>
+              <Clues
+                {...commonProps}
+                listRef={acrossRef}
+                direction={'across'}
+              />
             </div>
-            {/* <hr className="absolute inset-y-0 w-full m-auto border-dashed" /> */}
+
             <div className="relative flex flex-col w-full">
-              <div>
-                <Heading className="px-6 py-2">Down</Heading>
-                <hr className="border-dashed border-gray-5" />
-              </div>
-              <ul className="flex flex-col flex-1 h-[calc(100%-2rem)] overflow-y-auto">
-                {crosswordData.clues.down.map((clue) => {
-                  const clueNum = parseInt(
-                    clue.substring(0, clue.indexOf('. ')),
-                  )
-
-                  const boundsForClue = findBounds(
-                    //   puzzle,
-                    crosswordData.grid,
-                    crosswordData.size.cols,
-                    crosswordData.size.rows,
-                    'down',
-                    crosswordData.gridnums.indexOf(clueNum),
-                    crosswordData.id,
-                  )
-
-                  const squaresWithinClueBounds = [boundsForClue[0]]
-
-                  const items =
-                    Math.ceil(
-                      (boundsForClue[1] - boundsForClue[0]) /
-                        crosswordData.size.cols,
-                    ) + 1
-
-                  for (let j = 1; j < items; j++) {
-                    squaresWithinClueBounds.push(
-                      boundsForClue[0] + j * crosswordData.size.cols,
-                    )
-                  }
-
-                  const squareIsWithinClueBounds =
-                    squaresWithinClueBounds.includes(currentCell)
-
-                  return (
-                    <li
-                      key={clueNum}
-                      className={`grid grid-cols-[4ch,1fr] cursor-pointer gap-4 bg-opacity-30 py-1 ${
-                        // crosswordData.gridnums[currentCell] === clueNum
-                        squareIsWithinClueBounds && 'bg-amber-4'
-                      }`}
-                      onClick={() => {
-                        setCurrentDirection('down')
-                        setClueNum(clueNum)
-                        setCurrentCell(crosswordData.gridnums.indexOf(clueNum))
-                        gameboardRef.current?.focus()
-                      }}
-                      ref={(ref) => (downRef.current[clueNum] = ref)}
-                    >
-                      <div className="text-right">
-                        {clue.substring(0, clue.indexOf('. '))}
-                      </div>
-                      <Text>
-                        {parse(`${clue.substring(clue.indexOf(' '))}`)}
-                      </Text>
-                    </li>
-                  )
-                })}
-              </ul>
+              <Clues {...commonProps} listRef={downRef} direction={'down'} />
             </div>
           </div>
         </div>
