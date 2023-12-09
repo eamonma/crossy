@@ -14,8 +14,6 @@ const Page = async () => {
     .from('games')
     .select('*, puzzle_id(name)')
 
-  console.log(data, error)
-
   if (!data || error) return null
 
   return (

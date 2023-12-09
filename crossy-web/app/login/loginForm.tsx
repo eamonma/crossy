@@ -4,7 +4,7 @@ import { Button, TextField } from '@radix-ui/themes'
 
 const Form = () => {
   return (
-    <>
+    <div className="flex flex-col gap-1 mt-4">
       <label className="text-md" htmlFor="email">
         Email
       </label>
@@ -18,17 +18,10 @@ const Form = () => {
         placeholder="••••••••"
         required
       />
-      <Button className="bg-green-700 rounded-md px-4 py-2 text-foreground mb-2">
-        Sign In
-      </Button>
-      {/* <Button
-          variant='outline'
-          formAction={signUp}
-          className='border border-foreground/20 rounded-md px-4 py-2 text-foreground mb-2'
-        >
-          Sign Up
-        </Button> */}
-    </>
+      <div className="flex flex-col w-full mt-4">
+        <Button>Sign in</Button>
+      </div>
+    </div>
   )
 }
 

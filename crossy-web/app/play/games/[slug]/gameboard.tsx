@@ -208,7 +208,7 @@ const Gameboard: React.FC<Props> = ({
 
     let nextCell = currentCell
 
-    if (['Backspace', 'Delete'].includes(value)) {
+    if (['Backspace', 'Delete', 'del'].includes(value)) {
       const isPrevEmpty = answers[i] === '' || !answers[i]
 
       const newAnswers = [...answers]
@@ -352,7 +352,7 @@ const Gameboard: React.FC<Props> = ({
       <svg
         ref={gameboardRef}
         tabIndex={0}
-        onKeyDown={(e) => {
+        onKeyDownCapture={(e) => {
           if (e.metaKey || e.ctrlKey) return
           e.preventDefault()
           handleSetCell(currentCell, e.key, e)

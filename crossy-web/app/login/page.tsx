@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, DiscordLogoIcon } from '@radix-ui/react-icons'
-import { Button, Text } from '@radix-ui/themes'
+import { Button, Link as RadixLink, Text } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
@@ -95,38 +95,26 @@ export default function Login({
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-transparent">
-      <Link
-        href="/"
-        className="absolute flex items-center px-4 py-2 text-sm text-black no-underline rounded-md left-8 top-8 bg-btn-background hover:bg-btn-background-hover group"
-      >
-        <ArrowLeftIcon className="mr-2" />
-        {/* <svg
-          xmlns='http://www.w3.org/2000/svg'
-          width='24'
-          height='24'
-          viewBox='0 0 24 24'
-          fill='none'
-          stroke='currentColor'
-          strokeWidth='2'
-          strokeLinecap='round'
-          strokeLinejoin='round'
-          className='w-4 h-4 mr-2 transition-transform group-hover:-translate-x-1'
+      <RadixLink className="absolute flex items-center top-4 left-4" asChild>
+        <Link
+          href="/"
+          // className="absolute flex items-center px-4 py-2 text-sm text-black no-underline rounded-md left-3 top-4 bg-btn-background hover:bg-btn-background-hover group"
         >
-          <polyline points='15 18 9 12 15 6' />
-        </svg>{' '} */}
-        Back
-      </Link>
+          <ArrowLeftIcon className="mr-1" />
+          Back
+        </Link>
+      </RadixLink>
 
       <div className="flex flex-col w-full max-w-sm p-4 border border-grayA-1 shadow-2 rounded-5">
         <div className="flex justify-between ">
           <Text asChild>
-            <span className="font-serif text-lg">Crossy</span>
+            <span className="font-serif font-bold text-4">Crossy</span>
           </Text>
           <Text asChild>
-            <span className="font-serif text-lg">Sign in</span>
+            <span className="font-serif text-4">Sign in</span>
           </Text>
         </div>
-        <hr className="my-4 border-grayA-5" />
+        <hr className="my-3 border-grayA-5" />
         <form action={signInWithDiscord} className="flex flex-col">
           <Button
             type="submit"
@@ -134,7 +122,7 @@ export default function Login({
             className="flex items-center gap-2 text-black cursor-pointer"
           >
             <DiscordLogoIcon />
-            Sign in with Discord
+            Continue with Discord
           </Button>
         </form>
 
@@ -148,7 +136,7 @@ export default function Login({
         )}
 
         <details className="mt-2">
-          <summary>Login with email</summary>
+          <summary className="opacity-50 text-1">Login with email</summary>
           <form action={signIn}>
             <Form />
           </form>

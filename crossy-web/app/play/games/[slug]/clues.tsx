@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useRef } from 'react'
 import { Heading, Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
 
@@ -13,7 +13,7 @@ type Props = {
   setCurrentDirection: React.Dispatch<React.SetStateAction<'across' | 'down'>>
   setClueNum: React.Dispatch<React.SetStateAction<number>>
   gameboardRef: React.RefObject<SVGSVGElement>
-  listRef: React.RefObject<Array<HTMLLIElement | null>>
+  shouldScrollSmoothly: boolean
   direction: 'across' | 'down'
 }
 
@@ -25,9 +25,26 @@ const Clues = ({
   setCurrentDirection,
   setClueNum,
   gameboardRef,
-  listRef,
   direction,
+  shouldScrollSmoothly,
 }: Props) => {
+  const listRef = useRef<Array<HTMLLIElement | null>>([])
+  const bounds = findBounds(
+    crosswordData.grid,
+    crosswordData.size.cols,
+    crosswordData.size.rows,
+    direction,
+    currentCell,
+    crosswordData.id,
+  )
+
+  const clueNum = crosswordData.gridnums[bounds[0]] ?? 0
+
+  listRef.current?.[clueNum]?.scrollIntoView({
+    behavior: shouldScrollSmoothly ? 'smooth' : 'instant',
+    block: 'start',
+  })
+
   return (
     <>
       <div>
