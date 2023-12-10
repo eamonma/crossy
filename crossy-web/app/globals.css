@@ -42,9 +42,6 @@
     transform: translateY(0);
   }
 } */
-html {
-  background-color: #ebebe4;
-}
 
 * {
   box-sizing: border-box;

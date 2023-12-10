@@ -6,22 +6,18 @@ import PuzzleContent from '../../puzzles/[slug]/puzzleContent'
 const Loading = () => {
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="relative flex flex-col items-center justify-between w-full h-20 py-2 font-medium text-center border-b border-dashed border-gray-5 text-4">
+      <div className="relative flex flex-col items-center justify-between w-full h-20 py-2 font-medium text-center border-b border-dashed ">
         <Flex
           gap="4"
           align="center"
-          className="w-full px-4 pb-2 border-gray-5"
+          className="w-full px-4 pb-2 "
           justify="between"
         >
           <time className="text-gray-10">00:00:00</time>
           <Flex gap="4" align="center"></Flex>
         </Flex>
         <Flex className="w-full px-4" align="baseline">
-          <Flex
-            align="center"
-            gap="1"
-            className="text-left w-[5ch] text-gray-10"
-          ></Flex>
+          <Flex align="center" gap="1" className="text-left w-[5ch]"></Flex>
         </Flex>
       </div>
       <div className="h-[calc(100%-5rem)] grid grid-cols-1 sm:grid-cols-[4fr,3fr] items-center justify-center gap-4">

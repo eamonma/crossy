@@ -54,7 +54,7 @@ const Congrats: React.FC<Props> = ({ isOpen, status }) => {
               <StarFilledIcon
                 width={18}
                 height={18}
-                className="mr-1 text-gold-8"
+                className="mr-1 text-gold-700"
               />
               Congratulations!
             </>

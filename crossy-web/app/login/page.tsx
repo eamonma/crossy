@@ -43,21 +43,21 @@ export default function Login({
         </Link>
       </RadixLink>
 
-      <div className="flex flex-col w-full max-w-sm p-4 border border-grayA-1 shadow-2 rounded-5">
+      <div className="flex flex-col w-full max-w-sm p-4 border border-gray-300 rounded-lg shadow-sm">
         <div className="flex justify-between ">
           <Text asChild>
-            <span className="font-serif font-bold text-4">Crossy</span>
+            <span className="font-serif text-lg font-bold">Crossy</span>
           </Text>
           <Text asChild>
-            <span className="font-serif text-4">Sign in</span>
+            <span className="font-serif text-lg">Sign in</span>
           </Text>
         </div>
-        <hr className="my-3 border-grayA-5" />
+        <hr className="my-3" />
         <Main />
 
         {searchParams?.message && (
           <>
-            <hr className="my-4 border-grayA-5" />
+            <hr className="my-4" />
             <p className="mb-4 text-center bg-foreground/10 text-foreground">
               {searchParams.message}
             </p>
@@ -65,7 +65,7 @@ export default function Login({
         )}
 
         <details className="mt-2">
-          <summary className="opacity-50 text-1">Login with email</summary>
+          <summary className="text-xs opacity-50">Login with email</summary>
           <form action={signIn}>
             <Form />
           </form>

@@ -19,7 +19,7 @@ const Page = async () => {
 
   return (
     <div className="flex flex-col h-full py-5">
-      <Heading className="flex px-5 text-4">Games</Heading>
+      <Heading className="flex px-5">Games</Heading>
       <Games games={data} />
     </div>
   )

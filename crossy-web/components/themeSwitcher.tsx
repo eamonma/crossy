@@ -33,23 +33,11 @@ const ThemeSwitcher = () => {
             value="system"
             className="flex justify-between"
           >
-            {/* <DropdownMenuItemIndicator /> */}
             System
           </DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem value="light">
-            {/* <DropdownMenuItemIndicator /> */}
-            Light
-          </DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem value="dark">
-            {/* <DropdownMenuItemIndicator /> */}
-            Dark
-          </DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem value="light">Light</DropdownMenu.RadioItem>
+          <DropdownMenu.RadioItem value="dark">Dark</DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
-        {/* <DropdownMenu.Item>Move to project…</DropdownMenu.Item>
-        <DropdownMenu.Item>Move to folder…</DropdownMenu.Item>
-
-        <DropdownMenu.Separator />
-        <DropdownMenu.Item>Advanced options…</DropdownMenu.Item> */}
       </DropdownMenu.SubContent>
     </DropdownMenu.Sub>
   )

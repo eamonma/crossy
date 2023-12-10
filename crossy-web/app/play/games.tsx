@@ -1,7 +1,8 @@
 'use client'
 import React, { useMemo } from 'react'
-import { CookieIcon } from '@radix-ui/react-icons'
-import { Table, Text } from '@radix-ui/themes'
+import { ArrowRightIcon, CookieIcon } from '@radix-ui/react-icons'
+import { Link as RadixLink, Table, Text } from '@radix-ui/themes'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 import { type Database } from '@/lib/database.types'
@@ -21,8 +22,8 @@ const Games: React.FC<Props> = ({ games }) => {
 
   return (
     <>
-      <hr className="relative mt-2 border-dashed border-gray-5" />
-      <Table.Root className="w-full h-full" size="3">
+      <hr className="relative mt-2 border-dashed" />
+      <Table.Root className={`w-full ${games.length > 0 && 'h-full'}`} size="3">
         <Table.Header>
           <Table.Row>
             <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
@@ -45,7 +46,7 @@ const Games: React.FC<Props> = ({ games }) => {
                 onClick={() => {
                   router.push(gameUrl)
                 }}
-                className="cursor-pointer hover:bg-gray-2"
+                className="cursor-pointer hover:bg-gray-100"
                 key={game.id}
               >
                 <Table.RowHeaderCell>
@@ -64,7 +65,14 @@ const Games: React.FC<Props> = ({ games }) => {
       {games.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 w-full gap-2 p-4 py-8">
           <CookieIcon width={42} height={42} />
-          <Text className="text-gray-11">No games yet!</Text>
+          <div className="flex gap-2">
+            <Text className="text-gray-900">No games yet!</Text>
+            <RadixLink asChild>
+              <Link href="/play/puzzles" className="flex items-center gap-2">
+                Start a game from a puzzle <ArrowRightIcon />
+              </Link>
+            </RadixLink>
+          </div>
         </div>
       )}
     </>

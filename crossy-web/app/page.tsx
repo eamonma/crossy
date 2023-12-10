@@ -28,9 +28,9 @@ export default async function Index() {
 
   return (
     <div>
-      <main className="flex flex-col min-h-screen bg-gray-2">
-        <header className="flex items-center justify-between h-12 px-5 border-b border-dashed border-gray-5">
-          <h1 className="font-serif font-bold text-4">Crossy</h1>
+      <main className="flex flex-col min-h-screen bg-gray-50">
+        <header className="flex items-center justify-between h-12 px-5 border-b border-dashed">
+          <h1 className="font-serif text-lg font-bold">Crossy</h1>
           <div className="flex items-center gap-4 font-medium">
             {user && <>Welcome, {profile?.full_name}!</>}
             {/* <Button asChild variant="classic" radius="large">
@@ -45,9 +45,9 @@ export default async function Index() {
           </div>
         </header>
         <div className="flex items-stretch flex-1 h-full p-4">
-          <div className="flex items-center justify-center w-full rounded-4 shadow-3 bg-gray-1">
-            <div className="flex flex-col items-start max-w-md gap-4 px-4 text-black/70">
-              <h2 className="font-serif leading-8 text-8">
+          <div className="flex items-center justify-center w-full border border-gray-300 rounded-md shadow-lg bg-gray-25">
+            <div className="flex flex-col items-start max-w-md gap-4 px-4 text-black/80">
+              <h2 className="font-serif text-4xl leading-8">
                 Solve crosswords collaboratively.
               </h2>
               <Button asChild variant="solid" radius="large">

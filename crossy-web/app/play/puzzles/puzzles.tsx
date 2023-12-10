@@ -24,7 +24,10 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
   return (
     <>
       <hr className="relative mt-2 border-dashed border-gray-5" />
-      <Table.Root className="w-full h-full" size="3">
+      <Table.Root
+        className={`w-full ${puzzles.length > 0 && 'h-full'}`}
+        size="3"
+      >
         <Table.Header>
           <Table.Row>
             <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
@@ -38,9 +41,9 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
               router.refresh()
             }}
           >
-            <Table.Row className="cursor-pointer bg-blue-2 hover:bg-blue-3">
+            <Table.Row className="bg-blue-100 cursor-pointer hover:bg-blue-200">
               <Table.RowHeaderCell>
-                <div className="flex items-center gap-1 font-medium">
+                <div className="flex items-center gap-1 font-medium text-cyan-900">
                   <FilePlusIcon />
                   Create puzzle
                 </div>
@@ -60,7 +63,7 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
                 onClick={() => {
                   router.push(puzzleUrl)
                 }}
-                className="cursor-pointer hover:bg-gray-2"
+                className="cursor-pointer hover:bg-gray-100"
                 key={puzzle.id}
               >
                 <Table.RowHeaderCell>
@@ -81,7 +84,7 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
       {puzzles.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 w-full gap-2 p-4 py-8">
           <CookieIcon width={42} height={42} />
-          <Text className="text-gray-11">No puzzles yet!</Text>
+          <Text className="text-gray-900">No puzzles yet!</Text>
         </div>
       )}
     </>

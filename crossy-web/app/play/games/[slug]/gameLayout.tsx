@@ -138,12 +138,12 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     <div className="flex flex-col w-full h-full">
       <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
       <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
-      <div className="relative flex flex-col items-center justify-between w-full h-20 font-medium text-center text-4">
+      <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
           top={
             <>
               <div className="flex items-center gap-2">
-                <time className="text-gray-10">
+                <time className="text-gray-900">
                   <Timer
                     since={new Date(game.created_at).getTime()}
                     statusOfGame={statusOfGame}
@@ -175,7 +175,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
           }
           clue={
             <div className="flex items-baseline w-full">
-              <div className="flex items-center text-left w-[5ch] text-gray-10">
+              <div className="flex items-center text-left text-gray-900 w-[5ch]">
                 <Text>{clueNum}</Text>
                 {currentDirection === 'across' ? 'A' : 'D'}
               </div>
@@ -200,14 +200,14 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
               />
             </div>
           </div>
-          <div className="items-end visible w-full mt-4 overflow-hidden rounded-4 sm:hidden">
+          <div className="items-end visible w-full mt-4 overflow-hidden rounded-md sm:hidden">
             <EmbeddedKeyboard gameboardRef={gameboardRef} />
           </div>
         </div>
 
         <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible md:flex rounded-4">
-          <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed border-gray-5">
-            <div className="relative flex flex-col w-full border-b border-dashed border-gray-5">
+          <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed">
+            <div className="relative flex flex-col w-full border-b border-dashed">
               <Clues
                 {...commonProps}
                 shouldScrollSmoothly={shouldScrollSmoothly}

@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-import { radixThemePreset } from 'radix-themes-tw'
+import radixThemePlugin from 'radix-ui-themes-with-tailwind'
 
 module.exports = {
   content: [
@@ -22,5 +22,12 @@ module.exports = {
     },
   },
   plugins: [require('tailwind-scrollbar')({ nocompatible: true })],
-  presets: [radixThemePreset],
+  plugins: [
+    radixThemePlugin({
+      useTailwindColorNames: true, // optional
+      useTailwindRadiusNames: true, // optional
+      mapMissingTailwindColors: true, // optional
+    }),
+  ],
+  // presets: [radixThemePreset],
 }

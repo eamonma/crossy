@@ -92,9 +92,9 @@ const Clues = ({
           let bg
           if (squareIsWithinClueBounds) {
             if (currentDirection === direction) {
-              bg = 'bg-amber-5'
+              bg = 'bg-[var(--amber-5)]'
             } else {
-              bg = 'bg-amber-3'
+              bg = 'bg-[var(--amber-3)]'
             }
           }
 

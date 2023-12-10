@@ -9,7 +9,11 @@ import {
   FileIcon,
   HomeIcon,
 } from '@radix-ui/react-icons'
-import { IconButton, Link as RadixLink, Tooltip } from '@radix-ui/themes'
+import {
+  IconButton,
+  Link as RadixLink,
+  Tooltip,
+} from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 
@@ -39,14 +43,14 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
   )
 
   return (
-    <div className="w-full bg-gray-3">
+    <div className="w-full bg-gray-50">
       <nav className="flex flex-col justify-between w-64 h-full gap-4 p-4 pr-0">
         <ul className="flex flex-col gap-4 px-2">
-          <h1 className="flex items-center justify-center gap-1 mt-2 -mb-2 font-serif font-bold text-center">
+          <h1 className="flex items-center justify-center gap-1 mt-2 -mb-2 font-serif text-lg font-bold text-center">
             <Crosshair2Icon />
             Crossy
           </h1>
-          <hr className="border-dashed border-grayA-5" />
+          <hr className="border-dashed " />
           <li>
             <Link href="/play" className="flex items-center gap-2">
               <HomeIcon />
@@ -62,7 +66,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           <li>
             <CreatePuzzle />
           </li>
-          <hr className="border-dashed border-grayA-5" />
+          <hr className="border-dashed" />
           <li>
             <RadixLink asChild>
               <a
@@ -77,7 +81,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
               </a>
             </RadixLink>
           </li>
-          <hr className="border-dashed border-grayA-5" />
+          <hr className="border-dashed" />
         </ul>
         <div>
           <UserCard session={session} />
@@ -90,7 +94,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           width: isMenuOpen ? 'calc(100vw - 18rem)' : 'calc(100vw - 2rem)',
         }}
         transition={transition}
-        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0 shadow-3 rounded-4 m-4 w-full bg-gray-1"
+        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0 shadow-lg rounded-md border border-gray-300 m-4 w-full bg-gray-25"
       >
         <div className="absolute inset-y-0 z-10 top-1/2">
           <motion.div

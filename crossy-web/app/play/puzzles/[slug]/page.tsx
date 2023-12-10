@@ -53,7 +53,7 @@ const Page = async ({ params }: { params: { slug: string } }) => {
             <Image
               src="/404.png"
               alt="404 notice"
-              className="object-fit rounded-6 shadow-4"
+              className="shadow-md object-fit rounded-6"
               height="1024"
               width="1024"
             />

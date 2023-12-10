@@ -53,7 +53,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
                 <TextField.Input
                   value={link}
                   disabled
-                  className="w-full p-1 pl-1 pr-0 border border-gray-6 text-2"
+                  className="w-full p-1 pl-1 pr-0"
                 />
               </label>
             </Flex>
