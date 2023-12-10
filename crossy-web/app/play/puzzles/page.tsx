@@ -1,4 +1,5 @@
 import React from 'react'
+import { Heading } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
 
 import { type Database } from '@/lib/database.types'
@@ -15,7 +16,8 @@ const Page = async () => {
   if (!data) return null
 
   return (
-    <div className="py-5">
+    <div className="flex flex-col h-full py-5">
+      <Heading className="flex px-5 text-4">Puzzles</Heading>
       <Puzzles puzzles={data} />
     </div>
   )

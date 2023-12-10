@@ -6,18 +6,42 @@ import { useRouter } from 'next/navigation'
 
 import Create from './puzzles/create/create'
 
-const CreatePuzzle = () => {
+type Props = {
+  children?: React.ReactNode
+  onComplete?: (id: string) => void
+}
+
+const CreatePuzzle: React.FC<Props> = ({
+  children,
+  onComplete: _onComplete,
+}) => {
   const [open, setOpen] = useState(false)
   const router = useRouter()
 
-  const onComplete = (id: string) => {
+  const defaultOnComplete = (id: string) => {
     setOpen(false)
     router.push(`/play/puzzles/${id}`)
   }
 
+  const wrappedOnComplete = (id: string) => {
+    setOpen(false)
+    _onComplete && _onComplete(id)
+  }
+
+  const onComplete = _onComplete ? wrappedOnComplete : defaultOnComplete
+
   const onCancel = () => {
     setOpen(false)
   }
+
+  children = children ?? (
+    <Link asChild className="flex items-center w-full gap-2 font-medium">
+      <button>
+        <FilePlusIcon />
+        Create puzzle
+      </button>
+    </Link>
+  )
 
   return (
     <Dialog.Root
@@ -26,16 +50,8 @@ const CreatePuzzle = () => {
         setOpen(open)
       }}
     >
-      <Dialog.Trigger>
-        <Link asChild className="flex font-medium items-center gap-2 w-full">
-          <button>
-            <FilePlusIcon />
-            Create puzzle
-          </button>
-        </Link>
-      </Dialog.Trigger>
+      <Dialog.Trigger>{children}</Dialog.Trigger>
       <Dialog.Content style={{ maxWidth: 450 }}>
-        {/* <Dialog.Title>Create puzzle</Dialog.Title> */}
         <Create onComplete={onComplete} onCancel={onCancel} />
       </Dialog.Content>
     </Dialog.Root>

@@ -12,6 +12,7 @@ import {
   Text,
 } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
+import { useRouter } from 'next/navigation'
 
 import ThemeSwitcher from '@/components/themeSwitcher'
 import { type Database } from '@/lib/database.types'
@@ -22,13 +23,14 @@ import AccountForm from './profile/accountModal'
 const UserCard = ({ session }: { session: Session }) => {
   const supabase = createClient<Database>()
   const user = session?.user
+  const router = useRouter()
 
   const logout = async () => {
     const { error } = await supabase.auth.signOut()
     if (error) {
       console.log(error)
     }
-    window.location.href = '/login'
+    router.push('/login')
   }
 
   const [profile, setProfile] =

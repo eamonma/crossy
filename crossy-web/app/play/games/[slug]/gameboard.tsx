@@ -126,13 +126,17 @@ const Gameboard: React.FC<Props> = ({
     setAnswers(remoteAnswers)
   }, [remoteAnswers])
 
+  const claimed = useRef(false)
+
   useEffect(() => {
     if (!gameIsOngoing) return
+    if (claimed.current) return
     for (let i = 0; i < crosswordData.grid.length; i++) {
       if (crosswordData.grid[i] === '.') continue
       if (crosswordData.grid[i] !== answers[i]) return
     }
     claimComplete()
+    claimed.current = true
   }, [answers, gameIsOngoing, claimComplete, crosswordData.grid])
 
   const handleSetCell = (

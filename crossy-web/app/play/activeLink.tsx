@@ -1,7 +1,5 @@
 'use client'
-import {
-  ThickArrowLeftIcon,
-} from '@radix-ui/react-icons'
+import { ThickArrowLeftIcon } from '@radix-ui/react-icons'
 import { usePathname } from 'next/navigation'
 
 import LinkBase from '@/components/Link'

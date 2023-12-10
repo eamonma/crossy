@@ -56,7 +56,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           <li>
             <Link href="/play/puzzles" className="flex items-center gap-2">
               <FileIcon />
-              My puzzles
+              Puzzles
             </Link>
           </li>
           <li>
@@ -105,7 +105,6 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
               <IconButton
                 size="4"
                 variant="ghost"
-                // radius="full"
                 onClick={() => {
                   setIsMenuOpen((prev) => !prev)
                 }}

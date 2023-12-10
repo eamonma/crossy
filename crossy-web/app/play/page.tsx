@@ -1,10 +1,11 @@
 import React from 'react'
-import { Card, Grid, Heading, Text } from '@radix-ui/themes'
+import { Heading } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
-import Link from 'next/link'
 
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/server'
+
+import Games from './games'
 
 const Page = async () => {
   const cookieStore = cookies()
@@ -12,29 +13,14 @@ const Page = async () => {
 
   const { data, error } = await supabase
     .from('games')
-    .select('*, puzzle_id(name)')
+    .select('*, puzzle_id(name), game_user(user_id)')
 
   if (!data || error) return null
 
   return (
-    <div className="flex flex-col gap-4 p-5">
-      <Heading>My games</Heading>
-      <Grid columns="2" gap="2">
-        {data.map((game) => {
-          const puzzle: Database['public']['Tables']['puzzles']['Row'] =
-            game.puzzle_id as any
-
-          return (
-            <Card key={game.id} asChild size="3">
-              <Link href={`/play/games/${game.id}`}>
-                <Text weight="medium" size="3">
-                  {puzzle.name}
-                </Text>
-              </Link>
-            </Card>
-          )
-        })}
-      </Grid>
+    <div className="flex flex-col h-full py-5">
+      <Heading className="flex px-5 text-4">Games</Heading>
+      <Games games={data} />
     </div>
   )
 }
