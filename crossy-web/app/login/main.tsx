@@ -42,7 +42,7 @@ const Main = () => {
   }
   return (
     <form action={signInWithDiscord} className="flex flex-col">
-      <Button type="submit" className="flex items-center gap-2 cursor-pointer">
+      <Button className="flex items-center gap-2 cursor-pointer">
         <DiscordLogoIcon />
         Continue with Discord
       </Button>

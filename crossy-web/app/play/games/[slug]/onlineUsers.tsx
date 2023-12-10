@@ -31,7 +31,7 @@ const OnlineUsers: React.FC<Props> = ({ userIds }) => {
     }
 
     void fetchUsers().then(() => {})
-  }, [userIds])
+  }, [supabase, userIds])
 
   const avatars = users.map((user) => {
     return (

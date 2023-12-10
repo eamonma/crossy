@@ -43,6 +43,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     useState<boolean>(false)
   const [clueNum, setClueNum] = useState(1)
   const [isExploding, setIsExploding] = useState(false)
+  const [claimedToBeComplete, setClaimedToBeComplete] = useState(false)
 
   const { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers } =
     useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
@@ -97,6 +98,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
 
   useEffect(() => {
     if (gameStatus === 'completed') {
+      setClaimedToBeComplete(true)
       setIsExploding(true)
     }
 
@@ -109,9 +111,32 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     }
   }, [gameStatus])
 
+  const claimComplete = () => {
+    setClaimedToBeComplete(true)
+
+    fetch('/api/games/claim-complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(game.id),
+    })
+      .then(async (response) => await response.json())
+      .then(({ error }) => {
+        if (error) {
+          console.error(error)
+          setClaimedToBeComplete(false)
+        }
+      })
+      .catch((error) => {
+        setClaimedToBeComplete(false)
+        console.error('Error:', error)
+      })
+  }
+
   return (
     <div className="flex flex-col w-full h-full">
-      <Congrats isOpen={gameStatus === 'completed'} />
+      <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
       <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
       <div className="relative flex flex-col items-center justify-between w-full h-20 font-medium text-center text-4">
         <Toolbar
@@ -170,6 +195,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 remoteAnswers={remoteAnswers}
                 friendsLocations={friendsLocations}
                 gameIsOngoing={gameStatus === 'ongoing'}
+                claimComplete={claimComplete}
                 game={game}
               />
             </div>

@@ -18,12 +18,9 @@ export type Clues = {
 }
 
 export type CrosswordData = {
-  // answers: Answers
-  // author: string
   clues: Clues
   grid: string[]
   gridnums: number[]
-  // date: string
   size: Size
   id?: string
 }
@@ -58,6 +55,7 @@ type Props = {
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
   gameIsOngoing: boolean
+  claimComplete: () => void
 }
 const Gameboard: React.FC<Props> = ({
   game,
@@ -71,6 +69,7 @@ const Gameboard: React.FC<Props> = ({
   friendsLocations,
   remoteAnswers,
   gameIsOngoing,
+  claimComplete,
 }) => {
   const supabase = createClient<Database>()
   const [answers, setAnswers] = useState<string[]>(game.grid)
@@ -133,24 +132,8 @@ const Gameboard: React.FC<Props> = ({
       if (crosswordData.grid[i] === '.') continue
       if (crosswordData.grid[i] !== answers[i]) return
     }
-
-    fetch('/api/games/claim-complete', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(game.id),
-    })
-      .then(async (response) => await response.json())
-      .then(({ data, error }) => {
-        if (error) {
-          console.error(error)
-        }
-      })
-      .catch((error) => {
-        console.error('Error:', error)
-      })
-  }, [answers, crosswordData.grid, game.id, gameIsOngoing])
+    claimComplete()
+  }, [answers, gameIsOngoing, claimComplete, crosswordData.grid])
 
   const handleSetCell = (
     i: number,
@@ -196,7 +179,7 @@ const Gameboard: React.FC<Props> = ({
           grid_index: i,
           new_value: value.toUpperCase(),
         })
-        .then((res) => {
+        .then(() => {
           anticipated.current -= 1
         })
 
@@ -337,7 +320,7 @@ const Gameboard: React.FC<Props> = ({
   const friendIsHereColour =
     currentTheme === 'dark' ? 'var(--crimson-8)' : 'var(--crimson-5)'
 
-  const friendsCellNumbers = new Set(Object.values(friendsLocations ?? {}))
+  const friendsCellNumbers = Object.values(friendsLocations ?? {})
 
   return (
     <div
@@ -366,7 +349,7 @@ const Gameboard: React.FC<Props> = ({
           let backgroundColor = defaultColour
           if (gridItem === '.') {
             backgroundColor = blackSquareColour
-          } else if (friendsCellNumbers.has(i)) {
+          } else if (friendsCellNumbers.includes(i)) {
             backgroundColor = friendIsHereColour
           } else if (Object.keys(highlights).includes(i.toString())) {
             backgroundColor = highlights[i]
@@ -407,7 +390,7 @@ const Gameboard: React.FC<Props> = ({
                 </text>
               )}
               {/* Friend-is-here indicator */}
-              {friendsCellNumbers.has(i) && (
+              {friendsCellNumbers.includes(i) && (
                 <circle
                   cx={col * cellSize + cellSize - 6}
                   cy={row * cellSize + 6}

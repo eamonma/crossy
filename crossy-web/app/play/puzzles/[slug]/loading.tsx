@@ -2,7 +2,7 @@ import { Button, Heading } from '@radix-ui/themes'
 
 import PuzzleContent from './puzzleContent'
 
-const Loading = ({ params }: { params: { slug: string } }) => {
+const Loading = () => {
   return (
     <div className="h-full px-6">
       <div className="flex flex-col h-full gap-4 py-5">

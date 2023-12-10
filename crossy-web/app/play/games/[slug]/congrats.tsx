@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from 'react'
+import { StarFilledIcon } from '@radix-ui/react-icons'
 import { Button, Dialog, Flex } from '@radix-ui/themes'
+
+import { type Database } from '@/lib/database.types'
 
 type Props = {
   isOpen: boolean
+  status:
+    | Database['public']['Tables']['status_of_game']['Row']['status']
+    | undefined
 }
 
-const Congrats: React.FC<Props> = ({ isOpen }) => {
+const Congrats: React.FC<Props> = ({ isOpen, status }) => {
   const [open, setOpen] = useState(isOpen)
 
   useEffect(() => {
@@ -14,42 +20,55 @@ const Congrats: React.FC<Props> = ({ isOpen }) => {
     }
   }, [isOpen])
 
+  const handleDismiss = (e?: any) => {
+    e?.preventDefault()
+    if (status !== 'ongoing') {
+      setOpen(false)
+    }
+  }
+
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(newOpen) => {
+        if (!newOpen) {
+          if (status !== 'ongoing') {
+            setOpen(false)
+          }
+        }
+      }}
+    >
       <Dialog.Content
         style={{
           maxWidth: 450,
         }}
+        onFocusOutside={handleDismiss}
+        onInteractOutside={handleDismiss}
+        onPointerDownOutside={handleDismiss}
       >
-        <Dialog.Title>Congratulations!</Dialog.Title>
+        <Dialog.Title className="flex items-center">
+          {status === 'ongoing' ? (
+            'Verifying...'
+          ) : (
+            <>
+              <StarFilledIcon
+                width={18}
+                height={18}
+                className="mr-1 text-gold-8"
+              />
+              Congratulations!
+            </>
+          )}
+        </Dialog.Title>
         <Dialog.Description size="2" mb="4">
-          You've completed the puzzle.
+          {status === 'completed' && "You've completed the puzzle."}
         </Dialog.Description>
-
-        {/* <div className="flex flex-col gap-2"> */}
-        {/* <label>
-            <Text as="div" size="2" mb="1" weight="bold">
-              Name
-            </Text>
-            <TextField.Input
-              defaultValue="Freja Johnsen"
-              placeholder="Enter your full name"
-            />
-          </label>
-          <label>
-            <Text as="div" size="2" mb="1" weight="bold">
-              Email
-            </Text>
-            <TextField.Input
-              defaultValue="freja@example.com"
-              placeholder="Enter your email"
-            />
-          </label> */}
-        {/* </div> */}
 
         <Flex gap="3" mt="4" justify="end">
           <Dialog.Close>
-            <Button variant="soft">Done</Button>
+            <Button disabled={status === 'ongoing'} variant="soft">
+              Done
+            </Button>
           </Dialog.Close>
         </Flex>
       </Dialog.Content>
