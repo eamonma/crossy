@@ -105,7 +105,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
               <IconButton
                 size="4"
                 variant="ghost"
-                radius="full"
+                // radius="full"
                 onClick={() => {
                   setIsMenuOpen((prev) => !prev)
                 }}

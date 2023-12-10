@@ -42,11 +42,8 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
 
   const [clueNum, setClueNum] = useState(1)
 
-  const { onlineUserIds, friendsLocations } = useRealtimeCrossword(
-    game.id,
-    user.id,
-    currentCell,
-  )
+  const { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers } =
+    useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
 
   const clueNumToClueAcross = useMemo(() => {
     const clueNumToClueAcross = new Map<number, string>()
@@ -96,12 +93,15 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
 
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="relative flex flex-col items-center justify-between w-full h-20 font-medium text-center text-4">
+      <div className="relative flex flex-col items-center justify-between w-full h-24 font-medium text-center text-4">
         <Toolbar
           top={
             <>
               <time className="text-gray-10">
-                <Timer since={new Date(game.created_at).getTime()} />
+                <Timer
+                  since={new Date(game.created_at).getTime()}
+                  statusOfGame={statusOfGame}
+                />
               </time>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
@@ -114,6 +114,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                   />
                   <Text size="2">Smooth scroll</Text>
                 </label>
+                {statusOfGame?.status}
                 <OnlineUsers userIds={onlineUserIds} />
                 <ShareLink game={game} />
               </div>
@@ -132,23 +133,24 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
           }
         />
       </div>
-      <div className="max-h-[calc(100%-5rem)] flex-1 grid grid-cols-1 sm:grid-cols-[4fr,3fr] items-center justify-center gap-4">
-        <div className="relative flex flex-col justify-center flex-1 h-full">
+      <div className="max-h-[calc(100%-5rem)] flex-1 grid grid-cols-1 md:grid-cols-[4fr,3fr] items-center justify-center gap-4">
+        <div className="relative flex flex-col justify-end flex-1 h-full sm:justify-center">
           <div className="flex flex-col justify-start w-full">
-            <div className="w-full pl-8 pr-3 max-h-[70vh] md:max-h-[75vh] lg:max-h-[70vh]">
+            <div className="w-full pl-8 pr-3 max-h-[68vh] md:max-h-[75vh] lg:max-h-[70vh]">
               <Gameboard
                 {...commonProps}
+                remoteAnswers={remoteAnswers}
                 friendsLocations={friendsLocations}
                 game={game}
               />
             </div>
           </div>
-          <div className="visible px-1 mt-4 sm:hidden">
+          <div className="items-end visible w-full mt-4 overflow-hidden rounded-4 sm:hidden">
             <EmbeddedKeyboard gameboardRef={gameboardRef} />
           </div>
         </div>
 
-        <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible sm:flex rounded-4">
+        <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible md:flex rounded-4">
           <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed border-gray-5">
             <div className="relative flex flex-col w-full border-b border-dashed border-gray-5">
               <Clues

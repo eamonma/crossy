@@ -1,20 +1,30 @@
 import React, { useEffect, useState } from 'react'
 
+import { type Database } from '@/lib/database.types'
+
 type Props = {
   since: number
+  statusOfGame:
+    | Database['public']['Tables']['status_of_game']['Row']
+    | undefined
 }
 
-const Timer: React.FC<Props> = ({ since }) => {
+const Timer: React.FC<Props> = ({ since, statusOfGame }) => {
   const [time, setTime] = useState<number>(0)
 
   useEffect(() => {
+    if (statusOfGame?.status === 'completed') {
+      if (!statusOfGame.game_ended_at) return
+      setTime(new Date(statusOfGame.game_ended_at).getTime() - since)
+      return
+    }
     const interval = setInterval(() => {
       setTime(Date.now() - since)
     }, 1000)
     return () => {
       clearInterval(interval)
     }
-  }, [since])
+  }, [since, statusOfGame])
 
   const calculateDuration = (ms: number) => {
     let remaining = ms
@@ -62,10 +72,10 @@ const Timer: React.FC<Props> = ({ since }) => {
     if (years > 0) return `${years}y ${weeks}w`
     if (weeks > 0) return `${weeks}w ${days}d`
     if (days > 0) {
- return `${days}d ${hours.toString().padStart(2, '0')}:${minutes
+      return `${days}d ${hours.toString().padStart(2, '0')}:${minutes
         .toString()
         .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-}
+    }
     return `${hours.toString().padStart(2, '0')}:${minutes
       .toString()
       .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`

@@ -5,23 +5,31 @@ import {
   REALTIME_SUBSCRIBE_STATES,
   type RealtimeChannel,
   type RealtimeChannelSendResponse,
+  type RealtimePostgresChangesPayload,
+  type RealtimePostgresUpdatePayload,
 } from '@supabase/supabase-js'
 
 import { type Database } from '@/lib/database.types'
 import { type Payload } from '@/lib/types'
 import { createClient } from '@/utils/supabase/client'
 
+import { debounce } from './gameboard'
+
 const useRealtimeCrossword = (
   roomId: string,
   userId: string,
   currentCell: number,
+  initialRemoteAnswers: string[] = [],
 ) => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [friendsLocations, setFriendsLocations] = useState<
     Record<string, number>
   >({})
+  const [statusOfGame, setStatus] =
+    useState<Database['public']['Tables']['status_of_game']['Row']>()
   const [isInitialStateSynced, setIsInitialStateSynced] =
     useState<boolean>(false)
+  const [remoteAnswers, setAnswers] = useState<string[]>(initialRemoteAnswers)
   const supabase = createClient<Database>()
 
   const mapInitialUsers = (userChannel: RealtimeChannel) => {
@@ -32,6 +40,82 @@ const useRealtimeCrossword = (
 
     setOnlineUserIds(_users.map((user) => user.user_id))
   }
+
+  useEffect(() => {
+    // initial fetch
+    const fetch = async () => {
+      const { data, error } = await supabase
+        .from('status_of_game')
+        .select('*')
+        .eq('id', roomId)
+        .single()
+
+      if (error) {
+        console.error(error)
+        return
+      }
+
+      return data
+    }
+
+    void fetch().then((data) => {
+      if (!data) return
+      setStatus(data)
+    })
+
+    const handleNewStatus = (
+      payload: RealtimePostgresChangesPayload<Record<string, any>>,
+    ) => {
+      console.log('here in new status')
+
+      if (!payload) return
+      const { new: newState } = payload as RealtimePostgresUpdatePayload<
+        Record<string, any>
+      >
+      if (newState.id !== roomId) return
+      setStatus(newState)
+      console.log('newState', newState)
+    }
+
+    const handleChange = debounce(
+      (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
+        if (!payload) return
+        const { new: newState } = payload as RealtimePostgresUpdatePayload<
+          Record<string, any>
+        >
+        setAnswers(newState.grid)
+      },
+      200,
+    )
+
+    const changes = supabase
+      .channel('table-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'status_of_game',
+          filter: 'id=eq.' + roomId,
+        },
+        handleNewStatus,
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'games',
+          filter: 'id=eq.' + roomId,
+        },
+        handleChange,
+      )
+      .subscribe()
+
+    return () => {
+      void changes.unsubscribe().then(() => {})
+    }
+  }, [roomId, supabase])
 
   useEffect(() => {
     const roomChannel = supabase.channel(`rooms-${roomId}`, {
@@ -130,7 +214,7 @@ const useRealtimeCrossword = (
     }
   }, [roomId, userId, currentCell, isInitialStateSynced, supabase])
 
-  return { onlineUserIds, friendsLocations }
+  return { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers }
 }
 
 export default useRealtimeCrossword

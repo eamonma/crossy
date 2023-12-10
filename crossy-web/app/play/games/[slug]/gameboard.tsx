@@ -1,9 +1,5 @@
 'use client'
 import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
-import {
-  type RealtimePostgresChangesPayload,
-  type RealtimePostgresUpdatePayload,
-} from '@supabase/supabase-js'
 import { useTheme } from 'next-themes'
 
 import { type Database } from '@/lib/database.types'
@@ -32,7 +28,7 @@ export type CrosswordData = {
   id?: string
 }
 
-function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: any[]) => any>(
   func: T,
   delay: number,
 ): (...args: Parameters<T>) => void {
@@ -61,6 +57,7 @@ type Props = {
   highlightColour?: string
   friendsLocations?: Record<string, number>
   gameboardRef: React.RefObject<SVGSVGElement>
+  remoteAnswers: string[]
 }
 const Gameboard: React.FC<Props> = ({
   game,
@@ -73,6 +70,7 @@ const Gameboard: React.FC<Props> = ({
   gameboardRef,
   friendsLocations,
   shouldShowNumbers = true,
+  remoteAnswers,
 }) => {
   const supabase = createClient<Database>()
   const [answers, setAnswers] = useState<string[]>(game.grid)
@@ -124,37 +122,87 @@ const Gameboard: React.FC<Props> = ({
   const anticipated = useRef(0)
 
   useEffect(() => {
-    const handleChange = debounce(
-      (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
-        if (!payload) return
-        const { new: newState } = payload as RealtimePostgresUpdatePayload<
-          Record<string, any>
-        >
-        if (anticipated.current < 0) anticipated.current = 0
-        if (anticipated.current > 0) return
-        const grid = newState.grid
-        setAnswers(grid)
-      },
-      200,
-    )
+    if (anticipated.current < 0) anticipated.current = 0
+    if (anticipated.current > 0) return
+    setAnswers(remoteAnswers)
+  }, [remoteAnswers])
 
-    const changes = supabase
-      .channel('table-db-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'games',
-        },
-        handleChange,
-      )
-      .subscribe()
+  // useEffect(() => {
+  //   const handleChange = debounce(
+  //     (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
+  //       console.log('HEREJRJEHRHREH')
 
-    return () => {
-      void changes.unsubscribe().then(() => {})
+  //       if (!payload) return
+  //       const { new: newState } = payload as RealtimePostgresUpdatePayload<
+  //         Record<string, any>
+  //       >
+
+  //       if (newState.id !== game.id) return
+  //       if (anticipated.current < 0) anticipated.current = 0
+  //       if (anticipated.current > 0) return
+  //       const grid = newState.grid
+  //       setAnswers(grid)
+  //     },
+  //     200,
+  //   )
+
+  //   const changes = supabase
+  //     .channel('table-db-changes')
+  //     .on(
+  //       'postgres_changes',
+  //       {
+  //         event: '*',
+  //         schema: 'public',
+  //         table: 'games',
+  //       },
+  //       handleChange,
+  //     )
+  //     .subscribe()
+
+  //   return () => {
+  //     void changes.unsubscribe().then(() => {})
+  //   }
+  // }, [answers, game.id, supabase])
+
+  // const channel = supabase.channel(`games-cellupdate-${game.id}`)
+
+  // channel
+  //   .on('broadcast', { event: 'update_grid_element' }, (payload) => {
+  //     console.log(payload)
+  //     // eslint-disable-next-line @typescript-eslint/naming-convention
+  //     const { grid_index, new_value } = payload.payload
+  //     if (!grid_index || !new_value) return
+  //     const newAnswers = [...answers]
+  //     newAnswers[grid_index] = new_value
+  //     setAnswers(newAnswers)
+  //   })
+  //   .subscribe(() => {})
+
+  useEffect(() => {
+    for (let i = 0; i < crosswordData.grid.length; i++) {
+      if (crosswordData.grid[i] === '.') continue
+      if (crosswordData.grid[i] !== answers[i]) return
     }
-  }, [answers, supabase])
+
+    // completed
+
+    fetch('/api/games/claim-complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(game.id),
+    })
+      .then(async (response) => await response.json())
+      .then(({ data, error }) => {
+        if (error) {
+          console.error(error)
+        }
+      })
+      .catch((error) => {
+        console.error('Error:', error)
+      })
+  }, [answers, crosswordData.grid, game.id])
 
   const handleSetCell = (
     i: number,
