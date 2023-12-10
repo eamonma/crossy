@@ -52,12 +52,12 @@ type Props = {
   currentDirection: 'across' | 'down'
   setCurrentDirection: React.Dispatch<React.SetStateAction<'across' | 'down'>>
   setClueNum: React.Dispatch<React.SetStateAction<number>>
-  shouldShowNumbers?: boolean
   highlights?: Record<number, string>
   highlightColour?: string
   friendsLocations?: Record<string, number>
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
+  gameIsOngoing: boolean
 }
 const Gameboard: React.FC<Props> = ({
   game,
@@ -69,8 +69,8 @@ const Gameboard: React.FC<Props> = ({
   setClueNum,
   gameboardRef,
   friendsLocations,
-  shouldShowNumbers = true,
   remoteAnswers,
+  gameIsOngoing,
 }) => {
   const supabase = createClient<Database>()
   const [answers, setAnswers] = useState<string[]>(game.grid)
@@ -127,64 +127,12 @@ const Gameboard: React.FC<Props> = ({
     setAnswers(remoteAnswers)
   }, [remoteAnswers])
 
-  // useEffect(() => {
-  //   const handleChange = debounce(
-  //     (payload: RealtimePostgresChangesPayload<Record<string, any>>) => {
-  //       console.log('HEREJRJEHRHREH')
-
-  //       if (!payload) return
-  //       const { new: newState } = payload as RealtimePostgresUpdatePayload<
-  //         Record<string, any>
-  //       >
-
-  //       if (newState.id !== game.id) return
-  //       if (anticipated.current < 0) anticipated.current = 0
-  //       if (anticipated.current > 0) return
-  //       const grid = newState.grid
-  //       setAnswers(grid)
-  //     },
-  //     200,
-  //   )
-
-  //   const changes = supabase
-  //     .channel('table-db-changes')
-  //     .on(
-  //       'postgres_changes',
-  //       {
-  //         event: '*',
-  //         schema: 'public',
-  //         table: 'games',
-  //       },
-  //       handleChange,
-  //     )
-  //     .subscribe()
-
-  //   return () => {
-  //     void changes.unsubscribe().then(() => {})
-  //   }
-  // }, [answers, game.id, supabase])
-
-  // const channel = supabase.channel(`games-cellupdate-${game.id}`)
-
-  // channel
-  //   .on('broadcast', { event: 'update_grid_element' }, (payload) => {
-  //     console.log(payload)
-  //     // eslint-disable-next-line @typescript-eslint/naming-convention
-  //     const { grid_index, new_value } = payload.payload
-  //     if (!grid_index || !new_value) return
-  //     const newAnswers = [...answers]
-  //     newAnswers[grid_index] = new_value
-  //     setAnswers(newAnswers)
-  //   })
-  //   .subscribe(() => {})
-
   useEffect(() => {
+    if (!gameIsOngoing) return
     for (let i = 0; i < crosswordData.grid.length; i++) {
       if (crosswordData.grid[i] === '.') continue
       if (crosswordData.grid[i] !== answers[i]) return
     }
-
-    // completed
 
     fetch('/api/games/claim-complete', {
       method: 'POST',
@@ -202,13 +150,14 @@ const Gameboard: React.FC<Props> = ({
       .catch((error) => {
         console.error('Error:', error)
       })
-  }, [answers, crosswordData.grid, game.id])
+  }, [answers, crosswordData.grid, game.id, gameIsOngoing])
 
   const handleSetCell = (
     i: number,
     value: string,
     e?: KeyboardEvent<SVGElement>,
   ) => {
+    if (!gameIsOngoing) return
     if (value.length === 1 && value.match(/[a-z0-9]/i)) {
       const newAnswers = [...answers]
       newAnswers[i] = value.toUpperCase()
@@ -269,7 +218,7 @@ const Gameboard: React.FC<Props> = ({
           grid_index: i,
           new_value: null as unknown as string,
         })
-        .then((res) => {
+        .then(() => {
           anticipated.current -= 1
         })
 
@@ -293,7 +242,7 @@ const Gameboard: React.FC<Props> = ({
             grid_index: nextCell,
             new_value: null as unknown as string,
           })
-          .then((res) => {
+          .then(() => {
             anticipated.current -= 1
           })
       }
@@ -445,20 +394,19 @@ const Gameboard: React.FC<Props> = ({
                 stroke="var(--gray-8)"
                 strokeWidth={0.6}
               />
-              {shouldShowNumbers && crosswordData.gridnums[i] && (
-                <>
-                  <text
-                    x={col * cellSize + 2}
-                    y={row * cellSize + 10}
-                    fontSize={10}
-                    fontWeight="bold"
-                    fill="var(--gray-11)"
-                    className="select-none"
-                  >
-                    {crosswordData.gridnums[i]}
-                  </text>
-                </>
+              {crosswordData.gridnums[i] && (
+                <text
+                  x={col * cellSize + 2}
+                  y={row * cellSize + 10}
+                  fontSize={10}
+                  fontWeight="bold"
+                  fill="var(--gray-11)"
+                  className="select-none"
+                >
+                  {crosswordData.gridnums[i]}
+                </text>
               )}
+              {/* Friend-is-here indicator */}
               {friendsCellNumbers.has(i) && (
                 <circle
                   cx={col * cellSize + cellSize - 6}
@@ -468,6 +416,7 @@ const Gameboard: React.FC<Props> = ({
                   className="select-none"
                 />
               )}
+              {/* Answer of cell */}
               {answers[i] && crosswordData.grid[i] !== '.' && (
                 <text
                   x={col * cellSize + cellSize / 2}

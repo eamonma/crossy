@@ -21,7 +21,7 @@ const Page = async () => {
       <Heading>My games</Heading>
       <Grid columns="2" gap="2">
         {data.map((game) => {
-          const puzzle: Database['public']['Tables']['games']['Row'] =
+          const puzzle: Database['public']['Tables']['puzzles']['Row'] =
             game.puzzle_id as any
 
           return (

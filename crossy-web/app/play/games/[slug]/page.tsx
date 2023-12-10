@@ -40,8 +40,8 @@ const Page = async ({
     .eq('id', slug)
     .single()
 
-  if (!game && searchParams?.password) {
-    const pw = searchParams.password
+  if (!game && searchParams?.key) {
+    const pw = searchParams.key
     // invitee
     const dangerousSupabase = dangerouslyCreateServiceRoleClient<Database>()
 

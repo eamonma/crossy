@@ -1,12 +1,14 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Switch, Text } from '@radix-ui/themes'
+import { Badge, Switch, Text } from '@radix-ui/themes'
 import { type User } from '@supabase/supabase-js'
 import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
 
 import Clues from './clues'
+import Confetti from './confetti'
+import Congrats from './congrats'
 import Gameboard, { type CrosswordData } from './gameboard'
 import EmbeddedKeyboard from './keyboard'
 import OnlineUsers from './onlineUsers'
@@ -39,8 +41,8 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   const gameboardRef = useRef<SVGSVGElement>(null)
   const [shouldScrollSmoothly, setShouldScrollSmoothly] =
     useState<boolean>(false)
-
   const [clueNum, setClueNum] = useState(1)
+  const [isExploding, setIsExploding] = useState(false)
 
   const { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers } =
     useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
@@ -91,18 +93,43 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     gameboardRef,
   }
 
+  const gameStatus = statusOfGame?.status
+
+  useEffect(() => {
+    if (gameStatus === 'completed') {
+      setIsExploding(true)
+    }
+
+    const timeout = setTimeout(() => {
+      setIsExploding(false)
+    }, 5000)
+
+    return () => {
+      clearTimeout(timeout)
+    }
+  }, [gameStatus])
+
   return (
     <div className="flex flex-col w-full h-full">
-      <div className="relative flex flex-col items-center justify-between w-full h-24 font-medium text-center text-4">
+      <Congrats isOpen={gameStatus === 'completed'} />
+      <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
+      <div className="relative flex flex-col items-center justify-between w-full h-20 font-medium text-center text-4">
         <Toolbar
           top={
             <>
-              <time className="text-gray-10">
-                <Timer
-                  since={new Date(game.created_at).getTime()}
-                  statusOfGame={statusOfGame}
-                />
-              </time>
+              <div className="flex items-center gap-2">
+                <time className="text-gray-10">
+                  <Timer
+                    since={new Date(game.created_at).getTime()}
+                    statusOfGame={statusOfGame}
+                  />
+                </time>
+                {gameStatus === 'completed' && (
+                  <Badge radius="full" color="green" size="1">
+                    Done | Read-only
+                  </Badge>
+                )}
+              </div>
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
                   <Switch
@@ -114,8 +141,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                   />
                   <Text size="2">Smooth scroll</Text>
                 </label>
-                {statusOfGame?.status}
-                <OnlineUsers userIds={onlineUserIds} />
+                {gameStatus === 'ongoing' && (
+                  <OnlineUsers userIds={onlineUserIds} />
+                )}
                 <ShareLink game={game} />
               </div>
             </>
@@ -141,6 +169,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 {...commonProps}
                 remoteAnswers={remoteAnswers}
                 friendsLocations={friendsLocations}
+                gameIsOngoing={gameStatus === 'ongoing'}
                 game={game}
               />
             </div>

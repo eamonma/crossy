@@ -23,7 +23,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
 
   useEffect(() => {
     setLink(
-      `${window.location.origin}/play/games/${game.id}?password=${game.password}`,
+      `${window.location.origin}/play/games/${game.id}?key=${game.password}`,
     )
   }, [game])
 

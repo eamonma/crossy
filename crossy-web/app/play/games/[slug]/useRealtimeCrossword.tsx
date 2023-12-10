@@ -66,15 +66,14 @@ const useRealtimeCrossword = (
     const handleNewStatus = (
       payload: RealtimePostgresChangesPayload<Record<string, any>>,
     ) => {
-      console.log('here in new status')
-
       if (!payload) return
       const { new: newState } = payload as RealtimePostgresUpdatePayload<
         Record<string, any>
       >
       if (newState.id !== roomId) return
-      setStatus(newState)
-      console.log('newState', newState)
+      setStatus(
+        newState as Database['public']['Tables']['status_of_game']['Row'],
+      )
     }
 
     const handleChange = debounce(
