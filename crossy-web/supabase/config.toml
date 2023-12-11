@@ -118,22 +118,22 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 # `discord`, `facebook`, `github`, `gitlab`, `google`, `keycloak`, `linkedin`, `notion`, `twitch`,
 # `twitter`, `slack`, `spotify`, `workos`, `zoom`.
 [auth.external.discord]
-enabled = true
+enabled = false
 client_id = "env(SUPABASE_AUTH_DISCORD_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_DISCORD_SECRET)"
 # redirect_uri = "http://localhost:3000/auth/callback"
 # redirect_uri = "http://localhost:54321/auth/v1/callback"
 
 [auth.external.apple]
-enabled = false
-client_id = ""
+enabled = true
+client_id = "me.crossy.app"
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
 secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
 # Overrides the default auth redirectUrl.
-redirect_uri = ""
+# redirect_uri = ""
 # Overrides the default auth provider URL. Used to support self-hosted gitlab, single-tenant Azure,
 # or any other third-party OIDC providers.
-url = ""
+# url = ""
 
 [analytics]
 enabled = false

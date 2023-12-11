@@ -2,6 +2,7 @@
 import React from 'react'
 import { DiscordLogoIcon } from '@radix-ui/react-icons'
 import { Button } from '@radix-ui/themes'
+import { type Provider } from '@supabase/supabase-js'
 
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
@@ -23,11 +24,11 @@ const getURL = () => {
 
 const Main = () => {
   const supabase = createClient<Database>()
-  const signInWithDiscord = async () => {
+  const signInWithProvider = async (provider: Provider) => {
     const redirectUrl = `${getURL()}auth/callback`
 
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'discord',
+      provider,
       options: {
         redirectTo: redirectUrl,
       },
@@ -40,13 +41,41 @@ const Main = () => {
 
     window.location.href = data.url
   }
+
+  const providers = [
+    {
+      name: 'Discord',
+      icon: DiscordLogoIcon,
+      provider: 'discord',
+    },
+    {
+      name: 'Apple',
+      icon: () => <div></div>,
+      provider: 'apple',
+    },
+  ]
+
   return (
-    <form action={signInWithDiscord} className="flex flex-col">
-      <Button className="flex items-center gap-2 cursor-pointer">
-        <DiscordLogoIcon />
-        Continue with Discord
-      </Button>
-    </form>
+    // <form action={signInWithProvider} className="flex flex-col">
+    //   <Button className="flex items-center gap-2 cursor-pointer">
+    //     <DiscordLogoIcon />
+    //     Continue with Discord
+    //   </Button>
+    // </form>
+    <div className="flex flex-col gap-2">
+      {providers.map(({ name, icon: Icon, provider }) => (
+        <Button
+          key={provider}
+          className="flex items-center gap-2 cursor-pointer"
+          onClick={async () => {
+            await signInWithProvider(provider as Provider)
+          }}
+        >
+          <Icon />
+          Continue with {name}
+        </Button>
+      ))}
+    </div>
   )
 }
 
