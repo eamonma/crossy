@@ -72,9 +72,15 @@ const Clues: React.FC<Props> = ({
           let clueIsFilled = true
 
           const stride = direction === 'across' ? 1 : crosswordData.size.cols
-
-          for (let i = 0; i < boundsForClue[1] - boundsForClue[0] + 1; i++) {
+          const items =
+            Math.ceil(
+              (boundsForClue[1] - boundsForClue[0]) / crosswordData.size.cols,
+            ) + 1
+          for (let i = 0; i < items; i++) {
             const currentCell = boundsForClue[0] + i * stride
+            if (direction === 'down') {
+              console.log(currentCell, answers[currentCell])
+            }
 
             if (!answers[currentCell]) {
               clueIsFilled = false
@@ -87,11 +93,6 @@ const Clues: React.FC<Props> = ({
               currentCell >= boundsForClue[0] && currentCell <= boundsForClue[1]
           } else {
             const squaresWithinClueBounds = [boundsForClue[0]]
-
-            const items =
-              Math.ceil(
-                (boundsForClue[1] - boundsForClue[0]) / crosswordData.size.cols,
-              ) + 1
 
             for (let j = 1; j < items; j++) {
               squaresWithinClueBounds.push(
