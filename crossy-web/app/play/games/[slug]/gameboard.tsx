@@ -148,54 +148,76 @@ const Gameboard: React.FC<Props> = ({
     value: string,
     e?: KeyboardEvent<SVGElement>,
   ) => {
-    if (!gameIsOngoing) return
-    if (value.length === 1 && value.match(/[a-z0-9]/i)) {
-      const newAnswers = [...answers]
-      newAnswers[i] = value.toUpperCase()
+    let nextCell = currentCell
 
-      setAnswers(newAnswers)
-
-      let nextCell = getNextCell(
+    if (value === 'ArrowRight') {
+      if (currentDirection === 'across') {
+        nextCell = getNextCell(
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
+          'across',
+          currentCell,
+        )
+      } else {
+        toggleDirection()
+      }
+      setCurrentCell(nextCell)
+    } else if (value === 'ArrowLeft') {
+      if (currentDirection === 'across') {
+        nextCell = getNextCell(
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
+          'across',
+          currentCell,
+          'less',
+        )
+      } else {
+        toggleDirection()
+      }
+      setCurrentCell(nextCell)
+    } else if (value === 'ArrowDown') {
+      if (currentDirection === 'down') {
+        nextCell = getNextCell(
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
+          'down',
+          currentCell,
+        )
+      } else {
+        toggleDirection()
+      }
+    } else if (value === 'ArrowUp') {
+      if (currentDirection === 'down') {
+        nextCell = getNextCell(
+          crosswordData.grid,
+          crosswordData.size.cols,
+          crosswordData.size.rows,
+          'down',
+          currentCell,
+          'less',
+        )
+      } else {
+        toggleDirection()
+      }
+      setCurrentCell(nextCell)
+    } else if (value === 'Tab') {
+      nextCell = getNextWord(
+        crosswordData.clues,
         crosswordData.grid,
+        crosswordData.gridnums,
         crosswordData.size.cols,
         crosswordData.size.rows,
         currentDirection,
-        i,
-        'more',
-        newAnswers,
+        currentCell,
+        e?.shiftKey ? 'less' : 'more',
       )
-
-      if (nextCell > bounds[1]) {
-        const answerForCurrentWord = []
-        for (let i = bounds[0]; i <= bounds[1]; i += stride) {
-          if (newAnswers[i]) answerForCurrentWord.push(newAnswers[i])
-        }
-
-        if (answerForCurrentWord.length < bounds[1] - bounds[0] + 1) {
-          nextCell = bounds[0]
-        } else {
-          nextCell = bounds[1]
-        }
-      }
-
       setCurrentCell(nextCell)
-
-      anticipated.current += 1
-      void supabase
-        .rpc('update_grid_element', {
-          game_id: game.id,
-          grid_index: i,
-          new_value: value.toUpperCase(),
-        })
-        .then(() => {
-          anticipated.current -= 1
-        })
-
-      return
     }
 
-    let nextCell = currentCell
-
+    if (!gameIsOngoing) return
     if (['Backspace', 'Delete', 'del'].includes(value)) {
       const isPrevEmpty = answers[i] === '' || !answers[i]
 
@@ -239,69 +261,48 @@ const Gameboard: React.FC<Props> = ({
       }
 
       setAnswers(newAnswers)
-    } else if (value === 'ArrowRight') {
-      if (currentDirection === 'across') {
-        nextCell = getNextCell(
-          crosswordData.grid,
-          crosswordData.size.cols,
-          crosswordData.size.rows,
-          'across',
-          currentCell,
-        )
-      } else {
-        toggleDirection()
-      }
-    } else if (value === 'ArrowLeft') {
-      if (currentDirection === 'across') {
-        nextCell = getNextCell(
-          crosswordData.grid,
-          crosswordData.size.cols,
-          crosswordData.size.rows,
-          'across',
-          currentCell,
-          'less',
-        )
-      } else {
-        toggleDirection()
-      }
-    } else if (value === 'ArrowDown') {
-      if (currentDirection === 'down') {
-        nextCell = getNextCell(
-          crosswordData.grid,
-          crosswordData.size.cols,
-          crosswordData.size.rows,
-          'down',
-          currentCell,
-        )
-      } else {
-        toggleDirection()
-      }
-    } else if (value === 'ArrowUp') {
-      if (currentDirection === 'down') {
-        nextCell = getNextCell(
-          crosswordData.grid,
-          crosswordData.size.cols,
-          crosswordData.size.rows,
-          'down',
-          currentCell,
-          'less',
-        )
-      } else {
-        toggleDirection()
-      }
-    } else if (value === 'Tab') {
-      nextCell = getNextWord(
-        crosswordData.clues,
+    } else if (value.length === 1 && value.match(/[a-z0-9]/i)) {
+      const newAnswers = [...answers]
+      newAnswers[i] = value.toUpperCase()
+
+      setAnswers(newAnswers)
+
+      let nextCell = getNextCell(
         crosswordData.grid,
-        crosswordData.gridnums,
         crosswordData.size.cols,
         crosswordData.size.rows,
         currentDirection,
-        currentCell,
-        e?.shiftKey ? 'less' : 'more',
+        i,
+        'more',
+        newAnswers,
       )
+
+      if (nextCell > bounds[1]) {
+        const answerForCurrentWord = []
+        for (let i = bounds[0]; i <= bounds[1]; i += stride) {
+          if (newAnswers[i]) answerForCurrentWord.push(newAnswers[i])
+        }
+
+        if (answerForCurrentWord.length < bounds[1] - bounds[0] + 1) {
+          nextCell = bounds[0]
+        } else {
+          nextCell = bounds[1]
+        }
+      }
+
+      setCurrentCell(nextCell)
+
+      anticipated.current += 1
+      void supabase
+        .rpc('update_grid_element', {
+          game_id: game.id,
+          grid_index: i,
+          new_value: value.toUpperCase(),
+        })
+        .then(() => {
+          anticipated.current -= 1
+        })
     }
-    setCurrentCell(nextCell)
   }
 
   useEffect(() => {

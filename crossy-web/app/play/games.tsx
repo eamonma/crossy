@@ -39,7 +39,7 @@ const Games: React.FC<Props> = ({ games }) => {
   }, [games])
 
   return (
-    <>
+    <div className="min-w-[10rem]">
       <Heading className="flex px-5">Ongoing games</Heading>
       <hr className="relative mt-2 border-dashed" />
       <div className="w-full">
@@ -47,7 +47,7 @@ const Games: React.FC<Props> = ({ games }) => {
           <Table.Header>
             <Table.Row>
               <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell>Participants</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Players</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Started</Table.ColumnHeaderCell>
             </Table.Row>
           </Table.Header>
@@ -58,11 +58,6 @@ const Games: React.FC<Props> = ({ games }) => {
                 game.puzzle_id as unknown as Database['public']['Tables']['puzzles']['Row']
               console.log(game)
 
-              const statusOfGame = (game as any).status_of_game
-                .status as Database['public']['Tables']['status_of_game']['Row']['status']
-
-              console.log(statusOfGame)
-
               const nPlayers = (game as any).game_user.length + 1
               return (
                 <Table.Row
@@ -82,7 +77,7 @@ const Games: React.FC<Props> = ({ games }) => {
                     </span>
                   </Table.RowHeaderCell>
                   <Table.Cell>{nPlayers}</Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell suppressHydrationWarning>
                     {new Date(game.created_at).toLocaleDateString()}
                   </Table.Cell>
                 </Table.Row>
@@ -90,6 +85,21 @@ const Games: React.FC<Props> = ({ games }) => {
             })}
           </Table.Body>
         </Table.Root>
+        {ongoingGames.length === 0 && (
+          <div className="flex flex-col items-center justify-center flex-1 w-full gap-2 p-4 py-8">
+            <CookieIcon width={42} height={42} />
+
+            <Text className="text-gray-900">No ongoing games!</Text>
+            <RadixLink asChild>
+              <Link
+                href="/play/puzzles"
+                className="flex justify-start items-center gap-2"
+              >
+                Start from puzzle <ArrowRightIcon />
+              </Link>
+            </RadixLink>
+          </div>
+        )}
         <div className="pl-5 my-2 mt-6">
           <Heading>Completed games</Heading>
         </div>
@@ -98,7 +108,7 @@ const Games: React.FC<Props> = ({ games }) => {
           <Table.Header>
             <Table.Row>
               <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell>Participants</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Players</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Started</Table.ColumnHeaderCell>
             </Table.Row>
           </Table.Header>
@@ -109,11 +119,6 @@ const Games: React.FC<Props> = ({ games }) => {
                 game.puzzle_id as unknown as Database['public']['Tables']['puzzles']['Row']
               console.log(game)
 
-              const statusOfGame = (game as any).status_of_game
-                .status as Database['public']['Tables']['status_of_game']['Row']['status']
-
-              console.log(statusOfGame)
-
               const nPlayers = (game as any).game_user.length + 1
               return (
                 <Table.Row
@@ -133,7 +138,7 @@ const Games: React.FC<Props> = ({ games }) => {
                     </span>
                   </Table.RowHeaderCell>
                   <Table.Cell>{nPlayers}</Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell suppressHydrationWarning>
                     {new Date(game.created_at).toLocaleDateString()}
                   </Table.Cell>
                 </Table.Row>
@@ -142,20 +147,20 @@ const Games: React.FC<Props> = ({ games }) => {
           </Table.Body>
         </Table.Root>
       </div>
-      {games.length === 0 && (
+      {completedGames.length === 0 && (
         <div className="flex flex-col items-center justify-center flex-1 w-full gap-2 p-4 py-8">
           <CookieIcon width={42} height={42} />
           <div className="flex gap-2">
-            <Text className="text-gray-900">No games yet!</Text>
-            <RadixLink asChild>
-              <Link href="/play/puzzles" className="flex items-center gap-2">
+            <Text className="text-gray-900">No completed games yet!</Text>
+            {/* <RadixLink asChild> */}
+            {/* <Link href="/play/puzzles" className="flex items-center gap-2">
                 Start a game from a puzzle <ArrowRightIcon />
-              </Link>
-            </RadixLink>
+              </Link> */}
+            {/* </RadixLink> */}
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
 

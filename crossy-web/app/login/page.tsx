@@ -35,7 +35,7 @@ export default function Login({
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-transparent">
+    <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <RadixLink className="absolute flex items-center top-4 left-4" asChild>
         <Link href="/">
           <ArrowLeftIcon className="mr-1" />
@@ -43,7 +43,7 @@ export default function Login({
         </Link>
       </RadixLink>
 
-      <div className="flex flex-col w-full max-w-sm p-4 border border-gray-300 rounded-lg shadow-sm">
+      <div className="flex flex-col w-full max-w-sm p-4 border border-gray-300 rounded-lg shadow-sm bg-gray-25">
         <div className="flex justify-between ">
           <Text asChild>
             <span className="font-serif text-lg font-bold">Crossy</span>
@@ -64,46 +64,15 @@ export default function Login({
           </>
         )}
 
-        <details className="mt-2">
-          <summary className="text-xs opacity-50">Login with email</summary>
-          <form action={signIn}>
-            <Form />
-          </form>
-        </details>
+        {process.env.NODE_ENV === 'development' && (
+          <details className="mt-2">
+            <summary className="text-xs opacity-50">Login with email</summary>
+            <form action={signIn}>
+              <Form />
+            </form>
+          </details>
+        )}
       </div>
     </div>
   )
 }
-
-// 'use client';
-// import { Auth } from '@supabase/auth-ui-react';
-// import { ThemeSupa } from '@supabase/auth-ui-shared';
-// import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-// // import { Database } from './database.types';
-
-// export default function AuthForm() {
-//   const supabase = createClientComponentClient();
-
-//   return (
-//     <>
-//       <Auth
-//         supabaseClient={supabase}
-//         view='sign_up'
-//         appearance={{ theme: ThemeSupa }}
-//         theme='dark'
-//         showLinks={false}
-//         providers={['discord']}
-//         redirectTo='http://localhost:3000/auth/callback'
-//       />{' '}
-//       <Auth
-//         supabaseClient={supabase}
-//         view='sign_in'
-//         appearance={{ theme: ThemeSupa }}
-//         theme='dark'
-//         showLinks={false}
-//         providers={['discord']}
-//         redirectTo='http://localhost:3000/auth/callback'
-//       />
-//     </>
-//   );
-// }

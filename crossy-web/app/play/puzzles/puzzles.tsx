@@ -22,14 +22,14 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
   }, [puzzles])
 
   return (
-    <>
+    <div className="min-w-[10rem]">
       <hr className="relative mt-2 border-dashed border-gray-5" />
       <CreatePuzzle
         onComplete={() => {
           router.refresh()
         }}
       >
-        <div className="flex items-center px-4 bg-blue-100 cursor-pointer h-14 hover:bg-blue-200">
+        <div className="flex items-center px-4 bg-blue-100 cursor-pointer h-12 hover:bg-blue-200">
           <div className="flex items-center gap-1 font-medium text-cyan-900">
             <FilePlusIcon />
             Create puzzle
@@ -48,22 +48,6 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {/* <CreatePuzzle
-            onComplete={() => {
-              router.refresh()
-            }}
-          >
-            <Table.Row className="bg-blue-100 cursor-pointer hover:bg-blue-200">
-              <Table.RowHeaderCell>
-                <div className="flex items-center gap-1 font-medium text-cyan-900">
-                  <FilePlusIcon />
-                  Create puzzle
-                </div>
-              </Table.RowHeaderCell>
-              <Table.Cell />
-              <Table.Cell />
-            </Table.Row>
-          </CreatePuzzle> */}
           {sortedPuzzles?.map((puzzle) => {
             const puzzleUrl = `/play/puzzles/${puzzle.id}`
             return (
@@ -99,7 +83,7 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
           <Text className="text-gray-900">No puzzles yet!</Text>
         </div>
       )}
-    </>
+    </div>
   )
 }
 

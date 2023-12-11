@@ -11,6 +11,42 @@ import {
 import { type CrosswordData } from './gameboard'
 import GameLayout from './gameLayout'
 
+export const generateMetadata = async ({
+  params,
+  searchParams,
+}: {
+  params: { slug: string }
+  searchParams?: Record<string, string | string[] | undefined>
+}) => {
+  const { slug } = params
+  const cookieStore = cookies()
+  const supabase = createClient<Database>(cookieStore)
+
+  const { data: game, error: gameError } = await supabase
+    .from('games')
+    .select('*, puzzles(*)')
+    .eq('id', slug)
+    .single()
+
+  if (!game && searchParams?.key) {
+    return {
+      title: 'Invite',
+    }
+  }
+
+  if (gameError) {
+    return {
+      title: '404',
+    }
+  }
+
+  if (game?.puzzles) {
+    return {
+      title: game?.puzzles?.name,
+    }
+  }
+}
+
 const Error = () => {
   return <div className="p-6">Could not retrieve game</div>
 }

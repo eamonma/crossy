@@ -1,8 +1,12 @@
 'use client'
 import React from 'react'
-import { DiscordLogoIcon } from '@radix-ui/react-icons'
-import { Button } from '@radix-ui/themes'
+import {
+  DiscordLogoIcon,
+  GitHubLogoIcon,
+} from '@radix-ui/react-icons'
+import { Button, Link as RadixLink, Text } from '@radix-ui/themes'
 import { type Provider } from '@supabase/supabase-js'
+import Link from 'next/link'
 
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
@@ -50,32 +54,55 @@ const Main = () => {
     },
     {
       name: 'Apple',
-      icon: () => <div></div>,
+      icon: () => <div className="text-lg"></div>,
       provider: 'apple',
     },
+    {
+      name: 'GitHub',
+      icon: GitHubLogoIcon,
+      provider: 'github',
+    },
+    // {
+    //   name: 'Google',
+    //   icon: () => (
+    //     <div className="w-4 h-4">
+    //       <GoogleLogo />
+    //     </div>
+    //   ),
+    //   provider: 'google',
+    // },
   ]
 
   return (
-    // <form action={signInWithProvider} className="flex flex-col">
-    //   <Button className="flex items-center gap-2 cursor-pointer">
-    //     <DiscordLogoIcon />
-    //     Continue with Discord
-    //   </Button>
-    // </form>
-    <div className="flex flex-col gap-2">
-      {providers.map(({ name, icon: Icon, provider }) => (
-        <Button
-          key={provider}
-          className="flex items-center gap-2 cursor-pointer"
-          onClick={async () => {
-            await signInWithProvider(provider as Provider)
-          }}
-        >
-          <Icon />
-          Continue with {name}
-        </Button>
-      ))}
-    </div>
+    <>
+      <div className="grid grid-cols-2 gap-2">
+        {providers.map(({ name, icon: Icon, provider }) => (
+          <Button
+            key={provider}
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={async () => {
+              await signInWithProvider(provider as Provider)
+            }}
+          >
+            <Icon />
+            {name}
+          </Button>
+        ))}
+      </div>
+      <div className="text-sm mt-2">
+        <Text className="font-medium">
+          By continuing, you agree to our{' '}
+          <RadixLink asChild>
+            <Link href="/terms">Terms of Service</Link>
+          </RadixLink>{' '}
+          and{' '}
+          <RadixLink asChild>
+            <Link href="/privacy">Privacy Policy</Link>
+          </RadixLink>
+          .
+        </Text>
+      </div>
+    </>
   )
 }
 

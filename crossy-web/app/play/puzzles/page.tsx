@@ -7,6 +7,10 @@ import { createClient } from '@/utils/supabase/server'
 
 import Puzzles from './puzzles'
 
+export const metadata = {
+  title: 'Puzzles',
+}
+
 const Page = async () => {
   const cookieStore = cookies()
   const supabase = createClient<Database>(cookieStore)

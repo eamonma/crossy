@@ -15,7 +15,7 @@ const defaultUrl =
 export const metadata = {
   metadataBase: new URL(defaultUrl),
   title: 'Crossy',
-  description: 'Solve crosswords with friends',
+  description: 'Solve crosswords together',
 }
 
 const inter = Inter({

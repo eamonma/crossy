@@ -5,14 +5,8 @@ import { createClient } from '@/utils/supabase/server'
 
 import AppLayout from './appLayout'
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : 'http://localhost:3000'
-
 export const metadata = {
-  metadataBase: new URL(defaultUrl),
-  title: 'Crossy',
-  description: 'Solve crosswords with friends',
+  title: 'Games',
 }
 
 export default async function Layout({

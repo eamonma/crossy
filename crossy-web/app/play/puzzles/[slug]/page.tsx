@@ -1,4 +1,4 @@
-import { Button, Heading } from '@radix-ui/themes'
+import { Button, Heading, Text } from '@radix-ui/themes'
 import { cookies } from 'next/headers'
 import Image from 'next/image'
 import { redirect } from 'next/navigation'
@@ -8,6 +8,35 @@ import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/server'
 
 import PuzzleContent from './puzzleContent'
+
+export const generateMetadata = async ({
+  params,
+}: {
+  params: { slug: string }
+}) => {
+  const { slug } = params
+  const cookieStore = cookies()
+  const supabase = createClient<Database>(cookieStore)
+
+  // get puzzle
+  const puzzle = await supabase
+    .from('puzzles')
+    .select('name')
+    .eq('id', slug)
+    .single()
+
+  const { data, error } = puzzle
+
+  if (error) {
+    return {
+      title: '404',
+    }
+  }
+
+  return {
+    title: data.name,
+  }
+}
 
 const Page = async ({ params }: { params: { slug: string } }) => {
   const { slug } = params
@@ -53,11 +82,11 @@ const Page = async ({ params }: { params: { slug: string } }) => {
             <Image
               src="/404.png"
               alt="404 notice"
-              className="shadow-md object-fit rounded-6"
+              className="shadow-sm object-fit rounded-sm border border-gray-300"
               height="1024"
               width="1024"
             />
-            <Heading size="4">Couldn't find this puzzle!</Heading>
+            <Text className="font-medium">Couldn't find this puzzle!</Text>
           </div>
         </div>
       </div>
