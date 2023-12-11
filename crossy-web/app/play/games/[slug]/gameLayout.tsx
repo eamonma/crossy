@@ -189,7 +189,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       <div className="max-h-[calc(100%-5rem)] flex-1 grid grid-cols-1 md:grid-cols-[4fr,3fr] items-center justify-center gap-4">
         <div className="relative flex flex-col justify-end flex-1 h-full sm:justify-center">
           <div className="flex flex-col justify-start w-full">
-            <div className="w-full pl-8 pr-3 max-h-[68vh] md:max-h-[75vh] lg:max-h-[70vh]">
+            <div className="w-full pl-8 pr-3 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">
               <Gameboard
                 {...commonProps}
                 remoteAnswers={remoteAnswers}

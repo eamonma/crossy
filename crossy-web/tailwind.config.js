@@ -19,6 +19,12 @@ module.exports = {
           'background-hover': 'hsl(var(--btn-background-hover))',
         },
       },
+      height: {
+        screen: ['100vh', '100svh'],
+      },
+      minHeight: {
+        screen: ['100vh', '100svh'],
+      },
     },
   },
   plugins: [require('tailwind-scrollbar')({ nocompatible: true })],

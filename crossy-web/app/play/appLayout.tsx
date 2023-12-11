@@ -1,11 +1,7 @@
 'use client'
 import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import {
-  ChevronLeftIcon,
-  FileIcon,
-  HomeIcon,
-} from '@radix-ui/react-icons'
+import { ChevronLeftIcon, FileIcon, HomeIcon } from '@radix-ui/react-icons'
 import { IconButton, Tooltip } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
@@ -94,7 +90,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           width: isMenuOpen ? 'calc(100vw - 18rem)' : 'calc(100vw - 2rem)',
         }}
         transition={transition}
-        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0 shadow-sm rounded-md border border-gray-300 m-4 w-full bg-gray-25"
+        className="z-10 flex-1 h-[calc(100svh-2rem)] absolute inset-y-0 shadow-sm rounded-md border border-gray-300 m-4 w-full bg-gray-25"
       >
         <div className="absolute inset-y-0 z-10 top-1/2">
           <motion.div

@@ -176,7 +176,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
         </div>
       </section>
       <div
-        className={`flex w-full justify-center items-center min-h-[40vh] transition ${
+        className={`flex w-full justify-center items-center min-h-[40svh] transition ${
           files.length > 0 ? 'opacity-100' : 'opacity-20'
         } ${maxString}`}
       >

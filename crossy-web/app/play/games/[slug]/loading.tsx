@@ -24,7 +24,7 @@ const Loading = () => {
         <div className="flex flex-col justify-between h-full">
           <div className="relative flex flex-col justify-center flex-1 h-full">
             <div className="flex justify-start w-full">
-              <div className="w-full pl-8 pr-3 max-h-[80vh] md:max-h-[75vh] lg:max-h-[70vh]">
+              <div className="w-full pl-8 pr-3 max-h-[80svh] md:max-h-[75svh] lg:max-h-[70svh]">
                 <PuzzleContent
                   crosswordData={{
                     grid: [],
