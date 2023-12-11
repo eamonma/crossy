@@ -44,6 +44,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   const [clueNum, setClueNum] = useState(1)
   const [isExploding, setIsExploding] = useState(false)
   const [claimedToBeComplete, setClaimedToBeComplete] = useState(false)
+  const [answers, setAnswers] = useState<string[]>(game.grid)
 
   const { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers } =
     useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
@@ -92,6 +93,8 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     setCurrentDirection,
     setClueNum,
     gameboardRef,
+    answers,
+    setAnswers,
   }
 
   const gameStatus = statusOfGame?.status

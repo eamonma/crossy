@@ -1,5 +1,5 @@
 import React, { useRef } from 'react'
-import { Heading, Text } from '@radix-ui/themes'
+import { Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
 
 import { type CrosswordData } from './gameboard'
@@ -14,10 +14,11 @@ type Props = {
   setClueNum: React.Dispatch<React.SetStateAction<number>>
   gameboardRef: React.RefObject<SVGSVGElement>
   shouldScrollSmoothly: boolean
+  answers: string[]
   direction: 'across' | 'down'
 }
 
-const Clues = ({
+const Clues: React.FC<Props> = ({
   crosswordData,
   currentCell,
   setCurrentCell,
@@ -25,9 +26,10 @@ const Clues = ({
   setCurrentDirection,
   setClueNum,
   gameboardRef,
+  answers,
   direction,
   shouldScrollSmoothly,
-}: Props) => {
+}) => {
   const listRef = useRef<Array<HTMLLIElement | null>>([])
   const bounds = findBounds(
     crosswordData.grid,
@@ -48,9 +50,9 @@ const Clues = ({
   return (
     <>
       <div className="select-none">
-        <Heading size="4" className="px-6 py-2">
+        <div className="px-6 py-2 font-serif font-bold">
           {direction.charAt(0).toUpperCase() + direction.slice(1)}
-        </Heading>
+        </div>
         <hr className="border-dashed" />
       </div>
       <ul className="flex flex-col flex-1 h-full overflow-y-auto select-none scrollbar-thin">
@@ -67,6 +69,18 @@ const Clues = ({
           )
 
           let squareIsWithinClueBounds
+          let clueIsFilled = true
+
+          const stride = direction === 'across' ? 1 : crosswordData.size.cols
+
+          for (let i = 0; i < boundsForClue[1] - boundsForClue[0] + 1; i++) {
+            const currentCell = boundsForClue[0] + i * stride
+
+            if (!answers[currentCell]) {
+              clueIsFilled = false
+              break
+            }
+          }
 
           if (direction === 'across') {
             squareIsWithinClueBounds =
@@ -114,7 +128,9 @@ const Clues = ({
             >
               <Text className={`py-1 pr-2 text-right ${bg}`}>{clueNum}</Text>
               <Text
-                className={`py-1 pl-4 ${currentDirection === direction && bg}`}
+                className={`py-1 pl-4 ${currentDirection === direction && bg} ${
+                  clueIsFilled && 'text-[var(--gray-11)] line-through'
+                }`}
               >
                 {parse(`${clue.substring(clue.indexOf(' '))}`)}
               </Text>

@@ -55,6 +55,8 @@ type Props = {
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
   gameIsOngoing: boolean
+  answers: string[]
+  setAnswers: React.Dispatch<React.SetStateAction<string[]>>
   claimComplete: () => void
 }
 const Gameboard: React.FC<Props> = ({
@@ -70,9 +72,11 @@ const Gameboard: React.FC<Props> = ({
   remoteAnswers,
   gameIsOngoing,
   claimComplete,
+  answers,
+  setAnswers,
 }) => {
   const supabase = createClient<Database>()
-  const [answers, setAnswers] = useState<string[]>(game.grid)
+  // const [answers, setAnswers] = useState<string[]>(game.grid)
   const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('dark')
   const { resolvedTheme } = useTheme()
 
@@ -124,7 +128,7 @@ const Gameboard: React.FC<Props> = ({
     if (anticipated.current < 0) anticipated.current = 0
     if (anticipated.current > 0) return
     setAnswers(remoteAnswers)
-  }, [remoteAnswers])
+  }, [remoteAnswers, setAnswers])
 
   const claimed = useRef(false)
 
