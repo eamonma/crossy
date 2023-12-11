@@ -143,7 +143,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
           top={
             <>
               <div className="flex items-center gap-2">
-                <time className="text-gray-900 min-w-[7ch]">
+                <time className="text-left text-gray-900 min-w-[7ch]">
                   <Timer
                     since={new Date(game.created_at).getTime()}
                     statusOfGame={statusOfGame}
