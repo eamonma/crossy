@@ -1,12 +1,7 @@
 'use client'
 import React, { useMemo } from 'react'
 import { ArrowRightIcon, CookieIcon } from '@radix-ui/react-icons'
-import {
-  Heading,
-  Link as RadixLink,
-  Table,
-  Text,
-} from '@radix-ui/themes'
+import { Heading, Link as RadixLink, Table, Text } from '@radix-ui/themes'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -45,7 +40,7 @@ const Games: React.FC<Props> = ({ games }) => {
 
   return (
     <>
-      <Heading className="flex px-5">Ongoing</Heading>
+      <Heading className="flex px-5">Ongoing games</Heading>
       <hr className="relative mt-2 border-dashed" />
       <div className="w-full">
         <Table.Root className="w-full" size="3">
@@ -95,13 +90,11 @@ const Games: React.FC<Props> = ({ games }) => {
             })}
           </Table.Body>
         </Table.Root>
-        <div className="pl-5 my-2 mt-4">
-          <Heading>Completed</Heading>
+        <div className="pl-5 my-2 mt-6">
+          <Heading>Completed games</Heading>
         </div>
-        <Table.Root
-          className={`w-full ${games.length > 0 && 'h-full'}`}
-          size="3"
-        >
+        <hr className="relative mt-2 border-dashed" />
+        <Table.Root className="w-full" size="3">
           <Table.Header>
             <Table.Row>
               <Table.ColumnHeaderCell>Name</Table.ColumnHeaderCell>

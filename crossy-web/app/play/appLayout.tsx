@@ -7,6 +7,8 @@ import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 import NextLink from 'next/link'
 
+import CrossyLogo from '@/components/crossyLogo'
+
 import Link from './activeLink'
 import CreatePuzzle from './createPuzzle'
 import UserCard from './userCard'
@@ -39,6 +41,9 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           <li className="">
             <NextLink href="/">
               <h1 className="flex items-center justify-center gap-1 py-2 font-serif text-lg font-bold text-center">
+                <div className="w-6 h-6 text-white rounded-full bg-gold-800 p-0.5">
+                  <CrossyLogo />
+                </div>
                 Crossy
               </h1>
             </NextLink>

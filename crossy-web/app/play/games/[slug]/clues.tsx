@@ -51,7 +51,7 @@ const Clues = ({
         <Heading size="4" className="px-6 py-2">
           {direction.charAt(0).toUpperCase() + direction.slice(1)}
         </Heading>
-        <hr className="border-dashed border-gray-5" />
+        <hr className="border-dashed" />
       </div>
       <ul className="flex flex-col flex-1 h-full overflow-y-auto select-none scrollbar-thin">
         {crosswordData.clues[direction].map((clue) => {

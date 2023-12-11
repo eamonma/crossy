@@ -40,7 +40,7 @@ const Loading = () => {
           </div>
         </div>
         <div className="flex-col justify-center hidden h-full overflow-hidden collapse sm:visible sm:flex rounded-4">
-          <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed border-gray-5"></div>
+          <div className="relative grid justify-between flex-1 w-full h-full grid-cols-1 grid-rows-2 gap-0 text-lg border-l border-dashed"></div>
         </div>
       </div>
     </div>
