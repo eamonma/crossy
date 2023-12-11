@@ -16,21 +16,21 @@ const Hero: React.FC<Props> = ({ isLoggedIn }) => {
       <div className="w-full py-12">
         <h2 className="w-full h-full font-serif font-medium leading-[clamp(3rem,9vw,10rem)] text-[clamp(4rem,12vw,12rem)] text-[var(--gold-12)] ">
           <div className="text-[var(--gray-11)]">
-            <span className="pl-[15%]">
+            <span className="pl-[10vw]">
               Solve
               <hr className="border-dashed" />
             </span>
-            <span className="pl-[15%]">
+            <span className="pl-[10vw]">
               crosswords
               <hr className="border-dashed" />
             </span>
           </div>
-          <span className="pl-[15%]">
+          <span className="pl-[10vw]">
             together.
             <hr className="border-dashed" />
           </span>
         </h2>
-        <div className="flex flex-col items-start max-w-md gap-4 px-4 pl-[15%]">
+        <div className="flex flex-col items-start w-full gap-4 px-4 pl-[10vw]">
           <Button asChild>
             {isLoggedIn ? (
               <Link href={link}>

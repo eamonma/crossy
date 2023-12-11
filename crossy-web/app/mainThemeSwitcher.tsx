@@ -1,10 +1,29 @@
 'use client'
 import React, { useEffect, useState } from 'react'
-import { MoonIcon } from '@radix-ui/react-icons'
+import { IconJarLogoIcon } from '@radix-ui/react-icons'
 import { DropdownMenu, IconButton } from '@radix-ui/themes'
+import { useRouter } from 'next/navigation'
 import { useTheme } from 'next-themes'
 
-const MainThemeSwitcher = () => {
+import { type Database } from '@/lib/database.types'
+import { createClient } from '@/utils/supabase/client'
+
+type Props = {
+  isLoggedIn: boolean
+}
+
+const MainThemeSwitcher: React.FC<Props> = ({ isLoggedIn }) => {
+  const supabase = createClient<Database>()
+  const router = useRouter()
+
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      console.log(error)
+    }
+    router.push('/login')
+  }
+
   const [mounted, setMounted] = useState(false)
   const { theme, setTheme } = useTheme()
 
@@ -25,7 +44,7 @@ const MainThemeSwitcher = () => {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger>
         <IconButton variant="ghost">
-          <MoonIcon />
+          <IconJarLogoIcon />
         </IconButton>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content align="end">
@@ -42,6 +61,14 @@ const MainThemeSwitcher = () => {
           <DropdownMenu.RadioItem value="light">Light</DropdownMenu.RadioItem>
           <DropdownMenu.RadioItem value="dark">Dark</DropdownMenu.RadioItem>
         </DropdownMenu.RadioGroup>
+        {isLoggedIn && (
+          <>
+            <DropdownMenu.Separator />
+            <DropdownMenu.Item asChild color="red">
+              <button onClick={logout}>Logout</button>
+            </DropdownMenu.Item>
+          </>
+        )}
       </DropdownMenu.Content>
     </DropdownMenu.Root>
   )

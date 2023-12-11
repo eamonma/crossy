@@ -53,7 +53,7 @@ export default async function Index() {
                 </>
               )}
 
-              <MainThemeSwitcher />
+              <MainThemeSwitcher isLoggedIn={Boolean(user)} />
             </div>
           </header>
         </div>
@@ -64,3 +64,6 @@ export default async function Index() {
     </div>
   )
 }
+
+export const revalidate = 0
+export const dynamic = 'force-dynamic'
