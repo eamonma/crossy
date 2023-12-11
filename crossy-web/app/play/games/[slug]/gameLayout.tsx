@@ -156,6 +156,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 )}
               </div>
               <div className="flex items-center gap-4">
+                {gameStatus === 'ongoing' && (
+                  <OnlineUsers userIds={onlineUserIds} />
+                )}
                 <label className="flex items-center gap-2">
                   <Switch
                     checked={shouldScrollSmoothly}
@@ -166,9 +169,6 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                   />
                   <Text size="2">Smooth scroll</Text>
                 </label>
-                {gameStatus === 'ongoing' && (
-                  <OnlineUsers userIds={onlineUserIds} />
-                )}
                 <ShareLink game={game} />
               </div>
             </>

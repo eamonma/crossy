@@ -3,14 +3,13 @@ import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import {
   ChevronLeftIcon,
-  DiscordLogoIcon,
-  ExternalLinkIcon,
   FileIcon,
   HomeIcon,
 } from '@radix-ui/react-icons'
-import { IconButton, Link as RadixLink, Tooltip } from '@radix-ui/themes'
+import { IconButton, Tooltip } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
+import NextLink from 'next/link'
 
 import Link from './activeLink'
 import CreatePuzzle from './createPuzzle'
@@ -39,12 +38,17 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
 
   return (
     <div className="w-full bg-gray-50">
-      <nav className="flex flex-col justify-between w-64 h-full gap-4 p-4 pr-0">
+      <nav className="flex flex-col justify-between w-64 h-full gap-2 p-4 pr-0">
         <ul className="flex flex-col gap-4 px-2">
-          <h1 className="flex items-center justify-center gap-1 mt-2 -mb-2 font-serif text-lg font-bold text-center">
-            Crossy
-          </h1>
-          <hr className="border-dashed " />
+          <li className="">
+            <NextLink href="/">
+              <h1 className="flex items-center justify-center gap-1 py-2 font-serif text-lg font-bold text-center">
+                Crossy
+              </h1>
+            </NextLink>
+          </li>
+          <hr className="-mt-2 border-dashed" />
+
           <li>
             <Link href="/play" className="flex items-center gap-2">
               <HomeIcon />
@@ -60,8 +64,9 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           <li>
             <CreatePuzzle />
           </li>
-          <hr className="border-dashed" />
-          <li>
+
+          {/* <hr className="border-dashed" /> */}
+          {/* <li>
             <RadixLink asChild>
               <a
                 target="_blank"
@@ -75,6 +80,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
               </a>
             </RadixLink>
           </li>
+          <hr className="border-dashed" /> */}
           <hr className="border-dashed" />
         </ul>
         <div>
@@ -88,7 +94,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           width: isMenuOpen ? 'calc(100vw - 18rem)' : 'calc(100vw - 2rem)',
         }}
         transition={transition}
-        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0 shadow-lg rounded-md border border-gray-300 m-4 w-full bg-gray-25"
+        className="z-10 flex-1 h-[calc(100vh-2rem)] absolute inset-y-0 shadow-sm rounded-md border border-gray-300 m-4 w-full bg-gray-25"
       >
         <div className="absolute inset-y-0 z-10 top-1/2">
           <motion.div

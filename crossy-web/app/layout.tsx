@@ -33,7 +33,7 @@ export default async function RootLayout({
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen">
         <Providers>
-          <Theme accentColor="cyan">{children}</Theme>
+          <Theme accentColor="gold">{children}</Theme>
         </Providers>
       </body>
     </html>

@@ -39,7 +39,7 @@ const OnlineUsers: React.FC<Props> = ({ userIds }) => {
         {user.avatar_url ? (
           <Avatar size="1" radius="full" src={user.avatar_url} fallback="" />
         ) : (
-          <Box className="flex items-center justify-center w-6 h-6 rounded-[999px] bg-gray-5">
+          <Box className="flex items-center justify-center w-6 h-6 bg-gray-200 rounded-[999px]">
             <Text size="1" color="gray">
               {user.full_name?.charAt(0).toUpperCase()}
             </Text>
