@@ -135,7 +135,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   }
 
   return (
-    <div className="flex flex-col w-full h-full">
+    <div className="flex flex-col w-full h-full min-w-fit">
       <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
       <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
@@ -143,7 +143,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
           top={
             <>
               <div className="flex items-center gap-2">
-                <time className="text-gray-900">
+                <time className="text-gray-900 min-w-[7ch]">
                   <Timer
                     since={new Date(game.created_at).getTime()}
                     statusOfGame={statusOfGame}
@@ -167,7 +167,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                       gameboardRef.current?.focus()
                     }}
                   />
-                  <Text size="2">Smooth scroll</Text>
+                  <Text size="2">Smooth&nbsp;scroll</Text>
                 </label>
                 <ShareLink game={game} />
               </div>
