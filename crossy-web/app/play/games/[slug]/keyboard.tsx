@@ -44,7 +44,12 @@ const KeyboardWrapper: React.FC<Props> = ({
           class: '!opacity-0 !w-1',
           buttons: '0 00',
         },
+        {
+          class: '!bg-[var(--gray-1)]',
+          buttons: 'q w e r t y u i o p a s d f g h j k l z x c v b n m Delete',
+        },
       ]}
+      theme="hg-theme-default hg-layout-default !bg-[var(--gray-3)]"
     />
   )
 }

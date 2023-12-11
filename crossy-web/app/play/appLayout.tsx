@@ -3,17 +3,12 @@ import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import {
   ChevronLeftIcon,
-  Crosshair2Icon,
   DiscordLogoIcon,
   ExternalLinkIcon,
   FileIcon,
   HomeIcon,
 } from '@radix-ui/react-icons'
-import {
-  IconButton,
-  Link as RadixLink,
-  Tooltip,
-} from '@radix-ui/themes'
+import { IconButton, Link as RadixLink, Tooltip } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 
@@ -47,7 +42,6 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
       <nav className="flex flex-col justify-between w-64 h-full gap-4 p-4 pr-0">
         <ul className="flex flex-col gap-4 px-2">
           <h1 className="flex items-center justify-center gap-1 mt-2 -mb-2 font-serif text-lg font-bold text-center">
-            <Crosshair2Icon />
             Crossy
           </h1>
           <hr className="border-dashed " />

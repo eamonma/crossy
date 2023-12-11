@@ -24,6 +24,18 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
   return (
     <>
       <hr className="relative mt-2 border-dashed border-gray-5" />
+      <CreatePuzzle
+        onComplete={() => {
+          router.refresh()
+        }}
+      >
+        <div className="flex items-center px-4 bg-blue-100 cursor-pointer h-14 hover:bg-blue-200">
+          <div className="flex items-center gap-1 font-medium text-cyan-900">
+            <FilePlusIcon />
+            Create puzzle
+          </div>
+        </div>
+      </CreatePuzzle>
       <Table.Root
         className={`w-full ${puzzles.length > 0 && 'h-full'}`}
         size="3"
@@ -36,7 +48,7 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          <CreatePuzzle
+          {/* <CreatePuzzle
             onComplete={() => {
               router.refresh()
             }}
@@ -51,7 +63,7 @@ const Puzzles: React.FC<Props> = ({ puzzles }) => {
               <Table.Cell />
               <Table.Cell />
             </Table.Row>
-          </CreatePuzzle>
+          </CreatePuzzle> */}
           {sortedPuzzles?.map((puzzle) => {
             const puzzleUrl = `/play/puzzles/${puzzle.id}`
             return (

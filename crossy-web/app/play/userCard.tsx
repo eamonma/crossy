@@ -4,7 +4,6 @@ import { HamburgerMenuIcon } from '@radix-ui/react-icons'
 import {
   Avatar,
   Box,
-  Card,
   Dialog,
   DropdownMenu,
   Flex,
@@ -57,54 +56,46 @@ const UserCard = ({ session }: { session: Session }) => {
   const [open, setOpen] = useState(false)
 
   return (
-    <Flex gap="2">
-      <Card className="w-full">
-        <Flex gap="2" justify="between" align="center">
-          <Flex gap="2" align="center" className="overflow-hidden">
-            <Avatar
-              size="3"
-              src={profile?.avatar_url ?? ''}
-              radius="full"
-              fallback={profile?.full_name?.charAt(0) ?? ''}
-            />
-            <Box className="min-w-0">
-              <Text
-                className="min-w-0 truncate"
-                as="div"
-                size="2"
-                weight="bold"
-              >
-                {profile?.full_name}
-              </Text>
-            </Box>
-          </Flex>
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              <IconButton variant="ghost">
-                <HamburgerMenuIcon />
-              </IconButton>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content align="end">
-              <ThemeSwitcher />
+    <div className="flex items-center justify-between w-full py-2">
+      <Flex gap="2" align="center" className="overflow-hidden">
+        <Avatar
+          size="3"
+          src={profile?.avatar_url ?? ''}
+          radius="full"
+          fallback={profile?.full_name?.charAt(0) ?? ''}
+        />
+        <Box className="min-w-0">
+          <Text className="min-w-0 truncate" as="div" size="2" weight="bold">
+            {profile?.full_name}
+          </Text>
+        </Box>
+      </Flex>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger>
+          <IconButton variant="ghost">
+            <HamburgerMenuIcon />
+          </IconButton>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content align="end">
+          <ThemeSwitcher />
 
-              <DropdownMenu.Item asChild>
-                <button
-                  onClick={() => {
-                    setOpen(true)
-                  }}
-                >
-                  Edit profile
-                </button>
-              </DropdownMenu.Item>
+          <DropdownMenu.Item asChild>
+            <button
+              onClick={() => {
+                setOpen(true)
+              }}
+            >
+              Edit profile
+            </button>
+          </DropdownMenu.Item>
 
-              <DropdownMenu.Separator />
-              <DropdownMenu.Item asChild color="red">
-                <button onClick={logout}>Logout</button>
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        </Flex>
-      </Card>
+          <DropdownMenu.Separator />
+          <DropdownMenu.Item asChild color="red">
+            <button onClick={logout}>Logout</button>
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+
       <Dialog.Root
         open={open}
         onOpenChange={(n) => {
@@ -117,7 +108,7 @@ const UserCard = ({ session }: { session: Session }) => {
           onUpdateProfile={getProfile}
         />
       </Dialog.Root>
-    </Flex>
+    </div>
   )
 }
 
