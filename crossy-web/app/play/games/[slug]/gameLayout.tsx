@@ -159,7 +159,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 {gameStatus === 'ongoing' && (
                   <OnlineUsers userIds={onlineUserIds} />
                 )}
-                <label className="flex items-center gap-2">
+                <label className="items-center hidden gap-2 md:flex">
                   <Switch
                     checked={shouldScrollSmoothly}
                     onCheckedChange={() => {
@@ -167,7 +167,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                       gameboardRef.current?.focus()
                     }}
                   />
-                  <Text size="2">Smooth&nbsp;scroll</Text>
+                  <Text size="2">Smooth scroll</Text>
                 </label>
                 <ShareLink game={game} />
               </div>
