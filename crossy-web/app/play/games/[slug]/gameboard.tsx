@@ -290,8 +290,6 @@ const Gameboard: React.FC<Props> = ({
         }
       }
 
-      setCurrentCell(nextCell)
-
       anticipated.current += 1
       void supabase
         .rpc('update_grid_element', {
@@ -303,6 +301,7 @@ const Gameboard: React.FC<Props> = ({
           anticipated.current -= 1
         })
     }
+    setCurrentCell(nextCell)
   }
 
   useEffect(() => {
