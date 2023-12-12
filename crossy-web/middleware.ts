@@ -8,6 +8,8 @@ export async function middleware(request: NextRequest) {
     },
   })
 
+  response.headers.set('x-pathname', request.url)
+
   const supabase = createServerClient(
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -43,7 +45,7 @@ export async function middleware(request: NextRequest) {
           })
         },
       },
-    }
+    },
   )
 
   await supabase.auth.getSession()

@@ -56,8 +56,6 @@ const Games: React.FC<Props> = ({ games }) => {
               const gameUrl = `/play/games/${game.id}`
               const puzzle =
                 game.puzzle_id as unknown as Database['public']['Tables']['puzzles']['Row']
-              console.log(game)
-
               const nPlayers = (game as any).game_user.length + 1
               return (
                 <Table.Row
@@ -117,7 +115,6 @@ const Games: React.FC<Props> = ({ games }) => {
               const gameUrl = `/play/games/${game.id}`
               const puzzle =
                 game.puzzle_id as unknown as Database['public']['Tables']['puzzles']['Row']
-              console.log(game)
 
               const nPlayers = (game as any).game_user.length + 1
               return (

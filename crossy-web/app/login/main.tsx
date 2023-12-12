@@ -1,15 +1,13 @@
 'use client'
 import React from 'react'
-import {
-  DiscordLogoIcon,
-  GitHubLogoIcon,
-} from '@radix-ui/react-icons'
+import { DiscordLogoIcon, GitHubLogoIcon } from '@radix-ui/react-icons'
 import { Button, Link as RadixLink, Text } from '@radix-ui/themes'
 import { type Provider } from '@supabase/supabase-js'
 import Link from 'next/link'
 
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
+import { useParams, useSearchParams } from 'next/navigation'
 
 const getURL = () => {
   let url =
@@ -28,8 +26,12 @@ const getURL = () => {
 
 const Main = () => {
   const supabase = createClient<Database>()
+  const searchParams = useSearchParams()
+  const redirectTo = searchParams.get('redirectTo') ?? '/play'
+
   const signInWithProvider = async (provider: Provider) => {
-    const redirectUrl = `${getURL()}auth/callback`
+    const redirectUrl = `${getURL()}auth/callback?redirectTo=${redirectTo}`
+    console.log('redirectUrl', redirectUrl)
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,

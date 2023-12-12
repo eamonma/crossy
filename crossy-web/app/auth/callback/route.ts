@@ -11,14 +11,17 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
   const code = requestUrl.searchParams.get('code')
 
+  const redirectTo =
+    requestUrl.searchParams.get('redirectTo') ?? requestUrl.origin + '/play'
+
   if (code) {
     const cookieStore = cookies()
     const supabase = createClient(cookieStore)
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  console.log('Redirecting to /play')
+  console.log(`Redirecting to ${redirectTo}`)
 
   // URL to redirect to after sign in process completes
-  return NextResponse.redirect(requestUrl.origin + '/play')
+  return NextResponse.redirect(redirectTo)
 }

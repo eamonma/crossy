@@ -4,36 +4,17 @@ import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
-import { createClient } from '@/utils/supabase/server'
+import { createClient } from '@/utils/supabase/client'
 
 import Form from './loginForm'
 import Main from './main'
+import { Database } from '@/lib/database.types'
 
 export default function Login({
   searchParams,
 }: {
   searchParams: { message: string }
 }) {
-  const signIn = async (formData: FormData) => {
-    'use server'
-
-    const email = formData.get('email') as string
-    const password = formData.get('password') as string
-    const cookieStore = cookies()
-    const supabase = createClient(cookieStore)
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      return redirect('/login?message=Could not authenticate user')
-    }
-
-    return redirect('/')
-  }
-
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
       <RadixLink className="absolute flex items-center top-4 left-4" asChild>
@@ -64,14 +45,7 @@ export default function Login({
           </>
         )}
 
-        {process.env.NODE_ENV === 'development' && (
-          <details className="mt-2">
-            <summary className="text-xs opacity-50">Login with email</summary>
-            <form action={signIn}>
-              <Form />
-            </form>
-          </details>
-        )}
+        <Form />
       </div>
     </div>
   )

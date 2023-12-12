@@ -66,9 +66,7 @@ const Page = async ({
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    return <Error />
-  }
+  if (!user) return redirect('/login')
 
   const { data: game, error: gameError } = await supabase
     .from('games')
