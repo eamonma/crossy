@@ -1,14 +1,9 @@
 import { ArrowLeftIcon } from '@radix-ui/react-icons'
 import { Link as RadixLink, Text } from '@radix-ui/themes'
-import { cookies } from 'next/headers'
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
-
-import { createClient } from '@/utils/supabase/client'
 
 import Form from './loginForm'
 import Main from './main'
-import { Database } from '@/lib/database.types'
 
 export default function Login({
   searchParams,

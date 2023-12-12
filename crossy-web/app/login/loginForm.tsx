@@ -1,14 +1,12 @@
 'use client'
 
-import { Database } from '@/lib/database.types'
-import { createClient } from '@/utils/supabase/client'
 import { Button, TextField } from '@radix-ui/themes'
-import { redirect, useSearchParams } from 'next/navigation'
+import { redirect } from 'next/navigation'
+
+import { type Database } from '@/lib/database.types'
+import { createClient } from '@/utils/supabase/client'
 
 const Form = () => {
-  const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirectTo') ?? '/play'
-
   const signIn = async (formData: FormData) => {
     const email = formData.get('email') as string
     const password = formData.get('password') as string

@@ -4,10 +4,10 @@ import { DiscordLogoIcon, GitHubLogoIcon } from '@radix-ui/react-icons'
 import { Button, Link as RadixLink, Text } from '@radix-ui/themes'
 import { type Provider } from '@supabase/supabase-js'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
-import { useParams, useSearchParams } from 'next/navigation'
 
 const getURL = () => {
   let url =
