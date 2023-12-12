@@ -1,8 +1,17 @@
 'use client'
 import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { ChevronLeftIcon, FileIcon, HomeIcon } from '@radix-ui/react-icons'
-import { IconButton, Tooltip } from '@radix-ui/themes'
+import {
+  ChevronLeftIcon,
+  DotFilledIcon,
+  FileIcon,
+  HomeIcon,
+} from '@radix-ui/react-icons'
+import {
+  IconButton,
+  Link as RadixLink,
+  Tooltip,
+} from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 import NextLink from 'next/link'
@@ -83,7 +92,18 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           </li>
           <hr className="border-dashed" /> */}
           <hr className="border-dashed" />
+          <div className="flex items-center gap-2 text-xs">
+            <RadixLink asChild>
+              <NextLink href="/privacy">Privacy policy</NextLink>
+            </RadixLink>
+            <DotFilledIcon className="text-accent" />
+
+            <RadixLink asChild>
+              <NextLink href="/terms">Terms of use</NextLink>
+            </RadixLink>
+          </div>
         </ul>
+
         <div>
           <UserCard session={session} />
         </div>
