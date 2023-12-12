@@ -48,7 +48,11 @@ export const generateMetadata = async ({
 }
 
 const Error = () => {
-  return <div className="p-6">Could not retrieve game</div>
+  return <div className="p-6">Could not retrieve game.</div>
+}
+
+const Finished = () => {
+  return <div className="p-6">Cannot join a concluded game.</div>
 }
 
 const Page = async ({
@@ -80,7 +84,11 @@ const Page = async ({
     const dangerousSupabase = dangerouslyCreateServiceRoleClient<Database>()
 
     const { error: dangerousError, data: dangerousGame } =
-      await dangerousSupabase.from('games').select('*').eq('id', slug).single()
+      await dangerousSupabase
+        .from('games')
+        .select('*, status_of_game(status)')
+        .eq('id', slug)
+        .single()
 
     if (dangerousError) {
       console.error(dangerousError)
@@ -89,6 +97,12 @@ const Page = async ({
 
     if (dangerousGame.password !== pw) {
       return <Error />
+    }
+
+    const status = dangerousGame.status_of_game
+
+    if (status?.status !== 'ongoing') {
+      return <Finished />
     }
 
     await dangerousSupabase
