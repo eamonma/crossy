@@ -1,4 +1,5 @@
 import { Theme } from '@radix-ui/themes'
+import { Analytics } from '@vercel/analytics/react'
 import { Inter } from 'next/font/google'
 
 import Providers from './providers'
@@ -34,6 +35,7 @@ export default async function RootLayout({
       <body className="min-h-screen">
         <Providers>
           <Theme accentColor="gold">{children}</Theme>
+          <Analytics />
         </Providers>
       </body>
     </html>
