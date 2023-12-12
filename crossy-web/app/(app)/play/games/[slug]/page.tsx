@@ -43,6 +43,9 @@ export const generateMetadata = async ({
   if (game?.puzzles) {
     return {
       title: game?.puzzles?.name,
+      openGraph: {
+        images: `/api/og?game=${game.id}`,
+      },
     }
   }
 }
