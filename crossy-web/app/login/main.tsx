@@ -27,11 +27,11 @@ const getURL = () => {
 const Main = () => {
   const supabase = createClient<Database>()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirectTo') ?? '/play'
+  const redirectTo = searchParams.get('redirectTo')
+  const appendix = redirectTo ? `?redirectTo=${redirectTo}` : ''
 
   const signInWithProvider = async (provider: Provider) => {
-    const redirectUrl = `${getURL()}auth/callback?redirectTo=${redirectTo}`
-    console.log('redirectUrl', redirectUrl)
+    const redirectUrl = `${getURL()}auth/callback${appendix}`
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -91,7 +91,7 @@ const Main = () => {
           </Button>
         ))}
       </div>
-      <div className="text-sm mt-2">
+      <div className="mt-2 text-sm">
         <Text className="font-medium">
           By continuing, you agree to our{' '}
           <RadixLink asChild>
