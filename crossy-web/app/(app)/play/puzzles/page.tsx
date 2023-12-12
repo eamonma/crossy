@@ -15,7 +15,16 @@ const Page = async () => {
   const cookieStore = cookies()
   const supabase = createClient<Database>(cookieStore)
 
-  const { data } = await supabase.from('puzzles').select('*')
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) return null
+
+  const { data } = await supabase
+    .from('puzzles')
+    .select('*')
+    .eq('created_by', user?.id)
 
   if (!data) return null
 
