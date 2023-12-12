@@ -40,11 +40,14 @@ export const generateMetadata = async ({
     }
   }
 
+  let url = process.env.NEXT_PUBLIC_LIVE_DOMAIN ?? 'http://localhost:3000/'
+  url = url.charAt(url.length - 1) === '/' ? url : `${url}/`
+
   if (game?.puzzles) {
     return {
       title: game?.puzzles?.name,
       openGraph: {
-        images: `/api/og?game=${game.id}`,
+        images: `${url}/api/og?game=${game.id}`,
       },
     }
   }
