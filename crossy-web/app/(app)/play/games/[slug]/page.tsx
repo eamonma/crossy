@@ -47,7 +47,18 @@ export const generateMetadata = async ({
     return {
       title: game?.puzzles?.name,
       openGraph: {
-        images: `${url}/api/og?game=${game.id}`,
+        images: `${url}api/og?game=${game.id}`,
+        title: `${game?.puzzles?.name} — Crossy`,
+        description: 'Solve crosswords together!',
+        url: 'https://crossy.me',
+        siteName: 'Crossy',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: `${game?.puzzles?.name} — Crossy`,
+        description: 'Solve crosswords together!',
+        creator: '@eamonma',
+        images: [`${url}api/og?game=${game.id}`],
       },
     }
   }
