@@ -30,7 +30,7 @@ export default async function Layout({
   if (!user) return redirect(`/login${`?redirectTo=${pathname}`}`)
 
   return (
-    <div className="flex-1 w-full flex h-screen">
+    <div className="flex flex-1 w-full h-screen">
       <AppLayout session={session}>{children}</AppLayout>
     </div>
   )

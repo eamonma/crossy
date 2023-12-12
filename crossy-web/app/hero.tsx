@@ -12,7 +12,7 @@ const Hero: React.FC<Props> = ({ isLoggedIn }) => {
   const link = isLoggedIn ? '/play' : '/login'
 
   return (
-    <div className="relative flex flex-col items-start justify-center w-full overflow-hidden border border-gray-300 rounded-md shadow-sm bg-gold-25 group">
+    <div className="relative flex flex-col items-start justify-center flex-1 w-full overflow-hidden border border-gray-300 rounded-md shadow-sm bg-gold-25 group">
       <div className="w-full py-12">
         <h2 className="w-full h-full font-serif font-medium leading-[clamp(3rem,9vw,10rem)] text-[clamp(4rem,12vw,12rem)] text-[var(--gold-12)] ">
           <div className="text-[var(--gray-11)]">

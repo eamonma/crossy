@@ -1,6 +1,4 @@
-import { ArrowLeftIcon } from '@radix-ui/react-icons'
-import { Link as RadixLink, Text } from '@radix-ui/themes'
-import Link from 'next/link'
+import { Text } from '@radix-ui/themes'
 
 import Form from './loginForm'
 import Main from './main'
@@ -11,13 +9,13 @@ export default function Login({
   searchParams: { message: string }
 }) {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50">
-      <RadixLink className="absolute flex items-center top-4 left-4" asChild>
+    <div className="flex items-center self-center justify-center w-full h-full bg-gray-50">
+      {/* <RadixLink className="absolute flex items-center top-4 left-4" asChild>
         <Link href="/">
           <ArrowLeftIcon className="mr-1" />
           Back
         </Link>
-      </RadixLink>
+      </RadixLink> */}
 
       <div className="flex flex-col w-full max-w-sm p-4 border border-gray-300 rounded-lg shadow-sm bg-gray-25">
         <div className="flex justify-between ">
