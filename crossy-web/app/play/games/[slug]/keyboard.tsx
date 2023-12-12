@@ -32,8 +32,8 @@ const KeyboardWrapper: React.FC<Props> = ({
       layout={{
         default: [
           'q w e r t y u i o p',
-          '0 a s d f g h j k l 0',
-          '00 z x c v b n m Delete',
+          'a s d f g h j k l',
+          'z x c v b n m Delete',
         ],
       }}
       display={{
