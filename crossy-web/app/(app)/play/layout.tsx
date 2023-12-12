@@ -26,7 +26,6 @@ export default async function Layout({
 
   const user = session?.user
 
-  // if (!user) return redirect('/login')
   if (!user) return redirect(`/login${`?redirectTo=${pathname}`}`)
 
   return (
