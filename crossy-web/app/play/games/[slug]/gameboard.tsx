@@ -159,10 +159,10 @@ const Gameboard: React.FC<Props> = ({
           'across',
           currentCell,
         )
+        setCurrentCell(nextCell)
       } else {
         toggleDirection()
       }
-      setCurrentCell(nextCell)
     } else if (value === 'ArrowLeft') {
       if (currentDirection === 'across') {
         nextCell = getNextCell(
@@ -173,10 +173,10 @@ const Gameboard: React.FC<Props> = ({
           currentCell,
           'less',
         )
+        setCurrentCell(nextCell)
       } else {
         toggleDirection()
       }
-      setCurrentCell(nextCell)
     } else if (value === 'ArrowDown') {
       if (currentDirection === 'down') {
         nextCell = getNextCell(
@@ -186,6 +186,7 @@ const Gameboard: React.FC<Props> = ({
           'down',
           currentCell,
         )
+        setCurrentCell(nextCell)
       } else {
         toggleDirection()
       }
@@ -199,10 +200,10 @@ const Gameboard: React.FC<Props> = ({
           currentCell,
           'less',
         )
+        setCurrentCell(nextCell)
       } else {
         toggleDirection()
       }
-      setCurrentCell(nextCell)
     } else if (value === 'Tab') {
       nextCell = getNextWord(
         crosswordData.clues,
@@ -260,6 +261,7 @@ const Gameboard: React.FC<Props> = ({
           })
       }
 
+      setCurrentCell(nextCell)
       setAnswers(newAnswers)
     } else if (value.length === 1 && value.match(/[a-z0-9]/i)) {
       const newAnswers = [...answers]
@@ -290,6 +292,8 @@ const Gameboard: React.FC<Props> = ({
         }
       }
 
+      setCurrentCell(nextCell)
+
       anticipated.current += 1
       void supabase
         .rpc('update_grid_element', {
@@ -301,7 +305,6 @@ const Gameboard: React.FC<Props> = ({
           anticipated.current -= 1
         })
     }
-    setCurrentCell(nextCell)
   }
 
   useEffect(() => {
