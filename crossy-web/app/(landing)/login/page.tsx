@@ -1,9 +1,9 @@
 import { Text } from '@radix-ui/themes'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
 import { type Database } from '@/lib/database.types'
-import {
-  dangerouslyCreateServiceRoleClient,
-} from '@/utils/supabase/server'
+import { createClient, dangerouslyCreateServiceRoleClient } from '@/utils/supabase/server'
 
 import Form from './loginForm'
 import Main from './main'
@@ -82,29 +82,29 @@ export const generateMetadata = async ({
   }
 }
 
-export default function Login({
+const Login = async ({
   searchParams,
 }: {
   searchParams: { message: string }
-}) {
+}) => {
+  const cookieStore = cookies()
+  const supabase = createClient<Database>(cookieStore)
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (user) {
+    redirect('/play')
+  }
+
   return (
     <div className="flex items-center self-center justify-center w-full h-full bg-gray-50">
-      {/* <RadixLink className="absolute flex items-center top-4 left-4" asChild>
-        <Link href="/">
-          <ArrowLeftIcon className="mr-1" />
-          Back
-        </Link>
-      </RadixLink> */}
-
       <div className="flex flex-col w-full max-w-sm p-4 border border-gray-300 rounded-lg shadow-sm bg-gray-25">
-        <div className="flex justify-between ">
-          <Text asChild>
-            <span className="font-serif text-lg font-bold">Crossy</span>
-          </Text>
-          <Text asChild>
-            <span className="font-serif text-lg">Sign in</span>
-          </Text>
-        </div>
+        <Text asChild>
+          <span className="font-serif text-lg">Sign in</span>
+        </Text>
+
         <hr className="my-3" />
         <Main />
 
@@ -122,3 +122,5 @@ export default function Login({
     </div>
   )
 }
+
+export default Login

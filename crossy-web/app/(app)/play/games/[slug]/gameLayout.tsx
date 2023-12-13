@@ -162,9 +162,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {gameStatus === 'ongoing' && (
-                  <OnlineUsers userIds={onlineUserIds} />
-                )}
+                <OnlineUsers userIds={onlineUserIds} />
                 <Check {...commonProps} />
                 {/* <label className="items-center hidden gap-2 md:flex"> */}
                 {/* <Switch

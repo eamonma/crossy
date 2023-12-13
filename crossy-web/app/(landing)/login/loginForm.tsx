@@ -21,7 +21,7 @@ const Form = () => {
       return redirect('/login?message=Could not authenticate user')
     }
 
-    return redirect('/')
+    return redirect('/play')
   }
   return (
     process.env.NODE_ENV === 'development' && (
