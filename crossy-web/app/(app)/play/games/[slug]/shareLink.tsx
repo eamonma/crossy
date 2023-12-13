@@ -35,7 +35,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
     <>
       <Popover.Root>
         <Popover.Trigger>
-          <Button variant="ghost">
+          <Button variant="soft">
             <ExternalLinkIcon />
             Share
           </Button>

@@ -5,19 +5,14 @@ import 'react-simple-keyboard/build/css/index.css'
 
 type Props = {
   gameboardRef: RefObject<SVGSVGElement>
-  //   keyboardRef: MutableRefObject<typeof Keyboard>
 }
 
-const KeyboardWrapper: React.FC<Props> = ({
-  gameboardRef,
-  //   keyboardRef,
-}) => {
+const KeyboardWrapper: React.FC<Props> = ({ gameboardRef }) => {
   const keyboardRef = useRef(null)
 
   const onKeyPress = (button: string) => {
     if (!gameboardRef.current) return
     gameboardRef.current.focus()
-    console.log(button)
 
     gameboardRef.current.dispatchEvent(
       new KeyboardEvent('keydown', { key: button }),

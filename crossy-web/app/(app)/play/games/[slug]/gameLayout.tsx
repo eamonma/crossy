@@ -1,11 +1,12 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Switch, Text } from '@radix-ui/themes'
+import { Badge, Text } from '@radix-ui/themes'
 import { type User } from '@supabase/supabase-js'
 import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
 
+import Check from './check'
 import Clues from './clues'
 import Confetti from './confetti'
 import Congrats from './congrats'
@@ -39,12 +40,12 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     'across',
   )
   const gameboardRef = useRef<SVGSVGElement>(null)
-  const [shouldScrollSmoothly, setShouldScrollSmoothly] =
-    useState<boolean>(false)
+  const [shouldScrollSmoothly] = useState<boolean>(false)
   const [clueNum, setClueNum] = useState(1)
   const [isExploding, setIsExploding] = useState(false)
   const [claimedToBeComplete, setClaimedToBeComplete] = useState(false)
   const [answers, setAnswers] = useState<string[]>(game.grid)
+  const [highlights, setHighlights] = useState<Record<number, string>>({})
 
   const { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers } =
     useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
@@ -95,6 +96,8 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     gameboardRef,
     answers,
     setAnswers,
+    highlights,
+    setHighlights,
   }
 
   const gameStatus = statusOfGame?.status
@@ -158,20 +161,21 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
                 {gameStatus === 'ongoing' && (
                   <OnlineUsers userIds={onlineUserIds} />
                 )}
-                <label className="items-center hidden gap-2 md:flex">
-                  <Switch
+                <Check {...commonProps} />
+                {/* <label className="items-center hidden gap-2 md:flex"> */}
+                {/* <Switch
                     checked={shouldScrollSmoothly}
                     onCheckedChange={() => {
                       setShouldScrollSmoothly((prev) => !prev)
                       gameboardRef.current?.focus()
                     }}
                   />
-                  <Text size="2">Smooth scroll</Text>
-                </label>
+                  <Text size="2">Smooth scroll</Text> */}
+                {/* </label> */}
                 <ShareLink game={game} />
               </div>
             </>

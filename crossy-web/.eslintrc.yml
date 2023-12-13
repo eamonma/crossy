@@ -24,6 +24,7 @@ rules:
     ["error", { checksVoidReturn: false }]
   "@typescript-eslint/indent": "off"
   "@typescript-eslint/member-delimiter-style": "off"
+  "@typescript-eslint/no-dynamic-delete": "off"
   "multiline-ternary": "off"
   "unused-imports/no-unused-imports": "error"
   "unused-imports/no-unused-vars":

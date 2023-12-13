@@ -50,7 +50,8 @@ type Props = {
   setCurrentDirection: React.Dispatch<React.SetStateAction<'across' | 'down'>>
   setClueNum: React.Dispatch<React.SetStateAction<number>>
   highlights?: Record<number, string>
-  highlightColour?: string
+  setHighlights?: React.Dispatch<React.SetStateAction<Record<number, string>>>
+  // highlightColour?: string
   friendsLocations?: Record<string, number>
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
@@ -67,6 +68,8 @@ const Gameboard: React.FC<Props> = ({
   currentDirection,
   setCurrentDirection,
   setClueNum,
+  highlights,
+  setHighlights,
   gameboardRef,
   friendsLocations,
   remoteAnswers,
@@ -76,9 +79,9 @@ const Gameboard: React.FC<Props> = ({
   setAnswers,
 }) => {
   const supabase = createClient<Database>()
-  // const [answers, setAnswers] = useState<string[]>(game.grid)
   const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('dark')
   const { resolvedTheme } = useTheme()
+  const cellHighlights = highlights ?? {}
 
   useEffect(() => {
     if (resolvedTheme === 'dark') {
@@ -92,7 +95,6 @@ const Gameboard: React.FC<Props> = ({
     setCurrentDirection((prev) => (prev === 'across' ? 'down' : 'across'))
   }
 
-  const [highlights] = useState<Record<number, string>>({})
   const cellSize = 36 // This can be adjusted for different cell sizes
   const width = crosswordData.size.cols * cellSize
   const height = crosswordData.size.rows * cellSize
@@ -224,6 +226,11 @@ const Gameboard: React.FC<Props> = ({
 
       const newAnswers = [...answers]
       newAnswers[i] = ''
+      setHighlights?.((prev) => {
+        const newHighlights = { ...prev }
+        delete newHighlights[i]
+        return newHighlights
+      })
 
       anticipated.current += 1
       void supabase
@@ -248,6 +255,11 @@ const Gameboard: React.FC<Props> = ({
         )
 
         newAnswers[nextCell] = ''
+        setHighlights?.((prev) => {
+          const newHighlights = { ...prev }
+          delete newHighlights[nextCell]
+          return newHighlights
+        })
 
         anticipated.current += 1
         void supabase
@@ -268,6 +280,11 @@ const Gameboard: React.FC<Props> = ({
       newAnswers[i] = value.toUpperCase()
 
       setAnswers(newAnswers)
+      setHighlights?.((prev) => {
+        const newHighlights = { ...prev }
+        delete newHighlights[i]
+        return newHighlights
+      })
 
       let nextCell = getNextCell(
         crosswordData.grid,
@@ -360,12 +377,12 @@ const Gameboard: React.FC<Props> = ({
           let backgroundColor = defaultColour
           if (gridItem === '.') {
             backgroundColor = blackSquareColour
-          } else if (friendsCellNumbers.includes(i)) {
-            backgroundColor = friendIsHereColour
-          } else if (Object.keys(highlights).includes(i.toString())) {
-            backgroundColor = highlights[i]
           } else if (i === currentCell) {
             backgroundColor = currentCellColour
+          } else if (i in cellHighlights) {
+            backgroundColor = cellHighlights[i]
+          } else if (friendsCellNumbers.includes(i)) {
+            backgroundColor = friendIsHereColour
           } else if (inputHighlights[i]) {
             backgroundColor = currentClueColour
           }
