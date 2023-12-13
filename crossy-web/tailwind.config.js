@@ -27,8 +27,8 @@ module.exports = {
       },
     },
   },
-  plugins: [require('tailwind-scrollbar')({ nocompatible: true })],
   plugins: [
+    require('tailwind-scrollbar')({ nocompatible: true }),
     radixThemePlugin({
       useTailwindColorNames: true, // optional
       useTailwindRadiusNames: true, // optional

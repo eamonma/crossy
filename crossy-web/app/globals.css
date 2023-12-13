@@ -1,8 +1,16 @@
 @import url('https://use.typekit.net/ckp4hdg.css');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@layer tailwind_base, radix, tailwind_components_utilities;
+@import '@radix-ui/themes/styles.css' layer(radix);
+
+@layer tailwind_base {
+  @tailwind base;
+}
+
+@layer tailwind_components_utilities {
+  @tailwind components;
+  @tailwind utilities;
+}
 
 /* @layer base {
   :root {
@@ -42,7 +50,6 @@
     transform: translateY(0);
   }
 } */
-
 * {
   box-sizing: border-box;
 }
