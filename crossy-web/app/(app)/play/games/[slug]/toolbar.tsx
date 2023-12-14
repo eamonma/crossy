@@ -33,7 +33,7 @@ const Toolbar: React.FC<Props> = ({
       <Flex
         gap="4"
         align="center"
-        className="w-full px-4 py-2 border-gray-5"
+        className="w-full py-2 pl-4 pr-2 border-gray-5"
         justify="between"
       >
         {timer}

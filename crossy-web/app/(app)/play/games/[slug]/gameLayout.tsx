@@ -1,12 +1,11 @@
 'use client'
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Heading, Text } from '@radix-ui/themes'
+import React, { useRef, useState } from 'react'
+import { Badge, Text } from '@radix-ui/themes'
 import { type User } from '@supabase/supabase-js'
 import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
-
-import useSSRWindowSize from '../../useSSRWindowSize'
+import useAutofocus from '@/lib/useAutofocus'
 
 import Check from './check'
 import Clues from './clues'
@@ -14,12 +13,15 @@ import Confetti from './confetti'
 import Congrats from './congrats'
 import Gameboard, { type CrosswordData } from './gameboard'
 import EmbeddedKeyboard from './keyboard'
+import OfflineNotice from './offlineNotice'
 import OnlineUsers from './onlineUsers'
 import ShareLink from './shareLink'
 import Timer from './timer'
 import Toolbar from './toolbar'
+import useClueNumToClue from './useClueNumToClue'
+import useConclusion from './useConclusion'
 import useRealtimeCrossword from './useRealtimeCrossword'
-import useSSRNetworkState from './useSSRNetworkState'
+import useSwipablePreventScroll from './useSwipablePreventScroll'
 import { getNextCell } from './utils'
 
 type Props = {
@@ -45,8 +47,6 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   const gameboardRef = useRef<SVGSVGElement>(null)
   const [shouldScrollSmoothly] = useState<boolean>(false)
   const [clueNum, setClueNum] = useState(1)
-  const [isExploding, setIsExploding] = useState(false)
-  const [claimedToBeComplete, setClaimedToBeComplete] = useState(false)
   const [answers, setAnswers] = useState<string[]>(game.grid)
   const [highlights, setHighlights] = useState<Record<number, string>>({})
 
@@ -58,43 +58,16 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     updateGridItem,
   } = useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
 
-  const isOnline = useSSRNetworkState()
+  const clueNumToClue = useClueNumToClue(crosswordData)
 
-  const clueNumToClueAcross = useMemo(() => {
-    const clueNumToClueAcross = new Map<number, string>()
+  const gameStatus = statusOfGame?.status
+  const { claimComplete, claimedToBeComplete, isExploding } = useConclusion(
+    game.id,
+    gameStatus,
+  )
 
-    crosswordData.clues.across.forEach((clue) => {
-      const clueNum = parseInt(clue.substring(0, clue.indexOf('. ')))
-      clueNumToClueAcross.set(clueNum, clue.substring(clue.indexOf(' ')))
-    })
-
-    return clueNumToClueAcross
-  }, [crosswordData.clues.across])
-
-  const clueNumToClueDown = useMemo(() => {
-    const clueNumToClueDown = new Map<number, string>()
-
-    crosswordData.clues.down.forEach((clue) => {
-      const clueNum = parseInt(clue.substring(0, clue.indexOf('. ')))
-      clueNumToClueDown.set(clueNum, clue.substring(clue.indexOf(' ')))
-    })
-
-    return clueNumToClueDown
-  }, [crosswordData.clues.down])
-
-  const clueNumToClue = (clueNum: number, direction: 'across' | 'down') => {
-    if (direction === 'across') {
-      return clueNumToClueAcross.get(clueNum)
-    } else {
-      return clueNumToClueDown.get(clueNum)
-    }
-  }
-
-  useEffect(() => {
-    if (gameboardRef.current) {
-      gameboardRef.current.focus()
-    }
-  }, [gameboardRef])
+  useSwipablePreventScroll()
+  useAutofocus(gameboardRef)
 
   const commonProps = {
     crosswordData,
@@ -110,72 +83,8 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     setHighlights,
   }
 
-  const gameStatus = statusOfGame?.status
-
-  useEffect(() => {
-    if (gameStatus === 'completed') {
-      setClaimedToBeComplete(true)
-      setIsExploding(true)
-    }
-
-    const timeout = setTimeout(() => {
-      setIsExploding(false)
-    }, 5000)
-
-    return () => {
-      clearTimeout(timeout)
-    }
-  }, [gameStatus])
-
-  const claimComplete = () => {
-    setClaimedToBeComplete(true)
-
-    fetch('/api/games/claim-complete', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(game.id),
-    })
-      .then(async (response) => await response.json())
-      .then(({ error }) => {
-        if (error) {
-          console.error(error)
-          setClaimedToBeComplete(false)
-        }
-      })
-      .catch((error) => {
-        setClaimedToBeComplete(false)
-        console.error('Error:', error)
-      })
-  }
-
-  const { width } = useSSRWindowSize()
-
-  useEffect(() => {
-    if (width < 640) {
-      document.body.classList.add('overflow-hidden')
-    }
-
-    return () => {
-      document.body.classList.remove('overflow-hidden')
-    }
-  }, [width])
-
   return (
     <div className="flex flex-col w-full h-full min-w-fit">
-      <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
-      <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
-      {!isOnline && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center w-full h-full p-4 rounded-md bg-gray-50">
-          <div className="flex flex-col items-center gap-2">
-            <Heading>You're offline!</Heading>
-            <p className="font-medium">
-              Connect to the Internet to continue playing.
-            </p>
-          </div>
-        </div>
-      )}
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
           alwaysVisibleTools={<OnlineUsers userIds={onlineUserIds} />}
@@ -186,21 +95,19 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
             </div>
           }
           timer={
-            <>
-              <div className="flex items-center gap-2">
-                <time className="text-left text-gray-900 min-w-[7ch] whitespace-nowrap">
-                  <Timer
-                    since={new Date(game.created_at).getTime()}
-                    statusOfGame={statusOfGame}
-                  />
-                </time>
-                {gameStatus === 'completed' && (
-                  <Badge radius="full" color="green" size="1">
-                    Done | Read-only
-                  </Badge>
-                )}
-              </div>
-            </>
+            <div className="flex items-center gap-2">
+              <time className="text-left text-gray-900 min-w-[7ch] whitespace-nowrap">
+                <Timer
+                  since={new Date(game.created_at).getTime()}
+                  statusOfGame={statusOfGame}
+                />
+              </time>
+              {gameStatus === 'completed' && (
+                <Badge radius="full" color="green" size="1">
+                  Done | Read-only
+                </Badge>
+              )}
+            </div>
           }
           clue={
             <div className="flex items-baseline w-full">
@@ -254,6 +161,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
           </div>
         </div>
       </div>
+      <OfflineNotice />
+      <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
+      <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
     </div>
   )
 }
