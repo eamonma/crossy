@@ -11,11 +11,16 @@ export const getNextCell = (
   currentCell: number,
   direction: 'less' | 'more' = 'more',
   answers?: string[],
+  canEscapeWord: boolean = true,
 ) => {
   const stride = currentDirection === 'across' ? 1 : cols
   const incrementor = direction === 'more' ? stride : -stride
 
   let nextCell = currentCell + incrementor
+
+  if (!canEscapeWord) {
+    return nextCell
+  }
 
   const puzzleSize = cols * rows
 

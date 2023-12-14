@@ -13,10 +13,10 @@ import { type Database } from '@/lib/database.types'
 import { type Payload } from '@/lib/types'
 import { createClient } from '@/utils/supabase/client'
 
-import { debounce } from './gameboard'
+import { debounce } from './debounce'
 
 const useRealtimeCrossword = (
-  roomId: string,
+  gameId: string,
   userId: string,
   currentCell: number,
   initialRemoteAnswers: string[] = [],
@@ -34,7 +34,7 @@ const useRealtimeCrossword = (
 
   const mapInitialUsers = (userChannel: RealtimeChannel) => {
     const state = userChannel.presenceState<{ user_id: string }>()
-    const _users = state[roomId]
+    const _users = state[gameId]
 
     if (!_users) return
 
@@ -47,7 +47,7 @@ const useRealtimeCrossword = (
       const { data, error } = await supabase
         .from('status_of_game')
         .select('*')
-        .eq('id', roomId)
+        .eq('id', gameId)
         .single()
 
       if (error) {
@@ -70,7 +70,7 @@ const useRealtimeCrossword = (
       const { new: newState } = payload as RealtimePostgresUpdatePayload<
         Record<string, any>
       >
-      if (newState.id !== roomId) return
+      if (newState.id !== gameId) return
       setStatus(
         newState as Database['public']['Tables']['status_of_game']['Row'],
       )
@@ -95,7 +95,7 @@ const useRealtimeCrossword = (
           event: '*',
           schema: 'public',
           table: 'status_of_game',
-          filter: 'id=eq.' + roomId,
+          filter: 'id=eq.' + gameId,
         },
         handleNewStatus,
       )
@@ -105,7 +105,7 @@ const useRealtimeCrossword = (
           event: '*',
           schema: 'public',
           table: 'games',
-          filter: 'id=eq.' + roomId,
+          filter: 'id=eq.' + gameId,
         },
         handleChange,
       )
@@ -114,11 +114,11 @@ const useRealtimeCrossword = (
     return () => {
       void changes.unsubscribe().then(() => {})
     }
-  }, [roomId, supabase])
+  }, [gameId, supabase])
 
   useEffect(() => {
-    const roomChannel = supabase.channel(`rooms-${roomId}`, {
-      config: { presence: { key: roomId } },
+    const roomChannel = supabase.channel(`rooms-${gameId}`, {
+      config: { presence: { key: gameId } },
     })
 
     roomChannel.on(
@@ -173,13 +173,13 @@ const useRealtimeCrossword = (
       void supabase.removeChannel(roomChannel).then()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, userId, supabase])
+  }, [gameId, userId, supabase])
 
   useEffect(() => {
-    if (!roomId || !isInitialStateSynced) return
+    if (!gameId || !isInitialStateSynced) return
 
     const messageChannel: RealtimeChannel = supabase.channel(
-      `position-${roomId}`,
+      `position-${gameId}`,
     )
 
     messageChannel.on(
@@ -211,9 +211,25 @@ const useRealtimeCrossword = (
     return () => {
       void supabase.removeChannel(messageChannel).then()
     }
-  }, [roomId, userId, currentCell, isInitialStateSynced, supabase])
+  }, [gameId, userId, currentCell, isInitialStateSynced, supabase])
 
-  return { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers }
+  const updateGridItem = (
+    index: number,
+    value: string | null,
+    cb?: () => void,
+  ) => {
+    const newValue = value ?? (null as unknown as string)
+
+    void supabase
+      .rpc('update_grid_element', {
+        game_id: gameId,
+        grid_index: index,
+        new_value: newValue,
+      })
+      .then(cb)
+  }
+
+  return { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers, updateGridItem }
 }
 
 export default useRealtimeCrossword

@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Text } from '@radix-ui/themes'
+import { Badge, Heading, Text } from '@radix-ui/themes'
 import { type User } from '@supabase/supabase-js'
 import parse from 'html-react-parser'
 
@@ -17,6 +17,7 @@ import ShareLink from './shareLink'
 import Timer from './timer'
 import Toolbar from './toolbar'
 import useRealtimeCrossword from './useRealtimeCrossword'
+import useSSRNetworkState from './useSSRNetworkState'
 import { getNextCell } from './utils'
 
 type Props = {
@@ -47,8 +48,15 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   const [answers, setAnswers] = useState<string[]>(game.grid)
   const [highlights, setHighlights] = useState<Record<number, string>>({})
 
-  const { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers } =
-    useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
+  const {
+    onlineUserIds,
+    friendsLocations,
+    statusOfGame,
+    remoteAnswers,
+    updateGridItem,
+  } = useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
+
+  const isOnline = useSSRNetworkState()
 
   const clueNumToClueAcross = useMemo(() => {
     const clueNumToClueAcross = new Map<number, string>()
@@ -144,6 +152,16 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     <div className="flex flex-col w-full h-full min-w-fit">
       <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
       <Confetti run={gameStatus === 'completed'} recycle={isExploding} />
+      {!isOnline && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center w-full h-full p-4 rounded-md bg-gray-50">
+          <div className="flex flex-col items-center gap-2">
+            <Heading>You're offline!</Heading>
+            <p className="font-medium">
+              Connect to the Internet to continue playing.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
           top={
@@ -197,11 +215,11 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
             <div className="w-full pl-8 pr-3 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">
               <Gameboard
                 {...commonProps}
+                updateGridItem={updateGridItem}
                 remoteAnswers={remoteAnswers}
                 friendsLocations={friendsLocations}
                 gameIsOngoing={gameStatus === 'ongoing'}
                 claimComplete={claimComplete}
-                game={game}
               />
             </div>
           </div>

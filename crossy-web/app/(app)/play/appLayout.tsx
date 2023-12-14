@@ -7,11 +7,7 @@ import {
   FileIcon,
   HomeIcon,
 } from '@radix-ui/react-icons'
-import {
-  IconButton,
-  Link as RadixLink,
-  Tooltip,
-} from '@radix-ui/themes'
+import { IconButton, Link as RadixLink, Tooltip } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 import NextLink from 'next/link'
@@ -117,7 +113,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
         transition={transition}
         className="z-10 flex-1 h-[calc(100svh-2rem)] absolute inset-y-0 shadow-sm rounded-md border border-gray-300 m-4 w-full bg-gray-25"
       >
-        <div className="absolute inset-y-0 z-10 top-1/2">
+        <div className="absolute inset-y-0 z-20 top-1/2">
           <motion.div
             initial={false}
             className="absolute"
@@ -148,7 +144,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
             </Tooltip>
           </motion.div>
         </div>
-        <div className="h-full overflow-auto">{children}</div>
+        <div className="relative h-full overflow-auto">{children}</div>
       </motion.div>
     </div>
   )
