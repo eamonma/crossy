@@ -1,5 +1,5 @@
 'use client'
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge, Text } from '@radix-ui/themes'
 import { type User } from '@supabase/supabase-js'
 import parse from 'html-react-parser'
@@ -22,7 +22,7 @@ import useClueNumToClue from './useClueNumToClue'
 import useConclusion from './useConclusion'
 import useRealtimeCrossword from './useRealtimeCrossword'
 import useSwipablePreventScroll from './useSwipablePreventScroll'
-import { getNextCell } from './utils'
+import { findBounds, getNextCell } from './utils'
 
 type Props = {
   game: Database['public']['Tables']['games']['Row']
@@ -82,6 +82,71 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     highlights,
     setHighlights,
   }
+
+  const clueNumToCell = useMemo(() => {
+    const clueNumToCell: Record<number, number> = {}
+    crosswordData.gridnums.forEach((num, i) => {
+      if (num > 0) {
+        clueNumToCell[num] = i
+      }
+    })
+    return clueNumToCell
+  }, [crosswordData])
+
+  const clueNumToHighlights = useMemo(() => {
+    const res: Record<number, Record<number, string>> = {}
+    crosswordData.clues.across.forEach((clue, i) => {
+      const clueNum = parseInt(clue.split('. ')[0])
+      const clueText = clue.split('. ')[1]
+      const regex = /(\d+)(?:-|,|\\s)*(across|down)/gi
+      const match = regex.exec(clueText)
+
+      if (match) {
+        const clueNumsStr = clueText.match(/\d+/g)
+        const clueNums = clueNumsStr?.map((num) => parseInt(num, 10))
+        const direction = match[2].toLowerCase() as 'across' | 'down'
+        const stride = direction === 'across' ? 1 : crosswordData.size.cols
+
+        if (clueNums) {
+          const highlightsForClue: Record<number, string> = {}
+          clueNums.forEach((clueNum) => {
+            const [lower, upper] = findBounds(
+              crosswordData.grid,
+              crosswordData.size.cols,
+              crosswordData.size.rows,
+              direction,
+              clueNumToCell[clueNum],
+              crosswordData.id,
+            )
+
+            for (let i = lower; i <= upper; i += stride) {
+              highlightsForClue[i] = 'var(--amber-4)'
+            }
+          })
+
+          res[clueNum] = highlightsForClue
+        }
+      }
+    })
+    return res
+  }, [clueNumToCell, crosswordData])
+
+  useEffect(() => {
+    if (clueNumToHighlights[clueNum]) {
+      setHighlights((prev) => ({ ...prev, ...clueNumToHighlights[clueNum] }))
+    } else {
+      setHighlights((prev) => {
+        const res = { ...prev }
+        for (const key in res) {
+          // TODO: might want to do this another way (strongly)
+          if (res[key] === 'var(--amber-4)') {
+            delete res[key]
+          }
+        }
+        return res
+      })
+    }
+  }, [clueNumToHighlights, clueNum, setHighlights])
 
   return (
     <div className="flex flex-col w-full h-full min-w-fit">

@@ -58,7 +58,7 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
           width: isMenuOpen ? 'calc(100vw - 18rem)' : 'calc(100vw - 2rem)',
         }}
         transition={transition}
-        className="z-10 flex-1 h-[calc(100svh-2rem)] absolute inset-y-0 shadow-sm rounded-md border border-gray-300 m-4 w-full bg-gray-25"
+        className="z-10 flex-1 h-[calc(100svh-2rem)] absolute inset-y-0 shadow-sm rounded-md border border-gray-400 m-4 w-full bg-gray-25"
       >
         <div className="absolute inset-y-0 z-20 top-1/2">
           <motion.div
