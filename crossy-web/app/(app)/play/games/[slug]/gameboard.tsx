@@ -124,7 +124,7 @@ const Gameboard: React.FC<Props> = ({
     if (claimed.current) return
     for (let i = 0; i < crosswordData.grid.length; i++) {
       if (crosswordData.grid[i] === '.') continue
-      if (crosswordData.grid[i].charAt(0) !== answers[i]) return
+      if (crosswordData.grid[i].charAt(0) !== answers[i].charAt(0)) return
     }
     claimComplete()
     claimed.current = true
