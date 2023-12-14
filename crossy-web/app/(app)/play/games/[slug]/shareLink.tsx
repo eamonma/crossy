@@ -39,14 +39,15 @@ const ShareLink: React.FC<Props> = ({ game }) => {
           Share
         </Button>
       </Popover.Trigger>
-      <Popover.Content align="end">
-        <Flex direction="column">
+      <Popover.Content align="end" size="2" className="max-w-md">
+        <div className="flex flex-col">
           <Heading size="5">Share link</Heading>
           <Text size="2" mb="4" mt="2">
-            Anyone with this link can join the game.
+            Anyone with this link can join the game, or invite anyone else to
+            join this game.
           </Text>
 
-          <Flex direction="column" gap="3">
+          <div className="flex flex-col gap-4">
             <label>
               <p className="sr-only">Link</p>
               <TextField.Input
@@ -55,7 +56,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
                 className="w-full p-1 pl-1 pr-0"
               />
             </label>
-          </Flex>
+          </div>
 
           <Flex gap="3" mt="4" justify="end">
             <Popover.Close>
@@ -64,7 +65,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
               </Button>
             </Popover.Close>
           </Flex>
-        </Flex>
+        </div>
       </Popover.Content>
     </Popover.Root>
   )
