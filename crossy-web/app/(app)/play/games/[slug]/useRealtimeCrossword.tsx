@@ -149,7 +149,6 @@ const useRealtimeCrossword = (
         setFriendsLocations((prev) => {
           const nextLocations = { ...prev }
           for (const friend of event.leftPresences) {
-            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
             delete nextLocations[friend.user_id]
           }
           return nextLocations
@@ -229,7 +228,13 @@ const useRealtimeCrossword = (
       .then(cb)
   }
 
-  return { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers, updateGridItem }
+  return {
+    onlineUserIds,
+    friendsLocations,
+    statusOfGame,
+    remoteAnswers,
+    updateGridItem,
+  }
 }
 
 export default useRealtimeCrossword

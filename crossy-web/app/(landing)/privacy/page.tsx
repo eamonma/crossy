@@ -1,6 +1,11 @@
 import React from 'react'
 import { Heading } from '@radix-ui/themes'
 
+export const metadata = {
+  title: 'Privacy policy',
+  description: 'Privacy policy for Crossy',
+}
+
 const Page = () => {
   return (
     <div className="relative flex flex-col w-full gap-2 p-5 overflow-hidden border border-gray-300 rounded-md shadow-sm bg-gold-25 group">

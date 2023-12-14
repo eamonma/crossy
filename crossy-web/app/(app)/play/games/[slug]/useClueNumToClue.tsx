@@ -12,7 +12,7 @@ const useClueNumToClue = (crosswordData: CrosswordData) => {
     })
 
     return clueNumToClueAcross
-  }, [crosswordData.clues.across])
+  }, [crosswordData])
 
   const clueNumToClueDown = useMemo(() => {
     const clueNumToClueDown = new Map<number, string>()
@@ -23,7 +23,7 @@ const useClueNumToClue = (crosswordData: CrosswordData) => {
     })
 
     return clueNumToClueDown
-  }, [crosswordData.clues.down])
+  }, [crosswordData])
 
   const clueNumToClue = (clueNum: number, direction: 'across' | 'down') => {
     if (direction === 'across') {
