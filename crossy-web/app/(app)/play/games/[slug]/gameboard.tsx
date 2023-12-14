@@ -398,11 +398,17 @@ const Gameboard: React.FC<Props> = ({
             handleCellClick(i)
           }
 
-          const isFriendHereAndWhich = Object.keys(friendsLocations ?? {}).find(
-            (friendId) => friendsLocations?.[friendId].location === i,
+          const friendsAtThisCell = Object.entries(
+            friendsLocations ?? {},
+          ).reduce<Array<{ friendId: string; direction: string }>>(
+            (result, [friendId, friendData]) => {
+              if (friendData.location === i) {
+                result.push({ friendId, direction: friendData.direction })
+              }
+              return result
+            },
+            [],
           )
-          const directionOfSaidFriend =
-            isFriendHereAndWhich && friendsLocations?.[isFriendHereAndWhich].direction
 
           return (
             <g onMouseDown={handleMouseDown} key={i}>
@@ -428,22 +434,29 @@ const Gameboard: React.FC<Props> = ({
                 </text>
               )}
               {/* Friend-is-here indicator */}
-              {isFriendHereAndWhich && (
+              {friendsAtThisCell.length === 1 ? (
                 <svg
                   x={col * cellSize + cellSize - 10}
                   y={row * cellSize + 6}
                   width={7}
                   height={7}
                   viewBox="0 0 12 12"
-                  className={`select-none ${
-                    directionOfSaidFriend === 'down'
-                      ? 'rotate-180'
-                      : 'rotate-90'
-                  }`}
+                  className="select-none"
                 >
                   <path d="M 0,0 L 12,0 L 6,8 Z" fill="var(--indigo-9)" />
                 </svg>
-              )}
+              ) : friendsAtThisCell.length > 1 ? (
+                <text
+                  x={col * cellSize + cellSize - 9}
+                  y={row * cellSize + 10}
+                  fontSize={10}
+                  fontWeight="bold"
+                  fill="var(--indigo-9)"
+                  className="select-none"
+                >
+                  {friendsAtThisCell.length}
+                </text>
+              ) : null}
               {/* Answer of cell */}
               {answers[i] && crosswordData.grid[i] !== '.' && (
                 <text
