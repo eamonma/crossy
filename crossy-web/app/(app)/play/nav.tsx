@@ -1,10 +1,6 @@
 'use client'
 import React from 'react'
-import {
-  DotFilledIcon,
-  FileIcon,
-  HomeIcon,
-} from '@radix-ui/react-icons'
+import { DotFilledIcon, FileIcon, HomeIcon } from '@radix-ui/react-icons'
 import { Link as RadixLink } from '@radix-ui/themes'
 import NextLink from 'next/link'
 
@@ -31,7 +27,7 @@ const Nav = () => {
       <li>
         <Link href="/play" className="flex items-center gap-2">
           <HomeIcon />
-          Home
+          Games
         </Link>
       </li>
       <li>

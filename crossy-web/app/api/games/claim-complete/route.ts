@@ -39,7 +39,7 @@ export async function POST(request: Request): Promise<Response> {
 
   for (let i = 0; i < puzzle.grid.length; i++) {
     if (puzzle.grid[i] === '.') continue
-    if (puzzle.grid[i] !== grid[i]) {
+    if (puzzle.grid[i].charAt(0) !== grid[i]) {
       return Response.json({ error: 'Puzzle is not complete' })
     }
   }

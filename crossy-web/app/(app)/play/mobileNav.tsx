@@ -1,6 +1,11 @@
 'use client'
 import React from 'react'
-import { DotFilledIcon, FileIcon, HamburgerMenuIcon, HomeIcon } from '@radix-ui/react-icons'
+import {
+  DotFilledIcon,
+  FileIcon,
+  HamburgerMenuIcon,
+  HomeIcon,
+} from '@radix-ui/react-icons'
 import { IconButton, Link as RadixLink, Popover } from '@radix-ui/themes'
 import NextLink from 'next/link'
 
@@ -32,7 +37,7 @@ const MobileNav = () => {
             <li>
               <Link href="/play" className="flex items-center gap-2">
                 <HomeIcon />
-                Home
+                Games
               </Link>
             </li>
             <li>
