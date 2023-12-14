@@ -1,5 +1,6 @@
 'use client'
 import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { useSwipeable } from 'react-swipeable'
 import { useTheme } from 'next-themes'
 
 import { findBounds, getNextCell as _getNextCell, getNextWord } from './utils'
@@ -151,7 +152,7 @@ const Gameboard: React.FC<Props> = ({
   const handleSetCell = (
     i: number,
     value: string,
-    e?: KeyboardEvent<SVGElement>,
+    e?: KeyboardEvent<SVGElement> | { shiftKey: boolean },
   ) => {
     let nextCell = currentCell
     const ack = () => {
@@ -326,11 +327,36 @@ const Gameboard: React.FC<Props> = ({
 
   const friendsCellNumbers = Object.values(friendsLocations ?? {})
 
+  const handlers = useSwipeable({
+    onSwiped: (event) => {
+      const map = {
+        across: ['Left', 'Right'],
+        down: ['Up', 'Down'],
+      }
+
+      const dirToKey = {
+        Up: 'ArrowUp',
+        Down: 'ArrowDown',
+        Left: 'ArrowLeft',
+        Right: 'ArrowRight',
+      }
+
+      if (map[currentDirection].includes(event.dir)) {
+        handleSetCell(currentCell, 'Tab', {
+          shiftKey: event.dir === 'Left' || event.dir === 'Up',
+        })
+      } else {
+        handleSetCell(currentCell, dirToKey[event.dir])
+      }
+    },
+  })
+
   return (
     <div
       style={{
         aspectRatio: `${crosswordData.size.cols}/${crosswordData.size.rows}`,
       }}
+      {...handlers}
       className="relative flex justify-center flex-1 w-full h-full"
     >
       <svg

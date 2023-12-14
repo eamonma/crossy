@@ -178,9 +178,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       )}
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
+          alwaysVisibleTools={<OnlineUsers userIds={onlineUserIds} />}
           tools={
             <div className="flex items-center gap-2">
-              <OnlineUsers userIds={onlineUserIds} />
               <Check {...commonProps} />
               <ShareLink game={game} />
             </div>
