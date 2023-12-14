@@ -437,13 +437,17 @@ const Gameboard: React.FC<Props> = ({
               {friendsAtThisCell.length === 1 ? (
                 <svg
                   x={col * cellSize + cellSize - 10}
-                  y={row * cellSize + 6}
+                  y={row * cellSize + 3}
                   width={7}
                   height={7}
                   viewBox="0 0 12 12"
                   className="select-none"
                 >
-                  <path d="M 0,0 L 12,0 L 6,8 Z" fill="var(--indigo-9)" />
+                  {friendsAtThisCell[0].direction === 'across' ? (
+                    <path d="M 0,0 L 12,6 L 0,12 Z" fill="var(--indigo-9)" />
+                  ) : (
+                    <path d="M 0,0 L 6,12 L 12,0 Z" fill="var(--indigo-9)" />
+                  )}
                 </svg>
               ) : friendsAtThisCell.length > 1 ? (
                 <text
