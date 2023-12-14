@@ -24,10 +24,7 @@ const useRealtimeCrossword = (
 ) => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [friendsLocations, setFriendsLocations] = useState<
-    Record<string, number>
-  >({})
-  const [friendsDirections, setFriendsDirections] = useState<
-    Record<string, 'across' | 'down'>
+    Record<string, { location: number, direction: string }>
   >({})
   const [statusOfGame, setStatus] =
     useState<Database['public']['Tables']['status_of_game']['Row']>()
@@ -158,14 +155,6 @@ const useRealtimeCrossword = (
           }
           return nextLocations
         })
-        setFriendsDirections((prev) => {
-          const nextDirections = { ...prev }
-          for (const friend of event.leftPresences) {
-            // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-            delete nextDirections[friend.user_id]
-          }
-          return nextDirections
-        })
       },
     )
 
@@ -205,12 +194,7 @@ const useRealtimeCrossword = (
 
         setFriendsLocations((prev) => ({
           ...prev,
-          [res.user_id]: res.currentCell,
-        }))
-
-        setFriendsDirections((prev) => ({
-          ...prev,
-          [res.user_id]: res.currentDirection as 'across' | 'down',
+          [res.user_id]: { location: res.currentCell, direction: res.currentDirection },
         }))
       },
     )
@@ -246,7 +230,7 @@ const useRealtimeCrossword = (
       .then(cb)
   }
 
-  return { onlineUserIds, friendsLocations, friendsDirections, statusOfGame, remoteAnswers, updateGridItem }
+  return { onlineUserIds, friendsLocations, statusOfGame, remoteAnswers, updateGridItem }
 }
 
 export default useRealtimeCrossword

@@ -53,7 +53,6 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   const {
     onlineUserIds,
     friendsLocations,
-    friendsDirections,
     statusOfGame,
     remoteAnswers,
     updateGridItem,
@@ -225,7 +224,6 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 updateGridItem={updateGridItem}
                 remoteAnswers={remoteAnswers}
                 friendsLocations={friendsLocations}
-                friendsDirections={friendsDirections}
                 gameIsOngoing={gameStatus === 'ongoing'}
                 claimComplete={claimComplete}
               />

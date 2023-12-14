@@ -37,8 +37,7 @@ type Props = {
   setClueNum: React.Dispatch<React.SetStateAction<number>>
   highlights?: Record<number, string>
   setHighlights?: React.Dispatch<React.SetStateAction<Record<number, string>>>
-  friendsLocations?: Record<string, number>
-  friendsDirections?: Record<string, 'across' | 'down'>
+  friendsLocations?: Record<string, { location: number; direction: string }>
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
   gameIsOngoing: boolean
@@ -59,7 +58,6 @@ const Gameboard: React.FC<Props> = ({
   setHighlights,
   gameboardRef,
   friendsLocations,
-  friendsDirections,
   remoteAnswers,
   gameIsOngoing,
   claimComplete,
@@ -327,7 +325,9 @@ const Gameboard: React.FC<Props> = ({
   const friendIsHereColour =
     currentTheme === 'dark' ? 'var(--crimson-8)' : 'var(--crimson-5)'
 
-  const friendsCellNumbers = Object.values(friendsLocations ?? {})
+  const friendsCellNumbers = Object.values(friendsLocations ?? {}).map(
+    (entry) => entry.location,
+  )
 
   const handlers = useSwipeable({
     onSwiped: (event) => {
@@ -399,8 +399,10 @@ const Gameboard: React.FC<Props> = ({
           }
 
           const isFriendHereAndWhich = Object.keys(friendsLocations ?? {}).find(
-            (friendId) => friendsLocations?.[friendId] === i,
+            (friendId) => friendsLocations?.[friendId].location === i,
           )
+          const directionOfSaidFriend =
+            isFriendHereAndWhich && friendsLocations?.[isFriendHereAndWhich].direction
 
           return (
             <g onMouseDown={handleMouseDown} key={i}>
@@ -433,10 +435,11 @@ const Gameboard: React.FC<Props> = ({
                   width={7}
                   height={7}
                   viewBox="0 0 12 12"
-                  className="select-none"
-                  transform={`rotate(${
-                    friendsDirections?.[isFriendHereAndWhich] === 'down' ? 180 : 90
-                  })`}
+                  className={`select-none ${
+                    directionOfSaidFriend === 'down'
+                      ? 'rotate-180'
+                      : 'rotate-90'
+                  }`}
                 >
                   <path d="M 0,0 L 12,0 L 6,8 Z" fill="var(--indigo-9)" />
                 </svg>
