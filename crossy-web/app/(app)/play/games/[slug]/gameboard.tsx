@@ -207,7 +207,7 @@ const Gameboard: React.FC<Props> = ({
         nextCell = getNextCell(
           currentDirection,
           nextCell,
-          'more',
+          towards,
           undefined,
           false,
         )
