@@ -2,11 +2,7 @@
 import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useTheme } from 'next-themes'
 
-import {
-  findBounds,
-  getNextCell as _getNextCell,
-  getNextWord,
-} from './utils'
+import { findBounds, getNextCell as _getNextCell, getNextWord } from './utils'
 
 type Size = {
   cols: number
@@ -214,7 +210,11 @@ const Gameboard: React.FC<Props> = ({
           undefined,
           false,
         )
-        if (crosswordData.grid[nextCell] === '.') {
+
+        if (
+          crosswordData.grid[nextCell] === '.' ||
+          nextCell >= answers.length
+        ) {
           const [left] = findBounds(
             crosswordData.grid,
             crosswordData.size.cols,

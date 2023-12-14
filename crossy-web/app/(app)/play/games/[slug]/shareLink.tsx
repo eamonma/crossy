@@ -32,43 +32,41 @@ const ShareLink: React.FC<Props> = ({ game }) => {
   }
 
   return (
-    <>
-      <Popover.Root>
-        <Popover.Trigger>
-          <Button variant="soft">
-            <ExternalLinkIcon />
-            Share
-          </Button>
-        </Popover.Trigger>
-        <Popover.Content align="end">
-          <Flex direction="column">
-            <Heading size="5">Share link</Heading>
-            <Text size="2" mb="4" mt="2">
-              Anyone with this link can join the game.
-            </Text>
+    <Popover.Root>
+      <Popover.Trigger>
+        <Button variant="soft">
+          <ExternalLinkIcon />
+          Share
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content align="end">
+        <Flex direction="column">
+          <Heading size="5">Share link</Heading>
+          <Text size="2" mb="4" mt="2">
+            Anyone with this link can join the game.
+          </Text>
 
-            <Flex direction="column" gap="3">
-              <label>
-                <p className="sr-only">Link</p>
-                <TextField.Input
-                  value={link}
-                  disabled
-                  className="w-full p-1 pl-1 pr-0"
-                />
-              </label>
-            </Flex>
-
-            <Flex gap="3" mt="4" justify="end">
-              <Popover.Close>
-                <Button variant="outline" onClick={copyInvite}>
-                  Copy and close
-                </Button>
-              </Popover.Close>
-            </Flex>
+          <Flex direction="column" gap="3">
+            <label>
+              <p className="sr-only">Link</p>
+              <TextField.Input
+                value={link}
+                disabled
+                className="w-full p-1 pl-1 pr-0"
+              />
+            </label>
           </Flex>
-        </Popover.Content>
-      </Popover.Root>
-    </>
+
+          <Flex gap="3" mt="4" justify="end">
+            <Popover.Close>
+              <Button variant="outline" onClick={copyInvite}>
+                Copy and close
+              </Button>
+            </Popover.Close>
+          </Flex>
+        </Flex>
+      </Popover.Content>
+    </Popover.Root>
   )
 }
 

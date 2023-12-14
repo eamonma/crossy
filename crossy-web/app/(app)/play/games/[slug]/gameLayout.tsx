@@ -164,10 +164,27 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       )}
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
-          top={
+          tools={
+            <div className="flex items-center gap-2">
+              <OnlineUsers userIds={onlineUserIds} />
+              <Check {...commonProps} />
+              {/* <label className="items-center hidden gap-2 md:flex"> */}
+              {/* <Switch
+            checked={shouldScrollSmoothly}
+            onCheckedChange={() => {
+              setShouldScrollSmoothly((prev) => !prev)
+              gameboardRef.current?.focus()
+            }}
+          />
+          <Text size="2">Smooth scroll</Text> */}
+              {/* </label> */}
+              <ShareLink game={game} />
+            </div>
+          }
+          timer={
             <>
               <div className="flex items-center gap-2">
-                <time className="text-left text-gray-900 min-w-[7ch]">
+                <time className="text-left text-gray-900 min-w-[7ch] whitespace-nowrap">
                   <Timer
                     since={new Date(game.created_at).getTime()}
                     statusOfGame={statusOfGame}
@@ -178,21 +195,6 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                     Done | Read-only
                   </Badge>
                 )}
-              </div>
-              <div className="flex items-center gap-2">
-                <OnlineUsers userIds={onlineUserIds} />
-                <Check {...commonProps} />
-                {/* <label className="items-center hidden gap-2 md:flex"> */}
-                {/* <Switch
-                    checked={shouldScrollSmoothly}
-                    onCheckedChange={() => {
-                      setShouldScrollSmoothly((prev) => !prev)
-                      gameboardRef.current?.focus()
-                    }}
-                  />
-                  <Text size="2">Smooth scroll</Text> */}
-                {/* </label> */}
-                <ShareLink game={game} />
               </div>
             </>
           }
@@ -212,7 +214,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       <div className="max-h-[calc(100%-5rem)] flex-1 grid grid-cols-1 md:grid-cols-[4fr,3fr] items-center justify-center gap-4">
         <div className="relative flex flex-col justify-end flex-1 h-full sm:justify-center">
           <div className="flex flex-col justify-start w-full">
-            <div className="w-full pl-8 pr-3 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">
+            <div className="w-full px-3 sm:pl-8 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">
               <Gameboard
                 {...commonProps}
                 updateGridItem={updateGridItem}
