@@ -6,6 +6,8 @@ import parse from 'html-react-parser'
 
 import { type Database } from '@/lib/database.types'
 
+import useSSRWindowSize from '../../useSSRWindowSize'
+
 import Check from './check'
 import Clues from './clues'
 import Confetti from './confetti'
@@ -148,6 +150,18 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       })
   }
 
+  const { width } = useSSRWindowSize()
+
+  useEffect(() => {
+    if (width < 640) {
+      document.body.classList.add('overflow-hidden')
+    }
+
+    return () => {
+      document.body.classList.remove('overflow-hidden')
+    }
+  }, [width])
+
   return (
     <div className="flex flex-col w-full h-full min-w-fit">
       <Congrats isOpen={claimedToBeComplete} status={gameStatus} />
@@ -168,16 +182,6 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
             <div className="flex items-center gap-2">
               <OnlineUsers userIds={onlineUserIds} />
               <Check {...commonProps} />
-              {/* <label className="items-center hidden gap-2 md:flex"> */}
-              {/* <Switch
-            checked={shouldScrollSmoothly}
-            onCheckedChange={() => {
-              setShouldScrollSmoothly((prev) => !prev)
-              gameboardRef.current?.focus()
-            }}
-          />
-          <Text size="2">Smooth scroll</Text> */}
-              {/* </label> */}
               <ShareLink game={game} />
             </div>
           }
@@ -214,7 +218,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       <div className="max-h-[calc(100%-5rem)] flex-1 grid grid-cols-1 md:grid-cols-[4fr,3fr] items-center justify-center gap-4">
         <div className="relative flex flex-col justify-end flex-1 h-full sm:justify-center">
           <div className="flex flex-col justify-start w-full">
-            <div className="w-full px-3 sm:pl-8 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">
+            <div className="w-full px-1 sm:px-3 sm:pl-8 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">
               <Gameboard
                 {...commonProps}
                 updateGridItem={updateGridItem}

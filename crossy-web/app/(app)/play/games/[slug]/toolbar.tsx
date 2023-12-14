@@ -1,9 +1,6 @@
 'use client'
 import React from 'react'
-import { HamburgerMenuIcon } from '@radix-ui/react-icons'
-import { Flex, IconButton, Popover } from '@radix-ui/themes'
-
-import Nav from '../../nav'
+import { Button, Flex, Popover } from '@radix-ui/themes'
 
 type Props = {
   timer: React.ReactNode
@@ -16,14 +13,10 @@ const Toolbar: React.FC<Props> = ({ timer, tools, clue }) => {
     <div className="block sm:hidden">
       <Popover.Root>
         <Popover.Trigger>
-          <IconButton variant="soft">
-            <HamburgerMenuIcon />
-          </IconButton>
+          <Button variant="soft">Tools</Button>
         </Popover.Trigger>
         <Popover.Content align="end">
-          <Nav />
-          <hr className="mt-4" />
-          <div className="mt-4">{tools}</div>
+          <div>{tools}</div>
         </Popover.Content>
       </Popover.Root>
     </div>

@@ -8,16 +8,14 @@ const Loading = () => {
     <div className="flex flex-col w-full h-full min-w-fit">
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
-          top={
+          timer={
             <>
-              <div className="flex items-center gap-2">
-                <time className="text-left text-gray-900 min-w-[7ch]">
-                  00:00:00
-                </time>
-              </div>
-              <div className="flex items-center gap-4"></div>
+              <time className="text-left text-gray-900 min-w-[7ch]">
+                00:00:00
+              </time>
             </>
           }
+          tools={<></>}
           clue={
             <div className="flex items-baseline w-full">
               <div className="flex items-center text-left text-gray-900 w-[5ch]">

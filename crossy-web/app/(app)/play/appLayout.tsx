@@ -1,16 +1,15 @@
 'use client'
 import React, { useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { useWindowSize } from 'react-use'
-import {
-  ChevronLeftIcon,
-} from '@radix-ui/react-icons'
+import { ChevronLeftIcon } from '@radix-ui/react-icons'
 import { IconButton, Tooltip } from '@radix-ui/themes'
 import { type Session } from '@supabase/supabase-js'
 import { motion, type Transition } from 'framer-motion'
 
+import MobileNav from './mobileNav'
 import Nav from './nav'
 import UserCard from './userCard'
+import useSSRWindowSize from './useSSRWindowSize'
 
 type Props = {
   children: React.ReactNode
@@ -33,16 +32,15 @@ const AppLayout: React.FC<Props> = ({ session, children }) => {
     [isMenuOpen, setIsMenuOpen],
   )
 
-  const { width } = useWindowSize()
+  const { width } = useSSRWindowSize()
 
   if (width < 640) {
     return (
-      <div className="w-full bg-gray-50">
-        <nav className="flex flex-col justify-between w-full h-full gap-2 p-4 pr-0">
-          <Nav />
-          <UserCard session={session} />
+      <div className="flex flex-col w-full bg-gray-50">
+        <nav className="border-b border-dashed">
+          <MobileNav />
         </nav>
-        <div className="relative h-full overflow-auto">{children}</div>
+        <div className="relative flex-1 overflow-auto">{children}</div>
       </div>
     )
   }
