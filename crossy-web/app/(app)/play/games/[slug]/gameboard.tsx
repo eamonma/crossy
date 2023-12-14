@@ -38,6 +38,7 @@ type Props = {
   highlights?: Record<number, string>
   setHighlights?: React.Dispatch<React.SetStateAction<Record<number, string>>>
   friendsLocations?: Record<string, number>
+  friendsDirections?: Record<string, 'across' | 'down'>
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
   gameIsOngoing: boolean
@@ -58,6 +59,7 @@ const Gameboard: React.FC<Props> = ({
   setHighlights,
   gameboardRef,
   friendsLocations,
+  friendsDirections,
   remoteAnswers,
   gameIsOngoing,
   claimComplete,
@@ -396,6 +398,10 @@ const Gameboard: React.FC<Props> = ({
             handleCellClick(i)
           }
 
+          const isFriendHereAndWhich = Object.keys(friendsLocations ?? {}).find(
+            (friendId) => friendsLocations?.[friendId] === i,
+          )
+
           return (
             <g onMouseDown={handleMouseDown} key={i}>
               <rect
@@ -420,14 +426,20 @@ const Gameboard: React.FC<Props> = ({
                 </text>
               )}
               {/* Friend-is-here indicator */}
-              {friendsCellNumbers.includes(i) && (
-                <circle
-                  cx={col * cellSize + cellSize - 6}
-                  cy={row * cellSize + 6}
-                  r={2.5}
-                  fill="var(--indigo-9)"
+              {isFriendHereAndWhich && (
+                <svg
+                  x={col * cellSize + cellSize - 10}
+                  y={row * cellSize + 6}
+                  width={7}
+                  height={7}
+                  viewBox="0 0 12 12"
                   className="select-none"
-                />
+                  transform={`rotate(${
+                    friendsDirections?.[isFriendHereAndWhich] === 'down' ? 180 : 90
+                  })`}
+                >
+                  <path d="M 0,0 L 12,0 L 6,8 Z" fill="var(--indigo-9)" />
+                </svg>
               )}
               {/* Answer of cell */}
               {answers[i] && crosswordData.grid[i] !== '.' && (

@@ -53,10 +53,11 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   const {
     onlineUserIds,
     friendsLocations,
+    friendsDirections,
     statusOfGame,
     remoteAnswers,
     updateGridItem,
-  } = useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
+  } = useRealtimeCrossword(game.id, user.id, currentCell, currentDirection, game.grid)
 
   const isOnline = useSSRNetworkState()
 
@@ -224,6 +225,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 updateGridItem={updateGridItem}
                 remoteAnswers={remoteAnswers}
                 friendsLocations={friendsLocations}
+                friendsDirections={friendsDirections}
                 gameIsOngoing={gameStatus === 'ongoing'}
                 claimComplete={claimComplete}
               />
