@@ -1,0 +1,29 @@
+name: Nextjs unit tests
+
+on:
+  push:
+    paths:
+      - 'crossy-web/**'
+  pull_request:
+    paths:
+      - 'crossy-web/**'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v2
+      with:
+        node-version: ${{ matrix.node-version }}
+    - name: Install dependencies
+      run: cd crossy-web && npm install
+    - name: Run Jest
+      run: cd crossy-web && npm test
