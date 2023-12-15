@@ -56,7 +56,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     statusOfGame,
     remoteAnswers,
     updateGridItem,
-  } = useRealtimeCrossword(game.id, user.id, currentCell, game.grid)
+  } = useRealtimeCrossword(game.id, user.id, currentCell, currentDirection, game.grid)
 
   const clueNumToClue = useClueNumToClue(crosswordData)
 

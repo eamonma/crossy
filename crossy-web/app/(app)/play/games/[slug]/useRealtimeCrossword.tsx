@@ -19,11 +19,12 @@ const useRealtimeCrossword = (
   gameId: string,
   userId: string,
   currentCell: number,
+  currentDirection: 'across' | 'down',
   initialRemoteAnswers: string[] = [],
 ) => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [friendsLocations, setFriendsLocations] = useState<
-    Record<string, number>
+    Record<string, { location: number, direction: string }>
   >({})
   const [statusOfGame, setStatus] =
     useState<Database['public']['Tables']['status_of_game']['Row']>()
@@ -184,7 +185,7 @@ const useRealtimeCrossword = (
     messageChannel.on(
       REALTIME_LISTEN_TYPES.BROADCAST,
       { event: 'POS' },
-      (payload: Payload<{ user_id: string } & { currentCell: number }>) => {
+      (payload: Payload<{ user_id: string } & { currentCell: number } & { currentDirection: string }>) => {
         const { payload: res, event, type } = payload
         if (event !== 'POS' || type !== 'broadcast') return
         if (!res) return
@@ -192,7 +193,7 @@ const useRealtimeCrossword = (
 
         setFriendsLocations((prev) => ({
           ...prev,
-          [res.user_id]: res.currentCell,
+          [res.user_id]: { location: res.currentCell, direction: res.currentDirection },
         }))
       },
     )
@@ -202,7 +203,7 @@ const useRealtimeCrossword = (
         await messageChannel.send({
           type: 'broadcast',
           event: 'POS',
-          payload: { user_id: userId, currentCell },
+          payload: { user_id: userId, currentCell, currentDirection },
         })
       }
     })
@@ -210,7 +211,7 @@ const useRealtimeCrossword = (
     return () => {
       void supabase.removeChannel(messageChannel).then()
     }
-  }, [gameId, userId, currentCell, isInitialStateSynced, supabase])
+  }, [gameId, userId, currentCell, currentDirection, isInitialStateSynced, supabase])
 
   const updateGridItem = (
     index: number,

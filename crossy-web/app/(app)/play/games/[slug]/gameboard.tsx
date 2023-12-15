@@ -37,7 +37,7 @@ type Props = {
   setClueNum: React.Dispatch<React.SetStateAction<number>>
   highlights?: Record<number, string>
   setHighlights?: React.Dispatch<React.SetStateAction<Record<number, string>>>
-  friendsLocations?: Record<string, number>
+  friendsLocations?: Record<string, { location: number; direction: string }>
   gameboardRef: React.RefObject<SVGSVGElement>
   remoteAnswers: string[]
   gameIsOngoing: boolean
@@ -325,7 +325,9 @@ const Gameboard: React.FC<Props> = ({
   const friendIsHereColour =
     currentTheme === 'dark' ? 'var(--crimson-8)' : 'var(--crimson-5)'
 
-  const friendsCellNumbers = Object.values(friendsLocations ?? {})
+  const friendsCellNumbers = Object.values(friendsLocations ?? {}).map(
+    (entry) => entry.location,
+  )
 
   const handlers = useSwipeable({
     onSwiped: (event) => {
@@ -396,6 +398,51 @@ const Gameboard: React.FC<Props> = ({
             handleCellClick(i)
           }
 
+          const friendsAtThisCell = Object.entries(
+            friendsLocations ?? {},
+          ).reduce<Array<{ friendId: string; direction: string }>>(
+            (result, [friendId, friendData]) => {
+              if (friendData.location === i) {
+                result.push({ friendId, direction: friendData.direction })
+              }
+              return result
+            },
+            [],
+          )
+
+          let friendIsHereIndicator
+          if (friendsAtThisCell.length === 1) {
+            friendIsHereIndicator = (
+              <svg
+                x={col * cellSize + cellSize - 10}
+                y={row * cellSize + 3}
+                width={7}
+                height={7}
+                viewBox="0 0 12 12"
+                className="select-none"
+              >
+                {friendsAtThisCell[0].direction === 'across' ? (
+                  <path d="M 0,0 L 12,6 L 0,12 Z" fill="var(--indigo-9)" />
+                ) : (
+                  <path d="M 0,0 L 6,12 L 12,0 Z" fill="var(--indigo-9)" />
+                )}
+              </svg>
+            )
+          } else if (friendsAtThisCell.length > 1) {
+            friendIsHereIndicator = (
+              <text
+                x={col * cellSize + cellSize - 9}
+                y={row * cellSize + 10}
+                fontSize={10}
+                fontWeight="bold"
+                fill="var(--indigo-9)"
+                className="select-none"
+              >
+                {friendsAtThisCell.length}
+              </text>
+            )
+          }
+
           return (
             <g onMouseDown={handleMouseDown} key={i}>
               <rect
@@ -420,15 +467,7 @@ const Gameboard: React.FC<Props> = ({
                 </text>
               )}
               {/* Friend-is-here indicator */}
-              {friendsCellNumbers.includes(i) && (
-                <circle
-                  cx={col * cellSize + cellSize - 6}
-                  cy={row * cellSize + 6}
-                  r={2.5}
-                  fill="var(--indigo-9)"
-                  className="select-none"
-                />
-              )}
+              {friendIsHereIndicator}
               {/* Answer of cell */}
               {answers[i] && crosswordData.grid[i] !== '.' && (
                 <text
