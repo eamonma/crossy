@@ -40,7 +40,8 @@ rules:
   "react/no-unescaped-entities": "off"
 ignorePatterns:
   - "lib/database.types.ts"
-
+  - "*.js"
+  - "*.jsx"
 overrides:
   - files: ["*.js", "*.jsx", "*.ts", "*.tsx"]
     rules:

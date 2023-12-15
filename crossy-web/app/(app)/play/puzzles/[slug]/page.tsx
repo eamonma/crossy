@@ -70,6 +70,10 @@ const Page = async ({ params }: { params: { slug: string } }) => {
     }
 
     if (gameError) {
+      console.log(puzzle)
+      const user = await supabase.auth.getUser()
+      console.log(user)
+
       console.error(gameError)
     }
   }
@@ -82,7 +86,7 @@ const Page = async ({ params }: { params: { slug: string } }) => {
             <Image
               src="/404.png"
               alt="404 notice"
-              className="shadow-sm object-fit rounded-sm border border-gray-300"
+              className="border border-gray-300 rounded-sm shadow-sm object-fit"
               height="1024"
               width="1024"
             />
