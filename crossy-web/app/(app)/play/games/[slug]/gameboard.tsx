@@ -410,6 +410,39 @@ const Gameboard: React.FC<Props> = ({
             [],
           )
 
+          let friendIsHereIndicator
+          if (friendsAtThisCell.length === 1) {
+            friendIsHereIndicator = (
+              <svg
+                x={col * cellSize + cellSize - 10}
+                y={row * cellSize + 3}
+                width={7}
+                height={7}
+                viewBox="0 0 12 12"
+                className="select-none"
+              >
+                {friendsAtThisCell[0].direction === 'across' ? (
+                  <path d="M 0,0 L 12,6 L 0,12 Z" fill="var(--indigo-9)" />
+                ) : (
+                  <path d="M 0,0 L 6,12 L 12,0 Z" fill="var(--indigo-9)" />
+                )}
+              </svg>
+            )
+          } else if (friendsAtThisCell.length > 1) {
+            friendIsHereIndicator = (
+              <text
+                x={col * cellSize + cellSize - 9}
+                y={row * cellSize + 10}
+                fontSize={10}
+                fontWeight="bold"
+                fill="var(--indigo-9)"
+                className="select-none"
+              >
+                {friendsAtThisCell.length}
+              </text>
+            )
+          }
+
           return (
             <g onMouseDown={handleMouseDown} key={i}>
               <rect
@@ -434,33 +467,7 @@ const Gameboard: React.FC<Props> = ({
                 </text>
               )}
               {/* Friend-is-here indicator */}
-              {friendsAtThisCell.length === 1 ? (
-                <svg
-                  x={col * cellSize + cellSize - 10}
-                  y={row * cellSize + 3}
-                  width={7}
-                  height={7}
-                  viewBox="0 0 12 12"
-                  className="select-none"
-                >
-                  {friendsAtThisCell[0].direction === 'across' ? (
-                    <path d="M 0,0 L 12,6 L 0,12 Z" fill="var(--indigo-9)" />
-                  ) : (
-                    <path d="M 0,0 L 6,12 L 12,0 Z" fill="var(--indigo-9)" />
-                  )}
-                </svg>
-              ) : friendsAtThisCell.length > 1 ? (
-                <text
-                  x={col * cellSize + cellSize - 9}
-                  y={row * cellSize + 10}
-                  fontSize={10}
-                  fontWeight="bold"
-                  fill="var(--indigo-9)"
-                  className="select-none"
-                >
-                  {friendsAtThisCell.length}
-                </text>
-              ) : null}
+              {friendIsHereIndicator}
               {/* Answer of cell */}
               {answers[i] && crosswordData.grid[i] !== '.' && (
                 <text
