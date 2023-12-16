@@ -19,6 +19,7 @@ export type CrosswordData = {
   clues: Clues
   grid: string[]
   gridnums: number[]
+  circles?: boolean[]
   size: Size
   id?: string
 }
@@ -454,6 +455,15 @@ const Gameboard: React.FC<Props> = ({
                 stroke="var(--gray-8)"
                 strokeWidth={0.6}
               />
+              {crosswordData?.circles?.[i] && (
+                <circle
+                  cx={col * cellSize + cellSize / 2}
+                  cy={row * cellSize + cellSize / 2}
+                  r={cellSize / 2.1}
+                  stroke="var(--gray-11)"
+                  fill="none"
+                />
+              )}
               {crosswordData.gridnums[i] && (
                 <text
                   x={col * cellSize + 2}
