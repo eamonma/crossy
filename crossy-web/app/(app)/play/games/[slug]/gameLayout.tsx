@@ -1,6 +1,6 @@
 'use client'
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Badge, Text } from '@radix-ui/themes'
+import { Badge, Button, Text } from '@radix-ui/themes'
 import { type User } from '@supabase/supabase-js'
 import parse from 'html-react-parser'
 
@@ -56,7 +56,13 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     statusOfGame,
     remoteAnswers,
     updateGridItem,
-  } = useRealtimeCrossword(game.id, user.id, currentCell, currentDirection, game.grid)
+  } = useRealtimeCrossword(
+    game.id,
+    user.id,
+    currentCell,
+    currentDirection,
+    game.grid,
+  )
 
   const clueNumToClue = useClueNumToClue(crosswordData)
 
@@ -157,6 +163,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
             <div className="flex items-center gap-2">
               <Check {...commonProps} />
               <ShareLink game={game} />
+              <Button onClick={claimComplete}>Force claim</Button>
             </div>
           }
           timer={
