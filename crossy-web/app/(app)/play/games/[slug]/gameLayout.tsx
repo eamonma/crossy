@@ -163,7 +163,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
             <div className="flex items-center gap-2">
               <Check {...commonProps} />
               <ShareLink game={game} />
-              <Button onClick={claimComplete}>Force claim</Button>
+              {/* <Button onClick={claimComplete}>Force claim</Button> */}
             </div>
           }
           timer={
