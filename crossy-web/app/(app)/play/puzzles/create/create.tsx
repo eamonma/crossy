@@ -102,6 +102,29 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
     setCrosswordData(defaultData)
   }
 
+  const handleURLSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const url = e.currentTarget.value
+      fetch(url)
+        .then(async (response) => await response.json())
+        .then((data) => {
+          try {
+            const res = crosswordJsonSchema.parse(data)
+            setFiles([new File([JSON.stringify(res)], 'crossword.json')])
+            setError(null)
+            setCrosswordData(res)
+          } catch (err) {
+            if (err instanceof z.ZodError) {
+              setError('Invalid crossword file')
+            }
+          }
+        })
+        .catch((error) => {
+          console.error('Error:', error)
+        })
+    }
+  }
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     fetch('/api/puzzles', {
@@ -173,6 +196,14 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           ) : (
             <Text trim="both">Select a crossword JSON file</Text>
           )}
+        </div>
+        <div className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
+          <input
+            type="text"
+            placeholder="... or enter a crossword URL"
+            className="w-full h-12 px-4 border-b border-gray-300 focus:outline-none"
+            onKeyDown={handleURLSubmit}
+          />
         </div>
       </section>
       <div
