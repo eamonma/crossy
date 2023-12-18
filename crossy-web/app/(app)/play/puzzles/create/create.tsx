@@ -2,7 +2,13 @@
 import React, { useEffect, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Cross1Icon } from '@radix-ui/react-icons'
-import { Button, Heading, IconButton, Text } from '@radix-ui/themes'
+import {
+  Button,
+  Heading,
+  IconButton,
+  Tabs,
+  Text,
+} from '@radix-ui/themes'
 import { z } from 'zod'
 
 import CrosswordGrid from '@/components/crosswordGridDisplay'
@@ -60,6 +66,8 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   const [files, setFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
   const [crosswordData, setCrosswordData] = useState<CrosswordJson>(defaultData)
+  const [url, setURL] = useState<string>('')
+  const [currentTab, setCurrentTab] = useState<'file' | 'url'>('file')
 
   const { getRootProps, getInputProps } = useDropzone({
     maxFiles: 1,
@@ -68,6 +76,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
     },
     onDrop: (acceptedFiles: File[]) => {
       setFiles([...acceptedFiles])
+      setCurrentTab('file')
     },
   })
 
@@ -102,27 +111,25 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
     setCrosswordData(defaultData)
   }
 
-  const handleURLSubmit = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      const url = e.currentTarget.value
-      fetch(url)
-        .then(async (response) => await response.json())
-        .then((data) => {
-          try {
-            const res = crosswordJsonSchema.parse(data)
-            setFiles([new File([JSON.stringify(res)], 'crossword.json')])
-            setError(null)
-            setCrosswordData(res)
-          } catch (err) {
-            if (err instanceof z.ZodError) {
-              setError('Invalid crossword file')
-            }
+  const onURLSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    fetch(url)
+      .then(async (response) => await response.json())
+      .then((data) => {
+        try {
+          const res = crosswordJsonSchema.parse(data)
+          setFiles([new File([JSON.stringify(res)], 'crossword.json')])
+          setError(null)
+          setCrosswordData(res)
+        } catch (err) {
+          if (err instanceof z.ZodError) {
+            setError('Invalid crossword file')
           }
-        })
-        .catch((error) => {
-          console.error('Error:', error)
-        })
-    }
+        }
+      })
+      .catch((error) => {
+        console.error('Error:', error)
+      })
   }
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -158,10 +165,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="flex flex-col items-start h-full gap-4"
-    >
+    <div className="flex flex-col items-start h-full gap-4">
       {files.length > 0 && (
         <Heading size="5" className="w-full truncate">
           {crosswordData.title}
@@ -172,42 +176,79 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           {error}
         </Text>
       )}
-      <section className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
-        <div
-          {...getRootProps({
-            className: 'dropzone h-12 px-4 flex cursor-pointer items-center',
-          })}
-        >
-          <input key={files.toString()} {...getInputProps()} />
-          {files.length > 0 ? (
-            <div className="flex items-center justify-between w-full gap-2">
-              <Text className="font-mono" trim="both">
-                {files[0].name}
-              </Text>
-              <IconButton
-                size="1"
-                onClick={onClearFiles}
-                variant="soft"
-                color="red"
+      <Tabs.Root
+        value={currentTab}
+        onValueChange={(v) => setCurrentTab(v as 'file' | 'url')}
+        className="w-full"
+      >
+        <Tabs.List>
+          <Tabs.Trigger value="file">File</Tabs.Trigger>
+          <Tabs.Trigger value="url">URL</Tabs.Trigger>
+        </Tabs.List>
+
+        <div className="h-12 mt-4">
+          <Tabs.Content value="file" className="h-full">
+            <div className="w-full h-full font-medium border border-dashed rounded-md">
+              <div
+                {...getRootProps({
+                  className:
+                    'dropzone px-4 flex cursor-pointer items-center h-full',
+                })}
               >
-                <Cross1Icon />
-              </IconButton>
+                <input key={files.toString()} {...getInputProps()} />
+                {files.length > 0 ? (
+                  <div className="flex items-center justify-between w-full gap-2">
+                    <Text className="font-mono" trim="both">
+                      {files[0].name}
+                    </Text>
+                    <IconButton
+                      size="1"
+                      onClick={onClearFiles}
+                      variant="soft"
+                      color="red"
+                    >
+                      <Cross1Icon />
+                    </IconButton>
+                  </div>
+                ) : (
+                  <Text>Select a crossword JSON file</Text>
+                )}
+              </div>
             </div>
-          ) : (
-            <Text trim="both">Select a crossword JSON file</Text>
-          )}
+          </Tabs.Content>
+
+          <Tabs.Content value="url" className="h-full">
+            <form className="flex w-full h-full" onSubmit={onURLSubmit}>
+              <input
+                value={url}
+                onChange={(e) => {
+                  setURL(e.target.value)
+                }}
+                type="text"
+                placeholder="Enter a crossword URL"
+                className="flex-1 h-full px-2 mr-2 border rounded-md"
+              />
+
+              <button
+                className="px-2 rounded-sm bg-accent-700 text-gray-25"
+                type="submit"
+              >
+                Get
+              </button>
+              {/* <Button>Get</Button> */}
+            </form>
+          </Tabs.Content>
         </div>
-        <div className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
-          <input
-            type="text"
-            placeholder="... or enter a crossword URL"
-            className="w-full h-12 px-4 border-b border-gray-300 focus:outline-none"
-            onKeyDown={handleURLSubmit}
-          />
-        </div>
-      </section>
+      </Tabs.Root>
+
+      {/* <section className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
+        <div className="w-full font-medium border border-dashed border-grayA-5 rounded-4"></div>
+      </section> */}
       <div
-        className={`flex w-full justify-center items-center min-h-[40svh] transition ${
+        {...getRootProps({
+          // className: 'dropzone h-12 px-4 flex cursor-pointer items-center',
+        })}
+        className={`flex w-full justify-center items-center min-h-[40svh] transition dropzone cursor-pointer ${
           files.length > 0 ? 'opacity-100' : 'opacity-20'
         } ${maxString}`}
       >
@@ -217,13 +258,15 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           answers={[]}
         />
       </div>
-      <div className="flex justify-end w-full gap-2">
-        <Button type="button" onClick={onCancel} variant="surface">
-          Cancel
-        </Button>
-        <Button disabled={files.length === 0}>Continue</Button>
-      </div>
-    </form>
+      <form onSubmit={onSubmit} className="w-full">
+        <div className="flex justify-end w-full gap-2">
+          <Button type="button" onClick={onCancel} variant="surface">
+            Cancel
+          </Button>
+          <Button disabled={files.length === 0}>Continue</Button>
+        </div>
+      </form>
+    </div>
   )
 }
 
