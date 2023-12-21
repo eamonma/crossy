@@ -475,16 +475,19 @@ const Gameboard: React.FC<Props> = ({
                     x={col * cellSize + cellSize - 10}
                     y={row * cellSize + cellSize - 10}
                     className="rounded-full"
-                    width="9"
+                    width="10"
                     height="9"
                   >
+                    <defs>
+                      <clipPath id="roundClip">
+                        <circle cx="4.5" cy="4.5" r="4.5" />
+                      </clipPath>
+                    </defs>
                     <image
-                      width="10"
-                      height="10"
-                      xlinkHref={
-                        users[friendsAtThisCell[0].friendId]?.avatar_url ??
-                        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
-                      }
+                      width="9"
+                      height="9"
+                      xlinkHref={friendHereAvatar}
+                      clip-path="url(#roundClip)"
                     />
                   </svg>
                 ) : (
@@ -555,7 +558,11 @@ const Gameboard: React.FC<Props> = ({
               {/* Answer of cell */}
               {answers[i] && crosswordData.grid[i] !== '.' && (
                 <text
-                  x={col * cellSize + cellSize / 2}
+                  x={
+                    col * cellSize +
+                    cellSize / 2 +
+                    (friendIsHereIndicator ? -3 : 0)
+                  }
                   y={row * cellSize + cellSize / 2 + 14}
                   textAnchor="middle"
                   fontSize={24}
