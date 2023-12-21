@@ -60,9 +60,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
 
           <Flex gap="3" mt="4" justify="end">
             <Popover.Close>
-              <Button variant="outline" onClick={copyInvite}>
-                Copy and close
-              </Button>
+              <Button onClick={copyInvite}>Copy and close</Button>
             </Popover.Close>
           </Flex>
         </div>

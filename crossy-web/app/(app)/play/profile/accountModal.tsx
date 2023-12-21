@@ -115,9 +115,7 @@ const AccountForm: React.FC<Props> = ({
 
         <Flex gap="3" mt="4" justify="end">
           <Dialog.Close>
-            <Button variant="soft" color="gray">
-              Cancel
-            </Button>
+            <Button variant="soft">Cancel</Button>
           </Dialog.Close>
           <Dialog.Close>
             <Button type="submit">Save</Button>

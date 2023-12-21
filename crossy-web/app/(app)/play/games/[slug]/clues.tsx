@@ -1,4 +1,4 @@
-import React, { useRef } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
 
@@ -42,10 +42,12 @@ const Clues: React.FC<Props> = ({
 
   const clueNum = crosswordData.gridnums[bounds[0]] ?? 0
 
-  listRef.current?.[clueNum]?.scrollIntoView({
-    behavior: shouldScrollSmoothly ? 'smooth' : 'instant',
-    block: 'start',
-  })
+  useEffect(() => {
+    listRef.current?.[clueNum]?.scrollIntoView({
+      behavior: shouldScrollSmoothly ? 'smooth' : 'instant',
+      block: 'start',
+    })
+  }, [clueNum, shouldScrollSmoothly])
 
   return (
     <>

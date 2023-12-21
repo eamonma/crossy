@@ -3,7 +3,10 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { type Database } from '@/lib/database.types'
-import { createClient, dangerouslyCreateServiceRoleClient } from '@/utils/supabase/server'
+import {
+  createClient,
+  dangerouslyCreateServiceRoleClient,
+} from '@/utils/supabase/server'
 
 import Form from './loginForm'
 import Main from './main'
@@ -14,26 +17,22 @@ export const generateMetadata = async ({
   searchParams?: Record<string, string | string[] | undefined>
 }) => {
   const redirectLink = searchParams?.redirectTo
-
-  if (!redirectLink) {
-    return {
-      title: 'Login',
-    }
+  const defaultMeta = {
+    title: 'Login',
   }
 
-  // if redirectLink is an array
+  if (!redirectLink) {
+    return defaultMeta
+  }
+
   if (Array.isArray(redirectLink)) {
-    return {
-      title: 'Login',
-    }
+    return defaultMeta
   }
 
   const gameId = redirectLink.split('games/').pop()?.split('?').shift()
 
   if (!gameId) {
-    return {
-      title: 'Login',
-    }
+    return defaultMeta
   }
 
   const supabase = dangerouslyCreateServiceRoleClient<Database>()
@@ -43,8 +42,6 @@ export const generateMetadata = async ({
     .select('*, puzzles(*)')
     .eq('id', gameId)
     .single()
-
-  console.log(game)
 
   if (!game && searchParams?.key) {
     return {
@@ -67,14 +64,14 @@ export const generateMetadata = async ({
       openGraph: {
         images: `${url}api/og?game=${game.id}`,
         title: `${game?.puzzles?.name} — Crossy`,
-        description: 'Solve crosswords together!',
+        description: 'Solve crosswords together',
         url: 'https://crossy.me',
         siteName: 'Crossy',
       },
       twitter: {
         card: 'summary_large_image',
         title: `${game?.puzzles?.name} — Crossy`,
-        description: 'Solve crosswords together!',
+        description: 'Solve crosswords together',
         creator: '@eamonma',
         images: [`${url}api/og?game=${game.id}`],
       },

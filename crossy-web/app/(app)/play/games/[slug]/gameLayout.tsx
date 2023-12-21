@@ -100,46 +100,57 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
   }, [crosswordData])
 
   const clueNumToHighlights = useMemo(() => {
-    const res: Record<number, Record<number, string>> = {}
-    crosswordData.clues.across.forEach((clue, i) => {
-      const clueNum = parseInt(clue.split('. ')[0])
-      const clueText = clue.split('. ')[1]
-      const regex = /(\d+)(?:-|,|\\s)*(across|down)/gi
-      const match = regex.exec(clueText)
+    const res: {
+      across: Record<number, Record<number, string>>
+      down: Record<number, Record<number, string>>
+    } = { across: {}, down: {} }
+    ;[crosswordData.clues.across, crosswordData.clues.down].forEach(
+      (setOfClues, i) => {
+        const clueDir = i === 0 ? 'across' : 'down'
+        setOfClues.forEach((clue) => {
+          const clueNum = parseInt(clue.split('. ')[0])
+          const clueText = clue.split('. ')[1]
+          const regex = /(\d+)(?:-|,|\\s)*(across|down)/gi
+          const match = regex.exec(clueText)
 
-      if (match) {
-        const clueNumsStr = clueText.match(/\d+/g)
-        const clueNums = clueNumsStr?.map((num) => parseInt(num, 10))
-        const direction = match[2].toLowerCase() as 'across' | 'down'
-        const stride = direction === 'across' ? 1 : crosswordData.size.cols
+          if (match) {
+            const clueNumsStr = clueText.match(/\d+/g)
+            const clueNums = clueNumsStr?.map((num) => parseInt(num, 10))
+            const direction = match[2].toLowerCase() as 'across' | 'down'
+            const stride = direction === 'across' ? 1 : crosswordData.size.cols
 
-        if (clueNums) {
-          const highlightsForClue: Record<number, string> = {}
-          clueNums.forEach((clueNum) => {
-            const [lower, upper] = findBounds(
-              crosswordData.grid,
-              crosswordData.size.cols,
-              crosswordData.size.rows,
-              direction,
-              clueNumToCell[clueNum],
-              crosswordData.id,
-            )
+            if (clueNums) {
+              const highlightsForClue: Record<number, string> = {}
+              clueNums.forEach((clueNum) => {
+                const [lower, upper] = findBounds(
+                  crosswordData.grid,
+                  crosswordData.size.cols,
+                  crosswordData.size.rows,
+                  direction,
+                  clueNumToCell[clueNum],
+                  crosswordData.id,
+                )
 
-            for (let i = lower; i <= upper; i += stride) {
-              highlightsForClue[i] = 'var(--amber-4)'
+                for (let i = lower; i <= upper; i += stride) {
+                  highlightsForClue[i] = 'var(--amber-4)'
+                }
+              })
+
+              res[clueDir][clueNum] = highlightsForClue
             }
-          })
-
-          res[clueNum] = highlightsForClue
-        }
-      }
-    })
+          }
+        })
+      },
+    )
     return res
   }, [clueNumToCell, crosswordData])
 
   useEffect(() => {
-    if (clueNumToHighlights[clueNum]) {
-      setHighlights((prev) => ({ ...prev, ...clueNumToHighlights[clueNum] }))
+    if (clueNumToHighlights[currentDirection][clueNum]) {
+      setHighlights((prev) => ({
+        ...prev,
+        ...clueNumToHighlights[currentDirection][clueNum],
+      }))
     } else {
       setHighlights((prev) => {
         const res = { ...prev }
@@ -152,7 +163,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
         return res
       })
     }
-  }, [clueNumToHighlights, clueNum, setHighlights])
+  }, [clueNumToHighlights, clueNum, currentDirection, setHighlights])
 
   return (
     <div className="flex flex-col w-full h-full min-w-fit">
@@ -176,7 +187,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
               </time>
               {gameStatus === 'completed' && (
                 <Badge radius="full" color="green" size="1">
-                  Done | Read-only
+                  Done
                 </Badge>
               )}
             </div>

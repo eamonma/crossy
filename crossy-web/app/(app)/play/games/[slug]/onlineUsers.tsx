@@ -35,7 +35,11 @@ const OnlineUsers: React.FC<Props> = ({ userIds }) => {
 
   const avatars = users.map((user) => {
     return (
-      <Tooltip key={user.id} content={user.full_name ?? 'unknown'}>
+      <Tooltip
+        key={user.id}
+        content={user.full_name ?? 'unknown'}
+        delayDuration={0}
+      >
         {user.avatar_url ? (
           <Avatar size="1" radius="full" src={user.avatar_url} fallback="" />
         ) : (

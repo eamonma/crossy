@@ -3,6 +3,9 @@ import React, { type KeyboardEvent, useEffect, useRef, useState } from 'react'
 import { useSwipeable } from 'react-swipeable'
 import { useTheme } from 'next-themes'
 
+import { type Database } from '@/lib/database.types'
+import { createClient } from '@/utils/supabase/client'
+
 import { findBounds, getNextCell as _getNextCell, getNextWord } from './utils'
 
 type Size = {
@@ -125,6 +128,7 @@ const Gameboard: React.FC<Props> = ({
     if (claimed.current) return
     for (let i = 0; i < crosswordData.grid.length; i++) {
       if (crosswordData.grid[i] === '.') continue
+      if (crosswordData.grid[i] === '') continue
       if (crosswordData.grid[i]?.charAt(0) !== answers[i]?.charAt(0)) return
     }
     claimComplete()
@@ -354,6 +358,41 @@ const Gameboard: React.FC<Props> = ({
     },
   })
 
+  console.log(friendsLocations)
+
+  const supabase = createClient<Database>()
+  const [users, setUsers] = useState<
+    Record<string, Database['public']['Tables']['profiles']['Row']>
+  >({})
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('id', Object.keys(friendsLocations ?? {}))
+
+        if (error) throw Error(error.message)
+
+        const dataWithIdAsKey = data.reduce<Record<string, any>>(
+          (result, user) => {
+            result[user.id] = user
+            return result
+          },
+          {},
+        )
+        setUsers(dataWithIdAsKey)
+
+        console.log(data)
+      } catch (error) {
+        console.log(error)
+      }
+    }
+
+    void fetchUsers().then(() => {})
+  }, [supabase, friendsLocations])
+
   return (
     <div
       style={{
@@ -413,21 +452,56 @@ const Gameboard: React.FC<Props> = ({
 
           let friendIsHereIndicator
           if (friendsAtThisCell.length === 1) {
+            const friendHereAvatar =
+              users[friendsAtThisCell[0].friendId]?.avatar_url
             friendIsHereIndicator = (
-              <svg
-                x={col * cellSize + cellSize - 10}
-                y={row * cellSize + 3}
-                width={7}
-                height={7}
-                viewBox="0 0 12 12"
-                className="select-none"
-              >
-                {friendsAtThisCell[0].direction === 'across' ? (
-                  <path d="M 0,0 L 12,6 L 0,12 Z" fill="var(--indigo-9)" />
+              <>
+                <svg
+                  x={col * cellSize + cellSize - 9}
+                  y={row * cellSize + 3}
+                  width={7}
+                  height={7}
+                  viewBox="0 0 12 12"
+                  className="select-none"
+                >
+                  {friendsAtThisCell[0].direction === 'across' ? (
+                    <path d="M 0,0 L 12,6 L 0,12 Z" fill="var(--indigo-11)" />
+                  ) : (
+                    <path d="M 0,0 L 6,12 L 12,0 Z" fill="var(--indigo-11)" />
+                  )}
+                </svg>
+                {friendHereAvatar ? (
+                  <svg
+                    x={col * cellSize + cellSize - 10}
+                    y={row * cellSize + cellSize - 10}
+                    className="rounded-full"
+                    width="9"
+                    height="9"
+                  >
+                    <image
+                      width="10"
+                      height="10"
+                      xlinkHref={
+                        users[friendsAtThisCell[0].friendId]?.avatar_url ??
+                        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=='
+                      }
+                    />
+                  </svg>
                 ) : (
-                  <path d="M 0,0 L 6,12 L 12,0 Z" fill="var(--indigo-9)" />
+                  <text
+                    x={col * cellSize + cellSize - 8}
+                    y={row * cellSize + cellSize - 4}
+                    fontSize={8}
+                    fontWeight="bold"
+                    fill="var(--indigo-12)"
+                    className="select-none"
+                  >
+                    {users[friendsAtThisCell[0].friendId]?.full_name
+                      ?.charAt(0)
+                      .toUpperCase()}
+                  </text>
                 )}
-              </svg>
+              </>
             )
           } else if (friendsAtThisCell.length > 1) {
             friendIsHereIndicator = (

@@ -53,3 +53,8 @@
 * {
   box-sizing: border-box;
 }
+
+em {
+  font-family: 'Inter', sans-serif;
+  font-size: 1em;
+}

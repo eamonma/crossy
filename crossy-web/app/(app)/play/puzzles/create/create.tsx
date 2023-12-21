@@ -2,13 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Cross1Icon } from '@radix-ui/react-icons'
-import {
-  Button,
-  Heading,
-  IconButton,
-  Tabs,
-  Text,
-} from '@radix-ui/themes'
+import { Button, Heading, IconButton, Tabs, Text } from '@radix-ui/themes'
 import { z } from 'zod'
 
 import CrosswordGrid from '@/components/crosswordGridDisplay'
@@ -260,7 +254,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
       </div>
       <form onSubmit={onSubmit} className="w-full">
         <div className="flex justify-end w-full gap-2">
-          <Button type="button" onClick={onCancel} variant="surface">
+          <Button type="button" onClick={onCancel} variant="soft">
             Cancel
           </Button>
           <Button disabled={files.length === 0}>Continue</Button>
