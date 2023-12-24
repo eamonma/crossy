@@ -358,8 +358,6 @@ const Gameboard: React.FC<Props> = ({
     },
   })
 
-  console.log(friendsLocations)
-
   const supabase = createClient<Database>()
   const [users, setUsers] = useState<
     Record<string, Database['public']['Tables']['profiles']['Row']>
@@ -383,8 +381,6 @@ const Gameboard: React.FC<Props> = ({
           {},
         )
         setUsers(dataWithIdAsKey)
-
-        console.log(data)
       } catch (error) {
         console.log(error)
       }

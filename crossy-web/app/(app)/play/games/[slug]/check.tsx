@@ -23,7 +23,7 @@ const Check: React.FC<Props> = ({
       if (crosswordData.grid[i] === '.') continue
       if (!answers[i]) continue
 
-      if (answers[i] !== crosswordData.grid[i]) {
+      if (answers[i]?.charAt(0) !== crosswordData.grid[i]?.charAt(0)) {
         wrongAnswers[i] = 'var(--red-4)'
       }
     }
