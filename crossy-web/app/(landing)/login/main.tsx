@@ -6,6 +6,8 @@ import { type Provider } from '@supabase/supabase-js'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
+import AppleLogo from '@/components/appleLogo'
+import MsftLogo from '@/components/msftLogo'
 import { type Database } from '@/lib/database.types'
 import { createClient } from '@/utils/supabase/client'
 
@@ -50,17 +52,22 @@ const Main = () => {
 
   const providers = [
     {
-      name: 'Discord',
+      name: 'Continue with Microsoft',
+      icon: MsftLogo,
+      provider: 'azure',
+    },
+    {
+      name: 'Continue with Apple',
+      icon: AppleLogo,
+      provider: 'apple',
+    },
+    {
+      name: 'Continue with Discord',
       icon: DiscordLogoIcon,
       provider: 'discord',
     },
     {
-      name: 'Apple',
-      icon: () => <div className="text-lg"></div>,
-      provider: 'apple',
-    },
-    {
-      name: 'GitHub',
+      name: 'Continue with GitHub',
       icon: GitHubLogoIcon,
       provider: 'github',
     },
@@ -77,7 +84,7 @@ const Main = () => {
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {providers.map(({ name, icon: Icon, provider }) => (
           <Button
             key={provider}
@@ -87,7 +94,7 @@ const Main = () => {
             }}
           >
             <Icon />
-            {name}
+            {/* {name} */}
           </Button>
         ))}
       </div>
