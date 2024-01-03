@@ -39,6 +39,7 @@ const Main = () => {
       provider,
       options: {
         redirectTo: redirectUrl,
+        scopes: 'email,profile',
       },
     })
 
