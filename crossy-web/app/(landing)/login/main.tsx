@@ -32,14 +32,15 @@ const Main = () => {
   const redirectTo = searchParams.get('redirectTo')
   const appendix = redirectTo ? `?redirectTo=${redirectTo}` : ''
 
-  const signInWithProvider = async (provider: Provider) => {
+  const signInWithProvider = async (provider: Provider, scopes?: string) => {
     const redirectUrl = `${getURL()}auth/callback${appendix}`
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: redirectUrl,
-        scopes: 'email,profile',
+        // scopes: 'email,profile',
+        scopes,
       },
     })
 
@@ -56,6 +57,7 @@ const Main = () => {
       name: 'Continue with Microsoft',
       icon: MsftLogo,
       provider: 'azure',
+      scopes: 'email,profile',
     },
     {
       name: 'Continue with Apple',
@@ -86,12 +88,12 @@ const Main = () => {
   return (
     <>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {providers.map(({ name, icon: Icon, provider }) => (
+        {providers.map(({ name, icon: Icon, provider, scopes }) => (
           <Button
             key={provider}
             className="flex items-center gap-2 cursor-pointer"
             onClick={async () => {
-              await signInWithProvider(provider as Provider)
+              await signInWithProvider(provider as Provider, scopes)
             }}
           >
             <Icon />

@@ -18,7 +18,7 @@ export const generateMetadata = async ({
 }) => {
   const redirectLink = searchParams?.redirectTo
   const defaultMeta = {
-    title: 'Login',
+    title: 'Sign in',
   }
 
   if (!redirectLink) {

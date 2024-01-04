@@ -235,13 +235,8 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
         </div>
       </Tabs.Root>
 
-      {/* <section className="w-full font-medium border border-dashed border-grayA-5 rounded-4">
-        <div className="w-full font-medium border border-dashed border-grayA-5 rounded-4"></div>
-      </section> */}
       <div
-        {...getRootProps({
-          // className: 'dropzone h-12 px-4 flex cursor-pointer items-center',
-        })}
+        {...getRootProps()}
         className={`flex w-full justify-center items-center min-h-[40svh] transition dropzone cursor-pointer ${
           files.length > 0 ? 'opacity-100' : 'opacity-20'
         } ${maxString}`}
