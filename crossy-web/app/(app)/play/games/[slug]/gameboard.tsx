@@ -207,6 +207,14 @@ const Gameboard: React.FC<Props> = ({
       )
 
       const originalNextCell = nextCell
+      const [left, right] = findBounds(
+        crosswordData.grid,
+        crosswordData.size.cols,
+        crosswordData.size.rows,
+        currentDirection,
+        originalNextCell,
+        crosswordData.id,
+      )
       // move to first empty letter within word, if word is full, move to start
       while (answers[nextCell]) {
         nextCell = getNextCell(
@@ -219,21 +227,17 @@ const Gameboard: React.FC<Props> = ({
 
         if (
           crosswordData.grid[nextCell] === '.' ||
-          nextCell >= answers.length
+          nextCell >= answers.length ||
+          nextCell < 0 ||
+          nextCell > right
         ) {
-          const [left] = findBounds(
-            crosswordData.grid,
-            crosswordData.size.cols,
-            crosswordData.size.rows,
-            currentDirection,
-            originalNextCell,
-            crosswordData.id,
-          )
-
-          nextCell = left
+          if (towards === 'less') nextCell = right
+          else nextCell = left
           break
         }
       }
+
+      console.log(nextCell)
 
       setCurrentCell(nextCell)
     }
@@ -328,7 +332,7 @@ const Gameboard: React.FC<Props> = ({
   const currentClueColour =
     currentTheme === 'dark' ? 'var(--violet-3)' : 'var(--blue-4)'
   const friendIsHereColour =
-    currentTheme === 'dark' ? 'var(--crimson-8)' : 'var(--crimson-5)'
+    currentTheme === 'dark' ? 'var(--gold-8)' : 'var(--gold-5)'
 
   const friendsCellNumbers = Object.values(friendsLocations ?? {}).map(
     (entry) => entry.location,
@@ -421,10 +425,10 @@ const Gameboard: React.FC<Props> = ({
             backgroundColor = currentCellColour
           } else if (i in cellHighlights) {
             backgroundColor = cellHighlights[i]
-          } else if (friendsCellNumbers.includes(i)) {
-            backgroundColor = friendIsHereColour
           } else if (inputHighlights[i]) {
             backgroundColor = currentClueColour
+          } else if (friendsCellNumbers.includes(i)) {
+            backgroundColor = friendIsHereColour
           }
 
           const row = Math.floor(i / crosswordData.size.cols)

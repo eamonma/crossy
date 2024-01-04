@@ -108,8 +108,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
       (setOfClues, i) => {
         const clueDir = i === 0 ? 'across' : 'down'
         setOfClues.forEach((clue) => {
-          const clueNum = parseInt(clue.split('. ')[0])
-          const clueText = clue.split('. ')[1]
+          const clueComponents = clue.indexOf('. ')
+          const clueNum = parseInt(clue.substring(0, clueComponents))
+          const clueText = clue.substring(clueComponents + 2)
           const regex = /(\d+)(?:-|,|\\s)*(across|down)/gi
           const match = regex.exec(clueText)
 

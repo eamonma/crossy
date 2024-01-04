@@ -1,5 +1,6 @@
 'use client'
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import { useTheme } from 'next-themes'
 
 type Size = {
   cols: number
@@ -34,6 +35,21 @@ const CrosswordGrid: React.FC<Props> = ({
   const cellSize = 36 // This can be adjusted for different cell sizes
   const width = crossword.size.cols * cellSize
   const height = crossword.size.rows * cellSize
+  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('dark')
+  const { resolvedTheme } = useTheme()
+
+  useEffect(() => {
+    if (resolvedTheme === 'dark') {
+      setCurrentTheme('dark')
+    } else {
+      setCurrentTheme('light')
+    }
+  }, [resolvedTheme, setCurrentTheme])
+
+  const blackSquareColour =
+    currentTheme === 'dark' ? 'var(--gray-1)' : 'var(--gray-12)'
+  const defaultColour =
+    currentTheme === 'dark' ? 'var(--gray-3)' : 'var(--gray-1)'
 
   return (
     <div
@@ -51,59 +67,53 @@ const CrosswordGrid: React.FC<Props> = ({
           aspectRatio: `${crossword.size.cols}/${crossword.size.rows}`,
         }}
       >
-        {[...new Array(crossword.size.cols * crossword.size.rows)].map(
-          (_, i) => {
-            // let backgroundColor = 'rgba(255,255,255,0.9)'
-            let backgroundColor = 'var(--gray-1)'
-            if (crossword.grid[i] === '.') {
-              // backgroundColor = 'rgba(0,0,0,0.8)'
-              backgroundColor = 'var(--gray-12)'
-            } else if (Object.keys(highlights).includes(i.toString())) {
-              backgroundColor = highlights[i]
-            }
+        {crossword.grid.map((gridItem, i) => {
+          let backgroundColor = defaultColour
+          if (gridItem === '.') {
+            backgroundColor = blackSquareColour
+          }
 
-            const row = Math.floor(i / crossword.size.cols)
-            const col = i % crossword.size.cols
+          const row = Math.floor(i / crossword.size.cols)
+          const col = i % crossword.size.cols
 
-            return (
-              <g key={i}>
-                <rect
-                  x={col * cellSize}
-                  y={row * cellSize}
-                  width={cellSize}
-                  height={cellSize}
-                  fill={backgroundColor}
-                  stroke="var(--gray-8)"
-                  strokeWidth={0.6}
-                />
-                {shouldShowNumbers && crossword.gridnums[i] && (
-                  <>
-                    <text
-                      x={col * cellSize + 2}
-                      y={row * cellSize + 10}
-                      fontSize={10}
-                      fontWeight="bold"
-                      fill="var(--gray-11)"
-                    >
-                      {crossword.gridnums[i]}
-                    </text>
-                  </>
-                )}
-                {answers[i] && crossword.grid[i] !== '.' && (
+          return (
+            <g key={i}>
+              <rect
+                x={col * cellSize}
+                y={row * cellSize}
+                width={cellSize}
+                height={cellSize}
+                fill={backgroundColor}
+                stroke="var(--gray-8)"
+                strokeWidth={0.6}
+              />
+              {shouldShowNumbers && crossword.gridnums[i] && (
+                <>
                   <text
-                    x={col * cellSize + cellSize / 2}
-                    y={row * cellSize + cellSize / 2 + 14}
-                    textAnchor="middle"
-                    fontSize={24}
-                    fill="var(--gray-12)"
+                    x={col * cellSize + 2}
+                    y={row * cellSize + 10}
+                    fontSize={10}
+                    fontWeight="bold"
+                    fill="var(--gray-11)"
                   >
-                    {answers[i]}
+                    {crossword.gridnums[i]}
                   </text>
-                )}
-              </g>
-            )
-          },
-        )}
+                </>
+              )}
+              {answers[i] && crossword.grid[i] !== '.' && (
+                <text
+                  x={col * cellSize + cellSize / 2}
+                  y={row * cellSize + cellSize / 2 + 14}
+                  textAnchor="middle"
+                  fontSize={24}
+                  fill="var(--gray-12)"
+                >
+                  {answers[i]}
+                </text>
+              )}
+            </g>
+          )
+        })}
       </svg>
     </div>
   )
