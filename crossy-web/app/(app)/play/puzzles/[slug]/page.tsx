@@ -56,6 +56,7 @@ const Page = async ({ params }: { params: { slug: string } }) => {
 
   const createGame = async () => {
     'use server'
+
     const cookieStore = cookies()
     const supabase = createClient<Database>(cookieStore)
 
@@ -67,13 +68,7 @@ const Page = async ({ params }: { params: { slug: string } }) => {
 
     if (gameData) {
       redirect(`/play/games/${gameData.id}`)
-    }
-
-    if (gameError) {
-      console.log(puzzle)
-      const user = await supabase.auth.getUser()
-      console.log(user)
-
+    } else if (gameError) {
       console.error(gameError)
     }
   }

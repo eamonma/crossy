@@ -25,7 +25,7 @@ import useSwipablePreventScroll from './useSwipablePreventScroll'
 import { findBounds, getNextCell } from './utils'
 
 type Props = {
-  game: Database['public']['Tables']['games']['Row']
+  game: Database['public']['Tables']['games']['Row'] & any
   crosswordData: CrosswordData
   user: User
 }
