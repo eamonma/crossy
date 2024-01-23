@@ -66,7 +66,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   const { getRootProps, getInputProps } = useDropzone({
     maxFiles: 1,
     accept: {
-      'application/json': ['.json'],
+      'application/json': ['.json', '.ashx'],
     },
     onDrop: (acceptedFiles: File[]) => {
       setFiles([...acceptedFiles])
