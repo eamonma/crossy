@@ -117,13 +117,23 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
     e.preventDefault()
     setIsLoading(true)
     let urlToFetch = url
+
+    if (url.toLowerCase() === 'latest') {
+      const latest = process.env.NEXT_PUBLIC_LATEST_URL
+
+      if (latest) {
+        urlToFetch = latest
+      }
+
+      setURL(urlToFetch)
+    }
     // replace https://
     if (urlToFetch.startsWith('https://')) {
       urlToFetch = urlToFetch.slice(8)
     }
     // append https://
     urlToFetch = `https://${urlToFetch}`
-    fetch(url)
+    fetch(urlToFetch)
       .then(async (response) => await response.json())
       .then((data) => {
         try {

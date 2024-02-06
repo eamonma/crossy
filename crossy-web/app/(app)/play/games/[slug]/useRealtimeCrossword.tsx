@@ -11,6 +11,7 @@ import {
 
 import { type Database } from '@/lib/database.types'
 import { type Payload } from '@/lib/types'
+import useHasFocus from '@/lib/useHasFocus'
 import { createClient } from '@/utils/supabase/client'
 
 import { debounce } from './debounce'
@@ -24,7 +25,7 @@ const useRealtimeCrossword = (
 ) => {
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([])
   const [friendsLocations, setFriendsLocations] = useState<
-    Record<string, { location: number, direction: string }>
+    Record<string, { location: number; direction: string }>
   >({})
   const [statusOfGame, setStatus] =
     useState<Database['public']['Tables']['status_of_game']['Row']>()
@@ -32,6 +33,7 @@ const useRealtimeCrossword = (
     useState<boolean>(false)
   const [remoteAnswers, setAnswers] = useState<string[]>(initialRemoteAnswers)
   const supabase = createClient<Database>()
+  const hasFocus = useHasFocus()
 
   const mapInitialUsers = (userChannel: RealtimeChannel) => {
     const state = userChannel.presenceState<{ user_id: string }>()
@@ -42,9 +44,14 @@ const useRealtimeCrossword = (
     setOnlineUserIds(_users.map((user) => user.user_id))
   }
 
+  console.log(onlineUserIds)
+
   useEffect(() => {
+    // if (!hasFocus) return
+    console.log('Fetching status and subscribing to postgres changes')
+
     // initial fetch
-    const fetch = async () => {
+    const fetchStatus = async () => {
       const { data, error } = await supabase
         .from('status_of_game')
         .select('*')
@@ -59,7 +66,7 @@ const useRealtimeCrossword = (
       return data
     }
 
-    void fetch().then((data) => {
+    void fetchStatus().then((data) => {
       if (!data) return
       setStatus(data)
     })
@@ -115,9 +122,12 @@ const useRealtimeCrossword = (
     return () => {
       void changes.unsubscribe().then(() => {})
     }
-  }, [gameId, supabase])
+  }, [gameId, supabase, hasFocus])
 
   useEffect(() => {
+    // if (!hasFocus) return
+    console.log('Subscribing to presence channel')
+
     const roomChannel = supabase.channel(`rooms-${gameId}`, {
       config: { presence: { key: gameId } },
     })
@@ -173,10 +183,12 @@ const useRealtimeCrossword = (
       void supabase.removeChannel(roomChannel).then()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, userId, supabase])
+  }, [gameId, userId, supabase, hasFocus])
 
   useEffect(() => {
     if (!gameId || !isInitialStateSynced) return
+    // if (!hasFocus) return
+    console.log('Subscribing to position channel')
 
     const messageChannel: RealtimeChannel = supabase.channel(
       `position-${gameId}`,
@@ -185,7 +197,13 @@ const useRealtimeCrossword = (
     messageChannel.on(
       REALTIME_LISTEN_TYPES.BROADCAST,
       { event: 'POS' },
-      (payload: Payload<{ user_id: string } & { currentCell: number } & { currentDirection: string }>) => {
+      (
+        payload: Payload<
+          { user_id: string } & { currentCell: number } & {
+            currentDirection: string
+          }
+        >,
+      ) => {
         const { payload: res, event, type } = payload
         if (event !== 'POS' || type !== 'broadcast') return
         if (!res) return
@@ -193,7 +211,10 @@ const useRealtimeCrossword = (
 
         setFriendsLocations((prev) => ({
           ...prev,
-          [res.user_id]: { location: res.currentCell, direction: res.currentDirection },
+          [res.user_id]: {
+            location: res.currentCell,
+            direction: res.currentDirection,
+          },
         }))
       },
     )
@@ -211,7 +232,15 @@ const useRealtimeCrossword = (
     return () => {
       void supabase.removeChannel(messageChannel).then()
     }
-  }, [gameId, userId, currentCell, currentDirection, isInitialStateSynced, supabase])
+  }, [
+    gameId,
+    userId,
+    currentCell,
+    currentDirection,
+    isInitialStateSynced,
+    supabase,
+    hasFocus,
+  ])
 
   const updateGridItem = (
     index: number,

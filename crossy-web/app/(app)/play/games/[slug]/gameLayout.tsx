@@ -133,7 +133,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 )
 
                 for (let i = lower; i <= upper; i += stride) {
-                  highlightsForClue[i] = 'var(--amber-4)'
+                  highlightsForClue[i] = 'var(--amber-3)'
                 }
               })
 
@@ -157,7 +157,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
         const res = { ...prev }
         for (const key in res) {
           // TODO: might want to do this another way (strongly)
-          if (res[key] === 'var(--amber-4)') {
+          if (res[key] === 'var(--amber-3)') {
             delete res[key]
           }
         }

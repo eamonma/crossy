@@ -329,9 +329,9 @@ const Gameboard: React.FC<Props> = ({
   const defaultColour =
     currentTheme === 'dark' ? 'var(--gray-3)' : 'var(--gray-1)'
   const currentCellColour =
-    currentTheme === 'dark' ? 'var(--blue-6)' : 'var(--yellow-5)'
+    currentTheme === 'dark' ? 'var(--blue-6)' : 'var(--yellow-4)'
   const currentClueColour =
-    currentTheme === 'dark' ? 'var(--violet-3)' : 'var(--blue-4)'
+    currentTheme === 'dark' ? 'var(--violet-3)' : 'var(--blue-3)'
   const friendIsHereColour =
     currentTheme === 'dark' ? 'var(--gold-8)' : 'var(--gold-5)'
 
@@ -413,7 +413,7 @@ const Gameboard: React.FC<Props> = ({
         xmlns="http://www.w3.org/2000/svg"
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="xMidYMin meet"
-        className="border-2 outline-none"
+        className="border shadow outline-none border-black/20"
         style={{
           aspectRatio: `${crosswordData.size.cols}/${crosswordData.size.rows}`,
         }}
@@ -488,7 +488,7 @@ const Gameboard: React.FC<Props> = ({
                       width="9"
                       height="9"
                       xlinkHref={friendHereAvatar}
-                      clip-path="url(#roundClip)"
+                      clipPath="url(#roundClip)"
                     />
                   </svg>
                 ) : (
@@ -530,7 +530,7 @@ const Gameboard: React.FC<Props> = ({
                 width={cellSize}
                 height={cellSize}
                 fill={backgroundColor}
-                stroke="var(--gray-8)"
+                stroke="var(--gray-6)"
                 strokeWidth={0.6}
               />
               {crosswordData?.circles?.[i] && (

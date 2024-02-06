@@ -52,7 +52,7 @@ const Clues: React.FC<Props> = ({
   return (
     <>
       <div className="select-none">
-        <div className="px-3 text-sm font-bold tracking-wide uppercase py-1.5">
+        <div className="px-4 text-sm font-bold tracking-wide uppercase py-1.5">
           {direction === 'across' ? <>Across</> : <>Down</>}
         </div>
         <hr className="border-dashed" />
@@ -106,7 +106,7 @@ const Clues: React.FC<Props> = ({
           return (
             <li
               key={clueNum}
-              className="grid grid-cols-[5ch,1fr] cursor-pointer bg-opacity-30"
+              className="grid grid-cols-[5ch,1fr] cursor-pointer bg-opacity-30 hover:bg-amber-100"
               onClick={() => {
                 setCurrentDirection(direction)
                 setClueNum(clueNum)
