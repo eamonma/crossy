@@ -1,5 +1,6 @@
 'use client'
 import React, { useEffect, useState } from 'react'
+import Skeleton from 'react-loading-skeleton'
 import { ExternalLinkIcon } from '@radix-ui/react-icons'
 import {
   Button,
@@ -12,6 +13,8 @@ import {
 import { useCopyToClipboard } from 'usehooks-ts'
 
 import { type Database } from '@/lib/database.types'
+
+import 'react-loading-skeleton/dist/skeleton.css'
 
 type Props = {
   game: Database['public']['Tables']['games']['Row']
@@ -70,14 +73,18 @@ const ShareLink: React.FC<Props> = ({ game }) => {
           </Text>
 
           <div className="flex flex-col gap-4">
-            <label>
-              <p className="sr-only">Link</p>
-              <TextField.Input
-                value={link}
-                disabled
-                className="w-full p-1 pl-1 pr-0"
-              />
-            </label>
+            {link !== '' ? (
+              <label>
+                <p className="sr-only">Link</p>
+                <TextField.Input
+                  value={link}
+                  disabled
+                  className="w-full p-1 pl-1 pr-0"
+                />
+              </label>
+            ) : (
+              <Skeleton className="flex-1 h-8 p-1" />
+            )}
           </div>
 
           <Flex gap="3" mt="4" justify="end">
