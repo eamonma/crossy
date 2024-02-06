@@ -168,29 +168,35 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
 
   return (
     <div className="flex flex-col w-full h-full min-w-fit">
-      <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
+      <div className="relative flex flex-col items-center justify-between w-full h-24 text-lg font-medium text-center">
         <Toolbar
-          alwaysVisibleTools={<OnlineUsers userIds={onlineUserIds} />}
+          alwaysVisibleTools={
+            <>
+              <OnlineUsers userIds={onlineUserIds} />
+            </>
+          }
           tools={
             <div className="flex items-center gap-2">
               <Check {...commonProps} />
               <ShareLink game={game} />
-              {/* <Button onClick={claimComplete}>Force claim</Button> */}
             </div>
           }
-          timer={
+          left={
             <div className="flex items-center gap-2">
+              <Badge className="hidden lg:block" color="gray">
+                {crosswordData.name?.replaceAll('New York Times, ', '')}
+              </Badge>
+              {gameStatus === 'completed' && (
+                <Badge radius="full" color="green">
+                  Done
+                </Badge>
+              )}
               <time className="text-left text-gray-900 min-w-[7ch] whitespace-nowrap">
                 <Timer
                   since={new Date(game.created_at).getTime()}
                   statusOfGame={statusOfGame}
                 />
               </time>
-              {gameStatus === 'completed' && (
-                <Badge radius="full" color="green" size="1">
-                  Done
-                </Badge>
-              )}
             </div>
           }
           clue={
@@ -206,7 +212,7 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
           }
         />
       </div>
-      <div className="max-h-[calc(100%-5rem)] flex-1 grid grid-cols-1 md:grid-cols-[4fr,3fr] items-center justify-center gap-4">
+      <div className="max-h-[calc(100%-4.8rem)] flex-1 grid grid-cols-1 md:grid-cols-[4fr,3fr] items-center justify-center gap-4">
         <div className="relative flex flex-col justify-end flex-1 h-full sm:justify-center">
           <div className="flex flex-col justify-start w-full">
             <div className="w-full px-1 sm:px-3 sm:pl-8 max-h-[68svh] md:max-h-[75svh] lg:max-h-[70svh]">

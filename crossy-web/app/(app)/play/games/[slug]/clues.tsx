@@ -52,8 +52,8 @@ const Clues: React.FC<Props> = ({
   return (
     <>
       <div className="select-none">
-        <div className="px-6 py-2 font-serif font-bold">
-          {direction.charAt(0).toUpperCase() + direction.slice(1)}
+        <div className="px-3 text-sm font-bold tracking-wide uppercase py-1.5">
+          {direction === 'across' ? <>Across</> : <>Down</>}
         </div>
         <hr className="border-dashed" />
       </div>

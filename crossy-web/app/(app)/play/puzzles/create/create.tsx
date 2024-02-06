@@ -2,7 +2,14 @@
 import React, { useEffect, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Cross1Icon } from '@radix-ui/react-icons'
-import { Button, Heading, IconButton, Tabs, Text } from '@radix-ui/themes'
+import {
+  Button,
+  Heading,
+  IconButton,
+  Tabs,
+  Text,
+  TextField,
+} from '@radix-ui/themes'
 import { z } from 'zod'
 
 import CrosswordGrid from '@/components/crosswordGridDisplay'
@@ -62,6 +69,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
   const [crosswordData, setCrosswordData] = useState<CrosswordJson>(defaultData)
   const [url, setURL] = useState<string>('')
   const [currentTab, setCurrentTab] = useState<'file' | 'url'>('file')
+  const [isLoading, setIsLoading] = useState(false)
 
   const { getRootProps, getInputProps } = useDropzone({
     maxFiles: 1,
@@ -107,6 +115,14 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
 
   const onURLSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setIsLoading(true)
+    let urlToFetch = url
+    // replace https://
+    if (urlToFetch.startsWith('https://')) {
+      urlToFetch = urlToFetch.slice(8)
+    }
+    // append https://
+    urlToFetch = `https://${urlToFetch}`
     fetch(url)
       .then(async (response) => await response.json())
       .then((data) => {
@@ -124,10 +140,12 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
       .catch((error) => {
         console.error('Error:', error)
       })
+      .finally(() => setIsLoading(false))
   }
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
+    setIsLoading(true)
     fetch('/api/puzzles', {
       method: 'POST',
       headers: {
@@ -145,6 +163,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
       .catch((error) => {
         console.error('Error:', error)
       })
+      .finally(() => setIsLoading(false))
   }
 
   const width = crosswordData.size.cols
@@ -211,24 +230,32 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
             </div>
           </Tabs.Content>
 
-          <Tabs.Content value="url" className="h-full">
-            <form className="flex w-full h-full" onSubmit={onURLSubmit}>
-              <input
-                value={url}
-                onChange={(e) => {
-                  setURL(e.target.value)
-                }}
-                type="text"
-                placeholder="Enter a crossword URL"
-                className="flex-1 h-full px-2 mr-2 border rounded-md"
-              />
+          <Tabs.Content value="url" className="flex items-center h-full">
+            <form onSubmit={onURLSubmit} className="w-full">
+              <TextField.Root size="3">
+                <TextField.Slot gap="0">https://</TextField.Slot>
+                <TextField.Input
+                  value={url}
+                  onChange={(e) => {
+                    let value = e.target.value
+                    if (value.startsWith('https://')) {
+                      value = value.slice(8)
+                    }
+                    setURL(value)
+                  }}
+                  type="text"
+                />
+                <TextField.Slot>
+                  <Button
+                    size="1"
+                    type="submit"
+                    disabled={url.length === 0 || isLoading}
+                  >
+                    Get
+                  </Button>
+                </TextField.Slot>
+              </TextField.Root>
 
-              <button
-                className="px-2 rounded-sm bg-accent-700 text-gray-25"
-                type="submit"
-              >
-                Get
-              </button>
               {/* <Button>Get</Button> */}
             </form>
           </Tabs.Content>
@@ -252,7 +279,7 @@ const Create: React.FC<Props> = ({ onComplete, onCancel }) => {
           <Button type="button" onClick={onCancel} variant="soft">
             Cancel
           </Button>
-          <Button disabled={files.length === 0}>Continue</Button>
+          <Button disabled={files.length === 0 || isLoading}>Continue</Button>
         </div>
       </form>
     </div>

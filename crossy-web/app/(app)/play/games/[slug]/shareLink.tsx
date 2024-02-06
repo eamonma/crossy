@@ -4,10 +4,7 @@ import Skeleton from 'react-loading-skeleton'
 import { ExternalLinkIcon } from '@radix-ui/react-icons'
 import {
   Button,
-  Flex,
-  Heading,
   Popover,
-  Text,
   TextField,
 } from '@radix-ui/themes'
 import { useCopyToClipboard } from 'usehooks-ts'
@@ -64,34 +61,35 @@ const ShareLink: React.FC<Props> = ({ game }) => {
           Share
         </Button>
       </Popover.Trigger>
-      <Popover.Content align="end" size="2" className="max-w-md">
-        <div className="flex flex-col">
-          <Heading size="5">Share link</Heading>
-          <Text size="2" mb="4" mt="2">
-            Anyone with this link can join the game, or invite anyone else to
-            join this game.
-          </Text>
+      <Popover.Content align="end" size="2" className="max-w-xs">
+        <div className="flex flex-col gap-2">
+          <p className="text-sm">
+            Anyone with this link can join or invite others to join.
+          </p>
 
-          <div className="flex flex-col gap-4">
-            {link !== '' ? (
-              <label>
-                <p className="sr-only">Link</p>
-                <TextField.Input
-                  value={link}
-                  disabled
-                  className="w-full p-1 pl-1 pr-0"
-                />
-              </label>
-            ) : (
-              <Skeleton className="flex-1 h-8 p-1" />
-            )}
-          </div>
+          {link !== '' ? (
+            <label>
+              <p className="sr-only">Link</p>
+              <TextField.Input
+                value={link.split('https://')[1]}
+                onClick={(e) => e.currentTarget.select()}
+                onCopy={(e) => {
+                  // prepend https:// to the copied link
+                  e.clipboardData.setData('text/plain', link)
+                  e.preventDefault()
+                }}
+                className="w-full p-1 pl-1 pr-0"
+              />
+            </label>
+          ) : (
+            <Skeleton className="flex-1 h-8 p-1" />
+          )}
 
-          <Flex gap="3" mt="4" justify="end">
+          <div className="flex justify-end">
             <Popover.Close>
               <Button onClick={copyInvite}>Copy and close</Button>
             </Popover.Close>
-          </Flex>
+          </div>
         </div>
       </Popover.Content>
     </Popover.Root>

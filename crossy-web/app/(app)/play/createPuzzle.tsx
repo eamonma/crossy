@@ -51,7 +51,10 @@ const CreatePuzzle: React.FC<Props> = ({
       }}
     >
       <Dialog.Trigger>{children}</Dialog.Trigger>
-      <Dialog.Content style={{ maxWidth: 450 }}>
+      <Dialog.Content
+        onPointerDownOutside={(e) => e.preventDefault()}
+        style={{ maxWidth: 450 }}
+      >
         <Create onComplete={onComplete} onCancel={onCancel} />
       </Dialog.Content>
     </Dialog.Root>

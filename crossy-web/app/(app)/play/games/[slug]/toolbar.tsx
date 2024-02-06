@@ -3,14 +3,14 @@ import React from 'react'
 import { Button, Flex, Popover } from '@radix-ui/themes'
 
 type Props = {
-  timer: React.ReactNode
+  left: React.ReactNode
   clue: React.ReactNode
   tools: React.ReactNode
   alwaysVisibleTools?: React.ReactNode
 }
 
 const Toolbar: React.FC<Props> = ({
-  timer,
+  left,
   tools,
   clue,
   alwaysVisibleTools,
@@ -36,7 +36,7 @@ const Toolbar: React.FC<Props> = ({
         className="w-full py-2 pl-4 pr-2 border-gray-5"
         justify="between"
       >
-        {timer}
+        {left}
         <div className="flex items-center gap-2">
           {alwaysVisibleTools}
           <div className="hidden sm:block">{tools}</div>
@@ -45,9 +45,9 @@ const Toolbar: React.FC<Props> = ({
       </Flex>
       <Flex
         justify="between"
-        className="absolute w-full pb-2 pl-4 border-b border-dashed top-10 border-gray-5"
+        className="absolute w-full px-4 pb-2 border-b border-dashed top-10 border-gray-5"
       >
-        <div className="flex items-baseline w-full">{clue}</div>
+        <div className="flex items-baseline flex-1 w-full">{clue}</div>
       </Flex>
     </>
   )

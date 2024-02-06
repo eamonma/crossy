@@ -25,6 +25,7 @@ export type CrosswordData = {
   circles?: boolean[]
   size: Size
   id?: string
+  name?: string
 }
 
 type Props = {
@@ -537,21 +538,23 @@ const Gameboard: React.FC<Props> = ({
                   cx={col * cellSize + cellSize / 2}
                   cy={row * cellSize + cellSize / 2}
                   r={cellSize / 2.1}
-                  stroke="var(--gray-11)"
+                  stroke="var(--gray-8)"
                   fill="none"
                 />
               )}
               {crosswordData.gridnums[i] && (
-                <text
-                  x={col * cellSize + 2}
-                  y={row * cellSize + 10}
-                  fontSize={10}
-                  fontWeight="bold"
-                  fill="var(--gray-11)"
-                  className="select-none"
-                >
-                  {crosswordData.gridnums[i]}
-                </text>
+                <>
+                  <text
+                    x={col * cellSize + 2}
+                    y={row * cellSize + 10}
+                    fontSize={10}
+                    fontWeight="bold"
+                    fill="var(--gray-11)"
+                    className="select-none"
+                  >
+                    {crosswordData.gridnums[i]}
+                  </text>
+                </>
               )}
               {/* Friend-is-here indicator */}
               {friendIsHereIndicator}

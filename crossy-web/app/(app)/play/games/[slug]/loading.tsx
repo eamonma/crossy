@@ -8,7 +8,7 @@ const Loading = () => {
     <div className="flex flex-col w-full h-full min-w-fit">
       <div className="relative flex flex-col items-center justify-between w-full h-20 text-lg font-medium text-center">
         <Toolbar
-          timer={
+          left={
             <>
               <time className="text-left text-gray-900 min-w-[7ch]">
                 00:00:00
