@@ -22,9 +22,31 @@ const ShareLink: React.FC<Props> = ({ game }) => {
   const [link, setLink] = useState('')
 
   useEffect(() => {
-    setLink(
-      `${window.location.origin}/play/games/${game.id}?key=${game.password}`,
-    )
+    const canonicalLink = `${window.location.origin}/play/games/${game.id}?key=${game.password}`
+
+    const baseUrl = '/api/games/get-share-link'
+
+    const params = {
+      url: canonicalLink,
+    }
+
+    fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+      .then(async (response) => await response.json())
+      .then(
+        (data) => {
+          setLink(data.data)
+        },
+        (error) => {
+          console.log(error)
+          setLink(canonicalLink)
+        },
+      )
   }, [game])
 
   const copyInvite = async () => {
