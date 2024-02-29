@@ -22,7 +22,7 @@ import useClueNumToClue from './useClueNumToClue'
 import useConclusion from './useConclusion'
 import useRealtimeCrossword from './useRealtimeCrossword'
 import useSwipablePreventScroll from './useSwipablePreventScroll'
-import { findBounds, getNextCell } from './utils'
+import { affixImageHostToImageClue, findBounds, getNextCell } from './utils'
 
 type Props = {
   game: Database['public']['Tables']['games']['Row'] & any
@@ -166,6 +166,14 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
     }
   }, [clueNumToHighlights, clueNum, currentDirection, setHighlights])
 
+  const clue = clueNumToClue(clueNum, currentDirection) ?? ''
+
+  let clueElement = parse(clue.substring(clue.indexOf(' ') + 1)) as JSX.Element
+
+  if (typeof clueElement === 'object') {
+    clueElement = affixImageHostToImageClue(clueElement)
+  }
+
   return (
     <div className="flex flex-col w-full h-full min-w-fit">
       <div className="relative flex flex-col items-center justify-between w-full h-24 text-lg font-medium text-center">
@@ -205,9 +213,9 @@ const GameLayout: React.FC<Props> = ({ game, crosswordData, user }) => {
                 <Text>{clueNum}</Text>
                 {currentDirection === 'across' ? 'A' : 'D'}
               </div>
-              <Text className="relative flex-1 pr-4 text-left">
-                {parse(clueNumToClue(clueNum, currentDirection) ?? '')}
-              </Text>
+              <div className="relative flex-1 pr-4 text-left">
+                {clueElement}
+              </div>
             </div>
           }
         />

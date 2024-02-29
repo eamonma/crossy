@@ -3,7 +3,7 @@ import { Text } from '@radix-ui/themes'
 import parse from 'html-react-parser'
 
 import { type CrosswordData } from './gameboard'
-import { findBounds } from './utils'
+import { affixImageHostToImageClue, findBounds } from './utils'
 
 type Props = {
   crosswordData: CrosswordData
@@ -103,6 +103,14 @@ const Clues: React.FC<Props> = ({
             }
           }
 
+          let clueElement = parse(
+            clue.substring(clue.indexOf(' ') + 1),
+          ) as JSX.Element
+
+          if (typeof clueElement === 'object') {
+            clueElement = affixImageHostToImageClue(clueElement)
+          }
+
           return (
             <li
               key={clueNum}
@@ -123,7 +131,7 @@ const Clues: React.FC<Props> = ({
                   clueIsFilled && 'text-[var(--gray-11)] line-through'
                 }`}
               >
-                {parse(`${clue.substring(clue.indexOf(' '))}`)}
+                {clueElement}
               </Text>
             </li>
           )

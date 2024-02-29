@@ -1,3 +1,4 @@
+import { cloneElement } from 'react'
 import { LRUCache } from 'lru-cache'
 
 import { type Clues } from './gameboard'
@@ -154,4 +155,13 @@ export const findBounds = (
   cache.set(key, [start, end])
 
   return [start, end]
+}
+
+export const affixImageHostToImageClue = (element: JSX.Element) => {
+  try {
+    element = cloneElement(element, {
+      src: `${process.env.NEXT_PUBLIC_IMAGE_HOST}${element.props.src}`,
+    })
+  } catch {}
+  return element
 }
