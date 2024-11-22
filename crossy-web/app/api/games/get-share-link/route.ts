@@ -1,5 +1,10 @@
+/* eslint no-unreachable: "off" */
 export async function POST(request: Request): Promise<Response> {
   const params = await request.json()
+
+  return Response.json({ data: params.url })
+
+  // return Response.json({ data: params })
 
   params.signature = process.env.YOURLS_API_KEY
   params.action = 'shorturl'
@@ -15,5 +20,9 @@ export async function POST(request: Request): Promise<Response> {
 
   const { shorturl } = await (await fetch(url)).json()
 
-  return Response.json({ data: shorturl })
+  const response = {
+    data: shorturl,
+  }
+
+  return Response.json(response)
 }

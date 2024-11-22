@@ -2,11 +2,7 @@
 import React, { useEffect, useState } from 'react'
 import Skeleton from 'react-loading-skeleton'
 import { ExternalLinkIcon } from '@radix-ui/react-icons'
-import {
-  Button,
-  Popover,
-  TextField,
-} from '@radix-ui/themes'
+import { Button, Popover, TextField } from '@radix-ui/themes'
 import { useCopyToClipboard } from 'usehooks-ts'
 
 import { type Database } from '@/lib/database.types'
@@ -40,6 +36,8 @@ const ShareLink: React.FC<Props> = ({ game }) => {
       .then(async (response) => await response.json())
       .then(
         (data) => {
+          console.log(data)
+
           setLink(data.data)
         },
         (error) => {
@@ -71,7 +69,7 @@ const ShareLink: React.FC<Props> = ({ game }) => {
             <label>
               <p className="sr-only">Link</p>
               <TextField.Input
-                value={link.split('https://')[1]}
+                value={link.split('https://')[1] || link.split('http://')[1]}
                 onClick={(e) => e.currentTarget.select()}
                 onCopy={(e) => {
                   // prepend https:// to the copied link
