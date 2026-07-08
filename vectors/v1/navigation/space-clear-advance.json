@@ -1,0 +1,51 @@
+[
+  {
+    "name": "2.1d-5 Space: clear-and-advance moves one cell forward within the word onto a filled next cell, no filled-skip (advance is fill-agnostic; ROADMAP Wave 2.1d keyboard map)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "16": "Q" }
+    },
+    "when": {
+      "op": "advance",
+      "direction": "across",
+      "from": 15,
+      "toward": "forward",
+      "canEscapeWord": false
+    },
+    "then": { "cell": 16 }
+  },
+  {
+    "name": "2.1d-5 Space: clear-and-advance moves one cell forward within the word onto an empty next cell (ROADMAP Wave 2.1d keyboard map)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13]
+    },
+    "when": {
+      "op": "advance",
+      "direction": "across",
+      "from": 15,
+      "toward": "forward",
+      "canEscapeWord": false
+    },
+    "then": { "cell": 16 }
+  },
+  {
+    "name": "2.1d-5 Space: at the word's end forward advance clamps and stays put, never crossing into the next word (canEscapeWord false; ROADMAP Wave 2.1d keyboard map)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13]
+    },
+    "when": {
+      "op": "advance",
+      "direction": "across",
+      "from": 12,
+      "toward": "forward",
+      "canEscapeWord": false
+    },
+    "then": { "cell": 12 }
+  }
+]

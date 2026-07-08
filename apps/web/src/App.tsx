@@ -1,143 +1,37 @@
-import { useEffect, useReducer, useRef } from "react";
-import { boardById, boards } from "./domain/boards";
+// The Wave 2.1d web client skeleton: the real GameStore (INV-10 overlay, three
+// connection states) driven through a fake in-memory session on the demo boards,
+// with every cursor move going through @crossy/engine's navigation ops per the
+// desktop interaction spec (ROADMAP "Wave 2.1d desktop interaction spec"). The
+// wire transport (src/net) plugs into the same store in Wave 2.2.
 import {
-  backspace,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import type { Grid } from "@crossy/engine";
+import { boardById, boards } from "./domain/boards";
+import type { Clue } from "./domain/types";
+import { createFakeSession, SELF_USER_ID } from "./demo/fakeSession";
+import type { FakeSession } from "./demo/fakeSession";
+import {
+  cellClick,
+  clueClick,
   initialSelection,
-  moveByArrow,
-  selectCell,
-  tabToClue,
-  toggleDirection,
-  typeLetter,
-} from "./domain/navigation";
-import type {
-  BackspaceMode,
-  Clue,
-  Direction,
-  Grid,
-  Selection,
-  ShiftTabMode,
-  Toward,
-} from "./domain/types";
+  keyEffect,
+} from "./input/actions";
+import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
+import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { SettingsStrip } from "./ui/SettingsStrip";
 
 type Theme = "light" | "dark";
 
-interface State {
-  boardId: string;
-  fills: Map<number, string>;
-  selection: Selection;
-  shiftTabMode: ShiftTabMode;
-  backspaceMode: BackspaceMode;
-  theme: Theme;
-}
-
-type Action =
-  | { kind: "arrow"; axis: Direction; toward: Toward }
-  | { kind: "type"; char: string }
-  | { kind: "backspace" }
-  | { kind: "tab"; toward: Toward }
-  | { kind: "click"; cell: number }
-  | { kind: "toggleDir" }
-  | { kind: "setBoard"; id: string }
-  | { kind: "setShiftTab"; mode: ShiftTabMode }
-  | { kind: "setBackspace"; mode: BackspaceMode }
-  | { kind: "setTheme"; theme: Theme };
-
 function gridOf(boardId: string): Grid {
   const p = boardById(boardId).puzzle;
   return { cols: p.cols, rows: p.rows, blocks: p.blocks };
-}
-
-function reducer(state: State, action: Action): State {
-  const grid = gridOf(state.boardId);
-  const puzzle = boardById(state.boardId).puzzle;
-
-  switch (action.kind) {
-    case "arrow":
-      return {
-        ...state,
-        selection: moveByArrow(
-          grid,
-          state.selection,
-          action.axis,
-          action.toward,
-        ),
-      };
-    case "type": {
-      const out = typeLetter(grid, state.fills, state.selection, action.char);
-      return {
-        ...state,
-        selection: out.selection,
-        fills: out.fills ?? state.fills,
-      };
-    }
-    case "backspace": {
-      const out = backspace(
-        grid,
-        state.fills,
-        state.selection,
-        state.backspaceMode,
-      );
-      return {
-        ...state,
-        selection: out.selection,
-        fills: out.fills ?? state.fills,
-      };
-    }
-    case "tab": {
-      const clues: Clue[] = [...puzzle.acrossClues, ...puzzle.downClues];
-      return {
-        ...state,
-        selection: tabToClue(
-          grid,
-          state.fills,
-          clues,
-          state.selection,
-          action.toward,
-          state.shiftTabMode,
-        ),
-      };
-    }
-    case "click":
-      return {
-        ...state,
-        selection: selectCell(grid, state.selection, action.cell),
-      };
-    case "toggleDir":
-      return { ...state, selection: toggleDirection(state.selection) };
-    case "setBoard": {
-      const board = boardById(action.id);
-      return {
-        ...state,
-        boardId: action.id,
-        fills: new Map(board.initialFills),
-        selection: initialSelection(gridOf(action.id)),
-      };
-    }
-    case "setShiftTab":
-      return { ...state, shiftTabMode: action.mode };
-    case "setBackspace":
-      return { ...state, backspaceMode: action.mode };
-    case "setTheme":
-      return { ...state, theme: action.theme };
-  }
-}
-
-function initState(): State {
-  const prefersDark =
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const board = boards[0];
-  if (!board) throw new Error("no boards defined");
-  return {
-    boardId: board.id,
-    fills: new Map(board.initialFills),
-    selection: initialSelection(gridOf(board.id)),
-    shiftTabMode: "v2-asymmetric",
-    backspaceMode: "v2-cross-block",
-    theme: prefersDark ? "dark" : "light",
-  };
 }
 
 function activeClue(
@@ -151,95 +45,225 @@ function activeClue(
 }
 
 export function App() {
-  const [state, dispatch] = useReducer(reducer, undefined, initState);
+  const [boardId, setBoardId] = useState(() => {
+    const board = boards[0];
+    if (!board) throw new Error("no boards defined");
+    return board.id;
+  });
+  const [session, setSession] = useState<FakeSession>(() =>
+    createFakeSession(boardById(boardId)),
+  );
+  const [selection, setSelection] = useState<Selection>(() =>
+    initialSelection(gridOf(boardId)),
+  );
+  const [theme, setTheme] = useState<Theme>(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light",
+  );
+  const [flashes, setFlashes] = useState<ReadonlyMap<number, FlashEntry>>(
+    new Map(),
+  );
+  const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
-  const board = boardById(state.boardId);
+
+  const store = session.store;
+  const version = useSyncExternalStore(store.subscribe, store.getVersion);
+
+  const board = boardById(boardId);
   const puzzle = board.puzzle;
+  const grid = useMemo(() => gridOf(boardId), [boardId]);
+  const frozen = store.status !== "ongoing";
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", state.theme);
-  }, [state.theme]);
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     gridRef.current?.focus();
   }, []);
 
-  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    switch (e.key) {
-      case "ArrowLeft":
-        e.preventDefault();
-        return dispatch({ kind: "arrow", axis: "across", toward: "backward" });
-      case "ArrowRight":
-        e.preventDefault();
-        return dispatch({ kind: "arrow", axis: "across", toward: "forward" });
-      case "ArrowUp":
-        e.preventDefault();
-        return dispatch({ kind: "arrow", axis: "down", toward: "backward" });
-      case "ArrowDown":
-        e.preventDefault();
-        return dispatch({ kind: "arrow", axis: "down", toward: "forward" });
-      case "Tab":
-        e.preventDefault();
-        return dispatch({
-          kind: "tab",
-          toward: e.shiftKey ? "backward" : "forward",
-        });
-      case "Backspace":
-      case "Delete":
-        e.preventDefault();
-        return dispatch({ kind: "backspace" });
-      case " ":
-        e.preventDefault();
-        return dispatch({ kind: "toggleDir" });
-      default:
-        if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
-          e.preventDefault();
-          dispatch({ kind: "type", char: e.key });
-        }
+  useEffect(() => () => session.dispose(), [session]);
+
+  // Conflict flash (Decision 2.1d-1): the store detects the PROTOCOL section 8
+  // trigger; the view fills the cell with the writer's color and fades it out.
+  useEffect(
+    () =>
+      store.subscribeFlash(({ cell, by }) => {
+        const color =
+          store.participants.find((p) => p.userId === by)?.color ?? "#3e63dd";
+        flashNonce.current += 1;
+        const nonce = flashNonce.current;
+        setFlashes((prev) => new Map(prev).set(cell, { color, nonce }));
+      }),
+    [store],
+  );
+
+  const onFlashEnd = useCallback((cell: number, nonce: number) => {
+    setFlashes((prev) => {
+      if (prev.get(cell)?.nonce !== nonce) return prev;
+      const next = new Map(prev);
+      next.delete(cell);
+      return next;
+    });
+  }, []);
+
+  // The rendered composite (INV-10): sequenced cells painted with the overlay.
+  // Pending letters go through the identical path as confirmed ones (2.1d-4).
+  const fills = useMemo(() => {
+    void version;
+    const map = new Map<number, string>();
+    for (let cell = 0; cell < puzzle.cols * puzzle.rows; cell += 1) {
+      const value = store.renderValue(cell);
+      if (value !== null) map.set(cell, value);
     }
+    return map;
+  }, [store, version, puzzle]);
+
+  const filled = useMemo(() => new Set(fills.keys()), [fills]);
+
+  // Teammate presence: cursors joined with participants for color and initial,
+  // grouped per cell (DESIGN section 10 bottom-right anchoring).
+  const presence = useMemo(() => {
+    void version;
+    const byCell = new Map<number, PresenceEntry[]>();
+    for (const cursor of store.cursors.values()) {
+      if (cursor.userId === (store.selfUserId ?? SELF_USER_ID)) continue;
+      const participant = store.participants.find(
+        (p) => p.userId === cursor.userId,
+      );
+      const entry: PresenceEntry = {
+        userId: cursor.userId,
+        initial: participant?.displayName.charAt(0) ?? "?",
+        color: participant?.color ?? "#3e63dd",
+        direction: cursor.direction,
+      };
+      const list = byCell.get(cursor.cell);
+      if (list === undefined) byCell.set(cursor.cell, [entry]);
+      else list.push(entry);
+    }
+    return byCell;
+  }, [store, version]);
+
+  function switchBoard(id: string): void {
+    session.dispose();
+    setSession(createFakeSession(boardById(id)));
+    setBoardId(id);
+    setSelection(initialSelection(gridOf(id)));
+    setFlashes(new Map());
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
+    if (e.ctrlKey || e.metaKey || e.altKey) return; // chords left to the browser
+    const effect = keyEffect(
+      { grid, filled, selection, frozen },
+      e.key,
+      e.shiftKey,
+    );
+    if (effect === null) return; // Enter, Escape, non-charset keys: browser default
+    e.preventDefault();
+    for (const mutation of effect.mutations) {
+      if (mutation.type === "placeLetter") {
+        store.placeLetter(mutation.cell, mutation.value);
+      } else {
+        store.clearCell(mutation.cell);
+      }
+    }
+    setSelection(effect.selection);
+  }
+
+  function onCellClick(cell: number): void {
+    gridRef.current?.focus();
+    const next = cellClick(grid, selection, cell);
+    if (next !== null) setSelection(next);
   }
 
   const allClues: Clue[] = [...puzzle.acrossClues, ...puzzle.downClues];
-  const clue = activeClue(allClues, state.selection);
+  const clue = activeClue(allClues, selection);
   const clueCells = clue
-    ? clue.cells.map((c) => state.fills.get(c) ?? "·").join("")
+    ? clue.cells.map((c) => fills.get(c) ?? "·").join("")
     : "";
 
   return (
     <div className="app">
       <header className="app__header">
         <div>
-          <h1 className="app__title">Crossy UX playground</h1>
+          <h1 className="app__title">Crossy web skeleton</h1>
           <p className="app__subtitle">
-            Wave 1.1h. Fake data, no server. Grid and input model on trial
-            before the real store lands.
+            Wave 2.1d. The real store and engine navigation on fake data; the
+            demo strip stands in for teammates and the network until Wave 2.2
+            wires the live session service.
           </p>
         </div>
       </header>
 
       <SettingsStrip
-        boardId={state.boardId}
+        boardId={boardId}
         boards={boards.map((b) => ({ id: b.id, label: b.label }))}
-        onBoard={(id) => dispatch({ kind: "setBoard", id })}
-        shiftTabMode={state.shiftTabMode}
-        onShiftTab={(mode) => dispatch({ kind: "setShiftTab", mode })}
-        backspaceMode={state.backspaceMode}
-        onBackspace={(mode) => dispatch({ kind: "setBackspace", mode })}
-        theme={state.theme}
-        onTheme={(theme) => dispatch({ kind: "setTheme", theme })}
+        onBoard={switchBoard}
+        theme={theme}
+        onTheme={setTheme}
       />
+
+      <div className="demo">
+        <span className="settings__label">Demo</span>
+        <div className="demo__buttons">
+          <button
+            type="button"
+            onClick={() => session.scribble(selection.cell)}
+          >
+            Teammate scribble
+          </button>
+          <button
+            type="button"
+            onClick={() => session.gapEvent(selection.cell)}
+          >
+            Lose an event
+          </button>
+          <button type="button" onClick={() => session.dropConnection()}>
+            Drop connection
+          </button>
+          <button type="button" onClick={() => session.completeGame()}>
+            Complete game
+          </button>
+          <button type="button" onClick={() => session.reset()}>
+            Reset board
+          </button>
+        </div>
+        <span className="demo__status">
+          {store.status} / seq {store.seq} / {store.sync}
+        </span>
+      </div>
 
       <div className="clue-bar" aria-live="polite">
         {clue ? (
           <>
-            <span className="clue-bar__tag">
+            <button
+              type="button"
+              className="clue-bar__tag"
+              onClick={() => {
+                gridRef.current?.focus();
+                setSelection(clueClick(clue));
+              }}
+              title="Jump to this clue's start"
+            >
               {clue.number} {clue.direction.toUpperCase()}
-            </span>
+            </button>
             <span className="clue-bar__cells">{clueCells}</span>
           </>
         ) : (
-          <span className="clue-bar__tag">No word on this axis</span>
+          <span className="clue-bar__tag clue-bar__tag--empty">
+            No word on this axis
+          </span>
+        )}
+      </div>
+
+      <div className="pill-row" aria-live="polite">
+        {store.sync !== "live" && (
+          <span className="conn-pill">
+            {store.sync === "resyncing" ? "Resyncing..." : "Reconnecting..."}
+          </span>
         )}
       </div>
 
@@ -252,23 +276,23 @@ export function App() {
       >
         <CrosswordGrid
           puzzle={puzzle}
-          fills={state.fills}
-          selection={state.selection}
-          teammates={board.teammates}
-          onCellClick={(cell) => {
-            gridRef.current?.focus();
-            dispatch({ kind: "click", cell });
-          }}
+          fills={fills}
+          selection={selection}
+          presence={presence}
+          flashes={flashes}
+          onCellClick={onCellClick}
+          onFlashEnd={onFlashEnd}
         />
       </div>
 
       <p className="hint">
-        Click a cell to focus the grid. Type to fill and watch the advance; at a
-        word end it wraps to the first empty cell. <code>Tab</code> and{" "}
-        <code>Shift+Tab</code> jump clues, <code>Space</code> or a click on the
-        focused cell toggles across/down, arrows move with block-skip,{" "}
-        <code>Backspace</code> clears and steps back. Flip the two toggles above
-        to feel each open decision.
+        Click a cell to focus the grid, click it again to toggle across/down.
+        Letters and digits fill and advance with filled-skip; <code>Tab</code>{" "}
+        and <code>Shift+Tab</code> jump clues; arrows move along the axis with
+        block-skip and toggle it across; <code>Backspace</code> or{" "}
+        <code>Delete</code> clears and steps back; <code>Space</code> clears and
+        advances one cell (never toggles). After Complete game the board freezes
+        for typing but stays navigable.
       </p>
     </div>
   );

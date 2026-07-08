@@ -1,20 +1,42 @@
-// SVG crossword grid, DESIGN.md §10 plus the v2 pixel constants from SP6. One cell is a
-// 36-unit module; the whole grid scales to fit. Background precedence, stroke, clue
-// numbers, circles, and teammate cursors follow the recovered constants exactly.
-import { wordCells } from "../domain/navigation";
-import type { Grid, Puzzle, Selection, Teammate } from "../domain/types";
+// SVG crossword grid: DESIGN.md section 10 with the SP6 v2 pixel constants, promoted
+// to spec baseline by Decision 2.1d-6. One cell is a 36-unit module scaled to fit;
+// background precedence black square > current cell > check > active word >
+// teammate-here > default; teammate presence anchors to the cell's bottom-right,
+// clear of the top-left clue number (DESIGN section 10, owner-approved Wave 2.1d).
+// The active word derives from the engine's wordBounds, and the conflict flash
+// (Decision 2.1d-1) renders as a 300 ms ease-out fade of the writer's color.
+import { wordBounds } from "@crossy/engine";
+import type { Direction, Grid } from "@crossy/engine";
+import type { Selection } from "../input/actions";
+import type { Puzzle } from "../domain/types";
 
 const CELL = 36;
+
+/** A teammate rendered in a cell: cursor arrow, avatar, and flash all use their color. */
+export interface PresenceEntry {
+  userId: string;
+  initial: string;
+  color: string;
+  direction: Direction;
+}
+
+/** One conflict flash in flight: the writer's color fading over the cell. */
+export interface FlashEntry {
+  color: string;
+  nonce: number;
+}
 
 interface Props {
   puzzle: Puzzle;
   fills: ReadonlyMap<number, string>;
   selection: Selection;
-  teammates: readonly Teammate[];
+  presence: ReadonlyMap<number, readonly PresenceEntry[]>;
+  flashes: ReadonlyMap<number, FlashEntry>;
   onCellClick: (cell: number) => void;
+  onFlashEnd: (cell: number, nonce: number) => void;
 }
 
-// Background precedence (SP6, DESIGN.md §10):
+// Background precedence (SP6, DESIGN.md section 10):
 // black square > current cell > check/cross-reference > active word > teammate-here > default.
 function cellRole(
   cell: number,
@@ -32,31 +54,34 @@ function cellRole(
 }
 
 // Across cursor is a right-pointing triangle, down is a downward one, in a 12x12 box
-// scaled to 7x7 at the cell's top-right (SP6: 7x7 at +27,+3, --indigo-11).
-function cursorPath(direction: Teammate["direction"]): string {
+// scaled to 7x7 at the cell's top-right (SP6: 7x7 at +27,+3).
+function cursorPath(direction: Direction): string {
   return direction === "across" ? "M0 0 L12 6 L0 12 Z" : "M0 0 L6 12 L12 0 Z";
+}
+
+/** The active word: the wordBounds run through the cursor on the current axis. */
+function activeWordCells(grid: Grid, selection: Selection): Set<number> {
+  if (grid.blocks.has(selection.cell)) return new Set();
+  const { start, end } = wordBounds(grid, selection.direction, selection.cell);
+  const stride = selection.direction === "across" ? 1 : grid.cols;
+  const cells = new Set<number>();
+  for (let cell = start; cell <= end; cell += stride) cells.add(cell);
+  return cells;
 }
 
 export function CrosswordGrid({
   puzzle,
   fills,
   selection,
-  teammates,
+  presence,
+  flashes,
   onCellClick,
+  onFlashEnd,
 }: Props) {
   const { cols, rows } = puzzle;
   const grid: Grid = { cols, rows, blocks: puzzle.blocks };
-  const activeWord = new Set(
-    wordCells(grid, selection.direction, selection.cell),
-  );
-
-  const teammatesByCell = new Map<number, Teammate[]>();
-  for (const t of teammates) {
-    const list = teammatesByCell.get(t.cell) ?? [];
-    list.push(t);
-    teammatesByCell.set(t.cell, list);
-  }
-  const teammateCells = new Set(teammatesByCell.keys());
+  const activeWord = activeWordCells(grid, selection);
+  const teammateCells = new Set(presence.keys());
 
   const cells = [];
   for (let cell = 0; cell < cols * rows; cell++) {
@@ -66,7 +91,7 @@ export function CrosswordGrid({
     const role = cellRole(cell, puzzle, selection, activeWord, teammateCells);
     const number = puzzle.numbers.get(cell);
     const value = fills.get(cell);
-    const here = teammatesByCell.get(cell) ?? [];
+    const here = presence.get(cell) ?? [];
     const letterX = here.length > 0 ? x + CELL / 2 - 3 : x + CELL / 2;
 
     cells.push(
@@ -118,16 +143,11 @@ export function CrosswordGrid({
           <>
             <g
               transform={`translate(${x + 27},${y + 3}) scale(${7 / 12})`}
-              fill="var(--presence-arrow)"
+              fill={here[0].color}
             >
               <path d={cursorPath(here[0].direction)} />
             </g>
-            <circle
-              cx={x + 30}
-              cy={y + 30}
-              r={5}
-              fill="var(--presence-avatar-bg)"
-            />
+            <circle cx={x + 30} cy={y + 30} r={5} fill={here[0].color} />
             <text
               x={x + 30}
               y={y + 30}
@@ -166,6 +186,28 @@ export function CrosswordGrid({
     );
   }
 
+  // Conflict flashes paint above everything: the cell fills with the writer's color
+  // at full opacity and fades to transparent over 300 ms, ease-out, leaving the new
+  // letter (Decision 2.1d-1; PROTOCOL.md section 8).
+  const flashRects = [];
+  for (const [cell, flash] of flashes) {
+    const x = (cell % cols) * CELL;
+    const y = Math.floor(cell / cols) * CELL;
+    flashRects.push(
+      <rect
+        key={`${cell}:${flash.nonce}`}
+        className="conflict-flash"
+        x={x}
+        y={y}
+        width={CELL}
+        height={CELL}
+        fill={flash.color}
+        pointerEvents="none"
+        onAnimationEnd={() => onFlashEnd(cell, flash.nonce)}
+      />,
+    );
+  }
+
   return (
     <svg
       className="grid"
@@ -174,6 +216,7 @@ export function CrosswordGrid({
       aria-label={`${cols} by ${rows} crossword grid`}
     >
       {cells}
+      {flashRects}
     </svg>
   );
 }
