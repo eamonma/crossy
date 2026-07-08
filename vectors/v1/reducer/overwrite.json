@@ -1,0 +1,40 @@
+[
+  {
+    "name": "overwrite flips value and attribution",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c9",
+        "cell": 0,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:00:01Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c9"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "B", "by": "u2" } },
+        "filledCount": 1,
+        "seq": 8
+      }
+    }
+  }
+]

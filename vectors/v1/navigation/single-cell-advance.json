@@ -1,0 +1,94 @@
+[
+  {
+    "name": "seed 1: next cell across",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "across", "from": 0, "toward": "forward" },
+    "then": { "cell": 1 }
+  },
+  {
+    "name": "seed 2: previous cell across",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "across", "from": 1, "toward": "backward" },
+    "then": { "cell": 0 }
+  },
+  {
+    "name": "seed 3: crosses into next row",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "across", "from": 4, "toward": "forward" },
+    "then": { "cell": 5 }
+  },
+  {
+    "name": "seed 4: clamps at grid bottom",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "down", "from": 15, "toward": "forward" },
+    "then": { "cell": 15 }
+  },
+  {
+    "name": "seed 5: skips a block across",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "across", "from": 1, "toward": "forward" },
+    "then": { "cell": 3 }
+  },
+  {
+    "name": "seed 6: skips a block down",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "down", "from": 1, "toward": "forward" },
+    "then": { "cell": 11 }
+  },
+  {
+    "name": "seed 7: no skipping when escape disabled",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "direction": "across",
+      "from": 0,
+      "toward": "forward",
+      "canEscapeWord": false
+    },
+    "then": { "cell": 1 }
+  },
+  {
+    "name": "seed 8: skipping when escape enabled",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "direction": "across",
+      "from": 1,
+      "toward": "forward",
+      "canEscapeWord": true
+    },
+    "then": { "cell": 3 }
+  },
+  {
+    "name": "seed 9: empty grid is a no-op",
+    "given": { "cols": 0, "rows": 0, "blocks": [] },
+    "when": { "direction": "across", "from": 0, "toward": "forward" },
+    "then": { "cell": 0 }
+  },
+  {
+    "name": "seed 10: invalid start clamps to first cell",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "direction": "across", "from": -1, "toward": "forward" },
+    "then": { "cell": 0 }
+  },
+  {
+    "name": "seed 11: escape disabled holds at word end",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "direction": "across",
+      "from": 1,
+      "toward": "forward",
+      "canEscapeWord": false
+    },
+    "then": { "cell": 1 }
+  },
+  {
+    "name": "seed 12: escape is a no-op mid-word",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "direction": "across",
+      "from": 0,
+      "toward": "forward",
+      "canEscapeWord": true
+    },
+    "then": { "cell": 1 }
+  }
+]
