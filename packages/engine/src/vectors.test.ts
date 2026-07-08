@@ -33,6 +33,7 @@ import { describe, expect, it } from "vitest";
 import {
   backspaceTarget,
   getNextCell,
+  matches,
   reduce,
   tabTarget,
   typingAdvance,
@@ -69,7 +70,7 @@ type Family = (typeof FAMILIES)[number];
  */
 const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   reducer: runReducer,
-  comparator: null,
+  comparator: runComparator,
   navigation: runNavigation,
   completion: null,
   "client-store": null,
@@ -616,6 +617,19 @@ function runNavigation(c: JsonObject): void {
     default:
       throw new Error(`unknown navigation op "${op}"`);
   }
+}
+
+/**
+ * Comparator runner: every value in `accept` must pass and every value in `reject` must
+ * fail for the case's `solution`. Casing is ASCII-only (INV-1); the Turkish dotted and
+ * dotless i in the suite prove a locale-aware port cannot slip through.
+ */
+function runComparator(c: JsonObject): void {
+  const solution = c.solution as string;
+  for (const value of c.accept as string[])
+    expect(matches(solution, value), `accept "${value}"`).toBe(true);
+  for (const value of c.reject as string[])
+    expect(matches(solution, value), `reject "${value}"`).toBe(false);
 }
 
 interface VectorFile {

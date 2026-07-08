@@ -20,6 +20,7 @@ export type {
   Status,
   Toward,
 } from "./types";
+export { matches } from "./comparator";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,
