@@ -124,10 +124,13 @@ artifact is a short written answer in `reports/spikes/`, plus an update to DESIG
 (§14/§15) where it changes a decision. A build track does not start while a spike it
 depends on is open.
 
-- [ ] **SP1 Guest upgrade keeps `user_id`** (half day). Supabase anonymous sign-in,
+- [x] **SP1 Guest upgrade keeps `user_id`** (half day). Supabase anonymous sign-in,
       then link Apple or Discord: same UUID before and after? D09's "everything keys
       on `user_id`" axiom rests on this. If it fails, guest identity needs a redesign
       before M3, not during it. Blocks: 1.1g design, M3.
+      Answered yes; see `reports/spikes/sp1-guest-upgrade-keeps-user-id.md`. D09
+      stands. Collision cases (email or OAuth identity already owned) fail closed
+      and are a sign-in, not a merge; M3 handles them as product scope.
 - [ ] **SP2 Local JWT verification** (half day). Verify Supabase access tokens against
       published keys with zero per-request network calls: JWKS shape, key rotation,
       the anonymous claim. Blocks: 1.1g.
