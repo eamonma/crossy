@@ -7,3 +7,6 @@ reports/
 # already skips *.swift in directory mode; this pins the generated .build/ tree (JSON and
 # YAML manifests SwiftPM writes) out of formatting explicitly.
 .build/
+
+# Installed agent skills: vendored third-party content, not ours to format.
+.agents/

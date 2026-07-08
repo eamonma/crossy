@@ -311,12 +311,15 @@ Progress:
       numbers at SP6's coordinates; Tab axis-crossing is underspecified;
       filled-skip's home (primitive vs composition) needs the track d vectors to
       decide. First owner taste pass done (2026-07-08): defaults accepted,
-      backspace-across-blocks confirmed as the v2 behavior. Shift+Tab verdict
-      pending: the owner expects a first-empty scan symmetric with Tab, SP6
-      mined start-if-empty-else-end; a v2 source audit
-      (`reports/v2-navigation-audit.md`) settles it before the track d vectors
-      are written. Rebus entry is out of playground scope; its input UX is an
-      open item for the 2.1d interaction spec.
+      backspace-across-blocks confirmed as the v2 behavior. Shift+Tab settled
+      by the v2 source audit (`reports/v2-navigation-audit.md`): v2 shipped a
+      buggy one-step walk that never reaches a mid-word gap and can wander
+      into unrelated clues from column-0 starts; DESIGN section 5 already
+      specifies the symmetric first-empty scan the owner expects, so track d
+      pins the symmetric scan and does not port v2's mechanism. The audit also
+      settled Tab axis behavior (v2 never crosses axes; wraps within the clue
+      list, direction unchanged) and rebus (v2 had no rebus entry at all), so
+      rebus input UX is designed fresh in the 2.1d interaction spec.
 - [x] **b** landed: 22 reducer cases across six clusters (no-op, overwrite/clear
       attribution, INV-4 terminal freeze, INV-1 normalization with the Turkish
       pin, firstFillAt lifecycle, INV-2 seq assignment), every case citing the
@@ -357,6 +360,18 @@ Progress:
       bucket. Findings: the age-out window K has no specified measurement;
       §13's incoming-message list omits `error` though its own required case
       needs it; store sync states are README-defined, not protocol-defined.
+- [x] **docs consolidation** landed: PROTOCOL.md and DESIGN.md moved into
+      agreement with the Wave 1.1 vectors and the reviewed findings above.
+      Clarified: section 13 rejection encoding, `error` in the client-store
+      incoming list, the three client connection states, unknown-sequenced
+      posture, cleared-cell `by` reservation, v1 supported set is {1},
+      normalization pinned in the reducer (DESIGN sections 3 and 5),
+      deleteUser split into vendor call plus API-owned tombstone (section 8),
+      API read-grant gap on session tables recorded (section 9). Recorded as
+      explicitly open: welcome version echo, the age-out measure (seq-delta
+      proposal, close by M2), comparator acceptance of unenterable full-string
+      matches. Follow-up candidate: DESIGN section 8 still describes the auth
+      port as three functions; packages/auth ships `verify` only.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
