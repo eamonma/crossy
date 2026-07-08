@@ -196,6 +196,11 @@ spine, the way the Swift port does:
   interaction spec: screens, input edge cases, motion timings, layout. The spec lands
   as a PR against this file, and against DESIGN.md §10 where the rule is durable.
   Building before the spec exists is the failure mode this gate blocks.
+- **Default to NYT where nothing is decided.** Wherever a behavior is deferred, or no
+  one has deliberately chosen one, do what the NYT crossword does: solvers arrive
+  trained on it. Deviating from what solvers already know is always a deliberate,
+  recorded decision (a vector, a spec line, or a decision-log entry), never an
+  accident.
 - **Dogfood at every client milestone exit.** A real solve, real puzzle, real friends,
   real devices. Feel findings become vectors where possible (navigation, store) and
   spec updates where not (motion, layout).
@@ -459,6 +464,115 @@ Progress:
       participantCount is best-effort until cell_events writes land in 2.2.
       Hardening note for 2.2: run the session suite under the crossy_session
       role the way the api suite runs as crossy_api.
+
+#### Wave 2.1d desktop interaction spec
+
+Flesh-out gate for track d (UX track). Scope: the walking-skeleton web client only,
+one game screen, desktop keyboard and mouse. No touch, no on-screen keyboard, no rebus,
+no clue-list sidebar beyond the active-clue bar. Mobile web (M4) and mechanics parity
+(M6) own everything deferred here. Navigation and store semantics are pinned by the Wave
+1.1 vectors and cited, not restated; this spec owns only what vectors cannot pin: feel,
+timing, layout, visual precedence, input mapping. The 1.1h playground is the base; where
+its current defaults disagree with a settled verdict, the verdict wins (see Playground
+reconciliation).
+
+Settled verdicts, law here (ROADMAP Wave 1.1 track d; `reports/v2-navigation-audit.md`):
+symmetric first-empty Shift+Tab, backspace crossing blocks, Tab never crossing axes, v2
+defaults elsewhere.
+
+**Selection model.** State is one cursor `{cell, direction}`, plus the active word
+derived as the `wordBounds` run through the cursor on the current axis
+(`vectors/v1/navigation/word-bounds.json`). Three distinct pointer paths, v2's, ported
+verbatim (audit catalog):
+
+- Click a playable cell other than the current cell: move the cursor there, keep
+  direction. Clicking a block is a no-op.
+- Click the already-current cell: toggle direction, do not move.
+- Click a clue in the clue list: jump to that clue's start cell unconditionally, set
+  direction to the clue's axis. No first-empty scan runs on this path; it is neither Tab
+  nor Shift+Tab. The skeleton renders the active-clue bar at minimum; a full clue list is
+  optional in the skeleton but its click rule is pinned now.
+
+**Keyboard map (skeleton).**
+
+| Key                             | Effect                                                                                                                                                                                        | Pinned by                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `A-Z`, `a-z`, `0-9` (single)    | place letter; ASCII-uppercase before send (INV-1); advance via the `typing` op: filled-skip inside the word, wrap to the word's first empty cell if incomplete, else stay on the last cell    | `typing-advance.json`, `full-word-asymmetry.json` |
+| Arrow along the current axis    | move one cell, block-skip, no filled-skip, clamp at edges                                                                                                                                     | `single-cell-advance.json`                        |
+| Arrow across the current axis   | toggle direction to that axis, do not move                                                                                                                                                    | DESIGN §5; audit item 7                           |
+| `Tab`                           | next clue's first empty cell, else its start when full; wraps to the grid's first playable cell past the last clue; never crosses axes                                                        | `next-word.json`, `full-word-asymmetry.json`      |
+| `Shift+Tab`                     | previous clue's first empty cell (symmetric scan from its start); its end when full; wraps, never crosses axes                                                                                | `previous-word.json`                              |
+| `Backspace`, `Delete` (aliased) | clear the current cell if non-empty and stay; if already empty, step back with block-skip across word boundaries into the previous word and clear there                                       | `backspace-step-back.json`                        |
+| `Space`                         | clear the current cell (a `clearCell` if non-empty) and advance exactly one cell forward within the word, no filled-skip, clamping at the word end; never toggles direction (Decision 2.1d-5) | vector due in 2.1d, before the handler is built   |
+
+The `Space` rule is the first application of the UX track's NYT-default principle: v2
+had no Space handling and no vector pins one yet, so the behavior defaults to what
+solvers already know.
+
+Not handled in the skeleton, each deferred to the wave that owns it: `Enter` and
+`Escape` are no-ops (v2 handled neither; audit); rebus and multi-character entry (buffer
+input, M6); the on-screen keyboard (M4); touch and swipe mapping (M4). Modifier chords
+(`Ctrl`, `Meta`, `Alt`) are left to the browser.
+
+**Navigation after a terminal state.** After `completed` or `abandoned`, navigation
+stays live and mutation freezes: click, click-toggle, arrows, Tab, and Shift+Tab keep
+working; typing, Space, Backspace, Delete, and clear are refused locally and never
+reach the wire (Space mutates under Decision 2.1d-5, so it freezes with them). DESIGN
+INV-4 concerns board mutation only, so a frozen board stays explorable for the
+post-game screen. This matches v2 (audit: the terminal guard gates only Backspace,
+Delete, and typing).
+
+**Connection and overlay presentation.** The store's three connection states (`live`,
+`resyncing`, `reconnecting`) and every overlay transition are pinned by the client-store
+vectors (`vectors/v1/client-store/`: `local-command.json`, `echo-and-error.json`,
+`sequencing.json`, `snapshot-reconciliation.json`) and PROTOCOL §7 and §8; the vectors
+deliberately leave the flash and the state chrome to the view. This spec fixes only the
+view:
+
+- `live`: no chrome.
+- `resyncing` and `reconnecting`: one non-blocking pill above the grid ("Resyncing..." /
+  "Reconnecting..."); the grid stays interactive for navigation, mutation buffers in the
+  overlay as usual (Decision 2.1d-3).
+- Pending overlay letters render identically to confirmed fills, same letter color, no
+  dim (Decision 2.1d-4).
+- Conflict flash: when an incoming `cellSet` from another user changes a cell you
+  currently render non-null (PROTOCOL §8 trigger), the cell fills with the writer's
+  presence color at full opacity and fades to transparent over 300 ms, ease-out, leaving
+  the new letter (Decision 2.1d-1).
+
+**Motion and layout baseline.** Adopt the SP6 v2 constants the playground already renders
+(`reports/spikes/sp6-v2-v3-recovery.md`; `apps/web/src/ui/CrosswordGrid.tsx`,
+`apps/web/src/styles.css`) as the skeleton's spec baseline, promoted here from playground
+code (Decision 2.1d-6):
+
+- Cell module 36 units, grid scaled to fit; cell stroke 0.6.
+- Clue number 10px bold, top-left at (+2, +10); letter 24px centered at y+32, shifted 3
+  units left when a teammate indicator shares the cell; circle radius = cell / 2.1.
+- Background precedence: black square > current cell > check or cross-reference > active
+  word > teammate-here > default (DESIGN §10).
+- Color roles: the SP6 dark and light Radix set as transcribed in `styles.css`.
+- Board bounds: max-width 620 units on desktop; board max-height 68svh phone, 75svh md,
+  70svh lg (SP6).
+- The cursor snaps with no tween in the skeleton (Decision 2.1d-2).
+
+**Decisions (owner may veto line by line).**
+
+| #      | Decision                                                                                                                                                                                  | Rationale                                                                                                                                                                                    |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.1d-1 | Conflict flash: 300 ms, ease-out, writer's presence color fading to transparent                                                                                                           | PROTOCOL §8 pins roughly 300 ms; ease-out front-loads the color so the flip reads instantly, then settles.                                                                                   |
+| 2.1d-2 | Cursor and selection snap instantly, no motion tween in the skeleton                                                                                                                      | Typing feel wants zero-latency focus; cursor-motion polish is an M1 taste item, not a skeleton dependency.                                                                                   |
+| 2.1d-3 | `resyncing` and `reconnecting` surface as one non-blocking pill; grid stays navigable                                                                                                     | The M1 taste pass needs the states visible without a full status surface; blocking the grid would hide the very latency being judged.                                                        |
+| 2.1d-4 | Pending overlay letters render identical to confirmed fills, no dim                                                                                                                       | Optimistic echo should feel immediate and indistinguishable; INV-10 already guarantees reconciliation, so a pending affordance buys nothing here.                                            |
+| 2.1d-5 | `Space` clears the current cell and advances one cell forward within the word, clamping at the word end, no filled-skip; direction toggle stays same-cell click and cross-axis arrow only | Owner ruling replacing the vetoed Space-toggle: matches NYT, the first application of the NYT-default principle (UX track); a navigation vector pins it in 2.1d before the handler is built. |
+| 2.1d-6 | Adopt the SP6 pixel, color, and board-bound constants as the spec baseline                                                                                                                | The playground already renders them per SP6 and they passed the taste pass; promoting them from code to spec stops them drifting silently.                                                   |
+
+**Playground reconciliation.** The 1.1h playground still defaults `shiftTabMode` to
+`v2-asymmetric` (`apps/web/src/App.tsx`, `initState`), which the settled verdict now
+overrides. Wave 2.1d deletes both A/B toggles and wires the vector-conformant engine
+navigation (symmetric Shift+Tab, cross-block backspace) per `apps/web/README.md`.
+Backspace already defaults to the settled `v2-cross-block`. The playground's `Space`
+handler toggles direction; 2.1d replaces it with the clear-and-advance rule
+(Decision 2.1d-5).
 
 ### Wave 2.2 — integration (sequential; needs all of 2.1)
 
