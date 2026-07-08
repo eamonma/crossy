@@ -87,28 +87,44 @@ final class SkipManifestTests: XCTestCase {
         }
     }
 
-    func test_skippedFamiliesLoseManifestEntryOnceEngineImplements() throws {
-        // Coarse by design, mirroring vectors.test.ts. CrossyEngine exports nothing
-        // until Wave 3; the moment a family is bound while the manifest still skips
-        // something, this fails, forcing the manifest to be cleaned up. Swift's anchor is
-        // `EngineBindings.bound`, not module reflection (see EngineBindings.swift).
-        if try !loadSkipManifest().families.isEmpty {
-            XCTAssertTrue(
-                EngineBindings.bound.isEmpty,
-                "CrossyEngine now binds \(EngineBindings.bound.map(\.rawValue)) while vectors.skip.json still skips families; bind them and remove their skip entries"
+    func test_eachEngineFamilyIsBoundIffDrainedFromManifest() throws {
+        // Replaces Wave 0.2b's coarse "bound is empty while any family is skipped" guard,
+        // exactly as vectors.test.ts replaced its coarse export guard when it drained. That
+        // guard fired the moment the first family bound; the Wave 3 port binds and drains
+        // one family at a time, so the invariant is now per family: a family the engine
+        // implements is bound here and absent from the manifest; a family still awaiting
+        // the engine is unbound and listed. Never both, never neither. This holds at every
+        // intermediate commit as the four families drain one at a time. Foreign families are
+        // covered by their own guards below.
+        let manifest = try loadSkipManifest()
+        for family in Set(try discover().map(\.family)) where !manifest.foreignFamilies.contains(family) {
+            let bound = EngineBindings.bound.contains(family)
+            let skipped = manifest.families.contains(family)
+            XCTAssertNotEqual(
+                bound, skipped,
+                "family \"\(family.rawValue)\" must be bound-and-drained or unbound-and-skipped, not bound=\(bound) skipped=\(skipped)"
             )
         }
     }
 
-    func test_aVectorRunAgainstTheUnimplementedEngineFailsHonestly() throws {
-        // The honest-failure proof: a real case runs against the engine seam and must
-        // throw `.noEngineBinding`. Red is real, so CI staying green means something.
-        let skip = try loadSkipManifest().families
-        guard let file = try discover().first(where: { skip.contains($0.family) }),
+    func test_aForeignFamilyRunThrowsNoEngineBinding() throws {
+        // Repointed from Wave 0.2b's honest-failure guard, mirroring vectors.test.ts. That
+        // guard proved a skipped-until-engine family threw rather than silently passing;
+        // once the Wave 3 port drains `families` to empty, that subject is gone (real
+        // executions now prove red is real). The remaining never-bound family is the foreign
+        // one (client-store): running it through the engine seam must still throw
+        // `.noEngineBinding`, since its consumer is a client store, not CrossyEngine. This
+        // keeps the honest-failure invariant with a live subject through and after the drain
+        // (PROTOCOL §13, vectors/README.md).
+        let manifest = try loadSkipManifest()
+        guard let file = try discover().first(where: { manifest.foreignFamilies.contains($0.family) }),
             let first = file.rawCases.first
         else {
-            return  // nothing skipped: the bound-or-skipped guard already forces bindings
+            return  // no foreign family present
         }
+        XCTAssertFalse(
+            EngineBindings.bound.contains(file.family),
+            "\(file.family.rawValue) is foreign; it must never bind to CrossyEngine")
         XCTAssertThrowsError(try EngineBindings.run(file.family, rawCase: first)) { error in
             guard case VectorError.noEngineBinding = error else {
                 return XCTFail("expected .noEngineBinding, got \(error)")
@@ -140,13 +156,13 @@ final class VectorExecutionTests: XCTestCase {
             // until-engine skip so the two reasons stay legible in the summary.
             let labels = files.flatMap(\.caseLabels)
             throw XCTSkip(
-                "\(family.rawValue) [foreign: apps/web + iOS store]: \(labels.count) case(s) shape-only here, executed by the consumer's suite — "
+                "\(family.rawValue) [foreign: apps/web + iOS store]: \(labels.count) case(s) shape-only here, executed by the consumer's suite - "
                     + labels.joined(separator: "; "))
         }
         if manifest.families.contains(family) {
             let labels = files.flatMap(\.caseLabels)
             throw XCTSkip(
-                "\(family.rawValue): \(labels.count) case(s) skipped, CrossyEngine unimplemented until Wave 3 — "
+                "\(family.rawValue): \(labels.count) case(s) skipped, CrossyEngine unimplemented until Wave 3 - "
                     + labels.joined(separator: "; "))
         }
         for file in files {
