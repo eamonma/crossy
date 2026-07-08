@@ -338,6 +338,17 @@ Progress:
       module (client-driven OAuth flow; single-writer on `users`), not the
       shared package. Finding: DESIGN §8's deleteUser sentence conflates the
       vendor-identity call with the API-owned tombstone write.
+- [x] **e** landed: `client-store` as the fifth vector family (14 cases:
+      overlay lifecycle, echo/error clearing per INV-10, gap-triggers-resync,
+      snapshot reconciliation with confirmed-drop/live-resend/aged-out-drop,
+      reconnect, crash rollback), with its case shape defined normatively in
+      the README (store state, ordered local/server stimulus, expected
+      overlay/render/send). New foreign-family mechanism in the runner
+      manifest: `foreign.families` never binds to the engine (consumer:
+      apps/web + iOS store, Wave 2.1d), disjoint from the drain-at-2.1a
+      bucket. Findings: the age-out window K has no specified measurement;
+      §13's incoming-message list omits `error` though its own required case
+      needs it; store sync states are README-defined, not protocol-defined.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
