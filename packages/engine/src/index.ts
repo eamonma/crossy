@@ -21,3 +21,10 @@ export type {
   Toward,
 } from "./types";
 export { reduce } from "./reducer";
+export {
+  backspaceTarget,
+  getNextCell,
+  tabTarget,
+  typingAdvance,
+  wordBounds,
+} from "./navigation";

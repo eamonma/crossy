@@ -30,8 +30,22 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { reduce } from "./index";
-import type { BoardState, Cell, Command, Grid } from "./index";
+import {
+  backspaceTarget,
+  getNextCell,
+  reduce,
+  tabTarget,
+  typingAdvance,
+  wordBounds,
+} from "./index";
+import type {
+  BoardState,
+  Cell,
+  Command,
+  Direction,
+  Grid,
+  Toward,
+} from "./index";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsRoot = resolve(here, "../../../vectors/v1");
@@ -56,7 +70,7 @@ type Family = (typeof FAMILIES)[number];
 const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   reducer: runReducer,
   comparator: null,
-  navigation: null,
+  navigation: runNavigation,
   completion: null,
   "client-store": null,
 };
@@ -526,6 +540,82 @@ function runReducer(c: JsonObject): void {
   expectMatch(events, then.events, "then.events");
   expectMatch(serializeState(state), then.state, "then.state");
   if ("error" in then) expect(error, "then.error").toBe(then.error);
+}
+
+/** The set of filled cell indices from a navigation case's `given.fills`. */
+function buildFilled(given: JsonObject): Set<number> {
+  const fills = given.fills as Record<string, string> | undefined;
+  if (fills === undefined) return new Set();
+  return new Set(Object.keys(fills).map(Number));
+}
+
+/**
+ * Navigation runner: dispatch on `when.op` (absent means `advance`, the seed's
+ * single-cell getNextCell). Each op fixes its own `when` inputs and `then` outputs
+ * (vectors/README.md). `then.direction` is asserted only for `tab`, the one op that
+ * can change axis.
+ */
+function runNavigation(c: JsonObject): void {
+  const grid = buildGrid(c.given as JsonObject);
+  const w = c.when as JsonObject;
+  const then = c.then as JsonObject;
+  const op = (w.op as string | undefined) ?? "advance";
+  const direction = w.direction as Direction;
+  const from = w.from as number;
+
+  switch (op) {
+    case "advance": {
+      const cell = getNextCell(
+        grid,
+        direction,
+        from,
+        w.toward as Toward,
+        w.canEscapeWord as boolean | undefined,
+      );
+      expect(cell, "then.cell").toBe(then.cell);
+      break;
+    }
+    case "wordBounds": {
+      const bounds = wordBounds(grid, direction, from);
+      expect(bounds.start, "then.start").toBe(then.start);
+      expect(bounds.end, "then.end").toBe(then.end);
+      break;
+    }
+    case "tab": {
+      const result = tabTarget(
+        grid,
+        direction,
+        from,
+        w.toward as Toward,
+        buildFilled(c.given as JsonObject),
+      );
+      expect(result.cell, "then.cell").toBe(then.cell);
+      expect(result.direction, "then.direction").toBe(then.direction);
+      break;
+    }
+    case "typing": {
+      const cell = typingAdvance(
+        grid,
+        direction,
+        from,
+        buildFilled(c.given as JsonObject),
+      );
+      expect(cell, "then.cell").toBe(then.cell);
+      break;
+    }
+    case "backspace": {
+      const cell = backspaceTarget(
+        grid,
+        direction,
+        from,
+        buildFilled(c.given as JsonObject),
+      );
+      expect(cell, "then.cell").toBe(then.cell);
+      break;
+    }
+    default:
+      throw new Error(`unknown navigation op "${op}"`);
+  }
 }
 
 interface VectorFile {
