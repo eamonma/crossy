@@ -2,4 +2,10 @@ packages:
   - packages/*
   - apps/*
 allowBuilds:
+  # testcontainers -> dockerode -> ssh2 optional native deps. We reach Docker over
+  # the local socket, so the pure-JS paths suffice; declining keeps installs from
+  # compiling native modules and keeps a fresh clone deterministic (DESIGN.md §9).
+  cpu-features: false
   esbuild: true
+  protobufjs: false
+  ssh2: false

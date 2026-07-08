@@ -22,5 +22,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      # `pnpm test` includes packages/db's Testcontainers Postgres migration test
+      # (DESIGN.md §11). ubuntu-latest ships a running Docker daemon, so it runs in
+      # this job; it fails loudly (never skips) if Docker is absent. Kept in the
+      # single job on purpose: at this scaffold stage there is exactly one such test,
+      # and a second job would duplicate checkout + install for no isolation gain.
       - run: pnpm test
       - run: pnpm format:check
