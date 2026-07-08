@@ -1,0 +1,97 @@
+[
+  {
+    "name": "INV-4: placeLetter on a completed game emits nothing and freezes the board (GAME_NOT_ONGOING)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "completed",
+      "seq": 900,
+      "firstFillAt": "2026-07-07T19:00:00Z",
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-late",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T19:41:00Z"
+      }
+    ],
+    "then": {
+      "error": "GAME_NOT_ONGOING",
+      "events": [],
+      "state": {
+        "cells": { "0": { "v": "A", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 900,
+        "firstFillAt": "2026-07-07T19:00:00Z"
+      }
+    }
+  },
+  {
+    "name": "INV-4: clearCell on a completed game emits nothing and freezes the board (GAME_NOT_ONGOING)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "completed",
+      "seq": 900,
+      "firstFillAt": "2026-07-07T19:00:00Z",
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "clearCell",
+        "commandId": "c-late",
+        "cell": 0,
+        "by": "u2",
+        "at": "2026-07-07T19:41:00Z"
+      }
+    ],
+    "then": {
+      "error": "GAME_NOT_ONGOING",
+      "events": [],
+      "state": {
+        "cells": { "0": { "v": "A", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 900,
+        "firstFillAt": "2026-07-07T19:00:00Z"
+      }
+    }
+  },
+  {
+    "name": "INV-4: placeLetter on an abandoned game emits nothing and freezes the board (GAME_NOT_ONGOING)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "abandoned",
+      "seq": 641,
+      "firstFillAt": "2026-07-07T19:00:00Z",
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-late",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T19:41:00Z"
+      }
+    ],
+    "then": {
+      "error": "GAME_NOT_ONGOING",
+      "events": [],
+      "state": {
+        "cells": { "0": { "v": "A", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 641,
+        "firstFillAt": "2026-07-07T19:00:00Z"
+      }
+    }
+  }
+]

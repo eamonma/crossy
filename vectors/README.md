@@ -87,6 +87,13 @@ Shape, verbatim from PROTOCOL.md §13:
 - `then.events` and `then.state` follow the assertion rule. The shape above omits
   the event's `at` deliberately, so runners do not assert it.
 - No-op vectors are required (PROTOCOL.md §13).
+- A rejected command produces no sequenced event and no state change. Its case sets
+  `then.events` to `[]`, `then.state` to the unchanged state (`seq` included, since a
+  rejection consumes no `seq`; INV-2), and `then.error` to the PROTOCOL.md §11 code
+  the rejection maps to (`GAME_NOT_ONGOING`, `INVALID_VALUE`, ...). This distinguishes
+  a rejection from an accepted no-op, which always emits one `cellSet` (PROTOCOL.md
+  §6). `then.error` extends the §13 reducer shape, which lists only `events` and
+  `state`; it is unasserted when absent (the assertion rule).
 
 ## Comparator cases
 
