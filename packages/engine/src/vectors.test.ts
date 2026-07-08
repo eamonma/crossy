@@ -31,6 +31,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  applyWithCompletion,
   backspaceTarget,
   getNextCell,
   matches,
@@ -45,6 +46,7 @@ import type {
   Command,
   Direction,
   Grid,
+  Solution,
   Toward,
 } from "./index";
 
@@ -72,7 +74,7 @@ const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   reducer: runReducer,
   comparator: runComparator,
   navigation: runNavigation,
-  completion: null,
+  completion: runCompletion,
   "client-store": null,
 };
 
@@ -632,6 +634,37 @@ function runComparator(c: JsonObject): void {
     expect(matches(solution, value), `reject "${value}"`).toBe(false);
 }
 
+/** Build the cell-index to solution-string map from a completion case's `given`. */
+function buildSolution(given: JsonObject): Solution {
+  const solution = new Map<number, string>();
+  for (const [index, value] of Object.entries(
+    given.solution as Record<string, string>,
+  ))
+    solution.set(Number(index), value);
+  return solution;
+}
+
+/**
+ * Completion runner: apply each command in mailbox order through the two-phase driver,
+ * accumulating the full sequenced stream. Concurrency collapses to this total order
+ * (PROTOCOL §10), and the level-triggered check re-runs on same-count overwrites
+ * (DESIGN §3). A rejected trailing command emits nothing (INV-4).
+ */
+function runCompletion(c: JsonObject): void {
+  const given = c.given as JsonObject;
+  const solution = buildSolution(given);
+  let state = buildBoardState(given);
+  const events: unknown[] = [];
+  for (const w of c.when as JsonObject[]) {
+    const result = applyWithCompletion(state, asCommand(w), solution);
+    state = result.state;
+    for (const e of result.events) events.push(e);
+  }
+  const then = c.then as JsonObject;
+  expectMatch(events, then.events, "then.events");
+  expectMatch(serializeState(state), then.state, "then.state");
+}
+
 interface VectorFile {
   family: Family;
   cluster: string;
@@ -733,7 +766,7 @@ function runCase(family: Family, c: JsonObject): void {
   const run = bindings[family];
   if (run === null)
     throw new Error(
-      `no engine binding for vector family "${family}": packages/engine is unimplemented until Wave 2.1a`,
+      `no engine binding for vector family "${family}": it is foreign, its consumer is a client store, not packages/engine`,
     );
   run(c);
 }
@@ -828,11 +861,19 @@ describe("skip manifest is checked, not trusted", () => {
     }
   });
 
-  it("a vector run against the unimplemented engine fails honestly, never passes", () => {
-    const file = files.find((f) => skip.families.has(f.family));
-    if (!file) return; // nothing skipped: the guard above already forces bindings
+  it("running a foreign family throws 'no engine binding', proving it is never engine-executed", () => {
+    // Repointed from Wave 1.1's honest-failure guard. That guard proved a
+    // skipped-until-engine family throws rather than silently passing; once Wave 2.1a
+    // drained `families` to empty, that subject was gone (real executions now prove red
+    // is real). The remaining never-bound family is the foreign one (client-store):
+    // running it through runCase must still throw, since its consumer is a client
+    // store, not packages/engine. This keeps the honest-failure invariant with a live
+    // subject through the drain (PROTOCOL §13, vectors/README.md).
+    const file = files.find((f) => skip.foreign.families.has(f.family));
+    if (!file) return; // no foreign family present
     const first = file.cases[0];
     if (!first) throw new Error("discovery guarantees non-empty case arrays");
+    expect(bindings[file.family]).toBe(null);
     expect(() => runCase(file.family, first)).toThrowError(/no engine binding/);
   });
 });

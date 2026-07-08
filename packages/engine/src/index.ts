@@ -21,6 +21,7 @@ export type {
   Toward,
 } from "./types";
 export { matches } from "./comparator";
+export { applyWithCompletion } from "./completion";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,
