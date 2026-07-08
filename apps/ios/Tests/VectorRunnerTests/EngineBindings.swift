@@ -19,10 +19,10 @@ import CrossyEngine
 enum EngineBindings {
     /// Families the Wave 3 port implements. Kept in sync with `run` and drained from
     /// vectors.skip.json as each binds.
-    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator]
+    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion]
 
     /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
-    /// has not implemented.
+    /// has not implemented (which after Wave 3 is only the foreign client-store family).
     static func run(_ family: VectorFamily, rawCase: [String: Any]) throws {
         switch family {
         case .reducer:
@@ -31,6 +31,8 @@ enum EngineBindings {
             try runNavigation(rawCase)
         case .comparator:
             try runComparator(rawCase)
+        case .completion:
+            try runCompletion(rawCase)
         default:
             throw VectorError.noEngineBinding(family)
         }
@@ -130,6 +132,36 @@ enum EngineBindings {
         }
         for value in reject.compactMap({ $0 as? String }) where matches(solution, value) {
             throw VectorMismatch("comparator solution \"\(solution)\": reject \"\(value)\" matched")
+        }
+    }
+
+    // MARK: - Completion
+
+    /// Apply each command in mailbox order through the two-phase driver, accumulating the
+    /// full sequenced stream. Concurrency collapses to this total order (PROTOCOL §10), and
+    /// the level-triggered check re-runs on same-count overwrites (DESIGN §3). A rejected
+    /// trailing command emits nothing (INV-4).
+    private static func runCompletion(_ c: [String: Any]) throws {
+        guard let given = c["given"] as? [String: Any],
+            let when = c["when"] as? [Any],
+            let then = c["then"] as? [String: Any]
+        else {
+            throw VectorMismatch("completion case missing given/when/then")
+        }
+        let solution = buildSolution(given)
+        var state = buildBoardState(given)
+        var events: [[String: Any]] = []
+        for step in when {
+            guard let w = step as? [String: Any] else { continue }
+            let result = applyWithCompletion(state, asCommand(w), solution)
+            state = result.state
+            for event in result.events { events.append(serializeEvent(event)) }
+        }
+        if let expectedEvents = then["events"] {
+            try expectMatch(events as [Any], expectedEvents, "then.events")
+        }
+        if let expectedState = then["state"] {
+            try expectMatch(serializeState(state), expectedState, "then.state")
         }
     }
 }
