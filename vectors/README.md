@@ -18,13 +18,15 @@ vectors/
     comparator/
     navigation/
     completion/
+    client-store/
 ```
 
 - One JSON file per behavior cluster, kebab-case basename, `.json` extension. Each
   file is a bare JSON array of cases, UTF-8, prettier-formatted.
 - The directory name is the family. Runners MUST fail on a family they do not
-  recognize; skipping silently is forbidden. The remaining family from
-  PROTOCOL.md §13 (client store) registers here when its wave lands.
+  recognize; skipping silently is forbidden. All five families from PROTOCOL.md §13
+  are registered. `client-store` is a _foreign_ family (see below): the engine runner
+  discovers and shape-validates it but never executes it.
 - On a protocol version bump the outgoing suite is frozen under `frozen/vN-1/` and
   stays in CI (PROTOCOL.md §14).
 
@@ -194,3 +196,125 @@ reducer never emits (PROTOCOL.md §10, §13; DESIGN.md §3). Shape:
   overwrite re-runs the comparator, so a full-but-wrong board corrected in place
   completes. Exactly one `gameCompleted` ever (INV-3); a terminal board freezes and
   rejects further mutations, yielding no second completion (INV-4).
+
+## Foreign families
+
+Most families bind to `packages/engine`. `client-store` does not: its consumer is the
+web client's store (Wave 2.1d) and later the iOS store, never the engine. So the
+engine runner treats it as _foreign_ — it discovers and shape-validates the cases
+(hard passes, no silent skip, no unknown-family failure) but never executes them.
+Execution lives in `apps/web`'s and the iOS suites, which import the same JSON files.
+
+The mechanism is `packages/engine/vectors.skip.json`. It has two disjoint buckets:
+
+- `families`: skipped-until-engine. Wave 2.1a binds each to an engine entry point and
+  removes it from the list; the runner's coarse "engine has exports while families are
+  skipped" guard fails the moment the engine ships, forcing the rebind.
+- `foreign.families`: a foreign consumer. Never bound to the engine, never removed.
+  The coarse guard ignores this bucket, so the Wave 2.1a rebind that drains `families`
+  and installs per-family checks never has to reason about the foreign set.
+
+A family may appear in exactly one bucket; the runner rejects overlap. In the engine
+runner's vitest summary, foreign cases show under a `[foreign: apps/web + iOS store]`
+describe as explicit skips, so they stay visible rather than silently absent.
+
+## Client-store cases
+
+PROTOCOL.md §13 gives the client-store shape as prose, not JSON: "given sequenced
+state plus an overlay plus an incoming message, assert the resulting overlay and
+rendered cells." This encoding is defined here and is normative (as with navigation).
+A case pins one transition of the store's reconciliation logic (PROTOCOL.md §6-§8;
+DESIGN.md §10, INV-10), the duplicated web + iOS surface where drift is most expensive.
+
+```json
+{
+  "name": "§6/§8: a cellSet carrying your commandId clears that overlay entry and applies the sequenced value (INV-10)",
+  "given": {
+    "seq": 12,
+    "sync": "live",
+    "cols": 5,
+    "rows": 4,
+    "blocks": [2, 6, 13],
+    "cells": {},
+    "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }]
+  },
+  "when": [
+    {
+      "source": "server",
+      "type": "cellSet",
+      "seq": 13,
+      "cell": 1,
+      "value": "B",
+      "by": "u1",
+      "commandId": "c9"
+    }
+  ],
+  "then": {
+    "seq": 13,
+    "sync": "live",
+    "overlay": [],
+    "render": { "1": "B" },
+    "send": []
+  }
+}
+```
+
+- `given` is the store state before the stimulus: `seq` (last applied sequence
+  number), `sync` (below), the geometry (`cols`, `rows`, `blocks`), a sparse
+  sequenced `cells` map (default empty), and `overlay`, an ordered array of pending
+  `{ commandId, cell, value }`. Array order is send order (oldest first), so when
+  several entries target one cell the last one is the most recently sent
+  (PROTOCOL.md §8). `value` is `null` for a pending `clearCell`. An entry MAY carry
+  `agedOut: true` (below).
+- `sync` is the store's connection state, a token set defined here (PROTOCOL.md names
+  the behaviors, not the states): `live` (applying events in order), `resyncing` (a
+  gap was seen; `requestSync` sent; the next snapshot is applied wholesale and
+  sequenced events are ignored until then, PROTOCOL.md §7), `reconnecting` (the socket
+  closed after a fatal error or transport drop; backoff runs and the reconnect
+  `welcome` snapshot reconciles, PROTOCOL.md §7, §11).
+- `when` is the ordered stimulus. Each step is a flat object with `source: "local"`
+  (the user acted, `type` is `placeLetter` or `clearCell`) or `source: "server"` (a
+  frame arrived, `type` is `cellSet`, `error`, `sync`, or `welcome`); the wire message
+  fields sit inline. A `sync`/`welcome` carries a `board` with `seq`, `status`, a
+  sparse `cells` map, and `recentCommandIds`.
+- `then` is the store state after: `seq`, `sync`, the resulting `overlay` (send order),
+  `render` (sparse map of cell index to the displayed value, string or `null` — the
+  composite the user sees: sequenced `cells` painted with the overlay, most recently
+  sent winning per cell), and `send`, the ordered outbound frames the store emitted
+  (`requestSync`; a re-sent command; `[]` when none). A re-sent command reconstructs
+  from the overlay entry's `value`: a string re-sends `placeLetter`, `null` re-sends
+  `clearCell`.
+- Overlay lifecycle (INV-10, PROTOCOL.md §8): a local command adds an entry and sends
+  it; a `cellSet` echo (`commandId` match) clears it; a non-fatal `error` for that
+  `commandId` clears it (the immortal-overlay case — the cell's true value is never
+  masked); an unrelated echo or error leaves it untouched; a fatal `error` clears
+  nothing but goes `reconnecting`, preserving the overlay so §8 can re-send it.
+- Snapshot reconciliation runs identically for `sync`, `welcome`, and a crash-rollback
+  snapshot (PROTOCOL.md §7, §8). Per still-pending command: if its `commandId` is in
+  the snapshot's `recentCommandIds` it is confirmed and dropped (no re-send); else if
+  live it is re-added and re-sent; else if `agedOut` it is dropped without re-send. A
+  crash-rollback snapshot has `board.seq` lower than `given.seq`; the store MUST accept
+  it and roll back (PROTOCOL.md §7, INV-5), never refuse.
+
+Findings, unresolved and deliberately not baked in:
+
+- `agedOut` is supplied as case input, not derived. PROTOCOL.md §8 and DESIGN.md §15
+  say a pending command is re-sent if "still within the recent-command window (K)"
+  and dropped if aged out, but they do not pin _how the client measures a pending
+  command's age against K_ (by send-`seq`, by count, by wall clock — all unspecified).
+  The vectors pin the outcome (aged-out drops, not re-sends) via an explicit flag, and
+  leave the measurement for a PROTOCOL.md amendment rather than inventing it here.
+- PROTOCOL.md §13 lists the incoming message as "`cellSet`, `sync`, or a crash-rollback
+  snapshot," omitting `error`, yet the same sentence requires covering the
+  immortal-overlay case, which is triggered by a non-fatal `error`. These vectors treat
+  `error` as an in-scope stimulus; §13's enumeration should be widened.
+- The `sync` token set and the fatal-error transition are defined here because
+  PROTOCOL.md specifies the wire behaviors (gap, resync, reconnect, close) but not the
+  store's named states. The fatal-error case asserts only what §8's re-send requirement
+  forces (overlay preserved, nothing cleared by `commandId`), not a backoff schedule.
+- The ~300 ms conflict flash (PROTOCOL.md §8, D02) is out of scope: it is ephemeral
+  view animation keyed off a rendered-value change, not store state, and has no
+  deterministic value to assert. The store exposes the data; the view animates.
+- `gameCompleted`/`gameAbandoned` are left to the completion family and actor
+  integration; the store applies them as ordinary sequenced events, with no overlay or
+  reconciliation subtlety to pin here.
