@@ -310,6 +310,15 @@ Progress:
       finding: reducer-vs-actor ownership of normalization is stated
       inconsistently across DESIGN §3 and §5; vectors pin it in the reducer for
       cross-port determinism. Idempotency confirmed session-layer, not reducer.
+- [x] **c** landed: 8 comparator cases (full/first-char, symmetric ASCII fold,
+      digits, the Turkish pin, the SP5 `A/B` rebus edge) and a new `completion`
+      family (7 cases: fires on full-correct, level-triggered re-check,
+      exactly-one INV-3, terminal freeze INV-4, concurrent last-two) with its
+      own shape since completion needs per-cell solutions the reducer shape
+      lacks. Runner and README extended; remaining unregistered family is
+      client store (track e). Findings: whether the comparator accepts
+      unenterable full-string matches (`A/B`) is deliberately unpinned;
+      `gameCompleted.stats` is actor territory, not engine.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
