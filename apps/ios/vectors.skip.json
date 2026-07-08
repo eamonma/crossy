@@ -1,6 +1,6 @@
 {
   "reason": "CrossyEngine is unimplemented until the Wave 3 Swift port (ROADMAP.md Phase 3, Track C). Families listed here are skipped by Tests/VectorRunnerTests, whose guard tests fail if a listed family gains an engine binding or loses its vector files. Mirrors packages/engine/vectors.skip.json.",
-  "families": ["navigation", "reducer", "comparator", "completion"],
+  "families": ["navigation", "comparator", "completion"],
   "foreign": {
     "reason": "client-store's consumer is apps/web's store (Wave 2.1d) and later the iOS store, never CrossyEngine (PROTOCOL.md §13). The runner discovers and shape-validates these vectors but never executes them; execution lives in apps/web's and the iOS store's suites. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the Wave 3 per-family rebind that drains `families` must not touch it. Mirrors packages/engine/vectors.skip.json.",
     "families": ["client-store"]

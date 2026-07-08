@@ -1,29 +1,68 @@
 import CrossyEngine
 
-// The runner's single seam to the engine, mirroring the `bindings` map in
-// vectors.test.ts. CrossyEngine exports nothing today, so `bound` is empty and `run`
-// always throws `.noEngineBinding`; the honest-failure guard proves it. The Wave 3
-// Swift port adds each implemented family to `bound` and a matching `case` in `run` that
-// decodes the vector and calls CrossyEngine, then removes the family from
-// apps/ios/vectors.skip.json.
+// The runner's single seam to the engine, mirroring the `bindings` map in vectors.test.ts.
+// Each family the Wave 3 port implements is added to `bound` and gets a matching `case` in
+// `run` that parses the vector, calls CrossyEngine, and asserts the vector's `then`; the
+// family is then drained from apps/ios/vectors.skip.json. A family with no binding falls
+// through to `.noEngineBinding`, which the foreign honest-failure guard relies on.
 //
 // Parity note vs vectors.test.ts: the TS guard reads `Object.keys(engine)` to notice the
-// engine coming alive. Swift has no runtime module-symbol enumeration, so the anchor
-// here is `bound`. This is if anything a tighter coupling: a `case` in `run` cannot name
-// a CrossyEngine symbol that does not exist yet, so binding a family is a compile-time
-// act, and `bound` is the checked mirror the guard tests read.
+// engine coming alive. Swift has no runtime module-symbol enumeration, so the anchor here
+// is `bound`. This is if anything a tighter coupling: a `case` in `run` cannot name a
+// CrossyEngine symbol that does not exist yet, so binding a family is a compile-time act,
+// and `bound` is the checked mirror the guard tests read.
+//
+// The per-family runners mirror the `runReducer`/`runNavigation`/... functions in
+// vectors.test.ts. The JSON-to-engine adapters and the assertion-rule comparison live in
+// VectorEngineAdapter.swift; a runner throws `VectorMismatch` on a failed assertion, which
+// the calling XCTest method surfaces as a located failure.
 enum EngineBindings {
-    /// Families the Wave 3 port implements. Empty until then; keep in sync with `run`.
-    static let bound: Set<VectorFamily> = []
+    /// Families the Wave 3 port implements. Kept in sync with `run` and drained from
+    /// vectors.skip.json as each binds.
+    static let bound: Set<VectorFamily> = [.reducer]
 
-    /// Runs one case against the engine. Throws `.noEngineBinding` for any family the
-    /// port has not implemented, which today is all of them.
+    /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
+    /// has not implemented.
     static func run(_ family: VectorFamily, rawCase: [String: Any]) throws {
         switch family {
-        // Wave 3: add `case .reducer:` (etc.) that decode `rawCase` into the typed shape
-        // and call CrossyEngine, asserting the vector's `then`.
+        case .reducer:
+            try runReducer(rawCase)
         default:
             throw VectorError.noEngineBinding(family)
+        }
+    }
+
+    // MARK: - Reducer
+
+    /// Apply each command in `when` in mailbox order, threading state and accumulating
+    /// events (INV-2). A rejection carries the PROTOCOL §11 code; the sequence has at most
+    /// one, since every rejection case is a single command (vectors/README.md).
+    private static func runReducer(_ c: [String: Any]) throws {
+        guard let given = c["given"] as? [String: Any],
+            let when = c["when"] as? [Any],
+            let then = c["then"] as? [String: Any]
+        else {
+            throw VectorMismatch("reducer case missing given/when/then")
+        }
+        var state = buildBoardState(given)
+        var events: [[String: Any]] = []
+        var error: String?
+        for step in when {
+            guard let w = step as? [String: Any] else { continue }
+            let result = reduce(state, asCommand(w))
+            state = result.state
+            for event in result.events { events.append(serializeCellSet(event)) }
+            if let code = result.error { error = code.rawValue }
+        }
+        if let expectedEvents = then["events"] {
+            try expectMatch(events as [Any], expectedEvents, "then.events")
+        }
+        if let expectedState = then["state"] {
+            try expectMatch(serializeState(state), expectedState, "then.state")
+        }
+        // then.error extends the reducer shape; unasserted when absent (assertion rule).
+        if then.keys.contains("error"), let expected = then["error"] {
+            try expectMatch(jsonScalar(error), expected, "then.error")
         }
     }
 }
