@@ -111,6 +111,50 @@ Open decision to record in Phase 1: whether `packages/engine` imports types from
 between them. Leaning dependency-free engine (purity, symmetry with the Swift port);
 vectors pin both sides against drift. Decide once, in writing, in the PR that starts P2.
 
+## Spike track (close technical unknowns before building on them)
+
+DESIGN.md §15 is the uncertainty register. Some entries are tune-with-measurement and
+stay at their assigned milestones (flush thresholds, passivation delay). The rest are
+answerable now for a day or less of throwaway work each, and several would invalidate
+design decisions if the answer surprises us. Those get spiked during Phase 0 and
+Phase 1, before anything substantial is built on top of them.
+
+Rules: every spike is timeboxed; spike code is throwaway and never merges. The merged
+artifact is a short written answer in `reports/spikes/`, plus an update to DESIGN.md
+(§14/§15) where it changes a decision. A build track does not start while a spike it
+depends on is open.
+
+- [ ] **SP1 Guest upgrade keeps `user_id`** (half day). Supabase anonymous sign-in,
+      then link Apple or Discord: same UUID before and after? D09's "everything keys
+      on `user_id`" axiom rests on this. If it fails, guest identity needs a redesign
+      before M3, not during it. Blocks: 1.1g design, M3.
+- [ ] **SP2 Local JWT verification** (half day). Verify Supabase access tokens against
+      published keys with zero per-request network calls: JWKS shape, key rotation,
+      the anonymous claim. Blocks: 1.1g.
+- [ ] **SP3 Railway reality check** (one day). Toy WS echo service deployed in the
+      two-service shape: idle socket timeouts, `permessage-deflate` pass-through,
+      private-network reachability for `/internal`, pricing under N idle sockets.
+      Closes the §15 Railway and private-network questions early instead of at M1.
+      Fly.io is the named fallback if it disappoints. Blocks: Wave 2.2.
+- [ ] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
+      (ws vs uWebSockets.js vs platform), check backpressure behavior, and measure a
+      real 25×25 board payload under `permessage-deflate` against the under-20 KB
+      claim (PROTOCOL.md §1). Blocks: 2.1c.
+- [ ] **SP5 Puzzle corpus** (one day). Collect real XWord Info JSON in volume; measure
+      rebus lengths (is the cap of 10 right?), digits and punctuation in solutions,
+      grid sizes, and feature flags in the wild. Closes the §15 charset and rebus-cap
+      questions with data; feeds the ingestion ACL's named rejections. Blocks: G1
+      scope, comparator vector edge cases (1.1c).
+- [ ] **SP6 Recover the frozen v2/v3 reports** (half day). Land
+      `reports/v2-spec-extraction.md` and `reports/v3-mining.md`; confirm
+      `canEscapeWord` semantics (flagged "confirm" in DESIGN.md §5) and the exact v2
+      pixel constants the web grid will want. Blocks: 1.1d planned additions, M6
+      parity checklist.
+
+Wave 0.2b doubles as the Swift-parity spike: the XCTest runner consuming one real
+vector answers whether byte-identical JSON semantics hold across ports before P3
+invests in the full engine.
+
 ## UX track (cross-cutting)
 
 Most of the product risk after M1 sits in client look and feel: grid rendering,
@@ -133,6 +177,12 @@ spine, the way the Swift port does:
 - **Web settles semantics before iOS renders them.** By M5 every shared interaction
   rule is vectored and proven in the web client, so iOS effort goes to rendering
   quality and platform feel, which is why the app is native at all.
+- **Owner smoke tests are the taste instrument.** The product owner (Eamon) personally
+  smoke-tests at scheduled checkpoints, not incidentally: the 1.1h playground before
+  the 2.1d interaction spec is written, the M1 skeleton (typing feel: latency, flash,
+  cursor), the M2 completion moment, and a first pass on every Phase 4 build before
+  friends see it. Findings file as taste notes against the relevant flesh-out spec.
+  The friends dogfood then confirms; it does not discover.
 
 ## Phase 0 — Foundation (= M0)
 
@@ -167,7 +217,7 @@ spine, the way the Swift port does:
 
 ## Phase 1 — Contracts (the fan-out enabler)
 
-### Wave 1.1 — up to seven parallel tracks, all depending only on Phase 0
+### Wave 1.1 — up to eight parallel tracks, all depending only on Phase 0
 
 | Track | Work                                                                                                                                                             | Unblocks        |
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
@@ -182,7 +232,9 @@ spine, the way the Swift port does:
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
-migrations apply cleanly on Testcontainers; the engine/protocol type decision recorded.**
+migrations apply cleanly on Testcontainers; the engine/protocol type decision recorded;
+the 1.1h playground has had its first owner taste pass; every spike a Phase 2 track
+depends on is closed with a written answer.**
 
 ## Phase 2 — Walking skeleton (= M1)
 
@@ -207,7 +259,8 @@ Railway (validates the WebSocket + private-network open questions, DESIGN.md §1
 
 **Exit (= M1): two browsers converge after one is killed mid-word; flush atomicity and
 rehydrate proven under Testcontainers; the `/internal` private-network assumption
-confirmed on Railway.**
+confirmed on Railway (SP3 should have pre-answered this); owner taste pass on typing
+feel (latency, flash, cursor) recorded as notes for the Phase 4 flesh-outs.**
 
 ## Phase 3 — Correctness core ∥ Identity (= M2 ∥ M3)
 
@@ -215,7 +268,8 @@ confirmed on Railway.**
   derived timer, confetti, completion matrix green end-to-end, simulation harness
   (fast-check, seeded) first green run. Tune flush/passivation thresholds with
   measurement. **Exit: a full solve celebrates once, and only once, on both clients;
-  harness failures reproduce from a seed number.**
+  harness failures reproduce from a seed number; owner sign-off on the completion
+  moment (timer freeze and celebration feel).**
 - **Track B (M3)**: Apple + Discord + guest auth, role upgrade, kick with denylist +
   `membership-changed` internal endpoint, abandon with hydrate-on-demand, host
   succession, tombstone deletion. **Exit: a guest joins from a fresh phone, upgrades,
@@ -231,7 +285,8 @@ published contract (DESIGN.md §9), not a free-edit surface.
 **This phase is where the product is won or lost, and these sections are deliberately
 thin.** UX flesh-out gate at entry for both tracks: expand each into a full interaction
 spec (see the UX track) before building. Budget for iteration here; the milestones
-before this one exist so this phase can afford it.
+before this one exist so this phase can afford it. An owner smoke test precedes each
+track's dogfood exit: friends confirm, they do not discover.
 
 - **Track A (M4)**: mobile web — clue bar, bottom-sheet browser, on-screen keyboard,
   swipes. Flesh-out covers at minimum: touch targets and thumb reach, keyboard layout
@@ -250,8 +305,9 @@ UX flesh-out gate at entry: M6 items are interaction surfaces (rebus entry, chec
 styling, highlight precedence), not just mechanics. Spec them per platform first.
 
 - **M6**: check styling, rebus input on both platforms, cross-reference highlighting,
-  circles/shading, image clues; validate the rebus length-10 cap against real puzzles.
-  **Exit: the v2 parity checklist is green.**
+  circles/shading, image clues; validate the rebus length-10 cap against real puzzles
+  (SP5's corpus is the data). **Exit: the v2 parity checklist is green, walked
+  personally by the owner on both platforms.**
 - **M7**: OG preview images (geometry only, never fills), passivation tuning, presence
   colors everywhere, nightly simulation runs. **Exit: a link pasted in Discord unfurls
   with the grid image.**
