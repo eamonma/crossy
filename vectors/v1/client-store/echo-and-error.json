@@ -1,0 +1,145 @@
+[
+  {
+    "name": "§6/§8: a cellSet carrying your commandId clears that overlay entry and applies the sequenced value (INV-10)",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 13,
+        "cell": 1,
+        "value": "B",
+        "by": "u1",
+        "commandId": "c9"
+      }
+    ],
+    "then": {
+      "seq": 13,
+      "sync": "live",
+      "overlay": [],
+      "render": { "1": "B" },
+      "send": []
+    }
+  },
+  {
+    "name": "§7/§8: a cellSet for an unrelated commandId applies to sequenced state but does not clear your pending overlay (INV-10)",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 13,
+        "cell": 5,
+        "value": "Z",
+        "by": "u2",
+        "commandId": "c-other"
+      }
+    ],
+    "then": {
+      "seq": 13,
+      "sync": "live",
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }],
+      "render": { "1": "B", "5": "Z" },
+      "send": []
+    }
+  },
+  {
+    "name": "§8/§11: a non-fatal error carrying your commandId clears that overlay entry so the cell's true value is never masked (immortal-overlay; INV-10)",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "error",
+        "code": "GAME_NOT_ONGOING",
+        "fatal": false,
+        "commandId": "c9"
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "live",
+      "overlay": [],
+      "render": {},
+      "send": []
+    }
+  },
+  {
+    "name": "§8/§11: a non-fatal error for an unrelated commandId leaves the overlay unchanged (INV-10)",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "error",
+        "code": "RATE_LIMITED",
+        "fatal": false,
+        "commandId": "c-other"
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "live",
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }],
+      "render": { "1": "B" },
+      "send": []
+    }
+  },
+  {
+    "name": "§7/§11: a fatal error tears the connection down to reconnecting and preserves the overlay for post-reconnect re-send (INV-10)",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "error",
+        "code": "INTERNAL",
+        "fatal": true
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "reconnecting",
+      "overlay": [{ "commandId": "c9", "cell": 1, "value": "B" }],
+      "render": { "0": "A", "1": "B" },
+      "send": []
+    }
+  }
+]
