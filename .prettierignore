@@ -2,3 +2,8 @@ pnpm-lock.yaml
 DESIGN.md
 PROTOCOL.md
 reports/
+
+# Swift build artifacts (apps/ios). Prettier has no Swift parser, so `prettier --check .`
+# already skips *.swift in directory mode; this pins the generated .build/ tree (JSON and
+# YAML manifests SwiftPM writes) out of formatting explicitly.
+.build/

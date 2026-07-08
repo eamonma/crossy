@@ -232,9 +232,17 @@ spine, the way the Swift port does:
       discovery) + vitest runner in `packages/engine` + one deliberately failing
       reducer vector (landed as a checked skip manifest with an honest-failure
       guard, keeping CI green; see `packages/engine/src/vectors.test.ts`)
-- [ ] **b. Swift runner**: minimal Swift package under `apps/ios` + XCTest runner
+- [x] **b. Swift runner**: minimal Swift package under `apps/ios` + XCTest runner
       consuming the same JSON + macOS CI job path-filtered to `apps/ios/**` and
       `vectors/**`
+      Landed in `apps/ios`: a SwiftPM package (no Xcode project) with an empty
+      `CrossyEngine` target and the `VectorRunnerTests` XCTest runner mirroring
+      `packages/engine/src/vectors.test.ts` (strict discovery, Codable shape validation,
+      checked `apps/ios/vectors.skip.json`, honest-failure guard). Green with all four
+      families surfaced as `XCTSkip`; CI is a separate macos-latest `ios.yml`,
+      path-filtered. Spike answer: byte-identical JSON vector semantics hold across
+      ports; the one Wave 3 caveat is ASCII-only casing (INV-1), never Swift `String`
+      case mapping or canonical `==`.
 - [ ] **c. Postgres wiring**: Drizzle Kit + an empty migration applied by a
       Testcontainers CI job; create the Supabase project and choose the region
       (closes the region open question, DESIGN.md §15)
@@ -254,7 +262,7 @@ spine, the way the Swift port does:
 
 **Exit (= M0): both runners prove a vector fails honestly against the unimplemented
 engine while CI stays green (TypeScript: done, a guard asserts the run throws;
-Swift: the same proof in XCTest); Testcontainers wired.**
+Swift: done, the same guard in XCTest); Testcontainers wired.**
 
 ## Phase 1 — Contracts (the fan-out enabler)
 

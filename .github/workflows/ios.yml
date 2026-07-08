@@ -1,0 +1,42 @@
+name: iOS vectors
+
+# The Swift half of the M0 vector proof (ROADMAP.md Wave 0.2b). Kept a separate workflow,
+# not a job in ci.yml, so the path filter scopes the whole thing natively: GitHub applies
+# `on.*.paths` per workflow, so this runs only when the Swift package or the shared vectors
+# change, and never slows the JS `checks` job. A new file also merges cleanly while sibling
+# tracks edit ci.yml.
+#
+# macOS only, not the Ubuntu job: Swift does run on Linux (the runner is developed there),
+# but the port's real platform is Apple (M5 iOS), and macos-latest ships Swift with Xcode
+# so `swift test` needs zero toolchain setup. Adding Swift to the Ubuntu job would couple
+# the JS pipeline to a Swift toolchain install on every push, including JS-only ones, for no
+# parity gain the vectors do not already give. If macOS minutes ever bite, mirror this on
+# ubuntu with swift-actions/setup-swift; nothing here depends on staying single-platform.
+
+on:
+  push:
+    paths:
+      - "apps/ios/**"
+      - "vectors/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - "vectors/**"
+      - ".github/workflows/ios.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-vectors:
+    name: swift vector runner (XCTest)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - run: swift test
