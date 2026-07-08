@@ -1,0 +1,56 @@
+[
+  {
+    "name": "DESIGN §5 Shift+Tab / §13: symmetric first-empty scan finds the previous clue's mid-word gap (audit Verdict 1, not v2's land-on-end)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "7": "H", "9": "J" }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 10,
+      "toward": "backward"
+    },
+    "then": { "cell": 8, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Shift+Tab / §13: an empty previous clue lands on its start (same as a forward first-empty scan)",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 10,
+      "toward": "backward"
+    },
+    "then": { "cell": 7, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Shift+Tab / §13: a full previous clue falls back to its end (the Shift+Tab full-clue case)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "7": "H", "8": "I", "9": "J" }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 10,
+      "toward": "backward"
+    },
+    "then": { "cell": 9, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Shift+Tab / §13: past the first down clue, wraps to the grid's first playable cell, still down (no axis cross)",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "down",
+      "from": 10,
+      "toward": "backward"
+    },
+    "then": { "cell": 0, "direction": "down" }
+  }
+]

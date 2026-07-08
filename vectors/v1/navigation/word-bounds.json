@@ -1,0 +1,32 @@
+[
+  {
+    "name": "DESIGN §5 / §13 word bounds: interior cell reports the across word's block-bounded extent",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "wordBounds", "direction": "across", "from": 8 },
+    "then": { "start": 7, "end": 9 }
+  },
+  {
+    "name": "DESIGN §5 / §13 word bounds: across word stops at the left grid edge and the block on its right",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "wordBounds", "direction": "across", "from": 1 },
+    "then": { "start": 0, "end": 1 }
+  },
+  {
+    "name": "DESIGN §5 / §13 word bounds: down word spans the full column between top and bottom grid edges",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "wordBounds", "direction": "down", "from": 9 },
+    "then": { "start": 4, "end": 19 }
+  },
+  {
+    "name": "DESIGN §5 / §13 word bounds: a block-isolated single cell is its own start and end",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "wordBounds", "direction": "across", "from": 5 },
+    "then": { "start": 5, "end": 5 }
+  },
+  {
+    "name": "DESIGN §5 / §13 word bounds: down word starts below a block and ends at the bottom grid edge",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "wordBounds", "direction": "down", "from": 12 },
+    "then": { "start": 7, "end": 17 }
+  }
+]

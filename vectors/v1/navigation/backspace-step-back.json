@@ -1,0 +1,43 @@
+[
+  {
+    "name": "DESIGN §5 Backspace / §13: a non-empty cell clears in place and does not move",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "8": "X" }
+    },
+    "when": { "op": "backspace", "direction": "across", "from": 8 },
+    "then": { "cell": 8 }
+  },
+  {
+    "name": "DESIGN §5 Backspace / §13: an already-empty cell steps back within the word and clears there",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "backspace", "direction": "across", "from": 8 },
+    "then": { "cell": 7 }
+  },
+  {
+    "name": "DESIGN §5 Backspace / §13: an already-empty word start steps back across a block into the previous word",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "backspace", "direction": "across", "from": 7 },
+    "then": { "cell": 5 }
+  },
+  {
+    "name": "DESIGN §5 Backspace / §13: an already-empty cell steps back across a row boundary into the previous row's word",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "backspace", "direction": "across", "from": 5 },
+    "then": { "cell": 4 }
+  },
+  {
+    "name": "DESIGN §5 Backspace / §13: the grid's first cell has nowhere to step back and clears in place",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "backspace", "direction": "across", "from": 0 },
+    "then": { "cell": 0 }
+  },
+  {
+    "name": "DESIGN §5 Backspace / §13: an already-empty cell steps back across a block into the previous down word",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": { "op": "backspace", "direction": "down", "from": 11 },
+    "then": { "cell": 1 }
+  }
+]
