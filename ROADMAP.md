@@ -206,9 +206,10 @@ spine, the way the Swift port does:
 
 ### Wave 0.2 — three parallel tracks
 
-- [ ] **a. Vector harness**: `vectors/` conventions (file naming, case shape, runner
+- [x] **a. Vector harness**: `vectors/` conventions (file naming, case shape, runner
       discovery) + vitest runner in `packages/engine` + one deliberately failing
-      reducer vector
+      reducer vector (landed as a checked skip manifest with an honest-failure
+      guard, keeping CI green; see `packages/engine/src/vectors.test.ts`)
 - [ ] **b. Swift runner**: minimal Swift package under `apps/ios` + XCTest runner
       consuming the same JSON + macOS CI job path-filtered to `apps/ios/**` and
       `vectors/**`
@@ -216,7 +217,9 @@ spine, the way the Swift port does:
       Testcontainers CI job; create the Supabase project and choose the region
       (closes the region open question, DESIGN.md §15)
 
-**Exit (= M0): a red vector fails CI in both TypeScript and Swift; Testcontainers wired.**
+**Exit (= M0): both runners prove a vector fails honestly against the unimplemented
+engine while CI stays green (TypeScript: done, a guard asserts the run throws;
+Swift: the same proof in XCTest); Testcontainers wired.**
 
 ## Phase 1 — Contracts (the fan-out enabler)
 
