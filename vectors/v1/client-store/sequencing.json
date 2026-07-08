@@ -1,0 +1,92 @@
+[
+  {
+    "name": "§7: an in-order cellSet (seq == lastApplied + 1) applies and advances lastApplied",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 13,
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "commandId": "cx"
+      }
+    ],
+    "then": {
+      "seq": 13,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A", "1": "B" },
+      "send": []
+    }
+  },
+  {
+    "name": "§7: a gap (seq > lastApplied + 1) sends requestSync, does not apply the event, and marks the store resyncing",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 15,
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "commandId": "cx"
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "resyncing",
+      "overlay": [],
+      "render": { "0": "A" },
+      "send": [{ "type": "requestSync" }]
+    }
+  },
+  {
+    "name": "§7: a stale event (seq <= lastApplied) is discarded, changing nothing",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 10,
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "commandId": "cx"
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A" },
+      "send": []
+    }
+  }
+]

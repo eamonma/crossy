@@ -1,0 +1,123 @@
+[
+  {
+    "name": "§8: a sync snapshot drops confirmed pending, re-adds and re-sends live pending, and drops aged-out pending (INV-10)",
+    "given": {
+      "seq": 20,
+      "sync": "resyncing",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": [
+        { "commandId": "c-confirmed", "cell": 0, "value": "B" },
+        { "commandId": "c-live", "cell": 3, "value": "K" },
+        { "commandId": "c-aged", "cell": 7, "value": "M", "agedOut": true }
+      ]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "sync",
+        "board": {
+          "seq": 24,
+          "status": "ongoing",
+          "cells": { "0": { "v": "X", "by": "u2" } },
+          "recentCommandIds": ["c-confirmed"]
+        }
+      }
+    ],
+    "then": {
+      "seq": 24,
+      "sync": "live",
+      "overlay": [{ "commandId": "c-live", "cell": 3, "value": "K" }],
+      "render": { "0": "X", "3": "K" },
+      "send": [
+        {
+          "type": "placeLetter",
+          "commandId": "c-live",
+          "cell": 3,
+          "value": "K"
+        }
+      ]
+    }
+  },
+  {
+    "name": "§7/§8: a reconnect welcome runs the identical reconciliation and re-sends still-pending commands (MUST, not MAY)",
+    "given": {
+      "seq": 12,
+      "sync": "reconnecting",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": [{ "commandId": "c-live", "cell": 3, "value": "K" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "welcome",
+        "board": {
+          "seq": 14,
+          "status": "ongoing",
+          "cells": { "0": { "v": "A", "by": "u1" } },
+          "recentCommandIds": []
+        }
+      }
+    ],
+    "then": {
+      "seq": 14,
+      "sync": "live",
+      "overlay": [{ "commandId": "c-live", "cell": 3, "value": "K" }],
+      "render": { "0": "A", "3": "K" },
+      "send": [
+        {
+          "type": "placeLetter",
+          "commandId": "c-live",
+          "cell": 3,
+          "value": "K"
+        }
+      ]
+    }
+  },
+  {
+    "name": "§7: a crash-rollback snapshot with a lower seq is accepted, rolled back to, and reconciled (INV-5)",
+    "given": {
+      "seq": 900,
+      "sync": "reconnecting",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "B", "by": "u2" }
+      },
+      "overlay": [{ "commandId": "c-live", "cell": 3, "value": "K" }]
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "welcome",
+        "board": {
+          "seq": 850,
+          "status": "ongoing",
+          "cells": { "0": { "v": "A", "by": "u1" } },
+          "recentCommandIds": []
+        }
+      }
+    ],
+    "then": {
+      "seq": 850,
+      "sync": "live",
+      "overlay": [{ "commandId": "c-live", "cell": 3, "value": "K" }],
+      "render": { "0": "A", "3": "K" },
+      "send": [
+        {
+          "type": "placeLetter",
+          "commandId": "c-live",
+          "cell": 3,
+          "value": "K"
+        }
+      ]
+    }
+  }
+]

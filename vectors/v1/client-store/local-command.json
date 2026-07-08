@@ -1,0 +1,95 @@
+[
+  {
+    "name": "§8: a local placeLetter creates a pending overlay entry, renders it optimistically, and sends the command (INV-10)",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "local",
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 0,
+        "value": "A"
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "live",
+      "overlay": [{ "commandId": "c1", "cell": 0, "value": "A" }],
+      "render": { "0": "A" },
+      "send": [
+        { "type": "placeLetter", "commandId": "c1", "cell": 0, "value": "A" }
+      ]
+    }
+  },
+  {
+    "name": "§8: two pending writes to one cell render the most recently sent overlay entry",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "local",
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 0,
+        "value": "A"
+      },
+      {
+        "source": "local",
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 0,
+        "value": "B"
+      }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "live",
+      "overlay": [
+        { "commandId": "c1", "cell": 0, "value": "A" },
+        { "commandId": "c2", "cell": 0, "value": "B" }
+      ],
+      "render": { "0": "B" },
+      "send": [
+        { "type": "placeLetter", "commandId": "c1", "cell": 0, "value": "A" },
+        { "type": "placeLetter", "commandId": "c2", "cell": 0, "value": "B" }
+      ]
+    }
+  },
+  {
+    "name": "§8: a local clearCell over a filled sequenced cell renders empty optimistically and sends clearCell",
+    "given": {
+      "seq": 12,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "overlay": []
+    },
+    "when": [
+      { "source": "local", "type": "clearCell", "commandId": "c1", "cell": 0 }
+    ],
+    "then": {
+      "seq": 12,
+      "sync": "live",
+      "overlay": [{ "commandId": "c1", "cell": 0, "value": null }],
+      "render": { "0": null },
+      "send": [{ "type": "clearCell", "commandId": "c1", "cell": 0 }]
+    }
+  }
+]

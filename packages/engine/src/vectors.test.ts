@@ -13,6 +13,15 @@
  * runner or a malformed vector file. Here, discovery and shape validation are hard
  * passes; only execution is skipped, and only under the guarded manifest.
  *
+ * Two skip reasons live in the manifest, kept apart on purpose. `families` are
+ * skipped-until-engine: bound to packages/engine at Wave 2.1a, then removed from the
+ * manifest. `foreign.families` have a consumer that is never packages/engine (the
+ * client-store family runs in apps/web and the iOS store; PROTOCOL.md §13,
+ * vectors/README.md), so this runner discovers and shape-validates them but never
+ * executes them, and they never leave the manifest. Separating the two means the
+ * Wave 2.1a rebind (which drains `families` and replaces the coarse export guard with
+ * per-family checks) never has to reason about the foreign set.
+ *
  * Test files are exempt from the INV-9 purity rule (.dependency-cruiser.cjs), so
  * node:fs / node:path are allowed here; packages/engine/src non-test code still
  * imports nothing.
@@ -27,18 +36,28 @@ const here = dirname(fileURLToPath(import.meta.url));
 const vectorsRoot = resolve(here, "../../../vectors/v1");
 const manifestPath = resolve(here, "../vectors.skip.json");
 
-const FAMILIES = ["reducer", "comparator", "navigation", "completion"] as const;
+const FAMILIES = [
+  "reducer",
+  "comparator",
+  "navigation",
+  "completion",
+  "client-store",
+] as const;
 type Family = (typeof FAMILIES)[number];
 
 /**
  * Wave 2.1a binds implemented families to engine entry points here, removes them
- * from vectors.skip.json, and implements the per-family assertions.
+ * from vectors.skip.json, and implements the per-family assertions. A foreign family
+ * (vectors.skip.json `foreign`, e.g. client-store) stays `null` forever: its consumer
+ * is a client store, not packages/engine, so it is shape-validated here and executed
+ * elsewhere.
  */
 const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   reducer: null,
   comparator: null,
   navigation: null,
   completion: null,
+  "client-store": null,
 };
 
 type JsonObject = Record<string, unknown>;
@@ -89,6 +108,45 @@ function isSolutionMap(x: unknown): boolean {
   return Object.entries(x).every(
     ([key, value]) => /^\d+$/.test(key) && isString(value) && value.length > 0,
   );
+}
+
+/** The store sync states (client-store family; vectors/README.md). */
+const SYNC_STATES = ["live", "resyncing", "reconnecting"] as const;
+
+/** An overlay entry: {commandId, cell, value}; extra fields ignored. */
+function isOverlayEntry(x: unknown): boolean {
+  return (
+    isObject(x) &&
+    isString(x.commandId) &&
+    isInt(x.cell) &&
+    (x.value === null || isString(x.value))
+  );
+}
+
+/** given.overlay entries may carry an optional boolean `agedOut`. */
+function isGivenOverlay(x: unknown): boolean {
+  return (
+    Array.isArray(x) &&
+    x.every(
+      (e) =>
+        isOverlayEntry(e) &&
+        ((e as JsonObject).agedOut === undefined ||
+          typeof (e as JsonObject).agedOut === "boolean"),
+    )
+  );
+}
+
+/** Sparse map of decimal cell index to a rendered value (string or null). */
+function isRenderMap(x: unknown): boolean {
+  if (!isObject(x)) return false;
+  return Object.entries(x).every(
+    ([key, value]) => /^\d+$/.test(key) && (value === null || isString(value)),
+  );
+}
+
+/** then.send is an ordered list of outbound frames, each with a string type. */
+function isSendList(x: unknown): boolean {
+  return Array.isArray(x) && x.every((f) => isObject(f) && isString(f.type));
 }
 
 function reducerShapeProblems(c: JsonObject): string[] {
@@ -225,11 +283,83 @@ function completionShapeProblems(c: JsonObject): string[] {
   return problems;
 }
 
+/**
+ * Client-store cases carry a store state (sequenced `seq` + `sync` + sparse `cells`
+ * plus an `overlay`), a `when` sequence of local commands and server messages, and
+ * the resulting `overlay`, `render`, `send`, `seq`, and `sync`. The encoding is
+ * defined and normative in vectors/README.md. This family is foreign to the engine
+ * (see the manifest `foreign` set); the runner shape-validates it but never executes
+ * it here.
+ */
+function clientStoreShapeProblems(c: JsonObject): string[] {
+  const problems: string[] = [];
+  if (!isString(c.name)) problems.push("name: string required");
+  if (!isObject(c.given)) {
+    problems.push("given: object required");
+  } else {
+    const g = c.given;
+    if (!isInt(g.seq)) problems.push("given.seq: integer required");
+    if (
+      !isString(g.sync) ||
+      !(SYNC_STATES as readonly string[]).includes(g.sync)
+    )
+      problems.push(
+        'given.sync: "live" | "resyncing" | "reconnecting" required',
+      );
+    if (!isInt(g.cols)) problems.push("given.cols: integer required");
+    if (!isInt(g.rows)) problems.push("given.rows: integer required");
+    if (!isIntArray(g.blocks)) problems.push("given.blocks: int[] required");
+    if (g.cells !== undefined && !isCellMap(g.cells))
+      problems.push("given.cells: sparse map of cell index to {v, by}");
+    if (!isGivenOverlay(g.overlay))
+      problems.push(
+        "given.overlay: array of {commandId, cell, value, agedOut?}",
+      );
+  }
+  if (
+    !Array.isArray(c.when) ||
+    c.when.length === 0 ||
+    !c.when.every(
+      (w) =>
+        isObject(w) &&
+        (w.source === "local" || w.source === "server") &&
+        isString(w.type),
+    )
+  ) {
+    problems.push(
+      'when: non-empty array of steps, each { source: "local" | "server", type, ... }',
+    );
+  }
+  if (!isObject(c.then)) {
+    problems.push("then: object required");
+  } else {
+    const t = c.then;
+    if (!isInt(t.seq)) problems.push("then.seq: integer required");
+    if (
+      !isString(t.sync) ||
+      !(SYNC_STATES as readonly string[]).includes(t.sync)
+    )
+      problems.push(
+        'then.sync: "live" | "resyncing" | "reconnecting" required',
+      );
+    if (!Array.isArray(t.overlay) || !t.overlay.every(isOverlayEntry))
+      problems.push("then.overlay: array of {commandId, cell, value}");
+    if (!isRenderMap(t.render))
+      problems.push("then.render: sparse map of cell index to string or null");
+    if (!isSendList(t.send))
+      problems.push(
+        "then.send: array of outbound frames, each with a string type",
+      );
+  }
+  return problems;
+}
+
 const shapeProblems: Record<Family, (c: JsonObject) => string[]> = {
   reducer: reducerShapeProblems,
   comparator: comparatorShapeProblems,
   navigation: navigationShapeProblems,
   completion: completionShapeProblems,
+  "client-store": clientStoreShapeProblems,
 };
 
 interface VectorFile {
@@ -278,18 +408,50 @@ function discover(): VectorFile[] {
   return files;
 }
 
-function loadManifest(): { reason: string; families: Set<Family> } {
-  const raw: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (!isObject(raw) || !isString(raw.reason) || !Array.isArray(raw.families))
-    throw new Error(
-      "vectors.skip.json must be { reason: string, families: string[] }",
-    );
-  const families = raw.families.map((f) => {
+interface Manifest {
+  reason: string;
+  families: Set<Family>;
+  foreign: { reason: string; families: Set<Family> };
+}
+
+function parseFamilyList(raw: unknown, where: string): Family[] {
+  if (!Array.isArray(raw))
+    throw new Error(`vectors.skip.json ${where} must be a string[]`);
+  return raw.map((f) => {
     if (!isString(f) || !(FAMILIES as readonly string[]).includes(f))
       throw new Error(`vectors.skip.json lists unknown family "${String(f)}"`);
     return f as Family;
   });
-  return { reason: raw.reason, families: new Set(families) };
+}
+
+function loadManifest(): Manifest {
+  const raw: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (!isObject(raw) || !isString(raw.reason))
+    throw new Error(
+      "vectors.skip.json must be { reason, families, foreign: { reason, families } }",
+    );
+  const families = parseFamilyList(raw.families, "families");
+  // `foreign` is optional; absent means no foreign families.
+  let foreignReason = "";
+  let foreignFamilies: Family[] = [];
+  if (raw.foreign !== undefined) {
+    if (!isObject(raw.foreign) || !isString(raw.foreign.reason))
+      throw new Error(
+        "vectors.skip.json `foreign` must be { reason: string, families: string[] }",
+      );
+    foreignReason = raw.foreign.reason;
+    foreignFamilies = parseFamilyList(raw.foreign.families, "foreign.families");
+  }
+  const overlap = foreignFamilies.filter((f) => families.includes(f));
+  if (overlap.length > 0)
+    throw new Error(
+      `vectors.skip.json family "${overlap[0]}" is both skipped-until-engine and foreign; a family is one or the other`,
+    );
+  return {
+    reason: raw.reason,
+    families: new Set(families),
+    foreign: { reason: foreignReason, families: new Set(foreignFamilies) },
+  };
 }
 
 function caseLabel(family: Family, c: JsonObject): string {
@@ -316,6 +478,15 @@ describe("vector suite (INV-1: one shared suite drives every port)", () => {
     expect(discoveredFamilies).toContain("navigation");
   });
 
+  it("discovers the client-store family and treats it as foreign, not engine-bound (INV-10)", () => {
+    expect(discoveredFamilies).toContain("client-store");
+    expect(skip.foreign.families.has("client-store")).toBe(true);
+    // Foreign: never a skipped-until-engine family, never an engine binding. This is
+    // the distinction the Wave 2.1a rebind relies on (PROTOCOL.md §13).
+    expect(skip.families.has("client-store")).toBe(false);
+    expect(bindings["client-store"]).toBe(null);
+  });
+
   it("navigation/single-cell-advance encodes all 12 seed cases from PROTOCOL.md §13 (INV-1)", () => {
     const seed = files.find(
       (f) => f.family === "navigation" && f.cluster === "single-cell-advance",
@@ -337,8 +508,8 @@ describe("vector suite (INV-1: one shared suite drives every port)", () => {
 });
 
 describe("skip manifest is checked, not trusted", () => {
-  it("every skipped family has vector files on disk", () => {
-    for (const family of skip.families) {
+  it("every skipped or foreign family has vector files on disk", () => {
+    for (const family of [...skip.families, ...skip.foreign.families]) {
       expect(
         discoveredFamilies,
         `vectors.skip.json lists "${family}" but no vectors/v1/${family}/*.json exists; remove the dead entry`,
@@ -346,12 +517,25 @@ describe("skip manifest is checked, not trusted", () => {
     }
   });
 
-  it("every discovered family is bound to the engine or explicitly skipped", () => {
+  it("every discovered family is bound to the engine, skipped until it binds, or foreign", () => {
     for (const family of discoveredFamilies) {
       expect(
-        bindings[family] !== null || skip.families.has(family),
+        bindings[family] !== null ||
+          skip.families.has(family) ||
+          skip.foreign.families.has(family),
         `family "${family}" has no engine binding and no vectors.skip.json entry; its cases would fail`,
       ).toBe(true);
+    }
+  });
+
+  it("a foreign family is never bound to the engine (its consumer is a client store)", () => {
+    // Foreign families execute in apps/web + iOS, never here. This holds through the
+    // Wave 2.1a rebind: that wave binds `families`, never `foreign.families`.
+    for (const family of skip.foreign.families) {
+      expect(
+        bindings[family],
+        `family "${family}" is foreign but has an engine binding; foreign families run in their own consumer's suite, not packages/engine`,
+      ).toBe(null);
     }
   });
 
@@ -379,10 +563,28 @@ describe("skip manifest is checked, not trusted", () => {
 
 describe("vector execution against packages/engine", () => {
   for (const file of files) {
+    if (skip.foreign.families.has(file.family)) continue; // executed elsewhere; see below
     describe(`${file.family}/${file.cluster}`, () => {
       const run = skip.families.has(file.family) ? it.skip : it;
       for (const c of file.cases) {
         run(caseLabel(file.family, c), () => {
+          runCase(file.family, c);
+        });
+      }
+    });
+  }
+});
+
+// Foreign families are shape-validated above but never executed here: their consumer
+// is a client store (apps/web, then iOS), not packages/engine (PROTOCOL.md §13,
+// vectors/README.md). Listing them as explicit skips keeps them visible in the vitest
+// summary instead of silently absent.
+describe("foreign vector families (executed by their consumer's suite, shape-only here)", () => {
+  for (const file of files) {
+    if (!skip.foreign.families.has(file.family)) continue;
+    describe(`${file.family}/${file.cluster} [foreign: apps/web + iOS store]`, () => {
+      for (const c of file.cases) {
+        it.skip(caseLabel(file.family, c), () => {
           runCase(file.family, c);
         });
       }
