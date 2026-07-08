@@ -200,6 +200,19 @@ function comparatorShapeProblems(c: JsonObject): string[] {
   return problems;
 }
 
+/**
+ * The navigation operations (vectors/README.md `when.op`). Absent `op` means
+ * `advance`, the seed's single-cell getNextCell, so the 12 seed cases stay
+ * byte-identical. Each op fixes its own `when` inputs and `then` outputs.
+ */
+const NAV_OPS = [
+  "advance",
+  "wordBounds",
+  "tab",
+  "typing",
+  "backspace",
+] as const;
+
 function navigationShapeProblems(c: JsonObject): string[] {
   const problems: string[] = [];
   if (!isString(c.name)) problems.push("name: string required");
@@ -217,18 +230,49 @@ function navigationShapeProblems(c: JsonObject): string[] {
   }
   if (!isObject(c.when)) {
     problems.push("when: object required");
-  } else {
-    const w = c.when;
-    if (w.direction !== "across" && w.direction !== "down")
-      problems.push('when.direction: "across" or "down" required');
-    if (!isInt(w.from)) problems.push("when.from: integer required");
-    if (w.toward !== "forward" && w.toward !== "backward")
-      problems.push('when.toward: "forward" or "backward" required');
-    if (w.canEscapeWord !== undefined && typeof w.canEscapeWord !== "boolean")
-      problems.push("when.canEscapeWord: boolean when present");
+    return problems;
   }
-  if (!isObject(c.then) || !isInt(c.then.cell))
-    problems.push("then.cell: integer required");
+  const w = c.when;
+  const op = w.op === undefined ? "advance" : w.op;
+  if (!isString(op) || !(NAV_OPS as readonly string[]).includes(op))
+    problems.push(
+      `when.op: one of ${NAV_OPS.join(", ")} (absent means advance)`,
+    );
+  // Every op names a direction and a starting cell.
+  if (w.direction !== "across" && w.direction !== "down")
+    problems.push('when.direction: "across" or "down" required');
+  if (!isInt(w.from)) problems.push("when.from: integer required");
+  if (!isObject(c.then)) {
+    problems.push("then: object required");
+    return problems;
+  }
+  const t = c.then;
+  // Op-specific `when` inputs and `then` outputs (vectors/README.md table).
+  switch (op) {
+    case "advance":
+      if (w.toward !== "forward" && w.toward !== "backward")
+        problems.push('when.toward: "forward" or "backward" required');
+      if (w.canEscapeWord !== undefined && typeof w.canEscapeWord !== "boolean")
+        problems.push("when.canEscapeWord: boolean when present");
+      if (!isInt(t.cell)) problems.push("then.cell: integer required");
+      break;
+    case "tab":
+      if (w.toward !== "forward" && w.toward !== "backward")
+        problems.push('when.toward: "forward" or "backward" required');
+      if (!isInt(t.cell)) problems.push("then.cell: integer required");
+      // tab pins the unchanged axis on a clue-list wrap (vectors/README.md).
+      if (t.direction !== "across" && t.direction !== "down")
+        problems.push('then.direction: "across" or "down" required');
+      break;
+    case "wordBounds":
+      if (!isInt(t.start)) problems.push("then.start: integer required");
+      if (!isInt(t.end)) problems.push("then.end: integer required");
+      break;
+    case "typing":
+    case "backspace":
+      if (!isInt(t.cell)) problems.push("then.cell: integer required");
+      break;
+  }
   return problems;
 }
 
