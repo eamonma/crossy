@@ -1,0 +1,4 @@
+{
+  "reason": "packages/engine is unimplemented until Wave 2.1a (ROADMAP.md). Families listed here are skipped by src/vectors.test.ts, whose guard tests fail if a listed family gains an engine implementation or loses its vector files.",
+  "families": ["navigation", "reducer"]
+}

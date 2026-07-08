@@ -7,10 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
   }
