@@ -21,6 +21,36 @@ Open the printed URL. Click any cell to focus the grid, then use the keyboard.
 Other scripts: `pnpm --filter @crossy/web test` (the client-store vector suite plus
 unit tests), `pnpm --filter @crossy/web build`, `pnpm --filter @crossy/web typecheck`.
 
+## Taste pass (local M1 stack)
+
+`pnpm dev:stack`, run from the repo root, stands up the real stack the product owner
+plays for the M1 typing-feel taste pass: Testcontainers Postgres with migrations, the
+api, the session service, and this Vite dev server (hot reload, not a build), on stable
+ports. It seeds one demo game on a real 5x5 puzzle and prints two urls, one per
+identity. Open each in its own tab. The token in the url is the player, so the two tabs
+are two solvers already joined to one game (Ada the host, Grace the solver).
+
+What to feel:
+
+- **Typing latency.** Type in one tab and watch letters land in the other. Your own
+  letters render instantly through the optimistic overlay (INV-10); the round trip you
+  are judging is the teammate tab catching up.
+- **Conflict flash.** Put both cursors on the same cell and type different letters. The
+  overwritten cell flashes the writer's presence color and fades over 300 ms (Decision
+  2.1d-1).
+- **Cursor motion.** Your own cursor advances with filled-skip as you type and snaps on
+  click, with no motion tween (Decision 2.1d-2).
+- **Resync pill on a killed connection.** In one tab open devtools, go to the Network
+  panel, and switch it to Offline (or set throttling to Offline). Type a few letters,
+  then switch back to Online. The Reconnecting and Resyncing pill shows while the
+  socket is down, the transport reconnects on its own, and both boards reconcile from
+  the snapshot (PROTOCOL sections 7 and 8).
+
+Press Ctrl+C to stop: it drains the session (SIGTERM, so the write-behind flush runs)
+then stops the containers. Tokens in the printed urls last one hour, so re-run for
+fresh ones. Live teammate cursors are not broadcast in this wave, so a teammate shows
+up through their landed letters and the conflict-flash color, not a moving cursor.
+
 ## Layout
 
 - `src/store/` - `GameStore`: sequenced cells, the INV-10 overlay, the three
