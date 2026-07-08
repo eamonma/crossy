@@ -131,9 +131,13 @@ depends on is open.
       Answered yes; see `reports/spikes/sp1-guest-upgrade-keeps-user-id.md`. D09
       stands. Collision cases (email or OAuth identity already owned) fail closed
       and are a sign-in, not a merge; M3 handles them as product scope.
-- [ ] **SP2 Local JWT verification** (half day). Verify Supabase access tokens against
+- [x] **SP2 Local JWT verification** (half day). Verify Supabase access tokens against
       published keys with zero per-request network calls: JWKS shape, key rotation,
       the anonymous claim. Blocks: 1.1g.
+      Answered yes; see `reports/spikes/sp2-local-jwt-verification.md`. New projects
+      sign user tokens with asymmetric ES256 and publish a JWKS; a background refresh
+      into an in-memory `jose` key set verifies every token offline. `sub` and
+      `is_anonymous` are present as SP1 assumed. D05/§8 hold unchanged. 1.1g unblocked.
 - [ ] **SP3 Railway reality check** (one day). Toy WS echo service deployed in the
       two-service shape: idle socket timeouts, `permessage-deflate` pass-through,
       private-network reachability for `/internal`, pricing under N idle sockets.
