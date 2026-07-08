@@ -1,0 +1,123 @@
+[
+  {
+    "name": "§4/§10: firstFillAt is null until the first letter placement, then set to that command's at",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "firstFillAt": null
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-first",
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "at": "2026-07-07T19:02:11Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "A",
+          "by": "u1",
+          "commandId": "c-first"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "A", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 8,
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      }
+    }
+  },
+  {
+    "name": "§6: firstFillAt is set exactly once and a later fill on a pre-filled board does not move it",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "firstFillAt": "2026-07-07T19:02:11Z",
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-second",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T19:10:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c-second"
+        }
+      ],
+      "state": {
+        "cells": {
+          "0": { "v": "A", "by": "u1" },
+          "1": { "v": "B", "by": "u2" }
+        },
+        "filledCount": 2,
+        "seq": 8,
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      }
+    }
+  },
+  {
+    "name": "§6: clearing the only filled cell does not reset firstFillAt",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "firstFillAt": "2026-07-07T19:02:11Z",
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "clearCell",
+        "commandId": "c-clear",
+        "cell": 0,
+        "by": "u2",
+        "at": "2026-07-07T19:10:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": null,
+          "by": "u2",
+          "commandId": "c-clear"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": null, "by": "u2" } },
+        "filledCount": 0,
+        "seq": 8,
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      }
+    }
+  }
+]
