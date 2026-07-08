@@ -427,6 +427,20 @@ Progress:
       singleton runs as clues (the Tab cases pin it; real puzzles will not
       have singletons); INVALID_CELL is implemented per the PROTOCOL section 5
       validation order though no vector exercises it yet.
+- [x] **b** landed: apps/api walking skeleton on Hono (zero-dep core,
+      in-process test dispatch, deps injected; decision in apps/api/README.md).
+      POST /puzzles fixture ingest, POST /games with DESIGN section 7 invite
+      codes verbatim, idempotent non-demoting join, GET /games/{id}. 26 tests;
+      the suite connects AS crossy_api so the migration grants are exercised
+      (INV-7 proven by a denied game_state INSERT). INV-6 structural via
+      ClientPuzzle types plus a deep-scan backstop. JIT upsert is monotonic
+      per SP1 (permanent never reverts to guest). Findings for the next doc
+      amendment pass: DESIGN section 7 says the game view carries a "board
+      bootstrap" but PROTOCOL section 12 (followed, per precedence) has no
+      board there and the API holds no game_state read grant; the REST error
+      vocabulary is unspecified, a small proposed set ships in
+      apps/api/src/http/errors.ts; XWord Info translation, URL ingest, and the
+      G1 rejections are deliberately deferred to Phase 3 Track C.
 
 ### Wave 2.2 — integration (sequential; needs all of 2.1)
 
