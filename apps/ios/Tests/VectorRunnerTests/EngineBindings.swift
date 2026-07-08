@@ -19,7 +19,7 @@ import CrossyEngine
 enum EngineBindings {
     /// Families the Wave 3 port implements. Kept in sync with `run` and drained from
     /// vectors.skip.json as each binds.
-    static let bound: Set<VectorFamily> = [.reducer]
+    static let bound: Set<VectorFamily> = [.reducer, .navigation]
 
     /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
     /// has not implemented.
@@ -27,6 +27,8 @@ enum EngineBindings {
         switch family {
         case .reducer:
             try runReducer(rawCase)
+        case .navigation:
+            try runNavigation(rawCase)
         default:
             throw VectorError.noEngineBinding(family)
         }
@@ -63,6 +65,49 @@ enum EngineBindings {
         // then.error extends the reducer shape; unasserted when absent (assertion rule).
         if then.keys.contains("error"), let expected = then["error"] {
             try expectMatch(jsonScalar(error), expected, "then.error")
+        }
+    }
+
+    // MARK: - Navigation
+
+    /// Dispatch on `when.op` (absent means `advance`, the seed's single-cell getNextCell).
+    /// Each op fixes its own `when` inputs and `then` outputs (vectors/README.md).
+    /// `then.direction` is asserted only for `tab`, the one op that can change axis.
+    private static func runNavigation(_ c: [String: Any]) throws {
+        guard let given = c["given"] as? [String: Any],
+            let w = c["when"] as? [String: Any],
+            let then = c["then"] as? [String: Any]
+        else {
+            throw VectorMismatch("navigation case missing given/when/then")
+        }
+        let grid = buildGrid(given)
+        let op = (w["op"] as? String) ?? "advance"
+        let direction = parseDirection(w["direction"] as? String)
+        let from = intValue(w["from"]) ?? 0
+
+        switch op {
+        case "advance":
+            let toward = parseToward(w["toward"] as? String)
+            let canEscape = (w["canEscapeWord"] as? Bool) ?? true
+            let cell = getNextCell(grid, direction, from, toward, canEscapeWord: canEscape)
+            try expectInt(cell, then["cell"], "then.cell")
+        case "wordBounds":
+            let bounds = wordBounds(grid, direction, from)
+            try expectInt(bounds.start, then["start"], "then.start")
+            try expectInt(bounds.end, then["end"], "then.end")
+        case "tab":
+            let toward = parseToward(w["toward"] as? String)
+            let result = tabTarget(grid, direction, from, toward, buildFilled(given))
+            try expectInt(result.cell, then["cell"], "then.cell")
+            try expectString(directionString(result.direction), then["direction"], "then.direction")
+        case "typing":
+            let cell = typingAdvance(grid, direction, from, buildFilled(given))
+            try expectInt(cell, then["cell"], "then.cell")
+        case "backspace":
+            let cell = backspaceTarget(grid, direction, from, buildFilled(given))
+            try expectInt(cell, then["cell"], "then.cell")
+        default:
+            throw VectorMismatch("unknown navigation op \"\(op)\"")
         }
     }
 }
