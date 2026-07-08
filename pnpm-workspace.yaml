@@ -1,6 +1,7 @@
 packages:
   - packages/*
   - apps/*
+  - e2e
 allowBuilds:
   # testcontainers -> dockerode -> ssh2 optional native deps. We reach Docker over
   # the local socket, so the pure-JS paths suffice; declining keeps installs from

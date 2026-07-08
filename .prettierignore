@@ -10,3 +10,7 @@ reports/
 
 # Installed agent skills: vendored third-party content, not ours to format.
 .agents/
+
+# Playwright run artifacts (e2e). Generated, not source.
+e2e/test-results/
+e2e/playwright-report/

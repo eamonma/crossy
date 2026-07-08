@@ -12,6 +12,22 @@ import { gameRoutes } from "./games/routes";
 /** Compose the API from its injected dependencies. */
 export function buildApp(deps: AppDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
+
+  // CORS for the cross-origin SPA (DESIGN.md §7 link-preview aside; the SPA is a separate
+  // origin). Off unless a corsOrigin is injected, so the in-process test suite is
+  // unaffected. A GET carrying Authorization triggers a preflight, so OPTIONS is answered.
+  const corsOrigin = deps.corsOrigin;
+  if (corsOrigin !== undefined) {
+    app.use("*", async (c, next) => {
+      c.header("access-control-allow-origin", corsOrigin);
+      c.header("access-control-allow-headers", "authorization, content-type");
+      c.header("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
+      c.header("vary", "origin");
+      if (c.req.method === "OPTIONS") return c.body(null, 204);
+      await next();
+    });
+  }
+
   app.get("/health", (c) => c.json({ ok: true }));
   app.route("/puzzles", puzzleRoutes(deps));
   app.route("/games", gameRoutes(deps));

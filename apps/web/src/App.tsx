@@ -26,8 +26,23 @@ import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { SettingsStrip } from "./ui/SettingsStrip";
+import { LiveApp } from "./LiveApp";
 
 type Theme = "light" | "dark";
+
+/**
+ * A real game (`?game=<id>&api=<base>&token=<jwt>`) drives the live session service; with
+ * no game param the demo boards run on the fake session. The live path is what the M1
+ * smoke exercises with two real browsers.
+ */
+export function App() {
+  const params =
+    typeof window === "undefined"
+      ? new URLSearchParams()
+      : new URLSearchParams(window.location.search);
+  if (params.get("game") !== null) return <LiveApp params={params} />;
+  return <DemoApp />;
+}
 
 function gridOf(boardId: string): Grid {
   const p = boardById(boardId).puzzle;
@@ -44,7 +59,7 @@ function activeClue(
   );
 }
 
-export function App() {
+function DemoApp() {
   const [boardId, setBoardId] = useState(() => {
     const board = boards[0];
     if (!board) throw new Error("no boards defined");

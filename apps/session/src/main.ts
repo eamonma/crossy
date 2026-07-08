@@ -1,18 +1,20 @@
-// Runtime composition root (DESIGN.md §7, §8, §11). This is the ONLY place the live ports are
-// constructed: the Supabase auth adapter behind config and the `pg` pool from `DATABASE_URL`.
-// Tests never import this file; they inject the in-memory auth fake and a role-scoped pool, so
-// the suite makes zero network calls. All configuration is read here (12-factor) and passed in.
+// Runtime composition root for the session service (DESIGN.md §3, §6, §8). This is the
+// ONLY place the live ports are constructed: the Supabase auth adapter behind config and
+// the `pg` pool from DATABASE_URL. Tests never import this file; the integration suite
+// injects the in-memory auth fake and a role-scoped pool, so it makes zero network calls.
+// All configuration is read here (12-factor) and passed in.
+//
+// On SIGTERM (and SIGINT) it drains: stop accepting connections, flush every live actor,
+// close all sockets with 1001, then exit. Graceful shutdown loses nothing (INV-5).
+
 import { fileURLToPath } from "node:url";
-import { serve } from "@hono/node-server";
 import { Pool } from "pg";
 import { createSupabaseAuthPort } from "@crossy/auth";
 import type { SupabaseAuthConfig } from "@crossy/auth";
-import { buildApp } from "./app";
-import { createDb } from "./db/client";
+import { createSessionServer } from "./server";
 
 // The JWK Set shape the auth port expects, named without importing `jose` (a service never
-// imports `jose`; only the auth package does). Deriving it from the port's own config type
-// keeps this file honest about the boundary while satisfying the compiler.
+// imports `jose`; only the auth package does).
 type Jwks = Awaited<ReturnType<SupabaseAuthConfig["fetchJwks"]>>;
 
 function required(name: string): string {
@@ -28,7 +30,6 @@ async function main(): Promise<void> {
   // A pool with no error listener crashes the process when the DB drops an idle
   // connection (restart, network blip). Log and let the pool reconnect on the next query.
   pool.on("error", (err) => console.error("pg pool error:", err.message));
-  const db = createDb(pool);
 
   // The Supabase adapter verifies tokens locally against a background-refreshed JWKS; the
   // service supplies the real `fetch`, the adapter never fetches on the verify path (SP2).
@@ -41,17 +42,31 @@ async function main(): Promise<void> {
   });
   authPort.start();
 
-  const corsOrigin = process.env["CORS_ORIGIN"];
-  const app = buildApp({
-    db,
+  const server = await createSessionServer({
     authPort,
-    sessionWsBase: required("SESSION_WS_BASE"),
-    ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
+    pool,
+    host: process.env["HOST"] ?? "0.0.0.0",
+    port: Number(process.env["PORT"] ?? "8081"),
   });
+  console.log(`session service listening on ${server.url}`);
 
-  const port = Number(process.env["PORT"] ?? "8080");
-  serve({ fetch: app.fetch, port });
-  console.log(`core API listening on :${port}`);
+  let shuttingDown = false;
+  const shutdown = (signal: string): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received: draining`);
+    void (async () => {
+      try {
+        await server.drain();
+        authPort.stop();
+        await pool.end();
+      } finally {
+        process.exit(0);
+      }
+    })();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 // Start only when run directly, so importing the module has no side effect.

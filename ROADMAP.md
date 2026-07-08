@@ -606,6 +606,35 @@ rehydrate proven under Testcontainers; the `/internal` private-network assumptio
 confirmed on Railway (SP3 should have pre-answered this); owner taste pass on typing
 feel (latency, flash, cursor) recorded as notes for the Phase 4 flesh-outs.**
 
+Progress (2026-07-08): the local half of M1 is done; only the Railway deploy and its
+owner taste pass remain.
+
+- Write-behind flush landed in `apps/session` (`writer.ts`, `actor.ts`): buffered
+  cellSets plus the `game_state` snapshot in one transaction at ~25 events or ~5 s
+  (named, tunable `FLUSH_EVENT_THRESHOLD`/`FLUSH_INTERVAL_MS`). Atomicity proven under
+  Testcontainers (a mid-transaction fault rolls back both; a committed pair rehydrates to
+  the exact board, INV-5). Completion flushes synchronously before broadcast (INV-3).
+- `participantCount` is now authoritative: DISTINCT `user_id` over `cell_events` inside
+  the terminal flush transaction, so joiners and spectators do not count (PROTOCOL.md §4).
+- Reconnect resync: `requestSync` replies with a full `sync`, the reconnect `welcome`
+  carries real `recentCommandIds`, and `permessage-deflate` compresses snapshot frames
+  only (SP4), no standing per-connection zlib context.
+- SIGTERM drain (session `main.ts` + `server.drain()`): stop accepting, flush every live
+  actor, close sockets 1001; proven to lose nothing accepted.
+- Session suite hardened: the server pool runs as the `crossy_session` role, and a test
+  proves that role cannot write an api-owned table (INV-7, INV-8).
+- M1 Playwright smoke in `e2e/` (run `pnpm smoke`): real api + real session +
+  Testcontainers Postgres + two Chromium pages on the built web client. Both scenarios
+  pass locally: kill A's socket mid-word then reconnect-and-converge, and restart the
+  session service (SIGTERM drain) then reconnect-and-converge from the rehydrated
+  snapshot. Wired as a separate CI job (`ci.yml`), not in `pnpm test` (needs a build and
+  a browser).
+- Deferred (deploy, out of this wave's scope): deploy both services to Railway and confirm
+  the `/internal` private-network assumption there (SP3, waits on the owner account); the
+  owner typing-feel taste pass on the running smoke. Two client-side findings surfaced and
+  fixed in passing: the composition-root pg pools had no error listener, and the reconnect
+  backoff reset on every failed attempt after a long-lived drop.
+
 ## Phase 3 — Correctness core ∥ Identity (= M2 ∥ M3)
 
 - **Track A (M2)**: level-triggered two-phase completion, synchronous terminal flush,

@@ -1,0 +1,22 @@
+{
+  "name": "@crossy/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crossy/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@testcontainers/postgresql": "^10.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
+    "jose": "^6.0.0",
+    "pg": "^8.13.0",
+    "typescript": "^5.8.0"
+  }
+}

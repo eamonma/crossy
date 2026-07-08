@@ -29,3 +29,21 @@ jobs:
       # and a second job would duplicate checkout + install for no isolation gain.
       - run: pnpm test
       - run: pnpm format:check
+
+  smoke:
+    name: M1 Playwright smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Chromium plus its OS libraries; the harness stands up real api + session +
+      # Testcontainers Postgres and drives two real pages (ubuntu-latest ships Docker).
+      - run: pnpm --filter @crossy/e2e exec playwright install --with-deps chromium
+      # Builds the web client, then runs the two M1 scenarios. Kept a separate job (not in
+      # `pnpm test`) because it needs a browser and a build step; failing here is an M1 gate.
+      - run: pnpm smoke
