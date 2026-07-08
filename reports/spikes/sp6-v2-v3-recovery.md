@@ -18,12 +18,12 @@ v2 pixel and timing constants the web grid will want? Cross-check against
 
 Both reports existed and land byte-identical (checksums verified at copy time):
 
-- `reports/v3-mining.md` — found as an untracked file
+- `reports/v3-mining.md`: found as an untracked file
   `crossy/reports/v3-mining.md` (mtime 2026-07-07), md5
   `ace2b24a7575e37a887af3c5a4671c85`. Mines the v3 architecture docs; its constants
   (backoff, heartbeat 15 s / 45 s, cursor throttle 10/s, <20 KB snapshots) already
   inform PROTOCOL.md.
-- `reports/v2-spec-extraction.md` — found as `SPEC.md`, commit `2ec3d72`
+- `reports/v2-spec-extraction.md`: found as `SPEC.md`, commit `2ec3d72`
   ("Add behavioral specification for Crossy v2", 2026-01-30) on remote branch
   `claude/crossy-v2-spec-66VM8` in the `crossy` repo, md5
   `6e1fb3ba59817b177fd7c635853711ad`. A reverse-engineered behavioral spec of v2.
