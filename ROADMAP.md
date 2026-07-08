@@ -388,8 +388,9 @@ Progress:
       consumes only the seed file; wiring the new ops into a real consumer is
       2.1d store work.
 
-Wave 1.1 is complete. Phase 1 exit is met except the engine/protocol type
-decision, which Wave 2.1a records in writing as its first deliverable.
+Wave 1.1 is complete. Phase 1 exit is fully met: the last item, the
+engine/protocol type decision, is recorded in packages/engine/README.md
+(landed with Wave 2.1a, 2026-07-08).
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
@@ -411,6 +412,21 @@ depends on is closed with a written answer.**
 Track d has a UX flesh-out gate (see the UX track): the desktop interaction spec, grid
 input and selection, is written before the store and grid are built, and the Wave 1.1h
 playground is the base it builds on.
+
+Progress:
+
+- [x] **a** landed: pure TS engine, all four families drained red to green (75
+      cases: reducer 22, navigation 38, comparator 8, completion 7). Engine
+      suite 109 passed | 14 foreign client-store skips; dependency-cruiser 0
+      violations, so INV-9 holds with zero imports. Type-ownership decision
+      recorded in packages/engine/README.md, closing Phase 1 exit: the engine
+      owns dependency-free domain types, packages/protocol owns wire types,
+      apps adapt at their boundary, and the vectors are what keep the two type
+      worlds honest. The honest-failure guard was repointed at the foreign
+      family's never-bound invariant. Notes: the vector clue model counts
+      singleton runs as clues (the Tab cases pin it; real puzzles will not
+      have singletons); INVALID_CELL is implemented per the PROTOCOL section 5
+      validation order though no vector exercises it yet.
 
 ### Wave 2.2 — integration (sequential; needs all of 2.1)
 
