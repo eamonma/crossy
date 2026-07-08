@@ -38,10 +38,13 @@ import {
 // Stable ports so the owner opens the same url every run (override with DEV_STACK_*_PORT).
 // Postgres is the one exception: it is a Testcontainer on its own mapped port, reached only
 // by the api and session over DATABASE_URL, never by the owner.
+// 8790-8792 rather than 809x: the 80xx and 809x bands are prime self-hosting territory
+// (the owner's machine has Calibre parked on 8090), and a dev tool's defaults should not
+// gamble on them.
 const WEB_PORT = Number(process.env["DEV_STACK_WEB_PORT"] ?? "5173");
-const API_PORT = Number(process.env["DEV_STACK_API_PORT"] ?? "8090");
-const SESSION_PORT = Number(process.env["DEV_STACK_SESSION_PORT"] ?? "8091");
-const JWKS_PORT = Number(process.env["DEV_STACK_JWKS_PORT"] ?? "8092");
+const API_PORT = Number(process.env["DEV_STACK_API_PORT"] ?? "8790");
+const SESSION_PORT = Number(process.env["DEV_STACK_SESSION_PORT"] ?? "8791");
+const JWKS_PORT = Number(process.env["DEV_STACK_JWKS_PORT"] ?? "8792");
 
 const WEB_ORIGIN = `http://localhost:${WEB_PORT}`;
 const API_URL = `http://127.0.0.1:${API_PORT}`;
