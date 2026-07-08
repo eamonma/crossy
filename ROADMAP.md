@@ -146,10 +146,19 @@ depends on is open.
       Deliberately scheduled late: run it just before Wave 2.2 commits to the
       two-service deploy shape. It needs a Railway account, the spike stays
       throwaway, and no hosted dependency lands in code before then.
-- [ ] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
+- [x] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
       (ws vs uWebSockets.js vs platform), check backpressure behavior, and measure a
       real 25×25 board payload under `permessage-deflate` against the under-20 KB
       claim (PROTOCOL.md §1). Blocks: 2.1c.
+      Pick `ws`; see `reports/spikes/sp4-ws-library-snapshot-size.md`. Both `ws` and
+      uWebSockets.js expose backpressure and a kill switch (proven empirically:
+      `bufferedAmount` climbs to the cap, `terminate()`/`closeOnBackpressureLimit`
+      drops the slow client), so the tie breaks on deploy friction, where uWS is
+      npm-absent and ABI-pinned (failed to load on Node 24 until its newest release),
+      colliding with the fresh-clone launch gate. The under-20 KB claim holds
+      comfortably: worst-case 25×25 board is 34.8 KB raw, 2.95 KB compressed (~6.6x
+      under budget); §1 unchanged. Enable deflate only on the reconnect snapshot, not
+      the keystroke stream (~220 KB/conn otherwise). 2.1c unblocked.
 - [ ] **SP5 Puzzle corpus** (one day). Collect real XWord Info JSON in volume; measure
       rebus lengths (is the cap of 10 right?), digits and punctuation in solutions,
       grid sizes, and feature flags in the wild. Closes the §15 charset and rebus-cap
