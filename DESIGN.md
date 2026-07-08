@@ -59,8 +59,8 @@ Two services, one database, one bought identity provider.
 **A keystroke, end to end** (the whole system in six steps):
 
 1. A solver types `A`. The client applies it to a local optimistic overlay and sends `placeLetter{commandId, cell, value}` over its WebSocket.
-2. The game's actor takes the command from its mailbox and validates: connection already authenticated and membership-checked, role allows mutation, cell playable, value legal, game ongoing.
-3. The reducer computes the transition: new state plus a `cellSet` event carrying the next `seq`.
+2. The game's actor takes the command from its mailbox and validates the context gates it owns: connection already authenticated and membership-checked, role allows mutation, cell playable, game ongoing.
+3. The reducer normalizes the value (ASCII-only, INV-1) and computes the transition: new state plus a `cellSet` event carrying the next `seq`; a value that leaves the `A-Z0-9` charset is rejected `INVALID_VALUE`. Normalization lives in the reducer, not the actor, so the two ports stay byte-identical, and the reducer vectors pin it there.
 4. The actor broadcasts `cellSet` to every connection in the game. The writer's client matches `commandId` and clears its overlay entry; other clients apply the event, flashing the cell if its visible value changed.
 5. The event enters the write-behind buffer. Within about five seconds or twenty-five events it flushes, together with the board snapshot, to Postgres in one transaction.
 6. If the fill made `filledCount` equal the playable-cell count, the actor runs the comparator; on a pass it emits `gameCompleted` (flushed synchronously before broadcast) and rejects all further mutations.
@@ -112,7 +112,7 @@ CI jobs: lint + unit + TS vectors on every push; Swift vectors on a macOS runner
 
 **Command vocabulary** (wire detail in `PROTOCOL.md`): `placeLetter`, `clearCell`, and `checkRequest` reach the reducer or comparator through the actor; `moveCursor`, `heartbeat`, and `requestSync` never touch domain state.
 
-**Values**: normalized at the boundary. Uppercase, charset `A-Z0-9`, length 1 to 10 (10 covers observed rebus answers; revisit against real data). `null` clears. Digits are kept for v2 parity. Normalization is **ASCII-only**: map `a-z` to `A-Z` and leave every other code point unchanged, then validate against `A-Z0-9`. Locale-aware casing (`toLocaleUpperCase`, `uppercased(with:)`) is forbidden: it diverges across the TypeScript and Swift ports (Turkish `i` to `İ`, U+0130) and would break INV-1. A code point that uppercases outside `A-Z0-9` is rejected as `INVALID_VALUE`, identically on both ports.
+**Values**: normalized by the reducer, not the actor, so both ports agree byte for byte (INV-1). Uppercase, charset `A-Z0-9`, length 1 to 10 (10 covers observed rebus answers; revisit against real data). `null` clears. Digits are kept for v2 parity. Normalization is **ASCII-only**: map `a-z` to `A-Z` and leave every other code point unchanged, then validate against `A-Z0-9`. Locale-aware casing (`toLocaleUpperCase`, `uppercased(with:)`) is forbidden: it diverges across the TypeScript and Swift ports (Turkish `i` to `İ`, U+0130) and would break INV-1. A code point that uppercases outside `A-Z0-9` is rejected as `INVALID_VALUE`, identically on both ports.
 
 **Two-phase completion.** The reducer maintains `filledCount`; equality with the playable-cell count is a cheap gate. The gate is **level-triggered, not edge-triggered**: on every accepted mutation, if `filledCount` equals the playable-cell count, the actor runs the comparator over the whole board — including an overwrite that leaves `filledCount` unchanged, because a full-but-wrong board becomes correct exactly by such an in-place overwrite. Only a full pass emits `gameCompleted`; filled-but-wrong emits nothing and play continues. Re-checking only on the transition to full would strand a board corrected in place. This still avoids comparing on every keystroke and makes "exactly one completion" trivial inside one mailbox.
 
@@ -172,7 +172,7 @@ A second ACL, same idea, different boundary: the auth port (section 8) translate
 
 **Guests.** The first join as a guest mints a real anonymous user, device-bound via stored session (Keychain on iOS, localStorage on web). Everything keys on `user_id` and auth method is an attribute, so a later Apple or Discord sign-in links the identity in place and history survives. Guests are join-only: creating a game requires a full account, so every game has an accountable owner. Guest creation is rate-limited by IP. Stale anonymous users are reclaimed by a periodic job.
 
-**Deletion is a tombstone where events exist.** `deleteUser` and the stale-guest job scrub PII from `users` (display name, avatar) but retain the stable `user_id`, because `cell_events` is immutable and INV-1 replay and INV-2 contiguity depend on it. `cell_events.user_id` is therefore never a cascading foreign key. `memberships` and `game_denylist` rows for a tombstoned user are removed; event attribution survives as an opaque, PII-free id, rendered as "former participant."
+**Deletion is a tombstone where events exist.** Account deletion is two operations, not one. Removing the *vendor* identity is a Supabase admin (`service_role`) network call, owned by the API's identity module. Tombstoning the mirror row is a separate write to the API-owned `users` table (single writer, INV-7): that write and the stale-guest job scrub PII (display name, avatar) but retain the stable `user_id`, because `cell_events` is immutable and INV-1 replay and INV-2 contiguity depend on it. `cell_events.user_id` is therefore never a cascading foreign key. `memberships` and `game_denylist` rows for a tombstoned user are removed; event attribution survives as an opaque, PII-free id, rendered as "former participant."
 
 **Display identity**, everyone: a chosen display name plus a deterministic color from a hash (FNV-1a) of `user_id`, stable across devices, sessions, and clients.
 
@@ -181,6 +181,8 @@ A second ACL, same idea, different boundary: the auth port (section 8) translate
 ## 9. Data model and ownership
 
 Single writer per table. A shared database is a coupling sin when *write* ownership is ambiguous; this matrix removes that. Read-coupling remains and is not waved away: the session service reads several API-owned surfaces (`games`, `games.puzzle_snapshot`, `memberships`, `game_denylist`, and `users.display_name` for participant payloads), so their column shapes are a published contract. Changes to them are expand/contract — add, backfill, migrate readers, then drop — never a breaking rename in one deploy, because the two services deploy independently against one database.
+
+The coupling is currently one-directional: today the API holds no read grant on the session-owned `game_state` and `cell_events`. The Archive module (section 7) will need read on both, for solve replay and the deferred read models (D16). That is a planned expand migration to add read-only when the Archive module lands, not now; it is recorded here so the gap is visible rather than silent, and it leaves single-writer (INV-7) intact since it grants read only.
 
 | Table           | Writer  | Purpose                                                                                             |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------- |
