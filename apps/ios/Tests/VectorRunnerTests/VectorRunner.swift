@@ -13,12 +13,13 @@ import Foundation
 
 /// The vector families (= directory names under vectors/v1). A closed set on purpose:
 /// discovery fails on any directory not listed here, mirroring the TS `FAMILIES` const.
-/// The remaining PROTOCOL.md §13 families (completion matrix, client store) register a
-/// case here when their waves land.
+/// The remaining PROTOCOL.md §13 family (client store) registers a case here when its
+/// wave lands.
 enum VectorFamily: String, CaseIterable, Sendable {
     case reducer
     case comparator
     case navigation
+    case completion
 }
 
 /// Locates the shared vector tree and this package's skip manifest from the compiled-in

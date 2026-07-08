@@ -238,11 +238,11 @@ spine, the way the Swift port does:
       Landed in `apps/ios`: a SwiftPM package (no Xcode project) with an empty
       `CrossyEngine` target and the `VectorRunnerTests` XCTest runner mirroring
       `packages/engine/src/vectors.test.ts` (strict discovery, Codable shape validation,
-      checked `apps/ios/vectors.skip.json`, honest-failure guard). Ten tests green with
-      `reducer` and `navigation` surfaced as `XCTSkip`; CI is a separate macos-latest
-      `ios.yml`, path-filtered. Spike answer: byte-identical JSON vector semantics hold
-      across ports; the one Wave 3 caveat is ASCII-only casing (INV-1), never Swift
-      `String` case mapping or canonical `==`.
+      checked `apps/ios/vectors.skip.json`, honest-failure guard). Green with all four
+      families surfaced as `XCTSkip`; CI is a separate macos-latest `ios.yml`,
+      path-filtered. Spike answer: byte-identical JSON vector semantics hold across
+      ports; the one Wave 3 caveat is ASCII-only casing (INV-1), never Swift `String`
+      case mapping or canonical `==`.
 - [ ] **c. Postgres wiring**: Drizzle Kit + an empty migration applied by a
       Testcontainers CI job; create the Supabase project and choose the region
       (closes the region open question, DESIGN.md §15)

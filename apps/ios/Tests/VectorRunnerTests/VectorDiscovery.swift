@@ -119,6 +119,9 @@ func shapeProblems(for file: DiscoveredFile) -> [String] {
         case .navigation:
             return try decoder.decode([NavigationCase].self, from: file.data)
                 .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
+        case .completion:
+            return try decoder.decode([CompletionCase].self, from: file.data)
+                .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
         }
     } catch {
         return ["does not decode to the \(file.family.rawValue) shape: \(describeDecodingError(error))"]

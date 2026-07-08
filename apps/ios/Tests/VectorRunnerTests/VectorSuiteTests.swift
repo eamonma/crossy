@@ -96,6 +96,7 @@ final class VectorExecutionTests: XCTestCase {
     func test_executeReducer() throws { try execute(.reducer) }
     func test_executeComparator() throws { try execute(.comparator) }
     func test_executeNavigation() throws { try execute(.navigation) }
+    func test_executeCompletion() throws { try execute(.completion) }
 
     private func execute(_ family: VectorFamily) throws {
         let files = try discover().filter { $0.family == family }

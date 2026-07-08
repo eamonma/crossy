@@ -18,11 +18,11 @@ swift test --package-path apps/ios   # from the repo root
 # or: cd apps/ios && swift test
 ```
 
-Ten tests today: discovery and shape validation are hard pass/fail; the skip manifest is
-checked, not trusted; one guard runs a real case against the unimplemented engine and
-asserts it throws `no engine binding`, so CI stays green while proving red is real. The
-`reducer` and `navigation` execution suites report as `XCTSkip` with their case lists
-until Wave 3 binds the engine.
+Discovery and shape validation are hard pass/fail; the skip manifest is checked, not
+trusted; one guard runs a real case against the unimplemented engine and asserts it
+throws `no engine binding`, so CI stays green while proving red is real. All four
+families (`reducer`, `comparator`, `navigation`, `completion`) report as `XCTSkip` with
+their case lists until Wave 3 binds the engine.
 
 ## Skip manifest
 

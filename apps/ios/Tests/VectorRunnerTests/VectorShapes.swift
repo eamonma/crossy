@@ -1,6 +1,6 @@
 import Foundation
 
-// Codable structs mirroring vectors/README.md's three case shapes, named with the
+// Codable structs mirroring vectors/README.md's case shapes, named with the
 // shapes' own domain terms (DDD). Decoding is the first half of shape validation: a
 // case that does not decode to its family's shape fails the run, straight from the
 // bytes (no JSONSerialization round-trip, so number and boolean types are pinned
@@ -90,6 +90,11 @@ struct Command: Decodable {
 struct ReducerOutcome: Decodable {
     let events: [Event]
     let state: JSONObjectMarker
+    /// PROTOCOL.md §11 code for a rejected command (vectors/README.md rejection
+    /// convention): empty events, unchanged state, and this code alongside them. A
+    /// rejection consumes no seq (INV-2). Unasserted when absent, per the assertion
+    /// rule; an accepted no-op has no error and emits one cellSet.
+    let error: String?
 }
 
 struct Event: Decodable {
@@ -109,6 +114,58 @@ struct ComparatorCase: Decodable {
     func shapeProblems() -> [String] {
         solution.isEmpty ? ["solution: non-empty string required"] : []
     }
+}
+
+// MARK: - Completion
+
+/// Completion is its own family because the two-phase check needs the cell solutions,
+/// which the reducer shape does not carry, and it asserts `gameCompleted`, which the
+/// reducer never emits (vectors/README.md; PROTOCOL.md §10, §13).
+struct CompletionCase: Decodable {
+    let name: String
+    let given: CompletionGiven
+    let when: [Command]
+    let then: CompletionOutcome
+
+    var label: String { name }
+
+    func shapeProblems() -> [String] {
+        var problems: [String] = []
+        if when.isEmpty {
+            problems.append("when: non-empty array of commands required")
+        }
+        for key in given.solution.keys where !isDecimalKey(key) {
+            problems.append("given.solution: key \"\(key)\" is not a decimal cell index")
+        }
+        for (key, value) in given.solution where value.isEmpty {
+            problems.append("given.solution: cell \(key) requires a non-empty string")
+        }
+        for key in (given.cells ?? [:]).keys where !isDecimalKey(key) {
+            problems.append("given.cells: key \"\(key)\" is not a decimal cell index")
+        }
+        return problems
+    }
+}
+
+/// The reducer's given plus `solution`, the sparse map of cell index to solution string
+/// the comparator runs over. Required: a completion case without it fails decoding.
+struct CompletionGiven: Decodable {
+    let cols: Int
+    let rows: Int
+    let blocks: [Int]
+    let status: String
+    let seq: Int
+    let solution: [String: String]
+    let cells: [String: Cell]?
+    let firstFillAt: String?
+}
+
+/// Events plus state, like the reducer's outcome but with no rejection convention:
+/// vectors/README.md defines `then.error` for the reducer shape only. `gameCompleted`
+/// appears here as an `Event` like any other (type and seq are all the shape pins).
+struct CompletionOutcome: Decodable {
+    let events: [Event]
+    let state: JSONObjectMarker
 }
 
 // MARK: - Navigation
