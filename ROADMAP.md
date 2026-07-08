@@ -649,6 +649,14 @@ owner taste pass remain.
   keeps history; a kicked account finds the link dead.**
 - **Track C (background)**: Swift engine port toward green; full ingestion ACL (all
   named rejections, solvability check, 25×25 cap).
+  Progress (2026-07-08): the Swift engine port is DONE ahead of schedule. All 78
+  engine-bound vector cases execute and pass in XCTest (reducer 22, navigation 41,
+  comparator 8, completion 7); client-store stays foreign as designed. CrossyEngine
+  imports nothing, Foundation included (INV-9). INV-1 is byte-folded over the UTF-8
+  view with all string comparisons byte-wise, never canonical Swift ==, and the
+  Turkish pins pass; equivalence arguments per divergence-prone construct are in the
+  merge. The runner guards were repointed the same way the TS runner's were at 2.1a.
+  Remaining in Track C: the ingestion ACL.
 
 The one shared seam is the session service's connect-time membership check — a
 published contract (DESIGN.md §9), not a free-edit surface.
