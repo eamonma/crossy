@@ -12,6 +12,7 @@
     "boundaries": "depcruise packages apps --config .dependency-cruiser.cjs",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "smoke": "pnpm --filter @crossy/web build && pnpm --filter @crossy/e2e smoke",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -20,6 +21,7 @@
     "dependency-cruiser": "^16.0.0",
     "eslint": "^9.0.0",
     "prettier": "^3.0.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "typescript-eslint": "^8.0.0"
   }

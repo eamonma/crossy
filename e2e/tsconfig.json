@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2023", "DOM"],
+    "moduleResolution": "bundler"
+  },
+  "include": ["src", "scripts", "playwright.config.ts"]
+}

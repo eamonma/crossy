@@ -25,6 +25,9 @@ function required(name: string): string {
 
 async function main(): Promise<void> {
   const pool = new Pool({ connectionString: required("DATABASE_URL") });
+  // A pool with no error listener crashes the process when the DB drops an idle
+  // connection (restart, network blip). Log and let the pool reconnect on the next query.
+  pool.on("error", (err) => console.error("pg pool error:", err.message));
   const db = createDb(pool);
 
   // The Supabase adapter verifies tokens locally against a background-refreshed JWKS; the

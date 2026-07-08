@@ -86,7 +86,13 @@ export class WsTransport implements GameTransport {
       if (this.closedDeliberately) return;
       // Both fatal-error closes (1008) and transport drops land here; the store is
       // already or now becomes `reconnecting` and keeps its overlay (section 7).
-      this.schedule.connectionSurvived(Date.now() - this.openedAt);
+      // Only report survival when this socket actually opened: a failed reconnect
+      // attempt (server still down) never opened, so it must not reset the backoff
+      // walk, or a long-lived drop would busy-loop at 0 ms against a dead server.
+      if (this.openedAt > 0) {
+        this.schedule.connectionSurvived(Date.now() - this.openedAt);
+        this.openedAt = 0;
+      }
       this.options.onConnectionLost();
       this.reconnectTimer = setTimeout(() => {
         this.connect();
