@@ -1,0 +1,295 @@
+[
+  {
+    "name": "INV-1 §3: lowercase input is uppercased ASCII-only before it is stored",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-lower",
+        "cell": 0,
+        "value": "b",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "B",
+          "by": "u1",
+          "commandId": "c-lower"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "B", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 8
+      }
+    }
+  },
+  {
+    "name": "INV-1 §3: a digit is in the charset and passes normalization unchanged",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-digit",
+        "cell": 0,
+        "value": "5",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "5",
+          "by": "u1",
+          "commandId": "c-digit"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "5", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 8
+      }
+    }
+  },
+  {
+    "name": "INV-1 §3: a multi-character rebus value is uppercased ASCII-only",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-rebus",
+        "cell": 0,
+        "value": "abc",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "ABC",
+          "by": "u1",
+          "commandId": "c-rebus"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "ABC", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 8
+      }
+    }
+  },
+  {
+    "name": "INV-1 §13: ASCII i uppercases to ASCII I, never to Turkish İ (U+0130)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-ascii-i",
+        "cell": 0,
+        "value": "i",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "I",
+          "by": "u1",
+          "commandId": "c-ascii-i"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "I", "by": "u1" } },
+        "filledCount": 1,
+        "seq": 8
+      }
+    }
+  },
+  {
+    "name": "INV-1 §13: Turkish dotted capital İ (U+0130) is non-ASCII and rejected INVALID_VALUE, no event",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-dotted-i",
+        "cell": 0,
+        "value": "İ",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "error": "INVALID_VALUE",
+      "events": [],
+      "state": {
+        "cells": {},
+        "filledCount": 0,
+        "seq": 7
+      }
+    }
+  },
+  {
+    "name": "INV-1 §13: Turkish dotless ı (U+0131) is non-ASCII and rejected INVALID_VALUE, no event",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-dotless-i",
+        "cell": 0,
+        "value": "ı",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "error": "INVALID_VALUE",
+      "events": [],
+      "state": {
+        "cells": {},
+        "filledCount": 0,
+        "seq": 7
+      }
+    }
+  },
+  {
+    "name": "§3/§11: the empty string fails the length rule and is rejected INVALID_VALUE, no event",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-empty",
+        "cell": 0,
+        "value": "",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "error": "INVALID_VALUE",
+      "events": [],
+      "state": {
+        "cells": {},
+        "filledCount": 0,
+        "seq": 7
+      }
+    }
+  },
+  {
+    "name": "§3/§11: an 11-character value exceeds the length cap and is rejected INVALID_VALUE, no event",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-toolong",
+        "cell": 0,
+        "value": "ABCDEFGHIJK",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "error": "INVALID_VALUE",
+      "events": [],
+      "state": {
+        "cells": {},
+        "filledCount": 0,
+        "seq": 7
+      }
+    }
+  },
+  {
+    "name": "§3/§11: an out-of-charset symbol is rejected INVALID_VALUE, no event",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-symbol",
+        "cell": 0,
+        "value": "/",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      }
+    ],
+    "then": {
+      "error": "INVALID_VALUE",
+      "events": [],
+      "state": {
+        "cells": {},
+        "filledCount": 0,
+        "seq": 7
+      }
+    }
+  }
+]
