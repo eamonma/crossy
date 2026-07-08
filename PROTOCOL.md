@@ -31,7 +31,7 @@ Key words MUST, SHOULD, MAY follow RFC 2119.
 ```
 
 - `token`: the identity provider's access token. The server verifies it locally against the provider's published keys, resolves the user, and checks membership and the denylist for `gameId`.
-- `protocolVersion`: integer. The server supports the current version N and N-1. Anything else: `error PROTOCOL_VERSION_UNSUPPORTED` (fatal, message names the supported range), then close.
+- `protocolVersion`: integer. The server supports the current version N and N-1. Anything else: `error PROTOCOL_VERSION_UNSUPPORTED` (fatal, message names the supported range), then close. At v1 the supported set is exactly `{1}`: N-1 is 0, which is not a real version, and frozen `vN-1` vectors exist only after the first bump (section 14). The range widens to `{N-1, N}` from v2 on.
 - `resumeFromSeq`: optional and informational; the server replies with a full snapshot regardless.
 
 `welcome` (server to client) on success:
@@ -39,6 +39,8 @@ Key words MUST, SHOULD, MAY follow RFC 2119.
 ```json
 {"type":"welcome","protocolVersion":1,"self":{"userId":"...","role":"solver"},"board":{ ... }}
 ```
+
+**Open question (unresolved):** which version `welcome.protocolVersion` echoes once N-1 is a real version. When a client speaks N-1, the server could echo the negotiated version (N-1) or its own current N. At v1 this is moot because the supported set is `{1}`, so the field is always `1`; a ruling is due before the first version bump.
 
 The connection is then live: the server pushes events and notices; the client may send commands.
 
@@ -52,7 +54,7 @@ Close codes: `1000` normal, `1008` after any fatal error, `1001` server shutdown
 - `seq`: integer, per game, starting at 1, contiguous, assigned only by the server.
 - `commandId`: client-generated UUIDv4, unique per command.
 - `at`: ISO 8601 UTC timestamp, server clock only. Clients never supply timestamps.
-- Unknown fields MUST be ignored (forward compatibility). Unknown notice types from the server: ignore and log. Unknown command types from a client: `error UNKNOWN_TYPE` (non-fatal).
+- Unknown fields MUST be ignored (forward compatibility). Unknown notice types from the server: ignore and log. This holds whether or not the unknown type would have carried a `seq`; the receiver cannot tell, and section 7's contiguous-`seq` check then resyncs if a `seq` was in fact skipped. A genuinely new sequenced event type is a breaking change that bumps the version (section 14), so it never appears within a negotiated version. Unknown command types from a client: `error UNKNOWN_TYPE` (non-fatal).
 
 ## 4. The board payload
 
@@ -73,7 +75,7 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 }
 ```
 
-- `cells` has length `rows * cols`. Black squares are present, always `{"v":null,"by":null}`, and immutable.
+- `cells` has length `rows * cols`. Black squares are present, always `{"v":null,"by":null}`, and immutable. A cleared or no-op'd playable cell keeps a non-null `by` (the writer or clearer), so `{"v":null,"by":null}` is reserved for black squares and never-written cells, while `{"v":null,"by":"<userId>"}` is a cell a writer set or cleared to null. This matches section 6 (a `cellSet` for a clear updates `by`) and the reducer vectors (section 13), which list such cells explicitly in `then.state.cells`.
 - `status` is one of `ongoing`, `completed`, `abandoned`. `stats` is non-null only when completed: `solveTimeSeconds` = `completedAt` − `firstFillAt`; `totalEvents` = the terminal event's `seq` − 1 (the count of sequenced events before it); `participantCount` = distinct users who sent at least one accepted mutation (not mere joiners, not spectators), computed as `DISTINCT user_id` over `cell_events` on the completion path, since it is not derivable from the board snapshot (last writer per cell only) nor from actor memory (lost on passivation).
 - `recentCommandIds` is the last K applied `commandId`s, letting a client confirm and clear overlay entries whose echo fell inside a gap (section 8; DESIGN.md section 6).
 - Solutions are never present in any message on this protocol (DESIGN.md INV-6).
@@ -159,6 +161,7 @@ Validation and error mapping (non-fatal unless stated):
 - **Reconnect backoff**: delays of 0, 1, 2, 4, 8, 16, then 30 seconds, capped at 30, each with full jitter. Reset the schedule after a connection survives 30 seconds. (The two v3 documents disagreed on the cap, 16 vs 30; 30 is chosen here.)
 - On reconnect: a fresh `hello`; the server replies `welcome` with a full snapshot. The client replaces all sequenced state, re-renders, and runs snapshot reconciliation (section 8) against `welcome.board.recentCommandIds` — the same procedure as `sync`, not a weaker one. Re-sending is safe only for commands still within the recent-command window (section 8).
 - **Crash rollback rule.** After a session-service crash, the snapshot's `seq` MAY be lower than the client's `lastApplied` (bounded loss; DESIGN.md D14 and INV-5). The client MUST accept the snapshot and roll back, running snapshot reconciliation (section 8): re-send pending commands still within the window, drop those aged out. It MUST NOT refuse or "wait out" the lower seq.
+- **Connection states (client).** A client tracks one of three connection states, named here so the two client stores cannot drift (asserted by the client-store vectors, section 13): `live` (applying events in order), `resyncing` (a gap was seen and `requestSync` sent; the next full snapshot is applied wholesale and sequenced events are ignored until it arrives), and `reconnecting` (the socket closed after a fatal error or transport drop; backoff runs and the reconnect `welcome` snapshot reconciles). These name the behaviors above; they add no wire message.
 
 ## 8. Optimistic UI and conflict visibility (client requirements)
 
@@ -168,6 +171,7 @@ Validation and error mapping (non-fatal unless stated):
 - If several pending entries target one cell, render the most recently sent.
 - On a `cellSet` from another user for a cell where you currently render a **non-null** value (sequenced or overlay) that the event changes — to a different letter, or to `null` (a clear) — apply it, and flash the cell in the writer's color for roughly 300 ms. The trigger is a change to *your currently-rendered non-null* value, not the incoming value, so an erase of your letter is never silent (D02); filling a cell you render as empty does not flash. This is the entire conflict UX. Nothing is rejected, and nothing may change silently.
 - **Snapshot reconciliation**, used identically for every full snapshot (`welcome`, `sync`, and a crash-rollback snapshot) so the paths cannot drift: clear the overlay, then for each still-pending command, if its `commandId` is in the snapshot's `recentCommandIds` it is confirmed — drop it; otherwise, if the command is still within the recent-command window (K; DESIGN.md section 15), re-add its overlay entry **and re-send it** (MUST after a gap or reconnect, not MAY); if it has aged out of the window, drop it rather than re-send, because re-applying it could regress a value that superseded it. Duplicates are dropped by `commandId`. This stops an overlay entry whose echo was lost in a gap or disconnect from becoming immortal and masking a later write to that cell. Then re-render.
+- **Age against K, proposal (not settled).** The rule above re-sends a pending command that is still within the window K and drops it once it has aged out, but it does not fix how a client measures a pending command's age against K. The unit is unspecified: a send-`seq` delta, an applied-command count, or wall-clock time are all candidates. Proposal: measure by `seq` delta, since the server's K counts applied commands and every accepted command consumes exactly one `seq` (section 6). A pending command has aged out when a reconciling snapshot's `board.seq` exceeds the `seq` the client had applied when it sent the command by more than K (a conservative bound, since terminal events also consume `seq`). The client-store vectors (section 13) supply `agedOut` as case input rather than deriving it, so they pin the outcome (aged-out drops, live re-sends) without committing to a measure; until this closes (DESIGN.md section 15, by M2) implementations MUST NOT diverge on the measure.
 
 ## 9. Presence, heartbeat, cursors
 
@@ -181,6 +185,7 @@ Validation and error mapping (non-fatal unless stated):
 - After `gameCompleted` or `gameAbandoned`: `placeLetter`, `clearCell`, and `checkRequest` receive `GAME_NOT_ONGOING`. The connection stays open for the post-game screen. A terminal state is final: a second `abandon`, or a late completion attempt, is a no-op (INV-4).
 - `checkRequest` compares only filled cells and unicasts `checkResult`. Client guidance, non-normative: render wrong cells in the check style until the cell is next edited.
 - **Comparator, normative** (mirrored in vectors): a filled value passes for a cell iff, case-insensitively, it equals the cell's full solution string, or it equals the solution's first character.
+- **Open question (unresolved):** whether the full-string branch accepts a solution string that no legal input can produce. For a rebus solution like `A/B`, the string `A/B` fails the `^[A-Z0-9]{1,10}$` charset, so it can never be entered, yet the literal rule above would still "match" it. The comparator vectors pin the enterable cases (solution `A/B` accepts `A`/`a`, rejects `B`/`AB`) but deliberately leave the unenterable full string `A/B` in neither `accept` nor `reject`. It is moot at runtime, because ingestion rejects whole-symbol cells (section 12; DESIGN.md section 7) and the input charset blocks entry, but the rule text is silent. Resolve before the comparator is considered final.
 
 ## 11. Errors
 
@@ -217,6 +222,8 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 | `GET /g/{code}`                       | public                                  | HTML shell with OpenGraph tags for link unfurlers                                                                              |
 
 Puzzle views are typed `ClientPuzzle` — a type with no solution field, including none embedded in clue structures — so stripping is structural, not runtime (DESIGN.md INV-6).
+
+Unlike every WebSocket message in this document, the puzzle payload carries no literal example here, by design: it is a REST payload owned by ingestion (DESIGN.md section 7), and its full schema (image clues, cross-references, per-cell numbering) is ingestion's to pin. A literal `ClientPuzzle`/`ServerPuzzle` example and its serialization golden land with the ingestion slice (DESIGN.md section 7), not in this document; the load-bearing fact here is only the solution split (INV-6).
 
 ## 13. Conformance vectors
 
@@ -267,6 +274,8 @@ Location: `vectors/` at the repo root. JSON files, one per behavior cluster, eac
 
 `given.cells` and `then.state.cells` are sparse maps; unlisted playable cells are null. No-op vectors are required: a `placeLetter` with the current value still emits one `cellSet` (new `seq`, `by` updated, `firstFillAt` unchanged), and a `clearCell` on an already-null cell emits one `cellSet` with `value: null`.
 
+The shape above lists only `events` and `state`, so it cannot express a rejection. Rejections use one convention, normative here: a rejected command produces no sequenced event and no state change. Its case sets `then.events` to `[]`, `then.state` to the unchanged state (`seq` included, since a rejection consumes no `seq`; INV-2), and `then.error` to the section 11 code the rejection maps to (`GAME_NOT_ONGOING`, `INVALID_VALUE`, and so on). This distinguishes a rejection from an accepted no-op, which always emits one `cellSet`. `then.error` extends the reducer shape; it is unasserted when absent.
+
 **Comparator vectors**, case shape:
 
 ```json
@@ -311,7 +320,7 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) inc
 
 **Completion matrix vectors** (reducer cases plus actor integration): repeated completion attempts yield exactly one `gameCompleted`; a filled-but-wrong board emits nothing and stays `ongoing`; **a full-but-wrong board made correct by an in-place overwrite (no change to `filledCount`) completes exactly once**; two players filling the last two cells concurrently yield exactly one completion; any mutation after completion is rejected; a client disconnected across the completion learns of it from the snapshot.
 
-**Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells. These pin the duplicated web + iOS reconciliation logic — overlay clear on echo, gap-to-sync re-send, rollback — where drift is most expensive, and cover the immortal-overlay case in section 8.
+**Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `error`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells. A non-fatal `error` is in scope because it is what clears the immortal overlay (section 8), the case this family must cover. These pin the duplicated web + iOS reconciliation logic — overlay clear on echo, gap-to-sync re-send, rollback — where drift is most expensive, and cover the immortal-overlay case in section 8.
 
 ## 14. Versioning
 
