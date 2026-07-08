@@ -289,6 +289,18 @@ Progress:
       with a live tripwire test (`authenticated` holds SELECT yet reads zero
       rows). One real §9 gap flagged: the API has no read grant on session-owned
       tables, which the Archive module will need as an expand migration.
+- [x] **h** landed (owner taste pass pending, which is the Phase 1 exit item):
+      Vite + React playground in `apps/web`, run with
+      `pnpm --filter @crossy/web dev`. SVG grid per DESIGN §10 with the SP6 v2
+      constants, two boards (the 5x4 vector fixture and a 15x15 with circles,
+      pre-fills, a wrong cell, and fake presence), dark/light themes, and a pure
+      navigation module passing all 12 seed vectors, marked throwaway until the
+      engine lands (2.1d). The two open decisions ship as instant A/B toggles
+      defaulting to v2 behavior: Shift+Tab landing and backspace-across-blocks.
+      Findings for the 2.1d spec: count-badge position collides with clue
+      numbers at SP6's coordinates; Tab axis-crossing is underspecified;
+      filled-skip's home (primitive vs composition) needs the track d vectors to
+      decide.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
