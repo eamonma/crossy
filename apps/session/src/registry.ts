@@ -7,16 +7,23 @@
 
 import type { Pool } from "pg";
 import { GameActor } from "./actor";
+import type { ActorOptions } from "./actor";
 import { hydrateGame } from "./hydrate";
 import { loadGameState, loadPuzzleSnapshot } from "./repo";
+import { createPgPersistence } from "./writer";
+import type { GamePersistence } from "./writer";
 
 export class ActorRegistry {
   private readonly actors = new Map<string, Promise<GameActor | null>>();
+  private readonly persistence: GamePersistence;
 
   constructor(
     private readonly pool: Pool,
     private readonly now: () => Date,
-  ) {}
+    private readonly actorOptions: ActorOptions = {},
+  ) {
+    this.persistence = createPgPersistence(pool);
+  }
 
   /** Get the actor for `gameId`, hydrating once on first use; `null` if the game is unknown. */
   getOrHydrate(gameId: string): Promise<GameActor | null> {
@@ -34,10 +41,24 @@ export class ActorRegistry {
     return created;
   }
 
+  /** Every already-hydrated actor, for the SIGTERM drain (DESIGN.md §6). */
+  async liveActors(): Promise<GameActor[]> {
+    const settled = await Promise.all(
+      [...this.actors.values()].map((p) => p.catch(() => null)),
+    );
+    return settled.filter((a): a is GameActor => a !== null);
+  }
+
   private async hydrate(gameId: string): Promise<GameActor | null> {
     const snapshot = await loadPuzzleSnapshot(this.pool, gameId);
     if (snapshot === null) return null;
     const state = await loadGameState(this.pool, gameId);
-    return new GameActor(hydrateGame(snapshot, state), this.now);
+    return new GameActor(
+      gameId,
+      hydrateGame(snapshot, state),
+      this.persistence,
+      this.now,
+      this.actorOptions,
+    );
   }
 }

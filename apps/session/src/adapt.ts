@@ -76,12 +76,13 @@ export interface BoardExtras {
 }
 
 /**
- * Build the PROTOCOL.md §4 board payload from engine board state plus presence and
- * timing extras. `cells` has length `rows * cols`; black squares and never-written cells
- * are `{v:null, by:null}`, a written cell carries its last `{v, by}`. Solution data is
- * structurally absent: nothing here reads it (INV-6).
+ * The full per-cell array for PROTOCOL.md §4 and the game_state.board snapshot: length
+ * `rows * cols`, black squares and never-written cells `{v:null, by:null}`, a written cell
+ * its last `{v, by}`. The single source for both the wire board and the persisted board,
+ * so a rehydrated snapshot is byte-for-byte the board that was flushed (INV-5). Solution
+ * data is structurally absent: nothing here reads it (INV-6).
  */
-export function buildBoard(state: BoardState, extras: BoardExtras): Board {
+export function boardCells(state: BoardState): Cell[] {
   const total = state.grid.rows * state.grid.cols;
   const cells: Cell[] = new Array<Cell>(total);
   for (let i = 0; i < total; i++) {
@@ -93,14 +94,21 @@ export function buildBoard(state: BoardState, extras: BoardExtras): Board {
     cells[i] =
       written === undefined ? EMPTY_CELL : { v: written.v, by: written.by };
   }
+  return cells;
+}
 
+/**
+ * Build the PROTOCOL.md §4 board payload from engine board state plus presence and
+ * timing extras.
+ */
+export function buildBoard(state: BoardState, extras: BoardExtras): Board {
   return {
+    cells: boardCells(state),
     seq: state.seq,
     status: state.status,
     firstFillAt: state.firstFillAt,
     completedAt: extras.completedAt,
     abandonedAt: extras.abandonedAt,
-    cells,
     participants: extras.participants,
     cursors: [], // presence is ephemeral and out of this slice (PROTOCOL.md §9)
     recentCommandIds: extras.recentCommandIds,

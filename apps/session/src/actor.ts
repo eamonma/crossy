@@ -4,13 +4,21 @@
 // the context gates it alone can enforce (role, terminal state via the reducer) and the
 // completion driver, so completion is exactly-once and level-triggered (INV-3, INV-4).
 // It holds the solution for the comparator; the solution never reaches an outbound frame
-// (INV-6). Persistence is out of this slice: state lives in memory until Wave 2.2's
-// write-behind flush.
+// (INV-6).
+//
+// Write-behind (DESIGN.md §6, D14): accepted events buffer in memory and flush with the
+// board snapshot in ONE transaction every ~25 events or ~5 seconds, and on drain. A hard
+// crash loses at most the unflushed tail; the snapshot-plus-log pair is always internally
+// consistent (INV-5). The completion event flushes SYNCHRONOUSLY before it is broadcast
+// (INV-3), and participantCount is read authoritatively over cell_events in that same
+// transaction (PROTOCOL.md §4). Every flush and every mutation runs inside the mailbox, so
+// none of them can race the others.
 
 import {
   applyWithCompletion,
   reduce,
   type BoardState,
+  type CellSet,
   type Command,
   type RejectionCode,
 } from "@crossy/engine";
@@ -21,13 +29,26 @@ import type {
   ServerMessage,
   Stats,
 } from "@crossy/protocol";
-import { buildBoard, cellSetToWire, toEngineCommand } from "./adapt";
+import {
+  boardCells,
+  buildBoard,
+  cellSetToWire,
+  toEngineCommand,
+} from "./adapt";
 import { errorFrame } from "./frames";
 import type { EngineSolution, HydratedGame } from "./hydrate";
 import { Mailbox } from "./mailbox";
+import type { GamePersistence, StateSnapshot } from "./writer";
 
 /** The last K applied commandIds kept for idempotency and the board payload (DESIGN.md §6). */
 const RECENT_COMMAND_LIMIT = 64;
+
+/**
+ * Write-behind thresholds (DESIGN.md §15, D14; adopted-by-default, tune with measurement).
+ * A flush fires when EITHER bound is hit, whichever comes first.
+ */
+export const FLUSH_EVENT_THRESHOLD = 25;
+export const FLUSH_INTERVAL_MS = 5_000;
 
 /** Human-readable text for each reducer rejection (PROTOCOL.md §11). */
 const REJECTION_MESSAGE: Record<RejectionCode, string> = {
@@ -43,6 +64,12 @@ export interface Connection {
   send(frame: ServerMessage): void;
 }
 
+/** Tunable write-behind bounds; both default to the DESIGN.md §15 constants above. */
+export interface ActorOptions {
+  readonly flushEventThreshold?: number;
+  readonly flushIntervalMs?: number;
+}
+
 export class GameActor {
   private state: BoardState;
   private readonly solution: EngineSolution;
@@ -53,9 +80,18 @@ export class GameActor {
   private readonly connections = new Set<Connection>();
   private readonly mailbox = new Mailbox();
 
+  /** Accepted-but-unflushed cellSets, appended to cell_events on the next flush (§6). */
+  private pending: CellSet[] = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly flushEventThreshold: number;
+  private readonly flushIntervalMs: number;
+
   constructor(
+    private readonly gameId: string,
     hydrated: HydratedGame,
+    private readonly persistence: GamePersistence,
     private readonly now: () => Date,
+    options: ActorOptions = {},
   ) {
     this.state = hydrated.boardState;
     this.solution = hydrated.solution;
@@ -63,6 +99,9 @@ export class GameActor {
     this.abandonedAt = hydrated.abandonedAt;
     this.recentCommandIds = [...hydrated.recentCommandIds];
     this.stats = null;
+    this.flushEventThreshold =
+      options.flushEventThreshold ?? FLUSH_EVENT_THRESHOLD;
+    this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
   }
 
   addConnection(connection: Connection): void {
@@ -80,31 +119,34 @@ export class GameActor {
     return ids;
   }
 
+  /** How many events are buffered but not yet flushed (drain and tests read this). */
+  get pendingFlushCount(): number {
+    return this.pending.length;
+  }
+
   /**
    * Enqueue a mutation on the mailbox. Every mutation for this game runs through this one
    * queue, so however many sockets send concurrently, the commands take one total order
    * and seq stays contiguous (INV-2). The returned promise settles when the command has
-   * been applied and broadcast.
+   * been applied, flushed if the completion path fired, and broadcast.
    */
   submit(
     connection: Connection,
     message: PlaceLetterMessage | ClearCellMessage,
   ): Promise<void> {
-    return this.mailbox.post(() => {
-      this.handleMutation(connection, message);
-    });
+    return this.mailbox.post(() => this.handleMutation(connection, message));
   }
 
   /**
    * Apply one mutation. Runs inside the mailbox (see `submit`), so it is the single
-   * writer of this game's state. Broadcasts one `cellSet` per accepted command, a
-   * `gameCompleted` on the completing move (INV-3), and unicasts a §11 error on a
-   * rejection.
+   * writer of this game's state. Broadcasts one `cellSet` per accepted command, buffers
+   * it for the write-behind flush, and on the completing move flushes synchronously then
+   * broadcasts `gameCompleted` (INV-3). A rejection unicasts a §11 error.
    */
-  private handleMutation(
+  private async handleMutation(
     connection: Connection,
     message: PlaceLetterMessage | ClearCellMessage,
-  ): void {
+  ): Promise<void> {
     // Role gate (DESIGN.md §3 step 2): spectators send nothing that mutates the board.
     if (connection.role === "spectator") {
       connection.send(
@@ -134,21 +176,120 @@ export class GameActor {
     this.state = result.state;
     this.recordCommandId(message.commandId);
 
+    let completion: number | null = null;
     for (const event of result.events) {
       if (event.type === "cellSet") {
+        // Buffer for the write-behind flush, then broadcast immediately (DESIGN.md §3
+        // steps 4 and 5): Postgres is never on the keystroke path.
+        this.pending.push(event);
         this.broadcast(cellSetToWire(event));
         continue;
       }
-      // gameCompleted: the engine emits {type, seq}; the actor stamps the server clock
-      // and computes stats, then broadcasts (INV-3).
-      this.completedAt = at;
-      this.stats = this.computeStats(event.seq, at);
-      this.broadcast({
-        type: "gameCompleted",
-        seq: event.seq,
-        at,
-        stats: this.stats,
-      });
+      // gameCompleted: the engine emits {type, seq}; the actor drives the terminal flush.
+      completion = event.seq;
+    }
+
+    if (completion !== null) {
+      await this.completeGame(completion, at);
+      return;
+    }
+    await this.afterMutationFlush();
+  }
+
+  /**
+   * Terminal completion (INV-3): flush the buffered events plus the completed snapshot
+   * SYNCHRONOUSLY, deriving the authoritative participantCount (DISTINCT user_id over
+   * cell_events) inside that same transaction, then broadcast `gameCompleted`. Persisted
+   * before broadcast, exactly once.
+   */
+  private async completeGame(terminalSeq: number, at: string): Promise<void> {
+    this.completedAt = at;
+    const events = this.pending;
+    this.stats = await this.persistence.flushTerminal(
+      this.gameId,
+      events,
+      (participantCount) => {
+        const stats = this.computeStats(terminalSeq, at, participantCount);
+        return { snap: this.snapshotForFlush(stats), stats };
+      },
+    );
+    this.pending = [];
+    this.cancelFlushTimer();
+    this.broadcast({
+      type: "gameCompleted",
+      seq: terminalSeq,
+      at,
+      stats: this.stats,
+    });
+  }
+
+  /**
+   * Write-behind scheduling (DESIGN.md §6): flush now once the event buffer reaches the
+   * count threshold, otherwise arm the interval timer so a slow trickle still flushes
+   * within ~5 s. Both bounds are tunable (ActorOptions). The threshold flush is awaited
+   * inside the mutation's mailbox task, so no other mutation can interleave with its
+   * transaction and the persisted snapshot always matches the appended events (INV-5).
+   */
+  private async afterMutationFlush(): Promise<void> {
+    if (this.pending.length >= this.flushEventThreshold) {
+      await this.doFlush();
+      return;
+    }
+    if (this.pending.length > 0 && this.flushTimer === null) {
+      this.flushTimer = setTimeout(() => {
+        this.flushTimer = null;
+        // Post through the mailbox so the timed flush is serialized with mutations too.
+        void this.mailbox
+          .post(() => this.doFlush())
+          .catch(() => {
+            // A flush fault keeps the buffer for the next trigger; never crash the actor.
+          });
+      }, this.flushIntervalMs);
+      this.flushTimer.unref?.();
+    }
+  }
+
+  /**
+   * Flush the buffered events and the current snapshot in one transaction. Runs inside the
+   * mailbox (called inline from a mutation, or posted by the timer or drain), so it never
+   * races a mutation. On success the buffer clears; on failure it is retained so the next
+   * trigger retries (bounded loss, never divergence; INV-5).
+   */
+  private async doFlush(): Promise<void> {
+    this.cancelFlushTimer();
+    if (this.pending.length === 0) return;
+    const events = this.pending;
+    await this.persistence.flush(this.gameId, events, this.snapshotForFlush());
+    this.pending = [];
+  }
+
+  /**
+   * Drain to durability (DESIGN.md §6, INV-5): used on SIGTERM and passivation. Posts a
+   * final flush behind any in-flight mutation on the mailbox, so nothing accepted is lost.
+   */
+  async drain(): Promise<void> {
+    this.cancelFlushTimer();
+    await this.mailbox.post(() => this.doFlush());
+  }
+
+  /** Build the game_state snapshot to persist, with optional terminal stats. */
+  private snapshotForFlush(stats: Stats | null = this.stats): StateSnapshot {
+    return {
+      status: this.state.status,
+      board: boardCells(this.state),
+      lastSeq: this.state.seq,
+      firstFillAt: this.state.firstFillAt,
+      completedAt: this.completedAt,
+      abandonedAt: this.abandonedAt,
+      stats: stats as Record<string, unknown> | null,
+      recentCommandIds: this.recentCommandIds,
+    };
+  }
+
+  private cancelFlushTimer(): void {
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
     }
   }
 
@@ -185,11 +326,15 @@ export class GameActor {
 
   /**
    * Completion stats (PROTOCOL.md §4). solveTimeSeconds and totalEvents are exact.
-   * participantCount is best-effort from the current board's distinct writers this
-   * slice; the authoritative DISTINCT over cell_events lands with persistence in Wave
-   * 2.2 (see the wave report).
+   * participantCount is the authoritative DISTINCT user_id over cell_events, passed in
+   * from inside the terminal flush transaction (not derived from the board's last-writer
+   * map, which would undercount, nor from actor memory, which is lost on passivation).
    */
-  private computeStats(terminalSeq: number, completedAt: string): Stats {
+  private computeStats(
+    terminalSeq: number,
+    completedAt: string,
+    participantCount: number,
+  ): Stats {
     const firstFill = this.state.firstFillAt;
     const solveTimeSeconds =
       firstFill === null
@@ -200,14 +345,10 @@ export class GameActor {
               (Date.parse(completedAt) - Date.parse(firstFill)) / 1000,
             ),
           );
-    const writers = new Set<string>();
-    for (const cell of this.state.cells.values()) {
-      if (cell.by !== null) writers.add(cell.by);
-    }
     return {
       solveTimeSeconds,
       totalEvents: terminalSeq - 1,
-      participantCount: writers.size,
+      participantCount,
     };
   }
 
