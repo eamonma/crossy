@@ -145,7 +145,7 @@ depends on is open.
       grid sizes, and feature flags in the wild. Closes the §15 charset and rebus-cap
       questions with data; feeds the ingestion ACL's named rejections. Blocks: G1
       scope, comparator vector edge cases (1.1c).
-- [ ] **SP6 Recover the frozen v2/v3 reports** (half day). Land
+- [x] **SP6 Recover the frozen v2/v3 reports** (half day). Land
       `reports/v2-spec-extraction.md` and `reports/v3-mining.md`; confirm
       `canEscapeWord` semantics (flagged "confirm" in DESIGN.md §5) and the exact v2
       pixel constants the web grid will want. Blocks: 1.1d planned additions, M6
