@@ -9,7 +9,7 @@ A SwiftPM package (no Xcode project). Two targets:
 - **`VectorRunnerTests`** (`Tests/VectorRunnerTests`): the XCTest conformance vector
   runner, mirroring `packages/engine/src/vectors.test.ts`. It discovers every family
   directory under `vectors/v1`, decodes every case with Codable structs matching the
-  three shapes in `vectors/README.md`, and gates execution on a checked skip manifest.
+  shapes in `vectors/README.md`, and gates execution on a checked skip manifest.
 
 ## Run
 
@@ -20,17 +20,23 @@ swift test --package-path apps/ios   # from the repo root
 
 Discovery and shape validation are hard pass/fail; the skip manifest is checked, not
 trusted; one guard runs a real case against the unimplemented engine and asserts it
-throws `no engine binding`, so CI stays green while proving red is real. All four
-families (`reducer`, `comparator`, `navigation`, `completion`) report as `XCTSkip` with
-their case lists until Wave 3 binds the engine.
+throws `no engine binding`, so CI stays green while proving red is real. The four
+engine-bound families (`reducer`, `comparator`, `navigation`, `completion`) report as
+`XCTSkip` with their case lists until Wave 3 binds the engine. `client-store` is a
+foreign family: its consumer is the web + iOS store, never the engine, so it is
+discovered and shape-validated here but reports as an `XCTSkip` labeled
+`[foreign: apps/web + iOS store]`, executed by the consumer's own suite.
 
 ## Skip manifest
 
-`vectors.skip.json` mirrors `packages/engine/vectors.skip.json`: every discovered family
-is either bound to `CrossyEngine` (`EngineBindings.bound`) or listed here, and guard
-tests fail the build if a listed family gains a binding or loses its vector files. Wave 3
-adds each implemented family to `EngineBindings.bound` (plus a `case` in
-`EngineBindings.run`) and removes it here.
+`vectors.skip.json` mirrors `packages/engine/vectors.skip.json`, with two disjoint
+buckets. `families` are skipped-until-engine: every discovered family is either bound to
+`CrossyEngine` (`EngineBindings.bound`) or listed here, and guard tests fail the build if
+a listed family gains a binding or loses its vector files. Wave 3 adds each implemented
+family to `EngineBindings.bound` (plus a `case` in `EngineBindings.run`) and removes it
+here. `foreign.families` name a consumer that is never the engine (`client-store`): they
+are shape-validated but never bound and never leave the manifest, so the Wave 3 rebind
+that drains `families` never touches them. A family in both buckets is a hard error.
 
 ## CI
 

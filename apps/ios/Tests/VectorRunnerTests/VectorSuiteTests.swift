@@ -14,6 +14,24 @@ final class VectorSuiteTests: XCTestCase {
         XCTAssertTrue(families.contains(.navigation), "vectors/v1/navigation/*.json not discovered")
     }
 
+    func test_discoversClientStoreFamilyAsForeign_INV10() throws {
+        let families = Set(try discover().map(\.family))
+        XCTAssertTrue(
+            families.contains(.clientStore), "vectors/v1/client-store/*.json not discovered")
+        let manifest = try loadSkipManifest()
+        XCTAssertTrue(
+            manifest.foreignFamilies.contains(.clientStore),
+            "client-store must be a foreign family in vectors.skip.json")
+        // Foreign: never a skipped-until-engine family, never an engine binding. This is the
+        // distinction the Wave 3 rebind relies on (PROTOCOL.md §13).
+        XCTAssertFalse(
+            manifest.families.contains(.clientStore),
+            "client-store is foreign, not skipped-until-engine; it must not be in `families`")
+        XCTAssertFalse(
+            EngineBindings.bound.contains(.clientStore),
+            "client-store is foreign; it must never bind to CrossyEngine")
+    }
+
     func test_navigationSingleCellAdvanceEncodesTwelveSeedCases_INV1() throws {
         let seed = try discover().first {
             $0.family == .navigation && $0.cluster == "single-cell-advance"
@@ -36,9 +54,10 @@ final class VectorSuiteTests: XCTestCase {
 final class SkipManifestTests: XCTestCase {
     // The skip manifest is checked, not trusted (mirrors vectors.test.ts).
 
-    func test_everySkippedFamilyHasVectorFilesOnDisk() throws {
+    func test_everySkippedOrForeignFamilyHasVectorFilesOnDisk() throws {
         let discovered = Set(try discover().map(\.family))
-        for family in try loadSkipManifest().families {
+        let manifest = try loadSkipManifest()
+        for family in manifest.families.union(manifest.foreignFamilies) {
             XCTAssertTrue(
                 discovered.contains(family),
                 "vectors.skip.json lists \"\(family.rawValue)\" but no vectors/v1/\(family.rawValue)/*.json exists; remove the dead entry"
@@ -46,12 +65,24 @@ final class SkipManifestTests: XCTestCase {
         }
     }
 
-    func test_everyDiscoveredFamilyIsBoundOrExplicitlySkipped() throws {
-        let skip = try loadSkipManifest().families
+    func test_everyDiscoveredFamilyIsBoundSkippedOrForeign() throws {
+        let manifest = try loadSkipManifest()
         for family in Set(try discover().map(\.family)) {
             XCTAssertTrue(
-                EngineBindings.bound.contains(family) || skip.contains(family),
+                EngineBindings.bound.contains(family) || manifest.families.contains(family)
+                    || manifest.foreignFamilies.contains(family),
                 "family \"\(family.rawValue)\" has no engine binding and no vectors.skip.json entry; its cases would fail"
+            )
+        }
+    }
+
+    func test_aForeignFamilyIsNeverBoundToTheEngine() throws {
+        // Foreign families execute in apps/web + iOS, never here. This holds through the
+        // Wave 3 rebind: that wave binds `families`, never `foreignFamilies`.
+        for family in try loadSkipManifest().foreignFamilies {
+            XCTAssertFalse(
+                EngineBindings.bound.contains(family),
+                "family \"\(family.rawValue)\" is foreign but binds to CrossyEngine; foreign families run in their own consumer's suite, not the engine"
             )
         }
     }
@@ -91,16 +122,28 @@ final class VectorExecutionTests: XCTestCase {
     // its case list, so skips are visible in `swift test` output and never silent. One
     // method per family: the closed family set mirrors the TS `FAMILIES` const, and a
     // per-family method lets a partially-ported suite run some families while skipping
-    // others (XCTSkip aborts the whole method, so a single shared method could not).
+    // others (XCTSkip aborts the whole method, so a single shared method could not). A
+    // foreign family skips with a `[foreign: apps/web + iOS store]` label instead of the
+    // until-engine reason: its consumer is a client store, so it is never run here.
 
     func test_executeReducer() throws { try execute(.reducer) }
     func test_executeComparator() throws { try execute(.comparator) }
     func test_executeNavigation() throws { try execute(.navigation) }
     func test_executeCompletion() throws { try execute(.completion) }
+    func test_executeClientStore() throws { try execute(.clientStore) }
 
     private func execute(_ family: VectorFamily) throws {
         let files = try discover().filter { $0.family == family }
-        if try loadSkipManifest().families.contains(family) {
+        let manifest = try loadSkipManifest()
+        if manifest.foreignFamilies.contains(family) {
+            // Foreign: shape-only here, executed by apps/web + iOS. Labeled apart from the
+            // until-engine skip so the two reasons stay legible in the summary.
+            let labels = files.flatMap(\.caseLabels)
+            throw XCTSkip(
+                "\(family.rawValue) [foreign: apps/web + iOS store]: \(labels.count) case(s) shape-only here, executed by the consumer's suite — "
+                    + labels.joined(separator: "; "))
+        }
+        if manifest.families.contains(family) {
             let labels = files.flatMap(\.caseLabels)
             throw XCTSkip(
                 "\(family.rawValue): \(labels.count) case(s) skipped, CrossyEngine unimplemented until Wave 3 — "

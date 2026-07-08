@@ -81,26 +81,65 @@ func discover() throws -> [DiscoveredFile] {
     return files
 }
 
-/// The checked skip manifest. Mirrors packages/engine/vectors.skip.json semantics: a
-/// listed family that does not name a real family is a hard error here, so the manifest
-/// cannot drift into meaninglessness.
-func loadSkipManifest() throws -> (reason: String, families: Set<VectorFamily>) {
+/// The checked skip manifest. Mirrors packages/engine/vectors.skip.json semantics, with two
+/// disjoint buckets: `families` are skipped-until-engine (bound at Wave 3, then removed);
+/// `foreignFamilies` have a consumer that is never CrossyEngine (client-store runs in
+/// apps/web + the iOS store), so they are shape-validated but never engine-bound and never
+/// leave the manifest. A listed name that is not a real family is a hard error, and a family
+/// in both buckets is a hard error, so the manifest cannot drift into meaninglessness.
+struct SkipManifest {
+    let reason: String
+    let families: Set<VectorFamily>
+    let foreignReason: String
+    let foreignFamilies: Set<VectorFamily>
+}
+
+func loadSkipManifest() throws -> SkipManifest {
     let data = try Data(contentsOf: RepoLayout.skipManifest)
     guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
         let reason = object["reason"] as? String,
         let rawFamilies = object["families"] as? [Any]
     else {
         throw VectorError.badManifest(
-            "vectors.skip.json must be { reason: string, families: string[] }")
+            "vectors.skip.json must be { reason, families, foreign: { reason, families } }")
     }
+    let families = try parseManifestFamilies(rawFamilies)
+
+    // `foreign` is optional; absent means no foreign families.
+    var foreignReason = ""
+    var foreignFamilies: Set<VectorFamily> = []
+    if let rawForeign = object["foreign"] {
+        guard let foreign = rawForeign as? [String: Any],
+            let reason = foreign["reason"] as? String,
+            let rawForeignFamilies = foreign["families"] as? [Any]
+        else {
+            throw VectorError.badManifest(
+                "vectors.skip.json `foreign` must be { reason: string, families: string[] }")
+        }
+        foreignReason = reason
+        foreignFamilies = try parseManifestFamilies(rawForeignFamilies)
+    }
+
+    // A family is skipped-until-engine or foreign, never both (mirrors the TS overlap check).
+    for family in foreignFamilies where families.contains(family) {
+        throw VectorError.overlappingManifestFamily(family.rawValue)
+    }
+    return SkipManifest(
+        reason: reason, families: families,
+        foreignReason: foreignReason, foreignFamilies: foreignFamilies)
+}
+
+/// Parses one manifest family list; a name that is not a real family is a hard error, so a
+/// stale entry cannot slip through (mirrors the TS `parseFamilyList`).
+private func parseManifestFamilies(_ raw: [Any]) throws -> Set<VectorFamily> {
     var families: Set<VectorFamily> = []
-    for entry in rawFamilies {
+    for entry in raw {
         guard let name = entry as? String, let family = VectorFamily(rawValue: name) else {
             throw VectorError.unknownManifestFamily(String(describing: entry))
         }
         families.insert(family)
     }
-    return (reason, families)
+    return families
 }
 
 /// Decodes every case in a file to its family's shape (straight from bytes) and adds the
@@ -121,6 +160,9 @@ func shapeProblems(for file: DiscoveredFile) -> [String] {
                 .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
         case .completion:
             return try decoder.decode([CompletionCase].self, from: file.data)
+                .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
+        case .clientStore:
+            return try decoder.decode([ClientStoreCase].self, from: file.data)
                 .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
         }
     } catch {

@@ -13,13 +13,16 @@ import Foundation
 
 /// The vector families (= directory names under vectors/v1). A closed set on purpose:
 /// discovery fails on any directory not listed here, mirroring the TS `FAMILIES` const.
-/// The remaining PROTOCOL.md §13 family (client store) registers a case here when its
-/// wave lands.
+/// `clientStore` is the fifth PROTOCOL.md §13 family; its directory is `client-store` (the
+/// raw value). It is foreign to the engine (the manifest's `foreign` bucket): discovered
+/// and shape-validated here, executed by apps/web + the iOS store, never bound to
+/// CrossyEngine (vectors/README.md).
 enum VectorFamily: String, CaseIterable, Sendable {
     case reducer
     case comparator
     case navigation
     case completion
+    case clientStore = "client-store"
 }
 
 /// Locates the shared vector tree and this package's skip manifest from the compiled-in
@@ -46,6 +49,7 @@ enum VectorError: Error, CustomStringConvertible {
     case notCaseArray(path: String)
     case badManifest(String)
     case unknownManifestFamily(String)
+    case overlappingManifestFamily(String)
     case noEngineBinding(VectorFamily)
 
     var description: String {
@@ -62,6 +66,9 @@ enum VectorError: Error, CustomStringConvertible {
             return message
         case .unknownManifestFamily(let value):
             return "vectors.skip.json lists unknown family \"\(value)\""
+        case .overlappingManifestFamily(let name):
+            return "vectors.skip.json family \"\(name)\" is both skipped-until-engine and "
+                + "foreign; a family is one or the other"
         case .noEngineBinding(let family):
             return "no engine binding for vector family \"\(family.rawValue)\": "
                 + "CrossyEngine is unimplemented until the Wave 3 Swift port (ROADMAP.md)"

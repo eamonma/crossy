@@ -216,3 +216,144 @@ struct NavigationMove: Decodable {
 struct NavigationResult: Decodable {
     let cell: Int
 }
+
+// MARK: - Client store
+
+/// The store's connection state, a token set defined in vectors/README.md (PROTOCOL.md
+/// names the wire behaviors, not the states). Codable accepts any string, so membership is
+/// pinned in `shapeProblems`, mirroring how NavigationMove validates `direction` and the TS
+/// `SYNC_STATES` check.
+let clientStoreSyncStates: Set<String> = ["live", "resyncing", "reconnecting"]
+
+/// Client-store cases carry a store state (sequenced `seq` + `sync` + sparse `cells` plus an
+/// `overlay`), a `when` sequence of local commands and server messages, and the resulting
+/// `seq`, `sync`, `overlay`, `render`, and `send`. The encoding is defined and normative in
+/// vectors/README.md. This family is foreign to the engine (the manifest's `foreign`
+/// bucket): the runner shape-validates it here but never executes it; its consumer is the
+/// web + iOS store, not CrossyEngine (PROTOCOL.md §13).
+struct ClientStoreCase: Decodable {
+    let name: String
+    let given: ClientStoreGiven
+    let when: [StimulusStep]
+    let then: ClientStoreOutcome
+
+    var label: String { name }
+
+    func shapeProblems() -> [String] {
+        var problems: [String] = []
+        if when.isEmpty {
+            problems.append("when: non-empty array of steps required")
+        }
+        // The sync token set: Codable accepts any string, the set is defined here.
+        if !clientStoreSyncStates.contains(given.sync) {
+            problems.append("given.sync: \"live\" | \"resyncing\" | \"reconnecting\" required")
+        }
+        if !clientStoreSyncStates.contains(then.sync) {
+            problems.append("then.sync: \"live\" | \"resyncing\" | \"reconnecting\" required")
+        }
+        // Stimulus source discrimination: each step is `local` (the user acted) or `server`
+        // (a frame arrived). The message-specific fields sit inline, unasserted here.
+        for step in when where step.source != "local" && step.source != "server" {
+            problems.append(
+                "when: step source \"\(step.source)\" is not \"local\" or \"server\"")
+        }
+        // Sparse cell-index maps key by decimal index (vectors/README.md).
+        for key in (given.cells ?? [:]).keys where !isDecimalKey(key) {
+            problems.append("given.cells: key \"\(key)\" is not a decimal cell index")
+        }
+        for key in then.render.keys where !isDecimalKey(key) {
+            problems.append("then.render: key \"\(key)\" is not a decimal cell index")
+        }
+        return problems
+    }
+}
+
+/// The store state before the stimulus. `overlay` is the ordered pending queue (send order,
+/// oldest first); each entry MAY carry `agedOut` (given only). `cells` defaults to empty and
+/// `sync` is validated in `shapeProblems`.
+struct ClientStoreGiven: Decodable {
+    let seq: Int
+    let sync: String
+    let cols: Int
+    let rows: Int
+    let blocks: [Int]
+    let cells: [String: Cell]?
+    let overlay: [OverlayEntry]
+}
+
+/// The store state after: `seq`, `sync`, the resulting `overlay` (send order), `render` (the
+/// composite the user sees, string or null per cell), and `send` (ordered outbound frames).
+/// `render`'s keys are decimal cell indices, checked in `shapeProblems`.
+struct ClientStoreOutcome: Decodable {
+    let seq: Int
+    let sync: String
+    let overlay: [OverlayEntry]
+    let render: RenderMap
+    let send: [OutboundFrame]
+}
+
+/// A pending optimistic write: `commandId`, `cell`, and `value` (a string re-sends
+/// placeLetter, null re-sends clearCell). `value` must be present (null or string), so the
+/// custom init rejects an absent key, mirroring the `Cell` shape. `agedOut` is optional
+/// (given.overlay only); when present it must be a boolean.
+struct OverlayEntry: Decodable {
+    let commandId: String
+    let cell: Int
+    let value: String?
+    let agedOut: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case commandId, cell, value, agedOut
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        commandId = try container.decode(String.self, forKey: .commandId)
+        cell = try container.decode(Int.self, forKey: .cell)
+        guard container.contains(.value) else {
+            throw DecodingError.keyNotFound(
+                CodingKeys.value,
+                .init(
+                    codingPath: container.codingPath,
+                    debugDescription: "overlay entry requires \"value\" (null or string)"))
+        }
+        value = try container.decodeIfPresent(String.self, forKey: .value)
+        agedOut = try container.decodeIfPresent(Bool.self, forKey: .agedOut)
+    }
+}
+
+/// One `when` step: `source` ("local" | "server", validated in `shapeProblems`) and `type`.
+/// The message-specific fields (seq, cell, value, code, fatal, board, ...) arrive as data
+/// for the store and are unasserted at the shape layer, mirroring how `Command` pins only
+/// `type` for the reducer's polymorphic commands. This is the client-store shape's
+/// polymorphic seam: the full message decode and the `then` comparison live in the
+/// consumer's suite (apps/web, then iOS), never here (PROTOCOL.md §13).
+struct StimulusStep: Decodable {
+    let source: String
+    let type: String
+}
+
+/// An outbound frame the store emitted (`requestSync`, a re-sent `placeLetter`/`clearCell`).
+/// The shape pins only `type`, mirroring the TS `isSendList` check; the reconstructed
+/// payload is compared in the consumer's suite.
+struct OutboundFrame: Decodable {
+    let type: String
+}
+
+/// A sparse render map: decimal cell index to the displayed value, string or null. Codable
+/// cannot pin decimal keys, so this collects them for `shapeProblems`; decoding each value as
+/// `String?` rejects a non-string, non-null value straight from the bytes (a present value
+/// is null or a string, matching the TS `isRenderMap` check).
+struct RenderMap: Decodable {
+    let keys: [String]
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicKey.self)
+        var collected: [String] = []
+        for key in container.allKeys {
+            _ = try container.decodeIfPresent(String.self, forKey: key)
+            collected.append(key.stringValue)
+        }
+        keys = collected
+    }
+}
