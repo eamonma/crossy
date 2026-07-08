@@ -6,12 +6,12 @@
 // middleware each module installs. Modules mount as their walking-skeleton slices land.
 import { Hono } from "hono";
 import type { AppDeps, ApiEnv } from "./context";
+import { puzzleRoutes } from "./puzzles/routes";
 
 /** Compose the API from its injected dependencies. */
 export function buildApp(deps: AppDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
-  app.get("/health", (c) =>
-    c.json({ ok: true, sessionConfigured: deps.sessionWsBase.length > 0 }),
-  );
+  app.get("/health", (c) => c.json({ ok: true }));
+  app.route("/puzzles", puzzleRoutes(deps));
   return app;
 }
