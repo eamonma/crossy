@@ -52,6 +52,9 @@ importers:
       drizzle-orm:
         specifier: ^0.36.0
         version: 0.36.4(@types/pg@8.20.0)(pg@8.22.0)
+      pg:
+        specifier: ^8.13.0
+        version: 8.22.0
     devDependencies:
       '@testcontainers/postgresql':
         specifier: ^10.0.0
@@ -65,9 +68,6 @@ importers:
       drizzle-kit:
         specifier: ^0.28.0
         version: 0.28.1
-      pg:
-        specifier: ^8.13.0
-        version: 8.22.0
       typescript:
         specifier: ^5.8.0
         version: 5.9.3

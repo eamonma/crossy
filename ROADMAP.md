@@ -143,6 +143,9 @@ depends on is open.
       private-network reachability for `/internal`, pricing under N idle sockets.
       Closes the §15 Railway and private-network questions early instead of at M1.
       Fly.io is the named fallback if it disappoints. Blocks: Wave 2.2.
+      Deliberately scheduled late: run it just before Wave 2.2 commits to the
+      two-service deploy shape. It needs a Railway account, the spike stays
+      throwaway, and no hosted dependency lands in code before then.
 - [ ] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
       (ws vs uWebSockets.js vs platform), check backpressure behavior, and measure a
       real 25×25 board payload under `permessage-deflate` against the under-20 KB
@@ -229,7 +232,10 @@ spine, the way the Swift port does:
       session service sits, since Railway has no Canadian region; see
       `reports/spikes/wave-0.2c-region-note.md`. Box stays open on the one remaining
       owner action: create the Supabase project (owner-only) in that region and
-      close DESIGN §15's region line.
+      close DESIGN §15's region line. Deliberately deferred: nothing before M1
+      integration needs a hosted project (auth sits behind a port, Postgres runs
+      real via Testcontainers), so this is a pre-integration step, not a blocker
+      for any Phase 1 track.
 
 **Exit (= M0): both runners prove a vector fails honestly against the unimplemented
 engine while CI stays green (TypeScript: done, a guard asserts the run throws;
