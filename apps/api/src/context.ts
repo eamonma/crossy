@@ -12,6 +12,13 @@ export interface AppDeps {
   readonly authPort: AuthPort;
   /** Base URL for the session service WebSocket, used to build a game's `ws` endpoint. */
   readonly sessionWsBase: string;
+  /**
+   * Allowed browser origin for CORS, or omit to disable. The SPA and the API sit on
+   * different origins in the two-service deploy (static host vs Railway), so the browser
+   * needs an Access-Control-Allow-Origin to call REST. Off in tests (in-process, no
+   * browser); the composition root sets it from CORS_ORIGIN. `*` allows any origin.
+   */
+  readonly corsOrigin?: string;
 }
 
 /** Hono environment: the request-scoped variables the auth middleware populates. */

@@ -38,10 +38,12 @@ async function main(): Promise<void> {
   });
   authPort.start();
 
+  const corsOrigin = process.env["CORS_ORIGIN"];
   const app = buildApp({
     db,
     authPort,
     sessionWsBase: required("SESSION_WS_BASE"),
+    ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
   });
 
   const port = Number(process.env["PORT"] ?? "8080");

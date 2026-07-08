@@ -112,6 +112,15 @@ export class WsTransport implements GameTransport {
     this.socket = null;
   }
 
+  /**
+   * Drop the live socket without tearing the transport down, so `onclose` runs the normal
+   * reconnect-and-resync path (PROTOCOL.md sections 7 and 8). This is the smoke test's
+   * "kill the socket mid-word" hook; it is never used by the store or the demo.
+   */
+  simulateDrop(): void {
+    this.socket?.close();
+  }
+
   private stopHeartbeat(): void {
     if (this.heartbeat !== null) {
       clearInterval(this.heartbeat);
