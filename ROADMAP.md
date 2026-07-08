@@ -13,43 +13,87 @@ single-owner per wave and can move fast.
 
 ## Dependency graph
 
-```
-                        F0  repo scaffold + CI skeleton
-                         │  (blocks everything)
-   ┌─────────┬───────────┼───────────┬─────────────┬──────────────┐
-   ▼         ▼           ▼           ▼             ▼              ▼
- V0 vector  P1 protocol I1 DB schema I3 auth     R-swift        X1 external
- conventions   pkg       + migrations   port     XCTest runner  (Supabase/Railway,
-   │        (schemas,   (7 tables,   (verify/    (reads same     region choice)
-   ▼         Client/     roles, RLS   link/       JSON)
- V1–V5       Server      tripwire)    delete,       │
- vector      Puzzle)      │           JWT local)    │
- suites       │           │           │             │
-   ▼          │           │           │             │
- P2 engine ◄──┘           │           │             │
- (TS impl:    │           │           │             │
-  red→green)  │           │           │             │
-   │     ┌────┴─────┬─────┴───────────┘             │
-   │     ▼          ▼                               ▼
-   │   S1 api     S2 session svc ◄── P2           P3 Swift engine port
-   │   (create/   (handshake, actor,              (background from Phase 1 on;
-   │    join/view) flush, hydrate)                 vectors keep it honest)
-   ▼     │          │                               │
- C1 web client ─────┤                               │
- (codec, store,     ▼                               │
-  grid)        ═══ M1 walking skeleton ═══          │
-                    │                               │
-       ┌────────────┼────────────┐                  │
-       ▼            ▼            ▼                  ▼
-  M2 completion  M3 identity  G1 ingestion       M5 iOS ◄── M2-stable server
-  + sim harness  (parallel)   ACL hardening         │
-       │            │         (parallel)            │
-       ▼            ▼                               │
-  M4 mobile web (anytime after M1/C1)               │
-       └────────────┴──────────► M6 parity ◄────────┘
-                                    │
-                                    ▼
-                                 M7 polish
+```mermaid
+flowchart TD
+  classDef milestone fill:#1f6feb,stroke:#0b3d91,color:#fff;
+  classDef contract fill:#8957e5,stroke:#4b2a86,color:#fff;
+
+  subgraph ph0 ["Phase 0 · Foundation"]
+    F0["F0 · repo scaffold + CI<br/><i>M0 · blocks everything</i>"]:::milestone
+    V0["V0 · vector conventions"]:::contract
+    Rs["R-swift · XCTest runner"]
+    X1["X1 · external: Supabase / Railway + region"]
+  end
+
+  subgraph ph1 ["Phase 1 · Contracts"]
+    P1["P1 · protocol pkg<br/>schemas, Client / Server split"]:::contract
+    I1["I1 · DB schema + migrations<br/>7 tables, roles, RLS tripwire"]:::contract
+    I3["I3 · auth port<br/>verify / link / delete, local JWT"]:::contract
+    V15["V1–V5 · vector suites"]:::contract
+  end
+
+  subgraph ph2 ["Phase 2 · Walking skeleton"]
+    P2["P2 · engine TS<br/>reducer, comparator, nav (red→green)"]
+    S1["S1 · api · create / join / view"]
+    S2["S2 · session svc<br/>handshake, actor, flush, hydrate"]
+    C1["C1 · web client · codec, store, grid"]
+    M1["M1 · walking skeleton"]:::milestone
+  end
+
+  subgraph ph3 ["Phase 3 · Correctness and Identity"]
+    M2["M2 · completion + sim harness"]:::milestone
+    M3["M3 · identity"]:::milestone
+    G1["G1 · ingestion ACL hardening"]
+    P3["P3 · Swift engine port<br/><i>background from Phase 1</i>"]
+  end
+
+  subgraph ph4 ["Phase 4 · Client breadth"]
+    M4["M4 · mobile web"]:::milestone
+    M5["M5 · iOS"]:::milestone
+  end
+
+  subgraph ph5 ["Phase 5 · Parity, then polish"]
+    M6["M6 · parity"]:::milestone
+    M7["M7 · polish"]:::milestone
+  end
+
+  %% Phase 0 fans out to everything (F0 blocks all)
+  F0 --> V0 & P1 & I1 & I3 & Rs & X1
+
+  %% vectors and engine
+  V0 --> V15
+  V15 --> P2
+  P1 --> P2
+
+  %% services and clients
+  P1 --> S1 & S2 & C1
+  I1 --> S1 & S2
+  I3 --> S1
+  P2 --> S2
+  V15 --> C1
+
+  %% Swift port (background, vectors keep it honest)
+  Rs --> P3
+  V15 --> P3
+
+  %% walking skeleton
+  S1 --> M1
+  S2 --> M1
+  C1 --> M1
+
+  %% post-M1 fan-out
+  M1 --> M2 & M3 & G1
+  M1 -. "after M1 / C1" .-> M4
+
+  %% correctness gates iOS; both feed parity
+  M2 --> M5
+  P3 --> M5
+
+  M2 --> M6
+  M3 --> M6
+  M4 --> M6
+  M5 --> M6
+  M6 --> M7
 ```
 
 Load-bearing sequential edges (cannot be parallelized away):
@@ -66,6 +110,29 @@ Open decision to record in Phase 1: whether `packages/engine` imports types from
 `packages/protocol` or defines its own domain types with the session adapter mapping
 between them. Leaning dependency-free engine (purity, symmetry with the Swift port);
 vectors pin both sides against drift. Decide once, in writing, in the PR that starts P2.
+
+## UX track (cross-cutting)
+
+Most of the product risk after M1 sits in client look and feel: grid rendering,
+keyboard and touch input, presence motion, mobile ergonomics, native iOS polish.
+Vectors cannot pin feel, so UX runs as a background track alongside the correctness
+spine, the way the Swift port does:
+
+- **Starts in Phase 1** (Wave 1.1 track h): an interaction playground in `apps/web` on
+  fake data, no server. Grid rendering per DESIGN.md §10, input handling driven by the
+  navigation vectors, flash and cursor motion prototypes. Findings shape the Wave 2.1d
+  store and grid before they are built for real.
+- **Flesh-out gates.** The client sections below (Wave 2.1d, Phase 4 both tracks,
+  Phase 5) are deliberately thin. At entry to each, expand it into a concrete
+  interaction spec: screens, input edge cases, motion timings, layout. The spec lands
+  as a PR against this file, and against DESIGN.md §10 where the rule is durable.
+  Building before the spec exists is the failure mode this gate blocks.
+- **Dogfood at every client milestone exit.** A real solve, real puzzle, real friends,
+  real devices. Feel findings become vectors where possible (navigation, store) and
+  spec updates where not (motion, layout).
+- **Web settles semantics before iOS renders them.** By M5 every shared interaction
+  rule is vectored and proven in the web client, so iOS effort goes to rendering
+  quality and platform feel, which is why the app is native at all.
 
 ## Phase 0 — Foundation (= M0)
 
@@ -102,15 +169,16 @@ vectors pin both sides against drift. Decide once, in writing, in the PR that st
 
 ### Wave 1.1 — up to seven parallel tracks, all depending only on Phase 0
 
-| Track | Work                                                                                                                                                | Unblocks   |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| a     | `packages/protocol`: every message schema from PROTOCOL.md §§2–6, `ServerPuzzle`/`ClientPuzzle` split (INV-6), error codes, contract snapshot tests | S1, S2, C1 |
-| b     | Reducer vectors: no-ops, overwrites, ASCII normalization (incl. Turkish-İ), `firstFillAt`, seq assignment                                           | P2         |
-| c     | Comparator + completion-matrix vectors: full/first-char/case acceptance, level-triggered re-check, exactly-one-completion                           | P2, M2     |
-| d     | Navigation vectors: the 12 seed cases (PROTOCOL.md §13) + planned additions (word bounds, Tab, typing wrap, backspace)                              | P2, C1     |
-| e     | Client-store vectors: overlay echo, error-clears-overlay, gap→sync, snapshot reconciliation, crash rollback                                         | C1, C2     |
-| f     | DB schema + migrations: all seven tables (DESIGN.md §9), least-privilege roles per service, RLS deny-all tripwire                                   | S1, S2     |
-| g     | Auth port: interface, Supabase adapter with local JWT verification, in-memory fake for tests                                                        | S1         |
+| Track | Work                                                                                                                                                             | Unblocks        |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| a     | `packages/protocol`: every message schema from PROTOCOL.md §§2–6, `ServerPuzzle`/`ClientPuzzle` split (INV-6), error codes, contract snapshot tests              | S1, S2, C1      |
+| b     | Reducer vectors: no-ops, overwrites, ASCII normalization (incl. Turkish-İ), `firstFillAt`, seq assignment                                                        | P2              |
+| c     | Comparator + completion-matrix vectors: full/first-char/case acceptance, level-triggered re-check, exactly-one-completion                                        | P2, M2          |
+| d     | Navigation vectors: the 12 seed cases (PROTOCOL.md §13) + planned additions (word bounds, Tab, typing wrap, backspace)                                           | P2, C1          |
+| e     | Client-store vectors: overlay echo, error-clears-overlay, gap→sync, snapshot reconciliation, crash rollback                                                      | C1, C2          |
+| f     | DB schema + migrations: all seven tables (DESIGN.md §9), least-privilege roles per service, RLS deny-all tripwire                                                | S1, S2          |
+| g     | Auth port: interface, Supabase adapter with local JWT verification, in-memory fake for tests                                                                     | S1              |
+| h     | UX playground: Vite scaffold in `apps/web` with a grid interaction prototype on fake data (rendering rules DESIGN.md §10, navigation vectors as the input model) | C1, M4/M5 specs |
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
@@ -126,6 +194,10 @@ migrations apply cleanly on Testcontainers; the engine/protocol type decision re
 | b     | `apps/api` slice: `POST /puzzles` (happy-path fixture ingest only), `POST /games` + invite codes, join, `GET /games/{id}`, JIT user upsert |
 | c     | `apps/session`: handshake (PROTOCOL.md §2), actor mailbox, hydrate, `placeLetter` → `cellSet` broadcast                                    |
 | d     | `apps/web` skeleton: WS codec, store + connection state machine driven by client-store vectors, minimal SVG grid                           |
+
+Track d has a UX flesh-out gate (see the UX track): the desktop interaction spec, grid
+input and selection, is written before the store and grid are built, and the Wave 1.1h
+playground is the base it builds on.
 
 ### Wave 2.2 — integration (sequential; needs all of 2.1)
 
@@ -156,14 +228,26 @@ published contract (DESIGN.md §9), not a free-edit surface.
 
 ## Phase 4 — Client breadth (= M4 ∥ M5)
 
+**This phase is where the product is won or lost, and these sections are deliberately
+thin.** UX flesh-out gate at entry for both tracks: expand each into a full interaction
+spec (see the UX track) before building. Budget for iteration here; the milestones
+before this one exist so this phase can afford it.
+
 - **Track A (M4)**: mobile web — clue bar, bottom-sheet browser, on-screen keyboard,
-  swipes. **Exit: a phone-only friend solves comfortably.**
+  swipes. Flesh-out covers at minimum: touch targets and thumb reach, keyboard layout
+  and rebus entry, sheet gestures vs solving gestures, safe areas, landscape.
+  **Exit: a phone-only friend solves comfortably, observed in a dogfood session.**
 - **Track B (M5)**: iOS — Swift vectors fully green, handshake, Canvas grid renderer,
   native Sign in with Apple, universal links. Verify iOS 26 / Liquid Glass assumptions
-  against current SDKs at kickoff. **Exit: an iOS user and a web user finish a puzzle
-  together.**
+  against current SDKs at kickoff. Flesh-out covers at minimum: Canvas render spec
+  matching the web grid rules, haptics, hardware keyboard, Dynamic Type on chrome,
+  scenePhase reconnect. **Exit: an iOS user and a web user finish a puzzle together,
+  observed in a dogfood session.**
 
 ## Phase 5 — Parity, then polish (= M6 → M7, sequential)
+
+UX flesh-out gate at entry: M6 items are interaction surfaces (rebus entry, check
+styling, highlight precedence), not just mechanics. Spec them per platform first.
 
 - **M6**: check styling, rebus input on both platforms, cross-reference highlighting,
   circles/shading, image clues; validate the rebus length-10 cap against real puzzles.
