@@ -1,0 +1,130 @@
+[
+  {
+    "name": "INV-2 §3/§6: each accepted command takes exactly one seq, contiguous from the given seq",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "at": "2026-07-07T19:00:00Z"
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T19:00:01Z"
+      },
+      {
+        "type": "clearCell",
+        "commandId": "c3",
+        "cell": 0,
+        "by": "u3",
+        "at": "2026-07-07T19:00:02Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "A",
+          "by": "u1",
+          "commandId": "c1"
+        },
+        {
+          "type": "cellSet",
+          "seq": 9,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c2"
+        },
+        {
+          "type": "cellSet",
+          "seq": 10,
+          "cell": 0,
+          "value": null,
+          "by": "u3",
+          "commandId": "c3"
+        }
+      ],
+      "state": {
+        "cells": {
+          "0": { "v": null, "by": "u3" },
+          "1": { "v": "B", "by": "u2" }
+        },
+        "filledCount": 1,
+        "seq": 10
+      }
+    }
+  },
+  {
+    "name": "INV-2 §6: an accepted no-op consumes its seq; the next command continues contiguously",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-noop",
+        "cell": 0,
+        "value": "A",
+        "by": "u2",
+        "at": "2026-07-07T19:00:00Z"
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c-next",
+        "cell": 1,
+        "value": "B",
+        "by": "u3",
+        "at": "2026-07-07T19:00:01Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "A",
+          "by": "u2",
+          "commandId": "c-noop"
+        },
+        {
+          "type": "cellSet",
+          "seq": 9,
+          "cell": 1,
+          "value": "B",
+          "by": "u3",
+          "commandId": "c-next"
+        }
+      ],
+      "state": {
+        "cells": {
+          "0": { "v": "A", "by": "u2" },
+          "1": { "v": "B", "by": "u3" }
+        },
+        "filledCount": 2,
+        "seq": 9
+      }
+    }
+  }
+]
