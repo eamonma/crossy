@@ -1,0 +1,12 @@
+[
+  {
+    "solution": "OPERA",
+    "accept": ["OPERA", "opera", "OpErA", "O", "o"],
+    "reject": ["", "P", "OPER"]
+  },
+  {
+    "solution": "cafe",
+    "accept": ["CAFE", "cafe", "C", "c"],
+    "reject": ["A", ""]
+  }
+]

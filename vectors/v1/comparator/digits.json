@@ -1,0 +1,12 @@
+[
+  {
+    "solution": "7",
+    "accept": ["7"],
+    "reject": ["8", ""]
+  },
+  {
+    "solution": "B12",
+    "accept": ["B12", "b12", "B", "b"],
+    "reject": ["12", "B1", ""]
+  }
+]

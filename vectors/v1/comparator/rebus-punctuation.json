@@ -1,0 +1,7 @@
+[
+  {
+    "solution": "A/B",
+    "accept": ["A", "a"],
+    "reject": ["B", "b", "AB", ""]
+  }
+]

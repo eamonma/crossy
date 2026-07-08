@@ -1,0 +1,12 @@
+[
+  {
+    "solution": "XRAY",
+    "accept": ["XRAY", "xray", "X", "x"],
+    "reject": ["XR", "RAY", "Y", ""]
+  },
+  {
+    "solution": "Q",
+    "accept": ["Q", "q"],
+    "reject": ["QQ", "R", "", "QQQQQQQQQQQ"]
+  }
+]
