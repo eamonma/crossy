@@ -1,0 +1,29 @@
+[
+  {
+    "name": "DESIGN §5 / §13 full-word asymmetry: Tab into a full clue lands on its start (7)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "7": "H", "8": "I", "9": "J" }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 5,
+      "toward": "forward"
+    },
+    "then": { "cell": 7, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 / §13 full-word asymmetry: typing the last cell of that same full word stays on it (9)",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "7": "H", "8": "I", "9": "J" }
+    },
+    "when": { "op": "typing", "direction": "across", "from": 9 },
+    "then": { "cell": 9 }
+  }
+]

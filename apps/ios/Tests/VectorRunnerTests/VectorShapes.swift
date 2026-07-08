@@ -170,6 +170,12 @@ struct CompletionOutcome: Decodable {
 
 // MARK: - Navigation
 
+/// The navigation operations (vectors/README.md `when.op`). Absent `op` means `advance`,
+/// the seed's single-cell getNextCell, so the 12 seed cases stay byte-identical. Codable
+/// accepts any string, so membership is pinned in `shapeProblems`, mirroring the TS
+/// `NAV_OPS` check. An array (not a Set) keeps the problem message's order matching the TS.
+let navigationOps: [String] = ["advance", "wordBounds", "tab", "typing", "backspace"]
+
 struct NavigationCase: Decodable {
     let name: String
     let given: NavigationGiven
@@ -186,16 +192,45 @@ struct NavigationCase: Decodable {
         if given.rows < 0 {
             problems.append("given.rows: non-negative integer required")
         }
-        if when.direction != "across" && when.direction != "down" {
-            problems.append("when.direction: \"across\" or \"down\" required")
-        }
-        if when.toward != "forward" && when.toward != "backward" {
-            problems.append("when.toward: \"forward\" or \"backward\" required")
-        }
         for key in (given.fills ?? [:]).keys where !isDecimalKey(key) {
             problems.append("given.fills: key \"\(key)\" is not a decimal cell index")
         }
+        let op = when.op ?? "advance"
+        if !navigationOps.contains(op) {
+            problems.append(
+                "when.op: one of \(navigationOps.joined(separator: ", ")) (absent means advance)")
+        }
+        // Every op names a direction and a starting cell (`from` is Int by decoding).
+        if when.direction != "across" && when.direction != "down" {
+            problems.append("when.direction: \"across\" or \"down\" required")
+        }
+        // Op-specific `when` inputs and `then` outputs (vectors/README.md table).
+        switch op {
+        case "advance":
+            problems += towardProblems()
+            if then.cell == nil { problems.append("then.cell: integer required") }
+        case "tab":
+            problems += towardProblems()
+            if then.cell == nil { problems.append("then.cell: integer required") }
+            // tab pins the unchanged axis on a clue-list wrap (vectors/README.md).
+            if then.direction != "across" && then.direction != "down" {
+                problems.append("then.direction: \"across\" or \"down\" required")
+            }
+        case "wordBounds":
+            if then.start == nil { problems.append("then.start: integer required") }
+            if then.end == nil { problems.append("then.end: integer required") }
+        case "typing", "backspace":
+            if then.cell == nil { problems.append("then.cell: integer required") }
+        default:
+            break
+        }
         return problems
+    }
+
+    private func towardProblems() -> [String] {
+        when.toward == "forward" || when.toward == "backward"
+            ? []
+            : ["when.toward: \"forward\" or \"backward\" required"]
     }
 }
 
@@ -206,15 +241,25 @@ struct NavigationGiven: Decodable {
     let fills: [String: String]?
 }
 
+/// `op` selects the operation (absent means advance). `direction` and `from` are required
+/// for every op, so they stay non-optional; `toward` is present only for `advance` and
+/// `tab`, so it is optional and its presence is enforced per op in `shapeProblems`.
 struct NavigationMove: Decodable {
+    let op: String?
     let direction: String
     let from: Int
-    let toward: String
+    let toward: String?
     let canEscapeWord: Bool?
 }
 
+/// The op's landing. `advance`/`typing`/`backspace` set `cell`; `wordBounds` sets `start`
+/// and `end`; `tab` sets `cell` and the unchanged `direction`. All optional here, with the
+/// per-op requirement enforced in `shapeProblems`, mirroring the TS dispatch.
 struct NavigationResult: Decodable {
-    let cell: Int
+    let cell: Int?
+    let start: Int?
+    let end: Int?
+    let direction: String?
 }
 
 // MARK: - Client store

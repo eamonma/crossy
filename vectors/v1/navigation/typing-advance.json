@@ -1,0 +1,46 @@
+[
+  {
+    "name": "DESIGN §5 typing / §13: filled-skip inside the word lands on the next empty cell",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "15": "P", "16": "Q" }
+    },
+    "when": { "op": "typing", "direction": "across", "from": 15 },
+    "then": { "cell": 17 }
+  },
+  {
+    "name": "DESIGN §5 typing / §13: filled-skip jumps over several filled cells to the first empty one",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "15": "P", "16": "Q", "17": "R", "18": "S" }
+    },
+    "when": { "op": "typing", "direction": "across", "from": 15 },
+    "then": { "cell": 19 }
+  },
+  {
+    "name": "DESIGN §5 typing / §13: at the word's end an incomplete word wraps to the word's first empty cell",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "7": "H", "9": "J" }
+    },
+    "when": { "op": "typing", "direction": "across", "from": 9 },
+    "then": { "cell": 8 }
+  },
+  {
+    "name": "DESIGN §5 typing / §13: filled-skip advances along the down axis to the next empty cell",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "4": "E", "9": "J" }
+    },
+    "when": { "op": "typing", "direction": "down", "from": 4 },
+    "then": { "cell": 14 }
+  }
+]

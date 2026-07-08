@@ -1,0 +1,67 @@
+[
+  {
+    "name": "DESIGN §5 Tab / §13: lands on the next across clue's first empty cell, skipping its filled start",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "3": "D" }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 1,
+      "toward": "forward"
+    },
+    "then": { "cell": 4, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13: scans past a filled clue start into a mid-clue empty cell",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "7": "H" }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 5,
+      "toward": "forward"
+    },
+    "then": { "cell": 8, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13: past the last across clue, wraps to the grid's first playable cell, direction unchanged",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 15,
+      "toward": "forward"
+    },
+    "then": { "cell": 0, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13: advances to the next down clue's first empty cell in the down clue list",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "down",
+      "from": 1,
+      "toward": "forward"
+    },
+    "then": { "cell": 3, "direction": "down" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13: past the last down clue, wraps to the grid's first playable cell, still down (no axis cross)",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "down",
+      "from": 18,
+      "toward": "forward"
+    },
+    "then": { "cell": 0, "direction": "down" }
+  }
+]
