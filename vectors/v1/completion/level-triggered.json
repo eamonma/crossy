@@ -1,0 +1,97 @@
+[
+  {
+    "name": "full but wrong board corrected in place completes (same filledCount)",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 6,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:00:05Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 7,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c1"
+        },
+        { "type": "gameCompleted", "seq": 8 }
+      ],
+      "state": { "status": "completed", "filledCount": 2, "seq": 8 }
+    }
+  },
+  {
+    "name": "fill-clear-refill completes once, only after the correct refill",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 6,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "clearCell",
+        "commandId": "c1",
+        "cell": 1,
+        "by": "u2",
+        "at": "2026-07-07T00:00:05Z"
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:00:06Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 7,
+          "cell": 1,
+          "value": null,
+          "by": "u2",
+          "commandId": "c1"
+        },
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c2"
+        },
+        { "type": "gameCompleted", "seq": 9 }
+      ],
+      "state": { "status": "completed", "filledCount": 2, "seq": 9 }
+    }
+  }
+]

@@ -1,0 +1,55 @@
+[
+  {
+    "name": "two writers fill the last two cells; only the second completes",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 3,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {},
+      "firstFillAt": null
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "at": "2026-07-07T00:00:05Z"
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:00:05Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 4,
+          "cell": 0,
+          "value": "A",
+          "by": "u1",
+          "commandId": "c1"
+        },
+        {
+          "type": "cellSet",
+          "seq": 5,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c2"
+        },
+        { "type": "gameCompleted", "seq": 6 }
+      ],
+      "state": { "status": "completed", "filledCount": 2, "seq": 6 }
+    }
+  }
+]

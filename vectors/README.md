@@ -17,14 +17,14 @@ vectors/
     reducer/
     comparator/
     navigation/
+    completion/
 ```
 
 - One JSON file per behavior cluster, kebab-case basename, `.json` extension. Each
   file is a bare JSON array of cases, UTF-8, prettier-formatted.
 - The directory name is the family. Runners MUST fail on a family they do not
-  recognize; skipping silently is forbidden. The remaining families from
-  PROTOCOL.md §13 (completion matrix, client store) register here when their waves
-  land.
+  recognize; skipping silently is forbidden. The remaining family from
+  PROTOCOL.md §13 (client store) registers here when its wave lands.
 - On a protocol version bump the outgoing suite is frozen under `frozen/vN-1/` and
   stays in CI (PROTOCOL.md §14).
 
@@ -133,3 +133,64 @@ here and is normative:
   additions that depend on fill state; omitted means every playable cell is empty.
 - The empty grid (seed case 9) is `"cols": 0, "rows": 0, "blocks": []`.
 - Seed case names keep the PROTOCOL.md table numbering: `seed N: <scenario>`.
+
+## Completion cases
+
+Completion is its own family because the two-phase check needs the cell solutions,
+which the reducer shape does not carry, and it asserts `gameCompleted`, which the
+reducer never emits (PROTOCOL.md §10, §13; DESIGN.md §3). Shape:
+
+```json
+{
+  "name": "full but wrong board corrected in place completes (same filledCount)",
+  "given": {
+    "cols": 2,
+    "rows": 1,
+    "blocks": [],
+    "status": "ongoing",
+    "seq": 6,
+    "solution": { "0": "A", "1": "B" },
+    "cells": { "0": { "v": "A", "by": "u1" }, "1": { "v": "Z", "by": "u2" } }
+  },
+  "when": [
+    {
+      "type": "placeLetter",
+      "commandId": "c1",
+      "cell": 1,
+      "value": "B",
+      "by": "u2",
+      "at": "2026-07-07T00:00:05Z"
+    }
+  ],
+  "then": {
+    "events": [
+      {
+        "type": "cellSet",
+        "seq": 7,
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "commandId": "c1"
+      },
+      { "type": "gameCompleted", "seq": 8 }
+    ],
+    "state": { "status": "completed", "filledCount": 2, "seq": 8 }
+  }
+}
+```
+
+- `given` carries the reducer fields plus `solution`, a sparse map of cell index to
+  the cell's solution string. Every playable cell must have a `solution` entry; the
+  comparator runs over all of them.
+- `when` is the command sequence applied in mailbox order. Concurrency collapses to
+  this total order (PROTOCOL.md §10): two writers filling the last two cells are two
+  ordered commands, and only the second completes.
+- `then.events` lists the full sequenced stream. `gameCompleted` follows the
+  triggering `cellSet` at the next `seq`; a filled-but-wrong case or a terminal-state
+  case lists no `gameCompleted`. The event's `stats` are omitted: `participantCount`
+  is not board-derivable (PROTOCOL.md §4) and `solveTimeSeconds` needs the server
+  clock, so stats are pinned at the actor-integration layer, not here.
+- The check is level-triggered (PROTOCOL.md §10; DESIGN.md §3): a same-`filledCount`
+  overwrite re-runs the comparator, so a full-but-wrong board corrected in place
+  completes. Exactly one `gameCompleted` ever (INV-3); a terminal board freezes and
+  rejects further mutations, yielding no second completion (INV-4).
