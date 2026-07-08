@@ -372,6 +372,24 @@ Progress:
       proposal, close by M2), comparator acceptance of unenterable full-string
       matches. Follow-up candidate: DESIGN section 8 still describes the auth
       port as three functions; packages/auth ships `verify` only.
+- [x] **d** landed, closing Wave 1.1: 26 new cases across six clusters (word
+      bounds, Tab, Shift+Tab, typing advance, full-word asymmetry, backspace
+      step-back), encoded via an optional `when.op` discriminator so the 12
+      seed cases stay byte-identical. Owner decisions pinned (2026-07-08):
+      symmetric first-empty Shift+Tab (the audit's mid-gap trace is now a
+      case), backspace crossing blocks into the previous word, Tab never
+      crossing axes (landing cell and unchanged direction both asserted on
+      wrap). Filled-skip decision, recorded in vectors/README.md: filled-skip
+      is a property of the named operations that need it (tab, typing), not a
+      flag on the advance primitive and not caller-side composition, since
+      v2's Shift+Tab bugs lived exactly in caller-side composition. TS runner
+      34 passed | 89 skipped; Swift 14 executed | 5 skips, navigation's skip
+      carrying 38 labels. Finding: the 1.1h playground's navigation module
+      consumes only the seed file; wiring the new ops into a real consumer is
+      2.1d store work.
+
+Wave 1.1 is complete. Phase 1 exit is met except the engine/protocol type
+decision, which Wave 2.1a records in writing as its first deliverable.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
