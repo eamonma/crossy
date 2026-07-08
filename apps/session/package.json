@@ -4,10 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@crossy/auth": "workspace:*",
+    "@crossy/db": "workspace:*",
+    "@crossy/engine": "workspace:*",
+    "@crossy/protocol": "workspace:*",
+    "pg": "^8.13.0",
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
+    "@testcontainers/postgresql": "^10.0.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.11.0",
+    "@types/ws": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"
   }
