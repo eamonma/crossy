@@ -27,10 +27,10 @@ import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, "../..");
+export const repoRoot = resolve(here, "../..");
 const tsxBin = join(repoRoot, "node_modules/.bin/tsx");
-const apiEntry = join(repoRoot, "apps/api/src/server.ts");
-const sessionEntry = join(repoRoot, "apps/session/src/main.ts");
+export const apiEntry = join(repoRoot, "apps/api/src/server.ts");
+export const sessionEntry = join(repoRoot, "apps/session/src/main.ts");
 const migrateScript = join(here, "..", "scripts", "migrate.ts");
 const webDist = join(repoRoot, "apps/web/dist");
 
@@ -59,7 +59,10 @@ function getFreePort(): Promise<number> {
 }
 
 /** Poll until a URL answers with any non-5xx status, or throw after the timeout. */
-async function waitForHttp(url: string, timeoutMs = 30_000): Promise<void> {
+export async function waitForHttp(
+  url: string,
+  timeoutMs = 30_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let lastError = "connection refused";
   while (Date.now() < deadline) {
@@ -76,7 +79,7 @@ async function waitForHttp(url: string, timeoutMs = 30_000): Promise<void> {
 }
 
 /** ES256 token minting plus the matching JWKS, mirroring the Supabase token shape (SP2). */
-async function makeAuth(issuer: string): Promise<{
+export async function makeAuth(issuer: string): Promise<{
   jwks: { keys: unknown[] };
   mint: (sub: string, isAnonymous?: boolean) => Promise<string>;
 }> {
@@ -136,7 +139,7 @@ function staticServer(distDir: string, port: number): Promise<Server> {
 }
 
 /** Serve the JWKS on every path; the service fetches the well-known URL under this issuer. */
-function jwksServer(jwks: unknown, port: number): Promise<Server> {
+export function jwksServer(jwks: unknown, port: number): Promise<Server> {
   const server = createServer((_req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(jwks));
@@ -145,7 +148,7 @@ function jwksServer(jwks: unknown, port: number): Promise<Server> {
 }
 
 /** Spawn a workspace service entrypoint under tsx as a real child process. */
-function spawnService(
+export function spawnService(
   name: string,
   entrypoint: string,
   env: Record<string, string>,
@@ -165,7 +168,7 @@ function spawnService(
 }
 
 /** Apply the committed migrations via a tsx child (keeps workspace TS out of this process). */
-function runMigrations(dbUrl: string): Promise<void> {
+export function runMigrations(dbUrl: string): Promise<void> {
   return new Promise((resolveDone, reject) => {
     const child = spawn(tsxBin, [migrateScript, dbUrl], {
       cwd: repoRoot,
@@ -188,7 +191,7 @@ function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
-function killChild(
+export function killChild(
   child: ChildProcess | null,
   signal: NodeJS.Signals,
 ): Promise<void> {
