@@ -319,6 +319,17 @@ Progress:
       client store (track e). Findings: whether the comparator accepts
       unenterable full-string matches (`A/B`) is deliberately unpinned;
       `gameCompleted.stats` is actor territory, not engine.
+- [x] **g** landed: `packages/auth` with the `AuthPort` interface (typed
+      failure union, no thrown errors, services never import jose), the
+      Supabase adapter implementing SP2's design (ES256 allowlist refusing
+      HS256, injected JWKS fetcher, background refresh, fail-closed unknown
+      kid with one debounced refresh, zero network on verify), and the
+      in-memory fake minting real ES256 tokens. One contract suite runs
+      against both implementations; 41 tests. Boundary decision recorded in
+      the package: linkIdentity and deleteUser belong to the API's identity
+      module (client-driven OAuth flow; single-writer on `users`), not the
+      shared package. Finding: DESIGN §8's deleteUser sentence conflates the
+      vendor-identity call with the API-owned tombstone write.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
