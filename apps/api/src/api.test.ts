@@ -85,9 +85,35 @@ async function postJson(
   });
 }
 
+async function get(path: string, token: string): Promise<Response> {
+  return app.request(path, { method: "GET", headers: bearer(token) });
+}
+
 /** Assert the JSON error body carries `code` (Fetch `Response.json()` is typed unknown). */
 async function expectError(res: Response, code: string): Promise<void> {
   expect(((await res.json()) as { error: string }).error).toBe(code);
+}
+
+/** Read the `role` field from a JSON body. */
+async function roleOf(res: Response): Promise<string> {
+  return ((await res.json()) as { role: string }).role;
+}
+
+/** Ingest the fixture puzzle as `token`'s owner; return its id. */
+async function ingestFixture(token: string): Promise<string> {
+  const res = await postJson("/puzzles", token, FIXTURE);
+  expect(res.status).toBe(201);
+  return ((await res.json()) as { puzzleId: string }).puzzleId;
+}
+
+/** Create a game from `puzzleId` as `token`'s owner; return its id and invite code. */
+async function createGame(
+  token: string,
+  puzzleId: string,
+): Promise<{ gameId: string; inviteCode: string }> {
+  const res = await postJson("/games", token, { puzzleId });
+  expect(res.status).toBe(201);
+  return (await res.json()) as { gameId: string; inviteCode: string };
 }
 
 beforeAll(async () => {
@@ -230,5 +256,200 @@ describe("POST /puzzles (PROTOCOL.md §12; INV-6)", () => {
     const res = await postJson("/puzzles", token, { rows: 2, cols: 2 });
     expect(res.status).toBe(400);
     await expectError(res, "VALIDATION");
+  });
+});
+
+describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
+  it("creates a game, seats the creator as host, and denormalizes the snapshot", async () => {
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    const res = await postJson("/games", token, { puzzleId });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      gameId: string;
+      inviteCode: string;
+      role: string;
+    };
+    expect(body.role).toBe("host");
+    expect(body.inviteCode).toMatch(/^[2-9A-HJ-NP-Z]{8}$/);
+    // Host membership row exists.
+    const membership = await adminPool.query(
+      "select role from memberships where game_id = $1",
+      [body.gameId],
+    );
+    expect(membership.rows).toEqual([{ role: "host" }]);
+    // The snapshot is the full ServerPuzzle, solution included (server-side, §9).
+    const snap = await adminPool.query(
+      "select puzzle_snapshot from games where game_id = $1",
+      [body.gameId],
+    );
+    expect(snap.rows[0].puzzle_snapshot.solution).toEqual(["H", "I", "O", "N"]);
+  });
+
+  it("forbids a guest from creating a game (guests are join-only, DESIGN.md §8)", async () => {
+    const token = await auth.mintAnonymous();
+    const res = await postJson("/games", token, { puzzleId: randomUUID() });
+    expect(res.status).toBe(403);
+    await expectError(res, "FULL_ACCOUNT_REQUIRED");
+  });
+
+  it("returns PUZZLE_NOT_FOUND for an unknown puzzleId", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/games", token, { puzzleId: randomUUID() });
+    expect(res.status).toBe(404);
+    await expectError(res, "PUZZLE_NOT_FOUND");
+  });
+
+  it("does not create the session-owned game_state row (INV-7 single writer)", async () => {
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    const { gameId } = await createGame(token, puzzleId);
+    // The API never writes game_state; the actor materializes it on first connect (§6).
+    const state = await adminPool.query(
+      "select 1 from game_state where game_id = $1",
+      [gameId],
+    );
+    expect(state.rows).toHaveLength(0);
+    // And the boundary is real at the grant layer: the api role cannot write game_state.
+    await expect(
+      apiPool.query("insert into game_state (game_id) values ($1)", [gameId]),
+    ).rejects.toThrow(/permission denied/i);
+  });
+});
+
+describe("POST /games/{id}/join (PROTOCOL.md §12; DESIGN.md §7, §8)", () => {
+  it("lets a guest join by invite code, seated as spectator", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const guest = await auth.mintAnonymous();
+    const res = await postJson(`/games/${gameId}/join`, guest, {
+      code: inviteCode,
+    });
+    expect(res.status).toBe(200);
+    expect(await roleOf(res)).toBe("spectator");
+  });
+
+  it("rejects a wrong invite code as DENIED without leaking game existence", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const guest = await auth.mintAnonymous();
+    const res = await postJson(`/games/${gameId}/join`, guest, {
+      code: "WRONGXYZ",
+    });
+    expect(res.status).toBe(403);
+    await expectError(res, "DENIED");
+  });
+
+  it("rejects a denylisted user even with the correct code (DESIGN.md §7)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const kickedSub = randomUUID();
+    await adminPool.query(
+      "insert into users (user_id, is_anonymous) values ($1, true)",
+      [kickedSub],
+    );
+    await adminPool.query(
+      "insert into game_denylist (game_id, user_id) values ($1, $2)",
+      [gameId, kickedSub],
+    );
+
+    const res = await postJson(
+      `/games/${gameId}/join`,
+      await auth.mintAnonymous({ sub: kickedSub }),
+      { code: inviteCode },
+    );
+    expect(res.status).toBe(403);
+    await expectError(res, "DENIED");
+  });
+
+  it("returns GAME_NOT_FOUND for an unknown game", async () => {
+    const res = await postJson(
+      `/games/${randomUUID()}/join`,
+      await auth.mintUpgraded(),
+      { code: "ABCDEFGH" },
+    );
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("is non-demoting: a host re-joining their own game keeps the host role", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const res = await postJson(`/games/${gameId}/join`, host, {
+      code: inviteCode,
+    });
+    expect(res.status).toBe(200);
+    expect(await roleOf(res)).toBe("host");
+  });
+});
+
+describe("GET /games/{id} (PROTOCOL.md §12; INV-6)", () => {
+  it("returns the game view to a member: puzzle, membership, and session endpoint", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      gameId: string;
+      puzzle: Record<string, unknown>;
+      members: { role: string }[];
+      session: { ws: string };
+    };
+    expect(body.gameId).toBe(gameId);
+    expect(body.members.map((m) => m.role)).toContain("host");
+    expect(body.session.ws).toBe(`${SESSION_WS_BASE}/games/${gameId}/ws`);
+  });
+
+  it("never carries a solution field in the response (INV-6, structural)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    const body = (await res.json()) as { puzzle: Record<string, unknown> };
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(body.puzzle.rows).toBe(2);
+    expect(body.puzzle).toHaveProperty("clues");
+  });
+
+  it("forbids a non-member authenticated user as NOT_PARTICIPANT", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+    const res = await get(`/games/${gameId}`, stranger);
+    expect(res.status).toBe(403);
+    await expectError(res, "NOT_PARTICIPANT");
+  });
+
+  it("shows a joined guest the view once they are a member", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const guestSub = randomUUID();
+    const guest = await auth.mintAnonymous({ sub: guestSub });
+    await postJson(`/games/${gameId}/join`, guest, { code: inviteCode });
+
+    const res = await get(`/games/${gameId}`, guest);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { members: { userId: string }[] };
+    expect(body.members.some((m) => m.userId === guestSub)).toBe(true);
+  });
+
+  it("returns GAME_NOT_FOUND for an unknown game", async () => {
+    const res = await get(`/games/${randomUUID()}`, await auth.mintUpgraded());
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
   });
 });
