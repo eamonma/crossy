@@ -36,5 +36,95 @@
         "seq": 8
       }
     }
+  },
+  {
+    "name": "§1/§6: clearing a filled cell drops filledCount but attributes the empty cell to the clearer",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "clearCell",
+        "commandId": "c-clear",
+        "cell": 0,
+        "by": "u2",
+        "at": "2026-07-07T00:00:01Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": null,
+          "by": "u2",
+          "commandId": "c-clear"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": null, "by": "u2" } },
+        "filledCount": 0,
+        "seq": 8
+      }
+    }
+  },
+  {
+    "name": "§6: clear then refill takes contiguous seq and attribution tracks the last writer",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "clearCell",
+        "commandId": "c-clear",
+        "cell": 0,
+        "by": "u2",
+        "at": "2026-07-07T00:00:01Z"
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c-refill",
+        "cell": 0,
+        "value": "C",
+        "by": "u3",
+        "at": "2026-07-07T00:00:02Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": null,
+          "by": "u2",
+          "commandId": "c-clear"
+        },
+        {
+          "type": "cellSet",
+          "seq": 9,
+          "cell": 0,
+          "value": "C",
+          "by": "u3",
+          "commandId": "c-refill"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "C", "by": "u3" } },
+        "filledCount": 1,
+        "seq": 9
+      }
+    }
   }
 ]
