@@ -25,6 +25,14 @@ implementation (or a reviewed vector change), never a reason to fork behavior.
 All four checks run in CI on every push and must be green on a fresh clone; fresh-clone
 reproducibility is a launch gate (DESIGN.md §9).
 
+## Writing style
+
+- Avoid AI isms in prose
+- Avoid em dashes
+- Write with clarity and purpose
+- Use high leverage language
+- Be concise
+
 ## Hard rules
 
 - **Engine purity (INV-9)**: `packages/engine` imports nothing — no other workspace
