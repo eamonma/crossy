@@ -159,11 +159,17 @@ depends on is open.
       comfortably: worst-case 25×25 board is 34.8 KB raw, 2.95 KB compressed (~6.6x
       under budget); §1 unchanged. Enable deflate only on the reconnect snapshot, not
       the keystroke stream (~220 KB/conn otherwise). 2.1c unblocked.
-- [ ] **SP5 Puzzle corpus** (one day). Collect real XWord Info JSON in volume; measure
+- [x] **SP5 Puzzle corpus** (one day). Collect real XWord Info JSON in volume; measure
       rebus lengths (is the cap of 10 right?), digits and punctuation in solutions,
       grid sizes, and feature flags in the wild. Closes the §15 charset and rebus-cap
       questions with data; feeds the ingestion ACL's named rejections. Blocks: G1
       scope, comparator vector edge cases (1.1c).
+      Answered; see `reports/spikes/sp5-puzzle-corpus.md`. Cap of 10 holds (observed
+      max 4, documented standard max ~7); charset stays `A-Z0-9` with first-char
+      acceptance covering rare punctuation rebus and a named `UNSOLVABLE_CELL` for
+      whole-symbol cells. §15 charset and rebus-cap items closed. G1 gains named
+      rejections `UNSOLVABLE_CELL`, `REBUS_TOO_LONG`, `OVERSIZE_GRID`,
+      `AMBIGUOUS_SOLUTION`; do not reject asymmetric or unchecked grids.
 - [x] **SP6 Recover the frozen v2/v3 reports** (half day). Land
       `reports/v2-spec-extraction.md` and `reports/v3-mining.md`; confirm
       `canEscapeWord` semantics (flagged "confirm" in DESIGN.md §5) and the exact v2
