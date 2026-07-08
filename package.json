@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "smoke": "pnpm --filter @crossy/web build && pnpm --filter @crossy/e2e smoke",
+    "dev:stack": "tsx e2e/scripts/dev-stack.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
