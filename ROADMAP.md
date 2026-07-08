@@ -271,6 +271,25 @@ Swift: the same proof in XCTest); Testcontainers wired.**
 | g     | Auth port: interface, Supabase adapter with local JWT verification, in-memory fake for tests                                                                     | S1              |
 | h     | UX playground: Vite scaffold in `apps/web` with a grid interaction prototype on fake data (rendering rules DESIGN.md §10, navigation vectors as the input model) | C1, M4/M5 specs |
 
+Progress:
+
+- [x] **a** landed: `packages/protocol` with every §§2–6 message, the structural
+      `ServerPuzzle`/`ClientPuzzle` split (branded `Solution`, compile-time golden,
+      INV-6), the §11 error table as data, and hand-rolled decoders (no runtime
+      deps; zod rejected so exported types stand alone and map 1:1 to Swift
+      Codable). 47 tests, 33 of them snapshot tests from PROTOCOL.md's literal
+      examples. Five PROTOCOL.md ambiguities reported, none blocking (welcome
+      version echo, no literal puzzle example, unknown-sequenced-event posture,
+      cleared-cell `by` reservation, degenerate N-1 at v1).
+- [x] **f** landed: all seven tables in `packages/db` with an expand/contract
+      migration dropping `_scaffold_marker`. INV-7 encoded physically: NOLOGIN
+      service roles (`crossy_api`, `crossy_session`) with least-privilege grants,
+      `cell_events` immutability as INSERT+SELECT only, session's users read
+      column-scoped to `user_id, display_name`, deny-all RLS on all seven tables
+      with a live tripwire test (`authenticated` holds SELECT yet reads zero
+      rows). One real §9 gap flagged: the API has no read grant on session-owned
+      tables, which the Archive module will need as an expand migration.
+
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
 migrations apply cleanly on Testcontainers; the engine/protocol type decision recorded;

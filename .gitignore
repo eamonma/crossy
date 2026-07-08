@@ -16,3 +16,4 @@ DerivedData/
 
 # OS / editor
 .DS_Store
+.claude/
