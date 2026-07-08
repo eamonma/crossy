@@ -301,6 +301,15 @@ Progress:
       numbers at SP6's coordinates; Tab axis-crossing is underspecified;
       filled-skip's home (primitive vs composition) needs the track d vectors to
       decide.
+- [x] **b** landed: 22 reducer cases across six clusters (no-op, overwrite/clear
+      attribution, INV-4 terminal freeze, INV-1 normalization with the Turkish
+      pin, firstFillAt lifecycle, INV-2 seq assignment), every case citing the
+      PROTOCOL.md sentence it pins. New README convention: rejections encode as
+      `then.error` + empty events + unchanged state, since the §13 shape cannot
+      express them (primary finding for a PROTOCOL.md amendment). Second
+      finding: reducer-vs-actor ownership of normalization is stated
+      inconsistently across DESIGN §3 and §5; vectors pin it in the reducer for
+      cross-port determinism. Idempotency confirmed session-layer, not reducer.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
