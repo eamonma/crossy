@@ -464,6 +464,27 @@ Progress:
       participantCount is best-effort until cell_events writes land in 2.2.
       Hardening note for 2.2: run the session suite under the crossy_session
       role the way the api suite runs as crossy_api.
+- [x] **d** landed, closing Wave 2.1: web client skeleton built on the
+      owner-approved interaction spec below. The store executes all 14
+      client-store vectors against the real GameStore (strict discovery, wire
+      frames decoded through the protocol codec); the Space cursor motion
+      landed first as three vector cases on the existing advance op (engine
+      executes them, Swift shape-validates 41 navigation labels); the
+      playground's throwaway navigation module and both A/B toggles are
+      deleted, all cursor movement now through @crossy/engine ops. Runtime
+      verified by driving headless Firefox: overlay-before-echo, Space
+      clear-and-advance, conflict flash at 300 ms, resync and reconnect pills,
+      buffered command re-send on reconnect, terminal freeze with navigation
+      live. One defect found and fixed by the drive: SVG glyphs intercepted
+      clicks on filled cells; grid overlays are now pointer-events none.
+      Findings: no-op clears are suppressed client-side (empty-cell Space or
+      Backspace sends nothing, since a wire no-op consumes a seq), worth a
+      spec line; the client-store family pins store semantics, not literal
+      frame bytes (the suite expands sparse stimuli to full frames before
+      decoding), worth recording in the README next amendment pass.
+
+Wave 2.1 is complete (2026-07-08). Wave 2.2 integration is unblocked; its
+deploy step waits on the owner's Railway account (SP3).
 
 #### Wave 2.1d desktop interaction spec
 
