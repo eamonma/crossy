@@ -115,7 +115,8 @@ Cases carry no `name`; runners label them by `solution`. Casing is ASCII-only
 ## Navigation cases
 
 PROTOCOL.md §13 gives navigation as a table, not JSON. This encoding is defined
-here and is normative:
+here and is normative. The seed cluster (`single-cell-advance.json`) pins one
+`getNextCell` step:
 
 ```json
 {
@@ -131,10 +132,81 @@ here and is normative:
 - `when.canEscapeWord` is optional. Omitted means the default, escape enabled,
   which the seed table pins (case 5 equals case 8; case 6 crosses a block down
   with no flag).
-- `given.fills` (sparse map, cell index to string) is reserved for the planned
-  additions that depend on fill state; omitted means every playable cell is empty.
+- `given.fills` (sparse map, cell index to string) supplies board fill state;
+  omitted means every playable cell is empty.
 - The empty grid (seed case 9) is `"cols": 0, "rows": 0, "blocks": []`.
 - Seed case names keep the PROTOCOL.md table numbering: `seed N: <scenario>`.
+
+### Operations (`when.op`)
+
+The planned additions (PROTOCOL.md §13) need clue traversal and fill state, which
+one single-cell step cannot express. Rather than a second family, the navigation
+`when` carries an optional `op` discriminator naming which navigation operation the
+case pins. Absent `op` means `"advance"`, the seed's single-cell `getNextCell`, so
+the 12 seed cases are unchanged. Each op fixes its own `when` inputs and `then`
+outputs:
+
+| op                  | when                                    | then            | given.fills           |
+| ------------------- | --------------------------------------- | --------------- | --------------------- |
+| `advance` (default) | direction, from, toward, canEscapeWord? | cell            | ignored               |
+| `wordBounds`        | direction, from                         | start, end      | ignored               |
+| `tab`               | direction, from, toward                 | cell, direction | current board         |
+| `typing`            | direction, from                         | cell            | board after keystroke |
+| `backspace`         | direction, from                         | cell            | current board         |
+
+- `advance`: one block-skip step governed by `canEscapeWord` (the seed semantics).
+  Fill-agnostic.
+- `wordBounds`: the word's extent along `direction` from `from`, scanning to a block
+  or grid edge each way (DESIGN §5). `then.start` and `then.end` are the inclusive
+  bounds.
+- `tab`: Tab (`toward: "forward"`) and Shift+Tab (`toward: "backward"`). Targets the
+  next or previous clue in `direction`'s clue list and lands on that clue's first
+  empty cell scanning from its start; a full target clue falls back to its start on
+  Tab, its end on Shift+Tab (DESIGN §5). Past either end of the clue list it wraps to
+  the grid's first playable cell with `direction` unchanged, so `then.direction` is
+  pinned alongside `then.cell`: the wrap never crosses axes.
+- `typing`: the cursor move after a letter is placed at `from`. `given.fills` is the
+  board after that keystroke, so `from` is filled. Advances forward with filled-skip
+  inside the word to the next empty cell; at the word's end it wraps to the word's
+  first empty cell if the word is incomplete, or stays on the last cell if the word
+  is full (DESIGN §5).
+- `backspace`: the cursor move on Backspace. `then.cell` is where the cursor lands,
+  which is also the cell cleared. On a non-empty `from` it stays (clears in place);
+  on an already-empty `from` it steps back one cell with block-skip, crossing word
+  boundaries into the previous word, and clears wherever it lands (DESIGN §5).
+
+`then.direction` is asserted only where an op can change direction (`tab`); the other
+ops never leave their axis and omit it (the assertion rule leaves it unasserted).
+
+### Filled-skip is an operation property, not a shared flag
+
+Track-d decision (a Wave 1.1h finding delegated here): **filled-skip lives inside the
+named operations that need it (`tab`'s first-empty scan, `typing`'s advance), each
+pinned end to end by its own `op` with `given.fills` and a single landing cell. It is
+not a flag on the single-cell `advance` primitive, and not a composition the client
+callers assemble from raw single steps.** Rationale:
+
+- v2 proved the caller-composition path is where drift and bugs live. Shift+Tab's two
+  bugs (`reports/v2-navigation-audit.md`, Verdict 1) sat in the client's hand-rolled
+  `while`-loop scan built from raw `canEscapeWord=false` steps, not in `getNextCell`.
+  Pinning the whole operation as one engine function makes both ports land
+  identically and forecloses that class of divergence (INV-1).
+- v2 already carried two filled-skip mechanisms: a parameter inside `getNextCell` for
+  typing, and the raw-step loop for Tab. Collapsing them into named operations removes
+  the "which mechanism" ambiguity; a generic filled-skip flag would reintroduce it.
+- The 12 seed cases show single-cell advance is deliberately fill-agnostic: none
+  supply `fills`, and `canEscapeWord` governs only block-crossing at a word boundary.
+  Overloading `advance` with a filled-skip flag would blur a clean primitive.
+- Filled-skip is not a universal modifier. Arrows and Backspace use block-skip with no
+  filled-skip; typing is filled-skip plus a wrap-or-stay clamp; Tab is a first-empty
+  scan. Modeling filled-skip per operation matches where it actually applies and keeps
+  the others honest.
+
+The new clusters (`word-bounds`, `next-word`, `previous-word`, `typing-advance`,
+`full-word-asymmetry`, `backspace-step-back`) reuse the PROTOCOL.md §13 fixture (5 by
+4, blocks 2, 6, 13) and cite the sentence each case pins. The engine is unimplemented,
+so these are discovered and shape-validated as hard passes but execution-skipped via
+the navigation entry in both `vectors.skip.json` manifests.
 
 ## Completion cases
 
@@ -201,7 +273,7 @@ reducer never emits (PROTOCOL.md §10, §13; DESIGN.md §3). Shape:
 
 Most families bind to `packages/engine`. `client-store` does not: its consumer is the
 web client's store (Wave 2.1d) and later the iOS store, never the engine. So the
-engine runner treats it as _foreign_ — it discovers and shape-validates the cases
+engine runner treats it as _foreign_: it discovers and shape-validates the cases
 (hard passes, no silent skip, no unknown-family failure) but never executes them.
 Execution lives in `apps/web`'s and the iOS suites, which import the same JSON files.
 
@@ -278,7 +350,7 @@ DESIGN.md §10, INV-10), the duplicated web + iOS surface where drift is most ex
   fields sit inline. A `sync`/`welcome` carries a `board` with `seq`, `status`, a
   sparse `cells` map, and `recentCommandIds`.
 - `then` is the store state after: `seq`, `sync`, the resulting `overlay` (send order),
-  `render` (sparse map of cell index to the displayed value, string or `null` — the
+  `render` (sparse map of cell index to the displayed value, string or `null`, the
   composite the user sees: sequenced `cells` painted with the overlay, most recently
   sent winning per cell), and `send`, the ordered outbound frames the store emitted
   (`requestSync`; a re-sent command; `[]` when none). A re-sent command reconstructs
@@ -286,7 +358,7 @@ DESIGN.md §10, INV-10), the duplicated web + iOS surface where drift is most ex
   `clearCell`.
 - Overlay lifecycle (INV-10, PROTOCOL.md §8): a local command adds an entry and sends
   it; a `cellSet` echo (`commandId` match) clears it; a non-fatal `error` for that
-  `commandId` clears it (the immortal-overlay case — the cell's true value is never
+  `commandId` clears it (the immortal-overlay case, the cell's true value is never
   masked); an unrelated echo or error leaves it untouched; a fatal `error` clears
   nothing but goes `reconnecting`, preserving the overlay so §8 can re-send it.
 - Snapshot reconciliation runs identically for `sync`, `welcome`, and a crash-rollback
@@ -301,7 +373,7 @@ Findings, unresolved and deliberately not baked in:
 - `agedOut` is supplied as case input, not derived. PROTOCOL.md §8 and DESIGN.md §15
   say a pending command is re-sent if "still within the recent-command window (K)"
   and dropped if aged out, but they do not pin _how the client measures a pending
-  command's age against K_ (by send-`seq`, by count, by wall clock — all unspecified).
+  command's age against K_ (by send-`seq`, by count, by wall clock, all unspecified).
   The vectors pin the outcome (aged-out drops, not re-sends) via an explicit flag, and
   leave the measurement for a PROTOCOL.md amendment rather than inventing it here.
 - PROTOCOL.md §13 lists the incoming message as "`cellSet`, `sync`, or a crash-rollback
