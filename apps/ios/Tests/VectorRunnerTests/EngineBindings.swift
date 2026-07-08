@@ -19,7 +19,7 @@ import CrossyEngine
 enum EngineBindings {
     /// Families the Wave 3 port implements. Kept in sync with `run` and drained from
     /// vectors.skip.json as each binds.
-    static let bound: Set<VectorFamily> = [.reducer, .navigation]
+    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator]
 
     /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
     /// has not implemented.
@@ -29,6 +29,8 @@ enum EngineBindings {
             try runReducer(rawCase)
         case .navigation:
             try runNavigation(rawCase)
+        case .comparator:
+            try runComparator(rawCase)
         default:
             throw VectorError.noEngineBinding(family)
         }
@@ -108,6 +110,26 @@ enum EngineBindings {
             try expectInt(cell, then["cell"], "then.cell")
         default:
             throw VectorMismatch("unknown navigation op \"\(op)\"")
+        }
+    }
+
+    // MARK: - Comparator
+
+    /// Every value in `accept` must pass and every value in `reject` must fail for the case's
+    /// `solution`. Casing is ASCII-only (INV-1); the Turkish dotted and dotless i in the
+    /// suite prove a locale-aware port cannot slip through.
+    private static func runComparator(_ c: [String: Any]) throws {
+        guard let solution = c["solution"] as? String,
+            let accept = c["accept"] as? [Any],
+            let reject = c["reject"] as? [Any]
+        else {
+            throw VectorMismatch("comparator case missing solution/accept/reject")
+        }
+        for value in accept.compactMap({ $0 as? String }) where !matches(solution, value) {
+            throw VectorMismatch("comparator solution \"\(solution)\": accept \"\(value)\" did not match")
+        }
+        for value in reject.compactMap({ $0 as? String }) where matches(solution, value) {
+            throw VectorMismatch("comparator solution \"\(solution)\": reject \"\(value)\" matched")
         }
     }
 }
