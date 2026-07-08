@@ -1,0 +1,347 @@
+// Contract snapshot tests for the wire codec. Fixtures are the literal message examples from
+// PROTOCOL.md §§2, 4, 5, 6; the decoders are made to satisfy them (TDD). Each `then` object is the
+// exact decoded shape, so a schema drift from PROTOCOL.md fails here.
+import { describe, expect, it } from "vitest";
+import {
+  decodeBoard,
+  decodeClientMessage,
+  decodeServerMessage,
+  encode,
+} from "./codec";
+
+// The §4 board example, with `<userId>` and the trailing `...` made concrete.
+const BOARD_FIXTURE = {
+  seq: 412,
+  status: "ongoing",
+  firstFillAt: "2026-07-07T19:02:11Z",
+  completedAt: null,
+  abandonedAt: null,
+  cells: [
+    { v: "A", by: "u1" },
+    { v: null, by: null },
+  ],
+  participants: [
+    {
+      userId: "u1",
+      displayName: "Ana",
+      color: "#7F77DD",
+      role: "host",
+      connected: true,
+    },
+  ],
+  cursors: [{ userId: "u1", cell: 17, direction: "across" }],
+  recentCommandIds: ["cmd-1", "cmd-2"],
+  stats: null,
+};
+
+// Assert the decode succeeded without erasing the discriminated-union value type: the caller's
+// own `if (result.ok)` then narrows to the real message type.
+function assertOk(result: { readonly ok: boolean }): void {
+  expect(result.ok).toBe(true);
+}
+
+describe("board payload (PROTOCOL.md §4)", () => {
+  it("decodes the §4 example verbatim", () => {
+    const result = decodeBoard(BOARD_FIXTURE);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(BOARD_FIXTURE);
+  });
+
+  it("decodes a completed board with non-null stats", () => {
+    const completed = {
+      ...BOARD_FIXTURE,
+      status: "completed",
+      completedAt: "2026-07-07T19:40:03Z",
+      stats: { solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4 },
+    };
+    const result = decodeBoard(completed);
+    assertOk(result);
+    if (result.ok) expect(result.value.stats).toEqual(completed.stats);
+  });
+
+  it("rejects a board missing a required field as malformed", () => {
+    const { seq, ...noSeq } = BOARD_FIXTURE;
+    void seq;
+    const result = decodeBoard(noSeq);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+});
+
+describe("handshake (PROTOCOL.md §2)", () => {
+  it("decodes the §2 hello example, resumeFromSeq included", () => {
+    const hello = {
+      type: "hello",
+      protocolVersion: 1,
+      token: "<access JWT>",
+      resumeFromSeq: 123,
+    };
+    const result = decodeClientMessage(hello);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(hello);
+  });
+
+  it("decodes hello without the optional resumeFromSeq", () => {
+    const hello = { type: "hello", protocolVersion: 1, token: "jwt" };
+    const result = decodeClientMessage(hello);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(hello);
+  });
+
+  it("decodes the §2 welcome example with an embedded board", () => {
+    const welcome = {
+      type: "welcome",
+      protocolVersion: 1,
+      self: { userId: "u1", role: "solver" },
+      board: BOARD_FIXTURE,
+    };
+    const result = decodeServerMessage(welcome);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(welcome);
+  });
+
+  it("versioning posture: a hello for an unsupported version still decodes; the server negotiates (§2, §14)", () => {
+    const future = { type: "hello", protocolVersion: 999, token: "jwt" };
+    const result = decodeClientMessage(future);
+    assertOk(result);
+    if (result.ok && result.value.type === "hello") {
+      expect(result.value.protocolVersion).toBe(999);
+    }
+  });
+});
+
+describe("client to server messages (PROTOCOL.md §5)", () => {
+  const cases: Array<{ name: string; frame: Record<string, unknown> }> = [
+    {
+      name: "placeLetter",
+      frame: { type: "placeLetter", commandId: "c1", cell: 17, value: "A" },
+    },
+    {
+      name: "clearCell",
+      frame: { type: "clearCell", commandId: "c2", cell: 17 },
+    },
+    {
+      name: "moveCursor",
+      frame: { type: "moveCursor", cell: 17, direction: "across" },
+    },
+    { name: "checkRequest", frame: { type: "checkRequest", commandId: "c3" } },
+    { name: "heartbeat", frame: { type: "heartbeat" } },
+    { name: "requestSync", frame: { type: "requestSync" } },
+  ];
+
+  for (const { name, frame } of cases) {
+    it(`decodes ${name} to its exact shape`, () => {
+      const result = decodeClientMessage(frame);
+      assertOk(result);
+      if (result.ok) expect(result.value).toEqual(frame);
+    });
+  }
+
+  it("maps an unrecognized command type to unknown_type (PROTOCOL.md §5 UNKNOWN_TYPE)", () => {
+    const result = decodeClientMessage({ type: "frobnicate", commandId: "c9" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("unknown_type");
+      expect(result.error.type).toBe("frobnicate");
+    }
+  });
+
+  it("rejects a placeLetter missing value as malformed", () => {
+    const result = decodeClientMessage({
+      type: "placeLetter",
+      commandId: "c1",
+      cell: 0,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+});
+
+describe("sequenced events (PROTOCOL.md §6)", () => {
+  it("decodes the §6 cellSet example", () => {
+    const cellSet = {
+      type: "cellSet",
+      seq: 413,
+      cell: 17,
+      value: "A",
+      by: "u1",
+      commandId: "c1",
+      at: "2026-07-07T19:02:11Z",
+    };
+    const result = decodeServerMessage(cellSet);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(cellSet);
+  });
+
+  it("decodes a cellSet with a null value (a clear)", () => {
+    const cleared = {
+      type: "cellSet",
+      seq: 414,
+      cell: 17,
+      value: null,
+      by: "u2",
+      commandId: "c2",
+      at: "2026-07-07T19:03:00Z",
+    };
+    const result = decodeServerMessage(cleared);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(cleared);
+  });
+
+  it("decodes the §6 gameCompleted example", () => {
+    const completed = {
+      type: "gameCompleted",
+      seq: 900,
+      at: "2026-07-07T19:40:03Z",
+      stats: { solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4 },
+    };
+    const result = decodeServerMessage(completed);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(completed);
+  });
+
+  it("decodes the §6 gameAbandoned example", () => {
+    const abandoned = {
+      type: "gameAbandoned",
+      seq: 641,
+      at: "2026-07-07T19:41:00Z",
+      by: "u1",
+    };
+    const result = decodeServerMessage(abandoned);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(abandoned);
+  });
+});
+
+describe("ephemeral notices (PROTOCOL.md §6)", () => {
+  const cases: Array<{ name: string; frame: Record<string, unknown> }> = [
+    { name: "sync", frame: { type: "sync", board: BOARD_FIXTURE } },
+    {
+      name: "playerConnected",
+      frame: {
+        type: "playerConnected",
+        userId: "u2",
+        displayName: "Bo",
+        color: "#33AA88",
+        role: "solver",
+      },
+    },
+    {
+      name: "playerDisconnected",
+      frame: { type: "playerDisconnected", userId: "u2" },
+    },
+    {
+      name: "cursor",
+      frame: { type: "cursor", userId: "u2", cell: 5, direction: "down" },
+    },
+    {
+      name: "checkResult",
+      frame: { type: "checkResult", commandId: "c4", wrongCells: [3, 7, 12] },
+    },
+    { name: "kicked", frame: { type: "kicked", reason: "removed by host" } },
+  ];
+
+  for (const { name, frame } of cases) {
+    it(`decodes ${name} to its exact shape`, () => {
+      const result = decodeServerMessage(frame);
+      assertOk(result);
+      if (result.ok) expect(result.value).toEqual(frame);
+    });
+  }
+
+  it("ignores an unknown notice type (PROTOCOL.md §3: ignore and log)", () => {
+    const result = decodeServerMessage({ type: "sparkle", glitter: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("unknown_type");
+  });
+});
+
+describe("error message (PROTOCOL.md §6, §11)", () => {
+  it("decodes a non-fatal error carrying a commandId", () => {
+    const err = {
+      type: "error",
+      code: "INVALID_VALUE",
+      message: "fails ^[A-Z0-9]{1,10}$",
+      fatal: false,
+      commandId: "c1",
+    };
+    const result = decodeServerMessage(err);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(err);
+  });
+
+  it("decodes a fatal error without a commandId", () => {
+    const err = {
+      type: "error",
+      code: "PROTOCOL_VERSION_UNSUPPORTED",
+      message: "supported: {1}",
+      fatal: true,
+    };
+    const result = decodeServerMessage(err);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(err);
+  });
+
+  it("rejects an unknown error code as malformed", () => {
+    const result = decodeServerMessage({
+      type: "error",
+      code: "NONSENSE",
+      message: "x",
+      fatal: false,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+});
+
+describe("parse posture (PROTOCOL.md §3, §14)", () => {
+  it("ignores unknown fields, returning a clean object (forward compatibility)", () => {
+    const withExtra = {
+      type: "cellSet",
+      seq: 1,
+      cell: 0,
+      value: "A",
+      by: "u1",
+      commandId: "c1",
+      at: "2026-07-07T00:00:00Z",
+      futureField: { nested: true },
+    };
+    const result = decodeServerMessage(withExtra);
+    assertOk(result);
+    if (result.ok) {
+      expect(result.value).not.toHaveProperty("futureField");
+      expect(Object.keys(result.value).sort()).toEqual(
+        ["at", "by", "cell", "commandId", "seq", "type", "value"].sort(),
+      );
+    }
+  });
+
+  it("rejects a non-object frame and a frame with no type as malformed", () => {
+    for (const bad of [42, "string", null, [], {}, { type: 7 }]) {
+      const result = decodeClientMessage(bad);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.kind).toBe("malformed");
+    }
+  });
+});
+
+describe("round trip: encode then decode", () => {
+  it("preserves a client message", () => {
+    const msg = { type: "placeLetter", commandId: "c1", cell: 3, value: "Z" };
+    const result = decodeClientMessage(JSON.parse(encode(msg as never)));
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(msg);
+  });
+
+  it("preserves a server message with a board", () => {
+    const welcome = {
+      type: "welcome",
+      protocolVersion: 1,
+      self: { userId: "u1", role: "spectator" },
+      board: BOARD_FIXTURE,
+    };
+    const result = decodeServerMessage(JSON.parse(encode(welcome as never)));
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(welcome);
+  });
+});

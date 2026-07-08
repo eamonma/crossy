@@ -11,3 +11,4 @@ export * from "./puzzle";
 export * from "./board";
 export * from "./errors";
 export * from "./messages";
+export * from "./codec";
