@@ -1,0 +1,62 @@
+// The board payload (PROTOCOL.md §4), carried inside `welcome` and `sync`. It holds only mutable
+// game state; the puzzle (geometry, clues) comes from REST and is immutable per game.
+
+/** A participant's role in a game (DESIGN.md §8). */
+export type Role = "host" | "solver" | "spectator";
+
+/** Cursor / word orientation (PROTOCOL.md §5). */
+export type Direction = "across" | "down";
+
+/** Game lifecycle status (PROTOCOL.md §4). */
+export type GameStatus = "ongoing" | "completed" | "abandoned";
+
+/**
+ * One grid cell's mutable state. `{v:null,by:null}` is a black square or a never-written cell; a
+ * cleared cell keeps its clearer as `by` with `v:null` (PROTOCOL.md §4, §6). A filled cell has
+ * both. `v` may be a multi-character rebus string.
+ */
+export interface Cell {
+  readonly v: string | null;
+  readonly by: string | null;
+}
+
+/** A participant view at snapshot time (PROTOCOL.md §4). */
+export interface Participant {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly color: string;
+  readonly role: Role;
+  readonly connected: boolean;
+}
+
+/** A cursor position at snapshot time (PROTOCOL.md §4). Best-effort, never sequenced (§9). */
+export interface Cursor {
+  readonly userId: string;
+  readonly cell: number;
+  readonly direction: Direction;
+}
+
+/** Completion stats, non-null only when the game is completed (PROTOCOL.md §4). */
+export interface Stats {
+  readonly solveTimeSeconds: number;
+  readonly totalEvents: number;
+  readonly participantCount: number;
+}
+
+/**
+ * The full board snapshot (PROTOCOL.md §4). `cells` has length `rows * cols`. `recentCommandIds`
+ * is the last K applied `commandId`s for snapshot reconciliation (§8). Reconnect always transfers
+ * the whole board; there are no deltas (§1).
+ */
+export interface Board {
+  readonly seq: number;
+  readonly status: GameStatus;
+  readonly firstFillAt: string | null;
+  readonly completedAt: string | null;
+  readonly abandonedAt: string | null;
+  readonly cells: readonly Cell[];
+  readonly participants: readonly Participant[];
+  readonly cursors: readonly Cursor[];
+  readonly recentCommandIds: readonly string[];
+  readonly stats: Stats | null;
+}
