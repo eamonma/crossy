@@ -220,6 +220,16 @@ spine, the way the Swift port does:
 - [ ] **c. Postgres wiring**: Drizzle Kit + an empty migration applied by a
       Testcontainers CI job; create the Supabase project and choose the region
       (closes the region open question, DESIGN.md §15)
+      Drizzle Kit, the first migration, and the Testcontainers proof landed in
+      `packages/db` (a shared package: single-writer-per-table governs writes, but
+      both services build against one schema, and apps never import each other).
+      `pnpm test` applies the committed migration against real Postgres and fails
+      loudly without Docker (no silent skips). Region research is closed: recommend
+      `us-east-1` (East US / Virginia), co-located with Railway's US East where the
+      session service sits, since Railway has no Canadian region; see
+      `reports/spikes/wave-0.2c-region-note.md`. Box stays open on the one remaining
+      owner action: create the Supabase project (owner-only) in that region and
+      close DESIGN §15's region line.
 
 **Exit (= M0): both runners prove a vector fails honestly against the unimplemented
 engine while CI stays green (TypeScript: done, a guard asserts the run throws;
