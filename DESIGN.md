@@ -2,6 +2,7 @@
 
 Status: draft 1, for review. Date: 2026-07-07.
 Companion: `PROTOCOL.md` (the wire contract and conformance vectors).
+**Ownership of overlapping facts:** the wire format, message schemas, completion and comparator semantics, reconnect, and role gates are owned by `PROTOCOL.md`; this document links to them rather than restating them normatively. Where the two disagree on such a fact, `PROTOCOL.md` wins and the divergence is a bug. This document owns architecture, data model, and rationale.
 This document stands alone. Two frozen extraction reports (`reports/v2-spec-extraction.md`, `reports/v3-mining.md`) hold exact constants and history; nothing here requires them.
 
 ## 1. What Crossy is
@@ -111,9 +112,9 @@ CI jobs: lint + unit + TS vectors on every push; Swift vectors on a macOS runner
 
 **Command vocabulary** (wire detail in `PROTOCOL.md`): `placeLetter`, `clearCell`, and `checkRequest` reach the reducer or comparator through the actor; `moveCursor`, `heartbeat`, and `requestSync` never touch domain state.
 
-**Values**: normalized at the boundary. Uppercase, charset `A-Z0-9`, length 1 to 10 (10 covers observed rebus answers; revisit against real data). `null` clears. Digits are kept for v2 parity.
+**Values**: normalized at the boundary. Uppercase, charset `A-Z0-9`, length 1 to 10 (10 covers observed rebus answers; revisit against real data). `null` clears. Digits are kept for v2 parity. Normalization is **ASCII-only**: map `a-z` to `A-Z` and leave every other code point unchanged, then validate against `A-Z0-9`. Locale-aware casing (`toLocaleUpperCase`, `uppercased(with:)`) is forbidden: it diverges across the TypeScript and Swift ports (Turkish `i` to `İ`, U+0130) and would break INV-1. A code point that uppercases outside `A-Z0-9` is rejected as `INVALID_VALUE`, identically on both ports.
 
-**Two-phase completion.** The reducer maintains `filledCount`; equality with the playable-cell count is a cheap gate. Only then does the actor run the comparator over the whole board, and only on a full pass does it emit `gameCompleted`. Filled-but-wrong emits nothing and play continues. This avoids comparing on every keystroke and makes "exactly one completion" trivial inside one mailbox.
+**Two-phase completion.** The reducer maintains `filledCount`; equality with the playable-cell count is a cheap gate. The gate is **level-triggered, not edge-triggered**: on every accepted mutation, if `filledCount` equals the playable-cell count, the actor runs the comparator over the whole board — including an overwrite that leaves `filledCount` unchanged, because a full-but-wrong board becomes correct exactly by such an in-place overwrite. Only a full pass emits `gameCompleted`; filled-but-wrong emits nothing and play continues. Re-checking only on the transition to full would strand a board corrected in place. This still avoids comparing on every keystroke and makes "exactly one completion" trivial inside one mailbox.
 
 **Comparator.** A filled value passes for a cell if, case-insensitively, it equals the full solution string or equals its first character. First-char acceptance is the puzzle format's own rebus convention; v2 shipped first-char-only by accident, v4 adopts either-accept on purpose. The comparator runs only server-side because it needs the solution.
 
@@ -121,6 +122,7 @@ CI jobs: lint + unit + TS vectors on every push; Swift vectors on a macOS runner
 
 - Word bounds: scan from the cell to a block or grid edge in each direction along the current axis.
 - Advance: skip blocks; when moving forward, also skip filled cells, but if the word is full to its end, fall back to the immediately next cell.
+- `canEscapeWord` (a `getNextCell` parameter): when false, forward advance stops at the current word's last cell instead of crossing into the next word; when true, it may cross a block into the next word. The flag only bites at a word boundary — mid-word it is a no-op. (Semantics inferred from the v2 seed vectors; confirm against `reports/v2-spec-extraction.md` when that report lands.)
 - Grid edges clamp: never move past the first or last index.
 - Tab targets the next clue's first empty cell, else the clue's start (its end on Shift+Tab); past either end of the clue list, wrap to the grid's first playable cell.
 - Typing at a word's end wraps to the word's start if the word is incomplete, else stays on the last cell.
@@ -132,15 +134,15 @@ CI jobs: lint + unit + TS vectors on every push; Swift vectors on a macOS runner
 
 **Actor lifecycle.**
 
-- _Hydrate lazily._ The first connection for a game loads `games` plus `game_state` (board snapshot and `last_seq`) and constructs the actor. `cell_events` is not read on hydration.
+- _Hydrate lazily._ The first connection for a game loads `games` plus `game_state` (board snapshot and `last_seq`) and constructs the actor. `cell_events` is not read on hydration (it is read once on the completion path, for the `participantCount` stat).
 - _Serve from memory._ All validation and state live in the actor. Postgres is never on the keystroke path.
 - _Write-behind._ Events buffer; events and the snapshot flush in one transaction every ~25 events or ~5 seconds, on transition to idle, and on SIGTERM (drain before exit). `gameCompleted` and `gameAbandoned` flush synchronously before they are broadcast.
 - _Passivate._ After ~30 minutes with no connections: final flush, drop the actor. Safe because Postgres is the system of record; any later visit rehydrates. This deletes v3's background sweeper: no state exists only in memory beyond the flush window.
-- _Crash._ A hard kill loses at most the unflushed tail, roughly five seconds of typing. Snapshot and events flush together, so the restore point is internally consistent. Honest consequence: the restored `seq` can be lower than what connected clients already saw. The protocol defines the client rollback rule, and client re-offer of lost commands is a planned stretch (commandId dedup already makes it safe).
+- _Crash._ A hard kill loses at most the unflushed tail, roughly five seconds of typing. Snapshot and events flush together, so the restore point is internally consistent. Honest consequence: the restored `seq` can be lower than what connected clients already saw. The protocol defines the client rollback rule. Client re-offer of lost commands is a planned stretch, and it is safe **only because the flushed snapshot carries the last K applied `commandId`s** (section 9), so dedup survives passivation and crash. The in-memory dedup set alone does not survive the crash it is invoked for: without persisted `commandId`s a re-offer after rehydration is not recognized as a duplicate and can regress a value that superseded it.
 
-**Presence and cursors** flow through the actor but are ephemeral: no `seq`, no persistence. Heartbeat every 15 s; 45 s without one broadcasts a disconnect. Cursor updates are throttled to 10/s.
+**Presence and cursors** flow through the actor but are ephemeral: no `seq`, no persistence. Heartbeat every 15 s; 45 s with no inbound frame of any type (heartbeat or command) broadcasts a disconnect, so an actively typing client is never marked away. Cursor updates are throttled to 10/s.
 
-**Membership.** The session service verifies membership, role, and the denylist at connect, and caches the result. It never mutates membership; that is the API's job. When the API changes membership (kick, role change, abandon), it calls one internal endpoint, `POST /internal/games/{id}/membership-changed`, authenticated with a static bearer secret. The actor re-verifies against Postgres and disconnects anyone no longer allowed. Abandon uses the same path: the API authorizes the host, the actor emits `gameAbandoned`.
+**Membership.** The session service verifies membership, role, and the denylist at connect, and caches the result. It never mutates membership; that is the API's job. When the API changes membership (kick, role change, abandon), it calls one internal endpoint, `POST /internal/games/{id}/membership-changed`, authenticated with a static bearer secret. This endpoint is assumed reachable only on the provider's private network (confirm at M1, see section 15); the bearer is defense-in-depth on an already-private channel, not the sole trust boundary, and its blast radius is a forced re-verification or disconnect, never data access, because the actor re-reads authoritative state from Postgres and treats the request body only as a hint. The actor re-verifies against Postgres and disconnects anyone no longer allowed. Abandon uses the same path: the API authorizes the host; if the game is passivated the endpoint hydrates the actor on demand (only the actor may write `game_state`), which emits and synchronously flushes `gameAbandoned`. Abandon on an already-terminal game is a no-op (INV-4). A kick or role change on a passivated game needs no actor — there are no live sockets, and the denylist plus re-verify enforce it at the next connect.
 
 ## 7. Core API
 
@@ -149,17 +151,18 @@ Modules: identity & membership, puzzle catalog, games, archive.
 **Puzzle catalog owns the anti-corruption layer.** Ingestion translates XWord Info JSON into the internal Puzzle model exactly once, at the boundary. Nothing downstream ever parses the external format.
 
 - Clues become structured `{number, text, cellIndices}` at ingestion. v2 parsed `"17. Some clue"` strings three inconsistent ways at render time; that dies here.
-- Feature detection with named rejection. Accepted: standard grids, rebus cells, circles (including shaded circles as a render variant), clues containing HTML and images, cryptic-style clue text. Rejected, each with a specific reason: barred grids, diagramless, uniclue. Unknown extra fields are ignored; known-incompatible flags reject.
-- Bounds: 25x25 maximum. This bounds sync payloads under ~20 KB; v2's uncapped grids were an accident, not a decision.
-- Solutions live in the internal model and never leave the server (INV-6). Client-facing puzzle views strip them, including answers embedded in clue structures.
+- Feature detection with named rejection. Accepted: standard grids, rebus cells, circles (including shaded circles as a render variant), clues containing HTML and images, cryptic-style clue text. Rejected, each with a specific reason: barred grids, diagramless, uniclue, degenerate grids (zero playable cells, which would make completion vacuous or unreachable), and unsolvable puzzles (see the solvability check below). Unknown extra fields are ignored; known-incompatible flags reject.
+- Bounds: 25x25 maximum. A full board at this cap is roughly 30 KB of raw JSON (a per-cell `{v, by}` with a UUID `by`), well under 20 KB with `permessage-deflate`; v2's uncapped grids were an accident, not a decision. See PROTOCOL.md section 1 for the resync-size contract.
+- Solvability check. Every solution cell must be enterable: a cell is enterable iff its solution's first character is in `A-Z0-9` after ASCII-uppercasing (first-char acceptance, D12, then makes the cell completable), or the whole solution matches `^[A-Z0-9]{1,10}$`. Reject, with a named reason, any puzzle with a cell no legal input can satisfy — e.g. a rebus cell whose solution is `&`. A cell like `A&B` is accepted, because typing `A` completes it. This is the solution-side counterpart to the `INVALID_VALUE` input rule.
+- Solutions live in the internal model and never leave the server (INV-6). INV-6 is enforced **structurally, not by runtime stripping**: `packages/protocol` defines two distinct types, `ServerPuzzle` (with solutions) and `ClientPuzzle` (no solution field, including no answers embedded in clue structures), and every client-facing payload is typed `ClientPuzzle`, so a leak is a compile error rather than a missed strip. v2 leaked solutions embedded in clues precisely because stripping was a runtime discipline; v4 removes the discipline. A serialization golden asserts no client payload carries a solution-typed field.
 
 A second ACL, same idea, different boundary: the auth port (section 8) translates vendor identities into internal users. Both are named ACLs on purpose; one vocabulary.
 
-**Games module**: create (full accounts only), join by invite code (any authenticated user, guests included; role starts `spectator`), self-upgrade to `solver`, kick (denylist plus notify), abandon (host only), and the game view (solution-stripped puzzle, membership, board bootstrap).
+**Games module**: create (full accounts only), join by invite code (any authenticated user, guests included; role starts `spectator`), self-upgrade to `solver`, kick (denylist plus notify; the host cannot kick themselves), abandon (host only), and the game view (solution-stripped puzzle, membership, board bootstrap). Host succession: if the host is tombstoned or deletes their account, host passes to the earliest-joined remaining `solver`; if none remains, the game auto-abandons, so a game is never left unadministrable.
 
-**Invite links**: `/g/{code}`, 8 characters from the unambiguous alphabet `[2-9A-HJ-NP-Z]`, crypto-random, lookups rate-limited. The code is a capability; a kicked user still holds the link, so kick writes a per-game denylist checked at join and at connect. The API serves `/g/{code}` as a small HTML shell with OpenGraph tags, plus `/og/{gameId}` rendering a grid-layout preview image (satori). Link unfurlers do not execute JavaScript, so the SPA cannot do this itself.
+**Invite links**: `/g/{code}`, 8 characters from the unambiguous alphabet `[2-9A-HJ-NP-Z]`, crypto-random, lookups rate-limited. The code is a capability; a kicked user still holds the link, so kick writes a per-game denylist checked at join and at connect. The API serves `/g/{code}` as a small HTML shell with OpenGraph tags, plus `/og/{gameId}` rendering a grid-layout preview image (satori) — **geometry only, never fills**, from solution-stripped `ClientPuzzle` data. The endpoint is public and third-party-cached, so it MUST NOT expose in-progress board state. Link unfurlers do not execute JavaScript, so the SPA cannot do this itself.
 
-**Authorization** lives in API code, where it is unit-testable. Postgres row-level security is configured deny-all as a tripwire: a leaked credential reads nothing, and no feature depends on RLS.
+**Authorization** lives in API code, where it is unit-testable. Each service connects with a least-privilege Postgres role granted only the tables it owns per section 9 — the session service additionally gets read-only grants on `games`, `memberships`, `game_denylist`, and `users` (display name only) — so a leaked service credential is bounded to that role's surface. Postgres row-level security is configured deny-all as a tripwire for any future `authenticated`-role path; it is not defense for the service roles, which necessarily bypass it, and no feature depends on it.
 
 ## 8. Identity, guests, roles
 
@@ -167,33 +170,35 @@ A second ACL, same idea, different boundary: the auth port (section 8) translate
 
 **Owned**: a `users` table keyed by the same UUID the provider issues, populated by a just-in-time upsert in API middleware on the first authenticated request. Every foreign key points at our table; nothing in our schema references the vendor's auth schema. The auth port is three functions: `verify(token) -> {sub, isAnonymous}`, `linkIdentity`, `deleteUser`. Services verify JWTs locally against the provider's published keys; no network call per request. Swapping providers later means reimplementing the port and nothing else.
 
-**Guests.** The first join as a guest mints a real anonymous user, device-bound via stored session (Keychain on iOS, localStorage on web). Everything keys on `user_id` and auth method is an attribute, so a later Apple or Discord sign-in links the identity in place and history survives. Guests are join-only: creating a game requires a full account, so every game has an accountable owner. Guest creation is rate-limited by IP. Stale anonymous users are deleted by a periodic job.
+**Guests.** The first join as a guest mints a real anonymous user, device-bound via stored session (Keychain on iOS, localStorage on web). Everything keys on `user_id` and auth method is an attribute, so a later Apple or Discord sign-in links the identity in place and history survives. Guests are join-only: creating a game requires a full account, so every game has an accountable owner. Guest creation is rate-limited by IP. Stale anonymous users are reclaimed by a periodic job.
+
+**Deletion is a tombstone where events exist.** `deleteUser` and the stale-guest job scrub PII from `users` (display name, avatar) but retain the stable `user_id`, because `cell_events` is immutable and INV-1 replay and INV-2 contiguity depend on it. `cell_events.user_id` is therefore never a cascading foreign key. `memberships` and `game_denylist` rows for a tombstoned user are removed; event attribution survives as an opaque, PII-free id, rendered as "former participant."
 
 **Display identity**, everyone: a chosen display name plus a deterministic color from a hash (FNV-1a) of `user_id`, stable across devices, sessions, and clients.
 
-**Roles**: `host` (creator), `solver`, `spectator`. Links land you as a spectator; one tap upgrades to solver; the host can kick. Spectators receive everything and send nothing that mutates. By default they do not broadcast cursors.
+**Roles**: `host` (creator), `solver`, `spectator`. Links land you as a spectator; one tap upgrades to solver; the host can kick (but not themselves; succession is in section 7). Spectators receive everything and send nothing that mutates board state. They may broadcast a cursor — they are friends watching, and the moving cursor is the point — but clients suppress it by default (section 15).
 
 ## 9. Data model and ownership
 
-Single writer per table. A shared database is a coupling sin only when ownership is ambiguous; this matrix removes the ambiguity.
+Single writer per table. A shared database is a coupling sin when *write* ownership is ambiguous; this matrix removes that. Read-coupling remains and is not waved away: the session service reads several API-owned surfaces (`games`, `games.puzzle_snapshot`, `memberships`, `game_denylist`, and `users.display_name` for participant payloads), so their column shapes are a published contract. Changes to them are expand/contract — add, backfill, migrate readers, then drop — never a breaking rename in one deploy, because the two services deploy independently against one database.
 
 | Table           | Writer  | Purpose                                                                                             |
 | --------------- | ------- | --------------------------------------------------------------------------------------------------- |
 | `users`         | API     | identity mirror (JIT upsert): display name, avatar, `is_anonymous`                                  |
 | `puzzles`       | API     | internal puzzle model including solutions (jsonb), features, source metadata                        |
 | `games`         | API     | session identity: `puzzle_id`, `puzzle_snapshot` (jsonb), `invite_code`, `created_by`, `created_at` |
-| `memberships`   | API     | `(game_id, user_id, role, joined_at)`                                                               |
+| `memberships`   | API     | `(game_id, user_id, role, joined_at)`, `UNIQUE(game_id, user_id)`; join and role change are upserts                                                               |
 | `game_denylist` | API     | `(game_id, user_id)`: kicked users                                                                  |
-| `game_state`    | session | `status`, `board` (jsonb), `last_seq`, `first_fill_at`, `completed_at`, `abandoned_at`, `stats`     |
+| `game_state`    | session | `status`, `board` (jsonb), `last_seq`, `first_fill_at`, `completed_at`, `abandoned_at`, `stats`, `recent_command_ids` (bounded ring of the last K applied `commandId`s) |
 | `cell_events`   | session | append-only event log                                                                               |
 
-`cell_events(game_id, seq, cell, user_id, value, at, UNIQUE(game_id, seq))`. Kept in full, indefinitely; at friends scale this is tens of megabytes a year. It buys deterministic bug reproduction (replay any game through the reducer) and, later, the analytics v3 designed (contribution map, effort heatmaps, solve replay) as plain queries. No analytics UI in v4.
+`cell_events(game_id, seq, cell, user_id, value, at, UNIQUE(game_id, seq))`; `user_id` is `ON DELETE NO ACTION` and is tombstoned, never cascaded (section 8), so the log stays contiguous through user deletion. Kept in full, indefinitely; at friends scale this is tens of megabytes a year. It buys deterministic bug reproduction (replay any game through the reducer) and, later, the analytics v3 designed (contribution map, effort heatmaps, solve replay) as plain queries. No analytics UI in v4.
 
 `games` vs `game_state` is a split by writer, not by access pattern. v2 had the same shape (a separate status table) for broadcast-channel reasons; v4 keeps the shape with a better justification.
 
 `puzzle_snapshot`: games denormalize the puzzle at creation, so a live game is self-contained. Puzzle edits or deletions cannot corrupt a game in flight, and the actor hydrates from one row plus `game_state`.
 
-**Migrations**: Drizzle Kit, SQL committed in-repo, applied by CI. The database dashboard is read-only by policy. Fresh-clone reproducibility is a launch gate: v2 could not be rebuilt from its repo, and that failure mode is retired here.
+**Migrations**: Drizzle Kit, SQL committed in-repo, applied by CI. Cross-service schema changes are expand/contract: a breaking change to an API-owned table that the session service reads (section 9) is a two-release migration, never a rename in one deploy. The database dashboard is read-only by policy. Fresh-clone reproducibility is a launch gate: v2 could not be rebuilt from its repo, and that failure mode is retired here.
 
 ## 10. Clients
 
@@ -212,6 +217,7 @@ Stance: vectors are written before implementations; the spec is the failing test
 | Engine vectors      | reducer, comparator, navigation semantics                                                                                                     | JSON vectors; vitest runner + XCTest runner     |
 | Completion matrix   | the v3-derived edge catalog: double completion, filled-but-wrong, last-two-cells race, mid-keystroke completion, completion during disconnect | vectors + actor integration                     |
 | Simulation harness  | convergence and freeze-after-completion under randomized delay, drop, reorder, disconnect, and reconnect across N simulated clients           | property-based (fast-check), seeded, replayable |
+| Client store        | overlay reconciliation, gap-to-sync, crash rollback, reconnect state machine (the duplicated web + iOS logic where drift lives) | JSON vectors; vitest + XCTest, same as engine |
 | Service integration | flush atomicity, hydrate, passivate, drain, membership-changed                                                                                | Testcontainers Postgres, real WebSockets        |
 | Contract            | REST and WS schemas vs generated TS/Swift types                                                                                               | schema snapshot tests                           |
 | Smoke               | two browsers solve a mini; one is killed mid-word; both converge                                                                              | Playwright, kept tiny                           |
@@ -220,16 +226,16 @@ The simulation harness is the regression fortress: every convergence bug it find
 
 ## 12. Invariants
 
-- **INV-1 Determinism.** Identical event sequences produce identical states, across languages.
+- **INV-1 Determinism.** Identical event sequences produce identical states, across languages; casing and comparison are ASCII-only so the ports cannot diverge, and replay survives user deletion because deletion tombstones `users` and never touches `cell_events`.
 - **INV-2 Total order.** Events per game carry contiguous `seq` from 1; only the actor assigns `seq`.
 - **INV-3 Completion is durable and unique.** Exactly one `gameCompleted` per game, persisted before broadcast.
 - **INV-4 Terminal states freeze.** No board mutation after `completed` or `abandoned`.
 - **INV-5 Bounded durability.** Graceful shutdown loses nothing. A hard crash loses at most the unflushed tail (bounded by the flush policy), and the restored snapshot-plus-log pair is internally consistent.
-- **INV-6 Solutions never leave the server**, in any payload.
-- **INV-7 Single writer per table.**
+- **INV-6 Solutions never leave the server**, in any payload; enforced structurally by the `ClientPuzzle` type (no solution field), not by runtime stripping.
+- **INV-7 Single writer per table.** Ownership governs writes only; cross-service reads (the session service reads `games`, `memberships`, `game_denylist`, `puzzle_snapshot`, and `users.display_name`) are a schema contract under expand/contract migration.
 - **INV-8 The session service never mutates membership**; it verifies.
 - **INV-9 Engine purity.** No IO, clock, randomness, or ambient identity inside `packages/engine`.
-- **INV-10 Clients render sequenced state plus overlay only.** Overlay entries clear only on echo (`commandId` match) or on resync.
+- **INV-10 Clients render sequenced state plus overlay only.** Overlay entries clear on echo (`commandId` match), on a non-fatal `error` for that `commandId`, or on snapshot reconciliation — never silently, and never left orphaned by a rejection.
 
 INV-5 is deliberately honest: durability is bounded, not absolute, and the bound is a product decision (D14).
 
@@ -284,7 +290,7 @@ Format: decision, why, rejected alternatives, cost. Status is adopted unless mar
 
 **D17 Hosting: Railway for both services; Supabase stays for Postgres + Auth; the SPA on any static host.** Asynchronous flushes make cross-provider database latency tolerable; co-locate regions. Rejected: big-cloud (infrastructure ceremony is the learning budget we agreed not to spend); a VPS now (the ops itch is deferred, not denied); Workers/Durable Objects (platform-shaped learning). **Adopted-by-default**: not load-validated; Fly.io is the named alternate; Docker images plus `DATABASE_URL` keep the exit open.
 
-**D18 Protocol: versioned handshake; the server supports N and N-1; full-snapshot resync; commandId dedup.** N-1 exists because App Store review makes iOS and web release on different cadences. Rejected: delta sync (complexity for a board under 20 KB). Cost: the two-version tax from the first iOS release onward.
+**D18 Protocol: versioned handshake; the server supports N and N-1; full-snapshot resync; commandId dedup.** N-1 exists because App Store review makes iOS and web release on different cadences. Rejected: delta sync (complexity for a board this small — roughly 30 KB raw, well under 20 KB compressed). Cost: the two-version tax from the first iOS release onward, plus frozen N-1 conformance vectors (PROTOCOL.md section 14).
 
 **D19 No offline in v4; events stay per-cell, versioned, string-valued.** That shape is CRDT-compatible, so a future local-first retrofit is not foreclosed. Cost: none now.
 
@@ -297,11 +303,12 @@ Each item names when it must close.
 - Flush thresholds (25 events / 5 s) and passivation delay (30 min): guesses; measure and tune by M2.
 - Railway under WebSocket load, and its pricing: validate during M1; Fly.io is the alternate; switching is about a day.
 - Region placement: choose at M0 when creating the database project; co-locate the services.
-- Internal service-to-service auth: a static bearer secret fits the current exposure; revisit if the surface grows.
-- Client re-offer of lost commands after a crash rollback: post-v1 stretch; dedup already makes it safe.
+- Internal service-to-service auth: a static bearer on the provider's private network is assumed and must be confirmed at M1; blast radius is forced disconnects, not data. Revisit (rotation, mTLS) if the endpoint ever becomes publicly reachable.
+- Client re-offer of lost commands after a crash rollback: post-v1 stretch. Safe only given persisted `commandId`s in the snapshot (section 9, `recent_command_ids`); the in-memory dedup set does not survive passivation or crash.
+- `recent_command_ids` window size K: a guess; tune with the flush thresholds by M2. K sets how many recently-applied commands a reconnecting client can safely re-send without a stale re-apply; pending commands older than K are dropped by the client, not re-sent.
 - iOS 26 floor and Liquid Glass API details: verify against current SDKs at M5 kickoff.
 - Guest IP rate-limit values and stale-guest cleanup cadence: set at M3.
-- Spectator cursors: off by default; revisit if spectating feels dead.
+- Spectator cursors: allowed by the protocol, suppressed client-side by default; revisit the default if spectating feels dead.
 - Digits in the value charset: kept for v2 parity; confirm no real puzzle needs punctuation.
 - Rebus length cap of 10: check against real puzzles at M6.
 - OG image visual parity with v2: nice-to-have, M7.

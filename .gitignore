@@ -1,0 +1,18 @@
+# JS
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+
+# Swift / Xcode (apps/ios)
+.build/
+DerivedData/
+*.xcuserstate
+
+# OS / editor
+.DS_Store
