@@ -1,0 +1,223 @@
+/*
+ * Color roles from the frozen v2 extraction (reports/spikes/sp6-v2-v3-recovery.md),
+ * transcribed as Radix Colors hex values so the playground needs no color dependency.
+ * Light is the default; dark is stamped via data-theme on <html>. The cell-background
+ * roles feed the SVG grid; the rest is page chrome.
+ */
+:root {
+  --cell-block: #202020; /* gray-12 */
+  --cell-default: #fcfcfc; /* gray-1 */
+  --cell-current: #fff394; /* yellow-4 */
+  --cell-word: #e6f4fe; /* blue-3 */
+  --cell-teammate: #e1dccf; /* gold-5 */
+  --cell-wrong: #ffdbdc; /* red-4 */
+  --cell-xref: #ffe0bb; /* amber-3 */
+  --stroke: #d9d9d9; /* gray-6 */
+  --clue-number: #646464; /* gray-11 */
+  --letter: #202020; /* gray-12 */
+  --circle: #bbbbbb; /* gray-8 */
+  --presence-arrow: #3a5bc7; /* indigo-11 */
+  --presence-avatar-bg: #3e63dd; /* indigo-9 */
+  --presence-avatar-fg: #ffffff;
+  --presence-badge: #3e63dd; /* indigo-9 */
+
+  --page-bg: #f9f9f9; /* gray-2 */
+  --panel-bg: #fcfcfc; /* gray-1 */
+  --panel-bg-active: #eef1ff; /* indigo-3-ish */
+  --text: #202020; /* gray-12 */
+  --muted: #646464; /* gray-11 */
+  --border: #d9d9d9; /* gray-6 */
+  --accent: #3e63dd; /* indigo-9 */
+}
+
+:root[data-theme="dark"] {
+  --cell-block: #111111; /* gray-1 */
+  --cell-default: #222222; /* gray-3 */
+  --cell-current: #104d87; /* blue-6 */
+  --cell-word: #291f43; /* violet-3 */
+  --cell-teammate: #6b5d3f; /* gold-8 */
+  --cell-wrong: #481a1d; /* red-4 */
+  --cell-xref: #3e2800; /* amber-3 */
+  --stroke: #3a3a3a; /* gray-6 */
+  --clue-number: #b4b4b4; /* gray-11 */
+  --letter: #eeeeee; /* gray-12 */
+  --circle: #606060; /* gray-8 */
+  --presence-arrow: #9eb1ff; /* indigo-11 */
+  --presence-avatar-bg: #3e63dd; /* indigo-9 */
+  --presence-avatar-fg: #d6e1ff; /* indigo-12 */
+  --presence-badge: #9eb1ff; /* indigo-11 */
+
+  --page-bg: #111111; /* gray-1 */
+  --panel-bg: #191919; /* gray-2 */
+  --panel-bg-active: #1d2e62; /* indigo-4 */
+  --text: #eeeeee; /* gray-12 */
+  --muted: #b4b4b4; /* gray-11 */
+  --border: #3a3a3a; /* gray-6 */
+  --accent: #9eb1ff; /* indigo-11 */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  background: var(--page-bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.app {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+.app__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.app__title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.app__subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  margin-bottom: 20px;
+}
+
+.settings__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.segmented button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .segmented button[aria-pressed="true"] {
+  color: #0d1117;
+}
+
+.clue-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-bg-active);
+  margin-bottom: 16px;
+  font-size: 15px;
+  min-height: 20px;
+}
+
+.clue-bar__tag {
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.clue-bar__cells {
+  letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.grid-wrap {
+  outline: none;
+  border-radius: 8px;
+}
+
+.grid-wrap:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.grid {
+  width: 100%;
+  height: auto;
+  max-width: 620px;
+  display: block;
+  margin: 0 auto;
+  touch-action: manipulation;
+}
+
+.grid text {
+  user-select: none;
+}
+
+.hint {
+  margin: 18px auto 0;
+  max-width: 620px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.hint code {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
