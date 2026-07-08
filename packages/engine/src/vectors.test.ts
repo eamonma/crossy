@@ -30,7 +30,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import * as engine from "./index";
+import { reduce } from "./index";
+import type { BoardState, Cell, Command, Grid } from "./index";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsRoot = resolve(here, "../../../vectors/v1");
@@ -53,7 +54,7 @@ type Family = (typeof FAMILIES)[number];
  * elsewhere.
  */
 const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
-  reducer: null,
+  reducer: runReducer,
   comparator: null,
   navigation: null,
   completion: null,
@@ -406,6 +407,127 @@ const shapeProblems: Record<Family, (c: JsonObject) => string[]> = {
   "client-store": clientStoreShapeProblems,
 };
 
+// --- Engine binding: adapters between the vector JSON and the engine's own types ---
+//
+// The vectors are the shared source of truth; the engine owns a separate type world
+// (INV-9, README.md). These adapters are the boundary that keeps them in agreement,
+// exactly as an app adapter would: parse `given` into engine types, call the engine,
+// serialize the result back to plain JSON, and assert it against `then`.
+
+/** Build the immutable grid geometry from a case's `given`. */
+function buildGrid(given: JsonObject): Grid {
+  return {
+    cols: given.cols as number,
+    rows: given.rows as number,
+    blocks: new Set(given.blocks as number[]),
+  };
+}
+
+/** Build the reducer's starting board state; filledCount is derived from the fills. */
+function buildBoardState(given: JsonObject): BoardState {
+  const cells = new Map<number, Cell>();
+  let filledCount = 0;
+  const givenCells = given.cells as
+    Record<string, { v: string | null; by: string | null }> | undefined;
+  if (givenCells !== undefined) {
+    for (const [index, cell] of Object.entries(givenCells)) {
+      cells.set(Number(index), { v: cell.v, by: cell.by });
+      if (cell.v !== null) filledCount += 1;
+    }
+  }
+  return {
+    grid: buildGrid(given),
+    status: given.status as BoardState["status"],
+    seq: given.seq as number,
+    firstFillAt:
+      given.firstFillAt === undefined
+        ? null
+        : (given.firstFillAt as string | null),
+    cells,
+    filledCount,
+  };
+}
+
+/** A `when` entry (wire command plus server meta) is the engine command as plain data. */
+function asCommand(w: JsonObject): Command {
+  if (w.type === "placeLetter")
+    return {
+      type: "placeLetter",
+      commandId: w.commandId as string,
+      cell: w.cell as number,
+      value: w.value as string,
+      by: w.by as string,
+      at: w.at as string,
+    };
+  return {
+    type: "clearCell",
+    commandId: w.commandId as string,
+    cell: w.cell as number,
+    by: w.by as string,
+    at: w.at as string,
+  };
+}
+
+/** Serialize a board state to the `then.state` JSON shape (cells as a sparse map). */
+function serializeState(state: BoardState): JsonObject {
+  const cells: JsonObject = {};
+  for (const [index, cell] of state.cells)
+    cells[String(index)] = { v: cell.v, by: cell.by };
+  return {
+    status: state.status,
+    seq: state.seq,
+    filledCount: state.filledCount,
+    firstFillAt: state.firstFillAt,
+    cells,
+  };
+}
+
+/**
+ * The assertion rule (vectors/README.md): an expected object constrains exactly the
+ * fields it lists; an absent field is unasserted. Arrays match in length and order,
+ * each element under the same rule.
+ */
+function expectMatch(actual: unknown, expected: unknown, path: string): void {
+  if (expected === null || typeof expected !== "object") {
+    expect(actual, path).toBe(expected);
+    return;
+  }
+  if (Array.isArray(expected)) {
+    expect(Array.isArray(actual), `${path}: expected an array`).toBe(true);
+    const arr = actual as unknown[];
+    expect(arr.length, `${path}: array length`).toBe(expected.length);
+    expected.forEach((element, i) =>
+      expectMatch(arr[i], element, `${path}[${i}]`),
+    );
+    return;
+  }
+  expect(isObject(actual), `${path}: expected an object`).toBe(true);
+  const obj = actual as JsonObject;
+  for (const [key, value] of Object.entries(expected as JsonObject))
+    expectMatch(obj[key], value, `${path}.${key}`);
+}
+
+/**
+ * Reducer runner: apply each command in `when` in mailbox order, threading state and
+ * accumulating events (INV-2). A rejection carries the PROTOCOL §11 code; the sequence
+ * has at most one, since every rejection case is a single command (vectors/README.md).
+ */
+function runReducer(c: JsonObject): void {
+  let state = buildBoardState(c.given as JsonObject);
+  const events: unknown[] = [];
+  let error: string | undefined;
+  for (const w of c.when as JsonObject[]) {
+    const result = reduce(state, asCommand(w));
+    state = result.state;
+    for (const e of result.events) events.push(e);
+    if (result.error !== undefined) error = result.error;
+  }
+  const then = c.then as JsonObject;
+  expectMatch(events, then.events, "then.events");
+  expectMatch(serializeState(state), then.state, "then.state");
+  if ("error" in then) expect(error, "then.error").toBe(then.error);
+}
+
 interface VectorFile {
   family: Family;
   cluster: string;
@@ -583,16 +705,22 @@ describe("skip manifest is checked, not trusted", () => {
     }
   });
 
-  it("skipped families lose their manifest entry once the engine implements them", () => {
-    // Coarse by design: the engine index exports nothing until Wave 2.1a. The
-    // moment it exports anything, this fails; bind the implemented families,
-    // remove them from vectors.skip.json, and replace this guard with per-family
-    // checks against the decided engine API.
-    if (skip.families.size > 0) {
+  it("each engine family is bound iff it is drained from the skip manifest (per-family rebind)", () => {
+    // Replaces Wave 1.1's coarse "engine has exports while families are skipped"
+    // guard, per its own instruction. That guard fired the moment packages/engine
+    // exported anything; Wave 2.1a binds each family to an engine entry point and
+    // drains it from vectors.skip.json. The invariant now is per family: a family the
+    // engine implements is bound here and absent from the manifest; a family still
+    // awaiting the engine is unbound and listed. Never both, never neither. This holds
+    // at every intermediate commit as the families drain one at a time.
+    for (const family of discoveredFamilies) {
+      if (skip.foreign.families.has(family)) continue; // foreign: its own guards below
+      const bound = bindings[family] !== null;
+      const skipped = skip.families.has(family);
       expect(
-        Object.keys(engine),
-        "packages/engine now has exports while vectors.skip.json still skips families; bind them in vectors.test.ts",
-      ).toEqual([]);
+        bound !== skipped,
+        `family "${family}" must be bound-and-drained or unbound-and-skipped, not bound=${bound} skipped=${skipped}`,
+      ).toBe(true);
     }
   });
 
