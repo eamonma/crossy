@@ -30,7 +30,25 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import * as engine from "./index";
+import {
+  applyWithCompletion,
+  backspaceTarget,
+  getNextCell,
+  matches,
+  reduce,
+  tabTarget,
+  typingAdvance,
+  wordBounds,
+} from "./index";
+import type {
+  BoardState,
+  Cell,
+  Command,
+  Direction,
+  Grid,
+  Solution,
+  Toward,
+} from "./index";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsRoot = resolve(here, "../../../vectors/v1");
@@ -53,10 +71,10 @@ type Family = (typeof FAMILIES)[number];
  * elsewhere.
  */
 const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
-  reducer: null,
-  comparator: null,
-  navigation: null,
-  completion: null,
+  reducer: runReducer,
+  comparator: runComparator,
+  navigation: runNavigation,
+  completion: runCompletion,
   "client-store": null,
 };
 
@@ -406,6 +424,247 @@ const shapeProblems: Record<Family, (c: JsonObject) => string[]> = {
   "client-store": clientStoreShapeProblems,
 };
 
+// --- Engine binding: adapters between the vector JSON and the engine's own types ---
+//
+// The vectors are the shared source of truth; the engine owns a separate type world
+// (INV-9, README.md). These adapters are the boundary that keeps them in agreement,
+// exactly as an app adapter would: parse `given` into engine types, call the engine,
+// serialize the result back to plain JSON, and assert it against `then`.
+
+/** Build the immutable grid geometry from a case's `given`. */
+function buildGrid(given: JsonObject): Grid {
+  return {
+    cols: given.cols as number,
+    rows: given.rows as number,
+    blocks: new Set(given.blocks as number[]),
+  };
+}
+
+/** Build the reducer's starting board state; filledCount is derived from the fills. */
+function buildBoardState(given: JsonObject): BoardState {
+  const cells = new Map<number, Cell>();
+  let filledCount = 0;
+  const givenCells = given.cells as
+    Record<string, { v: string | null; by: string | null }> | undefined;
+  if (givenCells !== undefined) {
+    for (const [index, cell] of Object.entries(givenCells)) {
+      cells.set(Number(index), { v: cell.v, by: cell.by });
+      if (cell.v !== null) filledCount += 1;
+    }
+  }
+  return {
+    grid: buildGrid(given),
+    status: given.status as BoardState["status"],
+    seq: given.seq as number,
+    firstFillAt:
+      given.firstFillAt === undefined
+        ? null
+        : (given.firstFillAt as string | null),
+    cells,
+    filledCount,
+  };
+}
+
+/** A `when` entry (wire command plus server meta) is the engine command as plain data. */
+function asCommand(w: JsonObject): Command {
+  if (w.type === "placeLetter")
+    return {
+      type: "placeLetter",
+      commandId: w.commandId as string,
+      cell: w.cell as number,
+      value: w.value as string,
+      by: w.by as string,
+      at: w.at as string,
+    };
+  return {
+    type: "clearCell",
+    commandId: w.commandId as string,
+    cell: w.cell as number,
+    by: w.by as string,
+    at: w.at as string,
+  };
+}
+
+/** Serialize a board state to the `then.state` JSON shape (cells as a sparse map). */
+function serializeState(state: BoardState): JsonObject {
+  const cells: JsonObject = {};
+  for (const [index, cell] of state.cells)
+    cells[String(index)] = { v: cell.v, by: cell.by };
+  return {
+    status: state.status,
+    seq: state.seq,
+    filledCount: state.filledCount,
+    firstFillAt: state.firstFillAt,
+    cells,
+  };
+}
+
+/**
+ * The assertion rule (vectors/README.md): an expected object constrains exactly the
+ * fields it lists; an absent field is unasserted. Arrays match in length and order,
+ * each element under the same rule.
+ */
+function expectMatch(actual: unknown, expected: unknown, path: string): void {
+  if (expected === null || typeof expected !== "object") {
+    expect(actual, path).toBe(expected);
+    return;
+  }
+  if (Array.isArray(expected)) {
+    expect(Array.isArray(actual), `${path}: expected an array`).toBe(true);
+    const arr = actual as unknown[];
+    expect(arr.length, `${path}: array length`).toBe(expected.length);
+    expected.forEach((element, i) =>
+      expectMatch(arr[i], element, `${path}[${i}]`),
+    );
+    return;
+  }
+  expect(isObject(actual), `${path}: expected an object`).toBe(true);
+  const obj = actual as JsonObject;
+  for (const [key, value] of Object.entries(expected as JsonObject))
+    expectMatch(obj[key], value, `${path}.${key}`);
+}
+
+/**
+ * Reducer runner: apply each command in `when` in mailbox order, threading state and
+ * accumulating events (INV-2). A rejection carries the PROTOCOL §11 code; the sequence
+ * has at most one, since every rejection case is a single command (vectors/README.md).
+ */
+function runReducer(c: JsonObject): void {
+  let state = buildBoardState(c.given as JsonObject);
+  const events: unknown[] = [];
+  let error: string | undefined;
+  for (const w of c.when as JsonObject[]) {
+    const result = reduce(state, asCommand(w));
+    state = result.state;
+    for (const e of result.events) events.push(e);
+    if (result.error !== undefined) error = result.error;
+  }
+  const then = c.then as JsonObject;
+  expectMatch(events, then.events, "then.events");
+  expectMatch(serializeState(state), then.state, "then.state");
+  if ("error" in then) expect(error, "then.error").toBe(then.error);
+}
+
+/** The set of filled cell indices from a navigation case's `given.fills`. */
+function buildFilled(given: JsonObject): Set<number> {
+  const fills = given.fills as Record<string, string> | undefined;
+  if (fills === undefined) return new Set();
+  return new Set(Object.keys(fills).map(Number));
+}
+
+/**
+ * Navigation runner: dispatch on `when.op` (absent means `advance`, the seed's
+ * single-cell getNextCell). Each op fixes its own `when` inputs and `then` outputs
+ * (vectors/README.md). `then.direction` is asserted only for `tab`, the one op that
+ * can change axis.
+ */
+function runNavigation(c: JsonObject): void {
+  const grid = buildGrid(c.given as JsonObject);
+  const w = c.when as JsonObject;
+  const then = c.then as JsonObject;
+  const op = (w.op as string | undefined) ?? "advance";
+  const direction = w.direction as Direction;
+  const from = w.from as number;
+
+  switch (op) {
+    case "advance": {
+      const cell = getNextCell(
+        grid,
+        direction,
+        from,
+        w.toward as Toward,
+        w.canEscapeWord as boolean | undefined,
+      );
+      expect(cell, "then.cell").toBe(then.cell);
+      break;
+    }
+    case "wordBounds": {
+      const bounds = wordBounds(grid, direction, from);
+      expect(bounds.start, "then.start").toBe(then.start);
+      expect(bounds.end, "then.end").toBe(then.end);
+      break;
+    }
+    case "tab": {
+      const result = tabTarget(
+        grid,
+        direction,
+        from,
+        w.toward as Toward,
+        buildFilled(c.given as JsonObject),
+      );
+      expect(result.cell, "then.cell").toBe(then.cell);
+      expect(result.direction, "then.direction").toBe(then.direction);
+      break;
+    }
+    case "typing": {
+      const cell = typingAdvance(
+        grid,
+        direction,
+        from,
+        buildFilled(c.given as JsonObject),
+      );
+      expect(cell, "then.cell").toBe(then.cell);
+      break;
+    }
+    case "backspace": {
+      const cell = backspaceTarget(
+        grid,
+        direction,
+        from,
+        buildFilled(c.given as JsonObject),
+      );
+      expect(cell, "then.cell").toBe(then.cell);
+      break;
+    }
+    default:
+      throw new Error(`unknown navigation op "${op}"`);
+  }
+}
+
+/**
+ * Comparator runner: every value in `accept` must pass and every value in `reject` must
+ * fail for the case's `solution`. Casing is ASCII-only (INV-1); the Turkish dotted and
+ * dotless i in the suite prove a locale-aware port cannot slip through.
+ */
+function runComparator(c: JsonObject): void {
+  const solution = c.solution as string;
+  for (const value of c.accept as string[])
+    expect(matches(solution, value), `accept "${value}"`).toBe(true);
+  for (const value of c.reject as string[])
+    expect(matches(solution, value), `reject "${value}"`).toBe(false);
+}
+
+/** Build the cell-index to solution-string map from a completion case's `given`. */
+function buildSolution(given: JsonObject): Solution {
+  const solution = new Map<number, string>();
+  for (const [index, value] of Object.entries(
+    given.solution as Record<string, string>,
+  ))
+    solution.set(Number(index), value);
+  return solution;
+}
+
+/**
+ * Completion runner: apply each command in mailbox order through the two-phase driver,
+ * accumulating the full sequenced stream. Concurrency collapses to this total order
+ * (PROTOCOL §10), and the level-triggered check re-runs on same-count overwrites
+ * (DESIGN §3). A rejected trailing command emits nothing (INV-4).
+ */
+function runCompletion(c: JsonObject): void {
+  const given = c.given as JsonObject;
+  const solution = buildSolution(given);
+  let state = buildBoardState(given);
+  const events: unknown[] = [];
+  for (const w of c.when as JsonObject[]) {
+    const result = applyWithCompletion(state, asCommand(w), solution);
+    state = result.state;
+    for (const e of result.events) events.push(e);
+  }
+  const then = c.then as JsonObject;
+  expectMatch(events, then.events, "then.events");
+  expectMatch(serializeState(state), then.state, "then.state");
+}
+
 interface VectorFile {
   family: Family;
   cluster: string;
@@ -507,7 +766,7 @@ function runCase(family: Family, c: JsonObject): void {
   const run = bindings[family];
   if (run === null)
     throw new Error(
-      `no engine binding for vector family "${family}": packages/engine is unimplemented until Wave 2.1a`,
+      `no engine binding for vector family "${family}": it is foreign, its consumer is a client store, not packages/engine`,
     );
   run(c);
 }
@@ -583,24 +842,38 @@ describe("skip manifest is checked, not trusted", () => {
     }
   });
 
-  it("skipped families lose their manifest entry once the engine implements them", () => {
-    // Coarse by design: the engine index exports nothing until Wave 2.1a. The
-    // moment it exports anything, this fails; bind the implemented families,
-    // remove them from vectors.skip.json, and replace this guard with per-family
-    // checks against the decided engine API.
-    if (skip.families.size > 0) {
+  it("each engine family is bound iff it is drained from the skip manifest (per-family rebind)", () => {
+    // Replaces Wave 1.1's coarse "engine has exports while families are skipped"
+    // guard, per its own instruction. That guard fired the moment packages/engine
+    // exported anything; Wave 2.1a binds each family to an engine entry point and
+    // drains it from vectors.skip.json. The invariant now is per family: a family the
+    // engine implements is bound here and absent from the manifest; a family still
+    // awaiting the engine is unbound and listed. Never both, never neither. This holds
+    // at every intermediate commit as the families drain one at a time.
+    for (const family of discoveredFamilies) {
+      if (skip.foreign.families.has(family)) continue; // foreign: its own guards below
+      const bound = bindings[family] !== null;
+      const skipped = skip.families.has(family);
       expect(
-        Object.keys(engine),
-        "packages/engine now has exports while vectors.skip.json still skips families; bind them in vectors.test.ts",
-      ).toEqual([]);
+        bound !== skipped,
+        `family "${family}" must be bound-and-drained or unbound-and-skipped, not bound=${bound} skipped=${skipped}`,
+      ).toBe(true);
     }
   });
 
-  it("a vector run against the unimplemented engine fails honestly, never passes", () => {
-    const file = files.find((f) => skip.families.has(f.family));
-    if (!file) return; // nothing skipped: the guard above already forces bindings
+  it("running a foreign family throws 'no engine binding', proving it is never engine-executed", () => {
+    // Repointed from Wave 1.1's honest-failure guard. That guard proved a
+    // skipped-until-engine family throws rather than silently passing; once Wave 2.1a
+    // drained `families` to empty, that subject was gone (real executions now prove red
+    // is real). The remaining never-bound family is the foreign one (client-store):
+    // running it through runCase must still throw, since its consumer is a client
+    // store, not packages/engine. This keeps the honest-failure invariant with a live
+    // subject through the drain (PROTOCOL §13, vectors/README.md).
+    const file = files.find((f) => skip.foreign.families.has(f.family));
+    if (!file) return; // no foreign family present
     const first = file.cases[0];
     if (!first) throw new Error("discovery guarantees non-empty case arrays");
+    expect(bindings[file.family]).toBe(null);
     expect(() => runCase(file.family, first)).toThrowError(/no engine binding/);
   });
 });
