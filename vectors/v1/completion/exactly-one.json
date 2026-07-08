@@ -1,0 +1,77 @@
+[
+  {
+    "name": "completes once then freezes; a following mutation is rejected (INV-3, INV-4)",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 5,
+      "solution": { "0": "A", "1": "B" },
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:00:05Z"
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 0,
+        "value": "X",
+        "by": "u1",
+        "at": "2026-07-07T00:00:06Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 6,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c1"
+        },
+        { "type": "gameCompleted", "seq": 7 }
+      ],
+      "state": { "status": "completed", "filledCount": 2, "seq": 7 }
+    }
+  },
+  {
+    "name": "an abandoned board never completes though it is full and correct (INV-4)",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "abandoned",
+      "seq": 9,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "B", "by": "u2" }
+      },
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "at": "2026-07-07T00:00:05Z"
+      }
+    ],
+    "then": {
+      "events": [],
+      "state": { "status": "abandoned", "filledCount": 2, "seq": 9 }
+    }
+  }
+]

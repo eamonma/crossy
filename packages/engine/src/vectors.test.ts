@@ -27,7 +27,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const vectorsRoot = resolve(here, "../../../vectors/v1");
 const manifestPath = resolve(here, "../vectors.skip.json");
 
-const FAMILIES = ["reducer", "comparator", "navigation"] as const;
+const FAMILIES = ["reducer", "comparator", "navigation", "completion"] as const;
 type Family = (typeof FAMILIES)[number];
 
 /**
@@ -38,6 +38,7 @@ const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   reducer: null,
   comparator: null,
   navigation: null,
+  completion: null,
 };
 
 type JsonObject = Record<string, unknown>;
@@ -79,6 +80,14 @@ function isFillMap(x: unknown): boolean {
   if (!isObject(x)) return false;
   return Object.entries(x).every(
     ([key, value]) => /^\d+$/.test(key) && isString(value),
+  );
+}
+
+/** Sparse map of decimal cell index to a non-empty solution string. */
+function isSolutionMap(x: unknown): boolean {
+  if (!isObject(x)) return false;
+  return Object.entries(x).every(
+    ([key, value]) => /^\d+$/.test(key) && isString(value) && value.length > 0,
   );
 }
 
@@ -165,10 +174,62 @@ function navigationShapeProblems(c: JsonObject): string[] {
   return problems;
 }
 
+/**
+ * Completion cases carry the reducer fields plus `given.solution` (the comparator
+ * needs it) and may assert a `gameCompleted` event, which the reducer shape never
+ * emits. That is why completion is its own family (vectors/README.md).
+ */
+function completionShapeProblems(c: JsonObject): string[] {
+  const problems: string[] = [];
+  if (!isString(c.name)) problems.push("name: string required");
+  if (!isObject(c.given)) {
+    problems.push("given: object required");
+  } else {
+    const g = c.given;
+    if (!isInt(g.cols)) problems.push("given.cols: integer required");
+    if (!isInt(g.rows)) problems.push("given.rows: integer required");
+    if (!isIntArray(g.blocks)) problems.push("given.blocks: int[] required");
+    if (!isString(g.status)) problems.push("given.status: string required");
+    if (!isInt(g.seq)) problems.push("given.seq: integer required");
+    if (!isSolutionMap(g.solution))
+      problems.push(
+        "given.solution: sparse map of cell index to non-empty string",
+      );
+    if (g.cells !== undefined && !isCellMap(g.cells))
+      problems.push("given.cells: sparse map of cell index to {v, by}");
+    if (
+      g.firstFillAt !== undefined &&
+      g.firstFillAt !== null &&
+      !isString(g.firstFillAt)
+    )
+      problems.push("given.firstFillAt: string or null");
+  }
+  if (
+    !Array.isArray(c.when) ||
+    c.when.length === 0 ||
+    !c.when.every((w) => isObject(w) && isString(w.type))
+  ) {
+    problems.push("when: non-empty array of commands, each with a string type");
+  }
+  if (!isObject(c.then)) {
+    problems.push("then: object required");
+  } else {
+    const t = c.then;
+    if (
+      !Array.isArray(t.events) ||
+      !t.events.every((e) => isObject(e) && isString(e.type) && isInt(e.seq))
+    )
+      problems.push("then.events: array of events, each with type and seq");
+    if (!isObject(t.state)) problems.push("then.state: object required");
+  }
+  return problems;
+}
+
 const shapeProblems: Record<Family, (c: JsonObject) => string[]> = {
   reducer: reducerShapeProblems,
   comparator: comparatorShapeProblems,
   navigation: navigationShapeProblems,
+  completion: completionShapeProblems,
 };
 
 interface VectorFile {

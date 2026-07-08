@@ -1,0 +1,75 @@
+[
+  {
+    "name": "last correct fill completes the board once",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 5,
+      "solution": { "0": "A", "1": "B" },
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:00:05Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 6,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c1"
+        },
+        { "type": "gameCompleted", "seq": 7 }
+      ],
+      "state": { "status": "completed", "filledCount": 2, "seq": 7 }
+    }
+  },
+  {
+    "name": "a full but wrong board emits no completion and stays ongoing",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 5,
+      "solution": { "0": "A", "1": "B" },
+      "cells": { "0": { "v": "A", "by": "u1" } },
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 1,
+        "value": "Z",
+        "by": "u2",
+        "at": "2026-07-07T00:00:05Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 6,
+          "cell": 1,
+          "value": "Z",
+          "by": "u2",
+          "commandId": "c1"
+        }
+      ],
+      "state": { "status": "ongoing", "filledCount": 2, "seq": 6 }
+    }
+  }
+]

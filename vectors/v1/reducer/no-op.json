@@ -1,0 +1,80 @@
+[
+  {
+    "name": "§6: placeLetter with the current value emits one cellSet, new seq, by updated, firstFillAt unchanged",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "firstFillAt": "2026-07-07T19:00:00Z",
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c-noop",
+        "cell": 0,
+        "value": "A",
+        "by": "u2",
+        "at": "2026-07-07T19:05:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": "A",
+          "by": "u2",
+          "commandId": "c-noop"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": "A", "by": "u2" } },
+        "filledCount": 1,
+        "seq": 8,
+        "firstFillAt": "2026-07-07T19:00:00Z"
+      }
+    }
+  },
+  {
+    "name": "§6: clearCell on an already-null cell emits one cellSet with value null, new seq, by is the clearer",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "status": "ongoing",
+      "seq": 7,
+      "firstFillAt": null
+    },
+    "when": [
+      {
+        "type": "clearCell",
+        "commandId": "c-clear-empty",
+        "cell": 0,
+        "by": "u2",
+        "at": "2026-07-07T19:05:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 8,
+          "cell": 0,
+          "value": null,
+          "by": "u2",
+          "commandId": "c-clear-empty"
+        }
+      ],
+      "state": {
+        "cells": { "0": { "v": null, "by": "u2" } },
+        "filledCount": 0,
+        "seq": 8,
+        "firstFillAt": null
+      }
+    }
+  }
+]

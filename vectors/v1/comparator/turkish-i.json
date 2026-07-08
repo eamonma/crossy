@@ -1,0 +1,7 @@
+[
+  {
+    "solution": "ISTANBUL",
+    "accept": ["ISTANBUL", "istanbul", "I", "i"],
+    "reject": ["İ", "ı", ""]
+  }
+]

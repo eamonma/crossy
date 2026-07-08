@@ -309,6 +309,6 @@ Each item names when it must close.
 - iOS 26 floor and Liquid Glass API details: verify against current SDKs at M5 kickoff.
 - Guest IP rate-limit values and stale-guest cleanup cadence: set at M3.
 - Spectator cursors: allowed by the protocol, suppressed client-side by default; revisit the default if spectating feels dead.
-- Digits in the value charset: kept for v2 parity; confirm no real puzzle needs punctuation.
-- Rebus length cap of 10: check against real puzzles at M6.
+- Digits in the value charset: closed by SP5 (`reports/spikes/sp5-puzzle-corpus.md`). Real solutions are A-Z-dominant; digits occur and stay. No real puzzle needs punctuation in the *enterable* charset: first-char acceptance completes cells like `A/B`, and a whole-cell symbol (`/`, `+`) is a named ingestion rejection. Charset stays `A-Z0-9`.
+- Rebus length cap of 10: closed by SP5. Observed max 4 in-sample, ~7 in the documented 94k-puzzle reference corpus; 10 kept with margin. Over-cap is a named rejection, not truncation. One cheap confirmation remains open: a `max`-length scan of the real XWord Info archive once it exists.
 - OG image visual parity with v2: nice-to-have, M7.

@@ -146,15 +146,30 @@ depends on is open.
       Deliberately scheduled late: run it just before Wave 2.2 commits to the
       two-service deploy shape. It needs a Railway account, the spike stays
       throwaway, and no hosted dependency lands in code before then.
-- [ ] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
+- [x] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
       (ws vs uWebSockets.js vs platform), check backpressure behavior, and measure a
       real 25×25 board payload under `permessage-deflate` against the under-20 KB
       claim (PROTOCOL.md §1). Blocks: 2.1c.
-- [ ] **SP5 Puzzle corpus** (one day). Collect real XWord Info JSON in volume; measure
+      Pick `ws`; see `reports/spikes/sp4-ws-library-snapshot-size.md`. Both `ws` and
+      uWebSockets.js expose backpressure and a kill switch (proven empirically:
+      `bufferedAmount` climbs to the cap, `terminate()`/`closeOnBackpressureLimit`
+      drops the slow client), so the tie breaks on deploy friction, where uWS is
+      npm-absent and ABI-pinned (failed to load on Node 24 until its newest release),
+      colliding with the fresh-clone launch gate. The under-20 KB claim holds
+      comfortably: worst-case 25×25 board is 34.8 KB raw, 2.95 KB compressed (~6.6x
+      under budget); §1 unchanged. Enable deflate only on the reconnect snapshot, not
+      the keystroke stream (~220 KB/conn otherwise). 2.1c unblocked.
+- [x] **SP5 Puzzle corpus** (one day). Collect real XWord Info JSON in volume; measure
       rebus lengths (is the cap of 10 right?), digits and punctuation in solutions,
       grid sizes, and feature flags in the wild. Closes the §15 charset and rebus-cap
       questions with data; feeds the ingestion ACL's named rejections. Blocks: G1
       scope, comparator vector edge cases (1.1c).
+      Answered; see `reports/spikes/sp5-puzzle-corpus.md`. Cap of 10 holds (observed
+      max 4, documented standard max ~7); charset stays `A-Z0-9` with first-char
+      acceptance covering rare punctuation rebus and a named `UNSOLVABLE_CELL` for
+      whole-symbol cells. §15 charset and rebus-cap items closed. G1 gains named
+      rejections `UNSOLVABLE_CELL`, `REBUS_TOO_LONG`, `OVERSIZE_GRID`,
+      `AMBIGUOUS_SOLUTION`; do not reject asymmetric or unchecked grids.
 - [x] **SP6 Recover the frozen v2/v3 reports** (half day). Land
       `reports/v2-spec-extraction.md` and `reports/v3-mining.md`; confirm
       `canEscapeWord` semantics (flagged "confirm" in DESIGN.md §5) and the exact v2
@@ -263,6 +278,55 @@ Swift: done, the same guard in XCTest); Testcontainers wired.**
 | f     | DB schema + migrations: all seven tables (DESIGN.md §9), least-privilege roles per service, RLS deny-all tripwire                                                | S1, S2          |
 | g     | Auth port: interface, Supabase adapter with local JWT verification, in-memory fake for tests                                                                     | S1              |
 | h     | UX playground: Vite scaffold in `apps/web` with a grid interaction prototype on fake data (rendering rules DESIGN.md §10, navigation vectors as the input model) | C1, M4/M5 specs |
+
+Progress:
+
+- [x] **a** landed: `packages/protocol` with every §§2–6 message, the structural
+      `ServerPuzzle`/`ClientPuzzle` split (branded `Solution`, compile-time golden,
+      INV-6), the §11 error table as data, and hand-rolled decoders (no runtime
+      deps; zod rejected so exported types stand alone and map 1:1 to Swift
+      Codable). 47 tests, 33 of them snapshot tests from PROTOCOL.md's literal
+      examples. Five PROTOCOL.md ambiguities reported, none blocking (welcome
+      version echo, no literal puzzle example, unknown-sequenced-event posture,
+      cleared-cell `by` reservation, degenerate N-1 at v1).
+- [x] **f** landed: all seven tables in `packages/db` with an expand/contract
+      migration dropping `_scaffold_marker`. INV-7 encoded physically: NOLOGIN
+      service roles (`crossy_api`, `crossy_session`) with least-privilege grants,
+      `cell_events` immutability as INSERT+SELECT only, session's users read
+      column-scoped to `user_id, display_name`, deny-all RLS on all seven tables
+      with a live tripwire test (`authenticated` holds SELECT yet reads zero
+      rows). One real §9 gap flagged: the API has no read grant on session-owned
+      tables, which the Archive module will need as an expand migration.
+- [x] **h** landed (owner taste pass pending, which is the Phase 1 exit item):
+      Vite + React playground in `apps/web`, run with
+      `pnpm --filter @crossy/web dev`. SVG grid per DESIGN §10 with the SP6 v2
+      constants, two boards (the 5x4 vector fixture and a 15x15 with circles,
+      pre-fills, a wrong cell, and fake presence), dark/light themes, and a pure
+      navigation module passing all 12 seed vectors, marked throwaway until the
+      engine lands (2.1d). The two open decisions ship as instant A/B toggles
+      defaulting to v2 behavior: Shift+Tab landing and backspace-across-blocks.
+      Findings for the 2.1d spec: count-badge position collides with clue
+      numbers at SP6's coordinates; Tab axis-crossing is underspecified;
+      filled-skip's home (primitive vs composition) needs the track d vectors to
+      decide.
+- [x] **b** landed: 22 reducer cases across six clusters (no-op, overwrite/clear
+      attribution, INV-4 terminal freeze, INV-1 normalization with the Turkish
+      pin, firstFillAt lifecycle, INV-2 seq assignment), every case citing the
+      PROTOCOL.md sentence it pins. New README convention: rejections encode as
+      `then.error` + empty events + unchanged state, since the §13 shape cannot
+      express them (primary finding for a PROTOCOL.md amendment). Second
+      finding: reducer-vs-actor ownership of normalization is stated
+      inconsistently across DESIGN §3 and §5; vectors pin it in the reducer for
+      cross-port determinism. Idempotency confirmed session-layer, not reducer.
+- [x] **c** landed: 8 comparator cases (full/first-char, symmetric ASCII fold,
+      digits, the Turkish pin, the SP5 `A/B` rebus edge) and a new `completion`
+      family (7 cases: fires on full-correct, level-triggered re-check,
+      exactly-one INV-3, terminal freeze INV-4, concurrent last-two) with its
+      own shape since completion needs per-cell solutions the reducer shape
+      lacks. Runner and README extended; remaining unregistered family is
+      client store (track e). Findings: whether the comparator accepts
+      unenterable full-string matches (`A/B`) is deliberately unpinned;
+      `gameCompleted.stats` is actor territory, not engine.
 
 **Exit: all vector suites committed and parsed by both runners (red is fine —
 unimplemented is the point); protocol package compiles with snapshot tests green;
