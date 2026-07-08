@@ -255,10 +255,12 @@ spine, the way the Swift port does:
       session service sits, since Railway has no Canadian region; see
       `reports/spikes/wave-0.2c-region-note.md`. Box stays open on the one remaining
       owner action: create the Supabase project (owner-only) in that region and
-      close DESIGN §15's region line. Deliberately deferred: nothing before M1
-      integration needs a hosted project (auth sits behind a port, Postgres runs
-      real via Testcontainers), so this is a pre-integration step, not a blocker
-      for any Phase 1 track.
+      close DESIGN §15's region line. Owner call (2026-07-08): this moves from
+      pre-M1 to deploy time (Wave 2.2). M1 integration runs on the local Supabase
+      stack; SP2 verified `supabase start` auto-generates an ES256 signing key, so
+      the auth port sees the same token shape locally as hosted. Nothing before
+      deploy needs a hosted project (auth sits behind a port, Postgres runs real
+      via Testcontainers).
 
 **Exit (= M0): both runners prove a vector fails honestly against the unimplemented
 engine while CI stays green (TypeScript: done, a guard asserts the run throws;
@@ -308,7 +310,13 @@ Progress:
       Findings for the 2.1d spec: count-badge position collides with clue
       numbers at SP6's coordinates; Tab axis-crossing is underspecified;
       filled-skip's home (primitive vs composition) needs the track d vectors to
-      decide.
+      decide. First owner taste pass done (2026-07-08): defaults accepted,
+      backspace-across-blocks confirmed as the v2 behavior. Shift+Tab verdict
+      pending: the owner expects a first-empty scan symmetric with Tab, SP6
+      mined start-if-empty-else-end; a v2 source audit
+      (`reports/v2-navigation-audit.md`) settles it before the track d vectors
+      are written. Rebus entry is out of playground scope; its input UX is an
+      open item for the 2.1d interaction spec.
 - [x] **b** landed: 22 reducer cases across six clusters (no-op, overwrite/clear
       attribution, INV-4 terminal freeze, INV-1 normalization with the Turkish
       pin, firstFillAt lifecycle, INV-2 seq assignment), every case citing the
