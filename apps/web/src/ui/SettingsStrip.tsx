@@ -1,6 +1,7 @@
-// The settings strip. The two open decisions (SP6 divergences 2 and 3) live here as
-// visible toggles so the owner can A/B them instantly. Both default to v2 behavior.
-import type { BackspaceMode, ShiftTabMode } from "../domain/types";
+// The settings strip: board and theme. The Wave 1.1h A/B toggles (Shift+Tab landing,
+// backspace-across-blocks) are gone: both decisions are settled and pinned by the
+// navigation vectors, and all cursor movement now goes through @crossy/engine
+// (ROADMAP "Playground reconciliation").
 
 type Theme = "light" | "dark";
 
@@ -13,10 +14,6 @@ interface Props {
   boardId: string;
   boards: readonly { id: string; label: string }[];
   onBoard: (id: string) => void;
-  shiftTabMode: ShiftTabMode;
-  onShiftTab: (m: ShiftTabMode) => void;
-  backspaceMode: BackspaceMode;
-  onBackspace: (m: BackspaceMode) => void;
   theme: Theme;
   onTheme: (t: Theme) => void;
 }
@@ -55,10 +52,6 @@ export function SettingsStrip({
   boardId,
   boards,
   onBoard,
-  shiftTabMode,
-  onShiftTab,
-  backspaceMode,
-  onBackspace,
   theme,
   onTheme,
 }: Props) {
@@ -69,24 +62,6 @@ export function SettingsStrip({
         value={boardId}
         options={boards.map((b) => ({ value: b.id, label: b.label }))}
         onChange={onBoard}
-      />
-      <Segmented<ShiftTabMode>
-        label="Shift+Tab lands on"
-        value={shiftTabMode}
-        options={[
-          { value: "v2-asymmetric", label: "Word start or end (v2)" },
-          { value: "symmetric-first-empty", label: "First empty cell" },
-        ]}
-        onChange={onShiftTab}
-      />
-      <Segmented<BackspaceMode>
-        label="Backspace on an empty cell"
-        value={backspaceMode}
-        options={[
-          { value: "v2-cross-block", label: "Crosses the block (v2)" },
-          { value: "clamp-to-word", label: "Stays in this word" },
-        ]}
-        onChange={onBackspace}
       />
       <Segmented<Theme>
         label="Theme"

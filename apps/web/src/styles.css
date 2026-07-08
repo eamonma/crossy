@@ -159,6 +159,48 @@ body {
   color: #0d1117;
 }
 
+.demo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--panel-bg);
+  margin-bottom: 16px;
+}
+
+.demo__buttons {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.demo__buttons button {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.demo__buttons button:hover {
+  background: var(--panel-bg-active);
+}
+
+.demo__status {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .clue-bar {
   display: flex;
   align-items: center;
@@ -167,7 +209,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--panel-bg-active);
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   font-size: 15px;
   min-height: 20px;
 }
@@ -176,6 +218,62 @@ body {
   font-weight: 700;
   color: var(--accent);
   white-space: nowrap;
+}
+
+button.clue-bar__tag {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button.clue-bar__tag:hover {
+  text-decoration: underline;
+}
+
+/*
+ * Connection presentation (Decision 2.1d-3): one non-blocking pill above the grid
+ * for resyncing / reconnecting; nothing when live. The row reserves its height so
+ * the grid does not jump when the pill appears.
+ */
+.pill-row {
+  min-height: 28px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.conn-pill {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/*
+ * Conflict flash (Decision 2.1d-1; PROTOCOL section 8): the cell fills with the
+ * writer's presence color at full opacity and fades to transparent over 300 ms,
+ * ease-out, leaving the new letter.
+ */
+.conflict-flash {
+  animation: conflict-flash 300ms ease-out forwards;
+}
+
+@keyframes conflict-flash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .clue-bar__cells {
@@ -200,6 +298,17 @@ body {
   display: block;
   margin: 0 auto;
   touch-action: manipulation;
+}
+
+/*
+ * The cell rect is the one click target. Everything painted over it (letters, clue
+ * numbers, circles, presence glyphs, the conflict flash) must not capture the
+ * pointer, or clicking a filled cell would silently do nothing.
+ */
+.grid text,
+.grid circle,
+.grid path {
+  pointer-events: none;
 }
 
 .grid text {

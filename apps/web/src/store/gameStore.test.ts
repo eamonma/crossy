@@ -91,7 +91,9 @@ describe("conflict flash trigger (PROTOCOL.md section 8, D02)", () => {
   it("does not flash on your own echo (commandId match clears the overlay instead, INV-10)", () => {
     const { store, flashes } = makeStore(board());
     store.placeLetter(3, "A", "c1");
-    store.receive(cellSet({ seq: 1, cell: 3, value: "A", by: "me", commandId: "c1" }));
+    store.receive(
+      cellSet({ seq: 1, cell: 3, value: "A", by: "me", commandId: "c1" }),
+    );
     expect(flashes).toEqual([]);
     expect(store.overlay).toEqual([]);
   });
@@ -143,7 +145,9 @@ describe("connection loss (PROTOCOL.md section 7: reconnecting)", () => {
     store.placeLetter(3, "K", "c-live");
     store.connectionLost();
     expect(store.sync).toBe("reconnecting");
-    expect(store.overlay).toEqual([{ commandId: "c-live", cell: 3, value: "K" }]);
+    expect(store.overlay).toEqual([
+      { commandId: "c-live", cell: 3, value: "K" },
+    ]);
   });
 
   it("normalizes letters ASCII-only before sending (INV-1)", () => {

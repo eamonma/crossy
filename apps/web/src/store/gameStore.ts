@@ -7,7 +7,6 @@
 import type {
   Board,
   Cell,
-  ClientMessage,
   Cursor,
   Direction,
   GameStatus,
@@ -261,7 +260,8 @@ export class GameStore {
         const index = this.participantsValue.findIndex(
           (p) => p.userId === message.userId,
         );
-        const present = index === -1 ? undefined : this.participantsValue[index];
+        const present =
+          index === -1 ? undefined : this.participantsValue[index];
         if (present !== undefined) {
           this.participantsValue[index] = { ...present, connected: false };
           this.cursorsValue.delete(message.userId);

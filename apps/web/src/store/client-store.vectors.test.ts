@@ -72,14 +72,13 @@ function shapeProblems(c: JsonObject): string[] {
     const g = c.given;
     if (!isInt(g.seq)) problems.push("given.seq: integer required");
     if (!isSyncState(g.sync)) {
-      problems.push('given.sync: "live" | "resyncing" | "reconnecting" required');
+      problems.push(
+        'given.sync: "live" | "resyncing" | "reconnecting" required',
+      );
     }
     if (!isInt(g.cols)) problems.push("given.cols: integer required");
     if (!isInt(g.rows)) problems.push("given.rows: integer required");
-    if (
-      !Array.isArray(g.blocks) ||
-      !(g.blocks as unknown[]).every(isInt)
-    ) {
+    if (!Array.isArray(g.blocks) || !(g.blocks as unknown[]).every(isInt)) {
       problems.push("given.blocks: int[] required");
     }
     if (g.cells !== undefined && !isCellMap(g.cells)) {
@@ -94,7 +93,9 @@ function shapeProblems(c: JsonObject): string[] {
             typeof (e as JsonObject).agedOut === "boolean"),
       )
     ) {
-      problems.push("given.overlay: array of {commandId, cell, value, agedOut?}");
+      problems.push(
+        "given.overlay: array of {commandId, cell, value, agedOut?}",
+      );
     }
   }
   if (
@@ -117,7 +118,9 @@ function shapeProblems(c: JsonObject): string[] {
     const t = c.then;
     if (!isInt(t.seq)) problems.push("then.seq: integer required");
     if (!isSyncState(t.sync)) {
-      problems.push('then.sync: "live" | "resyncing" | "reconnecting" required');
+      problems.push(
+        'then.sync: "live" | "resyncing" | "reconnecting" required',
+      );
     }
     if (
       !Array.isArray(t.overlay) ||
@@ -177,8 +180,7 @@ function discover(): VectorFile[] {
 function buildCells(given: JsonObject): Map<number, Cell> {
   const cells = new Map<number, Cell>();
   const sparse = given.cells as
-    | Record<string, { v: string | null; by: string | null }>
-    | undefined;
+    Record<string, { v: string | null; by: string | null }> | undefined;
   if (sparse !== undefined) {
     for (const [index, cell] of Object.entries(sparse)) {
       cells.set(Number(index), { v: cell.v, by: cell.by });
@@ -205,7 +207,11 @@ function buildOverlay(given: JsonObject): PendingCommand[] {
  * cells / recentCommandIds) into the full PROTOCOL.md section 4 payload the codec
  * requires. The geometry comes from the case's `given`.
  */
-function expandBoard(board: JsonObject, cols: number, rows: number): JsonObject {
+function expandBoard(
+  board: JsonObject,
+  cols: number,
+  rows: number,
+): JsonObject {
   const sparse = (board.cells ?? {}) as Record<
     string,
     { v: string | null; by: string | null }
