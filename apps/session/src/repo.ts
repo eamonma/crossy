@@ -1,0 +1,119 @@
+// Postgres read adapter (DESIGN.md §4 adapters, §9 read-coupling). The session service
+// owns writes to game_state and cell_events, but this slice only reads: the puzzle
+// snapshot and game_state for hydration, and memberships, the denylist, and
+// users.display_name for the handshake and the participant payload (INV-8: it verifies
+// membership, never mutates it). Writes are the write-behind flush in Wave 2.2. Reads go
+// through the least-privilege crossy_session role in production (the migration's column
+// grant limits users to display_name); the queries here stay within that grant.
+
+import type { Pool } from "pg";
+import type { Role } from "@crossy/protocol";
+import type { GameStateRow, PuzzleSnapshot } from "./hydrate";
+
+/** A member of a game, for the participant payload (PROTOCOL.md §4). */
+export interface MemberRow {
+  readonly userId: string;
+  readonly displayName: string | null;
+  readonly role: Role;
+}
+
+/** int8 (bigint) columns arrive from pg as strings; make them numbers. */
+function toNumber(value: unknown): number {
+  return typeof value === "number" ? value : Number(value);
+}
+
+/** timestamptz arrives as a Date; normalize to the ISO string the wire uses (PROTOCOL.md §3). */
+function toIso(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+/** Read `games.puzzle_snapshot`; `null` when the game does not exist (GAME_NOT_FOUND). */
+export async function loadPuzzleSnapshot(
+  pool: Pool,
+  gameId: string,
+): Promise<PuzzleSnapshot | null> {
+  const { rows } = await pool.query<{ puzzle_snapshot: PuzzleSnapshot }>(
+    "select puzzle_snapshot from games where game_id = $1",
+    [gameId],
+  );
+  return rows[0]?.puzzle_snapshot ?? null;
+}
+
+/** Read the `game_state` row, or `null` when no one has played the game yet. */
+export async function loadGameState(
+  pool: Pool,
+  gameId: string,
+): Promise<GameStateRow | null> {
+  const { rows } = await pool.query(
+    `select status, board, last_seq, first_fill_at, completed_at,
+            abandoned_at, stats, recent_command_ids
+       from game_state where game_id = $1`,
+    [gameId],
+  );
+  const row = rows[0];
+  if (row === undefined) return null;
+  return {
+    status: row.status,
+    board: Array.isArray(row.board) ? row.board : [],
+    lastSeq: toNumber(row.last_seq),
+    firstFillAt: toIso(row.first_fill_at),
+    completedAt: toIso(row.completed_at),
+    abandonedAt: toIso(row.abandoned_at),
+    stats: row.stats && Object.keys(row.stats).length > 0 ? row.stats : null,
+    recentCommandIds: Array.isArray(row.recent_command_ids)
+      ? row.recent_command_ids
+      : [],
+  };
+}
+
+/** The connecting user's role in the game, or `null` when they are not a member (NOT_PARTICIPANT). */
+export async function findRole(
+  pool: Pool,
+  gameId: string,
+  userId: string,
+): Promise<Role | null> {
+  const { rows } = await pool.query<{ role: Role }>(
+    "select role from memberships where game_id = $1 and user_id = $2",
+    [gameId, userId],
+  );
+  return rows[0]?.role ?? null;
+}
+
+/** Whether the user is on the game's denylist (DENIED). Checked at connect (DESIGN.md §7). */
+export async function isDenied(
+  pool: Pool,
+  gameId: string,
+  userId: string,
+): Promise<boolean> {
+  const { rows } = await pool.query(
+    "select 1 from game_denylist where game_id = $1 and user_id = $2",
+    [gameId, userId],
+  );
+  return rows.length > 0;
+}
+
+/** All members of the game with their display names, for the participant payload. */
+export async function loadMembers(
+  pool: Pool,
+  gameId: string,
+): Promise<MemberRow[]> {
+  const { rows } = await pool.query<{
+    user_id: string;
+    display_name: string | null;
+    role: Role;
+  }>(
+    `select m.user_id, m.role, u.display_name
+       from memberships m
+       join users u on u.user_id = m.user_id
+      where m.game_id = $1
+      order by m.joined_at`,
+    [gameId],
+  );
+  return rows.map((r) => ({
+    userId: r.user_id,
+    displayName: r.display_name,
+    role: r.role,
+  }));
+}
