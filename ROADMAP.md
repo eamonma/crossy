@@ -441,6 +441,24 @@ Progress:
       vocabulary is unspecified, a small proposed set ships in
       apps/api/src/http/errors.ts; XWord Info translation, URL ingest, and the
       G1 rejections are deliberately deferred to Phase 3 Track C.
+- [x] **c** landed: apps/session walking skeleton on ws. Handshake with every
+      PROTOCOL section 2 fatal path tested, one serial mailbox per game actor
+      (a FIFO drained by one loop that awaits full settlement, so ordering
+      survives the async flush coming in 2.2), engine consumed through
+      wire/domain adapters, hydrate reads only. 18 tests; INV-2 proven by two
+      racing sockets observing one identical (seq, commandId) order, INV-3 by
+      racing the last two cells, INV-4 by post-terminal rejection, INV-6 by
+      frame inspection. Deferred to 2.2 on purpose: persistence writes,
+      requestSync, checkRequest, presence; recentCommandIds kept as a K=64
+      ring pending the age-out ruling. Findings for the amendment ledger:
+      handshake check order is unspecified (implemented version, token, game,
+      denylist, membership); denylist must precede membership or DENIED is
+      unreachable for exactly the kicked users it exists for, worth pinning;
+      malformed post-handshake frames have no section 11 code (dropped and
+      logged); wire gameCompleted needs an actor adapter for at and stats;
+      participantCount is best-effort until cell_events writes land in 2.2.
+      Hardening note for 2.2: run the session suite under the crossy_session
+      role the way the api suite runs as crossy_api.
 
 ### Wave 2.2 — integration (sequential; needs all of 2.1)
 
