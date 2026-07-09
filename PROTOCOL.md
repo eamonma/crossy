@@ -226,6 +226,7 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 | `POST /games/{id}/role`               | member                                  | self-upgrade `spectator` to `solver`                                                                                           |
 | `DELETE /games/{id}/members/{userId}` | host                                    | kick: removes membership, writes the denylist, disconnects live sockets; the host MUST NOT target themselves (`403`) |
 | `POST /games/{id}/abandon`            | host                                    | terminal state, executed via the session service                                                                               |
+| `DELETE /account`                     | authenticated (self)                    | tombstone the caller's own account: scrub PII, keep the id, run host succession or auto-abandon per hosted game (DESIGN.md section 8) |
 | `GET /games/{id}`                     | member                                  | the game view: solution-stripped puzzle, membership, session endpoint                                                          |
 | `GET /g/{code}`                       | public                                  | HTML shell with OpenGraph tags for link unfurlers                                                                              |
 
@@ -241,20 +242,24 @@ Unlike every WebSocket message in this document, the puzzle payload carries no l
 | `FULL_ACCOUNT_REQUIRED` | 403  | a guest attempted a create action (DESIGN.md section 8)       |
 | `NOT_PARTICIPANT`       | 403  | authenticated, but not a member of this game                  |
 | `DENIED`                | 403  | on the game's denylist, or a wrong invite code                |
+| `FORBIDDEN`             | 403  | a member, but not permitted this action: a non-host kick or abandon, or a host targeting themselves in a kick |
 | `GAME_NOT_FOUND`        | 404  | unknown `gameId`                                              |
 | `PUZZLE_NOT_FOUND`      | 404  | unknown `puzzleId`                                            |
 | `VALIDATION`            | 400  | malformed or missing request body                             |
+| `INTERNAL`              | 500  | a server fault, such as a required downstream call failing (the session notify an abandon depends on) |
 
-Puzzle ingestion (`POST /puzzles`) rejects an unacceptable puzzle with a named reason, so the user reads why (DESIGN.md section 7). The named ingestion rejections from the SP5 corpus study (`reports/spikes/sp5-puzzle-corpus.md`):
+Puzzle ingestion (`POST /puzzles`) rejects an unacceptable puzzle with a named reason, so the user reads why (DESIGN.md section 7). The status split is pinned to what the ACL ships (`apps/api/src/http/errors.ts`, `apps/api/src/puzzles/ingest.ts`): a body that is not a well-formed XWord Info document is `VALIDATION` (400); a document that parses but describes an unacceptable puzzle is one of the named rejections below, each `422`, because the puzzle is well-formed but violates a domain rule the user can read and act on. The named ingestion rejections, from the SP5 corpus study (`reports/spikes/sp5-puzzle-corpus.md`) and the shipped ACL:
 
-| code                 | meaning                                                                                                                                                        |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `UNSOLVABLE_CELL`    | a solution cell no legal input can satisfy: ASCII-uppercased it is non-empty, its first character is not in `A-Z0-9`, and the whole string fails `^[A-Z0-9]{1,10}$` (a whole-cell symbol such as `/` or `+`) |
-| `REBUS_TOO_LONG`     | a cell whose canonical solution exceeds 10 characters; a named rejection, never a silent truncation                                                             |
-| `OVERSIZE_GRID`      | a grid past the 25x25 cap, with both dimensions checked independently since real grids are non-square and may be even-dimensioned                               |
-| `AMBIGUOUS_SOLUTION` | a Schrodinger or multi-clue-per-slot puzzle the one-solution-per-cell model cannot represent                                                                    |
+| code                 | HTTP | meaning                                                                                                                                                        |
+| -------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNSOLVABLE_CELL`    | 422  | a solution cell no legal input can satisfy: ASCII-uppercased it is non-empty, its first character is not in `A-Z0-9`, and the whole string fails `^[A-Z0-9]{1,10}$` (a whole-cell symbol such as `/` or `+`) |
+| `REBUS_TOO_LONG`     | 422  | a cell whose canonical solution exceeds 10 characters; a named rejection, never a silent truncation                                                             |
+| `OVERSIZE_GRID`      | 422  | a grid past the 25x25 cap, with both dimensions checked independently since real grids are non-square and may be even-dimensioned                               |
+| `AMBIGUOUS_SOLUTION` | 422  | a Schrodinger or multi-clue-per-slot puzzle the one-solution-per-cell model cannot represent                                                                    |
+| `DEGENERATE_GRID`    | 422  | zero playable cells, which would make completion vacuous or unreachable (DESIGN.md section 7)                                                                    |
+| `DIAGRAMLESS`        | 422  | a diagramless puzzle, a known-incompatible flag v4 does not support (DESIGN.md section 7, D13)                                                                   |
 
-Barred, diagramless, uniclue, and degenerate grids (section 12 table; DESIGN.md section 7) reject on the same reason-per-rejection contract; their exact code strings are the ingestion track's to fix. Asymmetric grids and unchecked cells are valid puzzles and are never rejected (SP5).
+Barred and uniclue puzzles (section 12 table; DESIGN.md section 7) belong to the same reason-per-rejection contract but ship no code: SP5 records no JSON field or flag that identifies either, so there is nothing to trigger on (DESIGN.md section 15). Asymmetric grids and unchecked cells are valid puzzles and are never rejected (SP5).
 
 ## 13. Conformance vectors
 
