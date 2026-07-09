@@ -734,6 +734,13 @@ until they land.
 The one shared seam is the session service's connect-time membership check — a
 published contract (DESIGN.md §9), not a free-edit surface.
 
+Docs amendment pass 3 landed (2026-07-09): the G1 and M3a findings folded in.
+PROTOCOL section 12 now pins the 400 vs 422 status split, the full six-code
+ingestion rejection table, FORBIDDEN and INTERNAL, and DELETE /account; DESIGN
+sections 6, 7, and 15 record the abandon body-driven exception, the
+INTERNAL_BEARER_TOKEN and SESSION_INTERNAL_BASE deploy variables, the
+target-not-a-member vocabulary gap, and the unverified ingestion triggers.
+
 ## Phase 4 — Client breadth (= M4 ∥ M5)
 
 **This phase is where the product is won or lost, and these sections are deliberately
