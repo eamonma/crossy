@@ -138,7 +138,7 @@ depends on is open.
       sign user tokens with asymmetric ES256 and publish a JWKS; a background refresh
       into an in-memory `jose` key set verifies every token offline. `sub` and
       `is_anonymous` are present as SP1 assumed. D05/§8 hold unchanged. 1.1g unblocked.
-- [ ] **SP3 Railway reality check** (one day). Toy WS echo service deployed in the
+- [x] **SP3 Railway reality check** (one day). Toy WS echo service deployed in the
       two-service shape: idle socket timeouts, `permessage-deflate` pass-through,
       private-network reachability for `/internal`, pricing under N idle sockets.
       Closes the §15 Railway and private-network questions early instead of at M1.
@@ -147,6 +147,17 @@ depends on is open.
       two-service deploy shape. It needs a Railway account, the spike stays
       throwaway, and no hosted dependency lands in code before then.
       Owner Railway login done (2026-07-08); spike dispatched the same day.
+      Answered: conditional GO; see `reports/spikes/sp3-railway-reality-check.md`.
+      Networking is clean on every axis: no minute-scale idle close (a bare socket
+      survived the full 15-minute window; a 25 s ping round-trips), the edge is a
+      transparent WS proxy that forwards the deflate negotiation header, and
+      `service.railway.internal` works service-to-service while staying NXDOMAIN
+      publicly, validating the `/internal` static-bearer shape. CLI bootstrap
+      pattern validated end to end; pricing is usage-based and memory-led, no app
+      sleep. One owner action before Wave 2.2 commits: the Metal source builder
+      failed 5/5 on the Trial account (prebuilt image deploys worked), so prove a
+      from-source build after upgrading off Trial, or ship CI-built images;
+      Fly.io stays the one-day fallback.
 - [x] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
       (ws vs uWebSockets.js vs platform), check backpressure behavior, and measure a
       real 25×25 board payload under `permessage-deflate` against the under-20 KB
