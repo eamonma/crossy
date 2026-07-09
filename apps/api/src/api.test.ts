@@ -23,7 +23,12 @@ import type { FakeAuthProvider } from "@crossy/auth";
 import type { Hono } from "hono";
 import { buildApp } from "./app";
 import { createDb } from "./db/client";
-import type { ApiEnv } from "./context";
+import type {
+  ApiEnv,
+  MembershipChange,
+  MembershipNotifier,
+  VendorIdentityPort,
+} from "./context";
 
 const POSTGRES_IMAGE = "postgres:16-alpine";
 const BOOT_TIMEOUT_MS = 180_000;
@@ -47,6 +52,36 @@ let apiPool: Pool; // runs every query as the crossy_api role
 let adminPool: Pool; // superuser: fixtures and inspection only
 let auth: FakeAuthProvider;
 let app: Hono<ApiEnv>;
+
+// Recording fakes for the injected ports (DESIGN.md §6, §8): the membership notifier and the
+// vendor identity admin. They record calls in memory so the M3a suite proves the API's
+// cross-service and vendor calls without a socket or a network hop. `notifyShouldFail` and
+// `vendorShouldFail` model a downstream fault to exercise the degraded and error paths.
+let notifyCalls: { gameId: string; change: MembershipChange }[] = [];
+let notifyShouldFail = false;
+let vendorDeletions: string[] = [];
+let vendorShouldFail = false;
+
+const membershipNotifier: MembershipNotifier = {
+  async membershipChanged(gameId, change) {
+    notifyCalls.push({ gameId, change });
+    if (notifyShouldFail) throw new Error("session unreachable (test)");
+  },
+};
+const vendorIdentity: VendorIdentityPort = {
+  async deleteUser(userId) {
+    if (vendorShouldFail) throw new Error("vendor delete failed (test)");
+    vendorDeletions.push(userId);
+  },
+};
+
+/** Reset the recording fakes to a clean, non-failing state before a membership-lifecycle test. */
+function resetRecorders(): void {
+  notifyCalls = [];
+  notifyShouldFail = false;
+  vendorDeletions = [];
+  vendorShouldFail = false;
+}
 
 /** True if `value` transitively contains `key`, at any depth. Used to prove INV-6. */
 function hasKeyDeep(value: unknown, key: string): boolean {
@@ -157,6 +192,8 @@ beforeAll(async () => {
     db: createDb(apiPool),
     authPort: auth,
     sessionWsBase: SESSION_WS_BASE,
+    membershipNotifier,
+    vendorIdentity,
   });
 }, BOOT_TIMEOUT_MS);
 
@@ -593,5 +630,352 @@ describe("GET /games/{id} (PROTOCOL.md §12; INV-6)", () => {
     const res = await get(`/games/${randomUUID()}`, await auth.mintUpgraded());
     expect(res.status).toBe(404);
     await expectError(res, "GAME_NOT_FOUND");
+  });
+});
+
+/** DELETE a path as `token`'s owner. */
+async function del(path: string, token: string): Promise<Response> {
+  return app.request(path, { method: "DELETE", headers: bearer(token) });
+}
+
+/** Join `gameId` with an invite `code` as `token`'s owner. */
+async function join(
+  gameId: string,
+  token: string,
+  code: string,
+): Promise<Response> {
+  return postJson(`/games/${gameId}/join`, token, { code });
+}
+
+describe("kick (DELETE /games/{id}/members/{userId}) (PROTOCOL.md §12; DESIGN.md §7; INV-7)", () => {
+  it("host kick removes the membership and writes the denylist in one transaction (INV-7)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const memberSub = randomUUID();
+    const member = await auth.mintUpgraded({ sub: memberSub });
+    await join(gameId, member, inviteCode);
+
+    const res = await del(`/games/${gameId}/members/${memberSub}`, host);
+    expect(res.status).toBe(200);
+
+    // The membership row is gone and the denylist row is written: one transaction, so a kicked
+    // user is never in the "no membership yet not denied" half-state (INV-7 single writer).
+    const m = await adminPool.query(
+      "select 1 from memberships where game_id=$1 and user_id=$2",
+      [gameId, memberSub],
+    );
+    expect(m.rows).toHaveLength(0);
+    const d = await adminPool.query(
+      "select 1 from game_denylist where game_id=$1 and user_id=$2",
+      [gameId, memberSub],
+    );
+    expect(d.rows).toHaveLength(1);
+
+    // The session was signaled to disconnect a live socket (DESIGN.md §6).
+    expect(notifyCalls).toContainEqual({
+      gameId,
+      change: { change: "kick", userId: memberSub },
+    });
+  });
+
+  it("a kicked account's join by invite code is refused DENIED (M3 exit line; INV-7)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const memberSub = randomUUID();
+    const member = await auth.mintUpgraded({ sub: memberSub });
+    await join(gameId, member, inviteCode);
+    await del(`/games/${gameId}/members/${memberSub}`, host);
+
+    // The kicked user still holds the link; the denylist makes it dead (DESIGN.md §7).
+    const rejoined = await join(gameId, member, inviteCode);
+    expect(rejoined.status).toBe(403);
+    await expectError(rejoined, "DENIED");
+  });
+
+  it("the host cannot kick themselves (FORBIDDEN; DESIGN.md §7)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const res = await del(`/games/${gameId}/members/${hostSub}`, host);
+    expect(res.status).toBe(403);
+    await expectError(res, "FORBIDDEN");
+  });
+
+  it("a non-host member cannot kick (FORBIDDEN)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const aSub = randomUUID();
+    const bSub = randomUUID();
+    await join(gameId, await auth.mintUpgraded({ sub: aSub }), inviteCode);
+    await join(gameId, await auth.mintUpgraded({ sub: bSub }), inviteCode);
+    const res = await del(
+      `/games/${gameId}/members/${bSub}`,
+      await auth.mintUpgraded({ sub: aSub }),
+    );
+    expect(res.status).toBe(403);
+    await expectError(res, "FORBIDDEN");
+  });
+
+  it("kicking a non-member is NOT_PARTICIPANT", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const res = await del(`/games/${gameId}/members/${randomUUID()}`, host);
+    expect(res.status).toBe(403);
+    await expectError(res, "NOT_PARTICIPANT");
+  });
+
+  it("still denylists when the session notify fails (blast radius stays a disconnect; INV-7)", async () => {
+    resetRecorders();
+    notifyShouldFail = true;
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const memberSub = randomUUID();
+    const member = await auth.mintUpgraded({ sub: memberSub });
+    await join(gameId, member, inviteCode);
+
+    // The DB write is authoritative, so a failed live-disconnect notify still succeeds; the
+    // kicked user is refused at their next connect via the denylist regardless (DESIGN.md §6).
+    const res = await del(`/games/${gameId}/members/${memberSub}`, host);
+    expect(res.status).toBe(200);
+    const d = await adminPool.query(
+      "select 1 from game_denylist where game_id=$1 and user_id=$2",
+      [gameId, memberSub],
+    );
+    expect(d.rows).toHaveLength(1);
+  });
+
+  it("returns GAME_NOT_FOUND for an unknown game", async () => {
+    resetRecorders();
+    const res = await del(
+      `/games/${randomUUID()}/members/${randomUUID()}`,
+      await auth.mintUpgraded(),
+    );
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+});
+
+describe("role upgrade (POST /games/{id}/role) (PROTOCOL.md §12; DESIGN.md §8)", () => {
+  it("a spectator self-upgrades to solver, idempotently, signaling the session (DESIGN.md §8)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const specSub = randomUUID();
+    const spec = await auth.mintUpgraded({ sub: specSub });
+    const joined = await join(gameId, spec, inviteCode);
+    expect(await roleOf(joined)).toBe("spectator");
+
+    const res = await postJson(`/games/${gameId}/role`, spec, {
+      role: "solver",
+    });
+    expect(res.status).toBe(200);
+    expect(await roleOf(res)).toBe("solver");
+    const m = await adminPool.query(
+      "select role from memberships where game_id=$1 and user_id=$2",
+      [gameId, specSub],
+    );
+    expect(m.rows[0].role).toBe("solver");
+    expect(notifyCalls).toContainEqual({
+      gameId,
+      change: { change: "role", userId: specSub },
+    });
+
+    // Idempotent: a repeat is a no-op that neither writes nor notifies again.
+    const before = notifyCalls.length;
+    const again = await postJson(`/games/${gameId}/role`, spec, {
+      role: "solver",
+    });
+    expect(await roleOf(again)).toBe("solver");
+    expect(notifyCalls.length).toBe(before);
+  });
+
+  it("does not demote a host who calls the role endpoint (idempotent)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const res = await postJson(`/games/${gameId}/role`, host, {
+      role: "solver",
+    });
+    expect(res.status).toBe(200);
+    expect(await roleOf(res)).toBe("host");
+  });
+
+  it("rejects a non-member with NOT_PARTICIPANT", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const res = await postJson(
+      `/games/${gameId}/role`,
+      await auth.mintUpgraded({ sub: randomUUID() }),
+      { role: "solver" },
+    );
+    expect(res.status).toBe(403);
+    await expectError(res, "NOT_PARTICIPANT");
+  });
+
+  it("rejects a target role other than solver with VALIDATION", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const spec = await auth.mintUpgraded({ sub: randomUUID() });
+    await join(gameId, spec, inviteCode);
+    const res = await postJson(`/games/${gameId}/role`, spec, { role: "host" });
+    expect(res.status).toBe(400);
+    await expectError(res, "VALIDATION");
+  });
+});
+
+describe("abandon (POST /games/{id}/abandon) (PROTOCOL.md §12; DESIGN.md §6, §7)", () => {
+  it("host abandon authorizes and dispatches to the session (DESIGN.md §6)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const res = await postJson(`/games/${gameId}/abandon`, host, {});
+    expect(res.status).toBe(200);
+    expect(notifyCalls).toContainEqual({
+      gameId,
+      change: { change: "abandon", by: hostSub },
+    });
+  });
+
+  it("a non-host member cannot abandon (FORBIDDEN)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const spec = await auth.mintUpgraded({ sub: randomUUID() });
+    await join(gameId, spec, inviteCode);
+    const res = await postJson(`/games/${gameId}/abandon`, spec, {});
+    expect(res.status).toBe(403);
+    await expectError(res, "FORBIDDEN");
+  });
+
+  it("returns INTERNAL when the required session notify fails (only the actor abandons)", async () => {
+    resetRecorders();
+    notifyShouldFail = true;
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const res = await postJson(`/games/${gameId}/abandon`, host, {});
+    expect(res.status).toBe(500);
+    await expectError(res, "INTERNAL");
+  });
+});
+
+describe("account deletion + host succession (DELETE /account) (DESIGN.md §7, §8, §9; INV-1, INV-2, INV-7)", () => {
+  it("tombstones the mirror row, keeps the id, and leaves cell_events contiguous (DESIGN.md §8, §9; INV-2)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    // Give the host PII to scrub, and author two immutable events (session-owned, so seeded via
+    // the superuser pool; the api role cannot write cell_events).
+    await adminPool.query(
+      "update users set display_name=$2, avatar=$3 where user_id=$1",
+      [hostSub, "Ada", "avatar-url"],
+    );
+    await adminPool.query(
+      "insert into cell_events (game_id, seq, cell, user_id, value) values ($1,1,0,$2,'H'),($1,2,1,$2,'I')",
+      [gameId, hostSub],
+    );
+
+    const res = await del("/account", host);
+    expect(res.status).toBe(200);
+
+    // The mirror row survives with PII scrubbed and the stable id kept (renders "former
+    // participant"), because INV-1 replay and INV-2 contiguity depend on the id (DESIGN.md §8).
+    const u = await adminPool.query(
+      "select user_id, display_name, avatar from users where user_id=$1",
+      [hostSub],
+    );
+    expect(u.rows).toHaveLength(1);
+    expect(u.rows[0].display_name).toBeNull();
+    expect(u.rows[0].avatar).toBeNull();
+
+    // The event log stays contiguous through deletion; attribution survives as the opaque id
+    // (cell_events.user_id is ON DELETE NO ACTION and untouched, DESIGN.md §9; INV-2).
+    const ev = await adminPool.query(
+      "select seq, user_id from cell_events where game_id=$1 order by seq",
+      [gameId],
+    );
+    expect(ev.rows.map((r) => Number(r.seq))).toEqual([1, 2]);
+    expect(ev.rows.every((r) => r.user_id === hostSub)).toBe(true);
+
+    // The vendor identity is removed through the injected port, with no network (DESIGN.md §8).
+    expect(vendorDeletions).toContain(hostSub);
+  });
+
+  it("host succession passes to the earliest-joined remaining solver (DESIGN.md §7)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const earlySub = randomUUID();
+    const lateSub = randomUUID();
+    // Two solvers with explicit joined_at so "earliest" is deterministic.
+    for (const [sub, joinedAt] of [
+      [earlySub, "2026-01-01T00:00:00Z"],
+      [lateSub, "2026-01-02T00:00:00Z"],
+    ] as const) {
+      await adminPool.query(
+        "insert into users (user_id, is_anonymous) values ($1, false)",
+        [sub],
+      );
+      await adminPool.query(
+        "insert into memberships (game_id, user_id, role, joined_at) values ($1,$2,'solver',$3)",
+        [gameId, sub, joinedAt],
+      );
+    }
+
+    const res = await del("/account", host);
+    expect(res.status).toBe(200);
+
+    const roles = await adminPool.query<{ user_id: string; role: string }>(
+      "select user_id, role from memberships where game_id=$1",
+      [gameId],
+    );
+    const byUser = new Map(roles.rows.map((r) => [r.user_id, r.role]));
+    expect(byUser.get(earlySub)).toBe("host"); // earliest solver inherits the host role
+    expect(byUser.get(lateSub)).toBe("solver");
+    expect(byUser.has(hostSub)).toBe(false); // the departing host's membership is removed
+    expect(notifyCalls.some((n) => n.change.change === "abandon")).toBe(false);
+  });
+
+  it("auto-abandons a game left with no eligible successor, so it is never unadministrable (DESIGN.md §7)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    // Only a spectator remains: not eligible to inherit the host role (DESIGN.md §7).
+    const spec = await auth.mintUpgraded({ sub: randomUUID() });
+    await join(gameId, spec, inviteCode);
+
+    const res = await del("/account", host);
+    expect(res.status).toBe(200);
+    expect(notifyCalls).toContainEqual({
+      gameId,
+      change: { change: "abandon", by: hostSub },
+    });
   });
 });

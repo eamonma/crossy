@@ -21,8 +21,9 @@
 // Out of this slice (reported as deferrals): presence/heartbeat/cursors are accepted and
 // ignored (PROTOCOL.md §9); checkRequest is Phase 3.
 
+import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
-import type { IncomingMessage, Server } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
 import type { AuthPort } from "@crossy/auth";
@@ -46,11 +47,16 @@ import type { ActorOptions, Connection, GameActor } from "./actor";
 import { colorForUser } from "./color";
 import { errorFrame } from "./frames";
 import { performHandshake } from "./handshake";
+import { applyMembershipChange, parseMembershipChangedBody } from "./internal";
 import { Mailbox } from "./mailbox";
 import { ActorRegistry } from "./registry";
 import { loadMembers } from "./repo";
 
 const GAME_PATH = /^\/games\/([^/]+)\/ws$/;
+const INTERNAL_PATH = /^\/internal\/games\/([^/]+)\/membership-changed$/;
+
+/** Cap on the internal request body; a membership-changed hint is a handful of bytes. */
+const MAX_INTERNAL_BODY_BYTES = 4096;
 
 /** A tombstoned user has a null display name; render it per DESIGN.md §8. */
 const FORMER_PARTICIPANT = "former participant";
@@ -70,6 +76,13 @@ export interface SessionServerConfig {
   readonly host?: string;
   /** Write-behind flush tuning, passed to every actor (DESIGN.md §15). */
   readonly actorOptions?: ActorOptions;
+  /**
+   * The static internal bearer secret (DESIGN.md §6). When set, `POST /internal/games/{id}/
+   * membership-changed` requires `Authorization: Bearer <this>`; when omitted the endpoint is
+   * disabled (503), so a deploy that forgets to inject it fails loudly rather than serving the
+   * endpoint unauthenticated. Injected from config (INTERNAL_BEARER_TOKEN), never hardcoded.
+   */
+  readonly internalBearer?: string;
 }
 
 export interface SessionServer {
@@ -94,7 +107,19 @@ export function createSessionServer(
   const registry = new ActorRegistry(config.pool, now, config.actorOptions);
   let draining = false;
 
-  const httpServer = createServer((_req, res) => {
+  const httpServer = createServer((req, res) => {
+    const path = (req.url ?? "").split("?")[0] ?? "";
+    const internalMatch =
+      req.method === "POST" ? INTERNAL_PATH.exec(path) : null;
+    if (internalMatch !== null) {
+      void handleInternalRequest(req, res, internalMatch[1]!, {
+        registry,
+        pool: config.pool,
+        internalBearer: config.internalBearer,
+      }).catch(() => sendJson(res, 500, { error: "INTERNAL" }));
+      return;
+    }
+    // Everything else is the health probe (DESIGN.md §6; dev-stack waits on `/`).
     res.writeHead(200, { "content-type": "text/plain" });
     res.end("ok");
   });
@@ -219,7 +244,12 @@ function handleConnection(
       ws.close(1008, result.error.code);
       return;
     }
-    const conn: Connection = { userId: result.userId, role: result.role, send };
+    const conn: Connection = {
+      userId: result.userId,
+      role: result.role,
+      send,
+      close: (code, reason) => ws.close(code, reason),
+    };
     result.actor.addConnection(conn);
     actor = result.actor;
     connection = conn;
@@ -315,6 +345,101 @@ function parseFrame(data: RawData): Decoded<ClientMessage> {
     };
   }
   return decodeClientMessage(parsed);
+}
+
+interface InternalRequestDeps {
+  readonly registry: ActorRegistry;
+  readonly pool: Pool;
+  /** Explicitly nullable (not optional) so the composition root may pass an unset value. */
+  readonly internalBearer: string | undefined;
+}
+
+/** Write a small JSON body with a status; the internal endpoint's only response shape. */
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+/**
+ * Constant-time bearer check (DESIGN.md §6). The secret arrives via injected config, never
+ * hardcoded. A length-guarded `timingSafeEqual` avoids leaking the secret length through timing
+ * and never throws on a mismatched length.
+ */
+function bearerOk(header: string | undefined, secret: string): boolean {
+  if (header === undefined) return false;
+  const match = /^Bearer (.+)$/.exec(header);
+  if (match === null) return false;
+  const provided = Buffer.from(match[1]!);
+  const expected = Buffer.from(secret);
+  return (
+    provided.length === expected.length && timingSafeEqual(provided, expected)
+  );
+}
+
+/** Read the request body to a string, rejecting once it exceeds the internal-body cap. */
+function readInternalBody(req: IncomingMessage): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_INTERNAL_BODY_BYTES) {
+        reject(new Error("internal request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+/**
+ * Serve `POST /internal/games/{id}/membership-changed` (DESIGN.md §6). Bearer-authenticated;
+ * the body is a hint the actor never trusts for authority (INV-8). The endpoint is disabled
+ * (503) when no bearer is configured, so a misconfigured deploy fails closed rather than
+ * serving it open.
+ */
+async function handleInternalRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  gameId: string,
+  deps: InternalRequestDeps,
+): Promise<void> {
+  if (deps.internalBearer === undefined || deps.internalBearer === "") {
+    sendJson(res, 503, { error: "INTERNAL_ENDPOINT_DISABLED" });
+    return;
+  }
+  const header = req.headers["authorization"];
+  if (header === undefined) {
+    sendJson(res, 401, { error: "UNAUTHORIZED" });
+    return;
+  }
+  if (!bearerOk(header, deps.internalBearer)) {
+    sendJson(res, 403, { error: "FORBIDDEN" });
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readInternalBody(req));
+  } catch {
+    sendJson(res, 400, { error: "VALIDATION" });
+    return;
+  }
+  const body = parseMembershipChangedBody(parsed);
+  if (body === null) {
+    sendJson(res, 400, { error: "VALIDATION" });
+    return;
+  }
+
+  await applyMembershipChange(
+    { registry: deps.registry, pool: deps.pool },
+    gameId,
+    body,
+  );
+  sendJson(res, 200, { ok: true });
 }
 
 function closeServer(server: Server, wss: WebSocketServer): Promise<void> {

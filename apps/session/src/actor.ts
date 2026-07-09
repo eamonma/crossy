@@ -60,8 +60,16 @@ const REJECTION_MESSAGE: Record<RejectionCode, string> = {
 /** A live socket the actor can address. The concrete socket wrapper lives in server.ts. */
 export interface Connection {
   readonly userId: string;
-  readonly role: Role;
+  /** Cached at handshake; updated in place on a re-verified role change (INV-8). */
+  role: Role;
   send(frame: ServerMessage): void;
+  /**
+   * Close the socket with a code and reason, e.g. 1008 after a `kicked` notice (PROTOCOL.md §6).
+   * Optional so a non-socket consumer of the actor (the simulation harness, which taps
+   * broadcasts through a `send`-only connection) stays compatible; the real server always
+   * supplies it, and `disconnectUser` invokes it only when present.
+   */
+  close?(code: number, reason: string): void;
 }
 
 /** Tunable write-behind bounds; both default to the DESIGN.md §15 constants above. */
@@ -110,6 +118,37 @@ export class GameActor {
 
   removeConnection(connection: Connection): void {
     this.connections.delete(connection);
+  }
+
+  /**
+   * Disconnect a user whose membership was revoked (INV-8, DESIGN.md §6). The caller has read
+   * authoritative state from Postgres and determined this user is no longer allowed (denylisted
+   * or no membership). The actor only enforces that verdict on its live sockets: it sends the
+   * terminal `kicked` notice and closes 1008 on every socket the user holds, then drops them.
+   * It never mutates membership; that is the API's job (INV-7).
+   */
+  disconnectUser(userId: string, reason: string): void {
+    for (const conn of [...this.connections]) {
+      if (conn.userId !== userId) continue;
+      conn.send({ type: "kicked", reason });
+      conn.close?.(1008, "kicked");
+      this.connections.delete(conn);
+    }
+  }
+
+  /** Update the cached role for a user's live sockets after a re-verified role change (INV-8). */
+  setUserRole(userId: string, role: Role): void {
+    for (const conn of this.connections) {
+      if (conn.userId === userId) conn.role = role;
+    }
+  }
+
+  /**
+   * Abandon the game (DESIGN.md §6, §7; PROTOCOL.md §6). Runs through the mailbox so it cannot
+   * race a mutation or a flush. Abandon on an already-terminal game is a no-op (INV-4).
+   */
+  abandon(by: string): Promise<void> {
+    return this.mailbox.post(() => this.doAbandon(by));
   }
 
   /** The userIds with a live connection, for the `connected` flag on participants. */
@@ -221,6 +260,26 @@ export class GameActor {
       at,
       stats: this.stats,
     });
+  }
+
+  /**
+   * Terminal abandon (INV-4). Takes the next seq, marks the state abandoned, flushes the
+   * buffered events plus the abandoned snapshot SYNCHRONOUSLY in one transaction, then
+   * broadcasts `gameAbandoned` (persisted before broadcast, like completion). The terminal
+   * event consumes a seq but is never appended to cell_events (DESIGN.md §9), so only the
+   * pending cellSets go to the log; the snapshot carries the terminal seq and status.
+   */
+  private async doAbandon(by: string): Promise<void> {
+    if (this.state.status !== "ongoing") return; // INV-4: a terminal state is final
+    const at = this.now().toISOString();
+    const seq = this.state.seq + 1;
+    this.state = { ...this.state, status: "abandoned", seq };
+    this.abandonedAt = at;
+    const events = this.pending;
+    await this.persistence.flush(this.gameId, events, this.snapshotForFlush());
+    this.pending = [];
+    this.cancelFlushTimer();
+    this.broadcast({ type: "gameAbandoned", seq, at, by });
   }
 
   /**

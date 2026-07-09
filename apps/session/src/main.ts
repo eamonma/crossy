@@ -42,11 +42,24 @@ async function main(): Promise<void> {
   });
   authPort.start();
 
+  // The static internal bearer (DESIGN.md §6), injected via env, never hardcoded. When unset
+  // the `/internal` endpoint is disabled (503) and membership changes are enforced only at
+  // reconnect via the denylist; a deploy that wants live kick/abandon signaling must set it.
+  const internalBearer = process.env["INTERNAL_BEARER_TOKEN"];
+  if (internalBearer === undefined || internalBearer === "") {
+    console.warn(
+      "INTERNAL_BEARER_TOKEN unset: /internal/games/{id}/membership-changed is disabled (503)",
+    );
+  }
+
   const server = await createSessionServer({
     authPort,
     pool,
     host: process.env["HOST"] ?? "0.0.0.0",
     port: Number(process.env["PORT"] ?? "8081"),
+    ...(internalBearer !== undefined && internalBearer !== ""
+      ? { internalBearer }
+      : {}),
   });
   console.log(`session service listening on ${server.url}`);
 

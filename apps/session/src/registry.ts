@@ -41,6 +41,18 @@ export class ActorRegistry {
     return created;
   }
 
+  /**
+   * The already-hydrated actor for `gameId`, or `null` if none is live. Never hydrates: a kick
+   * or role change on a passivated game needs no actor, since there are no live sockets and the
+   * denylist plus connect-time re-verify enforce it (DESIGN.md §6). Only the abandon path
+   * hydrates on demand, through `getOrHydrate`.
+   */
+  async getIfLive(gameId: string): Promise<GameActor | null> {
+    const existing = this.actors.get(gameId);
+    if (existing === undefined) return null;
+    return existing.catch(() => null);
+  }
+
   /** Every already-hydrated actor, for the SIGTERM drain (DESIGN.md §6). */
   async liveActors(): Promise<GameActor[]> {
     const settled = await Promise.all(

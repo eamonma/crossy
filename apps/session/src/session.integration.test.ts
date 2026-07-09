@@ -37,6 +37,10 @@ import { loadGameState, loadPuzzleSnapshot } from "./repo";
 const POSTGRES_IMAGE = "postgres:16-alpine";
 const BOOT_TIMEOUT_MS = 180_000;
 
+// The static internal bearer the shared server verifies (DESIGN.md §6). Injected via config
+// here exactly as the composition root injects INTERNAL_BEARER_TOKEN; never hardcoded in src.
+const INTERNAL_BEARER = "test-internal-bearer-secret";
+
 // 8-char invite codes from the unambiguous alphabet [2-9A-HJ-NP-Z] (games CHECK).
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 let codeCounter = 1;
@@ -352,6 +356,7 @@ beforeAll(async () => {
     authPort: auth,
     pool: sessionPool,
     actorOptions: { flushIntervalMs: 600_000 },
+    internalBearer: INTERNAL_BEARER,
   });
 }, BOOT_TIMEOUT_MS);
 
@@ -1051,5 +1056,268 @@ describe("session role single-writer boundary (INV-7, INV-8)", () => {
         [randomUUID(), randomUUID()],
       ),
     ).rejects.toThrow(/permission denied/i);
+  });
+
+  it("cannot write the denylist under the crossy_session role: it verifies, never mutates (INV-8)", async () => {
+    // The session reads the denylist at connect and on membership-changed but never writes it;
+    // the API is the single writer (INV-7, INV-8). The grant layer enforces that: the session
+    // role holds SELECT on game_denylist, not INSERT.
+    await expect(
+      sessionPool.query(
+        "insert into game_denylist (game_id, user_id) values ($1, $2)",
+        [randomUUID(), randomUUID()],
+      ),
+    ).rejects.toThrow(/permission denied/i);
+  });
+});
+
+// The membership-changed internal endpoint (DESIGN.md §6, INV-8). These drive the real HTTP
+// endpoint on the shared server with the injected bearer, exactly as the API would, so the
+// cross-service contract is exercised end to end from the session's side.
+const HTTP_BASE = (): string => server.url.replace(/^ws:/, "http:");
+
+/** POST the membership-changed hint. `bearer: null` omits the header (unauthenticated). */
+async function postMembershipChanged(
+  gameId: string,
+  body: unknown,
+  bearer: string | null = INTERNAL_BEARER,
+): Promise<Response> {
+  return fetch(`${HTTP_BASE()}/internal/games/${gameId}/membership-changed`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(bearer !== null ? { authorization: `Bearer ${bearer}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("membership-changed internal endpoint auth (DESIGN.md §6)", () => {
+  it("refuses a request with no bearer as 401 (DESIGN.md §6)", async () => {
+    const res = await postMembershipChanged(
+      randomUUID(),
+      { change: "kick", userId: randomUUID() },
+      null,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("refuses a wrong bearer as 403 (DESIGN.md §6)", async () => {
+    const res = await postMembershipChanged(
+      randomUUID(),
+      { change: "kick", userId: randomUUID() },
+      "not-the-secret",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a malformed body as 400 with a valid bearer", async () => {
+    const res = await postMembershipChanged(randomUUID(), {
+      change: "not-a-change",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("disables the endpoint (503) on a server with no bearer configured (fail closed)", async () => {
+    const bare = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+    });
+    try {
+      const res = await fetch(
+        `${bare.url.replace(/^ws:/, "http:")}/internal/games/${randomUUID()}/membership-changed`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ change: "kick", userId: randomUUID() }),
+        },
+      );
+      expect(res.status).toBe(503);
+    } finally {
+      await bare.close();
+    }
+  });
+});
+
+describe("kicked account is disconnected and refused at reconnect (INV-8; PROTOCOL.md §2)", () => {
+  it("disconnects a live socket on membership-changed, then DENIES the reconnect (M3 exit line)", async () => {
+    const kickedId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: kickedId, role: "solver" },
+        { userId: randomUUID(), role: "host" },
+      ],
+    });
+    const { client } = await connectAndHello(gameId, kickedId);
+
+    // Simulate the API's kick transaction (single writer, INV-7): drop the membership row and
+    // write the denylist. The session only verifies this authoritative state (INV-8).
+    await adminPool.query(
+      "delete from memberships where game_id=$1 and user_id=$2",
+      [gameId, kickedId],
+    );
+    await adminPool.query(
+      "insert into game_denylist (game_id, user_id) values ($1, $2)",
+      [gameId, kickedId],
+    );
+
+    const res = await postMembershipChanged(gameId, {
+      change: "kick",
+      userId: kickedId,
+    });
+    expect(res.status).toBe(200);
+
+    // The live socket receives the terminal kicked notice and closes 1008 (PROTOCOL.md §6).
+    const kicked = (await client.waitForType("kicked")) as { reason: string };
+    expect(typeof kicked.reason).toBe("string");
+    expect((await client.waitForClose()).code).toBe(1008);
+
+    // The reconnect is refused DENIED at the handshake, not NOT_PARTICIPANT: the denylist is
+    // checked strictly before membership (PROTOCOL.md §2), which is why DENIED is reachable for
+    // exactly the kicked user whose membership row is already gone.
+    const reconnect = await TestClient.connect(server.url, gameId);
+    reconnect.sendJson({
+      type: "hello",
+      protocolVersion: 1,
+      token: await auth.mint({ sub: kickedId }),
+    });
+    const error = (await reconnect.waitForType("error")) as { code: string };
+    expect(error.code).toBe("DENIED");
+    expect((await reconnect.waitForClose()).code).toBe(1008);
+  });
+
+  it("is a no-op with a 200 on a passivated game (no live actor; denylist enforces at connect)", async () => {
+    // A game nobody is connected to has no live actor. A kick needs no actor: the denylist plus
+    // connect-time re-verify enforce it at the next connect (DESIGN.md §6). The endpoint must
+    // not hydrate one just to do nothing.
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: randomUUID(), role: "host" }],
+    });
+    const res = await postMembershipChanged(gameId, {
+      change: "kick",
+      userId: randomUUID(),
+    });
+    expect(res.status).toBe(200);
+    // No actor was hydrated, so no game_state row was written.
+    expect(await loadGameState(adminPool, gameId)).toBeNull();
+  });
+});
+
+describe("role change re-verifies the live connection (INV-8)", () => {
+  it("upgrades a live spectator to solver so its next mutation is accepted (INV-8)", async () => {
+    const specId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: specId, role: "spectator" },
+        { userId: randomUUID(), role: "host" },
+      ],
+    });
+    const { client } = await connectAndHello(gameId, specId);
+
+    // As a spectator, a mutation is refused ROLE_FORBIDDEN (PROTOCOL.md §5).
+    const before = placeLetter(0, "A");
+    client.sendJson(before);
+    const forbidden = (await client.waitForType("error")) as { code: string };
+    expect(forbidden.code).toBe("ROLE_FORBIDDEN");
+
+    // The API upgrades the role (single writer, INV-7); the session re-reads and updates the
+    // cached role on the live connection (INV-8: it verifies, it does not decide).
+    await adminPool.query(
+      "update memberships set role='solver' where game_id=$1 and user_id=$2",
+      [gameId, specId],
+    );
+    const res = await postMembershipChanged(gameId, {
+      change: "role",
+      userId: specId,
+    });
+    expect(res.status).toBe(200);
+
+    // The next mutation is now accepted and broadcast as a cellSet.
+    client.sendJson(placeLetter(0, "A"));
+    const cellSet = (await client.waitForType("cellSet")) as { cell: number };
+    expect(cellSet.cell).toBe(0);
+    client.close();
+  });
+});
+
+describe("abandon via membership-changed (INV-4; DESIGN.md §6, §7)", () => {
+  it("abandons a live actor: gameAbandoned broadcast and flushed before broadcast (INV-3-style)", async () => {
+    const hostId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: hostId, role: "host" }],
+    });
+    const { client } = await connectAndHello(gameId, hostId);
+
+    const res = await postMembershipChanged(gameId, {
+      change: "abandon",
+      by: hostId,
+    });
+    expect(res.status).toBe(200);
+
+    const abandoned = (await client.waitForType("gameAbandoned")) as {
+      by: string;
+      seq: number;
+      at: string;
+    };
+    expect(abandoned.by).toBe(hostId);
+    expect(abandoned.seq).toBeGreaterThanOrEqual(1);
+
+    // Persisted before broadcast: the game_state row is already abandoned (DESIGN.md §6).
+    const gs = await loadGameState(adminPool, gameId);
+    expect(gs?.status).toBe("abandoned");
+    expect(gs?.abandonedAt).not.toBeNull();
+    client.close();
+  });
+
+  it("hydrates a passivated game on demand to abandon it (DESIGN.md §6)", async () => {
+    // No connection was ever made, so no actor is live. Abandon must hydrate one on demand,
+    // since only the actor may write game_state (DESIGN.md §6).
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: randomUUID(), role: "host" }],
+    });
+    expect(await loadGameState(adminPool, gameId)).toBeNull();
+
+    const res = await postMembershipChanged(gameId, {
+      change: "abandon",
+      by: randomUUID(),
+    });
+    expect(res.status).toBe(200);
+
+    const gs = await loadGameState(adminPool, gameId);
+    expect(gs?.status).toBe("abandoned");
+    expect(gs?.lastSeq).toBe(1);
+  });
+
+  it("is a no-op on an already-terminal game (INV-4)", async () => {
+    // A game already abandoned at seq 5 must not consume a new terminal seq or re-flush.
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: randomUUID(), role: "host" }],
+      gameState: {
+        board: [
+          { v: null, by: null },
+          { v: null, by: null },
+          { v: null, by: null },
+        ],
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+        status: "abandoned",
+      },
+    });
+
+    const res = await postMembershipChanged(gameId, {
+      change: "abandon",
+      by: randomUUID(),
+    });
+    expect(res.status).toBe(200);
+
+    const gs = await loadGameState(adminPool, gameId);
+    expect(gs?.status).toBe("abandoned");
+    expect(gs?.lastSeq).toBe(5); // no new terminal seq: the terminal state is final (INV-4)
   });
 });

@@ -17,9 +17,53 @@ walking-skeleton slice.
   seated as `spectator`; idempotent and non-demoting.
 - `GET /games/{id}`: member only. The game view: solution-stripped puzzle (`ClientPuzzle`),
   membership, and the session WebSocket endpoint.
+- `POST /games/{id}/role`: member only. Self-upgrade `spectator` to `solver`; one action,
+  idempotent. Signals the session so a live spectator socket becomes a solver at once.
+- `DELETE /games/{id}/members/{userId}`: host only. Kick: remove the membership row and write
+  the denylist in one transaction, then signal the session to disconnect any live socket. The
+  host MUST NOT target themselves (`FORBIDDEN`). The API is the single writer on memberships
+  and the denylist (INV-7).
+- `POST /games/{id}/abandon`: host only. Authorize the host and dispatch to the session, which
+  emits and synchronously flushes `gameAbandoned` (the actor executes; abandon on a terminal
+  game is a no-op, INV-4).
+- `DELETE /account`: any authenticated user. Delete the caller's own account: tombstone the
+  mirror row (scrub PII, keep the id), remove membership and denylist rows, run host succession
+  (DESIGN.md section 7), and remove the vendor identity behind an injected port. PROTOCOL.md
+  section 12 lists no account-deletion route; this is flagged for the docs ledger.
 
 Every route is bearer-authenticated through the `AuthPort`; the first authenticated request
 mirrors the identity into `users` (JIT upsert, the API being the single writer on `users`).
+
+## Membership lifecycle (M3a) and the internal signal
+
+Kick, role upgrade, abandon, and account deletion (host succession) are the M3a slice. The API
+owns every write to `memberships` and `game_denylist` (INV-7); the session service only
+verifies (INV-8). When a change is committed the API signals the session at
+`POST /internal/games/{id}/membership-changed` with a static bearer, so a live actor
+re-verifies and disconnects anyone no longer allowed, or executes an abandon. Two env vars wire
+this notifier in the composition root, both optional so the local dev stack runs without them:
+
+- **`INTERNAL_BEARER_TOKEN`**: the static internal bearer, shared with the session service
+  (which verifies it). Injected via config, never hardcoded.
+- **`SESSION_INTERNAL_BASE`**: the session service base URL on the provider's private network
+  (for example `http://session.railway.internal:8081`).
+
+When either is unset the notifier is a no-op: the membership and denylist writes stay
+authoritative, so a kicked user is still refused at reconnect via the denylist, and the live
+disconnect plus abandon land at M3b deploy time. An abandon requires the notifier (only the
+actor can write `game_state`), so an abandon with the notifier unconfigured or unreachable
+returns `INTERNAL` (500).
+
+Two REST codes not in the PROTOCOL.md section 12 table were added and flagged for the docs
+ledger (`http/errors.ts`): `FORBIDDEN` (403, a member who is not permitted the action, or a
+host self-kick) and `INTERNAL` (500, reusing the section 11 name for a downstream fault).
+
+Vendor account deletion lives in the API identity module behind an injected `VendorIdentityPort`
+(the boundary decision is recorded in `packages/auth`): it is a rare admin mutation paired with
+the API-owned tombstone write, not the per-request verification the auth port exists for. The
+real Supabase admin adapter is M3b; M3a ships the port and a test fake, so no test touches the
+network. `cell_events.user_id` stays `ON DELETE NO ACTION` and is never touched by deletion, so
+the event log stays contiguous through a tombstone (DESIGN.md section 9).
 
 ## HTTP framework: Hono (decision for review)
 
