@@ -111,6 +111,12 @@ Run in order. Steps marked (dashboard) cannot be done by the CLI.
    `./deploy/provision.sh --dry-run` then `./deploy/provision.sh`. It creates the project,
    three services, domains, region, variables (INTERNAL_BEARER_TOKEN generated), and connects
    the GHCR images. It refuses to run if a project named `crossy` already exists.
+   Tip: migrating and binding roles first (steps 5 and 6 here) lets you export
+   `SUPABASE_ISSUER`, `DATABASE_URL_API`, and `DATABASE_URL_SESSION` before provisioning,
+   so the script writes real values and step 6 disappears. CLI v5 notes: `railway add`
+   prompts for optional extras (Esc skips the variables prompt), and an auto-update
+   mid-run can invalidate the login session; `railway login` and `railway link -p crossy
+-e production` restore it.
 4. Add a GHCR pull credential to EACH service (dashboard; see GHCR private pull above).
 5. Apply migrations and bind the service login roles (see Migrations + roles below). This
    needs the Supabase project, so it cannot run before step 1.
@@ -191,8 +197,12 @@ over HTTPS, a WS handshake reaching the session with `permessage-deflate` negoti
 that `/internal` is NOT reachable on the session public domain (expects 404 or timeout). It
 sends no WebSocket frame, so no board or solution ever crosses the wire (INV-6). The
 api-to-session private path (`session.railway.internal:8082/internal`) can only be exercised
-from inside Railway; confirm it from the session logs on a real kick, or `railway run` a curl
-from the api service.
+from inside Railway. To probe it directly: register an SSH key (`railway ssh keys github`),
+link the repo (`railway link -p crossy -e production`), open a shell in the api service
+(`railway ssh -s api`), and POST to
+`http://session.railway.internal:8082/internal/games/<uuid>/membership-changed` with node
+fetch. Expect `401`: served, private, bearer required (fail-closed). Quoting does not
+survive `railway ssh -- <cmd>`, so run it from the interactive shell.
 
 ## Files
 

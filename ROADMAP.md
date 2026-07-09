@@ -678,6 +678,24 @@ until they land.
   M1's deploy half: owner creates the Supabase project (us-east-1), runs provisioning,
   adds GHCR pull credentials and the RAILWAY_TOKEN secret, first roll, then
   deploy/verify.mjs plus the in-Railway /internal probe.
+- Deployed live (2026-07-09), closing M1's deploy half. The owner created the Supabase
+  project in us-east-1, applied migrations and bound the service roles (both back
+  rolcanlogin = t, rolbypassrls = t, so the Supabase BYPASSRLS caveat is moot), and
+  provisioned Railway project `crossy`. The full pipeline then rolled green end to end:
+  CI-built images to GHCR, `railway redeploy` per service under the project token.
+  deploy/verify.mjs passes every public check: api /health 200, web 200, session WS
+  101 with permessage-deflate negotiated through the real edge, public /internal 404.
+  The private path is confirmed from a shell inside the api service:
+  session.railway.internal:8082 answers 401 without the bearer, so /internal is
+  served, private, and fail-closed (DESIGN section 15 lines closed: region, Railway
+  builder, internal auth). Live domains: web-production-946c3.up.railway.app,
+  api-production-c2d9.up.railway.app, session-production-8b77.up.railway.app.
+  Provisioning survived a mid-run Railway CLI v4-to-v5 auto-update (renamed regions,
+  new prompts, a dropped login); the script and docs now carry the v5 fixes, plus
+  dry-run secret redaction. One honest remainder: the roll ran against unchanged
+  image content, so the next content-bearing merge is the first real proof that
+  `railway redeploy` picks up a new :latest. M1's exit now waits only on the owner's
+  typing-feel taste notes (deferred by owner call, filed against the Phase 4 specs).
 
 ## Phase 3 — Correctness core ∥ Identity (= M2 ∥ M3)
 
