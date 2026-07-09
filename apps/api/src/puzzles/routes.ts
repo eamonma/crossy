@@ -1,6 +1,9 @@
-// Puzzle catalog routes (PROTOCOL.md §12, DESIGN.md §7). `POST /puzzles` ingests a fixture
-// and returns the puzzle VIEW: typed `ClientPuzzle`, so the stored solution never appears in
-// the response (INV-6, structural, not a runtime strip). Full accounts only.
+// Puzzle catalog routes (PROTOCOL.md §12, DESIGN.md §7). `POST /puzzles` ingests XWord Info JSON
+// through the anti-corruption layer (ingest.ts) and returns the puzzle VIEW: typed `ClientPuzzle`,
+// so the stored solution never appears in the response (INV-6, structural, not a runtime strip).
+// A malformed or unacceptable puzzle returns one named rejection code; the code is chosen by the
+// ACL's fixed check order, and the response body carries no solution content on any path. Full
+// accounts only.
 import { Hono } from "hono";
 import { schema } from "@crossy/db";
 import { toClientPuzzle } from "@crossy/protocol";
@@ -8,7 +11,7 @@ import type { ClientPuzzle } from "@crossy/protocol";
 import type { AppDeps, ApiEnv } from "../context";
 import { fail } from "../http/errors";
 import { authMiddleware } from "../auth/middleware";
-import { parseServerPuzzleFixture } from "./ingest";
+import { translateXwordInfo } from "./ingest";
 
 /** The `POST /puzzles` response. `puzzle` is `ClientPuzzle`: no solution field, structurally. */
 interface PuzzleView {
@@ -37,15 +40,21 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "VALIDATION", "request body must be JSON");
     }
 
-    const parsed = parseServerPuzzleFixture(body);
+    const parsed = translateXwordInfo(body);
     if (!parsed.ok) {
-      return fail(c, "VALIDATION", parsed.message);
+      // One named rejection with a stable code; the message never echoes solution content.
+      return fail(c, parsed.code, parsed.message);
     }
 
-    // Store the ServerPuzzle (solutions included) server-side only.
+    // Store the internal ServerPuzzle (solutions included) plus its detected features,
+    // server-side only. The client view drops the solution by type (INV-6).
     const inserted = await deps.db
       .insert(schema.puzzles)
-      .values({ data: parsed.puzzle, source: { kind: "fixture" } })
+      .values({
+        data: parsed.puzzle,
+        features: parsed.features,
+        source: { kind: "upload" },
+      })
       .returning({ puzzleId: schema.puzzles.puzzleId });
 
     const view: PuzzleView = {

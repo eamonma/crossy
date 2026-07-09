@@ -29,24 +29,17 @@ const POSTGRES_IMAGE = "postgres:16-alpine";
 const BOOT_TIMEOUT_MS = 180_000;
 const SESSION_WS_BASE = "wss://session.crossy.test";
 
-// A minimal well-formed ServerPuzzle fixture: a 2x2 all-playable grid. Solutions are real
-// A-Z letters so the stored (server-side) model is valid; the client view must drop them.
+// A minimal well-formed XWord Info JSON fixture: a 2x2 all-playable grid. The grid holds the
+// real A-Z solutions, so the stored (server-side) model is valid; the client view must drop them.
+// Ingestion translates this into the internal ServerPuzzle (blocks, grid-derived clues with
+// cellIndices, solution ["H","I","O","N"]); the numbering comes from the grid, not the file.
 const FIXTURE = {
-  rows: 2,
-  cols: 2,
-  blocks: [] as number[],
-  circles: [] as number[],
+  size: { rows: 2, cols: 2 },
+  grid: ["H", "I", "O", "N"],
   clues: {
-    across: [
-      { number: 1, text: "friendly opener", cellIndices: [0, 1] },
-      { number: 3, text: "keyboard basics", cellIndices: [2, 3] },
-    ],
-    down: [
-      { number: 1, text: "up top", cellIndices: [0, 2] },
-      { number: 2, text: "and beside", cellIndices: [1, 3] },
-    ],
+    across: ["1. friendly opener", "3. keyboard basics"],
+    down: ["1. up top", "2. and beside"],
   },
-  solution: ["H", "I", "O", "N"],
 };
 
 let container: StartedPostgreSqlContainer;
@@ -92,6 +85,25 @@ async function get(path: string, token: string): Promise<Response> {
 /** Assert the JSON error body carries `code` (Fetch `Response.json()` is typed unknown). */
 async function expectError(res: Response, code: string): Promise<void> {
   expect(((await res.json()) as { error: string }).error).toBe(code);
+}
+
+/**
+ * Assert a rejection response carries `status` and `code` and never leaks solution content
+ * (INV-6): the body must have no `solution` key at any depth, and its raw text must not contain
+ * the fixture's planted solution `marker`. Reads the body once as text, then parses it.
+ */
+async function expectRejectionNoLeak(
+  res: Response,
+  status: number,
+  code: string,
+  marker?: string,
+): Promise<void> {
+  expect(res.status).toBe(status);
+  const text = await res.text();
+  const body = JSON.parse(text) as Record<string, unknown>;
+  expect(body["error"]).toBe(code);
+  expect(hasKeyDeep(body, "solution")).toBe(false);
+  if (marker !== undefined) expect(text).not.toContain(marker);
 }
 
 /** Read the `role` field from a JSON body. */
@@ -251,11 +263,141 @@ describe("POST /puzzles (PROTOCOL.md §12; INV-6)", () => {
     await expectError(res, "FULL_ACCOUNT_REQUIRED");
   });
 
-  it("rejects a malformed fixture as VALIDATION", async () => {
+  it("rejects a malformed body as VALIDATION (not a well-formed XWord Info document)", async () => {
     const token = await auth.mintUpgraded();
     const res = await postJson("/puzzles", token, { rows: 2, cols: 2 });
     expect(res.status).toBe(400);
     await expectError(res, "VALIDATION");
+  });
+});
+
+describe("POST /puzzles ingestion ACL (ROADMAP Phase 3 Track C, G1; SP5; INV-6)", () => {
+  // The named rejections run through the real endpoint as the crossy_api role, so the wiring
+  // from the ACL's stable code to its HTTP status is exercised, and every rejection path is
+  // checked to never echo solution content (INV-6). The planted marker `MARKERWORD` is a valid
+  // solution token; if any handler stringified the grid into the error it would surface here.
+  const MARKER = "MARKERWORD";
+
+  it("translates XWord Info with a block, a rebus, and circles, storing the server model and features", async () => {
+    const token = await auth.mintUpgraded();
+    const doc = {
+      size: { rows: 3, cols: 3 },
+      grid: ["STAR", "B", "C", "D", ".", "E", "F", "G", "H"],
+      circles: [1, 0, 0, 0, 0, 0, 0, 0, 1],
+      clues: {
+        across: ["1. top", "3. bottom"],
+        down: ["1. left", "2. right"],
+      },
+    };
+    const res = await postJson("/puzzles", token, doc);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      puzzleId: string;
+      puzzle: Record<string, unknown>;
+    };
+    // The client view is solution-stripped (INV-6) yet keeps geometry, circles, structured clues.
+    expect(hasKeyDeep(body.puzzle, "solution")).toBe(false);
+    expect(body.puzzle.blocks).toEqual([4]);
+    expect(body.puzzle.circles).toEqual([0, 8]);
+    expect(body.puzzle).toHaveProperty("clues");
+    // The stored server model carries the solution and the grid-derived clue cellIndices.
+    const { rows } = await adminPool.query(
+      "select data, features from puzzles where puzzle_id = $1",
+      [body.puzzleId],
+    );
+    expect(rows[0].data.solution).toEqual([
+      "STAR",
+      "B",
+      "C",
+      "D",
+      null,
+      "E",
+      "F",
+      "G",
+      "H",
+    ]);
+    expect(rows[0].data.clues.across).toEqual([
+      { number: 1, text: "top", cellIndices: [0, 1, 2] },
+      { number: 3, text: "bottom", cellIndices: [6, 7, 8] },
+    ]);
+    expect(rows[0].features).toEqual({
+      rebus: true,
+      circles: true,
+      shadedCircles: false,
+    });
+  });
+
+  it("rejects an oversize grid as OVERSIZE_GRID (SP5 25x25 cap; INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      size: { rows: 26, cols: 26 },
+      grid: [],
+      clues: { across: [], down: [] },
+    });
+    await expectRejectionNoLeak(res, 422, "OVERSIZE_GRID");
+  });
+
+  it("rejects a zero-playable grid as DEGENERATE_GRID (DESIGN §7; INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      size: { rows: 2, cols: 2 },
+      grid: [".", ".", ".", "."],
+      clues: { across: [], down: [] },
+    });
+    await expectRejectionNoLeak(res, 422, "DEGENERATE_GRID");
+  });
+
+  it("rejects an over-cap rebus as REBUS_TOO_LONG with no solution leak (SP5; INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      size: { rows: 2, cols: 2 },
+      grid: ["ABCDEFGHIJKLMNOP", MARKER, "O", "N"],
+      clues: {
+        across: ["1. friendly opener", "3. keyboard basics"],
+        down: ["1. up top", "2. and beside"],
+      },
+    });
+    await expectRejectionNoLeak(res, 422, "REBUS_TOO_LONG", MARKER);
+  });
+
+  it("rejects a whole-symbol cell as UNSOLVABLE_CELL with no solution leak (SP5; INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      size: { rows: 2, cols: 2 },
+      grid: [MARKER, "/", "O", "N"],
+      clues: {
+        across: ["1. friendly opener", "3. keyboard basics"],
+        down: ["1. up top", "2. and beside"],
+      },
+    });
+    await expectRejectionNoLeak(res, 422, "UNSOLVABLE_CELL", MARKER);
+  });
+
+  it("rejects two clues for one slot as AMBIGUOUS_SOLUTION with no leak (SP5; INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      size: { rows: 2, cols: 2 },
+      grid: [MARKER, "I", "O", "N"],
+      clues: {
+        across: ["1. clue a", "1. clue b"],
+        down: ["1. up top", "2. and beside"],
+      },
+    });
+    await expectRejectionNoLeak(res, 422, "AMBIGUOUS_SOLUTION", MARKER);
+  });
+
+  it("rejects a diagramless document as DIAGRAMLESS with no leak (D13; INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      size: { rows: 2, cols: 2 },
+      grid: [MARKER, "I", "O", "N"],
+      type: "diagramless",
+      clues: {
+        across: ["1. friendly opener", "3. keyboard basics"],
+        down: ["1. up top", "2. and beside"],
+      },
+    });
+    await expectRejectionNoLeak(res, 422, "DIAGRAMLESS", MARKER);
   });
 });
 
