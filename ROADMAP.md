@@ -689,6 +689,22 @@ until they land.
   `membership-changed` internal endpoint, abandon with hydrate-on-demand, host
   succession, tombstone deletion. **Exit: a guest joins from a fresh phone, upgrades,
   keeps history; a kicked account finds the link dead.**
+  Progress (2026-07-09): M3a, the server-side lifecycle, landed: host-only kick
+  (membership delete plus denylist write in one transaction, then a static-bearer
+  notify), the session's POST /internal/games/{id}/membership-changed (body is a hint;
+  the actor re-reads Postgres and disconnects the disallowed, INV-8; kick on a
+  passivated game never hydrates, abandon hydrates on demand and synchronously flushes
+  gameAbandoned, INV-4), idempotent spectator-to-solver upgrade, host succession
+  (earliest-joined solver, else auto-abandon), and DELETE /account tombstone deletion
+  behind an injected vendor port. The kicked-account exit line is proven across both
+  suites: join refused DENIED, live socket closed 1008 on notify, reconnect refused
+  DENIED not NOT_PARTICIPANT (the pinned denylist-first order). No migration needed;
+  existing grants cover it, and a new test proves crossy_session cannot write the
+  denylist (INV-7). Config: INTERNAL_BEARER_TOKEN (unset disables the endpoint with
+  503, fails closed) and SESSION_INTERNAL_BASE (unset makes the notifier a no-op for
+  local stacks). api 81 tests, session 39. Remaining in Track B: M3b at deploy time
+  (Apple, Discord, guest upgrade against the hosted project, the real Supabase admin
+  deleteUser adapter).
 - **Track C (background)**: Swift engine port toward green; full ingestion ACL (all
   named rejections, solvability check, 25×25 cap).
   Progress (2026-07-08): the Swift engine port is DONE ahead of schedule. All 78
