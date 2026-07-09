@@ -11,6 +11,10 @@ reports/
 # Installed agent skills: vendored third-party content, not ours to format.
 .agents/
 
+# Sub-agent worktrees: separate checkouts living under the repo root; each lints and
+# formats itself on its own branch.
+.claude/
+
 # Playwright run artifacts (e2e). Generated, not source.
 e2e/test-results/
 e2e/playwright-report/
