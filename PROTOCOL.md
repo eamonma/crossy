@@ -30,9 +30,11 @@ Key words MUST, SHOULD, MAY follow RFC 2119.
 }
 ```
 
-- `token`: the identity provider's access token. The server verifies it locally against the provider's published keys, resolves the user, and checks membership and the denylist for `gameId`.
+- `token`: the identity provider's access token. The server verifies it locally against the provider's published keys, resolves the user, and checks the denylist and membership for `gameId` (order pinned below).
 - `protocolVersion`: integer. The server supports the current version N and N-1. Anything else: `error PROTOCOL_VERSION_UNSUPPORTED` (fatal, message names the supported range), then close. At v1 the supported set is exactly `{1}`: N-1 is 0, which is not a real version, and frozen `vN-1` vectors exist only after the first bump (section 14). The range widens to `{N-1, N}` from v2 on.
 - `resumeFromSeq`: optional and informational; the server replies with a full snapshot regardless.
+
+**Handshake check order.** After the first-frame-is-`hello` gate above, the server runs the fatal checks in this fixed order and returns the first failure: protocol version (`PROTOCOL_VERSION_UNSUPPORTED`), token (`UNAUTHORIZED`), game exists (`GAME_NOT_FOUND`), denylist (`DENIED`), then membership (`NOT_PARTICIPANT`). The denylist is checked strictly before membership. A kick removes the membership row and writes the denylist (section 12), so a kicked user has no membership: if membership ran first the server would answer `NOT_PARTICIPANT` and `DENIED` would be unreachable for exactly the kicked users it exists for. Denylist-first surfaces the informative `DENIED` to a kicked user.
 
 `welcome` (server to client) on success:
 
@@ -103,6 +105,8 @@ Validation and error mapping (non-fatal unless stated):
 - over a rate limit: `RATE_LIMITED`
 - duplicate `commandId`: dropped silently; no error, no event (the state it produced, if any, arrives via events or sync)
 
+**Client send guidance (non-normative).** A client SHOULD suppress a clear that would be a no-op: pressing Space or Backspace on an already-empty cell sends nothing. The server accepts such a `clearCell` and still emits one `cellSet` for it (section 6), which consumes a `seq` for no state change, so not sending it is the client-side optimization. This is guidance, not a validation rule: a no-op clear that does arrive is accepted and echoed like any other.
+
 ## 6. Server to client messages
 
 **Sequenced events.** These carry `seq`, and they are exactly the messages that mutate durable state.
@@ -137,6 +141,8 @@ Validation and error mapping (non-fatal unless stated):
   }
 }
 ```
+
+`at` and `stats` are actor-supplied, not engine output. The reducer's completion result carries neither: `gameCompleted` at the next `seq` is all the engine emits (the completion vectors, section 13, pin no `stats`). The session adapter stamps `at` from the server clock and fills `stats` (`solveTimeSeconds` from the timestamps, `totalEvents` and `participantCount` as section 4 defines) before broadcast.
 
 `gameAbandoned`:
 
@@ -206,6 +212,8 @@ Validation and error mapping (non-fatal unless stated):
 
 Fatal errors are followed by close `1008`. Non-fatal errors include `commandId` when the offending command carried one; the client clears the matching overlay entry (section 8).
 
+**Malformed frames after a successful handshake.** A frame that is not valid JSON, or a JSON object whose `type` is missing or not a string, has no `type` to key on and no code in the table above. The v1 posture is drop-and-log: the session service discards the frame, logs it, and sends nothing. This is distinct from an object with a recognizable but unsupported command `type`, which is the `UNKNOWN_TYPE` case (section 5) and does reply. A dedicated malformed-frame wire error was considered and deliberately not added for v1: the client cannot act on it, since the frame that would carry a `commandId` is the one that failed to parse, and drop-and-log keeps a garbled or hostile peer from steering server replies. (During the handshake itself, a non-`hello` or unparseable first frame is the fatal `UNAUTHORIZED` in section 2, not a drop.)
+
 ## 12. REST companion
 
 The WebSocket carries gameplay only. Everything else is REST on the core API, bearer-authenticated with the same tokens. Listed here so this document reads standalone; the API's own contract lives with the API.
@@ -224,6 +232,29 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 Puzzle views are typed `ClientPuzzle` — a type with no solution field, including none embedded in clue structures — so stripping is structural, not runtime (DESIGN.md INV-6).
 
 Unlike every WebSocket message in this document, the puzzle payload carries no literal example here, by design: it is a REST payload owned by ingestion (DESIGN.md section 7), and its full schema (image clues, cross-references, per-cell numbering) is ingestion's to pin. A literal `ClientPuzzle`/`ServerPuzzle` example and its serialization golden land with the ingestion slice (DESIGN.md section 7), not in this document; the load-bearing fact here is only the solution split (INV-6).
+
+**REST error vocabulary.** These codes are the API's own contract (`apps/api/src/http/errors.ts`), listed here so this document reads standalone. Every REST failure returns a small JSON body `{ error, message }` plus the matching HTTP status, so a client keys on a stable string, never on prose. The surface reuses the section 11 names that carry the same meaning across the wire and adds the REST-only codes it needs:
+
+| code                    | HTTP | meaning                                                        |
+| ----------------------- | ---- | ------------------------------------------------------------- |
+| `UNAUTHORIZED`          | 401  | bad or missing bearer token                                   |
+| `FULL_ACCOUNT_REQUIRED` | 403  | a guest attempted a create action (DESIGN.md section 8)       |
+| `NOT_PARTICIPANT`       | 403  | authenticated, but not a member of this game                  |
+| `DENIED`                | 403  | on the game's denylist, or a wrong invite code                |
+| `GAME_NOT_FOUND`        | 404  | unknown `gameId`                                              |
+| `PUZZLE_NOT_FOUND`      | 404  | unknown `puzzleId`                                            |
+| `VALIDATION`            | 400  | malformed or missing request body                             |
+
+Puzzle ingestion (`POST /puzzles`) rejects an unacceptable puzzle with a named reason, so the user reads why (DESIGN.md section 7). The named ingestion rejections from the SP5 corpus study (`reports/spikes/sp5-puzzle-corpus.md`):
+
+| code                 | meaning                                                                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNSOLVABLE_CELL`    | a solution cell no legal input can satisfy: ASCII-uppercased it is non-empty, its first character is not in `A-Z0-9`, and the whole string fails `^[A-Z0-9]{1,10}$` (a whole-cell symbol such as `/` or `+`) |
+| `REBUS_TOO_LONG`     | a cell whose canonical solution exceeds 10 characters; a named rejection, never a silent truncation                                                             |
+| `OVERSIZE_GRID`      | a grid past the 25x25 cap, with both dimensions checked independently since real grids are non-square and may be even-dimensioned                               |
+| `AMBIGUOUS_SOLUTION` | a Schrodinger or multi-clue-per-slot puzzle the one-solution-per-cell model cannot represent                                                                    |
+
+Barred, diagramless, uniclue, and degenerate grids (section 12 table; DESIGN.md section 7) reject on the same reason-per-rejection contract; their exact code strings are the ingestion track's to fix. Asymmetric grids and unchecked cells are valid puzzles and are never rejected (SP5).
 
 ## 13. Conformance vectors
 
