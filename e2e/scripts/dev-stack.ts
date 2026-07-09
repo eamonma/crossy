@@ -15,11 +15,13 @@
 // to `solver` and sets display names with direct seed writes. No app code is changed.
 
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import type { Server } from "node:http";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { Client } from "pg";
@@ -27,6 +29,7 @@ import {
   apiEntry,
   jwksServer,
   killChild,
+  killGroup,
   makeAuth,
   repoRoot,
   runMigrations,
@@ -159,6 +162,165 @@ function checkPortFree(port: number, label: string): Promise<void> {
   return probe("127.0.0.1").then(() => probe("::1"));
 }
 
+// Orphan reaping. A dropped SSH session sends SIGHUP to the foreground job, which the
+// detached service groups never receive, and a SIGKILLed parent runs no handler at all, so
+// the services can survive holding their ports. Each run records its process groups in a
+// pidfile and reaps live leftovers before starting. The ownership check is load bearing:
+// after a reboot a recorded pid can belong to an unrelated process, so we never signal a pid
+// we cannot confirm is ours (the rule that spared Calibre on 8090).
+
+const PIDFILE = join(repoRoot, "e2e/.dev-stack.pid");
+const DRAIN_TIMEOUT_MS = 10_000;
+// All four stack ports, including jwks: jwks runs in the parent process, so an orphaned
+// parent that skipped its drain keeps holding it, and the sweep must be able to reach it.
+const STACK_PORTS: Array<[number, string]> = [
+  [API_PORT, "api"],
+  [SESSION_PORT, "session"],
+  [JWKS_PORT, "jwks"],
+  [WEB_PORT, "web"],
+];
+
+interface Pidfile {
+  startedAt: number;
+  parentPid: number;
+  groups: Record<string, number>;
+}
+
+/** True if the pid exists (EPERM counts: alive, just not ours to signal). */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * True only when `pid` is one of ours. Our group leaders are tsx or vite launched from this
+ * repo, so their /proc cmdline carries the repo path; a process that merely reused the pid
+ * will not. Falls back to `ps` off Linux, then to false, so an unconfirmable pid is never
+ * killed.
+ */
+function isOurs(pid: number): boolean {
+  try {
+    const cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(
+      /\0/g,
+      " ",
+    );
+    return cmdline.includes(repoRoot);
+  } catch {
+    try {
+      const out = execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+        encoding: "utf8",
+      });
+      return out.includes(repoRoot);
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** The process group id of `pid` from /proc/<pid>/stat (field 5), or null off Linux. */
+function groupOf(pid: number): number | null {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    // comm (field 2) can hold spaces and parens, so read fields after the final ')'.
+    const rest = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+    const pgrp = Number(rest[2]); // state(3) ppid(4) pgrp(5) => index 2 here
+    return Number.isInteger(pgrp) ? pgrp : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Pids listening on `port`, via ss. Empty if ss is unavailable or the port is free. */
+function portOwners(port: number): number[] {
+  try {
+    const out = execFileSync("ss", ["-ltnpH"], { encoding: "utf8" });
+    const pids = new Set<number>();
+    for (const raw of out.split("\n")) {
+      // State Recv-Q Send-Q Local:Port Peer:Port users:(...). The local address is col 3.
+      const local = raw.trim().split(/\s+/)[3];
+      if (local === undefined || !local.endsWith(`:${port}`)) continue;
+      for (const m of raw.matchAll(/pid=(\d+)/g)) pids.add(Number(m[1]));
+    }
+    return [...pids];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * SIGTERM a confirmed-ours process, wait, then SIGKILL if it lingers. killGroup targets the
+ * process group when `pid` leads one (a detached child, so its grandchildren go too) and the
+ * pid alone otherwise (a listener or the parent), so it never reaps the shared pnpm group.
+ * Ownership is checked on `pid` itself, never its group leader, since the leader is often the
+ * pnpm wrapper whose cmdline is not under the repo.
+ */
+async function reapProcess(pid: number, label: string): Promise<void> {
+  const ownGroup = groupOf(process.pid) ?? process.pid;
+  if (pid === process.pid || pid === ownGroup) return; // never reap ourselves
+  if (!alive(pid) || !isOurs(pid)) return;
+  console.log(
+    `reaping an orphaned ${label} (pid ${pid}) from a prior dev:stack...`,
+  );
+  killGroup(pid, "SIGTERM");
+  for (let i = 0; i < 20 && alive(pid); i++) await delay(100);
+  if (alive(pid)) killGroup(pid, "SIGKILL");
+}
+
+/** Reap the processes a previous run recorded, then drop the pidfile. */
+async function reapFromPidfile(): Promise<void> {
+  if (!existsSync(PIDFILE)) return;
+  let data: Pidfile;
+  try {
+    data = JSON.parse(readFileSync(PIDFILE, "utf8")) as Pidfile;
+  } catch {
+    rmSync(PIDFILE, { force: true });
+    return;
+  }
+  for (const [label, pid] of Object.entries(data.groups)) {
+    await reapProcess(pid, label);
+  }
+  // The parent holds the in-process jwks port, so an orphaned parent must go too.
+  await reapProcess(data.parentPid, "parent");
+  rmSync(PIDFILE, { force: true });
+}
+
+/** Reap whatever of ours holds a stack port, catching orphans with no pidfile entry. */
+async function reapFromPorts(): Promise<void> {
+  for (const [port, label] of STACK_PORTS) {
+    for (const pid of portOwners(port)) {
+      await reapProcess(pid, `${label} :${port}`);
+    }
+  }
+}
+
+/** Reject if any stack port is taken (both loopback families). */
+function preflight(): Promise<void> {
+  return Promise.all([
+    checkPortFree(API_PORT, "api"),
+    checkPortFree(SESSION_PORT, "session"),
+    checkPortFree(JWKS_PORT, "jwks"),
+    checkPortFree(WEB_PORT, "web"),
+  ]).then(() => undefined);
+}
+
+/** Preflight; if a port is busy, sweep it for our own leftovers and retry once. */
+async function ensurePortsFree(): Promise<void> {
+  try {
+    await preflight();
+  } catch (first) {
+    await reapFromPorts();
+    try {
+      await preflight();
+    } catch {
+      throw first; // still held: a process we cannot claim owns it. Surface the message.
+    }
+  }
+}
+
 /** POST JSON to the api with a bearer token, throwing on a non-2xx (same shape as the harness). */
 async function postJson(
   path: string,
@@ -188,6 +350,8 @@ function spawnVite(): ChildProcess {
       cwd: webAppDir,
       env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
+      // Own group so killChild reaps vite and its esbuild workers together.
+      detached: true,
     },
   );
   child.stdout?.on("data", (d: Buffer) => process.stdout.write(`[web] ${d}`));
@@ -257,27 +421,66 @@ let session: ChildProcess | null = null;
 let web: ChildProcess | null = null;
 let shuttingDown = false;
 
+function forceKillAll(): void {
+  for (const child of [session, api, web]) {
+    if (child?.pid !== undefined) killGroup(child.pid, "SIGKILL");
+  }
+}
+
+/** Record the child process groups so a next run can reap them if a disconnect skips drain. */
+function writePidfile(): void {
+  const groups: Record<string, number> = {};
+  if (session?.pid !== undefined) groups["session"] = session.pid;
+  if (api?.pid !== undefined) groups["api"] = api.pid;
+  if (web?.pid !== undefined) groups["web"] = web.pid;
+  const data: Pidfile = {
+    startedAt: Date.now(),
+    parentPid: process.pid,
+    groups,
+  };
+  writeFileSync(PIDFILE, JSON.stringify(data));
+}
+
 async function shutdown(signal: string, code = 0): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`\n${signal} received, draining the stack...`);
   // SIGTERM the session first so its drain flushes the accepted tail to Postgres (INV-5).
-  await killChild(session, "SIGTERM");
-  await killChild(web, "SIGTERM");
-  await killChild(api, "SIGKILL");
-  await new Promise<void>((r) => (jwks ? jwks.close(() => r()) : r()));
-  await container?.stop();
+  // Bound the drain: over a dead terminal (a dropped SSH session) it must not hang holding
+  // ports, so a timeout escalates to a group SIGKILL of anything still up.
+  const drain = (async () => {
+    await killChild(session, "SIGTERM");
+    await killChild(web, "SIGTERM");
+    await killChild(api, "SIGKILL");
+    await new Promise<void>((r) => (jwks ? jwks.close(() => r()) : r()));
+    await container?.stop();
+  })();
+  await Promise.race([drain, delay(DRAIN_TIMEOUT_MS)]);
+  forceKillAll();
+  rmSync(PIDFILE, { force: true });
   console.log("stack stopped.");
   process.exit(code);
 }
 
 async function main(): Promise<void> {
-  await Promise.all([
-    checkPortFree(API_PORT, "api"),
-    checkPortFree(SESSION_PORT, "session"),
-    checkPortFree(JWKS_PORT, "jwks"),
-    checkPortFree(WEB_PORT, "web"),
-  ]);
+  // Survive a dead controlling terminal: a write to a closed pipe must not crash the drain.
+  process.stdout.on("error", () => undefined);
+  process.stderr.on("error", () => undefined);
+  // Register early so a disconnect during startup still drains. SIGHUP is the SSH-drop case.
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGHUP", () => void shutdown("SIGHUP"));
+
+  if (process.argv.includes("--reap")) {
+    await reapFromPidfile();
+    await reapFromPorts();
+    console.log("reaped any orphaned dev:stack processes.");
+    return;
+  }
+
+  // Clear leftovers a prior disconnect or crash left holding the ports, then confirm free.
+  await reapFromPidfile();
+  await ensurePortsFree();
 
   console.log("starting Postgres (Testcontainers) and applying migrations...");
   container = await new PostgreSqlContainer("postgres:16-alpine").start();
@@ -343,6 +546,9 @@ async function main(): Promise<void> {
   web = spawnVite();
   await waitForHttp(WEB_ORIGIN, 60_000);
 
+  // Record the process groups so the next run can reap these if a disconnect skips shutdown.
+  writePidfile();
+
   printInstructions({
     gameId: game.gameId,
     inviteCode: game.inviteCode,
@@ -350,9 +556,8 @@ async function main(): Promise<void> {
     urlB: gameUrl(game.gameId, tokenB),
   });
 
-  process.on("SIGINT", () => void shutdown("SIGINT"));
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  // The jwks server, child processes, and container keep the event loop alive until Ctrl+C.
+  // Signal handlers were registered at the top of main. The jwks server, child processes,
+  // and container keep the event loop alive until one fires.
 }
 
 main().catch((err: unknown) => {

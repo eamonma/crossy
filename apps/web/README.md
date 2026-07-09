@@ -51,6 +51,12 @@ then stops the containers. Tokens in the printed urls last one hour, so re-run f
 fresh ones. Live teammate cursors are not broadcast in this wave, so a teammate shows
 up through their landed letters and the conflict-flash color, not a moving cursor.
 
+If a run is killed without draining (a dropped SSH session, a `kill -9`), its services
+can survive holding the ports. The next `pnpm dev:stack` reaps its own leftovers on
+startup before checking ports, so you rarely notice. To clean up without starting a
+stack, run `pnpm dev:stack:reap`. Reaping only ever kills processes it confirms are this
+repo's, never anything else on those ports.
+
 ## Layout
 
 - `src/store/` - `GameStore`: sequenced cells, the INV-10 overlay, the three

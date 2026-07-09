@@ -2,3 +2,6 @@
 test-results/
 playwright-report/
 .last-run.json
+
+# dev:stack process-group pidfile (written at startup, removed on drain)
+.dev-stack.pid

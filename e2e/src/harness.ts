@@ -157,6 +157,9 @@ export function spawnService(
     cwd: repoRoot,
     env: { ...process.env, ...env },
     stdio: ["ignore", "pipe", "pipe"],
+    // Own process group (pgid === child.pid). tsx spawns a node grandchild that actually
+    // holds the port, so a plain child.kill would orphan it; killChild signals the group.
+    detached: true,
   });
   child.stdout?.on("data", (d: Buffer) =>
     process.stdout.write(`[${name}] ${d}`),
@@ -191,6 +194,23 @@ export function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+/**
+ * Signal a whole process group. `pid` is the group leader's pid (children spawned detached
+ * lead their own group), so this reaps the grandchildren tsx and vite fork. Falls back to
+ * signaling just the pid, and swallows ESRCH so a dead target is a no-op.
+ */
+export function killGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Already gone.
+    }
+  }
+}
+
 export function killChild(
   child: ChildProcess | null,
   signal: NodeJS.Signals,
@@ -205,7 +225,7 @@ export function killChild(
       return;
     }
     child.once("exit", () => resolveDone());
-    child.kill(signal);
+    if (child.pid !== undefined) killGroup(child.pid, signal);
   });
 }
 
