@@ -77,6 +77,12 @@ export interface CellSetMessage {
   /** Echoes the originating command so the writer can clear its overlay (§6, §8). */
   readonly commandId: string;
   readonly at: string;
+  /**
+   * Present only on the single cellSet that establishes the first fill (§6), carrying the
+   * timer origin so an already-connected client starts the shared timer on the delta rather
+   * than waiting for a snapshot. Additive and optional (§14): an older client ignores it.
+   */
+  readonly firstFillAt?: string;
 }
 
 /** Exactly one per game on a full-and-correct board (PROTOCOL.md §6; INV-3). */

@@ -135,6 +135,15 @@ function shapeProblems(c: JsonObject): string[] {
     ) {
       problems.push("then.send: array of frames, each with a string type");
     }
+    // then.firstFillAt is the store's derived timer origin (PROTOCOL.md §6), asserted
+    // only where a case lists it; string or null when present.
+    if (
+      t.firstFillAt !== undefined &&
+      t.firstFillAt !== null &&
+      !isString(t.firstFillAt)
+    ) {
+      problems.push("then.firstFillAt: string or null when present");
+    }
   }
   return problems;
 }
@@ -223,7 +232,8 @@ function expandBoard(
   return {
     seq: board.seq,
     status: board.status,
-    firstFillAt: null,
+    // A snapshot may pin firstFillAt (PROTOCOL.md §4); absent means null, the pre-first-fill state.
+    firstFillAt: board.firstFillAt ?? null,
     completedAt: null,
     abandonedAt: null,
     cells,
@@ -251,6 +261,10 @@ function expandServerFrame(
         commandId: step.commandId,
         // The vector encoding omits `at` (unasserted); the wire requires it.
         at: "2026-07-07T00:00:00Z",
+        // firstFillAt rides only the first fill (PROTOCOL.md §6); pass it through when present.
+        ...(step.firstFillAt !== undefined
+          ? { firstFillAt: step.firstFillAt }
+          : {}),
       };
     case "error":
       return {
@@ -354,14 +368,18 @@ function runCase(c: JsonObject): void {
     expect(store.renderValue(Number(key)), `then.render.${key}`).toBe(value);
   }
   expectMatch(sent, then.send, "then.send");
+  // The store's derived timer origin, asserted only where a case pins it (PROTOCOL.md §6).
+  if ("firstFillAt" in then) {
+    expect(store.firstFillAt, "then.firstFillAt").toBe(then.firstFillAt);
+  }
 }
 
 const files = discover();
 
 describe("client-store vectors execute against the real store (INV-10; sync states live/resyncing/reconnecting)", () => {
-  it("discovers all 14 Wave 1.1e cases; a vector addition updates this count deliberately", () => {
+  it("discovers all 20 cases (14 Wave 1.1e + 6 first-fill-at); a vector addition updates this count deliberately", () => {
     const total = files.reduce((n, f) => n + f.cases.length, 0);
-    expect(total).toBe(14);
+    expect(total).toBe(20);
   });
 
   for (const file of files) {

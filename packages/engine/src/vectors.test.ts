@@ -412,6 +412,14 @@ function clientStoreShapeProblems(c: JsonObject): string[] {
       problems.push(
         "then.send: array of outbound frames, each with a string type",
       );
+    // then.firstFillAt is the store's derived timer origin, asserted only where a case
+    // lists it (PROTOCOL.md §6, vectors/README.md); string or null when present.
+    if (
+      t.firstFillAt !== undefined &&
+      t.firstFillAt !== null &&
+      !isString(t.firstFillAt)
+    )
+      problems.push("then.firstFillAt: string or null when present");
   }
   return problems;
 }
