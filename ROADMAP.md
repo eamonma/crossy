@@ -674,6 +674,21 @@ until they land.
   Turkish pins pass; equivalence arguments per divergence-prone construct are in the
   merge. The runner guards were repointed the same way the TS runner's were at 2.1a.
   Remaining in Track C: the ingestion ACL.
+  G1 ingestion ACL landed (2026-07-08), completing Track C. POST /puzzles now ingests
+  real XWord Info JSON through a pure anti-corruption layer
+  (apps/api/src/puzzles/ingest.ts) with a fixed, tested check order and exactly one
+  named rejection per bad puzzle at HTTP 422: UNSOLVABLE_CELL, REBUS_TOO_LONG,
+  OVERSIZE_GRID, AMBIGUOUS_SOLUTION, plus DEGENERATE_GRID and DIAGRAMLESS per DESIGN
+  section 7. Numbering and word runs derive from grid geometry, never the file's
+  numbers (SP5); asymmetric grids and unchecked cells are accepted by explicit test;
+  every rejection path is covered by the INV-6 deep-scan, so no response carries
+  solution content. apps/api is at 64 tests. Ledger candidates for the next amendment
+  pass: the 400 vs 422 status split (proposed in errors.ts), the AMBIGUOUS_SOLUTION
+  trigger and the DIAGRAMLESS field name both unverified against live files, and
+  barred/uniclue rejections deliberately unimplemented since SP5 records no XWord
+  Info trigger for them. URL ingest stays out on purpose: its request contract is
+  unspecified anywhere; when specified it lands behind an injected fetcher so tests
+  stay network-free.
 
 The one shared seam is the session service's connect-time membership check — a
 published contract (DESIGN.md §9), not a free-edit surface.
