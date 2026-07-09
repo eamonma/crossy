@@ -671,6 +671,20 @@ until they land.
   measurement. **Exit: a full solve celebrates once, and only once, on both clients;
   harness failures reproduce from a seed number; owner sign-off on the completion
   moment (timer freeze and celebration feel).**
+  Progress (2026-07-08): the simulation harness landed with its first green run, in a
+  new top-level `sim/` workspace (`@crossy/sim`, placement rationale in sim/README.md):
+  fast-check properties drive the real GameActor and the real web GameStore through
+  generated multi-client sessions with injected delay, frame loss, disconnect, and
+  reconnect. Properties pin INV-2 total order, INV-10 convergence, command idempotency,
+  INV-3 exactly-one-completion (including in-place correction races), INV-4 terminal
+  freeze, and INV-5 crash-rehydrate consistency (the one Testcontainers-backed
+  property, run as crossy_session). Failures print a seed and shrink; SIM_RUNS and
+  SIM_SEED deepen or pin runs. No behavior code changed; both divergences found were
+  harness-model gaps, minimized from seeds and fixed in the harness. Flush measurement
+  under sustained typing and slow trickle recorded in the merge; defaults stay
+  25 events / 5 s. Remaining in Track A: the client completion moment (derived timer,
+  confetti; waits on the owner's M1 taste notes), threshold tuning with real data, and
+  the owner sign-off exit item.
 - **Track B (M3)**: Apple + Discord + guest auth, role upgrade, kick with denylist +
   `membership-changed` internal endpoint, abandon with hydrate-on-demand, host
   succession, tombstone deletion. **Exit: a guest joins from a fresh phone, upgrades,
