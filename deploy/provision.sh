@@ -71,7 +71,7 @@ if [[ $DRY_RUN -eq 0 ]]; then
   }
 fi
 
-# Strong random shared internal bearer (DESIGN.md §6). Generated once, set on api+session.
+# Strong random shared internal bearer (DESIGN.md section 6). Generated once, set on api+session.
 INTERNAL_BEARER_TOKEN="$(openssl rand -hex 32)"
 
 note "Crossy provisioning plan ($([[ $DRY_RUN -eq 1 ]] && echo DRY RUN || echo LIVE))"

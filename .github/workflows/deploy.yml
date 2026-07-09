@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     # Never auto-migrates on a push to main: cross-service schema changes are expand/contract
-    # and must be applied deliberately (DESIGN.md §9). Runs only when the owner dispatches this
+    # and must be applied deliberately (DESIGN.md section 9). Runs only when the owner dispatches this
     # workflow with run_migrations=true and MIGRATION_DATABASE_URL (the DIRECT, privileged DSN)
     # is configured as a secret.
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations }}
