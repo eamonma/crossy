@@ -103,6 +103,34 @@ body {
   font-size: 13px;
 }
 
+/* Minimal auth affordance (Track A). A later UI track owns the real styling. */
+.authbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.authbar__btn {
+  font: inherit;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.authbar__who {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.authbar__notice {
+  font-size: 12px;
+  color: var(--accent);
+}
+
 .settings {
   display: flex;
   flex-wrap: wrap;

@@ -1,9 +1,12 @@
 // Live mode: the real GameStore driven by a real WebSocket to the session service, over
 // the same store, grid, and engine navigation the demo uses. This is the path the M1
-// Playwright smoke drives (two browsers on one game). It is gated on URL params so the
-// default demo boards are untouched: `?api=<base>&game=<id>&token=<jwt>` (optional `ws=`
-// overrides the game view's session endpoint). The store logic (src/store) is not touched;
-// this is view and net wiring only.
+// Playwright smoke drives (two browsers on one game). It is gated on `?game=<id>`.
+//
+// Token and api sourcing (Track A). The api base defaults to config.apiBase and the access
+// token to the Identity port; both keep an explicit URL override so existing links keep
+// working. `?api=<base>` overrides the configured api base and `?token=<jwt>` overrides the
+// identity token, which is exactly what the M1 smoke and dogfood links pass. `?ws=` still
+// overrides the game view's session endpoint. The store logic (src/store) is not touched.
 import {
   useCallback,
   useEffect,
@@ -26,6 +29,9 @@ import {
 import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
+import { AuthBar } from "./ui/AuthBar";
+import type { AppConfig } from "./config/config";
+import type { Identity } from "./identity";
 
 /** The solution-stripped puzzle facts the game view carries (ClientPuzzle, PROTOCOL.md §12). */
 interface ClientPuzzleView {
@@ -62,24 +68,52 @@ function toPuzzle(cp: ClientPuzzleView): Puzzle {
 
 type LoadState =
   | { phase: "loading" }
+  | { phase: "needs-auth"; message: string }
   | { phase: "error"; message: string }
   | { phase: "ready"; connection: GameConnection; puzzle: Puzzle };
 
-export function LiveApp({ params }: { params: URLSearchParams }) {
+export function LiveApp({
+  params,
+  config,
+  identity,
+}: {
+  params: URLSearchParams;
+  config: AppConfig;
+  identity: Identity;
+}) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
+  // Re-run the loader when the session changes, so signing in from the needs-auth screen
+  // retries with a fresh token without a page reload.
+  const [authTick, setAuthTick] = useState(0);
+  useEffect(
+    () => identity.onChange(() => setAuthTick((t) => t + 1)),
+    [identity],
+  );
 
   useEffect(() => {
     let cancelled = false;
     let connection: GameConnection | null = null;
 
     void (async () => {
-      const api = params.get("api");
       const game = params.get("game");
-      const token = params.get("token");
-      if (api === null || game === null || token === null) {
+      // ?api= and ?token= are explicit overrides; otherwise config and the identity port win.
+      const api = params.get("api") ?? config.apiBase;
+      const token = params.get("token") ?? (await identity.getAccessToken());
+      if (game === null) {
+        setState({ phase: "error", message: "live mode needs a game id" });
+        return;
+      }
+      if (api === "") {
         setState({
           phase: "error",
-          message: "live mode needs api, game, and token params",
+          message: "no api base configured (set API_BASE or pass ?api=)",
+        });
+        return;
+      }
+      if (token === null) {
+        setState({
+          phase: "needs-auth",
+          message: "Sign in to join this game.",
         });
         return;
       }
@@ -112,23 +146,45 @@ export function LiveApp({ params }: { params: URLSearchParams }) {
       cancelled = true;
       connection?.close();
     };
-  }, [params]);
+  }, [params, config, identity, authTick]);
 
   if (state.phase === "loading") {
     return <p className="app__subtitle">Connecting to the game...</p>;
   }
+  if (state.phase === "needs-auth") {
+    return (
+      <div className="app">
+        <header className="app__header">
+          <h1 className="app__title">Crossy</h1>
+          <AuthBar identity={identity} config={config} />
+        </header>
+        <p className="app__subtitle">{state.message}</p>
+      </div>
+    );
+  }
   if (state.phase === "error") {
     return <p className="app__subtitle">Live mode error: {state.message}</p>;
   }
-  return <LiveGame connection={state.connection} puzzle={state.puzzle} />;
+  return (
+    <LiveGame
+      connection={state.connection}
+      puzzle={state.puzzle}
+      config={config}
+      identity={identity}
+    />
+  );
 }
 
 function LiveGame({
   connection,
   puzzle,
+  config,
+  identity,
 }: {
   connection: GameConnection;
   puzzle: Puzzle;
+  config: AppConfig;
+  identity: Identity;
 }) {
   const store = connection.store;
   const grid: Grid = useMemo(
@@ -241,6 +297,7 @@ function LiveGame({
     <div className="app">
       <header className="app__header">
         <h1 className="app__title">Crossy</h1>
+        <AuthBar identity={identity} config={config} />
       </header>
 
       <div className="pill-row" aria-live="polite">

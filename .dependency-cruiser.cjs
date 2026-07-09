@@ -39,6 +39,16 @@ module.exports = {
       to: { path: "^apps/", pathNot: "^apps/$1/" },
     },
     {
+      name: "supabase-js-only-in-identity-adapter",
+      comment:
+        "Only the web identity adapter (apps/web/src/identity) may import supabase-js; the " +
+        "rest of the app consumes the Identity port, so the vendor stays swappable " +
+        "(DESIGN.md §8).",
+      severity: "error",
+      from: { path: "^apps/web/src", pathNot: "^apps/web/src/identity/" },
+      to: { path: "node_modules/@supabase/supabase-js" },
+    },
+    {
       name: "no-circular",
       severity: "error",
       from: {},

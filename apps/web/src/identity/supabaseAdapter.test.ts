@@ -1,0 +1,261 @@
+// The Supabase adapter suite. supabase-js is never constructed for real and the network is
+// never touched: a fake client is injected through createClientFn, so these tests pin the
+// adapter's contract (publishable key as the key param, guest gating, captcha threading, token
+// freshness, OAuth redirect) without a vendor or a socket.
+import { describe, expect, it, vi } from "vitest";
+import { createSupabaseIdentity } from "./supabaseAdapter";
+import type { SupabaseIdentityDeps } from "./supabaseAdapter";
+
+type AuthChangeCb = (event: string, session: unknown) => void;
+
+interface FakeAuthBehavior {
+  getSession?: () => Promise<{ data: { session: unknown } }>;
+  refreshSession?: () => Promise<{
+    data: { session: unknown };
+    error: unknown;
+  }>;
+  signInAnonymously?: (arg: unknown) => Promise<{
+    data: { session: unknown };
+    error: unknown;
+  }>;
+  signInWithOAuth?: (arg: unknown) => Promise<{ error: unknown }>;
+  signOut?: () => Promise<{ error: unknown }>;
+}
+
+function fakeUser(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "user-1",
+    is_anonymous: false,
+    user_metadata: { full_name: "Ada Lovelace" },
+    email: "ada@example.com",
+    ...over,
+  };
+}
+
+function makeDeps(
+  behavior: FakeAuthBehavior,
+  extra: Partial<SupabaseIdentityDeps> = {},
+): {
+  deps: SupabaseIdentityDeps;
+  calls: {
+    createClient: ReturnType<typeof vi.fn>;
+    signInAnonymously: ReturnType<typeof vi.fn>;
+    signInWithOAuth: ReturnType<typeof vi.fn>;
+    refreshSession: ReturnType<typeof vi.fn>;
+  };
+  fireAuthChange: (session: unknown) => void;
+} {
+  let authCb: AuthChangeCb = () => undefined;
+
+  const signInAnonymously = vi.fn(
+    behavior.signInAnonymously ??
+      (() => Promise.resolve({ data: { session: null }, error: null })),
+  );
+  const signInWithOAuth = vi.fn(
+    behavior.signInWithOAuth ?? (() => Promise.resolve({ error: null })),
+  );
+  const refreshSession = vi.fn(
+    behavior.refreshSession ??
+      (() => Promise.resolve({ data: { session: null }, error: null })),
+  );
+  const auth = {
+    getSession:
+      behavior.getSession ??
+      (() => Promise.resolve({ data: { session: null } })),
+    refreshSession,
+    signInAnonymously,
+    signInWithOAuth,
+    signOut: behavior.signOut ?? (() => Promise.resolve({ error: null })),
+    onAuthStateChange: (cb: AuthChangeCb) => {
+      authCb = cb;
+      return { data: { subscription: { unsubscribe: () => undefined } } };
+    },
+  };
+  const createClient = vi.fn(() => ({ auth }));
+
+  const deps: SupabaseIdentityDeps = {
+    supabaseUrl: "https://api.crossy.me",
+    publishableKey: "sb_publishable_test",
+    guestsEnabled: true,
+    createClientFn: createClient as unknown as NonNullable<
+      SupabaseIdentityDeps["createClientFn"]
+    >,
+    currentUrl: () => ({
+      origin: "https://app.test",
+      pathAndQuery: "/?game=g1",
+    }),
+    ...extra,
+  };
+
+  return {
+    deps,
+    calls: { createClient, signInAnonymously, signInWithOAuth, refreshSession },
+    fireAuthChange: (session: unknown) => authCb("SIGNED_IN", session),
+  };
+}
+
+describe("supabase identity adapter", () => {
+  it("passes the publishable key as the key param to createClient", () => {
+    const { deps, calls } = makeDeps({});
+    createSupabaseIdentity(deps);
+    expect(calls.createClient).toHaveBeenCalledTimes(1);
+    const args = calls.createClient.mock.calls[0]!;
+    expect(args[0]).toBe("https://api.crossy.me");
+    expect(args[1]).toBe("sb_publishable_test");
+  });
+
+  it("signInGuest refuses locally when guests are disabled, without calling the provider", async () => {
+    const { deps, calls } = makeDeps({}, { guestsEnabled: false });
+    const identity = createSupabaseIdentity(deps);
+    const result = await identity.signInGuest({ captchaToken: "tok" });
+    expect(result).toEqual({
+      ok: false,
+      reason: "guests_disabled",
+      message: expect.any(String),
+    });
+    expect(calls.signInAnonymously).not.toHaveBeenCalled();
+  });
+
+  it("signInGuest threads the captcha token through to signInAnonymously", async () => {
+    const { deps, calls } = makeDeps({
+      signInAnonymously: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "a",
+              user: fakeUser({ is_anonymous: true }),
+            },
+          },
+          error: null,
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    const result = await identity.signInGuest({ captchaToken: "cap-123" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.session.isAnonymous).toBe(true);
+    expect(calls.signInAnonymously).toHaveBeenCalledWith({
+      options: { captchaToken: "cap-123" },
+    });
+  });
+
+  it("signInGuest returns 'provider_rejected' when the provider errors (guests disabled server-side)", async () => {
+    const { deps } = makeDeps({
+      signInAnonymously: () =>
+        Promise.resolve({
+          data: { session: null },
+          error: { message: "anonymous sign-ins are disabled" },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    const result = await identity.signInGuest();
+    expect(result).toEqual({
+      ok: false,
+      reason: "provider_rejected",
+      message: "anonymous sign-ins are disabled",
+    });
+  });
+
+  it("getAccessToken returns the current token when it is not near expiry", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { deps, calls } = makeDeps({
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "current",
+              expires_at: nowSec + 3600,
+              user: fakeUser(),
+            },
+          },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBe("current");
+    expect(calls.refreshSession).not.toHaveBeenCalled();
+  });
+
+  it("getAccessToken refreshes a token that is near expiry (always-fresh for REST and the WS hello)", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { deps, calls } = makeDeps({
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "stale",
+              expires_at: nowSec + 5,
+              user: fakeUser(),
+            },
+          },
+        }),
+      refreshSession: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "fresh",
+              expires_at: nowSec + 3600,
+              user: fakeUser(),
+            },
+          },
+          error: null,
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBe("fresh");
+    expect(calls.refreshSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("getAccessToken is null when signed out", async () => {
+    const { deps } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBeNull();
+  });
+
+  it("signInWithDiscord starts OAuth with a redirectTo built from the current location", async () => {
+    const { deps, calls } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    await identity.signInWithDiscord();
+    expect(calls.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "discord",
+      options: { redirectTo: "https://app.test/?game=g1" },
+    });
+  });
+
+  it("signInWithDiscord honors an explicit redirect path", async () => {
+    const { deps, calls } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    await identity.signInWithDiscord("/lobby");
+    expect(calls.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "discord",
+      options: { redirectTo: "https://app.test/lobby" },
+    });
+  });
+
+  it("load maps the persisted session and onChange relays auth-state updates", async () => {
+    const { deps, fireAuthChange } = makeDeps({
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: { access_token: "a", user: fakeUser({ id: "u9" }) },
+          },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    const loaded = await identity.load();
+    expect(loaded).toEqual({
+      userId: "u9",
+      displayName: "Ada Lovelace",
+      isAnonymous: false,
+    });
+    const seen = vi.fn();
+    identity.onChange(seen);
+    fireAuthChange({
+      access_token: "b",
+      user: fakeUser({ id: "u9", is_anonymous: true }),
+    });
+    expect(seen).toHaveBeenCalledWith({
+      userId: "u9",
+      displayName: "Guest",
+      isAnonymous: true,
+    });
+  });
+});

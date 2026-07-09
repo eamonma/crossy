@@ -64,14 +64,28 @@ Supabase project exists (a placeholder is written until then).
 
 ### web
 
-| Variable | Secret | Supabase-gated | Value / meaning                                       |
-| -------- | ------ | -------------- | ----------------------------------------------------- |
-| `PORT`   | no     | no             | `8080`. nginx listen port; the web domain targets it. |
+| Variable                   | Secret | Supabase-gated | Value / meaning                                                                                     |
+| -------------------------- | ------ | -------------- | --------------------------------------------------------------------------------------------------- |
+| `PORT`                     | no     | no             | `8080`. nginx listen port; the web domain targets it.                                               |
+| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.me` (the Supabase custom domain). Empty selects the mock identity adapter.      |
+| `SUPABASE_PUBLISHABLE_KEY` | no     | yes            | `sb_publishable_...`. Public by design (INV-6). Empty selects the mock identity adapter.            |
+| `API_BASE`                 | no     | no             | `https://<api public domain>`. The default REST base; `?api=` still overrides it per link.          |
+| `GUESTS_ENABLED`           | no     | no             | `true` or `false` (emitted unquoted into config.json). Ships `false` until anonymous+captcha is on. |
+| `TURNSTILE_SITE_KEY`       | no     | no             | Cloudflare Turnstile site key for guest captcha, or empty. Public; wired dark until guests land.    |
 
-The web client takes NO build-time configuration. It reads `api`, `game`, and `token` from
-the URL query string at runtime and the session WS URL from the api game-view response, so
-one image serves any environment. For dogfooding, share a link of the form
-`https://<web domain>/?api=https://<api domain>&game=<id>&token=<jwt>`.
+The web client takes NO build-time configuration: one immutable image serves every
+environment. Runtime config arrives at container start as `/config.json`, emitted from the
+env vars above by the nginx envsubst entrypoint (the same mechanism that fills `${PORT}`;
+see `apps/web/nginx/default.conf.template`). Its shape is
+`{ supabaseUrl, supabasePublishableKey, apiBase, guestsEnabled, turnstileSiteKey? }`. The
+client resolves auth through the Identity port built from that config (Supabase Discord OAuth,
+plus anonymous guests behind `GUESTS_ENABLED`); the api base defaults to `API_BASE`.
+
+`?api=` and `?token=` remain explicit URL overrides so the e2e smoke and dogfood links keep
+working without any account. For dogfooding, share a link of the form
+`https://<web domain>/?api=https://<api domain>&game=<id>&token=<jwt>`; without the overrides
+a visitor to `https://<web domain>/?game=<id>` signs in with Discord and plays with their own
+token.
 
 ### CI / GitHub (not Railway service variables)
 
