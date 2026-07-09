@@ -1,0 +1,28 @@
+# Served by nginxinc/nginx-unprivileged. ${PORT} is filled by the image's envsubst
+# entrypoint at container start; $uri and friends are nginx runtime variables and are
+# left untouched (envsubst only substitutes names present in the environment).
+server {
+    listen       ${PORT};
+    listen       [::]:${PORT};
+    server_name  _;
+
+    root   /usr/share/nginx/html;
+    index  index.html;
+
+    # gzip is cheap insurance; Railway's edge also compresses. The bundle is already small.
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Fingerprinted Vite assets are immutable: cache them hard, 404 if truly missing.
+    location /assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # SPA shell. The live game is entered as /?api=...&game=...&token=..., and there is no
+    # server-side routing, so any unmatched path falls back to the single index.html.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

@@ -1,0 +1,34 @@
+# Docker build context is the repo root (the Dockerfiles need the workspace manifests
+# and the lockfile to resolve deps). Keep the context small and deterministic: never ship
+# a host node_modules or a stale build into the image, and never leak local env files.
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+
+# git and CI metadata
+.git
+.github
+
+# Swift / Xcode (apps/ios is not part of any server image)
+apps/ios
+**/.build
+**/DerivedData
+
+# tests, fixtures, and dev-only trees that no runtime image needs
+e2e
+sim
+vectors
+reports
+**/*.test.ts
+
+# local env and editor state
+.env
+.env.*
+!.env.example
+.claude
+.agents
+**/.DS_Store
+
+# the deploy tooling itself is not copied into any image
+deploy

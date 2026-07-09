@@ -1,0 +1,109 @@
+name: Deploy
+
+# Production deploys happen ONLY here, off main, never from a laptop. main is golden: a
+# ruleset requires a PR plus the two green checks ("lint + typecheck + unit" and "M1
+# Playwright smoke"), so anything on main already passed CI. This workflow therefore does
+# NOT re-run lint / typecheck / test / smoke: re-running them would be pure latency with no
+# added safety. It builds the three images, pushes them to GHCR, and rolls each Railway
+# service onto the new image.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: "Apply packages/db migrations to hosted Postgres before rolling services"
+        type: boolean
+        default: false
+
+concurrency:
+  # One rollout at a time; never cancel a half-finished one (a cancelled roll can leave
+  # services on mixed images).
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write # push images to ghcr.io/eamonma/*
+
+jobs:
+  build-and-push:
+    name: Build and push images (GHCR)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api, session, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # GITHUB_TOKEN has packages:write, so no PAT is minted here. The repo is private, so the
+      # pushed packages default to PRIVATE. That is deliberate; Railway pulls them with a
+      # registry credential the OWNER configures per service in the dashboard (the CLI cannot
+      # set it). See deploy/README.md "GHCR private pull". Do not make the packages public
+      # without recording that as a decision.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: . # build context is the repo root (workspace-aware Dockerfiles)
+          file: apps/${{ matrix.service }}/Dockerfile
+          push: true
+          # :latest is what the Railway services track; the immutable :<sha> tag is for
+          # provenance and rollback (connect a service to :<sha> to pin an old build).
+          tags: |
+            ghcr.io/eamonma/crossy-${{ matrix.service }}:latest
+            ghcr.io/eamonma/crossy-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  migrate:
+    name: Apply migrations (manual, gated)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    # Never auto-migrates on a push to main: cross-service schema changes are expand/contract
+    # and must be applied deliberately (DESIGN.md section 9). Runs only when the owner dispatches this
+    # workflow with run_migrations=true and MIGRATION_DATABASE_URL (the DIRECT, privileged DSN)
+    # is configured as a secret.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec tsx deploy/migrate.ts
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+
+  roll:
+    name: Roll Railway services
+    runs-on: ubuntu-latest
+    needs: [build-and-push, migrate]
+    # Run after the build always, and after migrate whether it ran or was skipped (a skipped
+    # gated job must not block the normal push-to-main rollout).
+    if: ${{ always() && needs.build-and-push.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
+    steps:
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@4
+      # RAILWAY_TOKEN is a Railway PROJECT token scoped to crossy/production. The owner mints
+      # it and stores it as a GitHub Actions secret (referenced, never created here). It scopes
+      # every command below to that project + environment, so no `railway link` is needed.
+      - name: Roll each service onto the new image
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          for svc in api session web; do
+            echo "redeploying $svc..."
+            # redeploy re-pulls the :latest tag the service is connected to. For a digest-pinned
+            # roll, swap this for:
+            #   railway service source connect --image ghcr.io/eamonma/crossy-$svc:${{ github.sha }} -s $svc
+            railway redeploy --service "$svc" --yes
+          done

@@ -662,6 +662,22 @@ until they land.
   section 12 and packages/auth. Still explicitly open: welcome version echo, the age-out
   measure (seq-delta proposal, close by M2), comparator acceptance of unenterable full
   strings.
+- Deploy pipeline landed (2026-07-09) as reviewable repo code, resolving SP3's owner
+  action the CI-built-images way (owner upgraded to Railway Pro the same day):
+  workspace-aware Dockerfiles for api, session, and a static web service (all three
+  built and booted locally against real migrations, JWKS auth, and role-bound Postgres),
+  a Deploy workflow that pushes GHCR images on every merge to main and rolls Railway
+  (main is golden now: a repo ruleset requires a PR with both CI jobs green, so deploys
+  never re-run tests and never happen from a local machine), a create-only provisioning
+  script on SP3's validated CLI pattern, hosted-migration and role-binding scripts
+  (privilege surface stays in the committed migration; LOGIN binds out of band), a
+  post-deploy verify script, and deploy/README.md with the env matrix and owner
+  checklist. One session change: /internal moves to an opt-in INTERNAL_PORT second
+  listener so the public WS domain 404s it and only the private network answers; unset
+  locally, so dev-stack, tests, and the smoke are byte-identical. Remaining to close
+  M1's deploy half: owner creates the Supabase project (us-east-1), runs provisioning,
+  adds GHCR pull credentials and the RAILWAY_TOKEN secret, first roll, then
+  deploy/verify.mjs plus the in-Railway /internal probe.
 
 ## Phase 3 — Correctness core ∥ Identity (= M2 ∥ M3)
 

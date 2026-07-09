@@ -83,6 +83,14 @@ export interface SessionServerConfig {
    * endpoint unauthenticated. Injected from config (INTERNAL_BEARER_TOKEN), never hardcoded.
    */
   readonly internalBearer?: string;
+  /**
+   * When set, `/internal` is served ONLY on this second port and the public `port` returns
+   * 404 for it. On Railway only `port` gets a public domain, so this keeps the internal
+   * endpoint reachable over the private network (`session.railway.internal:<internalPort>`)
+   * yet unreachable from the edge (DESIGN.md §6, §15). Injected from config (INTERNAL_PORT).
+   * When omitted (local, dev-stack, tests), `/internal` is served on `port` as before.
+   */
+  readonly internalPort?: number;
 }
 
 export interface SessionServer {
@@ -107,22 +115,42 @@ export function createSessionServer(
   const registry = new ActorRegistry(config.pool, now, config.actorOptions);
   let draining = false;
 
-  const httpServer = createServer((req, res) => {
-    const path = (req.url ?? "").split("?")[0] ?? "";
-    const internalMatch =
-      req.method === "POST" ? INTERNAL_PATH.exec(path) : null;
-    if (internalMatch !== null) {
-      void handleInternalRequest(req, res, internalMatch[1]!, {
-        registry,
-        pool: config.pool,
-        internalBearer: config.internalBearer,
-      }).catch(() => sendJson(res, 500, { error: "INTERNAL" }));
-      return;
-    }
-    // Everything else is the health probe (DESIGN.md §6; dev-stack waits on `/`).
-    res.writeHead(200, { "content-type": "text/plain" });
-    res.end("ok");
-  });
+  // The internal endpoint is served on the public `port` only when no separate
+  // `internalPort` is configured. In a Railway deploy `internalPort` is set, so the public
+  // WS domain returns 404 for `/internal` and only the private port answers it.
+  const publicServesInternal = config.internalPort === undefined;
+
+  const makeHttpHandler =
+    (serveInternal: boolean) =>
+    (req: IncomingMessage, res: ServerResponse): void => {
+      const path = (req.url ?? "").split("?")[0] ?? "";
+      const internalMatch =
+        req.method === "POST" ? INTERNAL_PATH.exec(path) : null;
+      if (internalMatch !== null) {
+        if (!serveInternal) {
+          // /internal lives on the private INTERNAL_PORT listener, not this public one.
+          sendJson(res, 404, { error: "NOT_FOUND" });
+          return;
+        }
+        void handleInternalRequest(req, res, internalMatch[1]!, {
+          registry,
+          pool: config.pool,
+          internalBearer: config.internalBearer,
+        }).catch(() => sendJson(res, 500, { error: "INTERNAL" }));
+        return;
+      }
+      // Everything else is the health probe (DESIGN.md §6; dev-stack waits on `/`).
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+    };
+
+  const httpServer = createServer(makeHttpHandler(publicServesInternal));
+  // A second listener for /internal, private-network only (no WS upgrade). Null unless
+  // INTERNAL_PORT is set, so the local/test single-port shape is untouched.
+  const internalHttpServer =
+    config.internalPort !== undefined
+      ? createServer(makeHttpHandler(true))
+      : null;
 
   // permessage-deflate negotiated, but only snapshot frames pass `compress: true`
   // (see `send` below). No standing per-connection zlib context (SP4).
@@ -162,8 +190,9 @@ export function createSessionServer(
 
   async function drain(): Promise<void> {
     draining = true;
-    // Stop the listener from accepting new sockets; existing ones stay up for the flush.
+    // Stop the listeners from accepting new sockets; existing ones stay up for the flush.
     httpServer.close();
+    internalHttpServer?.close();
     const actors = await registry.liveActors();
     for (const actor of actors) {
       try {
@@ -176,14 +205,27 @@ export function createSessionServer(
     await new Promise<void>((resolve) => wss.close(() => resolve()));
   }
 
+  // Bind the private internal listener (if any) before resolving, so a caller that reads
+  // back the server can immediately reach both ports.
+  const listenInternal = (): Promise<void> =>
+    new Promise<void>((resolve) => {
+      if (internalHttpServer === null) {
+        resolve();
+        return;
+      }
+      internalHttpServer.listen(config.internalPort!, host, () => resolve());
+    });
+
   return new Promise<SessionServer>((resolve) => {
     httpServer.listen(config.port ?? 0, host, () => {
       const port = (httpServer.address() as AddressInfo).port;
-      resolve({
-        port,
-        url: `ws://${host}:${port}`,
-        drain,
-        close: () => closeServer(httpServer, wss),
+      void listenInternal().then(() => {
+        resolve({
+          port,
+          url: `ws://${host}:${port}`,
+          drain,
+          close: () => closeServer(httpServer, wss, internalHttpServer),
+        });
       });
     });
   });
@@ -442,9 +484,14 @@ async function handleInternalRequest(
   sendJson(res, 200, { ok: true });
 }
 
-function closeServer(server: Server, wss: WebSocketServer): Promise<void> {
+function closeServer(
+  server: Server,
+  wss: WebSocketServer,
+  internalServer: Server | null,
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     for (const client of wss.clients) client.terminate();
+    internalServer?.close();
     wss.close(() => {
       server.close((err) => (err ? reject(err) : resolve()));
     });

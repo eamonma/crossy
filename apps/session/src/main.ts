@@ -52,6 +52,15 @@ async function main(): Promise<void> {
     );
   }
 
+  // When set (Railway deploy), /internal binds this separate, domain-less port so it is
+  // reachable only over the private network and never from the public WS domain (DESIGN.md
+  // §6). Unset locally, where /internal shares the public port as before.
+  const internalPortRaw = process.env["INTERNAL_PORT"];
+  const internalPort =
+    internalPortRaw !== undefined && internalPortRaw !== ""
+      ? Number(internalPortRaw)
+      : undefined;
+
   const server = await createSessionServer({
     authPort,
     pool,
@@ -60,6 +69,7 @@ async function main(): Promise<void> {
     ...(internalBearer !== undefined && internalBearer !== ""
       ? { internalBearer }
       : {}),
+    ...(internalPort !== undefined ? { internalPort } : {}),
   });
   console.log(`session service listening on ${server.url}`);
 
