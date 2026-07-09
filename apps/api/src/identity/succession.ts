@@ -8,9 +8,17 @@ import type { DbTx } from "../db/client";
 
 /**
  * Promote the earliest-joined remaining solver of `gameId` to host, excluding the departing
- * user. Returns the new host's userId, or `null` when no solver remains (the caller then
- * auto-abandons the game). `games.created_by` is deliberately not updated: it is the
+ * user. Returns the new host's userId, or `null` when no eligible solver remains (the caller
+ * then auto-abandons the game). `games.created_by` is deliberately not updated: it is the
  * historical creator, while the authoritative host is the membership role.
+ *
+ * Guests never inherit the host role (owner decision 2026-07-09, DESIGN.md §8). The candidate
+ * join to `users` filtering `is_anonymous = false` is defense in depth: no anonymous user can
+ * be a solver in the first place, since the sole solver upgrade (POST /games/{id}/role) is
+ * full-account gated and join only ever seats a spectator, so this filter changes nothing for
+ * valid data. It encodes the "no guest host" rule structurally at the promotion site rather
+ * than resting on that upstream invariant, and it fails safe: a game whose only remaining
+ * solver were somehow a guest is auto-abandoned, never handed to the guest.
  */
 export async function succeedHost(
   tx: DbTx,
@@ -20,11 +28,13 @@ export async function succeedHost(
   const candidate = await tx
     .select({ userId: schema.memberships.userId })
     .from(schema.memberships)
+    .innerJoin(schema.users, eq(schema.users.userId, schema.memberships.userId))
     .where(
       and(
         eq(schema.memberships.gameId, gameId),
         eq(schema.memberships.role, "solver"),
         ne(schema.memberships.userId, departingUserId),
+        eq(schema.users.isAnonymous, false),
       ),
     )
     .orderBy(asc(schema.memberships.joinedAt))

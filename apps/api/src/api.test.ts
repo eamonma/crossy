@@ -971,6 +971,33 @@ describe("role upgrade (POST /games/{id}/role) (PROTOCOL.md §12; DESIGN.md §8)
     expect(res.status).toBe(400);
     await expectError(res, "VALIDATION");
   });
+
+  it("rejects a guest's upgrade to solver with FULL_ACCOUNT_REQUIRED, leaving the spectator row unwritten (owner decision 2026-07-09; DESIGN.md §8)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    // A guest may join and spectate exactly as today (200).
+    const guestSub = randomUUID();
+    const guest = await auth.mintAnonymous({ sub: guestSub });
+    const joined = await join(gameId, guest, inviteCode);
+    expect(joined.status).toBe(200);
+    expect(await roleOf(joined)).toBe("spectator");
+
+    // But the solver upgrade is refused with the create gate's exact code and status (403).
+    // The gate runs before any write, so the row stays spectator and the session is not notified.
+    const res = await postJson(`/games/${gameId}/role`, guest, {
+      role: "solver",
+    });
+    expect(res.status).toBe(403);
+    await expectError(res, "FULL_ACCOUNT_REQUIRED");
+    const m = await adminPool.query(
+      "select role from memberships where game_id=$1 and user_id=$2",
+      [gameId, guestSub],
+    );
+    expect(m.rows[0].role).toBe("spectator");
+    expect(notifyCalls.some((n) => n.change.change === "role")).toBe(false);
+  });
 });
 
 describe("abandon (POST /games/{id}/abandon) (PROTOCOL.md §12; DESIGN.md §6, §7)", () => {
@@ -1109,6 +1136,44 @@ describe("account deletion + host succession (DELETE /account) (DESIGN.md §7, �
       gameId,
       change: { change: "abandon", by: hostSub },
     });
+  });
+
+  it("skips an anonymous solver in succession, never minting a guest host (owner decision 2026-07-09; DESIGN.md §7, §8)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    // The earliest-joined remaining solver is a guest; a later solver is a full account. Absent
+    // the guest gate, "earliest solver wins" would hand the host role to the guest.
+    const guestSub = randomUUID();
+    const fullSub = randomUUID();
+    for (const [sub, anon, joinedAt] of [
+      [guestSub, true, "2026-01-01T00:00:00Z"],
+      [fullSub, false, "2026-01-02T00:00:00Z"],
+    ] as const) {
+      await adminPool.query(
+        "insert into users (user_id, is_anonymous) values ($1, $2)",
+        [sub, anon],
+      );
+      await adminPool.query(
+        "insert into memberships (game_id, user_id, role, joined_at) values ($1,$2,'solver',$3)",
+        [gameId, sub, joinedAt],
+      );
+    }
+
+    const res = await del("/account", host);
+    expect(res.status).toBe(200);
+
+    const roles = await adminPool.query<{ user_id: string; role: string }>(
+      "select user_id, role from memberships where game_id=$1",
+      [gameId],
+    );
+    const byUser = new Map(roles.rows.map((r) => [r.user_id, r.role]));
+    // The guest is skipped despite joining first; the full account inherits the host role.
+    expect(byUser.get(fullSub)).toBe("host");
+    expect(byUser.get(guestSub)).toBe("solver");
+    expect(notifyCalls.some((n) => n.change.change === "abandon")).toBe(false);
   });
 });
 
