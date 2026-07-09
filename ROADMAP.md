@@ -739,6 +739,18 @@ until they land.
   local stacks). api 81 tests, session 39. Remaining in Track B: M3b at deploy time
   (Apple, Discord, guest upgrade against the hosted project, the real Supabase admin
   deleteUser adapter).
+  Client-side identity landed overnight (2026-07-09): the web app boots a runtime
+  config (/config.json emitted from env by nginx, so one immutable image serves any
+  environment) and an Identity port whose Supabase adapter is the only module allowed
+  to import supabase-js (dependency-cruiser enforced). Discord OAuth is wired end to
+  end against the hosted project through the api.crossy.me custom auth domain with
+  the new-format publishable key; anonymous guests are fully built and ship dark
+  behind GUESTS_ENABLED with captchaToken already threaded, because Supabase requires
+  a captcha setup for anonymous sign-ins and the owner deferred it. Email has no
+  surface by owner decision (no email signups, ever). M3b remainder: light up guests
+  (owner Turnstile setup, then a flag flip, no rebuild), Apple, the real Supabase
+  admin deleteUser adapter, and the first human Discord click-through, which also
+  confirms the custom-domain JWT issuer the services now expect.
 - **Track C (background)**: Swift engine port toward green; full ingestion ACL (all
   named rejections, solvability check, 25×25 cap).
   Progress (2026-07-08): the Swift engine port is DONE ahead of schedule. All 78
@@ -782,6 +794,38 @@ thin.** UX flesh-out gate at entry for both tracks: expand each into a full inte
 spec (see the UX track) before building. Budget for iteration here; the milestones
 before this one exist so this phase can afford it. An owner smoke test precedes each
 track's dogfood exit: friends confirm, they do not discover.
+
+Progress (2026-07-09, overnight push, owner-directed): the web product surfaces were
+built ahead of the M4 flesh-out gate by explicit owner call (build end to end
+overnight, review in the morning, then tweak or overhaul), so the M4 flesh-out becomes
+a reconciliation of the shipped product against the owner's morning taste pass rather
+than a blank-page spec. M4's dogfood exit stands unchanged. Landed and deployed:
+
+- A Tailwind v4 design system on the v2-derived token set. A design audit of the v2
+  reference export extracted the palette (warm Sand neutral, single Gold accent,
+  dashed-rule structure, one elevation recipe, rationed motion), corrected the grid
+  renderer's neutral-gray drift back to the warm values, and made the dark-mode board
+  pairings a deliberate decision instead of a leftover guess. Fonts self-hosted, no
+  CDN anywhere.
+- Screens: landing (serif lockup, one gold CTA), create (XWord Info JSON upload with
+  every ingestion rejection code surfaced as a plain sentence, INV-6 respected: the
+  upload never renders locally), invite links (?game and ?code) with an auth gate for
+  the logged-out, spectator auto-join with a one-tap solver upgrade and a single
+  dashed watching banner, the mobile-first three-region solve screen (active-clue bar
+  with a bottom-sheet clue browser, 30px cell floor, on-screen keyboard sharing the
+  hardware keyEffect path), and the completion moment (frozen derived timer,
+  reduced-motion-aware gold-and-sand confetti, serif summary).
+- This merge was the first content-bearing roll through the pipeline, closing the
+  Wave 2.2 honest remainder: railway redeploy provably picks up a new :latest, and
+  deploy/verify.mjs passes every public check against the rolled services.
+- Follow-ups filed from the build, none blocking: the REST surface has no game name
+  field and GET /games/{id} omits the invite code (the client carries two URL-param
+  stopgaps until an api PR adds them), firstFillAt arrives only in snapshots so the
+  first typist's own timer starts at the next resync (a protocol-owned fix), and
+  touch swipes, host roster controls, and rebus stay with their owning milestones.
+- The M1 smoke passed unchanged against the rebuilt client (its two hooks, the grid
+  testid and the window store handle, were preserved on purpose), so the required
+  checks stayed honest through the restyle.
 
 - **Track A (M4)**: mobile web — clue bar, bottom-sheet browser, on-screen keyboard,
   swipes. Flesh-out covers at minimum: touch targets and thumb reach, keyboard layout
