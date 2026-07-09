@@ -10,6 +10,14 @@
 // the shared `asciiUppercase` so ingestion and the reducer fold identically (INV-1); a
 // locale-aware upcase is forbidden because the ports would diverge (Turkish `i`).
 //
+// The real XWord Info / NYT export carries many optional fields present-but-`null` rather than
+// absent (`circles`, `shadecircles`, `type`, `bbars`, `rbars`, and the metadata keys). The rule
+// at this boundary is uniform: for every OPTIONAL field, `null` reads exactly like absent. Barred
+// grids (`bbars` / `rbars`) are a known-incompatible flag and reject, because edge bars move word
+// boundaries and would silently misplace clue cells (DESIGN.md section 7, PROTOCOL.md section 12).
+// Clue text is decoded from the standard HTML entities so it renders as plain text downstream,
+// this being the one place the external format is ever translated (DESIGN.md section 7, D13).
+//
 // Check order is fixed and documented on `translateXwordInfo` so the same bad puzzle always
 // yields the same code (deterministic, total).
 import { asciiUppercase } from "@crossy/protocol";
@@ -25,6 +33,22 @@ const BLOCK_TOKEN = ".";
 const ENTERABLE_FIRST_CHAR = /[A-Z0-9]/;
 /** A clue is `"<number>. <text>"`; the number is derived from the grid, not trusted (SP5). */
 const CLUE_PREFIX = /^\s*(\d+)[.:]?\s*/;
+
+/**
+ * The named HTML entities ingestion decodes in clue text. NYT-via-XWord-Info clue strings
+ * routinely carry these; the client renders clue text as plain text (DESIGN.md section 10), so an
+ * undecoded entity would display literally. Apostrophes usually arrive as the numeric `&#39;`,
+ * handled by the numeric branch below; `apos` covers the named spelling for the same character.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+/** One entity token: a decimal `&#NN;`, a hex `&#xNN;`, or a named run like `&amp;`. */
+const ENTITY = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /**
  * The stable machine-readable rejection codes ingestion can emit. Every member is also an
@@ -141,13 +165,39 @@ function deriveWordRuns(
   return { across, down };
 }
 
+/**
+ * Decode the standard HTML entities in one left-to-right pass, so `&amp;lt;` decodes to the
+ * literal `&lt;` and never doubly to `<`. Unknown named entities and out-of-range or surrogate
+ * numeric references are left verbatim; only a recognized entity is rewritten, and tags such as
+ * `<i>` are untouched (DESIGN.md section 7 accepts HTML clue text).
+ */
+function decodeEntities(text: string): string {
+  if (!text.includes("&")) return text;
+  return text.replace(ENTITY, (match, token: string) => {
+    if (token.charAt(0) === "#") {
+      const isHex = token.charAt(1) === "x" || token.charAt(1) === "X";
+      const code = isHex
+        ? Number.parseInt(token.slice(2), 16)
+        : Number.parseInt(token.slice(1), 10);
+      if (!Number.isInteger(code) || code < 1 || code > 0x10ffff) return match;
+      if (code >= 0xd800 && code <= 0xdfff) return match; // lone surrogate
+      return String.fromCodePoint(code);
+    }
+    const named = NAMED_ENTITIES[token];
+    return named === undefined ? match : named;
+  });
+}
+
 /** Split `"17. Some clue"` into its number (for ambiguity detection) and its display text. */
 function parseClue(raw: string): { number: number | null; text: string } {
   const m = CLUE_PREFIX.exec(raw);
   if (m && m[1] !== undefined) {
-    return { number: Number(m[1]), text: raw.slice(m[0].length).trim() };
+    return {
+      number: Number(m[1]),
+      text: decodeEntities(raw.slice(m[0].length).trim()),
+    };
   }
-  return { number: null, text: raw.trim() };
+  return { number: null, text: decodeEntities(raw.trim()) };
 }
 
 /** True if any number appears more than once (the Schroedinger / one-slot-two-clues signal). */
@@ -166,20 +216,44 @@ function hasDuplicateNumber(
 /** True when the document declares a diagramless puzzle, which v4 does not support (D13). */
 function isDiagramless(body: Record<string, unknown>): boolean {
   const t = body["type"];
+  // `type` is optional: `null`, `""`, or any non-`DIAGRAMLESS` string is not diagramless. Only a
+  // real string that ASCII-uppercases to `DIAGRAMLESS`, or the boolean flag, triggers (INV-1).
   if (typeof t === "string" && asciiUppercase(t) === "DIAGRAMLESS") return true;
   return body["diagramless"] === true;
 }
 
 /**
+ * True if a bars array carries at least one bar. XWord Info encodes bars as a `0/1` (or boolean)
+ * array parallel to the grid. Following the optional-field rule, `null`, absent, an empty array,
+ * or an all-zero array all mean "no bars"; any `1`/`true` element is a real bar. A non-array
+ * value is not XWord Info's bar encoding, so it is read as "no bars" rather than a false positive.
+ */
+function hasBars(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (!Array.isArray(value)) return false;
+  return value.some((v) => v === 1 || v === true);
+}
+
+/**
+ * True when the document carries edge bars (`bbars` below a cell, `rbars` to its right). Bars move
+ * word boundaries, so the grid-derived word runs would be wrong; v4 does not model barred grids
+ * (DESIGN.md section 7, PROTOCOL.md section 12). A known-incompatible flag, like diagramless.
+ */
+function isBarred(body: Record<string, unknown>): boolean {
+  return hasBars(body["bbars"]) || hasBars(body["rbars"]);
+}
+
+/**
  * Read an optional parallel `circles` array (XWord Info encodes circles as a `0/1` array the
  * length of the grid, SP5): the circled cell indices, `null` when absent, or the sentinel
- * `"malformed"` on a shape error.
+ * `"malformed"` on a shape error. Following the optional-field rule, a present-but-`null` value
+ * reads exactly like absent (the real NYT export ships `circles: null` for uncircled puzzles).
  */
 function readCircleIndices(
   value: unknown,
   cellCount: number,
 ): number[] | "malformed" | null {
-  if (value === undefined) return null;
+  if (value === undefined || value === null) return null;
   if (
     !Array.isArray(value) ||
     value.length !== cellCount ||
@@ -200,21 +274,24 @@ function readCircleIndices(
  *
  *  1. VALIDATION          body is a JSON object
  *  2. DIAGRAMLESS         the document declares a diagramless puzzle (known-incompatible flag)
- *  3. VALIDATION          `size` is an object with positive-integer `rows` and `cols`
- *  4. OVERSIZE_GRID       `rows` or `cols` exceeds 25 (bounds all later per-cell work)
- *  5. VALIDATION          `grid` is an array of exactly `rows*cols` strings
- *  6. VALIDATION          `clues.across` and `clues.down` are arrays of strings
- *  7. VALIDATION          `circles` has the right shape when present
- *  8. DEGENERATE_GRID     the grid has zero playable cells (completion would be vacuous, 7)
- *  9. REBUS_TOO_LONG      some playable cell's normalized solution exceeds 10 characters
- * 10. UNSOLVABLE_CELL     some playable cell's normalized solution has no A-Z0-9 first character
- * 11. AMBIGUOUS_SOLUTION  a direction lists two clues for one slot (duplicate clue number)
- * 12. VALIDATION          the clue count does not match the grid's word runs; else ACCEPT
+ *  3. VALIDATION          the document declares edge bars (barred grid, known-incompatible flag)
+ *  4. VALIDATION          `size` is an object with positive-integer `rows` and `cols`
+ *  5. OVERSIZE_GRID       `rows` or `cols` exceeds 25 (bounds all later per-cell work)
+ *  6. VALIDATION          `grid` is an array of exactly `rows*cols` strings
+ *  7. VALIDATION          `clues.across` and `clues.down` are arrays of strings
+ *  8. VALIDATION          `circles` has the right shape when present
+ *  9. DEGENERATE_GRID     the grid has zero playable cells (completion would be vacuous, 7)
+ * 10. REBUS_TOO_LONG      some playable cell's normalized solution exceeds 10 characters
+ * 11. UNSOLVABLE_CELL     some playable cell's normalized solution has no A-Z0-9 first character
+ * 12. AMBIGUOUS_SOLUTION  a direction lists two clues for one slot (duplicate clue number)
+ * 13. VALIDATION          the clue count does not match the grid's word runs; else ACCEPT
  *
  * Structure is checked before semantics; `size` and oversize come first because they are the
- * cheapest global bound and cap the per-cell scans. Within the per-cell rules the length cap is
- * scanned before enterability, and both are scanned over the whole grid before the next code, so
- * the code chosen never depends on where in the grid the offending cell sits.
+ * cheapest global bound and cap the per-cell scans. The two known-incompatible flags, diagramless
+ * and barred, come first of all, before structural validation, because they reject a whole class
+ * of puzzle regardless of its geometry. Within the per-cell rules the length cap is scanned before
+ * enterability, and both are scanned over the whole grid before the next code, so the code chosen
+ * never depends on where in the grid the offending cell sits.
  */
 export function translateXwordInfo(body: unknown): IngestResult {
   // 1.
@@ -227,7 +304,15 @@ export function translateXwordInfo(body: unknown): IngestResult {
     return reject("DIAGRAMLESS", "diagramless puzzles are not supported");
   }
 
-  // 3.
+  // 3. Barred grids reject before any geometry work: edge bars move word boundaries, so a barred
+  //    puzzle that happened to match our clue count would land silently wrong cells (step 13 is not
+  //    a reliable backstop for it). PROTOCOL.md section 12 sanctions no code for barred, so this is
+  //    VALIDATION with a clear message rather than a new wire code (see the proposed follow-up).
+  if (isBarred(body)) {
+    return reject("VALIDATION", "barred puzzles are not supported");
+  }
+
+  // 4.
   const size = body["size"];
   if (
     !isObject(size) ||
@@ -242,7 +327,7 @@ export function translateXwordInfo(body: unknown): IngestResult {
   const rows = size["rows"];
   const cols = size["cols"];
 
-  // 4.
+  // 5.
   if (rows > MAX_DIMENSION || cols > MAX_DIMENSION) {
     return reject(
       "OVERSIZE_GRID",
@@ -250,7 +335,7 @@ export function translateXwordInfo(body: unknown): IngestResult {
     );
   }
 
-  // 5.
+  // 6.
   const cellCount = rows * cols;
   const grid = body["grid"];
   if (!isStringArray(grid) || grid.length !== cellCount) {
@@ -260,7 +345,7 @@ export function translateXwordInfo(body: unknown): IngestResult {
     );
   }
 
-  // 6.
+  // 7.
   const clues = body["clues"];
   if (
     !isObject(clues) ||
@@ -275,7 +360,7 @@ export function translateXwordInfo(body: unknown): IngestResult {
   const acrossClues = clues["across"];
   const downClues = clues["down"];
 
-  // 7.
+  // 8.
   const circleRead = readCircleIndices(body["circles"], cellCount);
   if (circleRead === "malformed") {
     return reject(
@@ -297,13 +382,13 @@ export function translateXwordInfo(body: unknown): IngestResult {
     }
   }
 
-  // 8.
+  // 9.
   if (blocks.length === cellCount) {
     return reject("DEGENERATE_GRID", "grid has no playable cells");
   }
 
-  // 9. Length cap, scanned over the whole grid before enterability so a too-long cell anywhere
-  //    wins over an unsolvable cell anywhere.
+  // 10. Length cap, scanned over the whole grid before enterability so a too-long cell anywhere
+  //     wins over an unsolvable cell anywhere.
   for (const [, s] of solution.entries()) {
     if (s !== null && s.length > MAX_REBUS_LENGTH) {
       return reject(
@@ -313,7 +398,7 @@ export function translateXwordInfo(body: unknown): IngestResult {
     }
   }
 
-  // 10. Enterability: first-char acceptance (D12). A whole-symbol cell like `/` has no legal
+  // 11. Enterability: first-char acceptance (D12). A whole-symbol cell like `/` has no legal
   //     input; `A/B` is fine because typing `A` completes it (SP5).
   for (const [, s] of solution.entries()) {
     if (
@@ -327,7 +412,7 @@ export function translateXwordInfo(body: unknown): IngestResult {
     }
   }
 
-  // 11 & 12. Structure the clues against grid-derived word runs.
+  // 12 & 13. Structure the clues against grid-derived word runs.
   const runs = deriveWordRuns(rows, cols, (i) => solution[i] === null);
   const acrossParsed = acrossClues.map(parseClue);
   const downParsed = downClues.map(parseClue);
