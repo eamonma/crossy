@@ -216,8 +216,8 @@ try {
 
 note(
   "private-path check (api -> session.railway.internal:<INTERNAL_PORT>/internal) can only " +
-    "run inside Railway: confirm a live kick/abandon reaches the session (logs), or curl the " +
-    "private hostname from `railway run` in the api service.",
+    "run inside Railway: open a shell in the api service (`railway ssh -s api`) and POST to " +
+    "the private hostname with node fetch; expect 401 (served, bearer required).",
 );
 
 console.log(

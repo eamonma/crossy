@@ -28,7 +28,9 @@ PROJECT_NAME="crossy"
 REGISTRY="ghcr.io/eamonma"          # GHCR owner; images are crossy-{api,session,web}
 IMAGE_TAG="${IMAGE_TAG:-latest}"    # provisioning pins :latest; CI redeploys roll it
 REGION="us-east"                    # Railway region alias (SP3); co-located with Supabase
-DEFAULT_REGION_TO_ZERO="sfo"        # `railway scale` is ADDITIVE (SP3): zero the default
+DEFAULT_REGION_TO_ZERO="us-west"    # `railway scale` is ADDITIVE (SP3): zero the default.
+                                    # CLI v5 region names: us-east, us-west, eu-west,
+                                    # southeast-asia (v4 called the default sfo).
 
 # Ports. The public domain of each service targets its PORT. The session ALSO listens on
 # INTERNAL_PORT for /internal, which gets NO domain, so it is private-network only.
@@ -50,7 +52,10 @@ DRY_RUN=0
 
 run() {
   if [[ $DRY_RUN -eq 1 ]]; then
-    printf '  + %s\n' "$*"
+    # Redact secret values in the printed plan: DATABASE_URL carries a password and the
+    # bearer is a shared secret. The live path executes the real values untouched.
+    printf '  + %s\n' "$*" |
+      sed -E 's/(DATABASE_URL=|INTERNAL_BEARER_TOKEN=)[^[:space:]]+/\1<redacted>/g'
   else
     "$@"
   fi
@@ -103,6 +108,9 @@ WORKSPACE_ARG=()
 run railway init --name "$PROJECT_NAME" "${WORKSPACE_ARG[@]}"
 run railway link -p "$PROJECT_NAME" -e production
 
+# CLI v5 prompts interactively for optional extras here (service type, an "Enter a
+# variable" prompt); pick Empty Service and Esc past the variables. The script sets
+# every variable itself below.
 note "Add the three services"
 run railway add --service api
 run railway add --service session
@@ -191,6 +199,7 @@ Next, in order (see deploy/README.md for exact locations):
   5. Trigger the deploy workflow (or push to main) to roll the images.
   6. Run deploy/verify.mjs against the three public hostnames above.
 
-The generated INTERNAL_BEARER_TOKEN is now stored on api and session in Railway. It was
-printed here only truncated; it lives in Railway variables, not in this repo.
+The generated INTERNAL_BEARER_TOKEN is now stored on api and session in Railway. It is
+never printed in full (the dry-run plan redacts secret values); it lives in Railway
+variables, not in this repo.
 EOF
