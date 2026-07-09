@@ -153,14 +153,18 @@ async function ingestFixture(token: string): Promise<string> {
   return ((await res.json()) as { puzzleId: string }).puzzleId;
 }
 
-/** Create a game from `puzzleId` as `token`'s owner; return its id and invite code. */
+/** Create a game from `puzzleId` as `token`'s owner; return its id, invite code, and name. */
 async function createGame(
   token: string,
   puzzleId: string,
-): Promise<{ gameId: string; inviteCode: string }> {
+): Promise<{ gameId: string; inviteCode: string; name: string | null }> {
   const res = await postJson("/games", token, { puzzleId });
   expect(res.status).toBe(201);
-  return (await res.json()) as { gameId: string; inviteCode: string };
+  return (await res.json()) as {
+    gameId: string;
+    inviteCode: string;
+    name: string | null;
+  };
 }
 
 beforeAll(async () => {
@@ -494,6 +498,68 @@ describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
       apiPool.query("insert into game_state (game_id) values ($1)", [gameId]),
     ).rejects.toThrow(/permission denied/i);
   });
+
+  it("accepts an optional trimmed name, persists it, and returns it in the response", async () => {
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    const res = await postJson("/games", token, {
+      puzzleId,
+      name: "  Sunday themeless  ",
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { gameId: string; name: string | null };
+    expect(body.name).toBe("Sunday themeless");
+    const row = await adminPool.query(
+      "select name from games where game_id = $1",
+      [body.gameId],
+    );
+    expect(row.rows[0].name).toBe("Sunday themeless");
+  });
+
+  it("preserves a display name verbatim: INV-1 ASCII casing does not apply to names", async () => {
+    // A game name is user content, never normalized or compared, so mixed case and
+    // locale-sensitive letters survive exactly as typed (contrast the cell-value charset,
+    // which INV-1 normalizes). This test defends that non-normalization.
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    const res = await postJson("/games", token, {
+      puzzleId,
+      name: "İstanbul Grid MiXeD",
+    });
+    const body = (await res.json()) as { name: string | null };
+    expect(body.name).toBe("İstanbul Grid MiXeD");
+  });
+
+  it("treats an absent, null, or empty name as unnamed (null)", async () => {
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    for (const name of [undefined, null, "", "   "]) {
+      const res = await postJson("/games", token, { puzzleId, name });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { name: string | null };
+      expect(body.name).toBeNull();
+    }
+  });
+
+  it("caps an over-long name rather than rejecting it (80-character bound)", async () => {
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    const res = await postJson("/games", token, {
+      puzzleId,
+      name: "x".repeat(200),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { name: string | null };
+    expect(body.name).toHaveLength(80);
+  });
+
+  it("rejects a non-string name as VALIDATION (the only name rejection)", async () => {
+    const token = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(token);
+    const res = await postJson("/games", token, { puzzleId, name: 42 });
+    expect(res.status).toBe(400);
+    await expectError(res, "VALIDATION");
+  });
 });
 
 describe("POST /games/{id}/join (PROTOCOL.md §12; DESIGN.md §7, §8)", () => {
@@ -630,6 +696,72 @@ describe("GET /games/{id} (PROTOCOL.md §12; INV-6)", () => {
     const res = await get(`/games/${randomUUID()}`, await auth.mintUpgraded());
     expect(res.status).toBe(404);
     await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("returns the game name to a member (null when unnamed)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const named = await postJson("/games", host, {
+      puzzleId,
+      name: "Friday night",
+    });
+    const { gameId } = (await named.json()) as { gameId: string };
+    const res = await get(`/games/${gameId}`, host);
+    const body = (await res.json()) as { name: string | null };
+    expect(body.name).toBe("Friday night");
+
+    const { gameId: unnamedId } = await createGame(host, puzzleId);
+    const unnamed = await get(`/games/${unnamedId}`, host);
+    expect(((await unnamed.json()) as { name: string | null }).name).toBeNull();
+  });
+
+  it("returns the invite code to the host member, matching the created code", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    const body = (await res.json()) as { inviteCode?: string };
+    expect(body.inviteCode).toBe(inviteCode);
+  });
+
+  it("returns the invite code to a spectator member: every member joined via it (DESIGN.md §7)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const guest = await auth.mintAnonymous({ sub: randomUUID() });
+    const joinRes = await postJson(`/games/${gameId}/join`, guest, {
+      code: inviteCode,
+    });
+    expect(await roleOf(joinRes)).toBe("spectator");
+
+    const res = await get(`/games/${gameId}`, guest);
+    const body = (await res.json()) as { inviteCode?: string };
+    expect(body.inviteCode).toBe(inviteCode);
+  });
+
+  it("never returns the invite code to a non-member (NOT_PARTICIPANT, no code leak)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+    const res = await get(`/games/${gameId}`, stranger);
+    expect(res.status).toBe(403);
+    const text = await res.text();
+    expect(JSON.parse(text)).not.toHaveProperty("inviteCode");
+  });
+
+  it("never returns the invite code to an unauthenticated caller (UNAUTHORIZED)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await app.request(`/games/${gameId}`, { method: "GET" });
+    expect(res.status).toBe(401);
+    const text = await res.text();
+    expect(JSON.parse(text)).not.toHaveProperty("inviteCode");
   });
 });
 

@@ -15,6 +15,13 @@
       "when": 1783499964941,
       "tag": "0001_real_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783617230643,
+      "tag": "0002_games_name",
+      "breakpoints": true
     }
   ]
 }
