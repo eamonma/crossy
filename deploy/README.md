@@ -44,7 +44,7 @@ Supabase project exists (a placeholder is written until then).
 | Variable                | Secret | Supabase-gated | Value / meaning                                                                    |
 | ----------------------- | ------ | -------------- | ---------------------------------------------------------------------------------- |
 | `PORT`                  | no     | no             | `8080`. Public REST port; the api domain targets it.                               |
-| `SUPABASE_ISSUER`       | no     | yes            | `https://<ref>.supabase.co/auth/v1`. JWKS URL derives from it.                     |
+| `SUPABASE_ISSUER`       | no     | yes            | `https://<ref>.supabase.co/auth/v1`. JWKS URL derives from it. Always the ref domain, even with a Supabase custom domain: the custom domain fronts the API but tokens keep the ref-domain `iss` (verified against `/auth/v1/.well-known/openid-configuration` on the custom domain, which declares the ref-domain issuer). Setting this to the custom domain breaks every verify with `wrong-issuer`. |
 | `DATABASE_URL`          | yes    | yes            | `crossy_api` role, pooled connection (see Migrations + roles).                     |
 | `SESSION_WS_BASE`       | no     | no             | `wss://<session public domain>`. Builds the game-view `session.ws`.                |
 | `CORS_ORIGIN`           | no     | no             | `https://<web public domain>`. The SPA is a separate origin (DESIGN.md section 7). |
@@ -213,6 +213,8 @@ DNS. Owner actions, in order:
 3. Update the env that carries domains (Railway redeploys on variable change):
    - api: `CORS_ORIGIN=https://crossy.me`, `SESSION_WS_BASE=wss://ws.crossy.me`
    - web: `API_BASE=https://rest.crossy.me`
+   - Do NOT touch `SUPABASE_ISSUER`: it stays on the ref domain regardless of custom
+     domains (see the api env table).
 4. Supabase dashboard, Authentication > URL Configuration: set the Site URL to
    `https://crossy.me` and add `https://crossy.me/**` to the redirect list. Keep the
    `up.railway.app` entries during the transition; remove them once nothing links there.
