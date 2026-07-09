@@ -368,6 +368,14 @@ DESIGN.md §10, INV-10), the duplicated web + iOS surface where drift is most ex
   crash-rollback snapshot has `board.seq` lower than `given.seq`; the store MUST accept
   it and roll back (PROTOCOL.md §7, INV-5), never refuse.
 
+These cases pin store semantics, not literal wire bytes. The stimuli are sparse: a
+`cellSet` step lists only the fields the transition turns on, and a `sync`/`welcome`
+`board` carries a sparse `cells` map. A conforming suite MAY expand a sparse stimulus
+into a full, schema-valid frame (padding the cells array to `rows * cols`, filling
+defaults) before decoding it through the real protocol codec, as the `apps/web` suite
+does. What the family asserts is the resulting `overlay`, `render`, and `send`, so the
+expansion is an implementation convenience and changes nothing normative.
+
 Findings, unresolved and deliberately not baked in:
 
 - `agedOut` is supplied as case input, not derived. PROTOCOL.md §8 and DESIGN.md §15
