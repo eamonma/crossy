@@ -4,11 +4,14 @@
 // live in @crossy/engine now; these are the view-side types.
 import type { Direction } from "@crossy/engine";
 
-/** One numbered word: its clue number, axis, and the cells it spans, in order. */
+/** One numbered word: its clue number, axis, and the cells it spans, in order. `text` is the
+ * clue prose, present on the live board (it arrives on the ClientPuzzle) and absent on the demo
+ * boards, which carry geometry only. */
 export interface Clue {
   number: number;
   direction: Direction;
   cells: readonly number[];
+  text?: string;
 }
 
 /** A fixture teammate: seeds the fake session's participants and cursors. */

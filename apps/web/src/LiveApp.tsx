@@ -1,12 +1,11 @@
-// Live mode: the real GameStore driven by a real WebSocket to the session service, over
-// the same store, grid, and engine navigation the demo uses. This is the path the M1
-// Playwright smoke drives (two browsers on one game). It is gated on `?game=<id>`.
+// Live mode (`?game=<id>`): the real GameStore over a real WebSocket to the session service,
+// through the same store, grid, and engine navigation the demo uses. This is the path the M1
+// Playwright smoke drives (two browsers on one game).
 //
-// Token and api sourcing (Track A). The api base defaults to config.apiBase and the access
-// token to the Identity port; both keep an explicit URL override so existing links keep
-// working. `?api=<base>` overrides the configured api base and `?token=<jwt>` overrides the
-// identity token, which is exactly what the M1 smoke and dogfood links pass. `?ws=` still
-// overrides the game view's session endpoint. The store logic (src/store) is not touched.
+// Entry flow (product decisions): a logged-out visitor on an invite link sees a minimal gate;
+// after auth, an invite code self-joins as spectator; a spectator sees the same live board a
+// solver sees, with one banner to upgrade in a tap. Token/api/ws keep their URL overrides so the
+// smoke and dogfood links keep working. INV-6: the board only ever renders from the WS store.
 import {
   useCallback,
   useEffect,
@@ -16,10 +15,11 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { Grid } from "@crossy/engine";
+import { tabTarget } from "@crossy/engine";
 import { connectToGame } from "./net/connect";
 import type { GameConnection } from "./net/connect";
 import { computeLayout } from "./domain/layout";
-import type { Puzzle } from "./domain/types";
+import type { Clue, Puzzle } from "./domain/types";
 import {
   cellClick,
   clueClick,
@@ -29,9 +29,28 @@ import {
 import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
-import { AuthBar } from "./ui/AuthBar";
+import type { StackMember } from "./ui/primitives";
+import { GameToolbar } from "./ui/GameToolbar";
+import { ClueBar, ClueRail, ClueSheet, clueOn } from "./ui/Clues";
+import { Keyboard } from "./ui/Keyboard";
+import { SpectateBanner } from "./ui/SpectateBanner";
+import { CompletionOverlay } from "./ui/Completion";
+import { TopBar } from "./ui/TopBar";
+import { SignInButtons } from "./ui/AuthBar";
+import { Button, Panel } from "./ui/primitives";
+import { useElapsedSeconds, formatDuration } from "./ui/gameTime";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
+import type { Navigate } from "./nav";
+
+type Role = "host" | "solver" | "spectator";
+
+/** A structured clue on the ClientPuzzle (PROTOCOL puzzle model): number, prose, cell run. */
+interface ClientClue {
+  number: number;
+  text: string;
+  cellIndices: readonly number[];
+}
 
 /** The solution-stripped puzzle facts the game view carries (ClientPuzzle, PROTOCOL.md §12). */
 interface ClientPuzzleView {
@@ -39,14 +58,23 @@ interface ClientPuzzleView {
   cols: number;
   blocks: readonly number[];
   circles?: readonly number[];
+  clues?: { across: readonly ClientClue[]; down: readonly ClientClue[] };
+}
+
+interface GameMember {
+  userId: string;
+  role: Role;
+  joinedAt: string;
 }
 
 interface GameView {
   puzzle: ClientPuzzleView;
+  members: readonly GameMember[];
   session: { ws: string };
 }
 
-/** Build the view-side Puzzle (numbering, clue runs) from the client puzzle geometry. */
+/** Attach clue prose (from the payload) to the geometry-derived runs; numbering comes from the
+ * grid, which is authoritative and matches ingestion. Absent text renders as an em dash later. */
 function toPuzzle(cp: ClientPuzzleView): Puzzle {
   const blocks = new Set(cp.blocks);
   const { numbers, acrossClues, downClues } = computeLayout(
@@ -54,6 +82,20 @@ function toPuzzle(cp: ClientPuzzleView): Puzzle {
     cp.rows,
     blocks,
   );
+  const textOf = (
+    list: readonly ClientClue[] | undefined,
+    number: number,
+  ): string | undefined => list?.find((c) => c.number === number)?.text;
+
+  const withText = (
+    clues: Clue[],
+    list: readonly ClientClue[] | undefined,
+  ): Clue[] =>
+    clues.map((c) => {
+      const text = textOf(list, c.number);
+      return text === undefined ? c : { ...c, text };
+    });
+
   return {
     cols: cp.cols,
     rows: cp.rows,
@@ -61,29 +103,71 @@ function toPuzzle(cp: ClientPuzzleView): Puzzle {
     numbers,
     circles: new Set(cp.circles ?? []),
     wrong: new Set(),
-    acrossClues,
-    downClues,
+    acrossClues: withText(acrossClues, cp.clues?.across),
+    downClues: withText(downClues, cp.clues?.down),
   };
+}
+
+/** Decode the token subject (the user id) without a dependency, for both the identity session
+ * and the smoke's `?token=` override. Best-effort: a malformed token yields null. */
+function jwtSub(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    if (payload === undefined) return null;
+    const padded = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+    const json = JSON.parse(decoded) as { sub?: unknown };
+    return typeof json.sub === "string" ? json.sub : null;
+  } catch {
+    return null;
+  }
+}
+
+interface Ready {
+  connection: GameConnection;
+  puzzle: Puzzle;
+  role: Role;
+  gameId: string;
+  code: string | null;
+  name: string | null;
+  apiBase: string;
+  selfId: string | null;
 }
 
 type LoadState =
   | { phase: "loading" }
-  | { phase: "needs-auth"; message: string }
+  | { phase: "needs-auth"; invited: boolean }
   | { phase: "error"; message: string }
-  | { phase: "ready"; connection: GameConnection; puzzle: Puzzle };
+  | { phase: "ready"; ready: Ready };
+
+/** Turn a REST join rejection into a plain sentence; never surface a code. */
+function joinError(
+  status: number,
+  errorCode: string | undefined,
+  message: string,
+): string {
+  if (errorCode === "DENIED") {
+    return message.includes("removed")
+      ? "You've been removed from this game."
+      : "That invite link isn't valid anymore.";
+  }
+  if (status === 404)
+    return "We couldn't find that game. The link may be wrong.";
+  return "We couldn't open that game. Give the link another try.";
+}
 
 export function LiveApp({
   params,
   config,
   identity,
+  navigate,
 }: {
   params: URLSearchParams;
   config: AppConfig;
   identity: Identity;
+  navigate: Navigate;
 }) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
-  // Re-run the loader when the session changes, so signing in from the needs-auth screen
-  // retries with a fresh token without a page reload.
   const [authTick, setAuthTick] = useState(0);
   useEffect(
     () => identity.onChange(() => setAuthTick((t) => t + 1)),
@@ -96,35 +180,78 @@ export function LiveApp({
 
     void (async () => {
       const game = params.get("game");
-      // ?api= and ?token= are explicit overrides; otherwise config and the identity port win.
       const api = params.get("api") ?? config.apiBase;
+      const code = params.get("code");
+      const name = params.get("name");
       const token = params.get("token") ?? (await identity.getAccessToken());
       if (game === null) {
-        setState({ phase: "error", message: "live mode needs a game id" });
+        setState({
+          phase: "error",
+          message: "This game link is missing its id.",
+        });
+        return;
+      }
+      // Auth gate first: a logged-out invitee sees the sign-in gate before any server concern,
+      // so the invite experience never leaks a deploy detail (audit voice: no error codes).
+      if (token === null) {
+        setState({ phase: "needs-auth", invited: code !== null });
         return;
       }
       if (api === "") {
         setState({
           phase: "error",
-          message: "no api base configured (set API_BASE or pass ?api=)",
+          message: "No server is configured for this app.",
         });
         return;
       }
-      if (token === null) {
-        setState({
-          phase: "needs-auth",
-          message: "Sign in to join this game.",
-        });
+
+      const auth = { authorization: `Bearer ${token}` };
+      const selfId = jwtSub(token);
+
+      // Fetch the game view. A non-member gets 403; with an invite code we self-join as a
+      // spectator (DESIGN section 8), then read the view again.
+      let res = await fetch(`${api}/games/${game}`, { headers: auth });
+      if (res.status === 401) {
+        setState({ phase: "needs-auth", invited: code !== null });
         return;
       }
-      const res = await fetch(`${api}/games/${game}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
+      if (res.status === 403) {
+        if (code === null) {
+          setState({
+            phase: "error",
+            message: "You need an invite link to join this game.",
+          });
+          return;
+        }
+        const joinRes = await fetch(`${api}/games/${game}/join`, {
+          method: "POST",
+          headers: { ...auth, "content-type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        if (!joinRes.ok) {
+          const body = (await joinRes.json().catch(() => ({}))) as {
+            error?: string;
+            message?: string;
+          };
+          setState({
+            phase: "error",
+            message: joinError(joinRes.status, body.error, body.message ?? ""),
+          });
+          return;
+        }
+        res = await fetch(`${api}/games/${game}`, { headers: auth });
+      }
       if (!res.ok) {
-        setState({ phase: "error", message: `game view ${res.status}` });
+        setState({
+          phase: "error",
+          message: "We couldn't find that game. The link may be wrong.",
+        });
         return;
       }
+
       const view = (await res.json()) as GameView;
+      const role: Role =
+        view.members.find((m) => m.userId === selfId)?.role ?? "spectator";
       const wsUrl = params.get("ws") ?? view.session.ws;
       const puzzle = toPuzzle(view.puzzle);
       connection = connectToGame({ url: wsUrl, token });
@@ -137,9 +264,26 @@ export function LiveApp({
         store: connection.store,
         drop: () => connection?.transport.simulateDrop(),
       };
-      setState({ phase: "ready", connection, puzzle });
-    })().catch((err: unknown) => {
-      if (!cancelled) setState({ phase: "error", message: String(err) });
+      setState({
+        phase: "ready",
+        ready: {
+          connection,
+          puzzle,
+          role,
+          gameId: game,
+          code,
+          name,
+          apiBase: api,
+          selfId,
+        },
+      });
+    })().catch(() => {
+      if (!cancelled) {
+        setState({
+          phase: "error",
+          message: "Something went wrong reaching the game.",
+        });
+      }
     });
 
     return () => {
@@ -149,65 +293,120 @@ export function LiveApp({
   }, [params, config, identity, authTick]);
 
   if (state.phase === "loading") {
-    return <p className="app__subtitle">Connecting to the game...</p>;
+    return (
+      <GateLayout identity={identity} config={config} navigate={navigate}>
+        <Panel className="p-6 text-center enter">
+          <p className="text-3 text-text-muted">Opening the game...</p>
+        </Panel>
+      </GateLayout>
+    );
   }
   if (state.phase === "needs-auth") {
     return (
-      <div className="app">
-        <header className="app__header">
-          <h1 className="app__title">Crossy</h1>
-          <AuthBar identity={identity} config={config} />
-        </header>
-        <p className="app__subtitle">{state.message}</p>
-      </div>
+      <GateLayout identity={identity} config={config} navigate={navigate}>
+        <Panel feature className="p-6 text-center enter">
+          <p className="text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-accent">
+            You're invited
+          </p>
+          <h1 className="mt-2 font-display text-8 font-medium text-gold-12">
+            Solve this one together.
+          </h1>
+          <p className="mt-3 text-3 text-text-muted">
+            {state.invited
+              ? "Sign in to join. You'll land as a spectator and can start solving with one tap."
+              : "Sign in to join this game."}
+          </p>
+          <div className="mt-6 max-w-[20rem] mx-auto">
+            <SignInButtons
+              identity={identity}
+              config={config}
+              discordLabel="Sign in with Discord"
+            />
+          </div>
+        </Panel>
+      </GateLayout>
     );
   }
   if (state.phase === "error") {
-    return <p className="app__subtitle">Live mode error: {state.message}</p>;
+    return (
+      <GateLayout identity={identity} config={config} navigate={navigate}>
+        <Panel className="p-6 text-center enter">
+          <h1 className="font-display text-6 font-medium">
+            This game won't open
+          </h1>
+          <p className="mt-2 text-3 text-text-muted">{state.message}</p>
+          <div className="mt-5 flex justify-center">
+            <Button variant="soft" onClick={() => navigate("")}>
+              Back to start
+            </Button>
+          </div>
+        </Panel>
+      </GateLayout>
+    );
   }
   return (
-    <LiveGame
-      connection={state.connection}
-      puzzle={state.puzzle}
-      config={config}
-      identity={identity}
-    />
+    <LiveGame ready={state.ready} identity={identity} navigate={navigate} />
+  );
+}
+
+function GateLayout({
+  identity,
+  config,
+  navigate,
+  children,
+}: {
+  identity: Identity;
+  config: AppConfig;
+  navigate: Navigate;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-dvh flex flex-col">
+      <TopBar identity={identity} config={config} onHome={() => navigate("")} />
+      <main className="flex-1 px-4 py-6 flex items-start justify-center">
+        <div className="w-full max-w-[30rem]">{children}</div>
+      </main>
+    </div>
   );
 }
 
 function LiveGame({
-  connection,
-  puzzle,
-  config,
+  ready,
   identity,
+  navigate,
 }: {
-  connection: GameConnection;
-  puzzle: Puzzle;
-  config: AppConfig;
+  ready: Ready;
   identity: Identity;
+  navigate: Navigate;
 }) {
+  const { connection, puzzle, apiBase, gameId, code, name } = ready;
   const store = connection.store;
   const grid: Grid = useMemo(
     () => ({ cols: puzzle.cols, rows: puzzle.rows, blocks: puzzle.blocks }),
     [puzzle],
   );
+
   const [selection, setSelection] = useState<Selection>(() =>
     initialSelection(grid),
   );
   const [flashes, setFlashes] = useState<ReadonlyMap<number, FlashEntry>>(
     new Map(),
   );
+  const [role, setRole] = useState<Role>(ready.role);
+  const [upgrading, setUpgrading] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [dismissedCompletion, setDismissedCompletion] = useState(false);
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
   const frozen = store.status !== "ongoing";
+  const isSpectator = role === "spectator";
 
   useEffect(() => {
     gridRef.current?.focus();
   }, []);
 
-  // Conflict flash (Decision 2.1d-1): the store detects, the view fades the writer's color.
   useEffect(
     () =>
       store.subscribeFlash(({ cell, by }) => {
@@ -262,23 +461,37 @@ function LiveGame({
     return byCell;
   }, [store, version]);
 
+  const members: StackMember[] = useMemo(() => {
+    void version;
+    return store.participants.map((p) => ({
+      userId: p.userId,
+      initial: p.displayName.charAt(0) || "?",
+      color: p.color,
+      connected: p.connected,
+    }));
+  }, [store, version]);
+
+  const handleKey = useCallback(
+    (key: string, shift: boolean): boolean => {
+      if (isSpectator) return false;
+      const effect = keyEffect({ grid, filled, selection, frozen }, key, shift);
+      if (effect === null) return false;
+      for (const mutation of effect.mutations) {
+        if (mutation.type === "placeLetter") {
+          store.placeLetter(mutation.cell, mutation.value);
+        } else {
+          store.clearCell(mutation.cell);
+        }
+      }
+      setSelection(effect.selection);
+      return true;
+    },
+    [isSpectator, grid, filled, selection, frozen, store],
+  );
+
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const effect = keyEffect(
-      { grid, filled, selection, frozen },
-      e.key,
-      e.shiftKey,
-    );
-    if (effect === null) return;
-    e.preventDefault();
-    for (const mutation of effect.mutations) {
-      if (mutation.type === "placeLetter") {
-        store.placeLetter(mutation.cell, mutation.value);
-      } else {
-        store.clearCell(mutation.cell);
-      }
-    }
-    setSelection(effect.selection);
+    if (handleKey(e.key, e.shiftKey)) e.preventDefault();
   }
 
   function onCellClick(cell: number): void {
@@ -287,73 +500,162 @@ function LiveGame({
     if (next !== null) setSelection(next);
   }
 
-  const allClues = [...puzzle.acrossClues, ...puzzle.downClues];
-  const clue = allClues.find(
-    (c) =>
-      c.direction === selection.direction && c.cells.includes(selection.cell),
+  function stepClue(direction: "forward" | "backward"): void {
+    const target = tabTarget(
+      grid,
+      selection.direction,
+      selection.cell,
+      direction,
+      filled,
+    );
+    setSelection({ cell: target.cell, direction: target.direction });
+    gridRef.current?.focus();
+  }
+
+  function jumpToClue(clue: Clue): void {
+    setSelection(clueClick(clue));
+    gridRef.current?.focus();
+  }
+
+  async function upgrade(): Promise<void> {
+    const token = await identity.getAccessToken();
+    if (token === null) return;
+    setUpgrading(true);
+    try {
+      const res = await fetch(`${apiBase}/games/${gameId}/role`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ role: "solver" }),
+      });
+      if (res.ok) {
+        setRole("solver");
+        gridRef.current?.focus();
+      }
+    } finally {
+      setUpgrading(false);
+    }
+  }
+
+  const activeClue = clueOn(
+    [...puzzle.acrossClues, ...puzzle.downClues],
+    selection.direction,
+    selection.cell,
   );
+  const activeAcross =
+    clueOn(puzzle.acrossClues, "across", selection.cell)?.number ?? null;
+  const activeDown =
+    clueOn(puzzle.downClues, "down", selection.cell)?.number ?? null;
+
+  const elapsed = useElapsedSeconds(store.firstFillAt, store.completedAt);
+  const title = name ?? `${puzzle.cols} × ${puzzle.rows}`;
+  const shareUrl =
+    code === null
+      ? null
+      : `${window.location.origin}${window.location.pathname}?game=${gameId}&code=${code}` +
+        (name === null ? "" : `&name=${encodeURIComponent(name)}`);
+
+  const completed = store.status === "completed" && !dismissedCompletion;
+  const gridMin = `${puzzle.cols * 30}px`;
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <h1 className="app__title">Crossy</h1>
-        <AuthBar identity={identity} config={config} />
-      </header>
+    <div className="h-dvh flex flex-col overflow-hidden bg-background">
+      <GameToolbar
+        title={title}
+        timer={formatDuration(elapsed)}
+        members={members}
+        shareUrl={shareUrl}
+        onBack={() => navigate("")}
+      />
 
-      <div className="pill-row" aria-live="polite">
-        {store.sync !== "live" && (
-          <span className="conn-pill">
+      {store.sync !== "live" && (
+        <div
+          className="flex justify-center py-1 bg-background"
+          aria-live="polite"
+        >
+          <span className="inline-block px-3 py-0.5 rounded-full border border-border bg-panel text-text-muted text-1 font-semibold">
             {store.sync === "resyncing" ? "Resyncing..." : "Reconnecting..."}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
-      <div className="clue-bar" aria-live="polite">
-        {clue ? (
-          <>
-            <button
-              type="button"
-              className="clue-bar__tag"
-              onClick={() => {
-                gridRef.current?.focus();
-                setSelection(clueClick(clue));
-              }}
+      {isSpectator && (
+        <SpectateBanner
+          onUpgrade={() => void upgrade()}
+          upgrading={upgrading}
+        />
+      )}
+
+      <ClueBar
+        clue={activeClue}
+        onOpen={() => setSheetOpen(true)}
+        onPrev={() => stepClue("backward")}
+        onNext={() => stepClue("forward")}
+      />
+
+      <div className="flex-1 min-h-0 grid md:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-h-0 overflow-auto flex items-start justify-center p-3 md:p-5">
+          <div
+            className="w-full max-w-[560px]"
+            style={{ ["--grid-min" as string]: gridMin }}
+          >
+            <div
+              className="grid-wrap outline-none overflow-x-auto rounded-4"
+              data-testid="grid"
+              ref={gridRef}
+              tabIndex={0}
+              onKeyDown={onKeyDown}
+              aria-label="Crossword grid"
             >
-              {clue.number} {clue.direction.toUpperCase()}
-            </button>
-            <span className="clue-bar__cells">
-              {clue.cells.map((c) => fills.get(c) ?? "·").join("")}
-            </span>
-          </>
-        ) : (
-          <span className="clue-bar__tag clue-bar__tag--empty">
-            No word on this axis
-          </span>
-        )}
-      </div>
+              <CrosswordGrid
+                puzzle={puzzle}
+                fills={fills}
+                selection={selection}
+                presence={presence}
+                flashes={flashes}
+                onCellClick={onCellClick}
+                onFlashEnd={onFlashEnd}
+              />
+            </div>
+          </div>
+        </div>
 
-      <div
-        className="grid-wrap"
-        data-testid="grid"
-        ref={gridRef}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        aria-label="Crossword grid"
-      >
-        <CrosswordGrid
-          puzzle={puzzle}
-          fills={fills}
-          selection={selection}
-          presence={presence}
-          flashes={flashes}
-          onCellClick={onCellClick}
-          onFlashEnd={onFlashEnd}
+        <ClueRail
+          across={puzzle.acrossClues}
+          down={puzzle.downClues}
+          activeAcross={activeAcross}
+          activeDown={activeDown}
+          currentDirection={selection.direction}
+          onJump={jumpToClue}
         />
       </div>
 
-      <p className="demo__status" data-testid="status">
-        {store.status} / seq {store.seq} / {store.sync}
-      </p>
+      {!isSpectator && (
+        <Keyboard onKey={(key) => handleKey(key, false)} disabled={frozen} />
+      )}
+
+      <ClueSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        across={puzzle.acrossClues}
+        down={puzzle.downClues}
+        activeAcross={activeAcross}
+        activeDown={activeDown}
+        currentDirection={selection.direction}
+        onJump={jumpToClue}
+      />
+
+      {completed && (
+        <CompletionOverlay
+          seconds={store.stats?.solveTimeSeconds ?? elapsed}
+          participantCount={store.stats?.participantCount ?? null}
+          shareUrl={shareUrl}
+          onDismiss={() => setDismissedCompletion(true)}
+          onHome={() => navigate("")}
+        />
+      )}
     </div>
   );
 }

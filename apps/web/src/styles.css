@@ -1,298 +1,424 @@
 /*
- * Color roles from the frozen v2 extraction (reports/spikes/sp6-v2-v3-recovery.md),
- * transcribed as Radix Colors hex values so the playground needs no color dependency.
- * Light is the default; dark is stamped via data-theme on <html>. The cell-background
- * roles feed the SVG grid; the rest is page chrome.
+ * Crossy design system (Track B). Tailwind v4 with the v2 audit's @theme token set:
+ * one warm neutral (Sand), one accent (Gold), everything else functional-only. The
+ * @theme block feeds Tailwind's utility generation (bg-sand-3, text-gold-11, rounded-4,
+ * shadow-sm, text-display-lg). Grid-paint tokens stay plain :root custom properties the
+ * SVG renderer reads directly (var(--cell-*), var(--stroke)); Tailwind never touches them.
+ * Fonts are self-hosted via @fontsource (latin subsets), never a CDN.
  */
-:root {
-  --cell-block: #202020; /* gray-12 */
-  --cell-default: #fcfcfc; /* gray-1 */
-  --cell-current: #fff394; /* yellow-4 */
-  --cell-word: #e6f4fe; /* blue-3 */
-  --cell-teammate: #e1dccf; /* gold-5 */
-  --cell-wrong: #ffdbdc; /* red-4 */
-  --cell-xref: #ffe0bb; /* amber-3 */
-  --stroke: #d9d9d9; /* gray-6 */
-  --clue-number: #646464; /* gray-11 */
-  --letter: #202020; /* gray-12 */
-  --circle: #bbbbbb; /* gray-8 */
-  --presence-arrow: #3a5bc7; /* indigo-11 */
-  --presence-avatar-bg: #3e63dd; /* indigo-9 */
-  --presence-avatar-fg: #ffffff;
-  --presence-badge: #3e63dd; /* indigo-9 */
 
-  --page-bg: #f9f9f9; /* gray-2 */
-  --panel-bg: #fcfcfc; /* gray-1 */
-  --panel-bg-active: #eef1ff; /* indigo-3-ish */
-  --text: #202020; /* gray-12 */
-  --muted: #646464; /* gray-11 */
-  --border: #d9d9d9; /* gray-6 */
-  --accent: #3e63dd; /* indigo-9 */
-}
+/* Self-hosted fonts. Newsreader for display/hero, Inter for UI, Geist Mono for numerals. */
+@import "@fontsource/newsreader/latin-400.css";
+@import "@fontsource/newsreader/latin-500.css";
+@import "@fontsource/newsreader/latin-600.css";
+@import "@fontsource/inter/latin-400.css";
+@import "@fontsource/inter/latin-500.css";
+@import "@fontsource/inter/latin-600.css";
+@import "@fontsource/inter/latin-700.css";
+@import "@fontsource/geist-mono/latin-400.css";
+@import "@fontsource/geist-mono/latin-500.css";
 
-:root[data-theme="dark"] {
-  --cell-block: #111111; /* gray-1 */
-  --cell-default: #222222; /* gray-3 */
-  --cell-current: #104d87; /* blue-6 */
-  --cell-word: #291f43; /* violet-3 */
-  --cell-teammate: #6b5d3f; /* gold-8 */
-  --cell-wrong: #481a1d; /* red-4 */
-  --cell-xref: #3e2800; /* amber-3 */
-  --stroke: #3a3a3a; /* gray-6 */
-  --clue-number: #b4b4b4; /* gray-11 */
-  --letter: #eeeeee; /* gray-12 */
-  --circle: #606060; /* gray-8 */
-  --presence-arrow: #9eb1ff; /* indigo-11 */
-  --presence-avatar-bg: #3e63dd; /* indigo-9 */
-  --presence-avatar-fg: #d6e1ff; /* indigo-12 */
-  --presence-badge: #9eb1ff; /* indigo-11 */
+@import "tailwindcss";
 
-  --page-bg: #111111; /* gray-1 */
-  --panel-bg: #191919; /* gray-2 */
-  --panel-bg-active: #1d2e62; /* indigo-4 */
-  --text: #eeeeee; /* gray-12 */
-  --muted: #b4b4b4; /* gray-11 */
-  --border: #3a3a3a; /* gray-6 */
-  --accent: #9eb1ff; /* indigo-11 */
-}
+/* Match the dark-mode mechanism App.tsx already uses (data-theme on <html>) instead of
+   Tailwind's default .dark class or bare prefers-color-scheme. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    Helvetica,
-    Arial,
+@theme {
+  /* ---- Type: families -------------------------------------- v2-kept */
+  --font-display:
+    "Newsreader", "Harfang Pro", "harfang-pro", Georgia, "Times New Roman",
+    serif;
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
     sans-serif;
-  background: var(--page-bg);
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
+  --font-mono:
+    "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  /* ---- Type: weights ----------------------------------------- v2-kept */
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500; /* the workhorse: nav, labels, hero */
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* ---- Type: size scale, kept numeric (Radix-style). text-1 .. text-9. */
+  --text-1: 0.75rem;
+  --text-1--line-height: 1rem;
+  --text-1--letter-spacing: 0.0025em;
+  --text-2: 0.875rem;
+  --text-2--line-height: 1.25rem;
+  --text-2--letter-spacing: 0em;
+  --text-3: 1rem;
+  --text-3--line-height: 1.625rem;
+  --text-3--letter-spacing: 0em;
+  --text-4: 1.125rem;
+  --text-4--line-height: 1.75rem;
+  --text-4--letter-spacing: -0.0025em;
+  --text-5: 1.25rem;
+  --text-5--line-height: 1.875rem;
+  --text-5--letter-spacing: -0.005em;
+  --text-6: 1.5rem;
+  --text-6--line-height: 1.875rem;
+  --text-6--letter-spacing: -0.00625em;
+  --text-7: 1.75rem;
+  --text-7--line-height: 2.25rem;
+  --text-7--letter-spacing: -0.0075em;
+  --text-8: 2.1875rem;
+  --text-8--line-height: 2.5rem;
+  --text-8--letter-spacing: -0.01em;
+  --text-9: 3.75rem;
+  --text-9--line-height: 3.75rem;
+  --text-9--letter-spacing: -0.025em;
+  --tracking-caps: 0.06em; /* v2-kept: ACROSS / DOWN micro-labels */
+
+  /* Oversized hero lockups. Lower bound of display-lg trimmed to 3rem so "crosswords"
+     does not fight a 375px viewport at 10vw left padding (mobile-first). v2-evolved */
+  --text-display-sm: clamp(2.5rem, 5vw, 4rem);
+  --text-display-md: clamp(3.5rem, 9vw, 7rem);
+  --text-display-lg: clamp(3rem, 12vw, 9rem);
+  --text-display-sm--line-height: 0.92;
+  --text-display-md--line-height: 0.92;
+  --text-display-lg--line-height: 0.92;
+
+  /* ---- Color: Sand neutral. Renamed from v2's --gray-* so it cannot collide with
+     Tailwind's cool gray/zinc/neutral, and so warmth reads from the name. v2-evolved (name) */
+  --color-sand-1: #fdfdfc;
+  --color-sand-2: #f9f9f8;
+  --color-sand-3: #f1f0ef;
+  --color-sand-4: #e9e8e6;
+  --color-sand-5: #e2e1de;
+  --color-sand-6: #dad9d6;
+  --color-sand-7: #cfceca;
+  --color-sand-8: #bcbbb5;
+  --color-sand-9: #8d8d86;
+  --color-sand-10: #82827c;
+  --color-sand-11: #63635e;
+  --color-sand-12: #21201c;
+  --color-sand-a2: #00000006;
+  --color-sand-a3: #0000000f;
+  --color-sand-a4: #00000017;
+  --color-sand-a5: #0000001f;
+  --color-sand-a6: #00000026;
+  --color-sand-a7: #00000031;
+  --color-sand-a8: #00000045;
+  --color-sand-a11: #000000a1;
+  --color-sand-25: #ffffff; /* v2-kept: card/panel face */
+  --color-sand-50: var(--color-sand-2); /* v2-kept: page background */
+  --color-gold-25: #fbfaf4; /* v2-kept: feature panel face */
+
+  /* ---- Color: Gold accent. ------------------------------------ v2-kept */
+  --color-gold-1: #fdfdfc;
+  --color-gold-2: #faf9f2;
+  --color-gold-3: #f2f0e7;
+  --color-gold-4: #eae6db;
+  --color-gold-5: #e1dccf;
+  --color-gold-6: #d8d0bf;
+  --color-gold-7: #cbc0a8;
+  --color-gold-8: #b9a88d;
+  --color-gold-9: #978365;
+  --color-gold-10: #8c7a5e;
+  --color-gold-11: #71624b;
+  --color-gold-12: #3b352b;
+
+  /* ---- Color: supporting state scales, trimmed to the steps actually consumed and
+     each pinned to one job (guards against rainbow-UI drift). v2-kept (trimmed) */
+  --color-yellow-3: #fffab8;
+  --color-yellow-4: #fff394; /* active cell */
+  --color-blue-3: #e6f4fe;
+  --color-blue-9: #0090ff; /* active word / info */
+  --color-amber-3: #fff7c2;
+  --color-amber-5: #fbe577; /* cross-reference */
+  --color-violet-3: #f4f0fe; /* active word, dark board */
+  --color-indigo-9: #3e63dd;
+  --color-indigo-11: #3a5bc7;
+  --color-indigo-12: #1f2d5c; /* teammate cursor */
+  --color-green-3: #e6f6eb;
+  --color-green-9: #30a46c;
+  --color-green-11: #218358; /* done */
+  --color-red-3: #feebec;
+  --color-red-4: #ffdbdc;
+  --color-red-9: #e5484d;
+  --color-red-11: #ce2c31; /* wrong / destructive */
+  --color-cyan-11: #0c7792; /* rare: create-puzzle affordance */
+
+  /* ---- Color: semantic aliases. -------------------------------- v2-kept */
+  --color-background: var(--color-sand-2);
+  --color-panel: var(--color-sand-25);
+  --color-panel-feature: var(--color-gold-25);
+  --color-text: var(--color-sand-12);
+  --color-text-muted: var(--color-sand-11);
+  --color-text-subtle: var(--color-sand-10);
+  --color-text-accent: var(--color-gold-11);
+  --color-border: var(--color-sand-6);
+  --color-border-strong: var(--color-sand-7);
+  --color-border-dashed: var(--color-sand-8);
+  --color-solid: var(--color-gold-9);
+  --color-solid-hover: var(--color-gold-10);
+  --color-focus-ring: var(--color-gold-8);
+
+  /* ---- Color: state banners. Needed tonight for create-game rejection errors and
+     the connect/resync pill; v2 never names these. new */
+  --color-danger-text: var(--color-red-11);
+  --color-danger-bg: var(--color-red-3);
+  --color-danger-border: var(--color-red-9);
+  --color-success-text: var(--color-green-11);
+  --color-success-bg: var(--color-green-3);
+  --color-success-border: var(--color-green-9);
+  --color-info-text: var(--color-blue-9);
+  --color-info-bg: var(--color-blue-3);
+
+  /* ---- Spacing: Radix 9-step, non-linear past step 4. REPLACES Tailwind's linear
+     scale on purpose: p-5 / gap-5 mean 24px here, not Tailwind's stock 20px. v2-kept */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 24px;
+  --spacing-6: 32px;
+  --spacing-7: 40px;
+  --spacing-8: 48px;
+  --spacing-9: 64px;
+
+  /* ---- Radius. --------------------------------------------------- v2-kept */
+  --radius-1: 3px;
+  --radius-2: 4px;
+  --radius-3: 6px; /* panel / button */
+  --radius-4: 8px; /* card */
+  --radius-5: 12px;
+  --radius-6: 16px;
+
+  /* ---- Shadow. --------------------------------------------------- v2-kept */
+  --shadow-xs: inset 0 0 0 1px var(--color-sand-a5);
+  --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+  --shadow-md:
+    0 2px 4px -1px rgb(30 27 20 / 0.06), 0 4px 10px -2px rgb(30 27 20 / 0.08);
+  --shadow-lg:
+    0 8px 24px -6px rgb(30 27 20 / 0.14), 0 2px 6px -2px rgb(30 27 20 / 0.08);
+  --shadow-xl:
+    0 16px 48px -12px rgb(30 27 20 / 0.22), 0 4px 12px -4px rgb(30 27 20 / 0.1);
+
+  /* ---- Motion easings. ------------------------------------------- v2-kept */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --animate-enter: crossy-enter 300ms var(--ease-standard) both;
 }
 
-.app {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px 20px 64px;
+@keyframes crossy-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.app__header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+/* Plain custom properties, deliberately outside Tailwind's namespaces: durations,
+   z-index, and every value the SVG grid consumes directly. */
+:root {
+  --duration-instant: 0ms;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+
+  /* Crossword geometry. v2-kept + new mobile floor */
+  --grid-cell: 36px; /* base cell module */
+  --grid-cell-min: 30px; /* floor before a board scrolls instead of shrinking further */
+  --grid-touch-target: 44px; /* minimum tap target for keys */
+  --grid-num-size: 10px;
+  --grid-letter-size: 24px;
+  --grid-stroke: 0.6px;
+  --grid-frame: 2px;
+
+  /* Board cell-state fills. Same variable names apps/web already uses (zero renderer
+     churn); values corrected against the real Sand/Gold hexes (the skeleton's constants
+     had drifted to neutral gray). v2-evolved */
+  --cell-block: var(--color-sand-12); /* warm #21201c, was neutral #202020 */
+  --cell-default: var(--color-sand-1);
+  --cell-current: var(--color-yellow-4);
+  --cell-word: var(--color-blue-3);
+  --cell-teammate: var(--color-gold-5);
+  --cell-wrong: var(--color-red-4);
+  --cell-xref: var(--color-amber-3); /* real amber-3 #fff7c2, was #ffe0bb */
+  --stroke: var(--color-sand-6); /* warm #dad9d6, was neutral #d9d9d9 */
+  --clue-number: var(--color-sand-11); /* warm #63635e, was neutral #646464 */
+  --letter: var(--color-sand-12); /* warm #21201c, was neutral #202020 */
+  --circle: var(--color-sand-8); /* warm #bcbbb5, was neutral #bbbbbb */
+  --presence-arrow: var(--color-indigo-11);
+  --presence-avatar-bg: var(--color-indigo-9);
+  --presence-avatar-fg: #ffffff;
+  --presence-badge: var(--color-indigo-9);
+
+  /* z-index scale (v2 hardcoded Dialog 100 / Popover 50 inline). new */
+  --z-dropdown: 50;
+  --z-sheet: 60;
+  --z-overlay: 90;
+  --z-dialog: 100;
+  --z-toast: 110;
 }
 
-.app__title {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0;
+/* Dark theme. Keyed to data-theme (App.tsx already sets it), values are v2's real dark
+   scale, not the skeleton's rounded-off guesses. v2-evolved */
+:root[data-theme="dark"] {
+  --color-sand-1: #111110;
+  --color-sand-2: #191918;
+  --color-sand-3: #222221;
+  --color-sand-4: #2a2a28;
+  --color-sand-5: #31312e;
+  --color-sand-6: #3b3a37;
+  --color-sand-7: #494844;
+  --color-sand-8: #62605b;
+  --color-sand-9: #6f6d66;
+  --color-sand-10: #7c7b74;
+  --color-sand-11: #b5b3ad;
+  --color-sand-12: #eeeeec;
+
+  --color-gold-1: #121211;
+  --color-gold-2: #1a1915;
+  --color-gold-3: #24231d;
+  --color-gold-4: #2b2a21;
+  --color-gold-5: #333026;
+  --color-gold-6: #3d3a2d;
+  --color-gold-7: #4a4636;
+  --color-gold-8: #5c5741;
+  --color-gold-9: #978365;
+  --color-gold-10: #a89873;
+  --color-gold-11: #cbb990;
+  --color-gold-12: #e8e2d4;
+
+  --color-yellow-3: #302008;
+  --color-yellow-4: #3f2700;
+  --color-blue-3: #0f1b2d;
+  --color-blue-9: #0090ff;
+  --color-amber-3: #302008;
+  --color-amber-5: #4d3000;
+  --color-violet-3: #291f43;
+  --color-indigo-9: #3e63dd;
+  --color-indigo-11: #9eb1ff;
+  --color-indigo-12: #d6e1ff;
+  --color-green-3: #113123;
+  --color-green-9: #30a46c;
+  --color-green-11: #3dd68c;
+  --color-red-3: #3b1219;
+  --color-red-4: #500f1c;
+  --color-red-9: #e5484d;
+  --color-red-11: #ff9592;
+  --color-cyan-11: #4ccce6;
+
+  --color-sand-25: var(--color-sand-2);
+  --color-sand-50: var(--color-sand-1);
+  --color-gold-25: var(--color-gold-2);
+
+  --color-background: var(--color-sand-1);
+  --color-panel: var(--color-sand-2);
+  --color-panel-feature: var(--color-gold-2);
+  --color-border: var(--color-sand-6);
+  --color-border-strong: var(--color-sand-7);
+  --color-border-dashed: var(--color-sand-8);
+  --color-solid: var(--color-gold-9);
+  --color-solid-hover: var(--color-gold-10);
+  --color-focus-ring: var(--color-gold-8);
+
+  /* Board: v2 never specifies a dark card (no dark variant in color-board.html); this is
+     a judgment call. Active cell adopts dark yellow-4 (a muted amber-brown) so light and
+     dark share the same semantic hue instead of a mode-dependent hue swap. */
+  --cell-block: var(--color-sand-1);
+  --cell-default: var(--color-sand-3);
+  --cell-current: var(--color-yellow-4);
+  --cell-word: var(--color-violet-3);
+  --cell-teammate: var(--color-gold-8);
+  --cell-wrong: var(--color-red-4);
+  --cell-xref: var(--color-amber-3);
+  --stroke: var(--color-sand-6);
+  --clue-number: var(--color-sand-11);
+  --letter: var(--color-sand-12);
+  --circle: var(--color-sand-8);
+  --presence-arrow: var(--color-indigo-11);
+  --presence-avatar-bg: var(--color-indigo-9);
+  --presence-avatar-fg: var(--color-indigo-12);
+  --presence-badge: var(--color-indigo-11);
 }
 
-.app__subtitle {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 
-/* Minimal auth affordance (Track A). A later UI track owns the real styling. */
-.authbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
 
-.authbar__btn {
-  font: inherit;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-bg);
-  color: var(--text);
-  cursor: pointer;
-}
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    font-size: var(--text-3);
+    line-height: 1.625rem;
+    background: var(--color-background);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
 
-.authbar__who {
-  font-size: 13px;
-  color: var(--muted);
-}
+  /* The one confident gesture: the serif hero. Applied by utility, defined here so the
+     display sizes carry the right family and tracking without repeating it per screen. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: var(--font-weight-medium);
+  }
 
-.authbar__notice {
-  font-size: 12px;
-  color: var(--accent);
-}
-
-.settings {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel-bg);
-  margin-bottom: 20px;
-}
-
-.settings__group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.settings__label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-}
-
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.segmented button {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--text);
-  padding: 6px 12px;
-  font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.segmented button + button {
-  border-left: 1px solid var(--border);
-}
-
-.segmented button[aria-pressed="true"] {
-  background: var(--accent);
-  color: #ffffff;
-}
-
-:root[data-theme="dark"] .segmented button[aria-pressed="true"] {
-  color: #0d1117;
-}
-
-.demo {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 10px 16px;
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  background: var(--panel-bg);
-  margin-bottom: 16px;
-}
-
-.demo__buttons {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.demo__buttons button {
-  appearance: none;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text);
-  padding: 5px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.demo__buttons button:hover {
-  background: var(--panel-bg-active);
-}
-
-.demo__status {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.clue-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel-bg-active);
-  margin-bottom: 8px;
-  font-size: 15px;
-  min-height: 20px;
-}
-
-.clue-bar__tag {
-  font-weight: 700;
-  color: var(--accent);
-  white-space: nowrap;
-}
-
-button.clue-bar__tag {
-  appearance: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-button.clue-bar__tag:hover {
-  text-decoration: underline;
+  ::selection {
+    background: var(--color-gold-6);
+    color: var(--color-gold-12);
+  }
 }
 
 /*
- * Connection presentation (Decision 2.1d-3): one non-blocking pill above the grid
- * for resyncing / reconnecting; nothing when live. The row reserves its height so
- * the grid does not jump when the pill appears.
+ * The SVG grid: the cell rect is the one click target. Everything painted over it
+ * (letters, numbers, circles, presence glyphs, the conflict flash) must not capture the
+ * pointer, or a filled cell would silently swallow the click. Required in solve, spectate,
+ * and demo.
  */
-.pill-row {
-  min-height: 28px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 4px;
+.grid {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Mobile floor: the grid fills its column but never shrinks a cell below 30px; past that the
+     column scrolls (LiveApp sets --grid-min to cols x 30px on the scroll wrapper). */
+  min-width: var(--grid-min, 0px);
+  touch-action: manipulation;
 }
 
-.conn-pill {
-  display: inline-block;
-  padding: 3px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--panel-bg);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+.grid text,
+.grid circle,
+.grid path {
+  pointer-events: none;
+}
+
+.grid text {
+  user-select: none;
+}
+
+/* The grid's focusable wrapper: a quiet gold focus ring, only on keyboard focus. */
+.grid-wrap:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-background),
+    0 0 0 4px var(--color-focus-ring);
 }
 
 /*
- * Conflict flash (Decision 2.1d-1; PROTOCOL section 8): the cell fills with the
- * writer's presence color at full opacity and fades to transparent over 300 ms,
- * ease-out, leaving the new letter.
+ * Conflict flash (Decision 2.1d-1; PROTOCOL section 8): the cell fills with the writer's
+ * presence color at full opacity and fades to transparent over 300 ms, ease-out, leaving
+ * the new letter. Gameplay's one motion exception besides completion confetti.
  */
 .conflict-flash {
-  animation: conflict-flash 300ms ease-out forwards;
+  animation: conflict-flash 300ms var(--ease-out) forwards;
 }
 
 @keyframes conflict-flash {
@@ -304,57 +430,21 @@ button.clue-bar__tag:hover {
   }
 }
 
-.clue-bar__cells {
-  letter-spacing: 0.3em;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
+/* Bottom-sheet entrance: a quiet rise, 200ms, disabled under reduced motion. */
+@keyframes crossy-sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
-.grid-wrap {
-  outline: none;
-  border-radius: 8px;
-}
-
-.grid-wrap:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
-}
-
-.grid {
-  width: 100%;
-  height: auto;
-  max-width: 620px;
-  display: block;
-  margin: 0 auto;
-  touch-action: manipulation;
-}
-
-/*
- * The cell rect is the one click target. Everything painted over it (letters, clue
- * numbers, circles, presence glyphs, the conflict flash) must not capture the
- * pointer, or clicking a filled cell would silently do nothing.
- */
-.grid text,
-.grid circle,
-.grid path {
-  pointer-events: none;
-}
-
-.grid text {
-  user-select: none;
-}
-
-.hint {
-  margin: 18px auto 0;
-  max-width: 620px;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.hint code {
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 12px;
+@media (prefers-reduced-motion: no-preference) {
+  .sheet-in {
+    animation: crossy-sheet-in 220ms var(--ease-out);
+  }
+  .enter {
+    animation: var(--animate-enter);
+  }
 }
