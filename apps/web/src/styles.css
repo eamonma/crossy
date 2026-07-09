@@ -573,9 +573,19 @@
 
 /*
  ---break---
+ * The shadcn/ui bridge: map Tailwind's --color-* namespace to the shadcn --* variables the
+ * :root block above defines from Sand + Gold. This is a regular @theme, not @theme inline, on
+ * purpose. The two names that collide with the semantic aliases already declared in the first
+ * @theme (--color-border and --color-background) are NOT re-bridged here: bridging them created
+ * a cycle (--color-border -> --border -> --color-border, likewise background), and a cyclic var
+ * resolves to the CSS guaranteed-invalid value, so getComputedStyle returned "" and every
+ * border/bg utility fell back to currentColor (the near-black text color). The first @theme
+ * owns those two, so their utilities resolve to the Sand hairline and page face in both themes.
+ * Regular @theme (over inline) also emits each --color-* onto :root, so the whole token surface
+ * resolves to a non-empty computed value and the bug class is introspectable, not silent.
  */
 
-@theme inline {
+@theme {
   /* shadcn's "nova" preset ships Geist Variable and re-points --font-sans at it; both are
      dropped so Inter (defined above) stays the one UI typeface. font-heading maps to our
      display serif instead, in case a future shadcn block reaches for it. */
@@ -595,7 +605,6 @@
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
-  --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -610,7 +619,6 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --color-foreground: var(--foreground);
-  --color-background: var(--background);
   /* shadcn's sm/md/lg/xl radius scale, pinned to the exact Radius tokens above instead of
      the CLI's multiplied-off-of-6px default: rounded-lg (buttons, inputs, popovers,
      dropdowns) lands on radius-3, the system's existing button/panel radius; rounded-xl
