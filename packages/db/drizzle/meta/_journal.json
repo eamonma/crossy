@@ -22,6 +22,13 @@
       "when": 1783617230643,
       "tag": "0002_games_name",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783631394307,
+      "tag": "0003_puzzle_owner_and_list_indexes",
+      "breakpoints": true
     }
   ]
 }

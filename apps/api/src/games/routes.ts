@@ -4,7 +4,7 @@
 // session-owned game_state or cell_events, so the live board is not part of this view (it
 // arrives on the WebSocket `welcome`, PROTOCOL.md §2).
 import { Hono } from "hono";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
 import { toClientPuzzle } from "@crossy/protocol";
 import type { ClientPuzzle, ServerPuzzle } from "@crossy/protocol";
@@ -12,6 +12,7 @@ import type { Role } from "@crossy/protocol";
 import type { AppDeps, ApiEnv } from "../context";
 import type { Db } from "../db/client";
 import { fail } from "../http/errors";
+import { parseBefore, parseLimit } from "../http/pagination";
 import { authMiddleware } from "../auth/middleware";
 import { generateInviteCode } from "./invite-code";
 import { notifyMembership } from "../identity/notify";
@@ -99,6 +100,37 @@ interface GameView {
     readonly joinedAt: string;
   }[];
   readonly session: { readonly ws: string };
+}
+
+/**
+ * One row of `GET /games`: a game the caller is a member of, for the signed-in home list.
+ *
+ * Deliberately NO `status` field. A game's lifecycle status (ongoing, completed, abandoned)
+ * lives in `game_state`, which is session-owned; the API holds no read grant on it (DESIGN.md
+ * §7, §9), so it cannot honestly report completion from its own tables. Inventing an "ongoing"
+ * status here would be a lie for every completed or abandoned game. When the Archive module's
+ * planned read grant on `game_state` lands (DESIGN.md §9), a `status` field can be added
+ * additively. For the same reason ordering is by `createdAt`, not true last-move activity,
+ * which also lives in `game_state`.
+ *
+ * `puzzle` carries only INV-6-safe geometry (rows, cols) projected out of `puzzle_snapshot` in
+ * SQL; the snapshot jsonb, which holds the solution, is never selected whole.
+ */
+interface GameSummary {
+  readonly gameId: string;
+  /** Optional room display name (user content); null for an unnamed game. */
+  readonly name: string | null;
+  /** The caller's own role in this game. */
+  readonly role: Role;
+  readonly createdAt: string;
+  readonly createdBy: string;
+  /** Total members (all roles), for the list card. */
+  readonly memberCount: number;
+  readonly puzzle: {
+    readonly puzzleId: string;
+    readonly rows: number;
+    readonly cols: number;
+  };
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -202,6 +234,64 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       },
       201,
     );
+  });
+
+  // GET /games: the caller's games, newest first. Visibility is the membership join
+  // (`WHERE user_id = caller`), so a caller sees exactly the games they belong to and no
+  // others; a game leaks to no one who is not a member. Any authenticated user, guests
+  // included: a guest is a real member of games they joined (DESIGN.md §8), so this is not
+  // gated to full accounts. Cursor pagination by `createdAt` (see GameSummary for why status
+  // and activity ordering are out of reach here).
+  app.get("/", async (c) => {
+    const identity = c.get("identity");
+
+    const limit = parseLimit(c.req.query("limit"));
+    const beforeResult = parseBefore(c.req.query("before"));
+    if (!beforeResult.ok) {
+      return fail(c, "VALIDATION", "before must be an ISO 8601 timestamp");
+    }
+    const before = beforeResult.before;
+
+    // INV-6: geometry is projected out of `puzzle_snapshot` in SQL (`->> 'rows'`/`'cols'`),
+    // so the solution-bearing jsonb never enters the process. `memberCount` is a correlated
+    // count, not a select-all of memberships. Order and cursor are both `createdAt`, with
+    // `gameId` as a deterministic tiebreaker for rows sharing a timestamp.
+    const rows = await deps.db
+      .select({
+        gameId: schema.games.gameId,
+        name: schema.games.name,
+        createdAt: schema.games.createdAt,
+        createdBy: schema.games.createdBy,
+        puzzleId: schema.games.puzzleId,
+        role: schema.memberships.role,
+        puzzleRows: sql<number>`(${schema.games.puzzleSnapshot} ->> 'rows')::int`,
+        puzzleCols: sql<number>`(${schema.games.puzzleSnapshot} ->> 'cols')::int`,
+        memberCount: sql<number>`(select count(*)::int from "memberships" mc where mc."game_id" = ${schema.games.gameId})`,
+      })
+      .from(schema.memberships)
+      .innerJoin(
+        schema.games,
+        eq(schema.games.gameId, schema.memberships.gameId),
+      )
+      .where(
+        and(
+          eq(schema.memberships.userId, identity.userId),
+          before === null ? undefined : lt(schema.games.createdAt, before),
+        ),
+      )
+      .orderBy(desc(schema.games.createdAt), desc(schema.games.gameId))
+      .limit(limit);
+
+    const games: GameSummary[] = rows.map((r) => ({
+      gameId: r.gameId,
+      name: r.name,
+      role: r.role,
+      createdAt: r.createdAt.toISOString(),
+      createdBy: r.createdBy,
+      memberCount: r.memberCount,
+      puzzle: { puzzleId: r.puzzleId, rows: r.puzzleRows, cols: r.puzzleCols },
+    }));
+    return c.json({ games });
   });
 
   // POST /games/{id}/join: join by invite code. Any authenticated user, guests included.

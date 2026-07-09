@@ -1111,3 +1111,294 @@ describe("account deletion + host succession (DELETE /account) (DESIGN.md §7, �
     });
   });
 });
+
+// ------------------------------------------------------------------------------------------
+// The signed-in home lists: GET /games and GET /puzzles (PROTOCOL.md §12; ROADMAP M4 surface).
+// ------------------------------------------------------------------------------------------
+
+/**
+ * A rebus doc whose first solution cell plants a distinctive marker. If any list handler ever
+ * stringified the stored puzzle (`puzzle_snapshot` or `data`, both solution-bearing) into its
+ * response, the marker would surface in the serialized JSON. INV-6 asserts it never does.
+ */
+const LIST_MARKER = "MARKERWORD";
+function markerDoc() {
+  return {
+    size: { rows: 2, cols: 2 },
+    grid: [LIST_MARKER, "I", "O", "N"],
+    clues: {
+      across: ["1. friendly opener", "3. keyboard basics"],
+      down: ["1. up top", "2. and beside"],
+    },
+  };
+}
+
+/** Force a row's created_at (superuser fixture) so ordering and cursor tests are deterministic. */
+async function setGameCreatedAt(gameId: string, iso: string): Promise<void> {
+  await adminPool.query("update games set created_at = $2 where game_id = $1", [
+    gameId,
+    iso,
+  ]);
+}
+async function setPuzzleCreatedAt(
+  puzzleId: string,
+  iso: string,
+): Promise<void> {
+  await adminPool.query(
+    "update puzzles set created_at = $2 where puzzle_id = $1",
+    [puzzleId, iso],
+  );
+}
+
+interface GamesList {
+  games: {
+    gameId: string;
+    name: string | null;
+    role: string;
+    createdAt: string;
+    createdBy: string;
+    memberCount: number;
+    puzzle: { puzzleId: string; rows: number; cols: number };
+  }[];
+}
+interface PuzzlesList {
+  puzzles: {
+    puzzleId: string;
+    createdAt: string;
+    rows: number;
+    cols: number;
+    features: unknown;
+  }[];
+}
+
+describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => {
+  it("returns only games the caller is a member of, never another user's (visibility scoped to membership)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: mine1 } = await createGame(caller, puzzleId);
+    const { gameId: mine2 } = await createGame(caller, puzzleId);
+
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+    const strangerPuzzle = await ingestFixture(stranger);
+    const { gameId: theirs } = await createGame(stranger, strangerPuzzle);
+
+    const res = await get("/games", caller);
+    expect(res.status).toBe(200);
+    const ids = ((await res.json()) as GamesList).games.map((g) => g.gameId);
+    expect(ids).toContain(mine1);
+    expect(ids).toContain(mine2);
+    expect(ids).not.toContain(theirs);
+  });
+
+  it("lists a game a guest joined, with the caller's own spectator role (guests are members, DESIGN.md §8)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const guest = await auth.mintAnonymous({ sub: randomUUID() });
+    await join(gameId, guest, inviteCode);
+
+    const res = await get("/games", guest);
+    expect(res.status).toBe(200);
+    const { games } = (await res.json()) as GamesList;
+    expect(games).toHaveLength(1);
+    expect(games[0]!.gameId).toBe(gameId);
+    expect(games[0]!.role).toBe("spectator");
+  });
+
+  it("reports the caller's own role and the member count per game", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: hosted } = await createGame(caller, puzzleId);
+
+    const otherHost = await auth.mintUpgraded({ sub: randomUUID() });
+    const otherPuzzle = await ingestFixture(otherHost);
+    const { gameId: joined, inviteCode } = await createGame(
+      otherHost,
+      otherPuzzle,
+    );
+    await join(joined, caller, inviteCode);
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    const byId = new Map(games.map((g) => [g.gameId, g]));
+    expect(byId.get(hosted)!.role).toBe("host");
+    expect(byId.get(hosted)!.memberCount).toBe(1);
+    expect(byId.get(joined)!.role).toBe("spectator");
+    expect(byId.get(joined)!.memberCount).toBe(2); // host plus the caller who joined
+  });
+
+  it("orders games newest-createdAt first", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: g1 } = await createGame(caller, puzzleId);
+    const { gameId: g2 } = await createGame(caller, puzzleId);
+    const { gameId: g3 } = await createGame(caller, puzzleId);
+    await setGameCreatedAt(g1, "2026-03-01T00:00:00.000Z");
+    await setGameCreatedAt(g2, "2026-03-02T00:00:00.000Z");
+    await setGameCreatedAt(g3, "2026-03-03T00:00:00.000Z");
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(games.map((g) => g.gameId)).toEqual([g3, g2, g1]);
+  });
+
+  it("carries INV-6-safe geometry and leaks no solution anywhere in the serialized JSON (INV-6)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const marker = await postJson("/puzzles", caller, markerDoc());
+    const { puzzleId } = (await marker.json()) as { puzzleId: string };
+    const { gameId } = await createGame(caller, puzzleId);
+
+    const res = await get("/games", caller);
+    const text = await res.text();
+    const body = JSON.parse(text) as GamesList;
+    const g = body.games.find((x) => x.gameId === gameId)!;
+    expect(g.puzzle.rows).toBe(2);
+    expect(g.puzzle.cols).toBe(2);
+    // No solution content, and no whole snapshot, anywhere in the response (INV-6, structural).
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
+    expect(text).not.toContain(LIST_MARKER);
+    // The documented gap: no lifecycle status is fabricated (game_state is unreadable here).
+    expect(hasKeyDeep(body, "status")).toBe(false);
+  });
+
+  it("paginates by limit and the createdAt before cursor, never an offset", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: g1 } = await createGame(caller, puzzleId);
+    const { gameId: g2 } = await createGame(caller, puzzleId);
+    const { gameId: g3 } = await createGame(caller, puzzleId);
+    await setGameCreatedAt(g1, "2026-04-01T00:00:00.000Z");
+    await setGameCreatedAt(g2, "2026-04-02T00:00:00.000Z");
+    await setGameCreatedAt(g3, "2026-04-03T00:00:00.000Z");
+
+    const first = (await get("/games?limit=2", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(first.games.map((g) => g.gameId)).toEqual([g3, g2]);
+
+    // Page by the last row's createdAt, the client-facing cursor contract.
+    const cursor = encodeURIComponent(first.games.at(-1)!.createdAt);
+    const second = (await get(`/games?limit=2&before=${cursor}`, caller).then(
+      (r) => r.json(),
+    )) as GamesList;
+    expect(second.games.map((g) => g.gameId)).toEqual([g1]);
+  });
+
+  it("clamps limit and rejects an unparseable before cursor (VALIDATION)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: g1 } = await createGame(caller, puzzleId);
+    const { gameId: g2 } = await createGame(caller, puzzleId);
+    await setGameCreatedAt(g1, "2026-05-01T00:00:00.000Z");
+    await setGameCreatedAt(g2, "2026-05-02T00:00:00.000Z");
+
+    const clamped = (await get("/games?limit=1", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(clamped.games).toHaveLength(1);
+    expect(clamped.games[0]!.gameId).toBe(g2);
+
+    const bad = await get("/games?before=not-a-timestamp", caller);
+    expect(bad.status).toBe(400);
+    await expectError(bad, "VALIDATION");
+  });
+
+  it("requires authentication: 401 UNAUTHORIZED with no bearer token", async () => {
+    const res = await app.request("/games", { method: "GET" });
+    expect(res.status).toBe(401);
+    await expectError(res, "UNAUTHORIZED");
+  });
+});
+
+describe("GET /puzzles list (PROTOCOL.md §12; DESIGN.md §7, §8; INV-6)", () => {
+  it("returns only puzzles the caller uploaded, never another user's (visibility scoped to uploader)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const p1 = await ingestFixture(caller);
+    const p2 = await ingestFixture(caller);
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+    const p3 = await ingestFixture(stranger);
+
+    const res = await get("/puzzles", caller);
+    expect(res.status).toBe(200);
+    const ids = ((await res.json()) as PuzzlesList).puzzles.map(
+      (p) => p.puzzleId,
+    );
+    expect(ids).toContain(p1);
+    expect(ids).toContain(p2);
+    expect(ids).not.toContain(p3);
+  });
+
+  it("orders puzzles newest-createdAt first", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const p1 = await ingestFixture(caller);
+    const p2 = await ingestFixture(caller);
+    const p3 = await ingestFixture(caller);
+    await setPuzzleCreatedAt(p1, "2026-03-01T00:00:00.000Z");
+    await setPuzzleCreatedAt(p2, "2026-03-02T00:00:00.000Z");
+    await setPuzzleCreatedAt(p3, "2026-03-03T00:00:00.000Z");
+
+    const { puzzles } = (await get("/puzzles", caller).then((r) =>
+      r.json(),
+    )) as PuzzlesList;
+    expect(puzzles.map((p) => p.puzzleId)).toEqual([p3, p2, p1]);
+  });
+
+  it("carries rows, cols, and features but no solution anywhere in the serialized JSON (INV-6)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const marker = await postJson("/puzzles", caller, markerDoc());
+    const { puzzleId } = (await marker.json()) as { puzzleId: string };
+
+    const res = await get("/puzzles", caller);
+    const text = await res.text();
+    const body = JSON.parse(text) as PuzzlesList;
+    const p = body.puzzles.find((x) => x.puzzleId === puzzleId)!;
+    expect(p.rows).toBe(2);
+    expect(p.cols).toBe(2);
+    expect(p.features).toEqual({
+      rebus: true,
+      circles: false,
+      shadedCircles: false,
+    });
+    // Built from an explicit column list, never a select-all: no solution, no raw `data` (INV-6).
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "data")).toBe(false);
+    expect(text).not.toContain(LIST_MARKER);
+  });
+
+  it("paginates by limit and the createdAt before cursor, never an offset", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const p1 = await ingestFixture(caller);
+    const p2 = await ingestFixture(caller);
+    const p3 = await ingestFixture(caller);
+    await setPuzzleCreatedAt(p1, "2026-04-01T00:00:00.000Z");
+    await setPuzzleCreatedAt(p2, "2026-04-02T00:00:00.000Z");
+    await setPuzzleCreatedAt(p3, "2026-04-03T00:00:00.000Z");
+
+    const first = (await get("/puzzles?limit=2", caller).then((r) =>
+      r.json(),
+    )) as PuzzlesList;
+    expect(first.puzzles.map((p) => p.puzzleId)).toEqual([p3, p2]);
+
+    const cursor = encodeURIComponent(first.puzzles.at(-1)!.createdAt);
+    const second = (await get(`/puzzles?limit=2&before=${cursor}`, caller).then(
+      (r) => r.json(),
+    )) as PuzzlesList;
+    expect(second.puzzles.map((p) => p.puzzleId)).toEqual([p1]);
+  });
+
+  it("returns an empty list to a guest, who cannot upload (DESIGN.md §8)", async () => {
+    const guest = await auth.mintAnonymous({ sub: randomUUID() });
+    const res = await get("/puzzles", guest);
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as PuzzlesList).puzzles).toEqual([]);
+  });
+
+  it("requires authentication: 401 UNAUTHORIZED with no bearer token", async () => {
+    const res = await app.request("/puzzles", { method: "GET" });
+    expect(res.status).toBe(401);
+    await expectError(res, "UNAUTHORIZED");
+  });
+});
