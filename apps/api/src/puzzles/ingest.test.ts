@@ -450,6 +450,59 @@ describe("ingestion ACL: barred grids reject (DESIGN.md section 7; PROTOCOL.md s
   });
 });
 
+describe("ingestion ACL: title and author display metadata (signed-in home lists)", () => {
+  it("parses title and author as display strings, entity-decoded like clue text (DESIGN.md section 7)", () => {
+    const r = accept({
+      ...base(),
+      title: "Sat &amp; Sun",
+      author: "Ada &amp; Bob",
+    });
+    expect(r.title).toBe("Sat & Sun");
+    expect(r.author).toBe("Ada & Bob");
+  });
+
+  it("reads absent, null, or empty title/author as null (optional-field rule; empty stored as null)", () => {
+    expect(accept(base()).title).toBeNull(); // absent
+    expect(accept(base()).author).toBeNull();
+    const explicitNull = accept({ ...base(), title: null, author: null });
+    expect(explicitNull.title).toBeNull();
+    expect(explicitNull.author).toBeNull();
+    const blank = accept({ ...base(), title: "   ", author: "" });
+    expect(blank.title).toBeNull();
+    expect(blank.author).toBeNull();
+  });
+
+  it("preserves title/author verbatim: INV-1 ASCII casing does not apply to display content", () => {
+    // Title and author are shown back verbatim, never normalized or compared, so mixed case and
+    // locale-sensitive letters survive exactly as written (contrast the cell-value charset).
+    const r = accept({ ...base(), title: "İstanbul MiXeD", author: "Ĳsbrand" });
+    expect(r.title).toBe("İstanbul MiXeD");
+    expect(r.author).toBe("Ĳsbrand");
+  });
+
+  it("reads a non-string title/author leniently as null, never rejecting an otherwise valid puzzle", () => {
+    // Display metadata is not load-bearing (unlike the circles array), so a malformed value is
+    // dropped rather than failing the whole ingest, mirroring the lenient type/bars handling.
+    const r = accept({ ...base(), title: 42, author: { name: "x" } });
+    expect(r.title).toBeNull();
+    expect(r.author).toBeNull();
+  });
+
+  it("caps title and author at 200 characters (truncated, never a rejection)", () => {
+    const r = accept({
+      ...base(),
+      title: "T".repeat(500),
+      author: "A".repeat(300),
+    });
+    expect(r.title).toHaveLength(200);
+    expect(r.author).toHaveLength(200);
+  });
+
+  it("trims surrounding whitespace before storing", () => {
+    expect(accept({ ...base(), title: "  Sunday  " }).title).toBe("Sunday");
+  });
+});
+
 describe("ingestion ACL: HTML entity decoding in clue text (DESIGN.md section 7, D13)", () => {
   const firstAcross = (acrossFirst: string): string =>
     accept({

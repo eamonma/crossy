@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
-import { toClientPuzzle } from "@crossy/protocol";
+import { asciiUppercase, toClientPuzzle } from "@crossy/protocol";
 import type { ClientPuzzle, ServerPuzzle } from "@crossy/protocol";
 import type { Role } from "@crossy/protocol";
 import type { AppDeps, ApiEnv } from "../context";
@@ -80,6 +80,57 @@ async function loadGameAccess(
   return { createdBy: game[0]!.createdBy, role: membership[0]?.role ?? null };
 }
 
+/** The outcome of a spectator join: refused by the denylist, or seated with the resulting role. */
+type SeatResult =
+  { readonly denied: true } | { readonly denied: false; readonly role: Role };
+
+/**
+ * Seat a caller as a spectator in a game whose existence the caller already proved (by id + code,
+ * or by resolving the invite code). This is the shared tail of both join paths, so join-by-id and
+ * join-by-code have byte-identical semantics: the denylist is checked first and refuses a kicked
+ * user with DENIED before any seat (DESIGN.md §7); the seat itself is an idempotent, non-demoting
+ * upsert (`onConflictDoNothing`), so a re-join by an existing host or solver keeps their role
+ * (DESIGN.md §8: join is an upsert). No session notify: a fresh join has no live socket to update
+ * (unlike a role change or kick); the joiner connects afterward and the session reads authoritative
+ * membership on `hello`.
+ */
+async function seatSpectator(
+  db: Db,
+  gameId: string,
+  userId: string,
+): Promise<SeatResult> {
+  const denied = await db
+    .select({ userId: schema.gameDenylist.userId })
+    .from(schema.gameDenylist)
+    .where(
+      and(
+        eq(schema.gameDenylist.gameId, gameId),
+        eq(schema.gameDenylist.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (denied.length > 0) return { denied: true };
+
+  await db
+    .insert(schema.memberships)
+    .values({ gameId, userId, role: "spectator" })
+    .onConflictDoNothing({
+      target: [schema.memberships.gameId, schema.memberships.userId],
+    });
+
+  const membership = await db
+    .select({ role: schema.memberships.role })
+    .from(schema.memberships)
+    .where(
+      and(
+        eq(schema.memberships.gameId, gameId),
+        eq(schema.memberships.userId, userId),
+      ),
+    )
+    .limit(1);
+  return { denied: false, role: membership[0]!.role };
+}
+
 /** The `GET /games/{id}` view. `puzzle` is `ClientPuzzle`: solution-stripped by type (INV-6). */
 interface GameView {
   readonly gameId: string;
@@ -114,7 +165,10 @@ interface GameView {
  * which also lives in `game_state`.
  *
  * `puzzle` carries only INV-6-safe geometry (rows, cols) projected out of `puzzle_snapshot` in
- * SQL; the snapshot jsonb, which holds the solution, is never selected whole.
+ * SQL; the snapshot jsonb, which holds the solution, is never selected whole. `puzzle.title` is
+ * the puzzle's display title, read from the `puzzles` row (joined on `puzzle_id`, never from the
+ * solution-bearing snapshot), null when the puzzle has none; it is display content, not a
+ * solution (INV-6 untouched).
  */
 interface GameSummary {
   readonly gameId: string;
@@ -130,6 +184,8 @@ interface GameSummary {
     readonly puzzleId: string;
     readonly rows: number;
     readonly cols: number;
+    /** The puzzle's display title, null when it carried none. Display content, not a solution. */
+    readonly title: string | null;
   };
 }
 
@@ -253,9 +309,12 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     const before = beforeResult.before;
 
     // INV-6: geometry is projected out of `puzzle_snapshot` in SQL (`->> 'rows'`/`'cols'`),
-    // so the solution-bearing jsonb never enters the process. `memberCount` is a correlated
-    // count, not a select-all of memberships. Order and cursor are both `createdAt`, with
-    // `gameId` as a deterministic tiebreaker for rows sharing a timestamp.
+    // so the solution-bearing jsonb never enters the process. The puzzle `title` is read from the
+    // joined `puzzles` row (a single named column, never the solution-bearing `data`); the join
+    // is on `games.puzzle_id`, which is NOT NULL and ON DELETE RESTRICT, so the inner join drops
+    // no game. `memberCount` is a correlated count, not a select-all of memberships. Order and
+    // cursor are both `createdAt`, with `gameId` as a deterministic tiebreaker for rows sharing a
+    // timestamp.
     const rows = await deps.db
       .select({
         gameId: schema.games.gameId,
@@ -266,12 +325,17 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         role: schema.memberships.role,
         puzzleRows: sql<number>`(${schema.games.puzzleSnapshot} ->> 'rows')::int`,
         puzzleCols: sql<number>`(${schema.games.puzzleSnapshot} ->> 'cols')::int`,
+        puzzleTitle: schema.puzzles.title,
         memberCount: sql<number>`(select count(*)::int from "memberships" mc where mc."game_id" = ${schema.games.gameId})`,
       })
       .from(schema.memberships)
       .innerJoin(
         schema.games,
         eq(schema.games.gameId, schema.memberships.gameId),
+      )
+      .innerJoin(
+        schema.puzzles,
+        eq(schema.puzzles.puzzleId, schema.games.puzzleId),
       )
       .where(
         and(
@@ -289,9 +353,61 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       createdAt: r.createdAt.toISOString(),
       createdBy: r.createdBy,
       memberCount: r.memberCount,
-      puzzle: { puzzleId: r.puzzleId, rows: r.puzzleRows, cols: r.puzzleCols },
+      puzzle: {
+        puzzleId: r.puzzleId,
+        rows: r.puzzleRows,
+        cols: r.puzzleCols,
+        title: r.puzzleTitle,
+      },
     }));
     return c.json({ games });
+  });
+
+  // POST /games/join: join by invite code alone, no gameId. For a phone user who holds only the
+  // code (web invite links carry both gameId and code; a hand-typed or read-aloud code does not).
+  // Any authenticated user, guests included. Resolves the game by its unique invite code, then
+  // seats the caller as a spectator with the exact same semantics as POST /games/{id}/join
+  // (`seatSpectator`). The response is that endpoint's shape plus the resolved `gameId`, which the
+  // caller needs to GET the view and open the WebSocket.
+  app.post("/join", async (c) => {
+    const identity = c.get("identity");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return fail(c, "VALIDATION", "request body must be JSON");
+    }
+    const code = (body as { code?: unknown }).code;
+    if (typeof code !== "string") {
+      return fail(c, "VALIDATION", "code is required");
+    }
+
+    // Normalize ASCII-only (INV-1), matching how codes are generated. The invite alphabet is all
+    // uppercase ASCII (`generateInviteCode`, `games_invite_code_format` CHECK), so ASCII-uppercasing
+    // a hand-typed lowercase code resolves it exactly when it is a real code, with no locale folding
+    // (the reverse of the cell-value rule, same INV-1 primitive). Trim surrounding whitespace a
+    // phone keyboard may add; stored codes never contain any. Lookup is backed by the
+    // `games_invite_code_key` UNIQUE index, so it is a single-row index probe.
+    const normalized = asciiUppercase(code.trim());
+    const found = await deps.db
+      .select({ gameId: schema.games.gameId })
+      .from(schema.games)
+      .where(eq(schema.games.inviteCode, normalized))
+      .limit(1);
+    // A code that resolves to no game is genuinely not found: unlike the id-based join (where a
+    // mismatched code is DENIED to avoid leaking that a known gameId exists), here the code IS the
+    // lookup key, so there is no existence to protect. Reuse GAME_NOT_FOUND (no new code).
+    if (found.length === 0) {
+      return fail(c, "GAME_NOT_FOUND", "no game with that code");
+    }
+    const gameId = found[0]!.gameId;
+
+    const seated = await seatSpectator(deps.db, gameId, identity.userId);
+    if (seated.denied) {
+      return fail(c, "DENIED", "removed from this game");
+    }
+    return c.json({ gameId, userId: identity.userId, role: seated.role });
   });
 
   // POST /games/{id}/join: join by invite code. Any authenticated user, guests included.
@@ -327,46 +443,11 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "DENIED", "invalid invite code");
     }
 
-    // The denylist is checked at join (DESIGN.md §7): a kicked user still holds the link.
-    const denied = await deps.db
-      .select({ userId: schema.gameDenylist.userId })
-      .from(schema.gameDenylist)
-      .where(
-        and(
-          eq(schema.gameDenylist.gameId, gameId),
-          eq(schema.gameDenylist.userId, identity.userId),
-        ),
-      )
-      .limit(1);
-    if (denied.length > 0) {
+    const seated = await seatSpectator(deps.db, gameId, identity.userId);
+    if (seated.denied) {
       return fail(c, "DENIED", "removed from this game");
     }
-
-    // Join lands you as a spectator (DESIGN.md §8). Idempotent and non-demoting: a re-join
-    // by an existing host or solver keeps their role (DESIGN.md §8: join is an upsert).
-    await deps.db
-      .insert(schema.memberships)
-      .values({ gameId, userId: identity.userId, role: "spectator" })
-      .onConflictDoNothing({
-        target: [schema.memberships.gameId, schema.memberships.userId],
-      });
-
-    const membership = await deps.db
-      .select({ role: schema.memberships.role })
-      .from(schema.memberships)
-      .where(
-        and(
-          eq(schema.memberships.gameId, gameId),
-          eq(schema.memberships.userId, identity.userId),
-        ),
-      )
-      .limit(1);
-
-    return c.json({
-      gameId,
-      userId: identity.userId,
-      role: membership[0]!.role,
-    });
+    return c.json({ gameId, userId: identity.userId, role: seated.role });
   });
 
   // GET /games/{id}: the game view: solution-stripped puzzle, membership, session endpoint.

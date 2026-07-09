@@ -27,9 +27,9 @@ interface PuzzleView {
  * INV-6: built from an explicit column list, never a select-all of the `puzzles` table (whose
  * `data` column holds the solution). Geometry (rows, cols) is projected out of `data` in SQL,
  * so the solution-bearing jsonb never enters the process. `features` is the detected-feature
- * flags (rebus, circles, ...), which carry no solution. `title`/`author` are absent because
- * ingestion does not persist them today (see the module note); when it does, they can be added
- * additively.
+ * flags (rebus, circles, ...), which carry no solution. `title`/`author` are the display metadata
+ * ingestion parses, read from their own columns (never from `data`), null when the document
+ * carried none; they are shown back verbatim and are not solutions (INV-6 untouched).
  */
 interface PuzzleSummary {
   readonly puzzleId: string;
@@ -37,6 +37,8 @@ interface PuzzleSummary {
   readonly rows: number;
   readonly cols: number;
   readonly features: unknown;
+  readonly title: string | null;
+  readonly author: string | null;
 }
 
 export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
@@ -77,6 +79,10 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
         features: parsed.features,
         source: { kind: "upload" },
         createdBy: identity.userId,
+        // Display metadata parsed at the boundary; null when the document carried none. Stored
+        // in dedicated columns, never in `data`, so no solution rides along (INV-6).
+        title: parsed.title,
+        author: parsed.author,
       })
       .returning({ puzzleId: schema.puzzles.puzzleId });
 
@@ -109,6 +115,8 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
         puzzleId: schema.puzzles.puzzleId,
         createdAt: schema.puzzles.createdAt,
         features: schema.puzzles.features,
+        title: schema.puzzles.title,
+        author: schema.puzzles.author,
         puzzleRows: sql<number>`(${schema.puzzles.data} ->> 'rows')::int`,
         puzzleCols: sql<number>`(${schema.puzzles.data} ->> 'cols')::int`,
       })
@@ -128,6 +136,8 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
       rows: r.puzzleRows,
       cols: r.puzzleCols,
       features: r.features,
+      title: r.title,
+      author: r.author,
     }));
     return c.json({ puzzles });
   });

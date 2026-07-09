@@ -93,6 +93,16 @@ export const puzzles = pgTable(
     // Source metadata (upload vs URL, original filename/URL). Nullable: not every
     // ingest path carries provenance.
     source: jsonb("source"),
+    // Display metadata parsed from the XWord Info document at ingestion (title, author).
+    // Nullable, no default, no backfill: existing puzzles predate the columns and read as
+    // untitled/anonymous. These are display content shown back verbatim, never normalized or
+    // compared, so the ASCII-only casing rule (INV-1) deliberately does not apply and there is
+    // no CHECK; they are NOT solutions, so INV-6 is untouched. Trimming, entity decoding, and
+    // the length cap live in the ingestion ACL (the single writer), not in the column. Kept off
+    // the ServerPuzzle/ClientPuzzle model on purpose: they serve the signed-in home lists, not
+    // the solve screen, so they are api row-shape fields, not wire puzzle facts.
+    title: text("title"),
+    author: text("author"),
     // Uploader (the authenticated caller on `POST /puzzles`), so a user can list their own
     // uploads (the signed-in home surface). Expand-only and nullable: existing rows predate
     // the column and read as unowned; new ingests populate it. ON DELETE NO ACTION mirrors
