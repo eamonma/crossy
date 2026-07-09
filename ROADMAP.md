@@ -638,6 +638,19 @@ until they land.
   owner typing-feel taste pass on the running smoke. Two client-side findings surfaced and
   fixed in passing: the composition-root pg pools had no error listener, and the reconnect
   backoff reset on every failed attempt after a long-lived drop.
+- Docs amendment pass 2 landed (2026-07-08): the Waves 2.1a-2.2 findings ledger folded
+  into PROTOCOL.md, DESIGN.md, and vectors/README.md. Pinned: handshake check order with
+  denylist strictly before membership (PROTOCOL section 2, which also fixed the reversed
+  token bullet), drop-and-log for malformed post-handshake frames (section 11),
+  actor-supplied gameCompleted at/stats (section 6), the REST error vocabulary plus the
+  four SP5 ingestion rejections (section 12), no-op clear suppression guidance
+  (section 5), participantCount over cell_events with the terminal seq excluded (DESIGN
+  section 9), CORS as deploy configuration (DESIGN section 7), snapshot-only deflate
+  (DESIGN section 6), and the client-store family pinning semantics rather than frame
+  bytes (vectors/README.md). DESIGN sections 7 and 8 corrected to match PROTOCOL
+  section 12 and packages/auth. Still explicitly open: welcome version echo, the age-out
+  measure (seq-delta proposal, close by M2), comparator acceptance of unenterable full
+  strings.
 
 ## Phase 3 — Correctness core ∥ Identity (= M2 ∥ M3)
 
