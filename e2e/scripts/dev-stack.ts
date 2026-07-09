@@ -129,20 +129,34 @@ const PUZZLE = {
   ],
 };
 
-/** Reject if a loopback port is already taken, with a message that names the override. */
+/**
+ * Reject if a loopback port is already taken, with a message that names the override.
+ * Probes both loopback families: Vite with --host localhost binds ::1 where available,
+ * so an IPv4-only probe false-passes when a squatter holds [::1]:port (seen live with
+ * an orphaned Vite). A machine without IPv6 loopback skips that probe.
+ */
 function checkPortFree(port: number, label: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const srv = createNetServer();
-    srv.once("error", (err) => {
-      const code = (err as NodeJS.ErrnoException).code ?? "EADDRINUSE";
-      reject(
-        new Error(
-          `${label} port ${port} is in use (${code}). Free it or set the matching DEV_STACK_*_PORT env var.`,
-        ),
-      );
+  const probe = (host: string): Promise<void> =>
+    new Promise((resolve, reject) => {
+      const srv = createNetServer();
+      srv.once("error", (err) => {
+        const code = (err as NodeJS.ErrnoException).code ?? "EADDRINUSE";
+        if (
+          host === "::1" &&
+          (code === "EAFNOSUPPORT" || code === "EADDRNOTAVAIL")
+        ) {
+          resolve();
+          return;
+        }
+        reject(
+          new Error(
+            `${label} port ${port} is in use (${code} on ${host}). Free it or set the matching DEV_STACK_*_PORT env var.`,
+          ),
+        );
+      });
+      srv.listen(port, host, () => srv.close(() => resolve()));
     });
-    srv.listen(port, "127.0.0.1", () => srv.close(() => resolve()));
-  });
+  return probe("127.0.0.1").then(() => probe("::1"));
 }
 
 /** POST JSON to the api with a bearer token, throwing on a non-2xx (same shape as the harness). */
