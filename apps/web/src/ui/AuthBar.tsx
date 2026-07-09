@@ -1,7 +1,7 @@
 // Auth surface (Track B). Discord OAuth is the live path tonight; anonymous guests exist
-// behind config.guestsEnabled (false in production until captcha lands) and light up with the
-// flag without ever blocking on it. Email gets no surface, ever (product decision). The
-// supabase vendor stays behind the Identity port; this file only consumes it.
+// behind config.guestsEnabled (gated by Turnstile) and light up with the flag without ever
+// blocking on it. Email gets no surface, ever (product decision). The supabase vendor stays
+// behind the Identity port; this file only consumes it.
 //
 // Two exports: SignInButtons (the prominent gate control) and AuthBar (the slim top-bar chip
 // that shows the signed-in name plus a sign-out menu, or a compact sign-in button).
@@ -9,7 +9,16 @@ import { useEffect, useState } from "react";
 import { ExitIcon, PersonIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity, IdentitySession } from "../identity";
-import { Button, Popover, cx } from "./primitives";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { GuestSignIn } from "./GuestSignIn";
 
 /** The Discord glyph, self-hosted (no icon CDN); tinted to the current text color. */
 function DiscordMark({ className }: { className?: string }) {
@@ -29,8 +38,8 @@ function DiscordMark({ className }: { className?: string }) {
 
 /**
  * The prominent sign-in control, for the landing gate and invite gates. Discord is always
- * shown; the guest button appears only when the flag is on, and a guest refusal renders as one
- * calm sentence, never a thrown error or an error code.
+ * shown; the guest path (Turnstile-gated) appears only when the flag and site key are both
+ * set, and a refusal renders as one calm sentence, never a thrown error or an error code.
  */
 export function SignInButtons({
   identity,
@@ -50,23 +59,26 @@ export function SignInButtons({
     });
   }
 
-  function onGuest(): void {
-    setNotice(null);
-    void identity.signInGuest().then((result) => {
-      if (!result.ok) setNotice("Guest play isn't available right now.");
-    });
-  }
+  const { turnstileSiteKey } = config;
+  const guestReady = config.guestsEnabled && turnstileSiteKey !== undefined;
 
   return (
     <div className="flex flex-col gap-3">
-      <Button variant="solid" size="lg" onClick={onDiscord} className="w-full">
+      <Button
+        variant="default"
+        size="lg"
+        onClick={onDiscord}
+        className="w-full"
+      >
         <DiscordMark />
         {discordLabel}
       </Button>
-      {config.guestsEnabled && (
-        <Button variant="soft" size="lg" onClick={onGuest} className="w-full">
-          Continue as guest
-        </Button>
+      {guestReady && turnstileSiteKey !== undefined && (
+        <GuestSignIn
+          identity={identity}
+          siteKey={turnstileSiteKey}
+          onNotice={setNotice}
+        />
       )}
       {notice !== null && (
         <p className="text-2 text-danger-text" role="status">
@@ -77,10 +89,13 @@ export function SignInButtons({
   );
 }
 
-/** The slim top-bar auth chip. */
+/**
+ * The slim top-bar auth chip. Discord-only: the guest path needs room for the Turnstile
+ * widget, so it lives on the prominent gate (SignInButtons) and not in this compact chip.
+ * config is accepted for a stable call signature across every caller, unused here today.
+ */
 export function AuthBar({
   identity,
-  config,
 }: {
   identity: Identity;
   config: AppConfig;
@@ -102,19 +117,10 @@ export function AuthBar({
   if (session === null) {
     return (
       <div className="flex items-center gap-3">
-        <Button variant="soft" size="sm" onClick={onDiscord}>
+        <Button variant="secondary" size="sm" onClick={onDiscord}>
           <DiscordMark />
           Sign in
         </Button>
-        {config.guestsEnabled && (
-          <button
-            type="button"
-            onClick={() => void identity.signInGuest()}
-            className="text-2 text-text-subtle hover:text-text-muted"
-          >
-            or play as guest
-          </button>
-        )}
         {notice !== null && (
           <span className="text-1 text-danger-text">{notice}</span>
         )}
@@ -123,47 +129,29 @@ export function AuthBar({
   }
 
   return (
-    <Popover
-      align="end"
-      width="14rem"
-      trigger={() => (
-        <button
-          type="button"
-          className={cx(
-            "inline-flex items-center gap-2 h-8 pl-2 pr-3 rounded-3",
-            "border border-border bg-panel hover:bg-sand-3 transition-colors",
-            "text-2 font-medium text-text",
-          )}
-        >
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="secondary" size="sm" className="pl-1.5">
           <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gold-4 text-gold-11 text-1 font-medium">
             {session.displayName.slice(0, 1).toUpperCase()}
           </span>
           <span className="max-w-[10ch] truncate">{session.displayName}</span>
-        </button>
-      )}
-    >
-      {(close) => (
-        <div className="flex flex-col gap-1">
-          <div className="px-2 pb-2 flex items-center gap-2">
-            <PersonIcon className="text-text-subtle" />
-            <span className="text-2 text-text-muted truncate">
-              {session.displayName}
-              {session.isAnonymous ? " (guest)" : ""}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              close();
-              void identity.signOut();
-            }}
-            className="flex items-center gap-2 px-2 h-9 rounded-3 text-2 text-text hover:bg-sand-3 text-left"
-          >
-            <ExitIcon />
-            Sign out
-          </button>
-        </div>
-      )}
-    </Popover>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="flex items-center gap-2 font-normal text-text-muted">
+          <PersonIcon className="text-text-subtle" />
+          <span className="truncate">
+            {session.displayName}
+            {session.isAnonymous ? " (guest)" : ""}
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void identity.signOut()}>
+          <ExitIcon />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -6,7 +6,8 @@ import { ArrowRightIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
 import { TopBar } from "./TopBar";
-import { Button, Divider } from "./primitives";
+import { Divider } from "./primitives";
+import { Button } from "@/components/ui/button";
 
 function Line({
   children,
@@ -47,11 +48,10 @@ export function Landing({
 
           <div className="pl-[10vw] mt-6 flex flex-col gap-5 max-w-[36rem]">
             <p className="text-3 text-text-muted pr-6">
-              Bring a puzzle, share one link, and watch every cursor move as
-              your friends fill the grid with you.
+              Upload a puzzle, share one link, and solve it with your friends.
             </p>
             <div>
-              <Button variant="solid" size="md" onClick={onCreate}>
+              <Button variant="default" onClick={onCreate}>
                 Create a game
                 <ArrowRightIcon />
               </Button>

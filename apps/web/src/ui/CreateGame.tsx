@@ -14,7 +14,11 @@ import type { Identity } from "../identity";
 import type { Navigate } from "../nav";
 import { TopBar } from "./TopBar";
 import { SignInButtons } from "./AuthBar";
-import { Button, cx } from "./primitives";
+import { cx } from "./primitives";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /** Map an API rejection code to one calm, specific sentence in the product voice. */
 function rejectionSentence(code: string): string {
@@ -49,11 +53,7 @@ interface Rejection {
 
 /** The one dialog recipe: warm face, hairline, card radius, dialog elevation. */
 function DialogCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="enter bg-panel border border-border rounded-4 shadow-xl p-5">
-      {children}
-    </div>
-  );
+  return <Card className="enter gap-0 p-5 shadow-xl">{children}</Card>;
 }
 
 export function CreateGame({
@@ -109,11 +109,11 @@ function CreateGate({
 }) {
   return (
     <DialogCard>
-      <h1 className="font-display text-6 font-semibold m-0">Create a game</h1>
-      <p className="mt-1.5 text-2 text-text-muted">
+      <h1 className="font-display text-6 m-0">Create a game</h1>
+      <p className="mt-1.5 text-3 text-text-muted">
         {guest
-          ? "Guests can join and solve, but creating a game needs a full account. Sign in to host."
-          : "Sign in to upload a puzzle and start a room your friends can join."}
+          ? "Guests can join and solve. Creating a game needs a full account."
+          : "Sign in with Discord to create a game."}
       </p>
       <div className="mt-5">
         <SignInButtons
@@ -266,27 +266,23 @@ function CreateForm({
 
   return (
     <DialogCard>
-      <h1 className="font-display text-6 font-semibold m-0">Create a game</h1>
-      <p className="mt-1.5 text-2 text-text-muted">
-        Upload an XWord Info JSON puzzle. You'll land in the game with a link to
-        share.
+      <h1 className="font-display text-6 m-0">Create a game</h1>
+      <p className="mt-1.5 text-3 text-text-muted">
+        Upload an XWord Info JSON puzzle and get a link to share.
       </p>
 
       <div className="mt-4 flex flex-col gap-1.5">
-        <label
-          htmlFor="game-name"
-          className="text-2 font-medium text-text-muted"
-        >
+        <Label htmlFor="game-name" className="text-2 text-text-muted">
           Name
-        </label>
-        <input
+        </Label>
+        <Input
           id="game-name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Sunday themeless"
           maxLength={80}
-          className="field h-10 px-3 text-3 w-full"
+          className="h-9"
         />
       </div>
 
@@ -301,14 +297,15 @@ function CreateForm({
             <span className="ml-auto shrink-0 text-1 text-text-subtle tabular-nums">
               {Math.max(1, Math.round(raw.length / 1024))} KB
             </span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-xs"
               onClick={clearFile}
               aria-label="Remove file"
-              className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-2 text-text-subtle hover:text-text hover:bg-sand-3"
             >
               <Cross2Icon />
-            </button>
+            </Button>
           </div>
         ) : (
           <button
@@ -377,11 +374,11 @@ function CreateForm({
       )}
 
       <div className="mt-5 flex items-center justify-end gap-2">
-        <Button variant="soft" size="sm" onClick={() => navigate("")}>
+        <Button variant="secondary" size="sm" onClick={() => navigate("")}>
           Cancel
         </Button>
         <Button
-          variant="solid"
+          variant="default"
           size="sm"
           onClick={() => void submit()}
           disabled={raw.trim() === "" || creating}

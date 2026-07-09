@@ -31,6 +31,7 @@ import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import type { StackMember } from "./ui/primitives";
+import { CapsLabel } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import { ClueBar, ClueRail, ClueSheet, ClueStrip, clueOn } from "./ui/Clues";
 import { Keyboard } from "./ui/Keyboard";
@@ -38,7 +39,8 @@ import { SpectateBanner } from "./ui/SpectateBanner";
 import { CompletionOverlay } from "./ui/Completion";
 import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
-import { Button, Panel } from "./ui/primitives";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useElapsedSeconds, formatDuration } from "./ui/gameTime";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
@@ -304,19 +306,17 @@ export function LiveApp({
   if (state.phase === "loading") {
     return (
       <GateLayout identity={identity} config={config} navigate={navigate}>
-        <Panel className="p-6 text-center enter">
+        <Card className="enter gap-0 p-6 text-center">
           <p className="text-3 text-text-muted">Opening the game...</p>
-        </Panel>
+        </Card>
       </GateLayout>
     );
   }
   if (state.phase === "needs-auth") {
     return (
       <GateLayout identity={identity} config={config} navigate={navigate}>
-        <Panel feature className="p-6 text-center enter">
-          <p className="text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-accent">
-            You're invited
-          </p>
+        <Card tone="feature" className="enter gap-0 p-6 text-center">
+          <CapsLabel className="text-text-accent">You're invited</CapsLabel>
           <h1 className="mt-2 font-display text-8 font-medium text-gold-12">
             Solve this one together.
           </h1>
@@ -332,24 +332,24 @@ export function LiveApp({
               discordLabel="Sign in with Discord"
             />
           </div>
-        </Panel>
+        </Card>
       </GateLayout>
     );
   }
   if (state.phase === "error") {
     return (
       <GateLayout identity={identity} config={config} navigate={navigate}>
-        <Panel className="p-6 text-center enter">
+        <Card className="enter gap-0 p-6 text-center">
           <h1 className="font-display text-6 font-medium">
             This game won't open
           </h1>
           <p className="mt-2 text-3 text-text-muted">{state.message}</p>
           <div className="mt-5 flex justify-center">
-            <Button variant="soft" onClick={() => navigate("")}>
+            <Button variant="secondary" onClick={() => navigate("")}>
               Back to start
             </Button>
           </div>
-        </Panel>
+        </Card>
       </GateLayout>
     );
   }

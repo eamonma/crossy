@@ -1,124 +1,16 @@
-// Design-system primitives (Track B). The small, reused vocabulary every screen composes:
-// one Button with three restraint-first variants (no scale on hover, per the audit), the
-// single elevation recipe as Panel, the dashed rule as a first-class Divider, deterministic
-// Avatars and their Stack, the wordmark, and a minimal click-outside Popover. Everything is
-// Tailwind utilities over the @theme tokens; nothing here invents a color outside Sand + Gold.
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ButtonHTMLAttributes,
-  type ReactNode,
-} from "react";
+// The small bespoke vocabulary that has no shadcn/ui equivalent: the dashed rule as a
+// first-class Divider (the system's structural device, not a generic <hr>), the uppercase
+// micro-label, the participant AvatarStack (built on shadcn's Avatar/AvatarFallback), and the
+// wordmark. Buttons, panels/cards, badges, popovers, dialogs, and menus now live in
+// src/components/ui/* (shadcn/ui, themed to Sand + Gold in styles.css); this file only keeps
+// what shadcn does not provide.
+import type { ReactNode } from "react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
 /** Join class names, dropping falsy entries. */
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
-}
-
-type ButtonVariant = "solid" | "soft" | "ghost";
-type ButtonSize = "sm" | "md" | "lg";
-
-const BUTTON_BASE =
-  "inline-flex items-center justify-center gap-2 font-sans font-medium " +
-  "whitespace-nowrap rounded-3 cursor-pointer select-none transition-colors " +
-  "duration-[120ms] ease-[cubic-bezier(0.4,0,0.2,1)] disabled:opacity-50 " +
-  "disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 " +
-  "focus-visible:ring-focus-ring focus-visible:ring-offset-2 " +
-  "focus-visible:ring-offset-background";
-
-const BUTTON_VARIANT: Record<ButtonVariant, string> = {
-  // The one gold CTA per screen. White glyph, no scale, darkens on hover.
-  solid: "bg-solid text-white hover:bg-solid-hover border border-transparent",
-  // The panel recipe as a control: warm face, hairline, quiet hover tint.
-  soft: "bg-panel text-text border border-border hover:bg-sand-3",
-  // Chromeless: nav, back, icon actions.
-  ghost:
-    "bg-transparent text-text-muted hover:bg-sand-3 border border-transparent",
-};
-
-const BUTTON_SIZE: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-2",
-  md: "h-10 px-4 text-3",
-  lg: "h-12 px-5 text-4",
-};
-
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-}
-
-export function Button({
-  variant = "soft",
-  size = "md",
-  className,
-  type = "button",
-  ...rest
-}: ButtonProps) {
-  return (
-    <button
-      type={type}
-      className={cx(
-        BUTTON_BASE,
-        BUTTON_VARIANT[variant],
-        BUTTON_SIZE[size],
-        className,
-      )}
-      {...rest}
-    />
-  );
-}
-
-/** An icon-only button, square, same variants. */
-export function IconButton({
-  variant = "ghost",
-  size = "md",
-  className,
-  type = "button",
-  ...rest
-}: ButtonProps) {
-  const square = size === "sm" ? "w-8" : size === "lg" ? "w-12" : "w-10";
-  return (
-    <button
-      type={type}
-      className={cx(
-        BUTTON_BASE,
-        BUTTON_VARIANT[variant],
-        BUTTON_SIZE[size],
-        "px-0",
-        square,
-        className,
-      )}
-      {...rest}
-    />
-  );
-}
-
-/**
- * The one elevation recipe, reused everywhere: warm face, 1px hairline, 8px radius, the
- * workhorse shadow. `feature` swaps to the gold-cream face for hero and completion.
- */
-export function Panel({
-  feature = false,
-  className,
-  children,
-}: {
-  feature?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={cx(
-        feature ? "bg-panel-feature" : "bg-panel",
-        "border border-border rounded-4 shadow-sm",
-        className,
-      )}
-    >
-      {children}
-    </div>
-  );
 }
 
 /** The dashed rule: the system's primary structural device (audit section 2). */
@@ -142,7 +34,12 @@ export function Divider({
   );
 }
 
-/** Uppercase micro-label with the caps tracking token (ACROSS / DOWN, section headers). */
+/**
+ * Uppercase micro-label with the caps tracking token: the one eyebrow/caption recipe (ACROSS /
+ * DOWN, "You're invited", "Complete"). One size, one weight, tinted per context via className
+ * (uses cn/tailwind-merge so a color override cleanly replaces the default, never competes
+ * with it).
+ */
 export function CapsLabel({
   children,
   className,
@@ -152,87 +49,13 @@ export function CapsLabel({
 }) {
   return (
     <span
-      className={cx(
+      className={cn(
         "text-1 font-semibold uppercase text-text-muted",
         "tracking-[var(--tracking-caps)]",
         className,
       )}
     >
       {children}
-    </span>
-  );
-}
-
-/** The soft status chip from v2: puzzle title, "Done", grid sizes. One quiet tint per job. */
-export function Badge({
-  tone = "neutral",
-  pill = false,
-  className,
-  children,
-}: {
-  tone?: "neutral" | "gold" | "green";
-  pill?: boolean;
-  className?: string;
-  children: ReactNode;
-}) {
-  const tones = {
-    neutral: "bg-sand-3 text-sand-11",
-    gold: "bg-gold-3 text-gold-11",
-    green: "bg-green-3 text-success-text",
-  } as const;
-  return (
-    <span
-      className={cx(
-        "inline-flex items-center gap-1 whitespace-nowrap px-2 py-[3px]",
-        "font-sans font-medium text-1 leading-none",
-        pill ? "rounded-full" : "rounded-2",
-        tones[tone],
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-const AVATAR_SIZE = {
-  sm: "w-6 h-6 text-1",
-  md: "w-8 h-8 text-2",
-} as const;
-
-/**
- * A participant chip: initial on a warm neutral face (v2's avatar recipe; sand for others,
- * gold for emphasis). Chrome stays inside the Sand + Gold system; a teammate's wire color
- * lives on their in-board cursor, never up here. `ring` draws the panel-colored halo the
- * stack uses to separate overlapping chips.
- */
-export function Avatar({
-  initial,
-  tone = "neutral",
-  size = "md",
-  ring = false,
-  dim = false,
-  title,
-}: {
-  initial: string;
-  tone?: "neutral" | "gold";
-  size?: keyof typeof AVATAR_SIZE;
-  ring?: boolean;
-  dim?: boolean;
-  title?: string;
-}) {
-  return (
-    <span
-      title={title}
-      className={cx(
-        "inline-flex items-center justify-center rounded-full font-sans font-medium shrink-0",
-        tone === "gold" ? "bg-gold-4 text-gold-11" : "bg-sand-4 text-sand-11",
-        AVATAR_SIZE[size],
-        ring && "ring-2 ring-panel",
-        dim && "opacity-55",
-      )}
-    >
-      {initial.toUpperCase().slice(0, 1)}
     </span>
   );
 }
@@ -244,7 +67,11 @@ export interface StackMember {
   connected: boolean;
 }
 
-/** Overlapping chips for who is here, capped with a +N count. Self reads gold. */
+/**
+ * Overlapping chips for who is here, capped with a +N count. Self reads gold; each chip
+ * carries the panel-colored ring that separates it from its neighbors (not shadcn's
+ * AvatarGroup default of ring-background: the stack sits on the panel face, not the page).
+ */
 export function AvatarStack({
   members,
   selfId = null,
@@ -262,13 +89,20 @@ export function AvatarStack({
         {shown.map((m) => (
           <Avatar
             key={m.userId}
-            initial={m.initial}
-            tone={m.userId === selfId ? "gold" : "neutral"}
             size="sm"
-            ring
-            dim={!m.connected}
             title={m.initial}
-          />
+            className={cx("ring-2 ring-panel", !m.connected && "opacity-55")}
+          >
+            <AvatarFallback
+              className={
+                m.userId === selfId
+                  ? "bg-gold-4 text-gold-11"
+                  : "bg-sand-4 text-sand-11"
+              }
+            >
+              {m.initial.toUpperCase().slice(0, 1)}
+            </AvatarFallback>
+          </Avatar>
         ))}
       </div>
       {extra > 0 && (
@@ -324,66 +158,5 @@ export function Logo({
         </span>
       )}
     </span>
-  );
-}
-
-/**
- * A minimal popover: a trigger and a floating panel that closes on outside click or Escape.
- * Depth escalates to shadow-lg because it is a true overlay (audit: one recipe for panels,
- * more only for overlays). No animation library; a quiet fade-rise via the enter utility.
- */
-export function Popover({
-  trigger,
-  children,
-  align = "end",
-  width = "18rem",
-}: {
-  trigger: (open: boolean) => ReactNode;
-  children: (close: () => void) => ReactNode;
-  align?: "start" | "end";
-  width?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const id = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent): void {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="relative" ref={rootRef}>
-      {/* The trigger renders its own focusable control (a Button/IconButton); this wrapper
-          only toggles on the bubbled click, so there is no nested-button. */}
-      <span onClick={() => setOpen((v) => !v)} className="contents">
-        {trigger(open)}
-      </span>
-      {open && (
-        <div
-          id={id}
-          role="dialog"
-          className={cx(
-            "absolute top-[calc(100%+8px)] z-[var(--z-dropdown)] enter",
-            "bg-panel border border-border rounded-4 shadow-lg p-4",
-            align === "end" ? "right-0" : "left-0",
-          )}
-          style={{ width }}
-        >
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
   );
 }

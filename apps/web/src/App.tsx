@@ -29,7 +29,7 @@ import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
 import { Landing } from "./ui/Landing";
 import { CreateGame } from "./ui/CreateGame";
-import { Button } from "./ui/primitives";
+import { Button } from "@/components/ui/button";
 import { ThemeProvider } from "./ui/useTheme";
 import { LiveApp } from "./LiveApp";
 import type { AppConfig } from "./config/config";
@@ -293,19 +293,35 @@ function DemoApp({
 
       <div className="flex items-center flex-wrap gap-3 my-4">
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={() => session.scribble(selection.cell)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => session.scribble(selection.cell)}
+          >
             Teammate scribble
           </Button>
-          <Button size="sm" onClick={() => session.gapEvent(selection.cell)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => session.gapEvent(selection.cell)}
+          >
             Lose an event
           </Button>
-          <Button size="sm" onClick={() => session.dropConnection()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => session.dropConnection()}
+          >
             Drop connection
           </Button>
-          <Button size="sm" onClick={() => session.completeGame()}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => session.completeGame()}
+          >
             Complete game
           </Button>
-          <Button size="sm" onClick={() => session.reset()}>
+          <Button variant="secondary" size="sm" onClick={() => session.reset()}>
             Reset board
           </Button>
         </div>
