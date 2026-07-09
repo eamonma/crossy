@@ -341,3 +341,149 @@ describe("ingestion ACL: malformed documents reject as VALIDATION", () => {
     );
   });
 });
+
+describe("ingestion ACL: optional fields present-but-null read as absent (SP5 real NYT export; DESIGN.md section 7)", () => {
+  it("treats circles: null as absent, not malformed (owner's real export ships circles: null)", () => {
+    const r = accept({ ...base(), circles: null });
+    expect(r.puzzle.circles).toEqual([]);
+    expect(r.puzzle.shadedCircles).toBeUndefined();
+    expect(r.features.circles).toBe(false);
+  });
+
+  it("treats shadecircles: null as unset, routing circles to circles (false/null/true in the wild)", () => {
+    const r = accept({ ...base(), circles: [1, 0, 0, 1], shadecircles: null });
+    expect(r.puzzle.circles).toEqual([0, 3]);
+    expect(r.puzzle.shadedCircles).toBeUndefined();
+    expect(r.features.shadedCircles).toBe(false);
+  });
+
+  it('treats type: null and type: "" as not-diagramless (optional-field rule)', () => {
+    accept({ ...base(), type: null });
+    accept({ ...base(), type: "" });
+  });
+
+  it("treats diagramless: null and bbars/rbars: null as absent (optional-field rule)", () => {
+    accept({ ...base(), diagramless: null, bbars: null, rbars: null });
+  });
+
+  it("accepts the full real-export shape with every optional field null (SP5 real NYT export)", () => {
+    const r = accept({
+      title: null,
+      author: null,
+      editor: null,
+      copyright: null,
+      publisher: null,
+      date: null,
+      dow: null,
+      notepad: null,
+      jnotes: null,
+      id: null,
+      id2: null,
+      gridnums: null,
+      answers: null,
+      acrossmap: null,
+      downmap: null,
+      key: null,
+      hold: null,
+      interpretcolors: null,
+      mini: null,
+      track: null,
+      autowrap: null,
+      code: null,
+      admin: null,
+      type: null,
+      diagramless: null,
+      circles: null,
+      shadecircles: null,
+      bbars: null,
+      rbars: null,
+      ...base(),
+    });
+    expect(r.puzzle.circles).toEqual([]);
+    expect(r.puzzle.solution).toEqual(["H", "I", "O", "N"]);
+  });
+});
+
+describe("ingestion ACL: barred grids reject (DESIGN.md section 7; PROTOCOL.md section 12)", () => {
+  it("rejects a puzzle with bottom bars as VALIDATION (bars move word boundaries, DESIGN.md section 7)", () => {
+    const message = expectReject(
+      { ...base(), bbars: [0, 1, 0, 0] },
+      "VALIDATION",
+    );
+    expect(message).toBe("barred puzzles are not supported");
+  });
+
+  it("rejects a puzzle with right bars as VALIDATION (PROTOCOL.md section 12: no barred code, use VALIDATION)", () => {
+    expectReject({ ...base(), rbars: [1, 0, 0, 0] }, "VALIDATION");
+  });
+
+  it("rejects boolean-encoded bars as VALIDATION (bars parallel the circles 0/1/boolean encoding)", () => {
+    expectReject(
+      { ...base(), bbars: [false, true, false, false] },
+      "VALIDATION",
+    );
+  });
+
+  it("accepts an all-zero bars array as no bars (optional-field rule, DESIGN.md section 7)", () => {
+    const r = accept({
+      ...base(),
+      bbars: [0, 0, 0, 0],
+      rbars: [0, 0, 0, 0],
+    });
+    expect(r.puzzle.clues.across).toHaveLength(2);
+  });
+
+  it("accepts empty bars arrays as no bars (optional-field rule)", () => {
+    accept({ ...base(), bbars: [], rbars: [] });
+  });
+
+  it("prefers barred VALIDATION over OVERSIZE_GRID (barred is a known-incompatible flag checked first)", () => {
+    expectReject(
+      {
+        size: { rows: 26, cols: 26 },
+        grid: [],
+        clues: { across: [], down: [] },
+        bbars: [1],
+      },
+      "VALIDATION",
+    );
+  });
+});
+
+describe("ingestion ACL: HTML entity decoding in clue text (DESIGN.md section 7, D13)", () => {
+  const firstAcross = (acrossFirst: string): string =>
+    accept({
+      ...base(),
+      clues: {
+        across: [`1. ${acrossFirst}`, "3. plain"],
+        down: ["1. up top", "2. and beside"],
+      },
+    }).puzzle.clues.across[0]!.text;
+
+  it("decodes the five standard entities so clue text renders as plain text (DESIGN.md section 10)", () => {
+    expect(firstAcross("salt &amp; pepper")).toBe("salt & pepper");
+    expect(firstAcross("she said &quot;hi&quot;")).toBe('she said "hi"');
+    expect(firstAcross("don&#39;t stop")).toBe("don't stop");
+    expect(firstAcross("a &lt; b &gt; c")).toBe("a < b > c");
+  });
+
+  it("decodes decimal, hex, and named apostrophe references (DESIGN.md section 7, D13)", () => {
+    expect(firstAcross("&#65;&#x42;")).toBe("AB");
+    expect(firstAcross("&apos;quoted&apos;")).toBe("'quoted'");
+  });
+
+  it("decodes each entity once, never doubly (&amp;lt; is the literal &lt;)", () => {
+    expect(firstAcross("&amp;lt;")).toBe("&lt;");
+  });
+
+  it("leaves tags, unknown entities, and bare ampersands untouched (DESIGN.md section 7 accepts HTML)", () => {
+    expect(firstAcross("<i>emphasis</i>")).toBe("<i>emphasis</i>");
+    expect(firstAcross("dash &mdash; here")).toBe("dash &mdash; here");
+    expect(firstAcross("Q&A session")).toBe("Q&A session");
+  });
+
+  it("leaves out-of-range numeric references verbatim (total, never a crash)", () => {
+    expect(firstAcross("&#x110000;")).toBe("&#x110000;");
+    expect(firstAcross("&#0;")).toBe("&#0;");
+  });
+});
