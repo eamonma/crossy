@@ -197,10 +197,15 @@ function CreateForm({
       }
       const { puzzleId } = (await puzzleRes.json()) as { puzzleId: string };
 
+      // The API now owns the game name: send the creator's optional label so it persists and is
+      // returned on the game view. The server trims and caps it too; we match its 80-char bound.
+      const label = name.trim().slice(0, 80);
       const gameRes = await fetch(`${apiBase}/games`, {
         method: "POST",
         headers: auth,
-        body: JSON.stringify({ puzzleId }),
+        body: JSON.stringify(
+          label === "" ? { puzzleId } : { puzzleId, name: label },
+        ),
       });
       if (!gameRes.ok) {
         const body = (await gameRes.json().catch(() => ({}))) as Rejection;
@@ -215,12 +220,10 @@ function CreateForm({
         inviteCode: string;
       };
 
-      // The game name has no server field yet (gap noted in the report); carry the creator's
-      // optional label on the invite link so everyone who opens it sees the same title.
-      const label = name.trim();
-      const suffix =
-        label === "" ? "" : `&name=${encodeURIComponent(label.slice(0, 60))}`;
-      navigate(`?game=${gameId}&code=${inviteCode}${suffix}`);
+      // The name no longer rides on the URL: LiveApp reads it from the game view (and still
+      // falls back to a `?name=` param for links minted before this change). The invite code
+      // stays in the link, since a new visitor needs it to self-join.
+      navigate(`?game=${gameId}&code=${inviteCode}`);
     } catch {
       setPhase({
         kind: "error",
@@ -247,7 +250,7 @@ function CreateForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Sunday themeless"
-          maxLength={60}
+          maxLength={80}
           className={cx(
             "h-10 px-3 rounded-3 bg-panel border border-border text-3 text-text",
             "placeholder:text-text-subtle focus-visible:outline-none",

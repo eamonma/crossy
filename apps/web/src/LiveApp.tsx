@@ -19,6 +19,7 @@ import { tabTarget } from "@crossy/engine";
 import { connectToGame } from "./net/connect";
 import type { GameConnection } from "./net/connect";
 import { computeLayout } from "./domain/layout";
+import { buildShareUrl, resolveInviteField } from "./domain/invite";
 import type { Clue, Puzzle } from "./domain/types";
 import {
   cellClick,
@@ -71,6 +72,10 @@ interface GameView {
   puzzle: ClientPuzzleView;
   members: readonly GameMember[];
   session: { ws: string };
+  // Optional, added by the api PR that retired the URL-param stopgaps (ROADMAP Phase 4). The
+  // client prefers these and falls back to the URL query params, so old invite links still work.
+  name?: string | null;
+  inviteCode?: string;
 }
 
 /** Attach clue prose (from the payload) to the geometry-derived runs; numbering comes from the
@@ -254,6 +259,10 @@ export function LiveApp({
         view.members.find((m) => m.userId === selfId)?.role ?? "spectator";
       const wsUrl = params.get("ws") ?? view.session.ws;
       const puzzle = toPuzzle(view.puzzle);
+      // Prefer the fields the API now returns (member-only invite code, game name), and fall
+      // back to the URL query params so old invite links keep working (expand/contract).
+      const resolvedCode = resolveInviteField(view.inviteCode, code);
+      const resolvedName = resolveInviteField(view.name, name);
       connection = connectToGame({ url: wsUrl, token });
       if (cancelled) {
         connection.close();
@@ -271,8 +280,8 @@ export function LiveApp({
           puzzle,
           role,
           gameId: game,
-          code,
-          name,
+          code: resolvedCode,
+          name: resolvedName,
           apiBase: api,
           selfId,
         },
@@ -550,12 +559,16 @@ function LiveGame({
     clueOn(puzzle.downClues, "down", selection.cell)?.number ?? null;
 
   const elapsed = useElapsedSeconds(store.firstFillAt, store.completedAt);
+  // `name` and `code` are API-preferred with a URL-param fallback (resolved in the loader), so
+  // the title and the share popover work without the current URL carrying `?name=`/`?code=`.
   const title = name ?? `${puzzle.cols} × ${puzzle.rows}`;
-  const shareUrl =
-    code === null
-      ? null
-      : `${window.location.origin}${window.location.pathname}?game=${gameId}&code=${code}` +
-        (name === null ? "" : `&name=${encodeURIComponent(name)}`);
+  const shareUrl = buildShareUrl({
+    origin: window.location.origin,
+    pathname: window.location.pathname,
+    gameId,
+    code,
+    name,
+  });
 
   const completed = store.status === "completed" && !dismissedCompletion;
   const gridMin = `${puzzle.cols * 30}px`;

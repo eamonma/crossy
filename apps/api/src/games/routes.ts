@@ -18,6 +18,30 @@ import { notifyMembership } from "../identity/notify";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Cap on a game's display name. 80 characters is generous for a room label ("Sunday
+ * themeless with the crew") while bounding the column; an over-long name is capped here, not
+ * refused (see `normalizeGameName`).
+ */
+const MAX_GAME_NAME = 80;
+
+/**
+ * Validate the optional `name` on game creation. The name is user content shown back verbatim
+ * and is never normalized or compared, so the ASCII-only casing rule (INV-1) deliberately does
+ * NOT apply: no lowercasing, no locale folding, the string is preserved as typed apart from a
+ * whitespace trim. Absent, null, or empty-after-trim all mean "unnamed" (null). The only
+ * rejection is a present value that is not a string; an over-long name is capped, not refused.
+ */
+function normalizeGameName(
+  raw: unknown,
+): { ok: true; name: string | null } | { ok: false } {
+  if (raw === undefined || raw === null) return { ok: true, name: null };
+  if (typeof raw !== "string") return { ok: false };
+  const trimmed = raw.trim();
+  if (trimmed === "") return { ok: true, name: null };
+  return { ok: true, name: trimmed.slice(0, MAX_GAME_NAME) };
+}
+
 /** A game's host row plus the caller's role in it, resolved in one read pair. */
 interface GameAccess {
   readonly createdBy: string;
@@ -60,6 +84,14 @@ interface GameView {
   readonly gameId: string;
   readonly createdBy: string;
   readonly createdAt: string;
+  /** Optional room display name (user content); null for an unnamed game. INV-6-safe. */
+  readonly name: string | null;
+  /**
+   * The invite code, returned only to members. Every member joined via this code, so it is
+   * not a secret from them; the field is populated after the membership check below, so a
+   * non-member (NOT_PARTICIPANT) or an unauthenticated caller (UNAUTHORIZED) never sees it.
+   */
+  readonly inviteCode: string;
   readonly puzzle: ClientPuzzle;
   readonly members: readonly {
     readonly userId: string;
@@ -88,20 +120,21 @@ async function createGameWithHost(
   puzzleId: string,
   puzzleSnapshot: unknown,
   createdBy: string,
-): Promise<{ gameId: string; inviteCode: string }> {
+  name: string | null,
+): Promise<{ gameId: string; inviteCode: string; name: string | null }> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const inviteCode = generateInviteCode();
     try {
       return await db.transaction(async (tx) => {
         const game = await tx
           .insert(schema.games)
-          .values({ puzzleId, puzzleSnapshot, inviteCode, createdBy })
+          .values({ puzzleId, puzzleSnapshot, inviteCode, createdBy, name })
           .returning({ gameId: schema.games.gameId });
         const gameId = game[0]!.gameId;
         await tx
           .insert(schema.memberships)
           .values({ gameId, userId: createdBy, role: "host" });
-        return { gameId, inviteCode };
+        return { gameId, inviteCode, name };
       });
     } catch (err) {
       if (isUniqueViolation(err) && attempt < 4) continue;
@@ -136,6 +169,11 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     if (typeof puzzleId !== "string" || !UUID.test(puzzleId)) {
       return fail(c, "VALIDATION", "puzzleId is required");
     }
+    // Optional display name: absent/null/empty is unnamed; a non-string is the only rejection.
+    const nameResult = normalizeGameName((body as { name?: unknown }).name);
+    if (!nameResult.ok) {
+      return fail(c, "VALIDATION", "name must be a string");
+    }
 
     const found = await deps.db
       .select({ data: schema.puzzles.data })
@@ -151,12 +189,14 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       puzzleId,
       found[0]!.data,
       identity.userId,
+      nameResult.name,
     );
     return c.json(
       {
         gameId: created.gameId,
         inviteCode: created.inviteCode,
         puzzleId,
+        name: created.name,
         createdBy: identity.userId,
         role: "host" satisfies Role,
       },
@@ -251,6 +291,8 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       .select({
         gameId: schema.games.gameId,
         puzzleSnapshot: schema.games.puzzleSnapshot,
+        name: schema.games.name,
+        inviteCode: schema.games.inviteCode,
         createdBy: schema.games.createdBy,
         createdAt: schema.games.createdAt,
       })
@@ -271,6 +313,10 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       .from(schema.memberships)
       .where(eq(schema.memberships.gameId, gameId));
 
+    // Membership gate: everything below is member-only. The invite code is added to the view
+    // only past this point, so a non-member never receives it (they get NOT_PARTICIPANT here,
+    // and an unauthenticated caller was already stopped by authMiddleware). Any role qualifies,
+    // spectators included: every member joined via the code, so it is not a secret from them.
     if (!members.some((m) => m.userId === identity.userId)) {
       return fail(c, "NOT_PARTICIPANT", "not a member of this game");
     }
@@ -285,6 +331,8 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       gameId: game.gameId,
       createdBy: game.createdBy,
       createdAt: game.createdAt.toISOString(),
+      name: game.name,
+      inviteCode: game.inviteCode,
       puzzle,
       members: members.map((m) => ({
         userId: m.userId,

@@ -104,6 +104,9 @@ beforeAll(async () => {
     puzzleSnapshot: { cells: [] },
     inviteCode: "ABCDEFGH",
     createdBy: seed.userId,
+    // Optional display name written through the typed schema, proving the expand-only
+    // column round-trips (0002_games_name). Nullable, so unnamed games omit it entirely.
+    name: "Seed game",
   });
   await db
     .insert(schema.memberships)
@@ -153,13 +156,14 @@ describe("data model shape (DESIGN.md §9)", () => {
         "recent_command_ids",
       ]),
     );
-    // §9 games session identity.
+    // §9 games session identity, plus the expand-only optional display name (0002_games_name).
     expect(await columnsOf("games")).toEqual(
       expect.arrayContaining([
         "game_id",
         "puzzle_id",
         "puzzle_snapshot",
         "invite_code",
+        "name",
         "created_by",
         "created_at",
       ]),

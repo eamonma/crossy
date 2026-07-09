@@ -115,6 +115,11 @@ export const games = pgTable(
       .references(() => puzzles.puzzleId, { onDelete: "restrict" }),
     // Self-contained denormalized ServerPuzzle snapshot (§9).
     puzzleSnapshot: jsonb("puzzle_snapshot").notNull(),
+    // Optional room display name, user content the creator supplies. Nullable: absent means
+    // an unnamed game. It is shown back verbatim and is never normalized or compared, so the
+    // ASCII-only casing rule (INV-1) deliberately does not apply to it; there is no CHECK.
+    // Trimming and the length cap live in API code (the single writer), not in the column.
+    name: text("name"),
     // Capability code, `/g/{code}`: 8 chars from the unambiguous alphabet (§7). The
     // CHECK encodes that format as defense in depth; generation lives in API code.
     inviteCode: text("invite_code").notNull(),
