@@ -14,8 +14,46 @@ import type { Db } from "../db/client";
 import { fail } from "../http/errors";
 import { authMiddleware } from "../auth/middleware";
 import { generateInviteCode } from "./invite-code";
+import { notifyMembership } from "../identity/notify";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A game's host row plus the caller's role in it, resolved in one read pair. */
+interface GameAccess {
+  readonly createdBy: string;
+  /** The caller's role, or `null` when the caller is not a member. */
+  readonly role: Role | null;
+}
+
+/**
+ * Load the game and the caller's role. `null` means the game does not exist
+ * (`GAME_NOT_FOUND`). Host-only actions (kick, abandon) check `role === "host"` against the
+ * authoritative membership row, so a succession-promoted host is recognized (DESIGN.md §7),
+ * not `games.created_by`, which stays the historical creator.
+ */
+async function loadGameAccess(
+  db: Db,
+  gameId: string,
+  userId: string,
+): Promise<GameAccess | null> {
+  const game = await db
+    .select({ createdBy: schema.games.createdBy })
+    .from(schema.games)
+    .where(eq(schema.games.gameId, gameId))
+    .limit(1);
+  if (game.length === 0) return null;
+  const membership = await db
+    .select({ role: schema.memberships.role })
+    .from(schema.memberships)
+    .where(
+      and(
+        eq(schema.memberships.gameId, gameId),
+        eq(schema.memberships.userId, userId),
+      ),
+    )
+    .limit(1);
+  return { createdBy: game[0]!.createdBy, role: membership[0]?.role ?? null };
+}
 
 /** The `GET /games/{id}` view. `puzzle` is `ClientPuzzle`: solution-stripped by type (INV-6). */
 interface GameView {
@@ -256,6 +294,162 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       session: { ws: `${deps.sessionWsBase}/games/${game.gameId}/ws` },
     };
     return c.json(view);
+  });
+
+  // POST /games/{id}/role: self-upgrade spectator to solver (PROTOCOL.md §12, DESIGN.md §8).
+  // One action, idempotent: a solver or host re-calling it is a no-op that returns the current
+  // role. The only transition is spectator -> solver; any other target role is a VALIDATION.
+  app.post("/:id/role", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    if (!UUID.test(gameId)) return fail(c, "GAME_NOT_FOUND", "no such game");
+
+    // Body is optional; when present it may only ask for `solver` (the sole upgrade).
+    let requested: unknown = "solver";
+    const raw = await c.req.text();
+    if (raw.length > 0) {
+      try {
+        requested = (JSON.parse(raw) as { role?: unknown }).role ?? "solver";
+      } catch {
+        return fail(c, "VALIDATION", "request body must be JSON");
+      }
+    }
+    if (requested !== "solver") {
+      return fail(c, "VALIDATION", "only an upgrade to solver is supported");
+    }
+
+    const access = await loadGameAccess(deps.db, gameId, identity.userId);
+    if (access === null) return fail(c, "GAME_NOT_FOUND", "no such game");
+    if (access.role === null) {
+      return fail(c, "NOT_PARTICIPANT", "not a member of this game");
+    }
+
+    // Idempotent: only a spectator is promoted; solver and host are already at or above solver.
+    if (access.role === "spectator") {
+      await deps.db
+        .update(schema.memberships)
+        .set({ role: "solver" })
+        .where(
+          and(
+            eq(schema.memberships.gameId, gameId),
+            eq(schema.memberships.userId, identity.userId),
+          ),
+        );
+      // A live spectator socket becomes a solver on re-verify (best-effort; the DB row is
+      // authoritative and a reconnect reads the new role regardless).
+      await notifyMembership(deps, gameId, {
+        change: "role",
+        userId: identity.userId,
+      });
+      return c.json({ gameId, userId: identity.userId, role: "solver" });
+    }
+    return c.json({ gameId, userId: identity.userId, role: access.role });
+  });
+
+  // DELETE /games/{id}/members/{userId}: kick (PROTOCOL.md §12, DESIGN.md §7). Host only; the
+  // host MUST NOT target themselves. The removal and the denylist write are ONE transaction, so
+  // a kicked user never lands in the half-state of "no membership yet not denied" (which would
+  // read as NOT_PARTICIPANT instead of the informative DENIED). The API is the single writer on
+  // memberships and the denylist (INV-7); the session only verifies (INV-8).
+  app.delete("/:id/members/:userId", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    const targetId = c.req.param("userId");
+    if (!UUID.test(gameId)) return fail(c, "GAME_NOT_FOUND", "no such game");
+    if (!UUID.test(targetId)) {
+      return fail(
+        c,
+        "NOT_PARTICIPANT",
+        "that user is not a member of this game",
+      );
+    }
+
+    const access = await loadGameAccess(deps.db, gameId, identity.userId);
+    if (access === null) return fail(c, "GAME_NOT_FOUND", "no such game");
+    if (access.role === null) {
+      return fail(c, "NOT_PARTICIPANT", "not a member of this game");
+    }
+    if (access.role !== "host") {
+      return fail(c, "FORBIDDEN", "only the host can remove members");
+    }
+    if (targetId === identity.userId) {
+      // DESIGN.md §7: the host cannot kick themselves; succession is the account-deletion path.
+      return fail(c, "FORBIDDEN", "the host cannot remove themselves");
+    }
+
+    const target = await deps.db
+      .select({ userId: schema.memberships.userId })
+      .from(schema.memberships)
+      .where(
+        and(
+          eq(schema.memberships.gameId, gameId),
+          eq(schema.memberships.userId, targetId),
+        ),
+      )
+      .limit(1);
+    if (target.length === 0) {
+      return fail(
+        c,
+        "NOT_PARTICIPANT",
+        "that user is not a member of this game",
+      );
+    }
+
+    // One transaction: drop the membership row and write the denylist (DESIGN.md §7).
+    await deps.db.transaction(async (tx) => {
+      await tx
+        .delete(schema.memberships)
+        .where(
+          and(
+            eq(schema.memberships.gameId, gameId),
+            eq(schema.memberships.userId, targetId),
+          ),
+        );
+      await tx
+        .insert(schema.gameDenylist)
+        .values({ gameId, userId: targetId })
+        .onConflictDoNothing({
+          target: [schema.gameDenylist.gameId, schema.gameDenylist.userId],
+        });
+    });
+
+    // Disconnect a live socket now (best-effort). Even if this never lands, the denylist row
+    // refuses the kicked user at their next connect (DENIED, PROTOCOL.md §2).
+    await notifyMembership(deps, gameId, { change: "kick", userId: targetId });
+    return c.json({ gameId, removed: targetId });
+  });
+
+  // POST /games/{id}/abandon: terminal state, executed via the session service (PROTOCOL.md
+  // §12, DESIGN.md §6, §7). Host only. The API only authorizes; the actor emits and
+  // synchronously flushes `gameAbandoned`, hydrating on demand if the game is passivated, and
+  // no-ops if the game is already terminal (INV-4). Because only the actor can write game_state,
+  // the notify is required: a failed delivery is a fault, not a degraded success.
+  app.post("/:id/abandon", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    if (!UUID.test(gameId)) return fail(c, "GAME_NOT_FOUND", "no such game");
+
+    const access = await loadGameAccess(deps.db, gameId, identity.userId);
+    if (access === null) return fail(c, "GAME_NOT_FOUND", "no such game");
+    if (access.role === null) {
+      return fail(c, "NOT_PARTICIPANT", "not a member of this game");
+    }
+    if (access.role !== "host") {
+      return fail(c, "FORBIDDEN", "only the host can abandon the game");
+    }
+
+    const delivered = await notifyMembership(deps, gameId, {
+      change: "abandon",
+      by: identity.userId,
+    });
+    if (!delivered) {
+      return fail(
+        c,
+        "INTERNAL",
+        "could not reach the session service to abandon the game",
+      );
+    }
+    return c.json({ gameId, status: "abandoned" });
   });
 
   return app;

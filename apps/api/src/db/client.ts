@@ -12,6 +12,9 @@ import { schema } from "@crossy/db";
 /** The typed Drizzle database the API modules query against. */
 export type Db = NodePgDatabase<typeof schema>;
 
+/** The transaction handle inside `db.transaction(async (tx) => ...)`, for helpers that take one. */
+export type DbTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
 /** Build the API's Drizzle client over an already-configured `pg` pool. */
 export function createDb(pool: Pool): Db {
   return drizzle(pool, { schema });
