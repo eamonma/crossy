@@ -442,6 +442,18 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     const gameId = c.req.param("id");
     if (!UUID.test(gameId)) return fail(c, "GAME_NOT_FOUND", "no such game");
 
+    // Guests spectate but never hold the solver (or host) role: joining as a solver requires a
+    // named account (owner decision 2026-07-09, DESIGN.md §8). Gate before any write, mirroring
+    // the create gate on POST /games, so an anonymous caller is refused FULL_ACCOUNT_REQUIRED
+    // (403) before the promotion UPDATE runs; the open spectator join stays unchanged for guests.
+    if (identity.isAnonymous) {
+      return fail(
+        c,
+        "FULL_ACCOUNT_REQUIRED",
+        "joining as a solver requires a full account",
+      );
+    }
+
     // Body is optional; when present it may only ask for `solver` (the sole upgrade).
     let requested: unknown = "solver";
     const raw = await c.req.text();

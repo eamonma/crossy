@@ -182,7 +182,7 @@ A second ACL, same idea, different boundary: the auth port (section 8) translate
 
 **Display identity**, everyone: a chosen display name plus a deterministic color from a hash (FNV-1a) of `user_id`, stable across devices, sessions, and clients.
 
-**Roles**: `host` (creator), `solver`, `spectator`. Links land you as a spectator; one tap upgrades to solver; the host can kick (but not themselves; succession is in section 7). Spectators receive everything and send nothing that mutates board state. They may broadcast a cursor (they are friends watching, and the moving cursor is the point), but clients suppress it by default (section 15).
+**Roles**: `host` (creator), `solver`, `spectator`. Links land you as a spectator; one tap upgrades a full account to solver; the host can kick (but not themselves; succession is in section 7). Guests never hold the solver or host role (owner decision 2026-07-09): the solver upgrade is refused `FULL_ACCOUNT_REQUIRED` and host succession skips guests, so every solver and host is a named, accountable account. Spectators receive everything and send nothing that mutates board state. They may broadcast a cursor (they are friends watching, and the moving cursor is the point), but clients suppress it by default (section 15).
 
 ## 9. Data model and ownership
 

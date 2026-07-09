@@ -225,7 +225,7 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 | `POST /games`                         | full account                            | `{puzzleId, name?}` creates a game; `name` is an optional display label (trimmed, capped at 80 chars, absent/empty is unnamed); returns the game, its invite code, and the `name` |
 | `GET /games`                          | any authenticated user, guests included | the caller's games (membership join), newest first; per game `{gameId, name, role, createdAt, createdBy, memberCount, puzzle:{puzzleId, rows, cols}}`, no board and no `status` (game_state is session-owned, DESIGN.md section 9); `limit` (default 50, max 100) + `createdAt`-cursor `before` pagination |
 | `POST /games/{id}/join`               | any authenticated user, guests included | `{code}` creates membership with role `spectator`                                                                              |
-| `POST /games/{id}/role`               | member                                  | self-upgrade `spectator` to `solver`                                                                                           |
+| `POST /games/{id}/role`               | full-account member                     | self-upgrade `spectator` to `solver`; a guest is refused `FULL_ACCOUNT_REQUIRED` (joining as a solver requires a named account, DESIGN.md section 8) |
 | `DELETE /games/{id}/members/{userId}` | host                                    | kick: removes membership, writes the denylist, disconnects live sockets; the host MUST NOT target themselves (`403`) |
 | `POST /games/{id}/abandon`            | host                                    | terminal state, executed via the session service                                                                               |
 | `DELETE /account`                     | authenticated (self)                    | tombstone the caller's own account: scrub PII, keep the id, run host succession or auto-abandon per hosted game (DESIGN.md section 8) |
@@ -245,7 +245,7 @@ Unlike every WebSocket message in this document, the puzzle payload carries no l
 | code                    | HTTP | meaning                                                        |
 | ----------------------- | ---- | ------------------------------------------------------------- |
 | `UNAUTHORIZED`          | 401  | bad or missing bearer token                                   |
-| `FULL_ACCOUNT_REQUIRED` | 403  | a guest attempted a create action (DESIGN.md section 8)       |
+| `FULL_ACCOUNT_REQUIRED` | 403  | a guest attempted a create action, or a guest tried to upgrade to solver (DESIGN.md section 8) |
 | `NOT_PARTICIPANT`       | 403  | authenticated, but not a member of this game                  |
 | `DENIED`                | 403  | on the game's denylist, or a wrong invite code                |
 | `FORBIDDEN`             | 403  | a member, but not permitted this action: a non-host kick or abandon, or a host targeting themselves in a kick |
