@@ -1,8 +1,8 @@
-// The Wave 2.1d web client skeleton: the real GameStore (INV-10 overlay, three
-// connection states) driven through a fake in-memory session on the demo boards,
-// with every cursor move going through @crossy/engine's navigation ops per the
-// desktop interaction spec (ROADMAP "Wave 2.1d desktop interaction spec"). The
-// wire transport (src/net) plugs into the same store in Wave 2.2.
+// Client routing (SPA, no server routing): query params select the surface. `?game=<id>` (plus
+// optional `?code=`, and the smoke's `?api=`/`?token=`) drives the live game; `?create=1` is the
+// upload flow; `?demo=1` keeps the old fake-session boards for hacking; everything else is the
+// landing hero. Navigation is pushState so the app never full-reloads between screens, and the
+// identity session survives. The M1 smoke path (`?game=`) is unchanged.
 import {
   useCallback,
   useEffect,
@@ -27,18 +27,20 @@ import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
+import { Landing } from "./ui/Landing";
+import { CreateGame } from "./ui/CreateGame";
+import { Button } from "./ui/primitives";
+import { ThemeProvider } from "./ui/useTheme";
 import { LiveApp } from "./LiveApp";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
+import type { Navigate } from "./nav";
 
 type Theme = "light" | "dark";
 
 /**
- * A real game (`?game=<id>` plus optional `?api=`/`?token=` overrides) drives the live session
- * service; with no game param the demo boards run on the fake session. The live path is what
- * the M1 smoke exercises with two real browsers. Config and the identity port come from boot
- * (main.tsx): the api base defaults to config.apiBase and the token to the identity port, with
- * ?api= and ?token= kept as explicit overrides for the smoke and dogfood links.
+ * The root: one theme provider around the router. A real game (`?game=<id>`) drives the live
+ * session service; the live path is what the M1 smoke exercises with two real browsers.
  */
 export function App({
   config,
@@ -47,14 +49,63 @@ export function App({
   config: AppConfig;
   identity: Identity;
 }) {
-  const params =
-    typeof window === "undefined"
-      ? new URLSearchParams()
-      : new URLSearchParams(window.location.search);
+  return (
+    <ThemeProvider>
+      <Router config={config} identity={identity} />
+    </ThemeProvider>
+  );
+}
+
+function Router({
+  config,
+  identity,
+}: {
+  config: AppConfig;
+  identity: Identity;
+}) {
+  const [search, setSearch] = useState(() =>
+    typeof window === "undefined" ? "" : window.location.search,
+  );
+
+  useEffect(() => {
+    const onPop = (): void => setSearch(window.location.search);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const navigate = useCallback<Navigate>((next) => {
+    window.history.pushState({}, "", window.location.pathname + next);
+    setSearch(next);
+    window.scrollTo(0, 0);
+  }, []);
+
+  const params = useMemo(() => new URLSearchParams(search), [search]);
+
   if (params.get("game") !== null) {
-    return <LiveApp params={params} config={config} identity={identity} />;
+    return (
+      <LiveApp
+        params={params}
+        config={config}
+        identity={identity}
+        navigate={navigate}
+      />
+    );
   }
-  return <DemoApp config={config} identity={identity} />;
+  if (params.get("create") !== null) {
+    return (
+      <CreateGame config={config} identity={identity} navigate={navigate} />
+    );
+  }
+  if (params.get("demo") !== null) {
+    return <DemoApp config={config} identity={identity} />;
+  }
+  return (
+    <Landing
+      identity={identity}
+      config={config}
+      onCreate={() => navigate("?create=1")}
+    />
+  );
 }
 
 function gridOf(boardId: string): Grid {
@@ -72,6 +123,11 @@ function activeClue(
   );
 }
 
+/**
+ * The demo boards behind `?demo=1`: the real GameStore and engine navigation on fake data.
+ * Deliberately left plain (the design pass targets the product surfaces); it stays here so the
+ * store, overlay, and reconnect paths can be hacked on without a live session.
+ */
 function DemoApp({
   config,
   identity,
@@ -120,8 +176,6 @@ function DemoApp({
 
   useEffect(() => () => session.dispose(), [session]);
 
-  // Conflict flash (Decision 2.1d-1): the store detects the PROTOCOL section 8
-  // trigger; the view fills the cell with the writer's color and fades it out.
   useEffect(
     () =>
       store.subscribeFlash(({ cell, by }) => {
@@ -143,8 +197,6 @@ function DemoApp({
     });
   }, []);
 
-  // The rendered composite (INV-10): sequenced cells painted with the overlay.
-  // Pending letters go through the identical path as confirmed ones (2.1d-4).
   const fills = useMemo(() => {
     void version;
     const map = new Map<number, string>();
@@ -157,8 +209,6 @@ function DemoApp({
 
   const filled = useMemo(() => new Set(fills.keys()), [fills]);
 
-  // Teammate presence: cursors joined with participants for color and initial,
-  // grouped per cell (DESIGN section 10 bottom-right anchoring).
   const presence = useMemo(() => {
     void version;
     const byCell = new Map<number, PresenceEntry[]>();
@@ -189,13 +239,13 @@ function DemoApp({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
-    if (e.ctrlKey || e.metaKey || e.altKey) return; // chords left to the browser
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const effect = keyEffect(
       { grid, filled, selection, frozen },
       e.key,
       e.shiftKey,
     );
-    if (effect === null) return; // Enter, Escape, non-charset keys: browser default
+    if (effect === null) return;
     e.preventDefault();
     for (const mutation of effect.mutations) {
       if (mutation.type === "placeLetter") {
@@ -220,14 +270,14 @@ function DemoApp({
     : "";
 
   return (
-    <div className="app">
-      <header className="app__header">
+    <div className="mx-auto max-w-[900px] px-5 pt-5 pb-9">
+      <header className="flex items-baseline justify-between gap-3 flex-wrap mb-4">
         <div>
-          <h1 className="app__title">Crossy web skeleton</h1>
-          <p className="app__subtitle">
-            Wave 2.1d. The real store and engine navigation on fake data; the
-            demo strip stands in for teammates and the network until Wave 2.2
-            wires the live session service.
+          <h1 className="text-5 font-bold m-0">Crossy demo boards</h1>
+          <p className="mt-1 text-2 text-text-muted">
+            The real store and engine navigation on fake data. The product lives
+            at the root; this stays behind <code className="mx-1">?demo=1</code>
+            .
           </p>
         </div>
         <AuthBar identity={identity} config={config} />
@@ -241,69 +291,67 @@ function DemoApp({
         onTheme={setTheme}
       />
 
-      <div className="demo">
-        <span className="settings__label">Demo</span>
-        <div className="demo__buttons">
-          <button
-            type="button"
-            onClick={() => session.scribble(selection.cell)}
-          >
+      <div className="flex items-center flex-wrap gap-3 my-4">
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => session.scribble(selection.cell)}>
             Teammate scribble
-          </button>
-          <button
-            type="button"
-            onClick={() => session.gapEvent(selection.cell)}
-          >
+          </Button>
+          <Button size="sm" onClick={() => session.gapEvent(selection.cell)}>
             Lose an event
-          </button>
-          <button type="button" onClick={() => session.dropConnection()}>
+          </Button>
+          <Button size="sm" onClick={() => session.dropConnection()}>
             Drop connection
-          </button>
-          <button type="button" onClick={() => session.completeGame()}>
+          </Button>
+          <Button size="sm" onClick={() => session.completeGame()}>
             Complete game
-          </button>
-          <button type="button" onClick={() => session.reset()}>
+          </Button>
+          <Button size="sm" onClick={() => session.reset()}>
             Reset board
-          </button>
+          </Button>
         </div>
-        <span className="demo__status">
+        <span className="ml-auto text-2 text-text-muted tabular-nums">
           {store.status} / seq {store.seq} / {store.sync}
         </span>
       </div>
 
-      <div className="clue-bar" aria-live="polite">
+      <div
+        className="flex items-center gap-2 px-3 py-2 rounded-3 bg-blue-3 mb-2 text-4 min-h-5"
+        aria-live="polite"
+      >
         {clue ? (
           <>
             <button
               type="button"
-              className="clue-bar__tag"
+              className="font-bold text-text-accent hover:underline"
               onClick={() => {
                 gridRef.current?.focus();
                 setSelection(clueClick(clue));
               }}
-              title="Jump to this clue's start"
             >
               {clue.number} {clue.direction.toUpperCase()}
             </button>
-            <span className="clue-bar__cells">{clueCells}</span>
+            <span className="tracking-[0.3em] tabular-nums text-text-muted">
+              {clueCells}
+            </span>
           </>
         ) : (
-          <span className="clue-bar__tag clue-bar__tag--empty">
-            No word on this axis
-          </span>
+          <span className="text-text-subtle">No word on this axis</span>
         )}
       </div>
 
-      <div className="pill-row" aria-live="polite">
+      <div
+        className="min-h-7 flex justify-center items-center mb-1"
+        aria-live="polite"
+      >
         {store.sync !== "live" && (
-          <span className="conn-pill">
+          <span className="inline-block px-3 py-0.5 rounded-full border border-border bg-panel text-text-muted text-1 font-semibold">
             {store.sync === "resyncing" ? "Resyncing..." : "Reconnecting..."}
           </span>
         )}
       </div>
 
       <div
-        className="grid-wrap"
+        className="grid-wrap outline-none rounded-4 max-w-[620px] mx-auto"
         ref={gridRef}
         tabIndex={0}
         onKeyDown={onKeyDown}
@@ -319,16 +367,6 @@ function DemoApp({
           onFlashEnd={onFlashEnd}
         />
       </div>
-
-      <p className="hint">
-        Click a cell to focus the grid, click it again to toggle across/down.
-        Letters and digits fill and advance with filled-skip; <code>Tab</code>{" "}
-        and <code>Shift+Tab</code> jump clues; arrows move along the axis with
-        block-skip and toggle it across; <code>Backspace</code> or{" "}
-        <code>Delete</code> clears and steps back; <code>Space</code> clears and
-        advances one cell (never toggles). After Complete game the board freezes
-        for typing but stays navigable.
-      </p>
     </div>
   );
 }
