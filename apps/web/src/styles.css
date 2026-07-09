@@ -26,9 +26,15 @@
 
 @theme {
   /* ---- Type: families -------------------------------------- v2-kept */
-  --font-display: "Newsreader", "Harfang Pro", "harfang-pro", Georgia, "Times New Roman", serif;
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --font-display:
+    "Newsreader", "Harfang Pro", "harfang-pro", Georgia, "Times New Roman",
+    serif;
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+    sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
 
   /* ---- Type: weights ----------------------------------------- v2-kept */
   --font-weight-light: 300;
@@ -379,6 +385,16 @@
  * pointer, or a filled cell would silently swallow the click. Required in solve, spectate,
  * and demo.
  */
+.grid {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Mobile floor: the grid fills its column but never shrinks a cell below 30px; past that the
+     column scrolls (LiveApp sets --grid-min to cols x 30px on the scroll wrapper). */
+  min-width: var(--grid-min, 0px);
+  touch-action: manipulation;
+}
+
 .grid text,
 .grid circle,
 .grid path {
@@ -387,6 +403,13 @@
 
 .grid text {
   user-select: none;
+}
+
+/* The grid's focusable wrapper: a quiet gold focus ring, only on keyboard focus. */
+.grid-wrap:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--color-background),
+    0 0 0 4px var(--color-focus-ring);
 }
 
 /*
