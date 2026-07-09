@@ -8,6 +8,12 @@ There are multiple agents working in workstreams that may merge into main here a
 time, so don't be surprised if main changes without you knowing. Rebase often. Work on
 a branch per wave-track; keep PRs scoped to one track.
 
+Main is golden: every change lands through a PR with green checks (enforced by a
+repository ruleset; merge commits only, no direct pushes). Deploys happen only from the
+pipeline off main, never from a local machine. The one exception is first-time
+provisioning (creating a service, minting a secret), which is done once and committed
+as config-as-code.
+
 ## Precedence when sources disagree
 
 Conformance vectors (`vectors/`) > `PROTOCOL.md` > `DESIGN.md` prose > any

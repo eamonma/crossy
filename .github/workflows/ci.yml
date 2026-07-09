@@ -1,7 +1,10 @@
 name: CI
 
+# Push runs only on main (post-merge, the golden history the deploy pipeline keys off);
+# every branch gets CI through its PR. Unscoped push would double-run each PR update.
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
