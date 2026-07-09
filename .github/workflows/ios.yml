@@ -15,6 +15,7 @@ name: iOS vectors
 
 on:
   push:
+    branches: [main]
     paths:
       - "apps/ios/**"
       - "vectors/**"
