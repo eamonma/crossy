@@ -12,7 +12,15 @@ import {
 } from "@radix-ui/react-icons";
 import type { Direction } from "@crossy/engine";
 import type { Clue } from "../domain/types";
-import { Divider, IconButton, cx } from "./primitives";
+import { Divider, cx } from "./primitives";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 const DIR_ABBR: Record<Direction, string> = { across: "A", down: "D" };
 
@@ -64,15 +72,15 @@ export function ClueBar({
 }) {
   return (
     <div className="md:hidden flex items-stretch border-b border-dashed border-border-dashed">
-      <IconButton
+      <Button
         variant="ghost"
-        size="md"
+        size="icon"
         onClick={onPrev}
         aria-label="Previous clue"
         className="self-center"
       >
         <ChevronLeftIcon />
-      </IconButton>
+      </Button>
       <button
         type="button"
         onClick={onOpen}
@@ -94,15 +102,15 @@ export function ClueBar({
         )}
         <ListBulletIcon className="ml-auto shrink-0 text-text-subtle" />
       </button>
-      <IconButton
+      <Button
         variant="ghost"
-        size="md"
+        size="icon"
         onClick={onNext}
         aria-label="Next clue"
         className="self-center"
       >
         <ChevronRightIcon />
-      </IconButton>
+      </Button>
     </div>
   );
 }
@@ -242,47 +250,46 @@ export function ClueSheet({
   currentDirection: Direction;
   onJump: (clue: Clue) => void;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const jumpAndClose = (clue: Clue): void => {
     onJump(clue);
     onClose();
   };
 
+  // The panel is md:hidden, but shadcn's overlay renders through a portal and cannot inherit
+  // that class; close on a live resize past the desktop breakpoint so a stray scrim never
+  // outlives the mobile-only trigger that opened it (the old bespoke sheet hid both as one).
+  useEffect(() => {
+    if (!open) return;
+    const mq = window.matchMedia("(min-width: 48rem)");
+    if (mq.matches) {
+      onClose();
+      return;
+    }
+    const onChange = (e: MediaQueryListEvent): void => {
+      if (e.matches) onClose();
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [open, onClose]);
+
   return (
-    <div
-      className="fixed inset-0 z-[var(--z-sheet)] md:hidden"
-      role="dialog"
-      aria-label="Clues"
-    >
-      <button
-        type="button"
-        aria-label="Close clues"
-        onClick={onClose}
-        className="absolute inset-0 bg-sand-a8"
-      />
-      <div className="sheet-in absolute inset-x-0 bottom-0 h-[75dvh] flex flex-col bg-panel border-t border-border rounded-t-[12px] shadow-xl">
-        <div className="relative flex items-center justify-between pl-4 pr-2 pt-3 pb-1">
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
+      <SheetContent
+        side="bottom"
+        showCloseButton={false}
+        className="md:hidden gap-0 p-0 rounded-t-2xl data-[side=bottom]:h-[75dvh]"
+      >
+        <SheetHeader className="relative flex-row items-center justify-between gap-0 p-0 pl-4 pr-2 pt-3 pb-1">
           <span className="absolute left-1/2 -translate-x-1/2 top-1.5 h-1 w-9 rounded-full bg-border-strong" />
-          <span className="font-display text-5 font-medium">Clues</span>
-          <IconButton
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <Cross2Icon />
-          </IconButton>
-        </div>
+          <SheetTitle className="font-display text-5 font-medium">
+            Clues
+          </SheetTitle>
+          <SheetClose asChild>
+            <Button variant="ghost" size="icon-sm" aria-label="Close">
+              <Cross2Icon />
+            </Button>
+          </SheetClose>
+        </SheetHeader>
         <div className="grid grid-rows-2 min-h-0 flex-1">
           <div className="flex min-h-0 border-b border-dashed border-border-dashed">
             <ClueList
@@ -303,7 +310,7 @@ export function ClueSheet({
             />
           </div>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

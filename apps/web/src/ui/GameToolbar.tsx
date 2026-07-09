@@ -10,8 +10,16 @@ import {
   CopyIcon,
   Share1Icon,
 } from "@radix-ui/react-icons";
-import { AvatarStack, Badge, Button, IconButton, Popover } from "./primitives";
+import { AvatarStack } from "./primitives";
 import type { StackMember } from "./primitives";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ThemeToggle } from "./TopBar";
 
 function SharePopover({ shareUrl }: { shareUrl: string | null }) {
@@ -34,43 +42,38 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
   }
 
   return (
-    <Popover
-      align="end"
-      width="19rem"
-      trigger={() => (
-        <Button variant="soft" size="sm">
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="secondary" size="sm">
           <Share1Icon />
           <span className="hidden sm:inline">Share</span>
         </Button>
-      )}
-    >
-      {() => (
-        <div className="flex flex-col gap-2">
-          <p className="text-2 text-text-muted">
-            Anyone with this link can join or invite others.
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[19rem]">
+        <p className="text-2 text-text-muted">
+          Anyone with this link can join or invite others.
+        </p>
+        {shareUrl === null ? (
+          <p className="text-2 text-text-subtle">
+            Open this game from an invite link to get one you can share.
           </p>
-          {shareUrl === null ? (
-            <p className="text-2 text-text-subtle">
-              Open this game from its invite link to share it onward.
-            </p>
-          ) : (
-            <>
-              <input
-                readOnly
-                value={shareUrl}
-                onFocus={(e) => e.currentTarget.select()}
-                className="field w-full h-8 px-2 font-mono text-1"
-              />
-              <div className="flex justify-end">
-                <Button variant="solid" size="sm" onClick={() => void copy()}>
-                  {copied ? <CheckIcon /> : <CopyIcon />}
-                  {copied ? "Copied" : "Copy link"}
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+        ) : (
+          <>
+            <Input
+              readOnly
+              value={shareUrl}
+              onFocus={(e) => e.currentTarget.select()}
+              className="font-mono text-1"
+            />
+            <div className="flex justify-end">
+              <Button variant="default" size="sm" onClick={() => void copy()}>
+                {copied ? <CheckIcon /> : <CopyIcon />}
+                {copied ? "Copied" : "Copy link"}
+              </Button>
+            </div>
+          </>
+        )}
+      </PopoverContent>
     </Popover>
   );
 }
@@ -94,24 +97,20 @@ export function GameToolbar({
 }) {
   return (
     <header className="flex items-center gap-2 px-2 sm:px-3 py-2">
-      <IconButton
+      <Button
         variant="ghost"
-        size="sm"
+        size="icon-sm"
         onClick={onBack}
         aria-label="Back to start"
       >
         <ChevronLeftIcon />
-      </IconButton>
+      </Button>
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        <Badge tone="neutral" className="min-w-0">
+        <Badge variant="neutral" className="min-w-0">
           <span className="truncate">{title}</span>
         </Badge>
-        {done && (
-          <Badge tone="green" pill>
-            Done
-          </Badge>
-        )}
+        {done && <Badge variant="success">Done</Badge>}
         <span
           className="shrink-0 font-mono text-2 text-text-muted tabular-nums"
           aria-label="Elapsed time"

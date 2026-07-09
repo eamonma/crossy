@@ -5,15 +5,16 @@ import { MoonIcon, SunIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
 import { AuthBar } from "./AuthBar";
-import { IconButton, Logo } from "./primitives";
+import { Logo } from "./primitives";
+import { Button } from "@/components/ui/button";
 import { useTheme } from "./useTheme";
 
 export function ThemeToggle() {
   const { theme, toggle } = useTheme();
   return (
-    <IconButton
+    <Button
       variant="ghost"
-      size="sm"
+      size="icon-sm"
       onClick={toggle}
       aria-label={
         theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
@@ -21,7 +22,7 @@ export function ThemeToggle() {
       title="Theme"
     >
       {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-    </IconButton>
+    </Button>
   );
 }
 

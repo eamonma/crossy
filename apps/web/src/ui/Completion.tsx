@@ -5,7 +5,9 @@
 // under prefers-reduced-motion, where the summary still lands.
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon, Link2Icon } from "@radix-ui/react-icons";
-import { Button, cx } from "./primitives";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { CapsLabel } from "./primitives";
 import { formatDuration } from "./gameTime";
 
 const CONFETTI_COLORS = ["#978365", "#b9a88d", "#cbc0a8", "#e1dccf", "#cfceca"];
@@ -127,17 +129,13 @@ export function CompletionOverlay({
         onClick={onDismiss}
         className="absolute inset-0 bg-sand-12/25"
       />
-      <div
-        className={cx(
-          "enter relative w-full max-w-[26rem] p-6 text-center",
-          "bg-panel-feature border border-border rounded-4 shadow-xl",
-        )}
+      <Card
+        tone="feature"
+        className="enter relative w-full max-w-[26rem] gap-0 p-6 text-center shadow-xl"
         role="dialog"
         aria-label="Puzzle complete"
       >
-        <p className="text-2 font-semibold uppercase tracking-[var(--tracking-caps)] text-success-text">
-          Complete
-        </p>
+        <CapsLabel className="text-success-text">Complete</CapsLabel>
         <h2 className="mt-2 font-display text-8 font-medium text-gold-12">
           You solved it.
         </h2>
@@ -150,11 +148,11 @@ export function CompletionOverlay({
         </p>
         <div className="mt-6 flex items-center justify-center gap-3">
           {shareUrl !== null && <ShareResult shareUrl={shareUrl} />}
-          <Button variant="soft" size="md" onClick={onHome}>
+          <Button variant="secondary" onClick={onHome}>
             Back to start
           </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -178,7 +176,7 @@ function ShareResult({ shareUrl }: { shareUrl: string }) {
   }
 
   return (
-    <Button variant="solid" size="md" onClick={() => void copy()}>
+    <Button variant="default" onClick={() => void copy()}>
       {copied ? <CheckIcon /> : <Link2Icon />}
       {copied ? "Copied" : "Share result"}
     </Button>

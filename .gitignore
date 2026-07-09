@@ -8,6 +8,9 @@ coverage/
 .env
 .env.*
 !.env.example
+# Dev-only defaults, no secrets: Cloudflare's documented always-pass Turnstile test key, so
+# the guest sign-in path is exercisable on a fresh clone's dev stack (never a real site key).
+!apps/web/.env.development
 
 # Swift / Xcode (apps/ios)
 .build/
@@ -17,3 +20,6 @@ DerivedData/
 # OS / editor
 .DS_Store
 .claude/
+
+# Scratch design-review screenshots (verification artifacts, never committed).
+design-shots/
