@@ -739,6 +739,12 @@ until they land.
   local stacks). api 81 tests, session 39. Remaining in Track B: M3b at deploy time
   (Apple, Discord, guest upgrade against the hosted project, the real Supabase admin
   deleteUser adapter).
+  Owner decision (2026-07-09): account deletion is a soft delete by design. The
+  tombstone plus membership cleanup plus host succession that DELETE /identity already
+  performs IS the product behavior; the vendor deleteUser port stays deliberately
+  unwired, and the Supabase auth row remains. The "real Supabase admin deleteUser
+  adapter" item above is closed as won't-do, not pending. Revisit only if a data
+  removal obligation (e.g. GDPR erasure request) forces a hard-delete path.
   Client-side identity landed overnight (2026-07-09): the web app boots a runtime
   config (/config.json emitted from env by nginx, so one immutable image serves any
   environment) and an Identity port whose Supabase adapter is the only module allowed
