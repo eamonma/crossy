@@ -32,7 +32,7 @@ import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import type { StackMember } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
-import { ClueBar, ClueRail, ClueSheet, clueOn } from "./ui/Clues";
+import { ClueBar, ClueRail, ClueSheet, ClueStrip, clueOn } from "./ui/Clues";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { CompletionOverlay } from "./ui/Completion";
@@ -372,8 +372,8 @@ function GateLayout({
   return (
     <div className="min-h-dvh flex flex-col">
       <TopBar identity={identity} config={config} onHome={() => navigate("")} />
-      <main className="flex-1 px-4 py-6 flex items-start justify-center">
-        <div className="w-full max-w-[30rem]">{children}</div>
+      <main className="flex-1 px-4 py-6 flex items-center justify-center">
+        <div className="w-full max-w-[28rem] pb-9">{children}</div>
       </main>
     </div>
   );
@@ -571,83 +571,98 @@ function LiveGame({
   });
 
   const completed = store.status === "completed" && !dismissedCompletion;
-  const gridMin = `${puzzle.cols * 30}px`;
 
+  // The solve screen is one framed panel, v2's game screen: on desktop it floats on the
+  // sand background inside a 16px gutter; on mobile it goes full bleed and the on-screen
+  // keyboard docks at the bottom. Inside: chrome row, clue strip (or the mobile clue bar),
+  // then the board in calm space with the clue rail to its right. The board always fits
+  // the viewport on desktop (.board-fit resolves against both axes of its stage).
   return (
-    <div className="h-dvh flex flex-col overflow-hidden bg-background">
-      <GameToolbar
-        title={title}
-        timer={formatDuration(elapsed)}
-        members={members}
-        shareUrl={shareUrl}
-        onBack={() => navigate("")}
-      />
-
-      {store.sync !== "live" && (
-        <div
-          className="flex justify-center py-1 bg-background"
-          aria-live="polite"
-        >
-          <span className="inline-block px-3 py-0.5 rounded-full border border-border bg-panel text-text-muted text-1 font-semibold">
-            {store.sync === "resyncing" ? "Resyncing..." : "Reconnecting..."}
-          </span>
-        </div>
-      )}
-
-      {isSpectator && (
-        <SpectateBanner
-          onUpgrade={() => void upgrade()}
-          upgrading={upgrading}
+    <div className="h-dvh flex flex-col overflow-hidden bg-background md:p-4">
+      <div className="relative flex-1 min-h-0 flex flex-col bg-panel overflow-hidden md:border md:border-border-strong md:rounded-3 md:shadow-sm">
+        <GameToolbar
+          title={title}
+          timer={formatDuration(elapsed)}
+          done={store.status === "completed"}
+          members={members}
+          selfId={ready.selfId}
+          shareUrl={shareUrl}
+          onBack={() => navigate("")}
         />
-      )}
 
-      <ClueBar
-        clue={activeClue}
-        onOpen={() => setSheetOpen(true)}
-        onPrev={() => stepClue("backward")}
-        onNext={() => stepClue("forward")}
-      />
+        {isSpectator && (
+          <SpectateBanner
+            onUpgrade={() => void upgrade()}
+            upgrading={upgrading}
+          />
+        )}
 
-      <div className="flex-1 min-h-0 grid md:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="min-h-0 overflow-auto flex items-start justify-center p-3 md:p-5">
+        <ClueStrip clue={activeClue} />
+        <ClueBar
+          clue={activeClue}
+          onOpen={() => setSheetOpen(true)}
+          onPrev={() => stepClue("backward")}
+          onNext={() => stepClue("forward")}
+        />
+
+        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)]">
           <div
-            className="w-full max-w-[560px]"
-            style={{ ["--grid-min" as string]: gridMin }}
+            className="board-stage h-full min-h-0 overflow-auto md:overflow-hidden p-3 md:p-6 flex flex-col md:justify-center"
+            style={{
+              ["--board-cols" as string]: puzzle.cols,
+              ["--board-aspect" as string]: `${puzzle.cols} / ${puzzle.rows}`,
+            }}
           >
             <div
-              className="grid-wrap outline-none overflow-x-auto rounded-4"
-              data-testid="grid"
-              ref={gridRef}
-              tabIndex={0}
-              onKeyDown={onKeyDown}
-              aria-label="Crossword grid"
+              className="board-fit board-scroll"
+              style={{ aspectRatio: `${puzzle.cols} / ${puzzle.rows}` }}
             >
-              <CrosswordGrid
-                puzzle={puzzle}
-                fills={fills}
-                selection={selection}
-                presence={presence}
-                flashes={flashes}
-                onCellClick={onCellClick}
-                onFlashEnd={onFlashEnd}
-              />
+              <div
+                className="board-wrap outline-none"
+                data-testid="grid"
+                ref={gridRef}
+                tabIndex={0}
+                onKeyDown={onKeyDown}
+                aria-label="Crossword grid"
+              >
+                <CrosswordGrid
+                  puzzle={puzzle}
+                  fills={fills}
+                  selection={selection}
+                  presence={presence}
+                  flashes={flashes}
+                  onCellClick={onCellClick}
+                  onFlashEnd={onFlashEnd}
+                />
+              </div>
             </div>
           </div>
+
+          <ClueRail
+            across={puzzle.acrossClues}
+            down={puzzle.downClues}
+            activeAcross={activeAcross}
+            activeDown={activeDown}
+            currentDirection={selection.direction}
+            onJump={jumpToClue}
+          />
         </div>
 
-        <ClueRail
-          across={puzzle.acrossClues}
-          down={puzzle.downClues}
-          activeAcross={activeAcross}
-          activeDown={activeDown}
-          currentDirection={selection.direction}
-          onJump={jumpToClue}
-        />
-      </div>
+        {!isSpectator && (
+          <Keyboard onKey={(key) => handleKey(key, false)} disabled={frozen} />
+        )}
 
-      {!isSpectator && (
-        <Keyboard onKey={(key) => handleKey(key, false)} disabled={frozen} />
-      )}
+        {store.sync !== "live" && (
+          <div
+            className="absolute top-12 inset-x-0 flex justify-center z-[var(--z-toast)] pointer-events-none"
+            aria-live="polite"
+          >
+            <span className="inline-block px-3 py-0.5 rounded-full border border-border bg-panel shadow-md text-text-muted text-1 font-semibold">
+              {store.sync === "resyncing" ? "Resyncing..." : "Reconnecting..."}
+            </span>
+          </div>
+        )}
+      </div>
 
       <ClueSheet
         open={sheetOpen}

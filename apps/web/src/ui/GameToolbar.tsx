@@ -1,15 +1,16 @@
-// The game toolbar: back, puzzle title, the room's mono timer, who is here, theme, and share.
-// One row, mobile-first: the title truncates before anything else is dropped, the timer stays
-// on tabular numerals so it never reflows. Share is a popover with the invite link and a copy
-// button (the v2 pattern), reusing the panel-over-panel overlay recipe.
+// The game's chrome row, straight from v2's board toolbar: back chevron, the puzzle name as
+// a quiet chip, the room's mono timer, a Done chip once solved; on the right, who is here,
+// the theme toggle, and Share. One row, no bottom border of its own (the dashed rule under
+// the clue strip closes the block). The title truncates before anything else is dropped and
+// the timer keeps tabular numerals so it never reflows.
 import { useEffect, useState } from "react";
 import {
-  ChevronLeftIcon,
   CheckIcon,
+  ChevronLeftIcon,
   CopyIcon,
-  Link2Icon,
+  Share1Icon,
 } from "@radix-ui/react-icons";
-import { AvatarStack, Button, IconButton, Popover, cx } from "./primitives";
+import { AvatarStack, Badge, Button, IconButton, Popover } from "./primitives";
 import type { StackMember } from "./primitives";
 import { ThemeToggle } from "./TopBar";
 
@@ -35,18 +36,18 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
   return (
     <Popover
       align="end"
-      width="20rem"
+      width="19rem"
       trigger={() => (
         <Button variant="soft" size="sm">
-          <Link2Icon />
+          <Share1Icon />
           <span className="hidden sm:inline">Share</span>
         </Button>
       )}
     >
       {() => (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <p className="text-2 text-text-muted">
-            Anyone with this link can join to watch, then tap once to solve.
+            Anyone with this link can join or invite others.
           </p>
           {shareUrl === null ? (
             <p className="text-2 text-text-subtle">
@@ -58,7 +59,7 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
                 readOnly
                 value={shareUrl}
                 onFocus={(e) => e.currentTarget.select()}
-                className="w-full h-9 px-3 rounded-3 bg-sand-2 border border-border font-mono text-1 text-text"
+                className="field w-full h-8 px-2 font-mono text-1"
               />
               <div className="flex justify-end">
                 <Button variant="solid" size="sm" onClick={() => void copy()}>
@@ -77,38 +78,42 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
 export function GameToolbar({
   title,
   timer,
+  done = false,
   members,
+  selfId = null,
   shareUrl,
   onBack,
 }: {
   title: string;
   timer: string;
+  done?: boolean;
   members: readonly StackMember[];
+  selfId?: string | null;
   shareUrl: string | null;
   onBack: () => void;
 }) {
   return (
-    <header
-      className={cx(
-        "flex items-center gap-2 h-14 px-2 sm:px-4",
-        "bg-panel border-b border-border",
-      )}
-    >
+    <header className="flex items-center gap-2 px-2 sm:px-3 py-2">
       <IconButton
         variant="ghost"
-        size="md"
+        size="sm"
         onClick={onBack}
         aria-label="Back to start"
       >
         <ChevronLeftIcon />
       </IconButton>
 
-      <div className="flex items-baseline gap-3 min-w-0 flex-1">
-        <span className="truncate font-display text-5 font-medium text-text">
-          {title}
-        </span>
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <Badge tone="neutral" className="min-w-0">
+          <span className="truncate">{title}</span>
+        </Badge>
+        {done && (
+          <Badge tone="green" pill>
+            Done
+          </Badge>
+        )}
         <span
-          className="shrink-0 font-mono text-3 text-text-muted tabular-nums"
+          className="shrink-0 font-mono text-2 text-text-muted tabular-nums"
           aria-label="Elapsed time"
         >
           {timer}
@@ -116,7 +121,9 @@ export function GameToolbar({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {members.length > 0 && <AvatarStack members={members} />}
+        {members.length > 0 && (
+          <AvatarStack members={members} selfId={selfId} />
+        )}
         <ThemeToggle />
         <SharePopover shareUrl={shareUrl} />
       </div>

@@ -73,14 +73,16 @@
   --text-9--letter-spacing: -0.025em;
   --tracking-caps: 0.06em; /* v2-kept: ACROSS / DOWN micro-labels */
 
-  /* Oversized hero lockups. Lower bound of display-lg trimmed to 3rem so "crosswords"
-     does not fight a 375px viewport at 10vw left padding (mobile-first). v2-evolved */
+  /* Oversized hero lockups. display-lg steepens v2's 12vw to 16vw so a phone keeps the
+     v2 landing's scale (62px at 390w, where 12vw had clamped to the floor) while a 320px
+     viewport still clears "crosswords"; upper bound and line height follow the v2 hero
+     (11rem at 0.84 line) so the desktop landing keeps its presence. */
   --text-display-sm: clamp(2.5rem, 5vw, 4rem);
   --text-display-md: clamp(3.5rem, 9vw, 7rem);
-  --text-display-lg: clamp(3rem, 12vw, 9rem);
+  --text-display-lg: clamp(3.5rem, 16vw, 11rem);
   --text-display-sm--line-height: 0.92;
   --text-display-md--line-height: 0.92;
-  --text-display-lg--line-height: 0.92;
+  --text-display-lg--line-height: 0.84;
 
   /* ---- Color: Sand neutral. Renamed from v2's --gray-* so it cannot collide with
      Tailwind's cool gray/zinc/neutral, and so warmth reads from the name. v2-evolved (name) */
@@ -245,6 +247,9 @@
   --cell-wrong: var(--color-red-4);
   --cell-xref: var(--color-amber-3); /* real amber-3 #fff7c2, was #ffe0bb */
   --stroke: var(--color-sand-6); /* warm #dad9d6, was neutral #d9d9d9 */
+  --board-frame: var(
+    --color-sand-a6
+  ); /* v2: the board's quiet 2px outer rule */
   --clue-number: var(--color-sand-11); /* warm #63635e, was neutral #646464 */
   --letter: var(--color-sand-12); /* warm #21201c, was neutral #202020 */
   --circle: var(--color-sand-8); /* warm #bcbbb5, was neutral #bbbbbb */
@@ -325,15 +330,20 @@
 
   /* Board: v2 never specifies a dark card (no dark variant in color-board.html); this is
      a judgment call. Active cell adopts dark yellow-4 (a muted amber-brown) so light and
-     dark share the same semantic hue instead of a mode-dependent hue swap. */
-  --cell-block: var(--color-sand-1);
-  --cell-default: var(--color-sand-3);
+     dark share the same semantic hue instead of a mode-dependent hue swap. Blocks drop
+     below the sand scale to near-black so block vs playable stays legible on a dark board,
+     mirroring light mode's near-black blocks on paper-white cells. */
+  --cell-block: #0b0b0a;
+  --cell-default: var(--color-sand-4);
   --cell-current: var(--color-yellow-4);
   --cell-word: var(--color-violet-3);
   --cell-teammate: var(--color-gold-8);
   --cell-wrong: var(--color-red-4);
   --cell-xref: var(--color-amber-3);
-  --stroke: var(--color-sand-6);
+  --stroke: var(--color-sand-7);
+  --board-frame: var(
+    --color-sand-7
+  ); /* alpha-black frame vanishes on a dark board */
   --clue-number: var(--color-sand-11);
   --letter: var(--color-sand-12);
   --circle: var(--color-sand-8);
@@ -380,36 +390,99 @@
 }
 
 /*
- * The SVG grid: the cell rect is the one click target. Everything painted over it
+ * The SVG board: the cell rect is the one click target. Everything painted over it
  * (letters, numbers, circles, presence glyphs, the conflict flash) must not capture the
  * pointer, or a filled cell would silently swallow the click. Required in solve, spectate,
- * and demo.
+ * and demo. Named .board, never .grid: Tailwind's display-grid utility owns that name.
  */
-.grid {
+.board {
   display: block;
   width: 100%;
   height: auto;
-  /* Mobile floor: the grid fills its column but never shrinks a cell below 30px; past that the
-     column scrolls (LiveApp sets --grid-min to cols x 30px on the scroll wrapper). */
-  min-width: var(--grid-min, 0px);
   touch-action: manipulation;
 }
 
-.grid text,
-.grid circle,
-.grid path {
+.board text,
+.board circle,
+.board path {
   pointer-events: none;
 }
 
-.grid text {
+.board text {
   user-select: none;
 }
 
-/* The grid's focusable wrapper: a quiet gold focus ring, only on keyboard focus. */
-.grid-wrap:focus-visible {
+/*
+ * Board sizing. The stage is the calm space the board sits in; the fit box inside it is
+ * the largest rectangle of the board's aspect that fits, capped so a mini's cells never
+ * balloon past 64px. Reads --board-cols / --board-aspect set inline by the solve screen.
+ *
+ * Mobile: width-driven. The board spans the stage up to the cell cap; below a 30px cell
+ * the wrapper scrolls sideways instead of shrinking further (the .board-scroll floor).
+ * Desktop (md+): the stage becomes a size container and the fit box resolves against
+ * both axes, so the whole board is always inside the viewport. No scrolling, ever.
+ */
+.board-fit {
+  width: min(100%, calc(var(--board-cols, 15) * 64px));
+  /* Inline auto margins center a board that fits and zero out when it overflows the
+     stage (column flex, cross axis), so a scrolling 15x15 keeps its left gutter
+     instead of clipping its first column off-screen. */
+  margin-inline: auto;
+}
+
+.board-scroll {
+  min-width: calc(var(--board-cols, 15) * 30px);
+}
+
+@media (min-width: 48rem) {
+  .board-stage {
+    container-type: size;
+  }
+  .board-fit {
+    width: min(
+      100cqw,
+      calc(100cqh * var(--board-aspect, 1)),
+      calc(var(--board-cols, 15) * 64px)
+    );
+  }
+  .board-scroll {
+    min-width: 0;
+  }
+}
+
+/* Board focus: the outer frame turns gold instead of a halo ring (v2's gameboard puts
+   outline: none on the wrapper; the frame is the one place focus may speak). */
+.board-wrap:focus-visible {
+  outline: none;
+}
+
+.board-wrap:focus-visible .board-frame {
+  stroke: var(--color-focus-ring);
+}
+
+/* The v2 input surface: hairline inset ring that turns gold on focus. One recipe for
+   every text input and textarea (create form, share link), matching TextField in v2. */
+.field {
+  background: var(--color-panel);
+  border: none;
+  border-radius: var(--radius-3);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  transition: box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.field::placeholder {
+  color: var(--color-sand-9);
+}
+
+.field:focus,
+.field:focus-visible,
+.field:focus-within {
+  outline: none;
   box-shadow:
-    0 0 0 2px var(--color-background),
-    0 0 0 4px var(--color-focus-ring);
+    inset 0 0 0 1px var(--color-gold-8),
+    0 0 0 2px var(--color-gold-5);
 }
 
 /*

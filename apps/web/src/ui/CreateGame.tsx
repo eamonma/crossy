@@ -1,18 +1,20 @@
-// Create (?create=1): upload or paste an XWord Info JSON puzzle, then land in the game with a
-// share link. Creating requires a full account (guests are join-only, DESIGN section 8), so a
-// logged-out or guest visitor sees the gate first. Rejections from the ingestion ACL map to
-// plain, specific sentences shown inline under the dropzone, never a toast and never an error
-// code (audit voice). INV-6: the uploaded JSON carries solutions to the server, but this screen
-// never renders a grid from local state; on success it navigates and the board arrives, solution
-// stripped, over the WebSocket.
-import { useRef, useState } from "react";
-import { FileIcon, UploadIcon } from "@radix-ui/react-icons";
+// Create (?create=1): upload or paste an XWord Info JSON puzzle, then land in the game with
+// a share link. Composed as v2's create dialog: one centered card with a name field, the
+// dashed dropzone, and a right-aligned Cancel / Create footer; pasting JSON is a quiet
+// disclosure under the dropzone. Creating requires a full account (guests are join-only,
+// DESIGN section 8), so a logged-out or guest visitor sees the gate first. Rejections from
+// the ingestion ACL map to plain, specific sentences shown inline, never a toast and never
+// an error code. INV-6: the uploaded JSON carries solutions to the server, but this screen
+// never renders a grid from local state; on success it navigates and the board arrives,
+// solution stripped, over the WebSocket.
+import { useEffect, useRef, useState } from "react";
+import { Cross2Icon, FileTextIcon, UploadIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
 import type { Navigate } from "../nav";
 import { TopBar } from "./TopBar";
 import { SignInButtons } from "./AuthBar";
-import { Button, CapsLabel, Divider, Panel, cx } from "./primitives";
+import { Button, cx } from "./primitives";
 
 /** Map an API rejection code to one calm, specific sentence in the product voice. */
 function rejectionSentence(code: string): string {
@@ -45,6 +47,15 @@ interface Rejection {
   message?: string;
 }
 
+/** The one dialog recipe: warm face, hairline, card radius, dialog elevation. */
+function DialogCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="enter bg-panel border border-border rounded-4 shadow-xl p-5">
+      {children}
+    </div>
+  );
+}
+
 export function CreateGame({
   config,
   identity,
@@ -54,13 +65,20 @@ export function CreateGame({
   identity: Identity;
   navigate: Navigate;
 }) {
+  // Re-render when the session changes, so the gate swaps to the form the moment sign-in
+  // lands (the top bar already tracks this; the card must not lag behind it).
+  const [, setAuthTick] = useState(0);
+  useEffect(
+    () => identity.onChange(() => setAuthTick((t) => t + 1)),
+    [identity],
+  );
   const session = identity.getSession();
 
   return (
     <div className="min-h-dvh flex flex-col">
       <TopBar identity={identity} config={config} onHome={() => navigate("")} />
-      <main className="flex-1 px-4 py-6 flex items-start justify-center">
-        <div className="w-full max-w-[36rem]">
+      <main className="flex-1 px-4 py-6 flex items-center justify-center">
+        <div className="w-full max-w-[28rem] pb-9">
           {session === null || session.isAnonymous ? (
             <CreateGate
               identity={identity}
@@ -90,21 +108,21 @@ function CreateGate({
   guest: boolean;
 }) {
   return (
-    <Panel className="p-6 enter">
-      <h1 className="font-display text-7 font-medium m-0">Create a game</h1>
-      <p className="mt-2 text-3 text-text-muted">
+    <DialogCard>
+      <h1 className="font-display text-6 font-semibold m-0">Create a game</h1>
+      <p className="mt-1.5 text-2 text-text-muted">
         {guest
           ? "Guests can join and solve, but creating a game needs a full account. Sign in to host."
           : "Sign in to upload a puzzle and start a room your friends can join."}
       </p>
-      <div className="mt-6">
+      <div className="mt-5">
         <SignInButtons
           identity={identity}
           config={config}
           discordLabel="Sign in with Discord"
         />
       </div>
-    </Panel>
+    </DialogCard>
   );
 }
 
@@ -122,6 +140,8 @@ function CreateForm({
 }) {
   const [raw, setRaw] = useState("");
   const [name, setName] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const fileRef = useRef<HTMLInputElement>(null);
@@ -133,6 +153,7 @@ function CreateForm({
     setPhase({ kind: "idle" });
     try {
       setRaw(await file.text());
+      setFileName(file.name);
     } catch {
       setPhase({
         kind: "error",
@@ -146,6 +167,13 @@ function CreateForm({
     setDragging(false);
     const file = e.dataTransfer.files[0];
     if (file) void ingestFile(file);
+  }
+
+  function clearFile(): void {
+    setRaw("");
+    setFileName(null);
+    setPhase({ kind: "idle" });
+    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function submit(): Promise<void> {
@@ -197,7 +225,7 @@ function CreateForm({
       }
       const { puzzleId } = (await puzzleRes.json()) as { puzzleId: string };
 
-      // The API now owns the game name: send the creator's optional label so it persists and is
+      // The API owns the game name: send the creator's optional label so it persists and is
       // returned on the game view. The server trims and caps it too; we match its 80-char bound.
       const label = name.trim().slice(0, 80);
       const gameRes = await fetch(`${apiBase}/games`, {
@@ -234,56 +262,78 @@ function CreateForm({
   }
 
   const creating = phase.kind === "creating";
+  const loaded = fileName !== null;
 
   return (
-    <Panel className="p-6 enter">
-      <h1 className="font-display text-7 font-medium m-0">Create a game</h1>
-      <p className="mt-2 text-3 text-text-muted">
-        Upload an XWord Info JSON puzzle, or paste it below. You will land in
-        the game with a link to share.
+    <DialogCard>
+      <h1 className="font-display text-6 font-semibold m-0">Create a game</h1>
+      <p className="mt-1.5 text-2 text-text-muted">
+        Upload an XWord Info JSON puzzle. You'll land in the game with a link to
+        share.
       </p>
 
-      <div className="mt-6 flex flex-col gap-2">
-        <CapsLabel>Puzzle name (optional)</CapsLabel>
+      <div className="mt-4 flex flex-col gap-1.5">
+        <label
+          htmlFor="game-name"
+          className="text-2 font-medium text-text-muted"
+        >
+          Name
+        </label>
         <input
+          id="game-name"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Sunday themeless"
           maxLength={80}
-          className={cx(
-            "h-10 px-3 rounded-3 bg-panel border border-border text-3 text-text",
-            "placeholder:text-text-subtle focus-visible:outline-none",
-            "focus-visible:ring-2 focus-visible:ring-focus-ring",
-          )}
+          className="field h-10 px-3 text-3 w-full"
         />
       </div>
 
-      <div className="mt-5 flex flex-col gap-2">
-        <CapsLabel>Puzzle file</CapsLabel>
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          className={cx(
-            "flex flex-col items-center justify-center gap-2 w-full py-7 px-4",
-            "rounded-4 border border-dashed text-center transition-colors",
-            dragging
-              ? "border-solid bg-gold-3"
-              : "border-border-dashed bg-panel hover:bg-sand-3",
-          )}
-        >
-          <UploadIcon className="text-text-subtle" width={20} height={20} />
-          <span className="text-3 text-text">
-            Drop a <span className="font-mono text-2">.json</span> file here, or
-            click to browse
-          </span>
-        </button>
+      <div className="mt-4 flex flex-col gap-1.5">
+        <span className="text-2 font-medium text-text-muted">Puzzle</span>
+        {loaded ? (
+          <div className="flex items-center gap-2 border border-dashed border-border-dashed rounded-3 px-3 py-2.5">
+            <FileTextIcon className="shrink-0 text-text-accent" />
+            <span className="min-w-0 truncate text-2 text-text">
+              {fileName}
+            </span>
+            <span className="ml-auto shrink-0 text-1 text-text-subtle tabular-nums">
+              {Math.max(1, Math.round(raw.length / 1024))} KB
+            </span>
+            <button
+              type="button"
+              onClick={clearFile}
+              aria-label="Remove file"
+              className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-2 text-text-subtle hover:text-text hover:bg-sand-3"
+            >
+              <Cross2Icon />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            className={cx(
+              "flex flex-col items-center justify-center gap-1.5 w-full py-6 px-4",
+              "rounded-3 border border-dashed text-center transition-colors",
+              dragging
+                ? "border-gold-8 bg-gold-3"
+                : "border-border-dashed hover:bg-sand-2",
+            )}
+          >
+            <UploadIcon className="text-text-subtle" width={18} height={18} />
+            <span className="text-2 text-text-subtle">
+              Drop a puzzle file here, or click to browse
+            </span>
+          </button>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -294,58 +344,51 @@ function CreateForm({
             if (file) void ingestFile(file);
           }}
         />
-      </div>
-
-      <div className="mt-5 flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <FileIcon className="text-text-subtle" />
-          <CapsLabel>Or paste the JSON</CapsLabel>
-        </div>
-        <textarea
-          value={raw}
-          onChange={(e) => {
-            setRaw(e.target.value);
-            if (phase.kind === "error") setPhase({ kind: "idle" });
-          }}
-          spellCheck={false}
-          rows={7}
-          placeholder='{ "size": { "rows": 15, "cols": 15 }, "grid": [ ... ], "clues": { ... } }'
-          className={cx(
-            "w-full p-3 rounded-3 bg-panel border border-border font-mono text-2 text-text",
-            "placeholder:text-text-subtle resize-y focus-visible:outline-none",
-            "focus-visible:ring-2 focus-visible:ring-focus-ring",
-          )}
-        />
+        {!loaded && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setPasteOpen((v) => !v)}
+              className="text-1 text-text-muted hover:text-text underline decoration-dashed underline-offset-4"
+            >
+              {pasteOpen ? "Hide the paste box" : "Or paste the JSON"}
+            </button>
+          </div>
+        )}
+        {!loaded && pasteOpen && (
+          <textarea
+            value={raw}
+            onChange={(e) => {
+              setRaw(e.target.value);
+              if (phase.kind === "error") setPhase({ kind: "idle" });
+            }}
+            spellCheck={false}
+            rows={6}
+            placeholder='{ "size": { "rows": 15, "cols": 15 }, "grid": [ ... ], "clues": { ... } }'
+            className="field w-full p-3 font-mono text-1 resize-y"
+          />
+        )}
       </div>
 
       {phase.kind === "error" && (
-        <div
-          role="alert"
-          className="mt-4 p-3 rounded-3 bg-danger-bg border border-danger-border/40 text-2 text-danger-text"
-        >
+        <p role="alert" className="mt-3 text-2 text-danger-text">
           {phase.message}
-        </div>
+        </p>
       )}
 
-      <Divider className="my-5" />
-
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => navigate("")}
-          className="text-2 text-text-muted hover:text-text"
-        >
+      <div className="mt-5 flex items-center justify-end gap-2">
+        <Button variant="soft" size="sm" onClick={() => navigate("")}>
           Cancel
-        </button>
+        </Button>
         <Button
           variant="solid"
-          size="lg"
+          size="sm"
           onClick={() => void submit()}
           disabled={raw.trim() === "" || creating}
         >
-          {creating ? "Creating..." : "Create game"}
+          {creating ? "Creating..." : "Create"}
         </Button>
       </div>
-    </Panel>
+    </DialogCard>
   );
 }

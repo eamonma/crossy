@@ -14,7 +14,7 @@ export function SpectateBanner({
       type="button"
       onClick={onUpgrade}
       disabled={upgrading}
-      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gold-3 border-b border-dashed border-border-dashed text-3 text-text disabled:opacity-70"
+      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gold-3 border-b border-dashed border-border-dashed text-2 disabled:opacity-70"
     >
       <span className="text-text-muted">
         {upgrading ? "Joining as a solver..." : "You're watching."}
