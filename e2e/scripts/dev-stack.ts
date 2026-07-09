@@ -58,78 +58,30 @@ const viteBin = join(repoRoot, "apps/web/node_modules/.bin/vite");
 const webAppDir = join(repoRoot, "apps/web");
 
 // A real, well-formed puzzle: a 5x5 double word square. Every row and column is a word, so
-// there is always a live clue on both axes and typing feels like a real solve. Shape is a
-// ServerPuzzle (apps/api ingest validates {number,text,cellIndices} clues and a per-cell
-// solution); the solution never reaches the client (INV-6).
+// there is always a live clue on both axes and typing feels like a real solve. Shape is an
+// XWord Info document (the G1 ingestion ACL translates it at the boundary): the grid
+// carries the solution letters, numbering and cell runs derive from geometry, and the
+// solution never reaches the client (INV-6).
+// Row-major: HEART / EMBER / ABUSE / RESIN / TREND (columns spell the same words).
 const PUZZLE = {
-  rows: 5,
-  cols: 5,
-  blocks: [] as number[],
-  circles: [] as number[],
+  size: { rows: 5, cols: 5 },
+  grid: [..."HEART", ..."EMBER", ..."ABUSE", ..."RESIN", ..."TREND"],
   clues: {
     across: [
-      {
-        number: 1,
-        text: "Organ that keeps the beat",
-        cellIndices: [0, 1, 2, 3, 4],
-      },
-      { number: 6, text: "Dying glow in a fire", cellIndices: [5, 6, 7, 8, 9] },
-      { number: 7, text: "Treat badly", cellIndices: [10, 11, 12, 13, 14] },
-      {
-        number: 8,
-        text: "Sticky pine secretion",
-        cellIndices: [15, 16, 17, 18, 19],
-      },
-      {
-        number: 9,
-        text: "Direction things are moving",
-        cellIndices: [20, 21, 22, 23, 24],
-      },
+      "1. Organ that keeps the beat",
+      "6. Dying glow in a fire",
+      "7. Treat badly",
+      "8. Sticky pine secretion",
+      "9. Direction things are moving",
     ],
     down: [
-      { number: 1, text: "Valentine symbol", cellIndices: [0, 5, 10, 15, 20] },
-      { number: 2, text: "Smoldering coal", cellIndices: [1, 6, 11, 16, 21] },
-      { number: 3, text: "Mistreatment", cellIndices: [2, 7, 12, 17, 22] },
-      {
-        number: 4,
-        text: "Violin bow application",
-        cellIndices: [3, 8, 13, 18, 23],
-      },
-      {
-        number: 5,
-        text: "What is hot right now",
-        cellIndices: [4, 9, 14, 19, 24],
-      },
+      "1. Valentine symbol",
+      "2. Smoldering coal",
+      "3. Mistreatment",
+      "4. Violin bow application",
+      "5. What is hot right now",
     ],
   },
-  // Row-major: HEART / EMBER / ABUSE / RESIN / TREND (columns spell the same words).
-  solution: [
-    "H",
-    "E",
-    "A",
-    "R",
-    "T",
-    "E",
-    "M",
-    "B",
-    "E",
-    "R",
-    "A",
-    "B",
-    "U",
-    "S",
-    "E",
-    "R",
-    "E",
-    "S",
-    "I",
-    "N",
-    "T",
-    "R",
-    "E",
-    "N",
-    "D",
-  ],
 };
 
 /**

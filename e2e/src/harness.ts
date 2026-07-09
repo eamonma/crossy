@@ -307,13 +307,15 @@ export class SmokeHarness {
   async createGame(): Promise<CreatedGame> {
     const hostToken = await this.mint(randomUUID(), false);
     const bToken = await this.mint(randomUUID(), false);
+    // XWord Info document shape (G1 ingestion ACL): the grid carries the solution letters
+    // ("ABCDE" per row), numbering derives from geometry (across 1/6/7/8/9, down 1-5).
     const puzzle = {
-      rows: 5,
-      cols: 5,
-      blocks: [] as number[],
-      circles: [] as number[],
-      clues: { across: [], down: [] },
-      solution: Array.from({ length: 25 }, (_, i) => "ABCDE"[i % 5]),
+      size: { rows: 5, cols: 5 },
+      grid: Array.from({ length: 25 }, (_, i) => "ABCDE"[i % 5]),
+      clues: {
+        across: ["1. row 1", "6. row 2", "7. row 3", "8. row 4", "9. row 5"],
+        down: ["1. col 1", "2. col 2", "3. col 3", "4. col 4", "5. col 5"],
+      },
     };
     const p = (await this.postJson("/puzzles", hostToken, puzzle)) as {
       puzzleId: string;
