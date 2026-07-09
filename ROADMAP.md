@@ -146,6 +146,7 @@ depends on is open.
       Deliberately scheduled late: run it just before Wave 2.2 commits to the
       two-service deploy shape. It needs a Railway account, the spike stays
       throwaway, and no hosted dependency lands in code before then.
+      Owner Railway login done (2026-07-08); spike dispatched the same day.
 - [x] **SP4 Session WS library + snapshot size** (one day). Pick the server WS library
       (ws vs uWebSockets.js vs platform), check backpressure behavior, and measure a
       real 25×25 board payload under `permessage-deflate` against the under-20 KB
@@ -606,8 +607,11 @@ rehydrate proven under Testcontainers; the `/internal` private-network assumptio
 confirmed on Railway (SP3 should have pre-answered this); owner taste pass on typing
 feel (latency, flash, cursor) recorded as notes for the Phase 4 flesh-outs.**
 
-Progress (2026-07-08): the local half of M1 is done; only the Railway deploy and its
-owner taste pass remain.
+Progress (2026-07-08): the local half of M1 is done; only the Railway deploy remains.
+First owner taste pass on the local stack (2026-07-08): positive, no blockers; the
+detailed typing-feel notes are deferred by owner call and will be filed against the
+Phase 4 flesh-out specs when written up. The taste-note half of the exit stays open
+until they land.
 
 - Write-behind flush landed in `apps/session` (`writer.ts`, `actor.ts`): buffered
   cellSets plus the `game_state` snapshot in one transaction at ~25 events or ~5 s
