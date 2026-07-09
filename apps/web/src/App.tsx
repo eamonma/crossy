@@ -351,7 +351,7 @@ function DemoApp({
       </div>
 
       <div
-        className="grid-wrap outline-none rounded-4 max-w-[620px] mx-auto"
+        className="board-wrap outline-none max-w-[620px] mx-auto"
         ref={gridRef}
         tabIndex={0}
         onKeyDown={onKeyDown}

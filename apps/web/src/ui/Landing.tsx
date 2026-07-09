@@ -1,7 +1,7 @@
-// Landing (/): the serif lockup as the one confident gesture (scale is the signal, not color
-// or weight), each line left-padded and underlined with a dashed rule, then a single gold CTA.
-// Sign-in state lives in the slim top bar. Mobile-first: the display clamp and the 10vw indent
-// were tuned so "crosswords" clears a 375px viewport.
+// Landing (/): v2's hero, the one confident gesture per screen. The oversized serif lockup
+// sits on the gold-cream feature panel, each line left-padded 10vw and closed by a dashed
+// rule, then one gold CTA. Everything else stays out of its way; sign-in state lives in the
+// slim top bar. The display clamp keeps "crosswords" clear of a 375px viewport.
 import { ArrowRightIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
@@ -20,7 +20,7 @@ function Line({
       <span className={accent ? "text-gold-12" : "text-text-muted"}>
         {children}
       </span>
-      <Divider className="mt-2" />
+      <Divider className="m-0" />
     </div>
   );
 }
@@ -37,21 +37,21 @@ export function Landing({
   return (
     <div className="min-h-dvh flex flex-col">
       <TopBar identity={identity} config={config} />
-      <main className="flex-1 px-4 pb-4 pt-4 flex">
-        <section className="relative flex-1 flex flex-col justify-center overflow-hidden bg-panel-feature border border-border rounded-3 shadow-sm py-9">
+      <main className="flex-1 p-4 flex">
+        <section className="relative flex-1 flex flex-col justify-center overflow-hidden bg-panel-feature border border-border-strong rounded-3 shadow-sm py-9">
           <h1 className="font-display font-medium tracking-[-0.02em] text-display-lg m-0">
             <Line>Solve</Line>
             <Line>crosswords</Line>
             <Line accent>together.</Line>
           </h1>
 
-          <div className="pl-[10vw] mt-6 flex flex-col gap-4 max-w-[34rem]">
-            <p className="text-4 text-text-muted font-sans">
-              Bring your own puzzle, share one link, and watch every cursor move
-              as your friends fill the grid with you.
+          <div className="pl-[10vw] mt-6 flex flex-col gap-5 max-w-[36rem]">
+            <p className="text-3 text-text-muted pr-6">
+              Bring a puzzle, share one link, and watch every cursor move as
+              your friends fill the grid with you.
             </p>
             <div>
-              <Button variant="solid" size="lg" onClick={onCreate}>
+              <Button variant="solid" size="md" onClick={onCreate}>
                 Create a game
                 <ArrowRightIcon />
               </Button>
@@ -59,11 +59,6 @@ export function Landing({
           </div>
         </section>
       </main>
-      <footer className="px-4 pb-5 pt-2">
-        <p className="mx-auto max-w-[68rem] text-1 text-text-subtle">
-          A room where a few friends solve one crossword together.
-        </p>
-      </footer>
     </div>
   );
 }

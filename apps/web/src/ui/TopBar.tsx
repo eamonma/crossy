@@ -35,21 +35,19 @@ export function TopBar({
   onHome?: () => void;
 }) {
   return (
-    <header className="w-full">
-      <div className="mx-auto max-w-[68rem] px-4 pt-4">
-        <div className="flex items-center justify-between h-12 px-4 bg-panel border border-border rounded-3">
-          <button
-            type="button"
-            onClick={onHome}
-            className="inline-flex items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-            aria-label="Crossy home"
-          >
-            <Logo />
-          </button>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <AuthBar identity={identity} config={config} />
-          </div>
+    <header className="w-full px-4 pt-4">
+      <div className="flex items-center justify-between h-12 px-4 bg-panel border border-border rounded-3">
+        <button
+          type="button"
+          onClick={onHome}
+          className="inline-flex items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+          aria-label="Crossy home"
+        >
+          <Logo />
+        </button>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <AuthBar identity={identity} config={config} />
         </div>
       </div>
     </header>

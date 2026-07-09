@@ -1,7 +1,8 @@
-// The clue surfaces. On mobile the active-clue bar is the whole story: it shows the current
-// clue and, tapped, opens a bottom-sheet browser of every clue. On desktop the same bar sits
-// over a two-list rail. All of it is built from the dashed rule and the one panel recipe, never
-// new chrome. Empty and cross-reference cases are handled explicitly (audit gaps 3 and 6).
+// The clue surfaces. Desktop reads like v2's game screen: a quiet clue strip under the
+// toolbar (number tag, then the prose) closed by the dashed rule, and a right-hand rail of
+// the two lists with the gold-amber active row. Mobile keeps its own bar: prev/next steps,
+// and the label opens a bottom-sheet browser. All of it is the dashed rule and the one panel
+// recipe, never new chrome. Empty axes state themselves plainly.
 import { useEffect, useRef } from "react";
 import {
   ChevronLeftIcon,
@@ -11,7 +12,7 @@ import {
 } from "@radix-ui/react-icons";
 import type { Direction } from "@crossy/engine";
 import type { Clue } from "../domain/types";
-import { CapsLabel, Divider, IconButton, cx } from "./primitives";
+import { Divider, IconButton, cx } from "./primitives";
 
 const DIR_ABBR: Record<Direction, string> = { across: "A", down: "D" };
 
@@ -24,10 +25,31 @@ export function clueOn(
   return clues.find((c) => c.direction === direction && c.cells.includes(cell));
 }
 
+/** Desktop only: the active clue as a calm line of text. Navigation lives in the rail
+ * and the keyboard, so this strip carries no controls (v2's clue bar exactly). */
+export function ClueStrip({ clue }: { clue: Clue | undefined }) {
+  return (
+    <div className="hidden md:flex items-baseline px-4 py-1.5 border-b border-dashed border-border-dashed">
+      {clue ? (
+        <>
+          <span className="w-[5ch] shrink-0 text-2 font-semibold text-text-muted tabular-nums">
+            {clue.number}
+            {DIR_ABBR[clue.direction]}
+          </span>
+          <span className="min-w-0 text-4 font-medium text-text">
+            {clue.text ?? "—"}
+          </span>
+        </>
+      ) : (
+        <span className="text-3 text-text-subtle">No word on this axis</span>
+      )}
+    </div>
+  );
+}
+
 /**
- * The active-clue bar. Prev/next step through clues on the current axis; the number tag jumps to
- * the clue start; the whole label opens the sheet on touch. On a themeless or a mini with no word
- * on an axis it states that plainly rather than going blank.
+ * Mobile only: the active-clue bar. Prev/next step through clues on the current axis; the
+ * label opens the sheet. On a mini with no word on an axis it states that plainly.
  */
 export function ClueBar({
   clue,
@@ -41,19 +63,20 @@ export function ClueBar({
   onNext: () => void;
 }) {
   return (
-    <div className="flex items-stretch gap-1 border-b border-dashed border-border-dashed bg-panel">
+    <div className="md:hidden flex items-stretch border-b border-dashed border-border-dashed">
       <IconButton
         variant="ghost"
         size="md"
         onClick={onPrev}
         aria-label="Previous clue"
+        className="self-center"
       >
         <ChevronLeftIcon />
       </IconButton>
       <button
         type="button"
         onClick={onOpen}
-        className="flex-1 min-w-0 flex items-baseline gap-3 px-1 py-2 text-left"
+        className="flex-1 min-w-0 flex items-center gap-2.5 px-1 py-2 text-left"
         aria-label="Show all clues"
       >
         {clue ? (
@@ -62,20 +85,21 @@ export function ClueBar({
               {clue.number}
               {DIR_ABBR[clue.direction]}
             </span>
-            <span className="min-w-0 truncate text-4 text-text">
+            <span className="min-w-0 truncate text-3 font-medium text-text">
               {clue.text ?? "—"}
             </span>
           </>
         ) : (
           <span className="text-3 text-text-subtle">No word on this axis</span>
         )}
-        <ListBulletIcon className="ml-auto shrink-0 self-center text-text-subtle" />
+        <ListBulletIcon className="ml-auto shrink-0 text-text-subtle" />
       </button>
       <IconButton
         variant="ghost"
         size="md"
         onClick={onNext}
         aria-label="Next clue"
+        className="self-center"
       >
         <ChevronRightIcon />
       </IconButton>
@@ -83,8 +107,9 @@ export function ClueBar({
   );
 }
 
-/** One direction's list. The active row is amber-5 when it is the axis you are on, amber-3 when
- * it is the crossing clue, matching the board's own active-word / cross-reference language. */
+/** One direction's list, v2's rows: a right-aligned number gutter, then the prose. The
+ * active row is amber-5 on your axis and amber-3 on the crossing one, the same language
+ * as the board's active word and cross-reference tints. */
 function ClueList({
   title,
   clues,
@@ -106,13 +131,17 @@ function ClueList({
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <div className="px-4 py-2">
-        <CapsLabel>{title}</CapsLabel>
+      <div className="px-4 pt-2 pb-1.5">
+        <span className="text-2 font-bold uppercase tracking-[var(--tracking-caps)] text-text">
+          {title}
+        </span>
       </div>
       <Divider />
       <ul className="list-none m-0 p-0 overflow-y-auto flex-1">
         {clues.length === 0 && (
-          <li className="px-4 py-3 text-2 text-text-subtle">No clues.</li>
+          <li className="px-4 py-2 text-2 text-text-subtle">
+            No clues on this axis.
+          </li>
         )}
         {clues.map((c) => {
           const active = c.number === activeNumber;
@@ -123,20 +152,27 @@ function ClueList({
                 type="button"
                 onClick={() => onJump(c)}
                 className={cx(
-                  "grid grid-cols-[2.6ch_1fr] gap-2 w-full text-left px-4 py-1.5",
-                  "transition-colors hover:bg-sand-3",
-                  active && (isCurrentAxis ? "bg-amber-5" : "bg-amber-3"),
+                  "grid grid-cols-[3.2ch_1fr] w-full text-left cursor-pointer",
+                  active
+                    ? isCurrentAxis
+                      ? "bg-amber-5"
+                      : "bg-amber-3"
+                    : "hover:bg-amber-3",
                 )}
               >
                 <span
                   className={cx(
-                    "text-2 tabular-nums text-right",
-                    active ? "text-text font-semibold" : "text-text-muted",
+                    "py-1 pr-1.5 text-right text-2 tabular-nums",
+                    active
+                      ? "font-semibold text-text"
+                      : "font-semibold text-text-muted",
                   )}
                 >
                   {c.number}
                 </span>
-                <span className="text-2 text-text">{c.text ?? "—"}</span>
+                <span className="py-1 pl-2 pr-4 text-2 text-text">
+                  {c.text ?? "—"}
+                </span>
               </button>
             </li>
           );
@@ -146,7 +182,7 @@ function ClueList({
   );
 }
 
-/** Desktop rail: the two lists stacked, dashed rule between, framing the grid on the right. */
+/** Desktop rail: the two lists stacked, framed off the board by the dashed rule. */
 export function ClueRail({
   across,
   down,
@@ -232,11 +268,11 @@ export function ClueSheet({
         type="button"
         aria-label="Close clues"
         onClick={onClose}
-        className="absolute inset-0 bg-sand-12/30"
+        className="absolute inset-0 bg-sand-a8"
       />
-      <div className="sheet-in absolute inset-x-0 bottom-0 max-h-[75dvh] flex flex-col bg-panel border-t border-border rounded-t-[16px] shadow-xl">
-        <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <span className="mx-auto absolute left-1/2 -translate-x-1/2 top-2 h-1 w-9 rounded-full bg-border-strong" />
+      <div className="sheet-in absolute inset-x-0 bottom-0 h-[75dvh] flex flex-col bg-panel border-t border-border rounded-t-[12px] shadow-xl">
+        <div className="relative flex items-center justify-between pl-4 pr-2 pt-3 pb-1">
+          <span className="absolute left-1/2 -translate-x-1/2 top-1.5 h-1 w-9 rounded-full bg-border-strong" />
           <span className="font-display text-5 font-medium">Clues</span>
           <IconButton
             variant="ghost"
@@ -247,9 +283,8 @@ export function ClueSheet({
             <Cross2Icon />
           </IconButton>
         </div>
-        <Divider />
-        <div className="grid grid-rows-2 min-h-0 flex-1 divide-y divide-dashed divide-border-dashed">
-          <div className="flex min-h-0">
+        <div className="grid grid-rows-2 min-h-0 flex-1">
+          <div className="flex min-h-0 border-b border-dashed border-border-dashed">
             <ClueList
               title="Across"
               clues={across}

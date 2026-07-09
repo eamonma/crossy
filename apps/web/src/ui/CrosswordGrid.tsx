@@ -210,13 +210,27 @@ export function CrosswordGrid({
 
   return (
     <svg
-      className="grid"
+      className="board"
       viewBox={`0 0 ${cols * CELL} ${rows * CELL}`}
       role="img"
       aria-label={`${cols} by ${rows} crossword grid`}
     >
       {cells}
       {flashRects}
+      {/* The v2 outer frame: a quiet 2-unit rule closing the board (border-width-2 in the
+          kit). Painted last so it sits over the cell hairlines; turns gold on keyboard
+          focus of the wrapper (styles.css) in place of a halo ring. */}
+      <rect
+        className="board-frame"
+        x={1}
+        y={1}
+        width={cols * CELL - 2}
+        height={rows * CELL - 2}
+        fill="none"
+        stroke="var(--board-frame)"
+        strokeWidth={2}
+        pointerEvents="none"
+      />
     </svg>
   );
 }

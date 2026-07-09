@@ -163,26 +163,59 @@ export function CapsLabel({
   );
 }
 
+/** The soft status chip from v2: puzzle title, "Done", grid sizes. One quiet tint per job. */
+export function Badge({
+  tone = "neutral",
+  pill = false,
+  className,
+  children,
+}: {
+  tone?: "neutral" | "gold" | "green";
+  pill?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
+  const tones = {
+    neutral: "bg-sand-3 text-sand-11",
+    gold: "bg-gold-3 text-gold-11",
+    green: "bg-green-3 text-success-text",
+  } as const;
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center gap-1 whitespace-nowrap px-2 py-[3px]",
+        "font-sans font-medium text-1 leading-none",
+        pill ? "rounded-full" : "rounded-2",
+        tones[tone],
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 const AVATAR_SIZE = {
   sm: "w-6 h-6 text-1",
   md: "w-8 h-8 text-2",
 } as const;
 
 /**
- * A participant avatar: initial on the participant's deterministic color (DESIGN section 8
- * hashes user_id to a stable color; it arrives on the wire). `ring` draws the panel-colored
- * halo the stack uses to separate overlapping avatars.
+ * A participant chip: initial on a warm neutral face (v2's avatar recipe; sand for others,
+ * gold for emphasis). Chrome stays inside the Sand + Gold system; a teammate's wire color
+ * lives on their in-board cursor, never up here. `ring` draws the panel-colored halo the
+ * stack uses to separate overlapping chips.
  */
 export function Avatar({
   initial,
-  color,
+  tone = "neutral",
   size = "md",
   ring = false,
   dim = false,
   title,
 }: {
   initial: string;
-  color: string;
+  tone?: "neutral" | "gold";
   size?: keyof typeof AVATAR_SIZE;
   ring?: boolean;
   dim?: boolean;
@@ -192,13 +225,12 @@ export function Avatar({
     <span
       title={title}
       className={cx(
-        "inline-flex items-center justify-center rounded-full font-sans font-semibold",
-        "text-white shrink-0",
+        "inline-flex items-center justify-center rounded-full font-sans font-medium shrink-0",
+        tone === "gold" ? "bg-gold-4 text-gold-11" : "bg-sand-4 text-sand-11",
         AVATAR_SIZE[size],
         ring && "ring-2 ring-panel",
-        dim && "opacity-60",
+        dim && "opacity-55",
       )}
-      style={{ background: color }}
     >
       {initial.toUpperCase().slice(0, 1)}
     </span>
@@ -212,24 +244,26 @@ export interface StackMember {
   connected: boolean;
 }
 
-/** Overlapping avatars for who is here, most-connected first, capped with a +N count. */
+/** Overlapping chips for who is here, capped with a +N count. Self reads gold. */
 export function AvatarStack({
   members,
+  selfId = null,
   max = 4,
 }: {
   members: readonly StackMember[];
+  selfId?: string | null;
   max?: number;
 }) {
   const shown = members.slice(0, max);
   const extra = members.length - shown.length;
   return (
     <div className="flex items-center">
-      <div className="flex -space-x-2">
+      <div className="flex -space-x-1.5">
         {shown.map((m) => (
           <Avatar
             key={m.userId}
             initial={m.initial}
-            color={m.color}
+            tone={m.userId === selfId ? "gold" : "neutral"}
             size="sm"
             ring
             dim={!m.connected}
@@ -246,72 +280,46 @@ export function AvatarStack({
   );
 }
 
-/** The wordmark: a tiny 2x2 grid mark plus the serif name. Restrained, one gold cell. */
+/** The product's real monogram: a "C" whose descender sweeps into a "y". Never redrawn. */
+function Monogram() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 1080 1080"
+      fill="none"
+      className="w-full h-full block"
+    >
+      <path
+        fill="currentColor"
+        d="M714.413 679.414L737.363 720.724C654.743 770.296 576.713 807.016 493.175 807.016C334.361 807.016 194.825 696.856 194.825 494.896C194.825 274.576 356.393 153.4 527.141 153.4C591.401 153.4 656.579 170.842 714.413 205.726V352.606L670.349 361.786L636.383 265.396C588.647 228.676 540.911 209.398 493.175 209.398C390.359 209.398 332.525 292.018 332.525 454.504C332.525 631.678 419.735 733.576 543.665 733.576C596.909 733.576 640.973 713.38 714.413 679.414ZM595.266 941.044L649.428 796L470.418 424.21C466.746 415.948 462.156 410.44 453.894 407.686L411.666 394.834L420.846 350.77H654.936L649.428 393.916L587.922 405.85L700.836 666.562L782.538 436.144C785.292 428.8 787.128 421.456 787.128 417.784C787.128 411.358 784.375 407.686 777.949 405.85L726.54 393.916L733.884 350.77H908.304L901.879 394.834L858.733 405.85L676.05 878.62C644.838 959.404 591.594 992.452 528.252 992.452C475.926 992.452 430.944 966.748 430.944 925.438C430.944 891.472 452.976 865.768 491.532 865.768H532.842V938.29C542.94 944.716 553.956 948.388 564.054 948.388C574.152 948.388 584.25 945.634 595.266 941.044Z"
+      />
+    </svg>
+  );
+}
+
+/** The brand lockup exactly as v2 ships it: the monogram in a gold disc, serif wordmark. */
 export function Logo({
-  size = 22,
+  size = 24,
   withName = true,
 }: {
   size?: number;
   withName?: boolean;
 }) {
-  const c = size / 2;
   return (
-    <span className="inline-flex items-center gap-2 text-text">
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 20 20"
+    <span className="inline-flex items-center gap-1.5 text-text">
+      <span
+        className="inline-flex items-center justify-center rounded-full bg-gold-9 text-white p-[2px] shrink-0"
+        style={{ width: size, height: size }}
         role="img"
         aria-label="Crossy"
-        className="shrink-0"
       >
-        <rect
-          x="0.5"
-          y="0.5"
-          width="19"
-          height="19"
-          rx="3"
-          fill="none"
-          stroke="var(--color-border-strong)"
-        />
-        <line
-          x1="10"
-          y1="1"
-          x2="10"
-          y2="19"
-          stroke="var(--color-border)"
-          strokeDasharray="2 2"
-        />
-        <line
-          x1="1"
-          y1="10"
-          x2="19"
-          y2="10"
-          stroke="var(--color-border)"
-          strokeDasharray="2 2"
-        />
-        <rect
-          x="10.5"
-          y="1"
-          width="8.5"
-          height="8.5"
-          fill="var(--color-gold-9)"
-          opacity="0.9"
-        />
-        <text
-          x={c + 5.25}
-          y={c - 3.5}
-          fontSize="7"
-          textAnchor="middle"
-          dominantBaseline="central"
-          fill="#fff"
-          fontFamily="var(--font-mono)"
-        >
-          A
-        </text>
-      </svg>
+        <Monogram />
+      </span>
       {withName && (
-        <span className="font-display text-5 font-medium leading-none tracking-[-0.01em]">
+        <span
+          className="font-display font-semibold leading-none tracking-[-0.00625em]"
+          style={{ fontSize: size * 0.75 }}
+        >
           Crossy
         </span>
       )}

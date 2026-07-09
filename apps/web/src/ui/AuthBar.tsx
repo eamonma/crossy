@@ -135,10 +135,7 @@ export function AuthBar({
             "text-2 font-medium text-text",
           )}
         >
-          <span
-            className="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-1 font-semibold"
-            style={{ background: "var(--color-gold-9)" }}
-          >
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gold-4 text-gold-11 text-1 font-medium">
             {session.displayName.slice(0, 1).toUpperCase()}
           </span>
           <span className="max-w-[10ch] truncate">{session.displayName}</span>
