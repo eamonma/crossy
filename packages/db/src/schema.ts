@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -79,21 +80,37 @@ export const users = pgTable("users", {
  * model. The schema stays format-agnostic (no import of the protocol types) to keep
  * this package a standalone contract.
  */
-export const puzzles = pgTable("puzzles", {
-  puzzleId: uuid("puzzle_id").primaryKey().defaultRandom(),
-  // The internal ServerPuzzle model: layout, numbers, circles, clues, and solutions.
-  data: jsonb("data").notNull(),
-  // Detected features (rebus, circles, image clues, ...) from the ingestion ACL (§7).
-  features: jsonb("features")
-    .notNull()
-    .default(sql`'{}'::jsonb`),
-  // Source metadata (upload vs URL, original filename/URL). Nullable: not every
-  // ingest path carries provenance.
-  source: jsonb("source"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const puzzles = pgTable(
+  "puzzles",
+  {
+    puzzleId: uuid("puzzle_id").primaryKey().defaultRandom(),
+    // The internal ServerPuzzle model: layout, numbers, circles, clues, and solutions.
+    data: jsonb("data").notNull(),
+    // Detected features (rebus, circles, image clues, ...) from the ingestion ACL (§7).
+    features: jsonb("features")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Source metadata (upload vs URL, original filename/URL). Nullable: not every
+    // ingest path carries provenance.
+    source: jsonb("source"),
+    // Uploader (the authenticated caller on `POST /puzzles`), so a user can list their own
+    // uploads (the signed-in home surface). Expand-only and nullable: existing rows predate
+    // the column and read as unowned; new ingests populate it. ON DELETE NO ACTION mirrors
+    // `games.created_by` (§8): users are tombstoned, never hard-deleted, so the id survives.
+    createdBy: uuid("created_by").references(() => users.userId, {
+      onDelete: "no action",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Serves `GET /puzzles`: the caller's uploads, newest first
+    // (`WHERE created_by = $1 ORDER BY created_at DESC`). Composite so the filter and the
+    // ordering are one index scan; Postgres reads it backward for the DESC order.
+    index("puzzles_created_by_created_at_idx").on(t.createdBy, t.createdAt),
+  ],
+);
 
 /**
  * `games` (writer: API). Session identity (DESIGN.md §9). `puzzle_snapshot`
@@ -162,7 +179,13 @@ export const memberships = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.gameId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.gameId, t.userId] }),
+    // Serves `GET /games`: the caller's memberships (`WHERE user_id = $1`). The primary key
+    // leads with `game_id`, so a lookup by `user_id` alone cannot use it; this index makes
+    // "my games" a direct scan rather than a full table sweep.
+    index("memberships_user_id_idx").on(t.userId),
+  ],
 );
 
 /**
