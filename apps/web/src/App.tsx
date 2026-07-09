@@ -26,22 +26,35 @@ import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { SettingsStrip } from "./ui/SettingsStrip";
+import { AuthBar } from "./ui/AuthBar";
 import { LiveApp } from "./LiveApp";
+import type { AppConfig } from "./config/config";
+import type { Identity } from "./identity";
 
 type Theme = "light" | "dark";
 
 /**
- * A real game (`?game=<id>&api=<base>&token=<jwt>`) drives the live session service; with
- * no game param the demo boards run on the fake session. The live path is what the M1
- * smoke exercises with two real browsers.
+ * A real game (`?game=<id>` plus optional `?api=`/`?token=` overrides) drives the live session
+ * service; with no game param the demo boards run on the fake session. The live path is what
+ * the M1 smoke exercises with two real browsers. Config and the identity port come from boot
+ * (main.tsx): the api base defaults to config.apiBase and the token to the identity port, with
+ * ?api= and ?token= kept as explicit overrides for the smoke and dogfood links.
  */
-export function App() {
+export function App({
+  config,
+  identity,
+}: {
+  config: AppConfig;
+  identity: Identity;
+}) {
   const params =
     typeof window === "undefined"
       ? new URLSearchParams()
       : new URLSearchParams(window.location.search);
-  if (params.get("game") !== null) return <LiveApp params={params} />;
-  return <DemoApp />;
+  if (params.get("game") !== null) {
+    return <LiveApp params={params} config={config} identity={identity} />;
+  }
+  return <DemoApp config={config} identity={identity} />;
 }
 
 function gridOf(boardId: string): Grid {
@@ -59,7 +72,13 @@ function activeClue(
   );
 }
 
-function DemoApp() {
+function DemoApp({
+  config,
+  identity,
+}: {
+  config: AppConfig;
+  identity: Identity;
+}) {
   const [boardId, setBoardId] = useState(() => {
     const board = boards[0];
     if (!board) throw new Error("no boards defined");
@@ -211,6 +230,7 @@ function DemoApp() {
             wires the live session service.
           </p>
         </div>
+        <AuthBar identity={identity} config={config} />
       </header>
 
       <SettingsStrip
