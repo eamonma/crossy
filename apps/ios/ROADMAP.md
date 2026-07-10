@@ -52,24 +52,36 @@ short written answer plus amendments to `apps/ios/DESIGN.md` (ID-4, section 10) 
 this file where a decision changes. A build track does not start while a spike it
 depends on is open.
 
-- [ ] **SP-i1 Glass against the real SDK** (one day). glassEffect, glass-container
+- [x] **SP-i1 Glass against the real SDK** (one day). glassEffect, glass-container
       morphing, interactive glass on iOS 26: can the clue bar genuinely melt into
       the browser sheet; do morphs compose with a sheet presentation; what does
       Reduce Transparency actually render. Closes the root DESIGN.md section 15
       Liquid Glass item. Blocks: I2c. Fallback per DESIGN.md section 10: crossfade,
-      never a modal.
-- [ ] **SP-i2 The deck in hand** (one day, on device). The key deck prototype both
+      never a modal. **Closed 2026-07-10** (reports/spikes/sp-i1-glass.md): the melt
+      is one persistent surface interpolating with drag; ID-swap morphs snap
+      (device recheck rides I2c); sheets never morph, panels are custom overlays.
+      Folded into DESIGN.md sections 4 and 10.
+- [x] **SP-i2 The deck in hand** (one day, on device). The key deck prototype both
       ways, clear pucks and Studio keys: press latency, specular pop, haptic tick,
       sixty presses a minute. Owner smoke test is the instrument; rules ID-4.
-      Blocks: I2b.
-- [ ] **SP-i3 Live Activity timer** (half day). An activity whose timer renders
+      Blocks: I2b. **Rig delivered 2026-07-10** and installed on the owner's device
+      (reports/spikes/sp-i2-deck.md); pipeline latency 8-11 ms on simulator. The
+      ID-4 verdict stays open until the owner's smoke test.
+- [x] **SP-i3 Live Activity timer** (half day). An activity whose timer renders
       natively from a fixed `firstFillAt`: ticks with zero updates, survives app
-      kill, island and lock screen render. Blocks: I5a.
+      kill, island and lock screen render. Blocks: I5a. **Closed 2026-07-10, yes on
+      every count** (reports/spikes/sp-i3-island.md): the timer ticked through a
+      verified app kill on the owner's device with zero updates; the widget
+      extension target was hand-authored in the pbxproj (recipe in the report);
+      I5a shaping notes recorded there.
 - [ ] **SP-i4 AASA and universal links** (half day; touches `apps/api`). Serve
       `/.well-known/apple-app-site-association` from the API host; a `/g/{code}`
       link opens a development build. Owner-held: app ID, associated-domains
       entitlement. The API route lands as a real, tested change (it is not spike
-      code); the spike is the end-to-end proof. Blocks: I3c.
+      code); the spike is the end-to-end proof. Blocks: I3c. The API half landed
+      via PR #38 (`APPLE_APP_ID`, fail closed); the proof waits on the owner-held
+      app record. Found along the way: `GET /g/{code}` is specified but not yet
+      implemented anywhere; it must exist before this spike's proof.
 
 ## Phase I0 — Shell (app target and CI)
 
@@ -134,8 +146,10 @@ cursors), so this phase consumes and renders presence, nothing more.
       engine (the vectored rules, including PR #30's Tab semantics); swipe along
       the direction for next/previous word, across it to toggle; backspace
       step-back; rebus inline field (baseline form).
-- [ ] c. Chrome: room bar, clue bar, clue browser (morph per SP-i1 or the recorded
-      fallback), roster sheet, weather states rendered as DESIGN.md section 8
+- [ ] c. Chrome: room bar, clue bar, clue browser (the SP-i1 single-surface melt,
+      drag-scrubbed; panels are custom overlays, never system sheets; verify the
+      ID-swap morph on device first, else the recorded fallback), roster sheet,
+      weather states rendered as DESIGN.md section 8
       specifies, ambient timer (ID-2), the spectator edge state with its Join in
       affordance (full accounts seat as solvers on join, owner decision 2026-07-10).
 - [ ] d. Completion and terminals: the mosaic in its simple form (tint, hold,

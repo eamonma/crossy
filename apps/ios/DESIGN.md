@@ -97,13 +97,18 @@ The standing pieces:
 | ------------ | -------- | ---------------------------------------------------------------- |
 | room bar     | frosted  | name, shared clock, roster pucks, weather dot                    |
 | clue bar     | frosted  | active clue, direction chip, prev/next                           |
-| sheets       | frosted  | clue browser, roster, share card; each is a morph target, below  |
+| sheets       | frosted  | clue browser, roster, share card; custom overlay panels (SP-i1), each a morph target below |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
 
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
-one piece of glass reshaped (maps to the iOS 26 glass-container morphing APIs):
+one piece of glass reshaped. SP-i1 pinned the implementation
+(reports/spikes/sp-i1-glass.md): a morph is one persistent glass surface whose
+frame and corner radius interpolate with gesture progress. The two-view
+glassEffectID swap snaps instead of scrubbing (device recheck rides I2c), and a
+system sheet presentation cannot morph at all, so every sheet below is a custom
+overlay panel living in the room's own hierarchy:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
@@ -125,7 +130,9 @@ ever carries, with one scripted exception at completion (section 8).
 - Tint with brand color.
 - Touch the board. The rebus bubble floats above a cell and never sits between the
   eye and a filled cell.
-- Stack on itself. One glass layer, ever; a sheet replaces a bar.
+- Stack on itself. One glass layer, ever; a sheet replaces a bar. Sheets here are
+  custom overlay panels: a system sheet presentation hard-cuts and stacks glass on
+  glass (SP-i1), so it never appears in the room.
 - Survive Reduce Transparency as-is. Every glass surface has a considered solid
   fallback.
 
@@ -240,9 +247,15 @@ Format follows the root decision log. ID-1 through ID-5 were ruled by the owner 
 
 ## 10. Open items
 
-- Verify the iOS 26 glass APIs (glassEffect, glass-container morphing, interactive
-  glass) at M5 kickoff; already registered in root DESIGN.md section 15. If a morph
-  in section 4 is not expressible, the fallback is a crossfade, never a modal.
+- Glass APIs verified by SP-i1 (2026-07-10, reports/spikes/sp-i1-glass.md), closing
+  the root DESIGN.md section 15 item: glassEffect, GlassEffectContainer, and
+  interactive glass are real and compose; the melt is a single persistent surface
+  interpolating frame and corner radius; glassEffectID matched-geometry swaps snap
+  in the simulator (device recheck rides I2c); system sheets never morph, so panels
+  are custom overlays. The fallback stands: crossfade, never a modal. One caution
+  for the deck: container spacing metaball-fuses adjacent keys, so the deck uses
+  tight spacing or its own container. Reduce Transparency could not be driven
+  headlessly in the simulator; the solid fallback is built and verifies on device.
 - Device tuning pass: roster contrast on both grounds, glyph weights, flash curve,
   haptic strengths, deck feel (ID-4).
 - Exploration artifacts (direction board, glass plan, 2026-07-09) are linked from
