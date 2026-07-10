@@ -20,7 +20,9 @@ chat and opens straight into the app.
 **v1 scope** (owner decisions, 2026-07-09): iPhone first. Named accounts only;
 Discord OAuth via Supabase; no guest sign-in (guests are a web-only spectate
 feature). More sign-in options come later, Sign in with Apple and passkeys among
-them, deliberately unrushed. iOS 26 floor (root DESIGN.md D06). Nothing here races
+them, deliberately unrushed. iOS 18 floor (owner ruling 2026-07-10, amending root
+DESIGN.md D06): the full glass chrome needs iOS 26; 18 through 25 gets the same
+layout on a simple blur material (apps/ios/DESIGN.md section 4). Nothing here races
 a deadline.
 
 **Non-goals for v1**, recorded so nobody quietly builds them: iPad-optimized layout,
