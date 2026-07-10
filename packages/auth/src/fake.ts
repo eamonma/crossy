@@ -12,6 +12,8 @@ import {
   DEFAULT_ANONYMOUS_CLAIM,
   DEFAULT_AUDIENCE,
   DEFAULT_CLOCK_TOLERANCE_SEC,
+  DEFAULT_METADATA_CLAIM,
+  DEFAULT_NAME_KEYS,
 } from "./port";
 import type { AuthPort, VerifyResult } from "./port";
 import { verifyToken } from "./verify-core";
@@ -33,6 +35,12 @@ export interface MintOptions {
   readonly isAnonymous?: boolean;
   /** Drop the `is_anonymous` claim entirely (a permanent user may omit it). */
   readonly omitAnonymousClaim?: boolean;
+  /**
+   * The user-metadata object to nest under the provider's metadata claim (e.g. a Discord
+   * `full_name`). Omitted by default, so no metadata claim is written and `displayName`
+   * resolves to `null`.
+   */
+  readonly userMetadata?: Record<string, unknown>;
   /** Override the issuer (to exercise the wrong-issuer path). Defaults to the provider's issuer. */
   readonly issuer?: string;
   /** Override the audience (to exercise the wrong-audience path). Defaults to `authenticated`. */
@@ -57,6 +65,16 @@ export interface FakeAuthConfig {
    * Defaults to `is_anonymous` (GoTrue's convention). Set it to exercise a custom claim.
    */
   readonly anonymousClaim?: string;
+  /**
+   * The metadata claim name the fake nests `userMetadata` under and reads back on verify.
+   * Defaults to `user_metadata` (GoTrue's convention). Set it to exercise a custom claim.
+   */
+  readonly metadataClaim?: string;
+  /**
+   * The candidate keys, in priority order, the verify path reads the display name from.
+   * Defaults to `full_name`, `name`, `user_name`, `preferred_username`.
+   */
+  readonly nameKeys?: readonly string[];
 }
 
 /**
@@ -131,6 +149,8 @@ export async function createFakeAuthProvider(
     config.clockToleranceSec ?? DEFAULT_CLOCK_TOLERANCE_SEC;
   const now = config.now ?? (() => new Date());
   const anonymousClaim = config.anonymousClaim ?? DEFAULT_ANONYMOUS_CLAIM;
+  const metadataClaim = config.metadataClaim ?? DEFAULT_METADATA_CLAIM;
+  const nameKeys = config.nameKeys ?? DEFAULT_NAME_KEYS;
 
   const coreConfig = {
     issuer,
@@ -139,6 +159,8 @@ export async function createFakeAuthProvider(
     clockToleranceSec,
     now,
     anonymousClaim,
+    metadataClaim,
+    nameKeys,
   };
 
   let keys: SigningKey[] = [await generateSigningKey()];
@@ -161,6 +183,9 @@ export async function createFakeAuthProvider(
     const payload: Record<string, unknown> = { role: "authenticated" };
     if (opts.omitAnonymousClaim !== true) {
       payload[anonymousClaim] = opts.isAnonymous ?? false;
+    }
+    if (opts.userMetadata !== undefined) {
+      payload[metadataClaim] = opts.userMetadata;
     }
     const jwt = new SignJWT(payload)
       .setProtectedHeader({ alg: "ES256", kid })

@@ -340,13 +340,14 @@ export function LiveApp({
           <p className="mt-3 text-3 text-text-muted">
             {state.invited
               ? "Sign in to join. Watching is free, and solving together needs a Discord account."
-              : "Sign in to join this game."}
+              : "Sign in to open your game."}
           </p>
           <div className="mt-6 max-w-[20rem] mx-auto">
             <SignInButtons
               identity={identity}
               config={config}
               discordLabel="Sign in with Discord"
+              allowGuest={state.invited}
             />
           </div>
         </Card>
@@ -500,6 +501,7 @@ function LiveGame({
       initial: p.displayName.charAt(0) || "?",
       color: p.color,
       connected: p.connected,
+      role: p.role,
     }));
   }, [store, version]);
 

@@ -14,6 +14,8 @@ import {
   DEFAULT_ANONYMOUS_CLAIM,
   DEFAULT_AUDIENCE,
   DEFAULT_CLOCK_TOLERANCE_SEC,
+  DEFAULT_METADATA_CLAIM,
+  DEFAULT_NAME_KEYS,
   DEFAULT_REFRESH_INTERVAL_MS,
   DEFAULT_UNKNOWN_KID_DEBOUNCE_MS,
 } from "./port";
@@ -59,6 +61,16 @@ export interface JwksAuthConfig {
    * convention). Overridable so a different issuer can name it otherwise.
    */
   readonly anonymousClaim?: string;
+  /**
+   * The metadata claim object the display name is read from. Defaults to `user_metadata`
+   * (GoTrue's convention). Overridable so a different issuer can name it otherwise.
+   */
+  readonly metadataClaim?: string;
+  /**
+   * Candidate keys for the display name inside the metadata claim, in priority order. Defaults
+   * to `full_name`, `name`, `user_name`, `preferred_username`.
+   */
+  readonly nameKeys?: readonly string[];
   /** Asymmetric algorithm allowlist. Defaults to ES256/RS256/EdDSA (HS256 refused). */
   readonly algorithms?: readonly string[];
   /** Clock-skew tolerance in seconds. Defaults to 10. */
@@ -99,6 +111,8 @@ export async function createJwksAuthPort(
 ): Promise<JwksAuthPort> {
   const audience = config.audience ?? DEFAULT_AUDIENCE;
   const anonymousClaim = config.anonymousClaim ?? DEFAULT_ANONYMOUS_CLAIM;
+  const metadataClaim = config.metadataClaim ?? DEFAULT_METADATA_CLAIM;
+  const nameKeys = config.nameKeys ?? DEFAULT_NAME_KEYS;
   const algorithms = config.algorithms ?? DEFAULT_ALGORITHMS;
   const clockToleranceSec =
     config.clockToleranceSec ?? DEFAULT_CLOCK_TOLERANCE_SEC;
@@ -117,6 +131,8 @@ export async function createJwksAuthPort(
     clockToleranceSec,
     now,
     anonymousClaim,
+    metadataClaim,
+    nameKeys,
   };
 
   // The in-memory resolver. `verify` reads this binding at call time, so a refresh swap

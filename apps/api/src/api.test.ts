@@ -269,6 +269,66 @@ describe("auth + JIT upsert (DESIGN.md §8; INV-7 users single writer)", () => {
     );
     expect(rows[0].is_anonymous).toBe(false);
   });
+
+  it("mirrors the token's display name into users.display_name (DESIGN.md §8; INV-7)", async () => {
+    const sub = randomUUID();
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
+      FIXTURE,
+    );
+    const { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBe("Ada");
+  });
+
+  it("mirrors an anonymous user with no name as the Guest default (DESIGN.md §8; INV-7)", async () => {
+    const sub = randomUUID();
+    await postJson("/puzzles", await auth.mintAnonymous({ sub }), FIXTURE);
+    const { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBe("Guest");
+  });
+
+  it("never clobbers a known display name with a token that omits metadata (coalesce; INV-7)", async () => {
+    const sub = randomUUID();
+    // First request carries a Discord name.
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
+      FIXTURE,
+    );
+    // A later request from the same user with no metadata (e.g. the `?token=` dogfood path).
+    await postJson("/puzzles", await auth.mintUpgraded({ sub }), FIXTURE);
+    const { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBe("Ada");
+  });
+
+  it("propagates a changed provider display name on the next request (INV-7)", async () => {
+    const sub = randomUUID();
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
+      FIXTURE,
+    );
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada L." } }),
+      FIXTURE,
+    );
+    const { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBe("Ada L.");
+  });
 });
 
 describe("POST /puzzles (PROTOCOL.md §12; INV-6)", () => {

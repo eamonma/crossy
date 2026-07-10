@@ -13,14 +13,18 @@
 // boundary rationale.
 
 /**
- * The identity a verified access token resolves to: the two claims both services key on
+ * The identity a verified access token resolves to: the claims both services key on
  * (SP2, DESIGN.md §8). `userId` is the JWT `sub` (the same UUID the provider issues and
  * our `users` table mirrors). `isAnonymous` is the `is_anonymous` claim, defaulting to
- * `false` when absent (permanent users may omit it).
+ * `false` when absent (permanent users may omit it). `displayName` is the name lifted from
+ * the token's user-metadata claim, which the API mirrors into `users.display_name`
+ * (DESIGN.md §8). It is `null` when the token carries no usable name; the API, not this
+ * port, supplies the guest default there.
  */
 export interface Identity {
   readonly userId: string;
   readonly isAnonymous: boolean;
+  readonly displayName: string | null;
 }
 
 /**
@@ -79,6 +83,30 @@ export const DEFAULT_AUDIENCE = "authenticated";
  * it (DESIGN.md §8, SP2).
  */
 export const DEFAULT_ANONYMOUS_CLAIM = "is_anonymous";
+
+/**
+ * The default name of the claim object carrying the user's profile metadata. GoTrue nests a
+ * user's provider profile under `user_metadata`, so the display name lives inside it. Like the
+ * anonymity claim this is a documented default, not a constant of the verifier: an issuer that
+ * names its metadata object otherwise overrides it via config (DESIGN.md §8, SP2).
+ */
+export const DEFAULT_METADATA_CLAIM = "user_metadata";
+
+/**
+ * The default candidate keys, in priority order, for the display name inside the metadata
+ * claim. GoTrue's Discord mapping populates `full_name`/`name`; `user_name` and
+ * `preferred_username` are the fallbacks other providers use. The first key whose value is a
+ * non-empty string wins; non-string or empty values are skipped and an exhausted list resolves
+ * to `null`. This order matches the web client's own derivation so the server-mirrored name and
+ * the client-shown one agree (DESIGN.md §8). Overridable so a different issuer can name it
+ * otherwise.
+ */
+export const DEFAULT_NAME_KEYS: readonly string[] = [
+  "full_name",
+  "name",
+  "user_name",
+  "preferred_username",
+];
 
 /**
  * The asymmetric algorithm allowlist (SP2). ES256 is Supabase's default; RS256 and

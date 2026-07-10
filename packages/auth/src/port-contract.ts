@@ -47,7 +47,27 @@ export function runAuthPortContract(
         identity: {
           userId: "11111111-1111-4111-8111-111111111111",
           isAnonymous: false,
+          displayName: null,
         },
+      });
+    });
+
+    it("lifts a display name from the user-metadata claim (auth port DESIGN §8)", async () => {
+      // Both port assemblies must extract the name the API mirrors into users.display_name.
+      const result = await h.port.verify(
+        await h.mint({ userMetadata: { full_name: "Ana" } }),
+      );
+      expect(result).toEqual({
+        ok: true,
+        identity: expect.objectContaining({ displayName: "Ana" }),
+      });
+    });
+
+    it("resolves displayName to null when the token carries no metadata (auth port DESIGN §8)", async () => {
+      const result = await h.port.verify(await h.mint());
+      expect(result).toEqual({
+        ok: true,
+        identity: expect.objectContaining({ displayName: null }),
       });
     });
 
