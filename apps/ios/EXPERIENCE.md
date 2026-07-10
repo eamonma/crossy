@@ -82,9 +82,9 @@ failures read as named, human sentences (section 5).
 ### Join with a code
 
 One field, the read-aloud alphabet, autocapitalized, ambiguity-free. `POST
-/games/join` resolves the code alone; `GAME_NOT_FOUND` reads "No room answers to
-that code." `DENIED` (kicked) is honest and final. Success lands a full account in
-the room as a solver (owner decision 2026-07-10).
+/games/join` resolves the code alone; `GAME_NOT_FOUND` reads "That code doesn't
+match any room." `DENIED` (kicked) is honest and final. Success lands a full
+account in the room as a solver (owner decision 2026-07-10).
 
 ### The room (solve screen)
 
@@ -107,7 +107,7 @@ States, each honest and distinct:
   solvers, so this state serves the rare full-account spectator (a seat predating
   the 2026-07-10 seating change, or a future role change), and because the
   protocol allows it the client renders it honestly: the full live room,
-  read-only, one affordance, Pick up a pencil (`POST /games/{id}/role`). Spectator
+  read-only, one affordance, Join in (`POST /games/{id}/role`). Spectator
   cursors are neither rendered nor broadcast by default (root DESIGN.md
   section 15).
 - **Resyncing / reconnecting.** The three-state weather (PROTOCOL.md section 7)
@@ -127,7 +127,7 @@ Morphs from the room-bar pucks: everyone in the room with color, name, role, and
 connection state; the invite capsule (members only, any role, PROTOCOL.md
 section 12). Host powers live here: kick (`DELETE /games/{id}/members/{userId}`,
 never themselves) and abandon (`POST /games/{id}/abandon`, one confirm, plainly
-worded). A spectator's one action here is Pick up a pencil.
+worded). A spectator's one action here is Join in.
 
 ### Clue browser
 
@@ -170,25 +170,26 @@ section 7.
 
 ## 5. Copy voice
 
-Warm, specific, unhurried (ID-5). Controls say what happens. Errors say what went
+Plain and warm (ID-5, owner ruling 2026-07-10): common words, controls that say
+what happens, no metaphors on controls, nothing precious. Errors say what went
 wrong and what to do, without apology. The API speaks in roles; the app does not
 have to.
 
 Lexicon:
 
-| surface            | word                                                    |
-| ------------------ | ------------------------------------------------------- |
-| home               | Rooms                                                   |
-| spectator state    | Watching                                                |
-| role upgrade       | Pick up a pencil                                        |
-| completion         | Solved together                                         |
-| invite share       | Anyone with this code can watch                         |
-| join failure       | No room answers to that code                            |
-| kicked             | The host closed the room to you                         |
-| abandoned          | The host put this one away                              |
-| diagramless reject | This one's diagramless. Crossy can't seat it.           |
-| oversize reject    | This grid is bigger than 25x25, which is Crossy's edge. |
-| unsolvable reject  | A cell in this puzzle can't be typed. Crossy passed.    |
+| surface            | word                                                           |
+| ------------------ | -------------------------------------------------------------- |
+| home               | Rooms                                                          |
+| spectator state    | Watching                                                       |
+| role upgrade       | Join in                                                        |
+| completion         | Solved together                                                |
+| invite share       | Anyone with this code can join                                 |
+| join failure       | That code doesn't match any room                               |
+| kicked             | The host removed you from this room                            |
+| abandoned          | The host ended this game                                       |
+| diagramless reject | Crossy doesn't support diagramless puzzles.                    |
+| oversize reject    | This grid is larger than 25x25, Crossy's limit.                |
+| unsolvable reject  | A cell in this puzzle can't be typed, so Crossy can't take it. |
 
 Rejection copy above is voice guidance, one sentence per named code; the codes
 themselves are the contract (PROTOCOL.md section 12).
@@ -210,8 +211,6 @@ unscheduled; it gates public App Store release, not the TestFlight v1
 
 ## 7. Open questions (owner review)
 
-- ID-1 through ID-5 in `apps/ios/DESIGN.md` section 9: attribution at rest, timer
-  prominence, ground default, key deck, copy voice.
 - **Display name.** The `users` mirror carries a display name from the provider,
   and no endpoint edits it today. Ship v1 with Discord-derived names, or add a
   small API surface first? Leaning ship-as-is for v1.

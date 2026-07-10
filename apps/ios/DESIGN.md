@@ -41,9 +41,11 @@ cross-reference highlights, conflict flashes, the completion mosaic. Grids up to
 25x25 ingestion cap must render legibly; past comfortable glyph size the grid pans
 and zooms under the standing chrome.
 
-**Attribution at rest (ID-1, proposed).** Letters are always ink. A writer's color
-appears only in motion (the flash, a cursor) and at completion (the mosaic).
-Scarcity is what makes the mosaic land.
+**Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
+only person-marker on the board at rest is the presence puck in the cell corner. A
+writer's color appears in motion (the flash, a cursor) and at completion (the
+mosaic), both kept for now and each muteable by a single constant, pending the
+owner seeing them on device. Scarcity is what makes the mosaic land.
 
 ## 3. People: the only color
 
@@ -208,22 +210,27 @@ reduced-motion equivalent that crossfades instead of moving.
 
 ## 9. Decision log
 
-Format follows the root decision log. Status **proposed** means adopted here as the
-working default, awaiting owner review of this document.
+Format follows the root decision log. ID-1 through ID-5 were ruled by the owner on
+2026-07-10.
 
-- **ID-1 Attribution at rest is ink** (proposed). Color appears in motion and at the
-  mosaic only. Rejected: persistent per-writer letter tint (a lively room becomes
-  noise, and the mosaic loses its reveal).
-- **ID-2 The timer is ambient** (proposed). Small, tabular, in the room bar; it
-  becomes the headline only at completion. It is shared and social, not a whip.
-  Before the first fill it reads 0:00 quietly (the timer starts at first fill, root
-  DESIGN.md D15).
-- **ID-3 Ground follows system appearance; screenshots lead Observatory** (proposed).
-- **ID-4 The key deck is clear glass pucks** (proposed, hardware-gated). The acrylic
-  deck is the working default; final call after the on-device prototype, where
-  Studio-quiet keys are the named alternate.
-- **ID-5 Copy voice is warm** (proposed). "Pick up a pencil," not "Become a solver."
-  Lexicon in `apps/ios/EXPERIENCE.md` section 5.
+- **ID-1 Attribution at rest is ink** (adopted 2026-07-10). Letters never carry
+  color at rest; the only person-marker on the board at rest is the presence puck
+  in the cell corner. Color in motion (the flash) and at completion (the mosaic)
+  stay for now, each behind a single constant, cheap to mute: the owner reserves
+  judgment until they are seen on device. Rejected: persistent per-writer letter
+  tint (a lively room becomes noise, and the mosaic loses its reveal).
+- **ID-2 The timer is ambient** (adopted 2026-07-10). Small, tabular, in the room
+  bar; it becomes the headline only at completion. It is shared and social, not a
+  whip. Before the first fill it reads 0:00 quietly (the timer starts at first
+  fill, root DESIGN.md D15).
+- **ID-3 Ground follows system appearance; screenshots lead Observatory**
+  (adopted 2026-07-10).
+- **ID-4 The key deck is clear glass pucks** (adopted 2026-07-10, hardware-gated).
+  Build the acrylic deck per SP-i2; if it proves too much in hand, revert to
+  Studio-quiet keys, the named alternate.
+- **ID-5 Copy is plain and warm** (adopted 2026-07-10). Common words, controls that
+  say what happens, no metaphors on controls, nothing precious. The spectator
+  upgrade reads Join in. Lexicon in `apps/ios/EXPERIENCE.md` section 5.
 - **ID-6 One app, two grounds** (adopted). Studio chassis, Panton blood, Observatory
   nights; no third identity.
 - **ID-7 The game is a Live Activity** (adopted; staging in `EXPERIENCE.md`
