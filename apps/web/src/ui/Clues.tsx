@@ -117,18 +117,22 @@ export function ClueBar({
 
 /** One direction's list, v2's rows: a right-aligned number gutter, then the prose. The
  * active row is amber-5 on your axis and amber-3 on the crossing one, the same language
- * as the board's active word and cross-reference tints. */
+ * as the board's active word and cross-reference tints. A solved row (every cell filled)
+ * sits back like a crossed-off newsprint entry and recovers on hover; the active and
+ * crossing rows never dim. */
 function ClueList({
   title,
   clues,
   activeNumber,
   isCurrentAxis,
+  filled,
   onJump,
 }: {
   title: string;
   clues: readonly Clue[];
   activeNumber: number | null;
   isCurrentAxis: boolean;
+  filled?: ReadonlySet<number> | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -153,6 +157,10 @@ function ClueList({
         )}
         {clues.map((c) => {
           const active = c.number === activeNumber;
+          const solved =
+            !active &&
+            filled !== undefined &&
+            c.cells.every((cell) => filled.has(cell));
           return (
             <li key={`${c.direction}-${c.number}`}>
               <button
@@ -166,6 +174,7 @@ function ClueList({
                       ? "bg-amber-5"
                       : "bg-amber-3"
                     : "hover:bg-amber-3",
+                  solved && "opacity-40 hover:opacity-100 transition-opacity",
                 )}
               >
                 <span
@@ -190,13 +199,16 @@ function ClueList({
   );
 }
 
-/** Desktop rail: the two lists stacked, framed off the board by the dashed rule. */
+/** Desktop rail: the two lists stacked, framed off the board by the dashed rule. The
+ * optional solving-now block docks above Across and keeps the lists' flex room intact. */
 export function ClueRail({
   across,
   down,
   activeAcross,
   activeDown,
   currentDirection,
+  filled,
+  solvingNow,
   onJump,
 }: {
   across: readonly Clue[];
@@ -204,27 +216,34 @@ export function ClueRail({
   activeAcross: number | null;
   activeDown: number | null;
   currentDirection: Direction;
+  filled?: ReadonlySet<number> | undefined;
+  solvingNow?: React.ReactNode;
   onJump: (clue: Clue) => void;
 }) {
   return (
-    <div className="hidden md:grid grid-rows-2 min-h-0 h-full border-l border-dashed border-border-dashed">
-      <div className="flex min-h-0 border-b border-dashed border-border-dashed">
-        <ClueList
-          title="Across"
-          clues={across}
-          activeNumber={activeAcross}
-          isCurrentAxis={currentDirection === "across"}
-          onJump={onJump}
-        />
-      </div>
-      <div className="flex min-h-0">
-        <ClueList
-          title="Down"
-          clues={down}
-          activeNumber={activeDown}
-          isCurrentAxis={currentDirection === "down"}
-          onJump={onJump}
-        />
+    <div className="hidden md:flex flex-col min-h-0 h-full border-l border-dashed border-border-dashed">
+      {solvingNow}
+      <div className="grid grid-rows-2 min-h-0 flex-1">
+        <div className="flex min-h-0 border-b border-dashed border-border-dashed">
+          <ClueList
+            title="Across"
+            clues={across}
+            activeNumber={activeAcross}
+            isCurrentAxis={currentDirection === "across"}
+            filled={filled}
+            onJump={onJump}
+          />
+        </div>
+        <div className="flex min-h-0">
+          <ClueList
+            title="Down"
+            clues={down}
+            activeNumber={activeDown}
+            isCurrentAxis={currentDirection === "down"}
+            filled={filled}
+            onJump={onJump}
+          />
+        </div>
       </div>
     </div>
   );
@@ -239,6 +258,7 @@ export function ClueSheet({
   activeAcross,
   activeDown,
   currentDirection,
+  filled,
   onJump,
 }: {
   open: boolean;
@@ -248,6 +268,7 @@ export function ClueSheet({
   activeAcross: number | null;
   activeDown: number | null;
   currentDirection: Direction;
+  filled?: ReadonlySet<number> | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const jumpAndClose = (clue: Clue): void => {
@@ -297,6 +318,7 @@ export function ClueSheet({
               clues={across}
               activeNumber={activeAcross}
               isCurrentAxis={currentDirection === "across"}
+              filled={filled}
               onJump={jumpAndClose}
             />
           </div>
@@ -306,6 +328,7 @@ export function ClueSheet({
               clues={down}
               activeNumber={activeDown}
               isCurrentAxis={currentDirection === "down"}
+              filled={filled}
               onJump={jumpAndClose}
             />
           </div>
