@@ -2,14 +2,16 @@
 // is ONE persistent glass surface whose frame and corner radius interpolate with
 // gesture progress. Never two views swapped under glassEffectID (SP-i1: the ID swap
 // snaps instead of scrubbing), never a system sheet (SP-i5: grow-then-swap, not the
-// melt). Everything here is pure math so the interpolation is pinned in tests; the
-// gesture discipline (finger-tracked while down, animated only on release) lives at
-// the gesture site in ClueChrome and RosterPanel.
+// melt). This is the law for DRAG-SCRUBBED morphs (the melt) and the stats card;
+// tap-opened pill presentations ride the system instead (RosterMenu, the Mail
+// mechanism, owner ruling 2026-07-10). Everything here is pure math so the
+// interpolation is pinned in tests; the gesture discipline (finger-tracked while
+// down, animated only on release) lives at the gesture site in ClueChrome.
 
 import CoreGraphics
 
 /// One glass surface's two shapes and the interpolation between them. `rest` is the
-/// standing chrome (the clue bar, the puck cluster); `open` is the panel it melts
+/// standing chrome (the clue bar, the frozen clock); `open` is the panel it melts
 /// into. Progress 0 is rest, 1 is open, always clamped.
 public struct GlassMorph: Equatable, Sendable {
     public let rest: CGRect
@@ -33,7 +35,7 @@ public struct GlassMorph: Equatable, Sendable {
 
     /// The surface's frame at a progress: every edge interpolates independently, so
     /// a bottom-anchored melt (the clue bar: shared maxY, top edge travels) and a
-    /// free inflation (the roster cluster: all four edges travel) are one rule.
+    /// free inflation (the stats card: all four edges travel) are one rule.
     public func frame(at progress: CGFloat) -> CGRect {
         let minX = Self.lerp(rest.minX, open.minX, progress)
         let minY = Self.lerp(rest.minY, open.minY, progress)

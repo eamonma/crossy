@@ -28,10 +28,10 @@ final class RoomPillClusterTests: XCTestCase {
         XCTAssertLessThan(ChromeLayout.pillHeight, ChromeLayout.barHeight)
     }
 
-    // The players pill is the roster morph's rest and the time pill the stats
-    // morph's rest (DESIGN.md §4 morph targets): a capsule pill at rest must
-    // hand the panel its own radius, so the interpolation starts from the
-    // capsule, not from a conjured shape.
+    // The time pill is the stats morph's rest (DESIGN.md §4 morph targets; the
+    // roster rides a system Menu instead): a capsule pill at rest must hand
+    // the panel its own radius, so the interpolation starts from the capsule,
+    // not from a conjured shape.
     func test_pillRestRadius_isTheMorphsRestRadius_section4() {
         let pill = CGRect(x: 300, y: 10, width: 84, height: ChromeLayout.pillHeight)
         let morph = GlassMorph(

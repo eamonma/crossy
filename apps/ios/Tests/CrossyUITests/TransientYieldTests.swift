@@ -4,10 +4,11 @@ import XCTest
 
 // Transient panels yield to intent (apps/ios/DESIGN.md §4, owner ruling
 // 2026-07-10). The room's own moments count as intent: the one observed
-// transition into a terminal status pours back the melt and the roster. The
-// trigger is a pure fold (the CelebrationGate pattern) and the melt half
-// respects a live finger (SP-i1: the finger owns progress), both pinned
-// headlessly here; the touch routing itself lives at the gesture sites.
+// transition into a terminal status pours back the melt. The trigger is a
+// pure fold (the CelebrationGate pattern) and the pour-back respects a live
+// finger (SP-i1: the finger owns progress), both pinned headlessly here; the
+// touch routing itself lives at the gesture sites. (The roster menu is the
+// system's transient and dismisses by the system's own rules.)
 
 final class TerminalPourBackGateTests: XCTestCase {
     func test_firesExactlyOnceOnTheTransitionToCompleted_section4() {

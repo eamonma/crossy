@@ -97,22 +97,24 @@ The standing pieces:
 | ------------ | -------- | ---------------------------------------------------------------- |
 | room bar     | frosted  | a cluster of pills: leading (name, weather dot, reconnect countdown), time (the ambient clock), players (pucks, overflow count) |
 | clue bar     | frosted  | active clue, direction chip, prev/next                           |
-| sheets       | frosted  | clue browser, roster, share card; custom overlay panels (SP-i1), each a morph target below |
+| sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
 
 **The room bar is a cluster** (owner ruling 2026-07-10). Three small standing
-pills in the compact-toolbar register, not one bar. On iOS 26+ they share one
-GlassEffectContainer with spacing held below the metaball threshold (SP-i1,
-section 10: container spacing fuses adjacent glass), so the pills stay three
-separate objects at rest; below 26 the same layout renders as separate
-blur-material capsules, the one-fallback rule below. The point is honest morphs:
-each morph-bearing pill is its own rest surface, so a panel is always the pill
-reshaped, never a capsule conjured out of standing glass. And the panel grows
-over the pill's own footprint, top and trailing edges shared (the Mail-button
-rule, owner ruling 2026-07-10): the open surface covers the spot it grew from,
-it never hangs beside a still-visible opener.
+pills in the compact-toolbar register, not one bar. On iOS 26+ the leading and
+time pills share one GlassEffectContainer with spacing held below the metaball
+threshold (SP-i1, section 10: container spacing fuses adjacent glass), so the
+pills stay separate objects at rest; the players pill stands outside the
+container, because a Menu inside one breaks its morph on 26.1; below 26 the
+same layout renders as separate blur-material capsules, the one-fallback rule
+below. The point is honest morphs: a morph-bearing pill is its own rest
+surface, so a panel is always the pill reshaped, never a capsule conjured out
+of standing glass. And the panel grows over the pill's own footprint, top and
+trailing edges shared (the Mail-button rule, owner ruling 2026-07-10): the open
+surface covers the spot it grew from, it never hangs beside a still-visible
+opener.
 
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
 one piece of glass reshaped. SP-i1 pinned the implementation
@@ -125,16 +127,27 @@ feel test on device (reports/spikes/sp-i5-detent-browser.md): the system detent
 sheet is grow-then-swap, not the melt, and fuses the clue bar and the deck into
 one surface; the ruling is the clue bar as its own glass over a separate deck.
 
+Amended 2026-07-10, evening: the law above governs drag-scrubbed morphs, where
+a finger owns progress. A tap-opened pill panel rides the system's own
+presentation instead (the Mail mechanism). Frame study of Mail's menu at 60 fps
+showed its goo is the glass shader blending two shapes' fields, soft-edged
+mid-flight, unreachable by tweening one crisp surface; menus and popovers flow
+out of the glass controls that present them (WWDC25 session 323). So the roster
+is a Menu flowing out of the players pill, ruled on device against the Mail
+reference, and the system owns its placement, stacking, and dismissal. SP-i5's
+finding stands for sheets: a detent sheet still cannot melt.
+
 Content rides the morph (owner device finding, 2026-07-10). A morphing surface
 is never empty glass: the elements alive at both ends, the clue bar's pinned
-row, the roster's pucks, travel with the surface and hand off from the chrome
-they left, so nothing inflates hollow and nobody renders twice. Only content
-new at the open end (lists, names) fades in late. The morph targets:
+row, the stats card's clock, travel with the surface and hand off from the
+chrome they left, so nothing inflates hollow and nobody renders twice. Only
+content new at the open end (lists, names) fades in late. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
-- Tap the players pill: the players pill inflates into the roster sheet, its
-  pucks riding.
+- Tap the players pill: the roster menu flows out of it, the system's morph
+  (rows carry rendered pucks, names, and the quiet state word; the spectator's
+  Join in is a real menu action).
 - At completion, the time pill inflates into the stats card (ID-2: the timer
   becomes the headline, so the headline comes from the timer); dismissal pours
   it back, and the frozen clock summons it again.
@@ -146,12 +159,14 @@ new at the open end (lists, names) fades in late. The morph targets:
 - On a panning 25x25, standing bars thin while you travel and return at rest.
 
 **Transient panels yield to intent** (owner ruling 2026-07-10). A touch outside
-an open roster or stats panel dismisses it and still lands where it fell: no
-dead tap-catchers, the room never eats a touch. Panels are mutually exclusive,
+an open stats panel dismisses it and still lands where it fell: no dead
+tap-catchers, the room never eats a touch. Panels are mutually exclusive,
 opening any one pours back the others, and a status transition to completed or
-abandoned pours back the melt and the roster (the stats card then owns the
-completion stage). The one exception is a live finger: a melt being scrubbed is
-never force-closed, because the finger owns progress (SP-i1).
+abandoned pours back the melt (the stats card then owns the completion stage).
+The one exception is a live finger: a melt being scrubbed is never
+force-closed, because the finger owns progress (SP-i1). The roster menu is the
+system's transient and keeps the system's own manners: the outside touch that
+dismisses it is swallowed, exactly as Mail's is.
 
 **Presence glints.** Chrome stays achromatic until a person passes beneath it: a
 cursor sliding under the clue bar throws a brief specular in that player's color
@@ -299,8 +314,11 @@ Format follows the root decision log. ID-1 through ID-5 were ruled by the owner 
   the root DESIGN.md section 15 item: glassEffect, GlassEffectContainer, and
   interactive glass are real and compose; the melt is a single persistent surface
   interpolating frame and corner radius; glassEffectID matched-geometry swaps snap
-  in the simulator (device recheck rides I2c); system sheets never morph, so panels
-  are custom overlays. The fallback stands: crossfade, never a modal. One caution
+  in the simulator (device recheck 2026-07-10: irrelevant for tap-opened pill
+  panels, which now ride system presentations per section 4's amended morph
+  grammar; the swap remains unbuilt-on for scrubbed morphs); system sheets never
+  morph, so panels are custom overlays. The fallback stands: crossfade, never a
+  modal. One caution
   for the deck: container spacing metaball-fuses adjacent keys, so the deck uses
   tight spacing or its own container. Reduce Transparency could not be driven
   headlessly in the simulator; the solid fallback is built and verifies on device.

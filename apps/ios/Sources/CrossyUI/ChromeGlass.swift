@@ -107,14 +107,6 @@ struct ChromeGlassSurface: ViewModifier {
 enum ChromePiece: Hashable {
     case roomBar
     case clueBarSlot
-    /// The players pill, whole: the roster morph's rest surface (DESIGN.md §4:
-    /// the players pill inflates into the roster sheet), so the panel is always
-    /// the pill reshaped, never new glass conjured over old.
-    case playersPill
-    /// One cluster puck's frame, by userId: the roster morph's riders launch
-    /// from where layout actually put each person (DESIGN.md §4: content rides
-    /// the morph), never from arithmetic about the cluster's innards.
-    case puck(String)
     /// The time pill, whole: the stats morph's rest surface (ID-2, the timer
     /// becomes the headline at completion; the pill centers its clock, so the
     /// rider's launch point is the pill's own center).

@@ -1,12 +1,13 @@
 // The room bar (apps/ios/DESIGN.md §4): a cluster of glass pills, not one bar
 // (owner ruling 2026-07-10). A leading pill carries the name and the weather, a
 // time pill the ambient clock, a players pill the pucks; small standing chrome in
-// the compact-toolbar register. Each morph-bearing pill is its own morph rest:
-// the players pill inflates into the roster sheet and the time pill into the
-// stats card, so a panel is always the pill reshaped, never new glass conjured
-// over old (the glass-on-glass moment the cluster replaces). On iOS 26+ the
-// pills share one GlassEffectContainer at a spacing below the metaball fuse
-// (SP-i1, DESIGN.md §10); below 26 the same layout renders as separate
+// the compact-toolbar register. The time pill is the stats morph's rest (the
+// card is the pill reshaped, never new glass conjured over old); the players
+// pill presents the roster as a system Menu (RosterMenu, the Mail mechanism,
+// owner ruling 2026-07-10). On iOS 26+ the leading and time pills share one
+// GlassEffectContainer at a spacing below the metaball fuse (SP-i1, DESIGN.md
+// §10) while the menu-bearing pill stands outside it (a Menu inside a container
+// breaks its morph on 26.1); below 26 the same layout renders as separate
 // blur-material capsules through ChromeGlassSurface, the §4 one-fallback rule.
 //
 // The clock is ID-2's: small, tabular, quiet, 0:00 before the first fill, frozen
@@ -32,50 +33,55 @@ struct RoomBar: View {
     /// morph rests here, but buried glass refracts through a panel's surface,
     /// so the pill yields for the panel's life. Layout and reporting stay.
     let leadingHandedOff: Bool
-    /// True while the roster panel exists: the players pill is the panel at
-    /// rest (DESIGN.md §4), so the whole pill, glass and pucks, hands off and
-    /// yields. Layout and frame reporting stay; the visual goes with the morph.
-    let playersHandedOff: Bool
     /// True while the stats card exists: the time pill is the card at rest
-    /// (ID-2), so the whole pill yields, same rule as the players pill.
+    /// (ID-2), so the whole pill, glass and clock, hands off and yields.
+    /// Layout and frame reporting stay; the visual goes with the morph.
     let timeHandedOff: Bool
     /// Non-nil once the room completes: tapping the frozen clock summons the
     /// stats card back (the card is the pill, inflated).
     let onTapClock: (() -> Void)?
-    let onTapPucks: () -> Void
+    /// The roster menu's needs: who the local user is (the spectator edge) and
+    /// the Join in intent (ID-5), passed through to RosterMenu.
+    let selfUserId: String?
+    let onJoinIn: () -> Void
 
     var body: some View {
-        // One container so the cluster reads as one system of glass; the blend
-        // spacing stays below the metaball threshold so the pills never fuse at
-        // rest (SP-i1's caution, DESIGN.md §10). macOS test builds and iOS
-        // below 26 take the same layout with no container (KeyDeck's gating).
-        #if os(iOS)
-            if #available(iOS 26.0, *) {
-                GlassEffectContainer(spacing: ChromeLayout.pillClusterBlend) {
-                    pills
+        HStack(spacing: ChromeLayout.pillGap) {
+            // One container so the standing pills read as one system of glass;
+            // the blend spacing stays below the metaball threshold so they
+            // never fuse at rest (SP-i1's caution, DESIGN.md §10). The players
+            // pill stands OUTSIDE: its menu is a system presentation, and a
+            // Menu inside a GlassEffectContainer breaks the morph on 26.1.
+            // macOS test builds and iOS below 26 take the same layout with no
+            // container (KeyDeck's gating).
+            #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    GlassEffectContainer(spacing: ChromeLayout.pillClusterBlend) {
+                        timedPills
+                    }
+                } else {
+                    timedPills
                 }
-            } else {
-                pills
-            }
-        #else
-            pills
-        #endif
+            #else
+                timedPills
+            #endif
+            RosterMenu(
+                ground: ground, members: members,
+                selfUserId: selfUserId, onJoinIn: onJoinIn)
+        }
     }
 
     // MARK: The cluster
 
-    private var pills: some View {
-        HStack(spacing: ChromeLayout.pillGap) {
-            // The 1 Hz timeline drives both the clock and the countdown; at
-            // rest it is the only thing in the room that ticks.
-            TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                HStack(spacing: ChromeLayout.pillGap) {
-                    leadingPill(now: timeline.date)
-                    Spacer(minLength: 0)
-                    timePill(now: timeline.date)
-                }
+    private var timedPills: some View {
+        // The 1 Hz timeline drives both the clock and the countdown; at
+        // rest it is the only thing in the room that ticks.
+        TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            HStack(spacing: ChromeLayout.pillGap) {
+                leadingPill(now: timeline.date)
+                Spacer(minLength: 0)
+                timePill(now: timeline.date)
             }
-            playersPill
         }
     }
 
@@ -170,38 +176,6 @@ struct RoomBar: View {
         .reportChromeFrame(.timePill)
     }
 
-    // MARK: The players pill
-
-    private var playersPill: some View {
-        let cluster = RosterList.cluster(members)
-        return Button(action: onTapPucks) {
-            HStack(spacing: 4) {
-                HStack(spacing: -7) {
-                    ForEach(cluster.pucks) { member in
-                        RosterPuckView(member: member, ground: ground, diameter: 24)
-                            .reportChromeFrame(.puck(member.userId))
-                    }
-                }
-                if cluster.overflow > 0 {
-                    Text(verbatim: "+\(cluster.overflow)")
-                        .font(.system(size: 11, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(Color(rgb: ground.tokens.number))
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: ChromeLayout.pillHeight)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
-        .opacity(playersHandedOff ? 0 : 1)
-        // Same touch yield as the time pill: while the roster is open, the
-        // ghost area dismisses through the bar rather than re-toggling.
-        .allowsHitTesting(!playersHandedOff)
-        .reportChromeFrame(.playersPill)
-        .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
-    }
 }
 
 // MARK: - One puck

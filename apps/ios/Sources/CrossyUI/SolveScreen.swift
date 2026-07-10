@@ -1,7 +1,8 @@
 // The room (roadmap I2c): room bar over the grid, the clue bar as its own glass
-// over a separate key deck (owner ruling 2026-07-10; SP-i5), the clue browser and
-// roster as custom overlay panels morphing from their chrome (SP-i1's single
-// surface; never a system sheet), weather per DESIGN.md §8, the ambient clock
+// over a separate key deck (owner ruling 2026-07-10; SP-i5), the clue browser as
+// a custom overlay panel morphing from its chrome (SP-i1's single surface), the
+// roster as a system Menu flowing out of the players pill (RosterMenu, the Mail
+// mechanism), weather per DESIGN.md §8, the ambient clock
 // (ID-2), and the spectator edge with its one affordance, Join in. Ground follows
 // system appearance through CrossyDesign tokens (ID-3: two renders of one drawing,
 // never two code paths). Composition roots hand in a store, a mapped puzzle, a
@@ -94,14 +95,11 @@ public struct SolveScreen: View {
                     // A pill hands off when its own panel opens, and when any
                     // open panel eclipses it (PanelEclipse: buried glass
                     // refracts through a panel's surface).
-                    leadingHandedOff: pillEclipsed(
-                        .leadingPill, members: members, spectating: spectating),
-                    playersHandedOff: chrome.isRosterOpen
-                        || pillEclipsed(.playersPill, members: members, spectating: spectating),
-                    timeHandedOff: chrome.isStatsOpen
-                        || pillEclipsed(.timePill, members: members, spectating: spectating),
+                    leadingHandedOff: pillEclipsed(.leadingPill),
+                    timeHandedOff: chrome.isStatsOpen || pillEclipsed(.timePill),
                     onTapClock: status == .completed ? { openStats() } : nil,
-                    onTapPucks: toggleRoster
+                    selfUserId: store.selfUserId,
+                    onJoinIn: onJoinIn
                 )
                 .reportChromeFrame(.roomBar)
                 // Transient panels yield to intent (DESIGN.md §4): a touch on
@@ -208,18 +206,9 @@ public struct SolveScreen: View {
             // yield to intent): a touch outside an open panel dismisses it
             // through the surfaces it lands on, and still lands. The panels'
             // own inner tap blockers are the only thing keeping a touch from
-            // falling through them.
-
-            if chrome.isRosterOpen, let morph = rosterMorph(members: members, spectating: spectating) {
-                RosterPanel(
-                    ground: ground,
-                    morph: morph,
-                    members: members,
-                    restCenters: clusterPuckCenters,
-                    selfUserId: store.selfUserId,
-                    chrome: chrome,
-                    onJoinIn: onJoinIn)
-            }
+            // falling through them. The roster is not here: it is a system
+            // presentation out of the players pill (RosterMenu), so the system
+            // owns its stage, its dismissal, and its stacking.
 
             // The stats card (EXPERIENCE.md Completed): the time pill, inflated
             // (ID-2; DESIGN.md §4 morph grammar, owner ruling 2026-07-10
@@ -325,12 +314,12 @@ public struct SolveScreen: View {
 
     private func observeRoomState() {
         // The room's own moments yield like any touch (DESIGN.md §4): the one
-        // observed transition into a terminal status pours back the melt and
-        // the roster, and on completion the stats card then owns the stage.
-        // A fold, not a render fact, so a reconnect into an already-terminal
-        // room never replays the pour-back.
+        // observed transition into a terminal status pours back the melt, and
+        // on completion the stats card then owns the stage. A fold, not a
+        // render fact, so a reconnect into an already-terminal room never
+        // replays the pour-back. (An open roster menu is the system's; it
+        // holds until a touch, which is how Mail behaves too.)
         if terminalPourBack.observe(roomStatus) {
-            chrome.settleRoster(open: false, animated: !reduceMotion)
             // Never rip the melt from a live finger (SP-i1: the finger owns
             // progress): a melt mid-drag when the room turns terminal stays
             // with the finger, and the release settles it as usual.
@@ -375,16 +364,6 @@ public struct SolveScreen: View {
         Set((0..<puzzle.cellCount).filter { store.renderValue($0) != nil })
     }
 
-    /// Where layout put each cluster puck, by userId: the roster riders' launch
-    /// points (DESIGN.md §4: content rides the morph).
-    private var clusterPuckCenters: [String: CGPoint] {
-        frames.reduce(into: [:]) { centers, entry in
-            if case .puck(let userId) = entry.key {
-                centers[userId] = CGPoint(x: entry.value.midX, y: entry.value.midY)
-            }
-        }
-    }
-
     /// Teammates whose cursors sit under the bar's clue: presence marks (already
     /// filtered of self and spectators, colored for the ground) on the current
     /// word's cells, ordered for deterministic glint attribution.
@@ -425,85 +404,34 @@ public struct SolveScreen: View {
             openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 
-    /// The roster: rest is the PLAYERS PILL's whole frame (DESIGN.md §4: the
-    /// players pill inflates into the roster sheet; the per-puck riders keep
-    /// their own launch points). Open grows over the pill's own footprint, top
-    /// and trailing edges shared (the Mail-button rule, owner ruling
-    /// 2026-07-10: a panel covers the pill it grew from, never hangs beside
-    /// it), sized to its people.
-    private func rosterMorph(members: [RosterMember], spectating: Bool) -> GlassMorph? {
-        guard let pill = frames[.playersPill], let roomBar = frames[.roomBar],
-            let slot = frames[.clueBarSlot]
-        else { return nil }
-        let width = min(roomBar.width, 320)
-        let content =
-            CGFloat(members.count) * RosterRideLayout.rowHeight
-            + RosterRideLayout.topPadding * 2 + (spectating ? 56 : 0)
-        let available = slot.minY - pill.minY - ChromeLayout.panelTopGap
-        let height = max(ChromeLayout.barHeight, min(content, available))
-        return GlassMorph(
-            rest: pill,
-            open: CGRect(
-                x: max(roomBar.minX, pill.maxX - width),
-                y: pill.minY,
-                width: width, height: height),
-            restCornerRadius: pill.height / 2,
-            openCornerRadius: ChromeLayout.panelCornerRadius)
-    }
-
     // MARK: - Intents
 
-    /// Whether the open panel (roster or stats, mutually exclusive) eclipses a
-    /// standing pill's reported frame (PanelEclipse, DESIGN.md §4).
-    private func pillEclipsed(
-        _ piece: ChromePiece, members: [RosterMember], spectating: Bool
-    ) -> Bool {
-        guard let pill = frames[piece] else { return false }
-        let panel: CGRect?
-        if chrome.isRosterOpen {
-            panel = rosterMorph(members: members, spectating: spectating)?.open
-        } else if chrome.isStatsOpen {
-            panel = statsMorph?.open
-        } else {
-            panel = nil
-        }
-        guard let panel else { return false }
+    /// Whether the open stats card eclipses a standing pill's reported frame
+    /// (PanelEclipse, DESIGN.md §4). The roster, a system presentation, never
+    /// stands glass of ours over the bar.
+    private func pillEclipsed(_ piece: ChromePiece) -> Bool {
+        guard let pill = frames[piece], chrome.isStatsOpen,
+            let panel = statsMorph?.open
+        else { return false }
         return PanelEclipse.eclipses(panel: panel, pill: pill)
     }
 
     /// The one dismissal path (DESIGN.md §4: transient panels yield to
-    /// intent). A touch outside an open roster or stats panel dismisses it
-    /// and still lands, so every outside surface routes here before its own
-    /// action. The melt is not a tap-away transient (a gesture owns it); it
-    /// pours back only when another panel opens or the room turns terminal.
+    /// intent). A touch outside the open stats panel dismisses it and still
+    /// lands, so every outside surface routes here before its own action. The
+    /// melt is not a tap-away transient (a gesture owns it); it pours back
+    /// only when another panel opens or the room turns terminal. The roster
+    /// menu dismisses itself: the system swallows the outside touch, Mail's
+    /// own behavior.
     private func dismissTransients() {
-        if chrome.isRosterOpen {
-            chrome.settleRoster(open: false, animated: !reduceMotion)
-        }
         if completion.isStatsOpen {
             completion.isStatsOpen = false
         }
     }
 
-    private func toggleRoster() {
-        let animated = !reduceMotion
-        if chrome.isRosterOpen {
-            chrome.settleRoster(open: false, animated: animated)
-        } else {
-            // Panels are mutually exclusive (DESIGN.md §4): opening the
-            // roster closes the stats card and pours back a still melt (a
-            // dragged melt is the finger's, SP-i1).
-            completion.isStatsOpen = false
-            chrome.pourBackMeltUnlessDragging(animated: animated)
-            chrome.settleRoster(open: true, animated: animated)
-        }
-    }
-
     /// The frozen clock's summon (ID-2), mutually exclusive like every panel
-    /// (DESIGN.md §4): the card's arrival closes the roster (owner ruling
-    /// 2026-07-10) and pours back a still melt.
+    /// (DESIGN.md §4): the card's arrival pours back a still melt.
     private func openStats() {
-        chrome.settleRoster(open: false, animated: !reduceMotion)
         chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
         completion.isStatsOpen = true
     }

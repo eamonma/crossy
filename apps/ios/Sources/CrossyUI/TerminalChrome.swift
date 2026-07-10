@@ -14,10 +14,9 @@
 import CrossyDesign
 import SwiftUI
 
-/// The stats morph's pure geometry, pinned in tests (the RosterRideLayout
-/// pattern): the card's rows are fixed-height slots so the rider's landing point
-/// is arithmetic, not font metrics, and the rider at progress 1 sits exactly in
-/// the headline slot.
+/// The stats morph's pure geometry, pinned in tests: the card's rows are
+/// fixed-height slots so the rider's landing point is arithmetic, not font
+/// metrics, and the rider at progress 1 sits exactly in the headline slot.
 enum StatsRideLayout {
     static let panelMaxWidth: CGFloat = 340
     static let verticalPadding: CGFloat = 22
@@ -94,7 +93,7 @@ struct StatsMorphPanel: View {
         .modifier(ChromeGlassSurface(cornerRadius: radius))
         .contentShape(shape)
         // An inside tap stays the card's: only touches OUTSIDE a transient
-        // dismiss it (DESIGN.md §4), the RosterPanel blocker rule.
+        // dismiss it (DESIGN.md §4), the panel's own inner blocker rule.
         .onTapGesture {}
         .position(x: frame.midX, y: frame.midY)
         .accessibilityElement(children: .ignore)

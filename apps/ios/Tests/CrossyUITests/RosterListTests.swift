@@ -2,11 +2,11 @@ import XCTest
 
 @testable import CrossyUI
 
-// The roster derivations: presence order for the puck cluster and the panel
-// (connected first, byte-ordered within a group so nothing shuffles between
-// renders, INV-1: no locale-aware collation), the cluster's overflow cap, and the
-// spectator predicate behind the Join in affordance (ID-5; EXPERIENCE.md
-// Watching).
+// The roster derivations: presence order for the puck cluster and the menu's
+// rows (connected first, byte-ordered within a group so nothing shuffles
+// between renders, INV-1: no locale-aware collation), the cluster's overflow
+// cap, the menu subtitle's state word, and the spectator predicate behind the
+// Join in affordance (ID-5; EXPERIENCE.md Watching).
 
 final class RosterListTests: XCTestCase {
     private func member(
@@ -67,5 +67,14 @@ final class RosterListTests: XCTestCase {
     func test_initial_isASCIIUppercased_inv1() {
         XCTAssertEqual(member("bee", name: "bee").initial, "B")
         XCTAssertEqual(member("x", name: "").initial, "")
+    }
+
+    // The menu row's quiet subtitle (ID-5 lexicon): Away beats the role because
+    // presence is what the room asks first; a connected solver needs no word.
+    func test_stateWord_awayBeatsRoleAndSolversStayQuiet_id5() {
+        XCTAssertEqual(RosterList.stateWord(member("z", connected: false, host: true)), "Away")
+        XCTAssertEqual(RosterList.stateWord(member("w", spectator: true)), "Watching")
+        XCTAssertEqual(RosterList.stateWord(member("h", host: true)), "Host")
+        XCTAssertNil(RosterList.stateWord(member("s")))
     }
 }

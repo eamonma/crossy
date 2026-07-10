@@ -69,6 +69,17 @@ public enum RosterList {
         return (shown, inOrder.count - shown.count)
     }
 
+    /// The quiet trailing word (ID-5 lexicon: plain, no metaphors), the roster
+    /// menu's subtitle: Away beats the role because presence is what the room
+    /// asks first; Watching is the spectator word; Host names the seat; a
+    /// connected solver needs no word.
+    public static func stateWord(_ member: RosterMember) -> String? {
+        if !member.connected { return "Away" }
+        if member.isSpectator { return "Watching" }
+        if member.isHost { return "Host" }
+        return nil
+    }
+
     /// Whether the room shows the spectator edge (EXPERIENCE.md: Watching): the
     /// local participant holds the spectator role. Absent or unknown selves are not
     /// spectators; the room never guesses someone out of a seat.

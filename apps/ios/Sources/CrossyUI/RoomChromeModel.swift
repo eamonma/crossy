@@ -32,9 +32,6 @@ public final class RoomChromeModel {
     /// True while a finger scrubs the melt (gesture bookkeeping for the views).
     public var isMeltDragging = false
 
-    /// The roster morph: 0 is the puck cluster at rest, 1 the open panel.
-    public var rosterProgress: CGFloat = 0
-
     /// The stats morph (ID-2: the timer becomes the headline only at
     /// completion, so the headline comes FROM the timer): 0 is the room bar's
     /// frozen clock, 1 the open stats card.
@@ -52,13 +49,11 @@ public final class RoomChromeModel {
     public var kicked = false
 
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
-    @ObservationIgnored private var rosterSettleTask: Task<Void, Never>?
     @ObservationIgnored private var statsSettleTask: Task<Void, Never>?
 
     public init() {}
 
     public var isBrowserOpen: Bool { meltProgress > 0 }
-    public var isRosterOpen: Bool { rosterProgress > 0 }
     public var isStatsOpen: Bool { statsProgress > 0 }
 
     // MARK: Settling (the one animation, on release)
@@ -90,10 +85,6 @@ public final class RoomChromeModel {
         settleMelt(open: false, animated: animated)
     }
 
-    public func rosterTouched() {
-        rosterSettleTask?.cancel()
-    }
-
     public func settleStats(open: Bool, animated: Bool = true) {
         statsSettleTask?.cancel()
         statsSettleTask = Self.walk(
@@ -103,29 +94,13 @@ public final class RoomChromeModel {
         }
     }
 
-    public func settleRoster(open: Bool, animated: Bool = true) {
-        rosterSettleTask?.cancel()
-        rosterSettleTask = Self.walk(
-            from: rosterProgress, to: open ? 1 : 0, animated: animated
-        ) { [weak self] value in
-            self?.rosterProgress = value
-        }
-    }
-
-    /// Scripted entry points (screenshots, deep links): land a panel with no
-    /// gesture and no walk.
+    /// Scripted entry point (screenshots, deep links): land the browser with
+    /// no gesture and no walk. (The roster has no scripted entry: a system
+    /// menu cannot be presented programmatically, and its evidence is the
+    /// device's, not a screenshot script's.)
     public func presentBrowser() {
-        rosterSettleTask?.cancel()
         meltSettleTask?.cancel()
-        rosterProgress = 0
         meltProgress = 1
-    }
-
-    public func presentRoster() {
-        rosterSettleTask?.cancel()
-        meltSettleTask?.cancel()
-        meltProgress = 0
-        rosterProgress = 1
     }
 
     /// The settle walk: the chrome spring's own curve (ChromeSettleCurve), one

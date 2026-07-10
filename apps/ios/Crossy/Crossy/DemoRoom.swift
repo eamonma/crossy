@@ -123,9 +123,8 @@ final class DemoRoom {
             // intermediate geometry), since simctl cannot scrub a finger.
             chrome.meltProgress = min(max(progress, 0), 1)
         }
-        if arguments.contains("-i2cRoster") {
-            chrome.presentRoster()
-        }
+        // (-i2cRoster retired with the custom roster panel: the roster is a
+        // system Menu now, and a system presentation cannot be scripted.)
 
         if arguments.contains("-i2cScript") {
             // Bee patrols: down her column, then across the local player's opening
