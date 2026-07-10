@@ -844,6 +844,15 @@ than a blank-page spec. M4's dogfood exit stands unchanged. Landed and deployed:
   scenePhase reconnect. **Exit: an iOS user and a web user finish a puzzle together,
   observed in a dogfood session.**
 
+  Track B flesh-out landed (2026-07-09): `apps/ios/DESIGN.md` (look and feel),
+  `apps/ios/EXPERIENCE.md` (product and UX), `apps/ios/ARCHITECTURE.md` (module
+  graph and store formalism), and `apps/ios/ROADMAP.md` (execution, phases I0
+  through I5 with exits; extends through the M6 iOS half and a TestFlight launch). Owner decisions there supersede this bullet's sign-in line: v1 is Discord
+  only with named accounts (no guests on iOS), and Sign in with Apple plus passkeys
+  land post-v1 as the auth-breadth gate for public App Store release (App Review
+  4.8; TestFlight distribution does not trigger it). The M5 exit is unchanged and
+  lives at Phase I3.
+
 ## Phase 5 — Parity, then polish (= M6 → M7, sequential)
 
 UX flesh-out gate at entry: M6 items are interaction surfaces (rebus entry, check
