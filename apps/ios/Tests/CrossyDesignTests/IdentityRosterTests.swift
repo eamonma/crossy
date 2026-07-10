@@ -69,4 +69,33 @@ final class IdentityRosterTests: XCTestCase {
         XCTAssertEqual(RGBColor(0xFFFFFF).hexString, "#FFFFFF")
         XCTAssertEqual(RGBColor(red: 0x9D, green: 0x95, blue: 0xFF).rgb24, 0x9D95FF)
     }
+
+    // Wire-color slotting (PROTOCOL.md §4 participant `color`; the server's string
+    // is authoritative, root DESIGN.md §8): the slot is the 24-bit value mod 12.
+    func test_slotForWireColor_takesTheLow24BitResidue() {
+        XCTAssertEqual(IdentityRoster.slot(forWireColor: "#000000"), 0)
+        XCTAssertEqual(IdentityRoster.slot(forWireColor: "#00000B"), 11)
+        XCTAssertEqual(IdentityRoster.slot(forWireColor: "#00000C"), 0)
+        // 0x7F77DD = 8353757 = 12 * 696146 + 5 (the PROTOCOL.md §4 example color).
+        XCTAssertEqual(IdentityRoster.slot(forWireColor: "#7F77DD"), 5)
+        XCTAssertEqual(
+            IdentityRoster.color(forWireColor: "#7F77DD")?.name,
+            IdentityRoster.colors[5].name)
+    }
+
+    // Hex digits fold bytewise, case-insensitive (INV-1: ASCII-only, no locale).
+    func test_slotForWireColor_acceptsBothHexCases_INV1() {
+        XCTAssertEqual(
+            IdentityRoster.slot(forWireColor: "#a1b2c3"),
+            IdentityRoster.slot(forWireColor: "#A1B2C3"))
+    }
+
+    // Anything but `#` plus six ASCII hex digits is rejected; callers fall back to
+    // the user-id hash, so a malformed wire never crashes or forks a color.
+    func test_slotForWireColor_rejectsMalformedStrings() {
+        for wire in ["", "#", "7F77DD", "#7F77D", "#7F77DDA", "#7G77DD", "#7F77Dé", "teal"] {
+            XCTAssertNil(IdentityRoster.slot(forWireColor: wire), "accepted \(wire)")
+            XCTAssertNil(IdentityRoster.color(forWireColor: wire), "accepted \(wire)")
+        }
+    }
 }
