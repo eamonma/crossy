@@ -22,19 +22,45 @@ import Foundation
 final class DemoRoom {
     let store = GameStore()
     let puzzle: GridPuzzle
+    let selection: SelectionModel
     private let transport: LoopbackTransport
 
     init() {
         let fixture = DemoFixture.mini9()
         puzzle = fixture.puzzle
         transport = LoopbackTransport(welcome: fixture.welcome)
+        selection = SelectionModel(store: store, puzzle: puzzle)
     }
 
     /// Connect (the welcome arrives through the stream like every other frame) and
     /// run the store's mailbox until the transport closes.
     func run() async {
         try? await transport.connect()
-        await store.run(transport)
+        async let mailbox: Void = store.run(transport)
+        await script()
+        await mailbox
+    }
+
+    /// Scripted presses for screenshot evidence, the SP-i2 pattern: simctl cannot
+    /// synthesize touches, so `-i2bScript` types into 15-Across and `-i2bRebus`
+    /// opens the inline rebus field on top. Launch-argument gated; inert in normal
+    /// use.
+    private func script() async {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("-i2bScript") else { return }
+        try? await Task.sleep(for: .milliseconds(400))  // let the welcome land
+        // The cursor opens on 1-Across (first playable, across); type into it.
+        for character in "SOL" {
+            selection.press(.letter(character))
+            try? await Task.sleep(for: .milliseconds(120))
+        }
+        if arguments.contains("-i2bRebus") {
+            selection.press(.rebus)
+            for character in "HEART" {
+                selection.press(.letter(character))
+                try? await Task.sleep(for: .milliseconds(80))
+            }
+        }
     }
 }
 

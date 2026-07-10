@@ -15,7 +15,7 @@ struct ContentView: View {
     @State private var room = DemoRoom()
 
     var body: some View {
-        SolveScreen(store: room.store, puzzle: room.puzzle)
+        SolveScreen(store: room.store, puzzle: room.puzzle, model: room.selection)
             .task { await room.run() }
     }
 }

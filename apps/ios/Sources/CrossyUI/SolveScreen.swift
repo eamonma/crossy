@@ -17,10 +17,12 @@ public struct SolveScreen: View {
     @State private var model: SelectionModel
     @Environment(\.colorScheme) private var colorScheme
 
-    public init(store: GameStore, puzzle: GridPuzzle) {
+    /// `model` lets a composition root own the selection (the room will drive it
+    /// from clue-bar taps in I2c); nil owns a store-bound one locally.
+    public init(store: GameStore, puzzle: GridPuzzle, model: SelectionModel? = nil) {
         self.store = store
         self.puzzle = puzzle
-        _model = State(initialValue: SelectionModel(store: store, puzzle: puzzle))
+        _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
     }
 
     private var ground: GridGround {
