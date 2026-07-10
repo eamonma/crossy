@@ -17,6 +17,7 @@ import type {
   Cell,
   CellSetMessage,
   ClearCellMessage,
+  Cursor,
   Participant,
   PlaceLetterMessage,
   Stats,
@@ -78,6 +79,8 @@ export function cellSetToWire(
 /** Inputs the board payload needs beyond the engine board state. */
 export interface BoardExtras {
   readonly participants: readonly Participant[];
+  /** Current cursors of connected users (PROTOCOL.md §9); ephemeral, never from the solution. */
+  readonly cursors: readonly Cursor[];
   readonly completedAt: string | null;
   readonly abandonedAt: string | null;
   readonly stats: Stats | null;
@@ -119,7 +122,9 @@ export function buildBoard(state: BoardState, extras: BoardExtras): Board {
     completedAt: extras.completedAt,
     abandonedAt: extras.abandonedAt,
     participants: extras.participants,
-    cursors: [], // presence is ephemeral and out of this slice (PROTOCOL.md §9)
+    // Presence is ephemeral (never sequenced, never persisted), but the snapshot still carries
+    // the current view so a fresh or resyncing client sees who is where (PROTOCOL.md §9).
+    cursors: extras.cursors,
     recentCommandIds: extras.recentCommandIds,
     stats: extras.stats,
   };

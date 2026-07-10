@@ -24,6 +24,8 @@ import {
 } from "@crossy/engine";
 import type {
   ClearCellMessage,
+  Cursor,
+  Direction,
   PlaceLetterMessage,
   Role,
   ServerMessage,
@@ -86,6 +88,13 @@ export class GameActor {
   private stats: Stats | null;
   private recentCommandIds: string[];
   private readonly connections = new Set<Connection>();
+  /**
+   * Each connected user's current cursor (PROTOCOL.md §9). Best-effort presence: never
+   * sequenced, never persisted. Keyed by userId, so a user's several tabs share one cursor.
+   * An entry lives only while the user holds a socket; it is dropped on their last close
+   * (removeConnection) or a kick (disconnectUser), so a departed user carries no cursor.
+   */
+  private readonly cursors = new Map<string, Cursor>();
   private readonly mailbox = new Mailbox();
 
   /** Accepted-but-unflushed cellSets, appended to cell_events on the next flush (§6). */
@@ -133,7 +142,11 @@ export class GameActor {
   removeConnection(connection: Connection): boolean {
     const existed = this.connections.delete(connection);
     if (!existed) return false;
-    return !this.hasUserConnection(connection.userId);
+    const last = !this.hasUserConnection(connection.userId);
+    // The user's cursor is presence, tied to their liveness: drop it on the last socket so the
+    // next snapshot and the `playerDisconnected` agree the departed user has no cursor (§9).
+    if (last) this.cursors.delete(connection.userId);
+    return last;
   }
 
   /** Whether the user still holds any live socket (the first/last-socket presence pivot). */
@@ -170,6 +183,8 @@ export class GameActor {
       conn.close?.(1008, "kicked");
       this.connections.delete(conn);
     }
+    // A kicked user leaves no presence behind (§9): drop their cursor so no snapshot carries it.
+    this.cursors.delete(userId);
   }
 
   /** Update the cached role for a user's live sockets after a re-verified role change (INV-8). */
@@ -192,6 +207,32 @@ export class GameActor {
     const ids = new Set<string>();
     for (const c of this.connections) ids.add(c.userId);
     return ids;
+  }
+
+  /**
+   * Whether a cell is a valid cursor target: an integer in range that is not a black square,
+   * the same rule the reducer maps to INVALID_CELL for a mutation (PROTOCOL.md §5). A
+   * `moveCursor` naming any other cell is dropped silently by the caller, since presence is
+   * best-effort and PROTOCOL.md §9 defines no cursor error.
+   */
+  isCursorTarget(cell: number): boolean {
+    const total = this.state.grid.cols * this.state.grid.rows;
+    return (
+      Number.isInteger(cell) &&
+      cell >= 0 &&
+      cell < total &&
+      !this.state.grid.blocks.has(cell)
+    );
+  }
+
+  /**
+   * Record a connected user's current cursor (PROTOCOL.md §9), so the next snapshot carries it
+   * (PROTOCOL.md §4, "the board payload carries the current view at snapshot time"). Ephemeral:
+   * the caller has already validated the cell (isCursorTarget) and rate-capped the frame; this
+   * only updates in-memory presence and never touches sequenced state.
+   */
+  setCursor(userId: string, cell: number, direction: Direction): void {
+    this.cursors.set(userId, { userId, cell, direction });
   }
 
   /** How many events are buffered but not yet flushed (drain and tests read this). */
@@ -406,6 +447,7 @@ export class GameActor {
   ): ReturnType<typeof buildBoard> {
     return buildBoard(this.state, {
       participants,
+      cursors: [...this.cursors.values()],
       completedAt: this.completedAt,
       abandonedAt: this.abandonedAt,
       stats: this.stats,

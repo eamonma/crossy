@@ -21,10 +21,12 @@
 // Presence (PROTOCOL.md §6, §9): a socket going live broadcasts `playerConnected` to the
 // others when it is the user's first live socket; its close broadcasts `playerDisconnected`
 // when it was the user's last. `moveCursor` relays as a `cursor` notice, rate-capped at 10/s
-// per socket. Liveness: 45 s with no inbound frame of any type terminates the socket, so the
-// close path broadcasts the disconnect; any received frame (heartbeat included) resets the
-// timer. The liveness timer lives on the socket, not the actor, so it cannot leak across actor
-// passivation: a close always clears it, and a passivated actor has no sockets.
+// per socket; the actor records each user's cursor so the next snapshot carries the current
+// view (PROTOCOL.md §4, §9), and an out-of-range or black-square cursor is dropped silently.
+// Liveness: 45 s with no inbound frame of any type terminates the socket, so the close path
+// broadcasts the disconnect; any received frame (heartbeat included) resets the timer. The
+// liveness timer lives on the socket, not the actor, so it cannot leak across actor passivation:
+// a close always clears it, and a passivated actor has no sockets.
 //
 // Out of this slice (reported as deferrals): checkRequest is Phase 3.
 
@@ -402,9 +404,19 @@ function handleConnection(
         }
         return;
       case "moveCursor":
-        // Relay the cursor to the other connections, rate-capped at 10/s (PROTOCOL.md §9).
-        // Spectator cursors relay too (DESIGN.md §8: clients suppress by default, not the server).
-        if (actor !== null && connection !== null && allowCursor(Date.now())) {
+        // Relay the cursor to the other connections, rate-capped at 10/s, and record it so the
+        // next snapshot carries the current view (PROTOCOL.md §4, §9). A cursor whose cell is out
+        // of range or a black square is dropped silently (best-effort; PROTOCOL.md §9 defines no
+        // cursor error), mirroring the reducer's INVALID_CELL rule for a mutation. Role is not
+        // gated here: any participant may send moveCursor (PROTOCOL.md §5), and spectator cursors
+        // are suppressed client-side by default, not by the server (DESIGN.md §8).
+        if (
+          actor !== null &&
+          connection !== null &&
+          actor.isCursorTarget(message.cell) &&
+          allowCursor(Date.now())
+        ) {
+          actor.setCursor(connection.userId, message.cell, message.direction);
           actor.broadcastExcept(connection, {
             type: "cursor",
             userId: connection.userId,
