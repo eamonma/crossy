@@ -19,6 +19,10 @@
 //    -i2cWeather resyncing  force the breathing-dot state (a gapped event)
 //    -i2cWeather reconnecting  force the dimmed room with the quiet countdown
 //    -i2cSpectator          seat the local player as a spectator (Watching)
+//    -i2dComplete           the room finishes the puzzle; gameCompleted follows
+//                           (the mosaic plays, then the stats card)
+//    -i2dAbandoned          the host ends the game (frozen board, one-line notice)
+//    -i2dKicked             the kicked notice, then the terminal exit screen
 //
 
 import CrossyProtocol
@@ -122,6 +126,63 @@ final class DemoRoom {
                     .cursor(CursorMessage(userId: "bee", cell: cell, direction: .across)))
                 try? await Task.sleep(for: .milliseconds(900))
             }
+        }
+
+        if arguments.contains("-i2dComplete") {
+            // The room finishes the puzzle: every empty playable cell fills as a
+            // sequenced cellSet attributed by region (you, Bee, Ada), then the
+            // server notices completion (INV-3: the event drives the store's one
+            // transition; the celebration derives from it, never from render).
+            try? await Task.sleep(for: .milliseconds(400))
+            var seq = store.seq
+            let letters = Array("SOLVEDTOGETHER")
+            var written = 0
+            for cell in 0..<puzzle.cellCount
+            where !puzzle.blocks.contains(cell) && store.renderValue(cell) == nil {
+                let row = cell / puzzle.cols
+                let by = row < 3 ? "you" : row < 6 ? "bee" : "ada"
+                seq += 1
+                await transport.deliver(
+                    .cellSet(
+                        CellSetMessage(
+                            seq: seq, cell: cell,
+                            value: String(letters[written % letters.count]),
+                            by: by, commandId: "demo-i2d-\(cell)",
+                            at: DemoFixture.isoNow())))
+                written += 1
+            }
+            try? await Task.sleep(for: .milliseconds(1600))
+            seq += 1
+            // Stats as the actor would stamp them: solveTimeSeconds from the same
+            // timestamps the ambient clock reads, so the frozen bar clock and the
+            // card's headline agree (PROTOCOL.md §6).
+            let origin =
+                store.firstFillAt.flatMap { try? Date($0, strategy: .iso8601) } ?? Date()
+            await transport.deliver(
+                .gameCompleted(
+                    GameCompletedMessage(
+                        seq: seq, at: DemoFixture.isoNow(),
+                        stats: Stats(
+                            solveTimeSeconds: max(0, Int(Date().timeIntervalSince(origin))),
+                            totalEvents: 143, participantCount: 3))))
+        }
+
+        if arguments.contains("-i2dAbandoned") {
+            // The host ends the game: the board freezes with the one-line notice.
+            try? await Task.sleep(for: .milliseconds(600))
+            await transport.deliver(
+                .gameAbandoned(
+                    GameAbandonedMessage(
+                        seq: store.seq + 1, at: DemoFixture.isoNow(), by: "you")))
+        }
+
+        if arguments.contains("-i2dKicked") {
+            // The wire notice (the store deliberately ignores the frame; the 1008
+            // close follows in production), then the rendering flag, exactly as
+            // the I3 session driver will set it (RoomChromeModel.kicked).
+            try? await Task.sleep(for: .milliseconds(800))
+            await transport.deliver(.kicked(KickedMessage(reason: "kicked")))
+            chrome.kicked = true
         }
     }
 }
