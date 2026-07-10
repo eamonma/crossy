@@ -184,7 +184,7 @@ cursors), so this phase consumes and renders presence, nothing more.
       ContentView so a fresh clone runs a typeable board. Deferred to I2c:
       cursor relay wiring, camera follow on off-screen jumps, swipe-while-zoomed
       feel.
-- [ ] c. Chrome: room bar, clue bar, clue browser (the SP-i1 single-surface melt,
+- [x] c. Chrome: room bar, clue bar, clue browser (the SP-i1 single-surface melt,
       drag-scrubbed; the owner's SP-i5 feel test ruled the layout: clue bar as
       its own glass over a separate deck; panels are custom overlays, never
       system sheets; verify the ID-swap morph on device first, else the recorded
@@ -192,6 +192,14 @@ cursors), so this phase consumes and renders presence, nothing more.
       weather states rendered as DESIGN.md section 8
       specifies, ambient timer (ID-2), the spectator edge state with its Join in
       affordance (full accounts seat as solvers on join, owner decision 2026-07-10).
+      Landed 2026-07-10: GlassMorph pure-math interpolation, no animation ever
+      writes melt progress (finger raw in a nil-animation transaction, hand-
+      stepped ease on release, so a mid-settle grab scrubs from true progress);
+      glassEffectID unused, making the section 10 device recheck moot for the
+      melt. Cursor relay (web's 100 ms leading+trailing posture) and camera
+      follow wired. Owner device checks riding this build: melt feel, glint
+      subtlety, roster inflation. Deferred: browser per-row presence dots (I4);
+      reconnect countdown wiring (I3, the driver sets reconnectRetryAt).
 - [ ] d. Completion and terminals: the mosaic in its simple form (tint, hold,
       settle), the stats card, board freeze on `completed` and `abandoned`, the
       kicked exit with its one honest sentence.
