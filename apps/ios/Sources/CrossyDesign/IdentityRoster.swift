@@ -58,4 +58,35 @@ public enum IdentityRoster {
     public static func color(for userId: String) -> IdentityColor {
         colors[slot(for: userId)]
     }
+
+    /// Roster slot from the wire color string (PROTOCOL.md §4 participant `color`).
+    /// The server derives that string from the identity hash (`hash & 0xffffff`
+    /// formatted `#RRGGBB`, apps/session/src/color.ts) and the server's string is
+    /// authoritative: slotting from it keeps every client on the same slot given the
+    /// same wire, even if a local hash port drifted. Note this and `slot(for:)` take
+    /// different residues (low 24 bits vs the full hash, mod 12); wherever a wire
+    /// string exists it wins, and `slot(for:)` is the offline fallback. Returns nil
+    /// unless the string is exactly `#` plus six ASCII hex digits (case-insensitive,
+    /// folded bytewise per INV-1).
+    public static func slot(forWireColor color: String) -> Int? {
+        let bytes = Array(color.utf8)
+        guard bytes.count == 7, bytes[0] == UInt8(ascii: "#") else { return nil }
+        var value: UInt32 = 0
+        for byte in bytes.dropFirst() {
+            let digit: UInt32
+            switch byte {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"): digit = UInt32(byte - UInt8(ascii: "0"))
+            case UInt8(ascii: "A")...UInt8(ascii: "F"): digit = UInt32(byte - UInt8(ascii: "A")) + 10
+            case UInt8(ascii: "a")...UInt8(ascii: "f"): digit = UInt32(byte - UInt8(ascii: "a")) + 10
+            default: return nil
+            }
+            value = value << 4 | digit
+        }
+        return Int(value % UInt32(colors.count))
+    }
+
+    /// The roster color for a wire color string, via `slot(forWireColor:)`.
+    public static func color(forWireColor color: String) -> IdentityColor? {
+        slot(forWireColor: color).map { colors[$0] }
+    }
 }
