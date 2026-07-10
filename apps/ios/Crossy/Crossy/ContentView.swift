@@ -42,6 +42,9 @@ private struct DemoRoomView: View {
             model: room.selection,
             chrome: room.chrome
         )
+        // The island (I5a): starts on backgrounding an ongoing room, per the
+        // policy the composition root feeds (SolveActivityController).
+        .solveActivity(store: room.store, chrome: room.chrome, roomName: room.roomName)
         .task { await room.run() }
     }
 }
@@ -79,6 +82,9 @@ private struct RealRoomView: View {
                 // SolveScreen's own @State (selection, chrome) reinitializes against the
                 // real puzzle rather than the placeholder.
                 .id(ready)
+                // The island (I5a), same wiring as DemoRoom: the composition
+                // stays, only the transport behind the store differs.
+                .solveActivity(store: room.store, chrome: room.chrome, roomName: room.roomName)
             }
         }
         .task {
