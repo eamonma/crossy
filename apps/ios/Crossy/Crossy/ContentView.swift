@@ -24,6 +24,9 @@ struct ContentView: View {
         // The glassEffectID recheck rig (MorphLab.swift): evidence only.
         if ProcessInfo.processInfo.arguments.contains("-morphLab") {
             MorphLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-meltLab") {
+            // The scrubbed melt's recheck rig (MeltLab.swift): evidence only.
+            MeltLab()
         } else if let config = RoomConfig.resolve() {
             RealRoomView(room: RealRoom(config: config))
         } else if wantsDemoRoom {
