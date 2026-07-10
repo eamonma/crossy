@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- Bundle configuration as code (apps/ios/ROADMAP.md I0c): every value here is public;
+     no dashboard-only setting anywhere. Values mirror deploy/README.md. The publishable
+     key is public but lives outside the repo today; the owner pastes it before Phase I3a
+     (sign-in). Local-stack overrides for Phase I2 land with the I1e harness, not here. -->
+<dict>
+	<key>APIBase</key>
+	<string>https://rest.crossy.me</string>
+	<key>SessionWSBase</key>
+	<string>wss://session.crossy.me</string>
+	<key>SupabaseURL</key>
+	<string>https://api.crossy.me</string>
+	<key>SupabasePublishableKey</key>
+	<string></string>
+</dict>
+</plist>
