@@ -34,6 +34,13 @@ public final class RoomChromeModel {
     /// (DESIGN.md §8). Set by the composition root; nil renders the bare word.
     public var reconnectRetryAt: Date?
 
+    /// The kicked exit (EXPERIENCE.md Kicked): true replaces the room with its
+    /// terminal screen and the one honest sentence. Set by the composition root
+    /// when the transport surfaces the `kicked` notice; the store deliberately
+    /// ignores the frame (PROTOCOL.md §6: it is followed by close 1008), so like
+    /// the reconnect deadline this is the root's fact to set, not the store's.
+    public var kicked = false
+
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
     @ObservationIgnored private var rosterSettleTask: Task<Void, Never>?
 

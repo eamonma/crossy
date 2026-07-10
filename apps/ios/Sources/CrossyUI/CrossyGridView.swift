@@ -17,6 +17,7 @@ public struct CrossyGridView: View {
     private let puzzle: GridPuzzle
     private let ground: GridGround
     private let selection: GridSelection?
+    private let mosaicStartedAt: TimeInterval?
     private let onSwipe: ((SwipeIntent) -> Void)?
     private let onPlaceCursor: (Int) -> Void
 
@@ -37,12 +38,15 @@ public struct CrossyGridView: View {
     /// re-clamped in body, so no seed can start the board offscreen or blurred.
     /// `onSwipe` receives drags the camera could not spend (the board fits, pan is
     /// inert), classified per root DESIGN.md §5; a drag that panned stays a pan.
+    /// `mosaicStartedAt` is the completion celebration's trigger instant
+    /// (CompletionModel); while non-nil the board plays the mosaic (DESIGN.md §8).
     public init(
         store: GameStore,
         puzzle: GridPuzzle,
         ground: GridGround,
         selection: GridSelection?,
         initialCamera: GridCamera? = nil,
+        mosaicStartedAt: TimeInterval? = nil,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
         onPlaceCursor: @escaping (Int) -> Void
     ) {
@@ -50,6 +54,7 @@ public struct CrossyGridView: View {
         self.puzzle = puzzle
         self.ground = ground
         self.selection = selection
+        self.mosaicStartedAt = mosaicStartedAt
         self.onSwipe = onSwipe
         self.onPlaceCursor = onPlaceCursor
         _camera = State(initialValue: initialCamera)
@@ -63,14 +68,31 @@ public struct CrossyGridView: View {
                 .clamped(viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
             let frame = GridFrame(
                 store: store, puzzle: puzzle, selection: selection, ground: ground)
-            // The timeline drives redraws only while a flash decays; at rest the
-            // Canvas redraws only when the snapshot inputs change.
-            TimelineView(.animation(minimumInterval: nil, paused: flashes.isEmpty)) { timeline in
+            // The mosaic snapshot (DESIGN.md §8): palette from the sequenced event
+            // log's writer attribution, ID-1 gated inside GridMosaic. Snapshotted
+            // in body like GridFrame so @Observable registers the reads.
+            let mosaic: MosaicWash? = mosaicStartedAt.map { startedAt in
+                MosaicWash(
+                    colors: GridMosaic.colors(
+                        writers: Self.sequencedWriters(store: store, puzzle: puzzle),
+                        participants: store.participants.map {
+                            GridPresence.ParticipantInput(
+                                userId: $0.userId, displayName: $0.displayName,
+                                color: $0.color, isSpectator: $0.role == .spectator)
+                        },
+                        ground: ground),
+                    startedAt: startedAt)
+            }
+            // The timeline drives redraws only while a flash decays or the mosaic
+            // plays; at rest the Canvas redraws only when the snapshot inputs change.
+            TimelineView(
+                .animation(minimumInterval: nil, paused: flashes.isEmpty && mosaic == nil)
+            ) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
                 Canvas { context, size in
                     Self.draw(
                         frame: frame, camera: camera, ground: ground,
-                        flashes: flashes, now: now,
+                        flashes: flashes, mosaic: mosaic, now: now,
                         context: &context, viewport: size)
                 }
             }
@@ -210,7 +232,7 @@ extension CrossyGridView {
     /// closure is not actor-isolated, and the snapshot means it needs nothing that is.
     private nonisolated static func draw(
         frame: GridFrame, camera: GridCamera, ground: GridGround,
-        flashes: FlashBook, now: TimeInterval,
+        flashes: FlashBook, mosaic: MosaicWash?, now: TimeInterval,
         context: inout GraphicsContext, viewport: CGSize
     ) {
         let puzzle = frame.puzzle
@@ -223,6 +245,9 @@ extension CrossyGridView {
         drawFills(frame, visible, tokens, &context)
         drawLines(puzzle, visible, tokens, &context)
         drawCellContent(frame, visible, ground, &context)
+        if let mosaic {
+            drawMosaic(frame, visible, mosaic, now, ground, &context)
+        }
         drawFlashes(puzzle, visible, flashes, now, &context)
 
         // The closing frame: a quiet 2-unit rule over the hairlines (web parity).
@@ -393,6 +418,47 @@ extension CrossyGridView {
         }
     }
 
+    /// The mosaic (apps/ios/DESIGN.md §8): every letter tints to its writer's
+    /// color while the paper beneath it washes in the same color, scaled by the
+    /// envelope's intensity, so tint, hold, and settle all fall out of one clock.
+    /// Painted over the ink pass: the tinted glyph crossfades in over the ink one
+    /// and back out on the settle, and a cell without a mosaic color (empty, or
+    /// cleared with no letter) never tints.
+    private nonisolated static func drawMosaic(
+        _ frame: GridFrame, _ visible: (rows: Range<Int>, cols: Range<Int>),
+        _ mosaic: MosaicWash, _ now: TimeInterval, _ ground: GridGround,
+        _ context: inout GraphicsContext
+    ) {
+        let intensity = MosaicEnvelope.intensity(elapsed: now - mosaic.startedAt)
+        guard intensity > 0 else { return }
+        let puzzle = frame.puzzle
+        for row in visible.rows {
+            for col in visible.cols {
+                let cell = row * puzzle.cols + col
+                guard let color = mosaic.colors[cell] else { continue }
+                context.fill(
+                    Path(GridModule.cellRect(cell, cols: puzzle.cols)),
+                    with: .color(
+                        Color(rgb: color).opacity(GridMosaic.washAlpha * intensity)))
+                guard let value = frame.values[cell] else { continue }
+                let origin = GridModule.cellOrigin(cell, cols: puzzle.cols)
+                let size = GridModule.glyphSize(forLength: value.count)
+                let hasMarks = !(frame.presence[cell] ?? []).isEmpty
+                let shift = hasMarks ? GridModule.glyphPresenceShift : 0
+                context.draw(
+                    Text(verbatim: value)
+                        .font(.system(size: size, weight: Font.Weight(cssAxis: ground.glyphWeight)))
+                        .foregroundStyle(Color(rgb: color).opacity(intensity)),
+                    at: CGPoint(
+                        x: origin.x + GridModule.glyphCenterX + shift,
+                        y: origin.y + GridModule.capCenterY(
+                            baseline: GridModule.glyphBaseline,
+                            fontSize: GridModule.glyphFontSize)),
+                    anchor: .center)
+            }
+        }
+    }
+
     /// Conflict flashes paint above everything: the writer's color over the cell,
     /// decaying on the FlashEnvelope, leaving the new letter (PROTOCOL.md §8).
     private nonisolated static func drawFlashes(
@@ -472,6 +538,22 @@ extension GridFrame {
             },
             selfUserId: store.selfUserId,
             ground: ground)
+    }
+}
+
+extension CrossyGridView {
+    /// The mosaic's writer attribution, from sequenced cells only (DESIGN.md §8:
+    /// derived entirely from the event log): a cell maps to its writer iff it
+    /// holds a sequenced letter. The optimistic overlay never tints (a pending
+    /// command that raced completion will be rejected, not celebrated), and a
+    /// cleared cell keeps its clearer as `by` with no value, so it is excluded.
+    static func sequencedWriters(store: GameStore, puzzle: GridPuzzle) -> [Int: String] {
+        var writers: [Int: String] = [:]
+        for (index, cell) in store.cells where cell.v != nil {
+            guard index >= 0, index < puzzle.cellCount, let by = cell.by else { continue }
+            writers[index] = by
+        }
+        return writers
     }
 }
 

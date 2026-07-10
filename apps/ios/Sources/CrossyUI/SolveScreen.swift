@@ -20,8 +20,10 @@ public struct SolveScreen: View {
     private let clues: ClueBook
     private let roomName: String
     private let onJoinIn: () -> Void
+    private let onExit: () -> Void
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
+    @State private var completion = CompletionModel()
     @State private var frames: [ChromePiece: CGRect] = [:]
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
@@ -31,7 +33,8 @@ public struct SolveScreen: View {
     /// `model` lets a composition root own the selection; `chrome` likewise owns
     /// the room's overlay state (the demo room scripts both for screenshots).
     /// `onJoinIn` is the spectator's seat-change intent, wired to the real
-    /// endpoint in I3.
+    /// endpoint in I3; `onExit` is the kicked exit's way back to Rooms, wired
+    /// when Rooms exists (I3).
     public init(
         store: GameStore,
         puzzle: GridPuzzle,
@@ -39,13 +42,15 @@ public struct SolveScreen: View {
         roomName: String = "",
         model: SelectionModel? = nil,
         chrome: RoomChromeModel? = nil,
-        onJoinIn: @escaping () -> Void = {}
+        onJoinIn: @escaping () -> Void = {},
+        onExit: @escaping () -> Void = {}
     ) {
         self.store = store
         self.puzzle = puzzle
         self.clues = clues
         self.roomName = roomName
         self.onJoinIn = onJoinIn
+        self.onExit = onExit
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
         _chrome = State(initialValue: chrome ?? RoomChromeModel())
     }
@@ -55,11 +60,22 @@ public struct SolveScreen: View {
     }
 
     public var body: some View {
+        // The kicked exit replaces the room outright (EXPERIENCE.md: the room
+        // exits with one honest sentence); there is no board left to browse.
+        if chrome.kicked {
+            KickedExit(ground: ground, onExit: onExit)
+        } else {
+            room
+        }
+    }
+
+    private var room: some View {
         let weather = RoomWeather.from(sync: store.sync)
         let members = rosterMembers
         let spectating = RosterList.selfIsSpectator(members, selfUserId: store.selfUserId)
+        let status = roomStatus
 
-        ZStack {
+        return ZStack {
             VStack(spacing: 0) {
                 RoomBar(
                     roomName: roomName,
@@ -67,7 +83,11 @@ public struct SolveScreen: View {
                     weather: weather,
                     reconnectRetryAt: chrome.reconnectRetryAt,
                     firstFillAt: store.firstFillAt,
-                    completedAt: store.completedAt,
+                    // The clock freezes at either terminal instant: completion
+                    // freezes it by design (ID-2), and an abandoned room is
+                    // terminal and quiet (EXPERIENCE.md), so its clock stops at
+                    // the abandonment rather than ticking over a dead board.
+                    completedAt: store.completedAt ?? store.abandonedAt,
                     members: members,
                     onTapPucks: toggleRoster
                 )
@@ -78,6 +98,7 @@ public struct SolveScreen: View {
                 CrossyGridView(
                     store: store, puzzle: puzzle, ground: ground,
                     selection: model.selection,
+                    mosaicStartedAt: completion.mosaicStartedAt,
                     onSwipe: { model.swipe($0) },
                     onPlaceCursor: { model.tap(cell: $0) })
                     .overlay {
@@ -102,10 +123,22 @@ public struct SolveScreen: View {
                     .padding(.horizontal, ChromeLayout.inset)
                     .padding(.top, 8)
 
-                if spectating {
-                    watchingZone
-                } else {
-                    deckZone
+                // A terminal status retires the deck for everyone, spectator or
+                // not (RoomTerminal.deckRetired; a frozen room has no seat worth
+                // upgrading): mutations were already refused by the store and
+                // InputActions, this is the rendered truth. Selection stays for
+                // browsing; taps and swipes are pure navigation after the freeze.
+                switch status {
+                case .completed:
+                    completedZone
+                case .abandoned:
+                    abandonedZone
+                case .ongoing:
+                    if spectating {
+                        watchingZone
+                    } else {
+                        deckZone
+                    }
                 }
             }
 
@@ -144,13 +177,53 @@ public struct SolveScreen: View {
                     chrome: chrome,
                     onJoinIn: onJoinIn)
             }
+
+            // The stats card (EXPERIENCE.md Completed), a custom overlay panel
+            // like the roster: a tap-away catcher for dismissal back to the
+            // frozen room, no scrim, one glass layer.
+            if completion.isStatsOpen {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { completion.isStatsOpen = false }
+                VStack {
+                    StatsCardPanel(ground: ground, content: statsContent)
+                        .frame(maxWidth: 340)
+                        .transition(
+                            reduceMotion
+                                ? .opacity
+                                : .scale(scale: 0.94, anchor: .top).combined(with: .opacity))
+                    Spacer()
+                }
+                .padding(.horizontal, ChromeLayout.inset)
+                .padding(.top, statsCardTop)
+            }
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
         .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+        // Celebration overshoot is sanctioned (DESIGN.md §7); Reduce Motion
+        // crossfades instead.
+        .animation(
+            reduceMotion
+                ? .easeInOut(duration: 0.2)
+                : .spring(
+                    response: Motion.Springs.celebrationResponse,
+                    dampingFraction: Motion.Springs.celebrationDampingFraction),
+            value: completion.isStatsOpen
+        )
+        // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
+        // flag through the environment; below iOS 26 the fallback stays inert.
+        .environment(\.chromeClarified, completion.isClarityBeat)
         .onChange(of: model.selection) { _, selection in
             relayCursor(selection, spectating: spectating)
         }
+        // The celebration derives from store TRANSITIONS, observed here and
+        // seeded once on appear, never from render (INV-3; the gate is the
+        // exactly-once fold). Both observers feed the same gate because either
+        // fact can move alone; the gate is idempotent on repeats.
+        .onChange(of: store.status) { _, _ in observeRoomState() }
+        .onChange(of: store.sync) { _, _ in observeRoomState() }
+        .onAppear { observeRoomState() }
         .onDisappear {
             relayTrailing?.cancel()
             relay.trailingCancelled()
@@ -158,6 +231,39 @@ public struct SolveScreen: View {
     }
 
     // MARK: - Derived render inputs
+
+    /// The store's status as render data (the RosterMember pattern: protocol
+    /// types stay in their ring, AD-2).
+    private var roomStatus: RoomStatus {
+        switch store.status {
+        case .ongoing: return .ongoing
+        case .completed: return .completed
+        case .abandoned: return .abandoned
+        }
+    }
+
+    /// The stats card's strings: the server's stats first, the ambient clock's
+    /// frozen value as the time fallback (StatsCardContent pins the rule).
+    private var statsContent: StatsCardContent {
+        StatsCardContent.make(
+            solveTimeSeconds: store.stats?.solveTimeSeconds,
+            totalEvents: store.stats?.totalEvents,
+            participantCount: store.stats?.participantCount,
+            firstFillAt: store.firstFillAt,
+            completedAt: store.completedAt)
+    }
+
+    /// The card hangs where an open panel does: under the room bar.
+    private var statsCardTop: CGFloat {
+        (frames[.roomBar]?.maxY ?? ChromeLayout.barHeight) + ChromeLayout.panelTopGap
+    }
+
+    private func observeRoomState() {
+        completion.observe(
+            status: roomStatus,
+            live: store.sync == .live,
+            reduceMotion: reduceMotion)
+    }
 
     /// The store's participants as chrome-shaped data (the GridPresence pattern:
     /// the view maps, the types stay in their rings).
@@ -301,6 +407,43 @@ public struct SolveScreen: View {
                 response: Motion.Springs.chromeResponse,
                 dampingFraction: Motion.Springs.chromeDampingFraction),
             value: model.isRebusActive)
+    }
+
+    /// The completed room (EXPERIENCE.md Completed): a finished object. The deck
+    /// is gone; the lexicon word stands where it was, and the stats card is one
+    /// tap away again after dismissal.
+    private var completedZone: some View {
+        VStack(spacing: 10) {
+            Text(verbatim: RoomTerminal.completedNotice)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+            Button(action: { completion.isStatsOpen = true }) {
+                Text(verbatim: RoomTerminal.statsWord)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .modifier(ChromeGlassSurface(cornerRadius: 23))
+        }
+        .padding(.horizontal, ChromeLayout.inset)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(Color(rgb: ground.tokens.canvas))
+    }
+
+    /// The abandoned room (EXPERIENCE.md: terminal and quiet): the board freezes
+    /// with a one-line notice, nothing else. Browsing stays live above.
+    private var abandonedZone: some View {
+        Text(verbatim: RoomTerminal.abandonedNotice)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 16)
+            .padding(.bottom, 18)
+            .background(Color(rgb: ground.tokens.canvas))
     }
 
     /// The spectator edge (EXPERIENCE.md Watching): the full live room, read-only,

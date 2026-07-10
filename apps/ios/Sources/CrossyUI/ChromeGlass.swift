@@ -39,9 +39,29 @@ extension Animation {
     }
 }
 
+/// The clarity beat (apps/ios/DESIGN.md §4, §8): during the mosaic all standing
+/// glass momentarily clears, then refrosts as the stats arrive. An environment
+/// flag so every ChromeGlassSurface clarifies together with no call-site changes.
+/// iOS 26 glass only: §8 names no fallback, so the 18-25 blur material stays
+/// inert (never faked with opacity tricks).
+private struct ChromeClarifiedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var chromeClarified: Bool {
+        get { self[ChromeClarifiedKey.self] }
+        set { self[ChromeClarifiedKey.self] = newValue }
+    }
+}
+
 /// Frosted standing glass at an interpolating corner radius, with the §4 fallback.
+/// During the clarity beat the register swaps to clear (§4: clear is the glass
+/// for events, and completion is the one scripted moment standing chrome joins).
 struct ChromeGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
+
+    @Environment(\.chromeClarified) private var clarified
 
     private var shape: RoundedRectangle {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -50,7 +70,9 @@ struct ChromeGlassSurface: ViewModifier {
     func body(content: Content) -> some View {
         #if os(iOS)
             if #available(iOS 26.0, *) {
-                content.glassEffect(.regular, in: shape)
+                content
+                    .glassEffect(clarified ? .clear : .regular, in: shape)
+                    .animation(.crossyChrome, value: clarified)
             } else {
                 fallback(content)
             }
