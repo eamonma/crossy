@@ -19,6 +19,10 @@ struct RoomBar: View {
     let firstFillAt: String?
     let completedAt: String?
     let members: [RosterMember]
+    /// True while the roster panel exists: the cluster hands its pucks to the
+    /// panel's riders and hides, so nobody renders twice (DESIGN.md §4). Layout
+    /// and frame reporting stay; only the visual yields.
+    let clusterHandedOff: Bool
     let onTapPucks: () -> Void
 
     var body: some View {
@@ -93,6 +97,7 @@ struct RoomBar: View {
                 HStack(spacing: -7) {
                     ForEach(cluster.pucks) { member in
                         RosterPuckView(member: member, ground: ground, diameter: 24)
+                            .reportChromeFrame(.puck(member.userId))
                     }
                 }
                 if cluster.overflow > 0 {
@@ -104,6 +109,7 @@ struct RoomBar: View {
             }
         }
         .buttonStyle(.plain)
+        .opacity(clusterHandedOff ? 0 : 1)
         .reportChromeFrame(.puckCluster)
         .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
     }

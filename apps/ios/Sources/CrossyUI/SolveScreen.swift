@@ -69,6 +69,7 @@ public struct SolveScreen: View {
                     firstFillAt: store.firstFillAt,
                     completedAt: store.completedAt,
                     members: members,
+                    clusterHandedOff: chrome.isRosterOpen,
                     onTapPucks: toggleRoster
                 )
                 .reportChromeFrame(.roomBar)
@@ -140,6 +141,7 @@ public struct SolveScreen: View {
                     ground: ground,
                     morph: morph,
                     members: members,
+                    restCenters: clusterPuckCenters,
                     selfUserId: store.selfUserId,
                     chrome: chrome,
                     onJoinIn: onJoinIn)
@@ -177,6 +179,16 @@ public struct SolveScreen: View {
     /// de-emphasis rule.
     private var filledCells: Set<Int> {
         Set((0..<puzzle.cellCount).filter { store.renderValue($0) != nil })
+    }
+
+    /// Where layout put each cluster puck, by userId: the roster riders' launch
+    /// points (DESIGN.md §4: content rides the morph).
+    private var clusterPuckCenters: [String: CGPoint] {
+        frames.reduce(into: [:]) { centers, entry in
+            if case .puck(let userId) = entry.key {
+                centers[userId] = CGPoint(x: entry.value.midX, y: entry.value.midY)
+            }
+        }
     }
 
     /// Teammates whose cursors sit under the bar's clue: presence marks (already
@@ -226,7 +238,9 @@ public struct SolveScreen: View {
             let slot = frames[.clueBarSlot]
         else { return nil }
         let width = min(roomBar.width, 320)
-        let content = CGFloat(members.count) * 44 + 20 + (spectating ? 56 : 0)
+        let content =
+            CGFloat(members.count) * RosterRideLayout.rowHeight
+            + RosterRideLayout.topPadding * 2 + (spectating ? 56 : 0)
         let available = slot.minY - roomBar.maxY - ChromeLayout.panelTopGap * 2
         let height = max(ChromeLayout.barHeight, min(content, available))
         return GlassMorph(

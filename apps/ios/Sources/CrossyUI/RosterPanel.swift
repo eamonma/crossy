@@ -3,6 +3,16 @@
 // grammar as the melt (SP-i1: one persistent surface interpolating frame and
 // radius; the glassEffectID two-view swap snaps and is not built on). Tap-driven,
 // so the discipline is trivial: the one animation runs on the tap, none mid-flight.
+//
+// Content rides the morph (owner device finding 2026-07-10: the first build
+// inflated hollow glass and left the bar's cluster rendering beneath the panel's
+// rows, the same people twice). The pucks are the continuity carriers: the bar's
+// cluster hands off the moment the panel exists, and each clustered puck travels
+// from its reported bar frame into its row slot as one object, growing from
+// cluster to row diameter on the way. Names, state words, and any overflow rows
+// fade in late (GlassMorphContent), the panel's new content rather than its
+// riders.
+//
 // Contents this wave: people with color, name, role, and presence; a spectating
 // self gets the one affordance, Join in (ID-5), stubbed to a closure until I3
 // wires the seat change. Host powers (kick, abandon) are I3's, with their
@@ -11,12 +21,55 @@
 import CrossyDesign
 import SwiftUI
 
+/// The riders' pure geometry, pinned in tests so the view carries no arithmetic
+/// of its own (the GlassMorph pattern). Row metrics live here because the rider
+/// at progress 1 must land exactly where the row lays its puck slot.
+enum RosterRideLayout {
+    static let rowHeight: CGFloat = 44
+    static let topPadding: CGFloat = 10
+    static let leadingPadding: CGFloat = 16
+    static let clusterPuckDiameter: CGFloat = 24
+    static let rowPuckDiameter: CGFloat = 26
+
+    /// A rider's landing point in panel-local coordinates: row `index`'s puck
+    /// slot center.
+    static func openCenter(rowIndex: Int) -> CGPoint {
+        CGPoint(
+            x: leadingPadding + rowPuckDiameter / 2,
+            y: topPadding + rowHeight * CGFloat(rowIndex) + rowHeight / 2)
+    }
+
+    /// The puck grows from cluster size to row size as it travels.
+    static func diameter(at progress: CGFloat) -> CGFloat {
+        GlassMorph.lerp(clusterPuckDiameter, rowPuckDiameter, progress)
+    }
+
+    /// The rider's center at a progress, in the CURRENT frame's local space:
+    /// a straight room-space line from the bar's cluster slot to the open row
+    /// slot, re-expressed against the interpolating surface. Both endpoints sit
+    /// inside their frames, so a lerped rider never escapes the lerped surface.
+    static func center(
+        rest: CGPoint, openLocal: CGPoint, morph: GlassMorph, progress: CGFloat
+    ) -> CGPoint {
+        let openRoom = CGPoint(
+            x: morph.open.minX + openLocal.x, y: morph.open.minY + openLocal.y)
+        let frame = morph.frame(at: progress)
+        return CGPoint(
+            x: GlassMorph.lerp(rest.x, openRoom.x, progress) - frame.minX,
+            y: GlassMorph.lerp(rest.y, openRoom.y, progress) - frame.minY)
+    }
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 struct RosterPanel: View {
     let ground: GridGround
     let morph: GlassMorph
     let members: [RosterMember]
+    /// Room-space centers of the bar's cluster pucks by userId, as layout
+    /// reported them: where each rider launches from. A member absent here
+    /// (overflow, or a mid-morph join) has no rider and keeps a row puck.
+    let restCenters: [String: CGPoint]
     let selfUserId: String?
     let chrome: RoomChromeModel
     let onJoinIn: () -> Void
@@ -26,33 +79,71 @@ struct RosterPanel: View {
         let frame = morph.frame(at: progress)
         let radius = morph.cornerRadius(at: progress)
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let ordered = RosterList.ordered(members)
 
-        rows
-            .opacity(GlassMorphContent.listOpacity(at: progress))
-            .allowsHitTesting(progress >= 1)
-            .frame(width: frame.width, height: frame.height, alignment: .top)
-            .clipShape(shape)
-            .modifier(ChromeGlassSurface(cornerRadius: radius))
-            .contentShape(shape)
-            .onTapGesture {}  // a tap inside the panel never falls through to the catcher
-            .position(x: frame.midX, y: frame.midY)
+        ZStack(alignment: .topLeading) {
+            rows(ordered: ordered)
+                .opacity(GlassMorphContent.listOpacity(at: progress))
+                .allowsHitTesting(progress >= 1)
+                .frame(width: frame.width, height: frame.height, alignment: .top)
+            riders(ordered: ordered, progress: progress)
+                .allowsHitTesting(false)
+        }
+        .frame(width: frame.width, height: frame.height)
+        .clipShape(shape)
+        .modifier(ChromeGlassSurface(cornerRadius: radius))
+        .contentShape(shape)
+        .onTapGesture {}  // a tap inside the panel never falls through to the catcher
+        .position(x: frame.midX, y: frame.midY)
     }
 
-    private var rows: some View {
+    // MARK: The riders (the pucks, one object end to end)
+
+    @ViewBuilder
+    private func riders(ordered: [RosterMember], progress: CGFloat) -> some View {
+        ForEach(Array(ordered.enumerated()), id: \.element.id) { index, member in
+            if let rest = restCenters[member.userId] {
+                RosterPuckView(
+                    member: member, ground: ground,
+                    diameter: RosterRideLayout.diameter(at: progress)
+                )
+                .position(
+                    RosterRideLayout.center(
+                        rest: rest,
+                        openLocal: RosterRideLayout.openCenter(rowIndex: index),
+                        morph: morph, progress: progress))
+            }
+        }
+    }
+
+    // MARK: The rows
+
+    private func rows(ordered: [RosterMember]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(RosterList.ordered(members)) { member in
-                memberRow(member)
+            ForEach(ordered) { member in
+                memberRow(member, ridden: restCenters[member.userId] != nil)
             }
             if RosterList.selfIsSpectator(members, selfUserId: selfUserId) {
                 joinIn
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, RosterRideLayout.topPadding)
     }
 
-    private func memberRow(_ member: RosterMember) -> some View {
+    /// A ridden member's puck slot stays clear: the rider IS their puck, landing
+    /// exactly here at progress 1. Overflow members keep an in-row puck that
+    /// fades in with the row (they were a +N in the bar, not a puck).
+    private func memberRow(_ member: RosterMember, ridden: Bool) -> some View {
         HStack(spacing: 10) {
-            RosterPuckView(member: member, ground: ground, diameter: 26)
+            if ridden {
+                Color.clear.frame(
+                    width: RosterRideLayout.rowPuckDiameter,
+                    height: RosterRideLayout.rowPuckDiameter)
+            } else {
+                RosterPuckView(
+                    member: member, ground: ground,
+                    diameter: RosterRideLayout.rowPuckDiameter)
+            }
             Text(verbatim: member.displayName)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
@@ -64,8 +155,8 @@ struct RosterPanel: View {
                     .foregroundStyle(Color(rgb: ground.tokens.number))
             }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 44)
+        .padding(.horizontal, RosterRideLayout.leadingPadding)
+        .frame(height: RosterRideLayout.rowHeight)
         .opacity(member.connected ? 1 : 0.45)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: accessibilityLine(member)))
@@ -103,7 +194,7 @@ struct RosterPanel: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, RosterRideLayout.leadingPadding)
         .padding(.top, 8)
     }
 }

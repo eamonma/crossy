@@ -73,6 +73,10 @@ enum ChromePiece: Hashable {
     case roomBar
     case clueBarSlot
     case puckCluster
+    /// One cluster puck's frame, by userId: the roster morph's riders launch
+    /// from where layout actually put each person (DESIGN.md §4: content rides
+    /// the morph), never from arithmetic about the cluster's innards.
+    case puck(String)
 }
 
 struct ChromeFramesKey: PreferenceKey {

@@ -112,7 +112,12 @@ overlay panel living in the room's own hierarchy. SP-i5 ratified this by owner
 feel test on device (reports/spikes/sp-i5-detent-browser.md): the system detent
 sheet is grow-then-swap, not the melt, and fuses the clue bar and the deck into
 one surface; the ruling is the clue bar as its own glass over a separate deck.
-The morph targets:
+
+Content rides the morph (owner device finding, 2026-07-10). A morphing surface
+is never empty glass: the elements alive at both ends, the clue bar's pinned
+row, the roster's pucks, travel with the surface and hand off from the chrome
+they left, so nothing inflates hollow and nobody renders twice. Only content
+new at the open end (lists, names) fades in late. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
