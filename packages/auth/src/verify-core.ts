@@ -21,6 +21,38 @@ export interface VerifyCoreConfig {
    * single vendor's claim vocabulary.
    */
   readonly anonymousClaim: string;
+  /**
+   * The claim name of the metadata object the display name is read from. The port configs
+   * default it to `user_metadata` (GoTrue's convention); read from config so the core carries
+   * no single vendor's claim vocabulary.
+   */
+  readonly metadataClaim: string;
+  /**
+   * Candidate keys inside the metadata object, in priority order. The first key whose value is
+   * a non-empty string maps to `displayName`; an exhausted list resolves to `null`. The port
+   * configs default it to `full_name`, `name`, `user_name`, `preferred_username`.
+   */
+  readonly nameKeys: readonly string[];
+}
+
+/**
+ * Lift the display name from the token's metadata claim. Returns the first candidate key whose
+ * value is a non-empty string (non-string or empty values are skipped), or `null` when the
+ * claim is absent, not an object, or carries no usable name (DESIGN.md §8).
+ */
+function extractDisplayName(
+  payload: Record<string, unknown>,
+  metadataClaim: string,
+  nameKeys: readonly string[],
+): string | null {
+  const meta = payload[metadataClaim];
+  if (typeof meta !== "object" || meta === null) return null;
+  const record = meta as Record<string, unknown>;
+  for (const key of nameKeys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return null;
 }
 
 /**
@@ -64,7 +96,8 @@ function classify(err: unknown): AuthFailureReason {
  * Verify one access token against an in-memory `jose` key resolver, applying SP2's
  * claim checks: asymmetric-only algorithm allowlist (HS256 refused), exact `iss`, `aud`
  * equal to the configured audience, `exp`/`nbf` with clock skew, and `sub` present. On
- * success returns `{ sub -> userId, config.anonymousClaim -> isAnonymous (default false) }`.
+ * success returns `{ sub -> userId, config.anonymousClaim -> isAnonymous (default false),
+ * config.metadataClaim[config.nameKeys] -> displayName (default null) }`.
  */
 export async function verifyToken(
   resolver: JWTVerifyGetKey,
@@ -101,6 +134,11 @@ export async function verifyToken(
       identity: {
         userId: sub,
         isAnonymous: payload[config.anonymousClaim] === true,
+        displayName: extractDisplayName(
+          payload,
+          config.metadataClaim,
+          config.nameKeys,
+        ),
       },
     };
   } catch (err) {

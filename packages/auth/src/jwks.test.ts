@@ -300,7 +300,94 @@ describe("jwks adapter mechanics (SP2)", () => {
     const result = await adapter.verify(await idp.mintAnonymous({ sub: "u" }));
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "u", isAnonymous: true },
+      identity: { userId: "u", isAnonymous: true, displayName: null },
+    });
+    adapter.stop();
+  });
+
+  it("lifts the display name from the metadata claim by the default candidate-key order (DESIGN §8)", async () => {
+    const idp = await createFakeAuthProvider({
+      issuer: ISSUER,
+      now: () => FIXED_NOW,
+    });
+    const adapter = await createJwksAuthPort({
+      issuer: ISSUER,
+      now: () => FIXED_NOW,
+      fetchJwks: () => Promise.resolve(idp.jwks()),
+    });
+    // full_name is first in the default order, so it wins over a later name/user_name.
+    const result = await adapter.verify(
+      await idp.mint({
+        sub: "u",
+        userMetadata: {
+          full_name: "Ada Lovelace",
+          name: "ignored",
+          user_name: "ignored",
+        },
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      identity: {
+        userId: "u",
+        isAnonymous: false,
+        displayName: "Ada Lovelace",
+      },
+    });
+    adapter.stop();
+  });
+
+  it("falls through the default candidate keys, skipping non-string and empty values (DESIGN §8)", async () => {
+    const idp = await createFakeAuthProvider({
+      issuer: ISSUER,
+      now: () => FIXED_NOW,
+    });
+    const adapter = await createJwksAuthPort({
+      issuer: ISSUER,
+      now: () => FIXED_NOW,
+      fetchJwks: () => Promise.resolve(idp.jwks()),
+    });
+    // full_name absent, name non-string, user_name blank: preferred_username is the first usable
+    // value, proving the priority walk skips unusable candidates rather than stopping at them.
+    const result = await adapter.verify(
+      await idp.mint({
+        sub: "u",
+        userMetadata: {
+          name: 42,
+          user_name: "   ",
+          preferred_username: "ada",
+        },
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      identity: { userId: "u", isAnonymous: false, displayName: "ada" },
+    });
+    adapter.stop();
+  });
+
+  it("resolves the display name from a configured custom metadata claim and key order (DESIGN §8: config, not a literal)", async () => {
+    // The minter nests the name under `profile.nickname`; the adapter reads the same configured
+    // claim and key. A hardcoded `user_metadata.full_name` reader would resolve null here.
+    const idp = await createFakeAuthProvider({
+      issuer: ISSUER,
+      now: () => FIXED_NOW,
+      metadataClaim: "profile",
+      nameKeys: ["nickname"],
+    });
+    const adapter = await createJwksAuthPort({
+      issuer: ISSUER,
+      now: () => FIXED_NOW,
+      metadataClaim: "profile",
+      nameKeys: ["nickname"],
+      fetchJwks: () => Promise.resolve(idp.jwks()),
+    });
+    const result = await adapter.verify(
+      await idp.mint({ sub: "u", userMetadata: { nickname: "grace" } }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      identity: { userId: "u", isAnonymous: false, displayName: "grace" },
     });
     adapter.stop();
   });

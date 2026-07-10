@@ -40,15 +40,21 @@ function DiscordMark({ className }: { className?: string }) {
  * The prominent sign-in control, for the landing gate and invite gates. Discord is always
  * shown; the guest path (Turnstile-gated) appears only when the flag and site key are both
  * set, and a refusal renders as one calm sentence, never a thrown error or an error code.
+ *
+ * `allowGuest` lets a caller suppress the guest path even when it is otherwise ready. The
+ * invite gate uses it when no code is present: a guest without an invite would sign in
+ * anonymously only to hit a 403 dead end, so we offer Discord alone there (DESIGN.md §8).
  */
 export function SignInButtons({
   identity,
   config,
   discordLabel = "Continue with Discord",
+  allowGuest = true,
 }: {
   identity: Identity;
   config: AppConfig;
   discordLabel?: string;
+  allowGuest?: boolean;
 }) {
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -60,7 +66,8 @@ export function SignInButtons({
   }
 
   const { turnstileSiteKey } = config;
-  const guestReady = config.guestsEnabled && turnstileSiteKey !== undefined;
+  const guestReady =
+    allowGuest && config.guestsEnabled && turnstileSiteKey !== undefined;
 
   return (
     <div className="flex flex-col gap-3">

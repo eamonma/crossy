@@ -42,14 +42,25 @@ describe("fake provider helpers (DESIGN §8, SP1/SP2)", () => {
     const anon = await idp.verify(await idp.mintAnonymous({ sub: "guest-1" }));
     expect(anon).toEqual({
       ok: true,
-      identity: { userId: "guest-1", isAnonymous: true },
+      identity: { userId: "guest-1", isAnonymous: true, displayName: null },
     });
     const permanent = await idp.verify(
       await idp.mintUpgraded({ sub: "guest-1" }),
     );
     expect(permanent).toEqual({
       ok: true,
-      identity: { userId: "guest-1", isAnonymous: false },
+      identity: { userId: "guest-1", isAnonymous: false, displayName: null },
+    });
+  });
+
+  it("mints a user-metadata name that verify lifts into displayName (DESIGN §8)", async () => {
+    const idp = await createFakeAuthProvider({ now: () => FIXED_NOW });
+    const result = await idp.verify(
+      await idp.mint({ sub: "named-1", userMetadata: { full_name: "Ada" } }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      identity: { userId: "named-1", isAnonymous: false, displayName: "Ada" },
     });
   });
 
@@ -62,7 +73,7 @@ describe("fake provider helpers (DESIGN §8, SP1/SP2)", () => {
     );
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "keeps-id", isAnonymous: true },
+      identity: { userId: "keeps-id", isAnonymous: true, displayName: null },
     });
   });
 

@@ -65,24 +65,36 @@ export interface StackMember {
   initial: string;
   color: string;
   connected: boolean;
+  role: "host" | "solver" | "spectator";
 }
 
 /**
  * Overlapping chips for who is here, capped with a +N count. Self reads gold; each chip
  * carries the panel-colored ring that separates it from its neighbors (not shadcn's
  * AvatarGroup default of ring-background: the stack sits on the panel face, not the page).
+ *
+ * Display rule: connected members always show; a disconnected member shows (dimmed) only when
+ * it holds host or solver, so historical guest spectators do not pile up as permanent ghosts.
+ * Self is always kept, connected or not. The remainder past `max` collapses into a quiet +N.
  */
 export function AvatarStack({
   members,
   selfId = null,
-  max = 4,
+  max = 5,
 }: {
   members: readonly StackMember[];
   selfId?: string | null;
   max?: number;
 }) {
-  const shown = members.slice(0, max);
-  const extra = members.length - shown.length;
+  const visible = members.filter(
+    (m) =>
+      m.connected ||
+      m.role === "host" ||
+      m.role === "solver" ||
+      m.userId === selfId,
+  );
+  const shown = visible.slice(0, max);
+  const extra = visible.length - shown.length;
   return (
     <div className="flex items-center">
       <div className="flex -space-x-1.5">
