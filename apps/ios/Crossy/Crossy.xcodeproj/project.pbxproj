@@ -7,16 +7,65 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FB15AC0F3000D30A004CA5C7 /* CrossyWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FB3E59F43000D30A004CA5C7 /* CrossyUI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F13000D30A004CA5C7 /* CrossyUI */; };
 		FB3E59F53000D30A004CA5C7 /* CrossyAPI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F23000D30A004CA5C7 /* CrossyAPI */; };
 		FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F33000D30A004CA5C7 /* CrossySession */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		FB15AC0C3000D30A004CA5C7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FB3E59D33000D30A004CA5C7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FB15AC023000D30A004CA5C7;
+			remoteInfo = CrossyWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FB15AC0E3000D30A004CA5C7 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FB15AC0F3000D30A004CA5C7 /* CrossyWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CrossyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FB3E59DB3000D30A004CA5C7 /* Crossy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Crossy.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FB15AC073000D30A004CA5C7 /* Exceptions for "CrossyWidgets" folder in "CrossyWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FB15AC023000D30A004CA5C7 /* CrossyWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		FB15AC063000D30A004CA5C7 /* CrossyWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FB15AC073000D30A004CA5C7 /* Exceptions for "CrossyWidgets" folder in "CrossyWidgets" target */,
+			);
+			path = CrossyWidgets;
+			sourceTree = "<group>";
+		};
+		FB15AC083000D30A004CA5C7 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 		FB3E59DD3000D30A004CA5C7 /* Crossy */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Crossy;
@@ -25,6 +74,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		FB15AC043000D30A004CA5C7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FB3E59D83000D30A004CA5C7 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -42,6 +98,8 @@
 			isa = PBXGroup;
 			children = (
 				FB3E59DD3000D30A004CA5C7 /* Crossy */,
+				FB15AC063000D30A004CA5C7 /* CrossyWidgets */,
+				FB15AC083000D30A004CA5C7 /* Shared */,
 				FB3E59DC3000D30A004CA5C7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -50,6 +108,7 @@
 			isa = PBXGroup;
 			children = (
 				FB3E59DB3000D30A004CA5C7 /* Crossy.app */,
+				FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -57,6 +116,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		FB15AC023000D30A004CA5C7 /* CrossyWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FB15AC093000D30A004CA5C7 /* Build configuration list for PBXNativeTarget "CrossyWidgets" */;
+			buildPhases = (
+				FB15AC033000D30A004CA5C7 /* Sources */,
+				FB15AC043000D30A004CA5C7 /* Frameworks */,
+				FB15AC053000D30A004CA5C7 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FB15AC063000D30A004CA5C7 /* CrossyWidgets */,
+				FB15AC083000D30A004CA5C7 /* Shared */,
+			);
+			name = CrossyWidgets;
+			packageProductDependencies = (
+			);
+			productName = CrossyWidgets;
+			productReference = FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		FB3E59DA3000D30A004CA5C7 /* Crossy */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FB3E59E63000D30D004CA5C7 /* Build configuration list for PBXNativeTarget "Crossy" */;
@@ -64,13 +146,16 @@
 				FB3E59D73000D30A004CA5C7 /* Sources */,
 				FB3E59D83000D30A004CA5C7 /* Frameworks */,
 				FB3E59D93000D30A004CA5C7 /* Resources */,
+				FB15AC0E3000D30A004CA5C7 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				FB15AC0D3000D30A004CA5C7 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				FB3E59DD3000D30A004CA5C7 /* Crossy */,
+				FB15AC083000D30A004CA5C7 /* Shared */,
 			);
 			name = Crossy;
 			packageProductDependencies = (
@@ -92,6 +177,9 @@
 				LastSwiftUpdateCheck = 2650;
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
+					FB15AC023000D30A004CA5C7 = {
+						CreatedOnToolsVersion = 26.5;
+					};
 					FB3E59DA3000D30A004CA5C7 = {
 						CreatedOnToolsVersion = 26.5;
 					};
@@ -115,11 +203,19 @@
 			projectRoot = "";
 			targets = (
 				FB3E59DA3000D30A004CA5C7 /* Crossy */,
+				FB15AC023000D30A004CA5C7 /* CrossyWidgets */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		FB15AC053000D30A004CA5C7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FB3E59D93000D30A004CA5C7 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -130,6 +226,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		FB15AC033000D30A004CA5C7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FB3E59D73000D30A004CA5C7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -139,7 +242,71 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		FB15AC0D3000D30A004CA5C7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FB15AC023000D30A004CA5C7 /* CrossyWidgets */;
+			targetProxy = FB15AC0C3000D30A004CA5C7 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		FB15AC0A3000D30A004CA5C7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MTF6T25BP8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CrossyWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Crossy;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eamonma.Crossy.CrossyWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FB15AC0B3000D30A004CA5C7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MTF6T25BP8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CrossyWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Crossy;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eamonma.Crossy.CrossyWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		FB3E59E43000D30D004CA5C7 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -271,6 +438,7 @@
 				DEVELOPMENT_TEAM = MTF6T25BP8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -303,6 +471,7 @@
 				DEVELOPMENT_TEAM = MTF6T25BP8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -342,6 +511,15 @@
 			buildConfigurations = (
 				FB3E59E73000D30D004CA5C7 /* Debug */,
 				FB3E59E83000D30D004CA5C7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FB15AC093000D30A004CA5C7 /* Build configuration list for PBXNativeTarget "CrossyWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FB15AC0A3000D30A004CA5C7 /* Debug */,
+				FB15AC0B3000D30A004CA5C7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
