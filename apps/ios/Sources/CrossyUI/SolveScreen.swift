@@ -109,14 +109,6 @@ public struct SolveScreen: View {
                 }
             }
 
-            // The roster's tap-away catcher: dismissal only, no scrim, the room
-            // never dims dead (DESIGN.md §4).
-            if chrome.isRosterOpen {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { chrome.settleRoster(open: false, animated: !reduceMotion) }
-            }
-
             if let morph = meltMorph {
                 ClueChrome(
                     ground: ground,
@@ -131,6 +123,16 @@ public struct SolveScreen: View {
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
                     onJump: { model.jump(to: ClueBrowserList.jumpTarget($0)) })
+            }
+
+            // The roster's tap-away catcher: dismissal only, no scrim, the room
+            // never dims dead (DESIGN.md §4). It sits above the clue chrome so a
+            // touch there closes the roster instead of opening a second panel:
+            // one glass layer, structurally (the never-list).
+            if chrome.isRosterOpen {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { chrome.settleRoster(open: false, animated: !reduceMotion) }
             }
 
             if chrome.isRosterOpen, let morph = rosterMorph(members: members, spectating: spectating) {
