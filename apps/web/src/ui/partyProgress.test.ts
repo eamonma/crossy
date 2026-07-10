@@ -2,7 +2,7 @@
 // solution), and the QR points at the game's join-as-solver invite link, never at another
 // projector screen.
 import { describe, expect, it } from "vitest";
-import { partyProgress } from "./partyView";
+import { partyProgress } from "./partyProgress";
 import { buildShareUrl } from "../domain/invite";
 import type { Clue } from "../domain/types";
 
