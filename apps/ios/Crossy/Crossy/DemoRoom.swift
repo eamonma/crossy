@@ -15,6 +15,9 @@
 //    -i2cScript             Bee's cursor patrols the board (presence, glints)
 //    -i2cBrowser            land the clue browser open
 //    -i2cMelt 0.5           hold the melt at a progress (intermediate evidence)
+//    -i2cFacts              land the room-facts card open (the time pill,
+//                           inflated; simctl cannot tap, the presentBrowser
+//                           pattern)
 //    -i2cRoster             land the roster panel open
 //    -i2cWeather resyncing  force the breathing-dot state (a gapped event)
 //    -i2cWeather reconnecting  force the dimmed room with the quiet countdown
@@ -41,6 +44,12 @@ final class DemoRoom {
     let puzzle: GridPuzzle
     let clues: ClueBook
     let roomName: String
+    // The facts card's render params (SolveScreen): the wire carries no puzzle
+    // metadata yet, so the fixture supplies plausible values; the wire hookup
+    // is a follow-on.
+    let puzzleTitle: String
+    let puzzleAuthor: String
+    let puzzleDate: String
     let selection: SelectionModel
     let chrome = RoomChromeModel()
     private let transport: LoopbackTransport
@@ -51,11 +60,18 @@ final class DemoRoom {
         let stress = arguments.contains("-stress")
         let fixture = DemoFixture.mini9(
             selfRole: spectating ? .spectator : .host, stress: stress)
-        // Long enough that the leading pill must truncate honestly (-stress).
+        // Long enough that the facts card's label must truncate honestly
+        // (-stress).
         roomName =
             stress
             ? "The Sunday Extravaganza and Occasional Tuesday Society"
             : "Tuesday evening"
+        puzzleTitle =
+            stress
+            ? "The Omnibus of Considerable Length and Unreasonable Ambition"
+            : "Midsummer Crossings"
+        puzzleAuthor = stress ? "Wilhelmina Geraldine Fitzwilliam" : "Wren Ellery"
+        puzzleDate = "July 8, 2026"
         puzzle = fixture.puzzle
         clues = fixture.clues
         transport = LoopbackTransport(welcome: fixture.welcome)
@@ -114,6 +130,9 @@ final class DemoRoom {
 
         if arguments.contains("-i2cBrowser") {
             chrome.presentBrowser()
+        }
+        if arguments.contains("-i2cFacts") {
+            chrome.presentFacts()
         }
         if let index = arguments.firstIndex(of: "-i2cMelt"),
             arguments.indices.contains(index + 1),

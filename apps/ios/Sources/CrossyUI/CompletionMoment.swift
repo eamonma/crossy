@@ -144,10 +144,12 @@ public struct MosaicWash: Equatable, Sendable {
     }
 }
 
-/// The completion beat's owner: the gate, the mosaic clock, the stats card's
-/// presentation, and the kicked exit's flag live here, apart from chrome morphs
-/// (RoomChromeModel) and gameplay (GameStore). The solve screen feeds it store
-/// transitions from onChange, never from render (INV-3).
+/// The completion beat's owner: the gate and the mosaic clock live here, apart
+/// from chrome morphs (RoomChromeModel) and gameplay (GameStore). The solve
+/// screen feeds it store transitions from onChange, never from render (INV-3).
+/// The facts card's presentation moved to RoomChromeModel with the card itself
+/// (owner ruling 2026-07-10: the room summons it mid-solve too); the
+/// celebration's one instant below is what opens it at completion.
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 @Observable
@@ -159,13 +161,9 @@ public final class CompletionModel {
     /// (the fallback below 26 stays inert; §8 names no fallback).
     public private(set) var isClarityBeat = false
 
-    /// The stats card (EXPERIENCE.md Completed): arrives with the celebration
-    /// (owner ruling 2026-07-10); dismissible back to the frozen room;
-    /// re-presentable from the frozen clock.
-    public var isStatsOpen = false
-
     /// The celebration's instant, set on the gate's one firing (INV-3) whatever
-    /// the mosaic switch says: one-shot riders (the §7 completion haptic)
+    /// the mosaic switch says: one-shot riders (the §7 completion haptic, the
+    /// stats card's arrival with the celebration, owner ruling 2026-07-10)
     /// observe this, never the muteable mosaic clock (ID-1).
     public private(set) var celebrationFiredAt: TimeInterval?
 
@@ -188,10 +186,10 @@ public final class CompletionModel {
     ) {
         guard gate.observe(status: status, live: live) else { return }
         // The stats arrive WITH the celebration (owner ruling 2026-07-10,
-        // amending the earlier settle-then-stats staging): the card morphs from
-        // the clock while the mosaic plays behind it. A muted mosaic (ID-1)
-        // reduces the celebration to the card alone.
-        isStatsOpen = true
+        // amending the earlier settle-then-stats staging): the card morphs
+        // from the clock while the mosaic plays behind it, summoned off this
+        // instant by the solve screen. A muted mosaic (ID-1) reduces the
+        // celebration to the card alone.
         celebrationFiredAt = now
         guard mosaicEnabled else { return }
         mosaicStartedAt = now
@@ -249,46 +247,5 @@ public enum RoomTerminal {
     /// The deck leaves the room on a terminal status; taps and swipes stay live.
     public static func deckRetired(status: RoomStatus) -> Bool {
         status != .ongoing
-    }
-}
-
-/// The stats card's content (EXPERIENCE.md Completed: solve time, entries,
-/// solvers, from `gameCompleted.stats`), derived once as plain strings so the
-/// card renders no arithmetic. The time prefers the server's stat and falls back
-/// to the ambient clock's frozen value (ID-2: the timer becomes the headline only
-/// at completion); the detail line carries whatever stats exist and vanishes when
-/// none do.
-public struct StatsCardContent: Equatable, Sendable {
-    public let time: String
-    public let detail: String?
-
-    public init(time: String, detail: String?) {
-        self.time = time
-        self.detail = detail
-    }
-
-    public static func make(
-        solveTimeSeconds: Int?,
-        totalEvents: Int?,
-        participantCount: Int?,
-        firstFillAt: String?,
-        completedAt: String?
-    ) -> StatsCardContent {
-        let seconds =
-            solveTimeSeconds
-            ?? AmbientClock.elapsedSeconds(
-                firstFillAt: firstFillAt.flatMap(AmbientClock.parse),
-                completedAt: completedAt.flatMap(AmbientClock.parse),
-                now: completedAt.flatMap(AmbientClock.parse) ?? Date.now)
-        var parts: [String] = []
-        if let totalEvents {
-            parts.append(totalEvents == 1 ? "1 entry" : "\(totalEvents) entries")
-        }
-        if let participantCount {
-            parts.append(participantCount == 1 ? "1 solver" : "\(participantCount) solvers")
-        }
-        return StatsCardContent(
-            time: AmbientClock.display(seconds: seconds),
-            detail: parts.isEmpty ? nil : parts.joined(separator: " · "))
     }
 }

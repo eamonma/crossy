@@ -1,13 +1,16 @@
-// The room (roadmap I2c): room bar over the grid, the clue bar as its own glass
-// over a separate key deck (owner ruling 2026-07-10; SP-i5), the clue browser as
-// a custom overlay panel morphing from its chrome (SP-i1's single surface), the
-// roster as a system Menu flowing out of the players pill (RosterMenu, the Mail
-// mechanism), weather per DESIGN.md §8, the ambient clock
-// (ID-2), and the spectator edge with its one affordance, Join in. Ground follows
-// system appearance through CrossyDesign tokens (ID-3: two renders of one drawing,
-// never two code paths). Composition roots hand in a store, a mapped puzzle, a
-// clue book, and a room name; the transport behind the store is the only thing
-// that changes between the demo room and I3's real connection.
+// The room (roadmap I2c): room bar over the grid (a back button, the time pill
+// carrying the weather and the ambient clock, the players pill; owner ruling
+// 2026-07-10), the clue bar as its own glass over a separate key deck (owner
+// ruling 2026-07-10; SP-i5), the clue browser as a custom overlay panel morphing
+// from its chrome (SP-i1's single surface), the roster as a system Menu flowing
+// out of the players pill (RosterMenu, the Mail mechanism), the room-facts card
+// morphing from the time pill (the time pill is the room's facts; at completion
+// it is the stats card, ID-2), weather per DESIGN.md §8, and the spectator edge
+// with its one affordance, Join in. Ground follows system appearance through
+// CrossyDesign tokens (ID-3: two renders of one drawing, never two code paths).
+// Composition roots hand in a store, a mapped puzzle, a clue book, and a room
+// name; the transport behind the store is the only thing that changes between
+// the demo room and I3's real connection.
 
 import CrossyDesign
 import CrossyStore
@@ -20,6 +23,10 @@ public struct SolveScreen: View {
     private let puzzle: GridPuzzle
     private let clues: ClueBook
     private let roomName: String
+    private let puzzleTitle: String?
+    private let puzzleAuthor: String?
+    private let puzzleDate: String?
+    private let onBack: () -> Void
     private let onJoinIn: () -> Void
     private let onExit: () -> Void
     @State private var model: SelectionModel
@@ -35,6 +42,10 @@ public struct SolveScreen: View {
 
     /// `model` lets a composition root own the selection; `chrome` likewise owns
     /// the room's overlay state (the demo room scripts both for screenshots).
+    /// `puzzleTitle`/`puzzleAuthor`/`puzzleDate` are render params for the facts
+    /// card: the wire types carry no puzzle metadata yet, so composition roots
+    /// pass what they know (the wire hookup is a follow-on). `onBack` is the
+    /// back button's way out, wired by the arrival flow when it exists;
     /// `onJoinIn` is the spectator's seat-change intent, wired to the real
     /// endpoint in I3; `onExit` is the kicked exit's way back to Rooms, wired
     /// when Rooms exists (I3).
@@ -43,8 +54,12 @@ public struct SolveScreen: View {
         puzzle: GridPuzzle,
         clues: ClueBook = .empty,
         roomName: String = "",
+        puzzleTitle: String? = nil,
+        puzzleAuthor: String? = nil,
+        puzzleDate: String? = nil,
         model: SelectionModel? = nil,
         chrome: RoomChromeModel? = nil,
+        onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {}
     ) {
@@ -52,6 +67,10 @@ public struct SolveScreen: View {
         self.puzzle = puzzle
         self.clues = clues
         self.roomName = roomName
+        self.puzzleTitle = puzzleTitle
+        self.puzzleAuthor = puzzleAuthor
+        self.puzzleDate = puzzleDate
+        self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
@@ -81,7 +100,6 @@ public struct SolveScreen: View {
         return ZStack {
             VStack(spacing: 0) {
                 RoomBar(
-                    roomName: roomName,
                     ground: ground,
                     weather: weather,
                     reconnectRetryAt: chrome.reconnectRetryAt,
@@ -95,9 +113,11 @@ public struct SolveScreen: View {
                     // A pill hands off when its own panel opens, and when any
                     // open panel eclipses it (PanelEclipse: buried glass
                     // refracts through a panel's surface).
-                    leadingHandedOff: pillEclipsed(.leadingPill),
-                    timeHandedOff: chrome.isStatsOpen || pillEclipsed(.timePill),
-                    onTapClock: status == .completed ? { openStats() } : nil,
+                    backHandedOff: pillEclipsed(.backButton),
+                    timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
+                    onBack: onBack,
+                    onTapTimePill: { openFacts() },
+                    completed: status == .completed,
                     selfUserId: store.selfUserId,
                     onJoinIn: onJoinIn
                 )
@@ -210,27 +230,26 @@ public struct SolveScreen: View {
             // presentation out of the players pill (RosterMenu), so the system
             // owns its stage, its dismissal, and its stacking.
 
-            // The stats card (EXPERIENCE.md Completed): the time pill, inflated
-            // (ID-2; DESIGN.md §4 morph grammar, owner ruling 2026-07-10
-            // replacing the first build's transitioned overlay). Any outside
-            // touch pours it back and lands, no scrim, one glass layer.
-            if chrome.isStatsOpen, let morph = statsMorph {
-                StatsMorphPanel(
+            // The room-facts card (owner ruling 2026-07-10: the time pill is
+            // the room's facts): the time pill, inflated. Mid-solve it carries
+            // the crossword's facts; at completion it is the stats card (ID-2;
+            // DESIGN.md §4 morph grammar). Any outside touch pours it back and
+            // lands, no scrim, one glass layer.
+            if chrome.isFactsOpen, let morph = factsMorph {
+                RoomFactsPanel(
                     ground: ground,
                     morph: morph,
-                    content: statsContent,
+                    restTimeCenter: restTimeCenter(morph: morph),
+                    content: factsContent,
+                    solveTimeSeconds: store.stats?.solveTimeSeconds,
+                    firstFillAt: store.firstFillAt,
+                    completedAt: store.completedAt ?? store.abandonedAt,
                     chrome: chrome)
             }
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
         .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
-        // The card's presentation fact lives in CompletionModel (the celebration
-        // owns WHEN); the morph's geometry progress lives in RoomChromeModel
-        // like every other morph, walked on the chrome spring.
-        .onChange(of: completion.isStatsOpen) { _, open in
-            chrome.settleStats(open: open, animated: !reduceMotion)
-        }
         // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
         // flag through the environment; below iOS 26 the fallback stays inert.
         .environment(\.chromeClarified, completion.isClarityBeat)
@@ -243,10 +262,13 @@ public struct SolveScreen: View {
         // observers can fire in either order or collapse into one
         // (SolveHapticFold derives whose hand moved from the delta).
         .onChange(of: filledCells) { _, _ in observeHaptics() }
-        // The §7 completion pattern rides the INV-3 gate's one firing, never
-        // the muteable mosaic clock (ID-1).
+        // The gate's one firing (INV-3) carries the one-shot riders: the §7
+        // completion pattern, and the card's arrival with the celebration
+        // (owner ruling 2026-07-10), never the muteable mosaic clock (ID-1).
         .onChange(of: completion.celebrationFiredAt) { _, fired in
-            if fired != nil { SolveHaptics.shared.play(.completion) }
+            guard fired != nil else { return }
+            SolveHaptics.shared.play(.completion)
+            openFacts()
         }
         // The celebration derives from store TRANSITIONS, observed here and
         // seeded once on appear, never from render (INV-3; the gate is the
@@ -279,29 +301,32 @@ public struct SolveScreen: View {
         }
     }
 
-    /// The stats card's strings: the server's stats first, the ambient clock's
-    /// frozen value as the time fallback (StatsCardContent pins the rule).
-    private var statsContent: StatsCardContent {
-        StatsCardContent.make(
-            solveTimeSeconds: store.stats?.solveTimeSeconds,
+    /// The facts card's words (RoomFactsContent pins the rule): mid-solve the
+    /// room's name and the puzzle's facts, at completion the lexicon word and
+    /// the server's stats.
+    private var factsContent: RoomFactsContent {
+        RoomFactsContent.make(
+            roomName: roomName,
+            puzzleTitle: puzzleTitle,
+            puzzleAuthor: puzzleAuthor,
+            puzzleDate: puzzleDate,
+            completed: roomStatus == .completed,
             totalEvents: store.stats?.totalEvents,
-            participantCount: store.stats?.participantCount,
-            firstFillAt: store.firstFillAt,
-            completedAt: store.completedAt)
+            participantCount: store.stats?.participantCount)
     }
 
-    /// The stats morph: rest is the TIME PILL's reported frame (the card is the
-    /// pill, inflated; ID-2, DESIGN.md §4). The pill centers its clock, so the
-    /// rider's rest center (StatsRideLayout reads morph.rest's middle) is the
-    /// clock's own. Open grows over the pill's own footprint, top and trailing
-    /// edges shared (the Mail-button rule, owner ruling 2026-07-10: a panel
-    /// covers the pill it grew from, never hangs beside it), sized by
-    /// StatsRideLayout's fixed slots and clamped inside the bar's span.
-    private var statsMorph: GlassMorph? {
+    /// The facts morph: rest is the TIME PILL's reported frame (the card is
+    /// the pill, inflated; DESIGN.md §4). Open grows leftward over the pill's
+    /// own footprint, top and trailing edges shared (the Mail-button rule,
+    /// owner ruling 2026-07-10: a panel covers the pill it grew from, never
+    /// hangs beside it), sized by FactsRideLayout's fixed slots and clamped
+    /// inside the bar's span; on narrow layouts it can reach the back button,
+    /// which then hands off (PanelEclipse).
+    private var factsMorph: GlassMorph? {
         guard let pill = frames[.timePill], let roomBar = frames[.roomBar]
         else { return nil }
-        let width = min(roomBar.width, StatsRideLayout.panelMaxWidth)
-        let height = StatsRideLayout.panelHeight(hasDetail: statsContent.detail != nil)
+        let width = min(roomBar.width, FactsRideLayout.panelMaxWidth)
+        let height = FactsRideLayout.panelHeight(hasDetail: factsContent.detail != nil)
         return GlassMorph(
             rest: pill,
             open: CGRect(
@@ -310,6 +335,17 @@ public struct SolveScreen: View {
                 width: width, height: height),
             restCornerRadius: pill.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
+    }
+
+    /// The rider's launch point: the pill clock's own reported center (the
+    /// weather sits beside the clock now, so the pill's middle is not the
+    /// clock's; the hand-off stays exact by construction). The pill's center
+    /// is the honest fallback before the first preference pass lands.
+    private func restTimeCenter(morph: GlassMorph) -> CGPoint {
+        guard let clock = frames[.timePillClock] else {
+            return CGPoint(x: morph.rest.midX, y: morph.rest.midY)
+        }
+        return CGPoint(x: clock.midX, y: clock.midY)
     }
 
     private func observeRoomState() {
@@ -406,34 +442,37 @@ public struct SolveScreen: View {
 
     // MARK: - Intents
 
-    /// Whether the open stats card eclipses a standing pill's reported frame
+    /// Whether the open facts card eclipses a standing pill's reported frame
     /// (PanelEclipse, DESIGN.md §4). The roster, a system presentation, never
     /// stands glass of ours over the bar.
     private func pillEclipsed(_ piece: ChromePiece) -> Bool {
-        guard let pill = frames[piece], chrome.isStatsOpen,
-            let panel = statsMorph?.open
+        guard let pill = frames[piece], chrome.isFactsOpen,
+            let panel = factsMorph?.open
         else { return false }
         return PanelEclipse.eclipses(panel: panel, pill: pill)
     }
 
     /// The one dismissal path (DESIGN.md §4: transient panels yield to
-    /// intent). A touch outside the open stats panel dismisses it and still
+    /// intent). A touch outside the open facts card dismisses it and still
     /// lands, so every outside surface routes here before its own action. The
     /// melt is not a tap-away transient (a gesture owns it); it pours back
     /// only when another panel opens or the room turns terminal. The roster
     /// menu dismisses itself: the system swallows the outside touch, Mail's
     /// own behavior.
     private func dismissTransients() {
-        if completion.isStatsOpen {
-            completion.isStatsOpen = false
+        if chrome.isFactsOpen {
+            chrome.settleFacts(open: false, animated: !reduceMotion)
         }
     }
 
-    /// The frozen clock's summon (ID-2), mutually exclusive like every panel
-    /// (DESIGN.md §4): the card's arrival pours back a still melt.
-    private func openStats() {
+    /// The time pill's summon (the time pill is the room's facts, owner ruling
+    /// 2026-07-10; at completion the frozen clock summons the stats, ID-2),
+    /// mutually exclusive like every panel (DESIGN.md §4): the card's arrival
+    /// pours back a still melt. A tap-opened morph animates on the chrome
+    /// spring's walk; no animation ever writes the drag-scrubbed melt (SP-i1).
+    private func openFacts() {
         chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-        completion.isStatsOpen = true
+        chrome.settleFacts(open: true, animated: !reduceMotion)
     }
 
     /// The cursor relay (deferred from I2b): every selection change goes to the

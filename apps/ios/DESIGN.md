@@ -95,7 +95,7 @@ The standing pieces:
 
 | piece        | register | notes                                                            |
 | ------------ | -------- | ---------------------------------------------------------------- |
-| room bar     | frosted  | a cluster of pills: leading (name, weather dot, reconnect countdown), time (the ambient clock), players (pucks, overflow count) |
+| room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable), players (pucks, overflow count) |
 | clue bar     | frosted  | active clue, direction chip, prev/next                           |
 | sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
@@ -103,18 +103,27 @@ The standing pieces:
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
 
 **The room bar is a cluster** (owner ruling 2026-07-10). Three small standing
-pills in the compact-toolbar register, not one bar. On iOS 26+ the leading and
-time pills share one GlassEffectContainer with spacing held below the metaball
-threshold (SP-i1, section 10: container spacing fuses adjacent glass), so the
-pills stay separate objects at rest; the players pill stands outside the
-container, because a Menu inside one breaks its morph on 26.1; below 26 the
-same layout renders as separate blur-material capsules, the one-fallback rule
-below. The point is honest morphs: a morph-bearing pill is its own rest
-surface, so a panel is always the pill reshaped, never a capsule conjured out
-of standing glass. And the panel grows over the pill's own footprint, top and
-trailing edges shared (the Mail-button rule, owner ruling 2026-07-10): the open
-surface covers the spot it grew from, it never hangs beside a still-visible
-opener.
+pieces in the compact-toolbar register, not one bar: a back button leading
+(circular standing glass, the room's way out), the time pill, and the players
+pill. The leading pill retired the same day (owner ruling 2026-07-10): the
+room name lives in the facts card now, and the weather moved into the time
+pill, which carries the room's vital signs in one place, status dot, reconnect
+countdown, ambient clock. The time pill is always tappable, because the time
+pill is the room's facts: mid-solve it opens the room-facts card, at
+completion the same surface is the stats card (ID-2 unchanged). On iOS 26+ the
+back button and the time pill share one GlassEffectContainer with spacing held
+below the metaball threshold (SP-i1, section 10: container spacing fuses
+adjacent glass), so the pieces stay separate objects at rest; the players pill
+stands outside the container, because a Menu inside one breaks its morph on
+26.1; below 26 the same layout renders as separate blur-material capsules, the
+one-fallback rule below. The point is honest morphs: a morph-bearing pill is
+its own rest surface, so a panel is always the pill reshaped, never a capsule
+conjured out of standing glass. And the panel grows over the pill's own
+footprint, top and trailing edges shared (the Mail-button rule, owner ruling
+2026-07-10): the open surface covers the spot it grew from, it never hangs
+beside a still-visible opener. The facts card grows leftward from the time
+pill and can reach the back button on narrow layouts; an eclipsed back button
+hands off for the card's life (PanelEclipse).
 
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
 one piece of glass reshaped. SP-i1 pinned the implementation
@@ -148,9 +157,12 @@ content new at the open end (lists, names) fades in late. The morph targets:
 - Tap the players pill: the roster menu flows out of it, the system's morph
   (rows carry rendered pucks, names, and the quiet state word; the spectator's
   Join in is a real menu action).
-- At completion, the time pill inflates into the stats card (ID-2: the timer
-  becomes the headline, so the headline comes from the timer); dismissal pours
-  it back, and the frozen clock summons it again.
+- Tap the time pill: it inflates into the room-facts card (owner ruling
+  2026-07-10: the time pill is the room's facts). Mid-solve the card carries
+  the room's name and the crossword's facts with the live clock as the
+  headline; at completion the same surface is the stats card (ID-2: the timer
+  becomes the headline, so the headline comes from the timer). Dismissal pours
+  it back, and the pill, ticking or frozen, summons it again.
 - The invite capsule is the share card, condensed.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.
@@ -159,8 +171,8 @@ content new at the open end (lists, names) fades in late. The morph targets:
 - On a panning 25x25, standing bars thin while you travel and return at rest.
 
 **Transient panels yield to intent** (owner ruling 2026-07-10). A touch outside
-an open stats panel dismisses it and still lands where it fell: no dead
-tap-catchers, the room never eats a touch. Panels are mutually exclusive,
+an open panel (the facts card) dismisses it and still lands where it fell: no
+dead tap-catchers, the room never eats a touch. Panels are mutually exclusive,
 opening any one pours back the others, and a status transition to completed or
 abandoned pours back the melt (the stats card then owns the completion stage).
 The one exception is a live finger: a melt being scrubbed is never
@@ -268,6 +280,8 @@ reduced-motion equivalent that crossfades instead of moving.
 - **Honest weather.** Three connection states, three registers (PROTOCOL.md
   section 7): live is a calm dot, resyncing is a breathing dot, reconnecting dims
   the room with a quiet countdown. Never a modal, never a spinner over the grid.
+  The weather lives in the time pill (owner ruling 2026-07-10): the dot and the
+  countdown sit beside the ambient clock, one pill for the room's vital signs.
 - **The island.** The room condensed: pucks leading, the derived timer trailing,
   black glass. The room bar and the island share capsule geometry so backgrounding
   reads as the same object changing state. The timer ticks natively from

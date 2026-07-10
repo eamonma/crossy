@@ -69,9 +69,11 @@ final class CelebrationGateTests: XCTestCase {
     }
 }
 
-// The observable over the gate: mosaic clock, clarity beat, stats presentation.
-// The async settle (mosaic ends, stats arrive) rides real time and is exercised
-// on the simulator; these pin the synchronous derivations.
+// The observable over the gate: mosaic clock, clarity beat, and the
+// celebration's instant (the one-shot riders' key: the §7 completion haptic and
+// the facts card's arrival with the celebration, owner ruling 2026-07-10). The
+// async settle (mosaic ends, stats arrive) rides real time and is exercised on
+// the simulator; these pin the synchronous derivations.
 @MainActor
 final class CompletionModelTests: XCTestCase {
     func test_celebrationStartsTheMosaicClock_INV3() {
@@ -80,9 +82,8 @@ final class CompletionModelTests: XCTestCase {
         model.observe(status: .completed, live: true, mosaicEnabled: true, now: 200)
         XCTAssertEqual(model.mosaicStartedAt, 200)
         XCTAssertTrue(model.isClarityBeat)
-        // The stats arrive WITH the celebration (owner ruling 2026-07-10).
-        XCTAssertTrue(model.isStatsOpen)
-        // One-shot riders (the §7 completion haptic) key on the gate's instant.
+        // One-shot riders (the §7 completion haptic, the card's arrival with
+        // the celebration) key on the gate's instant.
         XCTAssertEqual(model.celebrationFiredAt, 200)
     }
 
@@ -95,14 +96,14 @@ final class CompletionModelTests: XCTestCase {
     }
 
     // ID-1: the completion mosaic is muteable by a single constant; muted, the
-    // celebration reduces to the stats card, no tint, no clarity beat.
+    // celebration reduces to the stats card (its arrival rides the instant
+    // below), no tint, no clarity beat.
     func test_mutedMosaicSwitchSkipsStraightToStats_ID1() {
         let model = CompletionModel()
         model.observe(status: .ongoing, live: true, mosaicEnabled: false, now: 100)
         model.observe(status: .completed, live: true, mosaicEnabled: false, now: 200)
         XCTAssertNil(model.mosaicStartedAt)
         XCTAssertFalse(model.isClarityBeat)
-        XCTAssertTrue(model.isStatsOpen)
         // ID-1 mutes the mosaic, not the fact: the celebration still fired.
         XCTAssertEqual(model.celebrationFiredAt, 200)
     }
@@ -123,7 +124,8 @@ final class CompletionModelTests: XCTestCase {
         model.observe(status: .completed, live: true, mosaicEnabled: true, now: 200)
         XCTAssertNil(model.mosaicStartedAt)
         XCTAssertFalse(model.isClarityBeat)
-        XCTAssertFalse(model.isStatsOpen)
+        // No celebration, so no card arrives on its own; the always-tappable
+        // time pill still summons it (ID-2's grammar at the view).
         XCTAssertNil(model.celebrationFiredAt)
     }
 }

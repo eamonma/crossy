@@ -56,8 +56,14 @@ struct DemoRoomView: View {
             puzzle: room.puzzle,
             clues: room.clues,
             roomName: room.roomName,
+            puzzleTitle: room.puzzleTitle,
+            puzzleAuthor: room.puzzleAuthor,
+            puzzleDate: room.puzzleDate,
             model: room.selection,
-            chrome: room.chrome
+            chrome: room.chrome,
+            // The bar's back button reports intent only; the arrival flow
+            // wires the destination when it exists (follow-on).
+            onBack: {}
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController).

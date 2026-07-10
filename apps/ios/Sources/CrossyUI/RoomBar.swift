@@ -1,14 +1,17 @@
 // The room bar (apps/ios/DESIGN.md §4): a cluster of glass pills, not one bar
-// (owner ruling 2026-07-10). A leading pill carries the name and the weather, a
-// time pill the ambient clock, a players pill the pucks; small standing chrome in
-// the compact-toolbar register. The time pill is the stats morph's rest (the
-// card is the pill reshaped, never new glass conjured over old); the players
-// pill presents the roster as a system Menu (RosterMenu, the Mail mechanism,
-// owner ruling 2026-07-10). On iOS 26+ the leading and time pills share one
-// GlassEffectContainer at a spacing below the metaball fuse (SP-i1, DESIGN.md
-// §10) while the menu-bearing pill stands outside it (a Menu inside a container
-// breaks its morph on 26.1); below 26 the same layout renders as separate
-// blur-material capsules through ChromeGlassSurface, the §4 one-fallback rule.
+// (owner ruling 2026-07-10). A back button leads, circular standing glass in the
+// compact-toolbar register; the time pill carries the room's vital signs (the
+// weather dot, the reconnect countdown, the ambient clock) and is always
+// tappable, because the time pill is the room's facts (owner ruling 2026-07-10:
+// mid-solve it opens the room-facts card, at completion the same surface is the
+// stats card, ID-2 unchanged); the players pill presents the roster as a system
+// Menu (RosterMenu, the Mail mechanism). The leading pill retired with the same
+// ruling: the room name lives in the facts card now. On iOS 26+ the back button
+// and the time pill share one GlassEffectContainer at a spacing below the
+// metaball fuse (SP-i1, DESIGN.md §10) while the menu-bearing pill stands
+// outside it (a Menu inside a container breaks its morph on 26.1); below 26 the
+// same layout renders as separate blur-material capsules through
+// ChromeGlassSurface, the §4 one-fallback rule.
 //
 // The clock is ID-2's: small, tabular, quiet, 0:00 before the first fill, frozen
 // at completion, ticking natively from `firstFillAt` with no store updates (root
@@ -22,24 +25,30 @@ import SwiftUI
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 struct RoomBar: View {
-    let roomName: String
     let ground: GridGround
     let weather: RoomWeather
     let reconnectRetryAt: Date?
     let firstFillAt: String?
     let completedAt: String?
     let members: [RosterMember]
-    /// True while an open panel eclipses the leading pill (PanelEclipse): no
+    /// True while an open panel eclipses the back button (PanelEclipse): no
     /// morph rests here, but buried glass refracts through a panel's surface,
-    /// so the pill yields for the panel's life. Layout and reporting stay.
-    let leadingHandedOff: Bool
-    /// True while the stats card exists: the time pill is the card at rest
-    /// (ID-2), so the whole pill, glass and clock, hands off and yields.
+    /// so the button yields for the panel's life. Layout and reporting stay.
+    let backHandedOff: Bool
+    /// True while the facts card exists: the time pill is the card at rest,
+    /// so the whole pill, glass, weather, and clock, hands off and yields.
     /// Layout and frame reporting stay; the visual goes with the morph.
     let timeHandedOff: Bool
-    /// Non-nil once the room completes: tapping the frozen clock summons the
-    /// stats card back (the card is the pill, inflated).
-    let onTapClock: (() -> Void)?
+    /// The way out of the room. The arrival flow wires the destination; the
+    /// bar only reports the intent.
+    let onBack: () -> Void
+    /// The time pill's summon (always live: the time pill is the room's
+    /// facts). Mid-solve it opens the facts card; at completion the frozen
+    /// clock summons the stats card back (ID-2).
+    let onTapTimePill: () -> Void
+    /// True once the room completes, for the pill's spoken label (the visual
+    /// is one surface either way).
+    let completed: Bool
     /// The roster menu's needs: who the local user is (the spectator edge) and
     /// the Join in intent (ID-5), passed through to RosterMenu.
     let selfUserId: String?
@@ -74,38 +83,87 @@ struct RoomBar: View {
     // MARK: The cluster
 
     private var timedPills: some View {
-        // The 1 Hz timeline drives both the clock and the countdown; at
-        // rest it is the only thing in the room that ticks.
-        TimelineView(.periodic(from: .now, by: 1)) { timeline in
-            HStack(spacing: ChromeLayout.pillGap) {
-                leadingPill(now: timeline.date)
-                Spacer(minLength: 0)
+        HStack(spacing: ChromeLayout.pillGap) {
+            backButton
+            Spacer(minLength: 0)
+            // The 1 Hz timeline drives the clock and the countdown; at rest
+            // it is the only thing in the room that ticks. Scoped to the time
+            // pill: the back button never re-renders on a tick.
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 timePill(now: timeline.date)
             }
         }
     }
 
-    // MARK: The leading pill (name and weather)
+    // MARK: The back button
 
-    /// The room's name with its weather: the dot, and during a reconnect the
-    /// quiet countdown next to it (DESIGN.md §8: never a modal, never a
-    /// spinner over the grid).
-    private func leadingPill(now: Date) -> some View {
-        HStack(spacing: 8) {
-            Text(verbatim: roomName)
-                .font(.system(size: 15, weight: .semibold))
+    /// Circular standing glass in the compact-toolbar register (owner ruling
+    /// 2026-07-10): the chevron is ink, never a color (§3). The open facts
+    /// card can reach this edge on narrow layouts, so the button hands off
+    /// while eclipsed exactly as the retired leading pill did (PanelEclipse).
+    private var backButton: some View {
+        Button(action: onBack) {
+            Image(systemName: "chevron.backward")
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            weatherCluster(now: now)
+                .frame(width: ChromeLayout.pillHeight, height: ChromeLayout.pillHeight)
+                .contentShape(Circle())
         }
-        .padding(.horizontal, 14)
-        .frame(height: ChromeLayout.pillHeight)
+        .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
-        .opacity(leadingHandedOff ? 0 : 1)
+        .accessibilityLabel(Text(verbatim: "Back"))
+        .opacity(backHandedOff ? 0 : 1)
         // The eclipse yield includes touch, the handed-off pill rule.
-        .allowsHitTesting(!leadingHandedOff)
-        .reportChromeFrame(.leadingPill)
+        .allowsHitTesting(!backHandedOff)
+        .reportChromeFrame(.backButton)
+    }
+
+    // MARK: The time pill (the room's vital signs, and its facts)
+
+    /// The weather and the ambient clock in one pill: the status dot, during a
+    /// reconnect the quiet countdown next to it (DESIGN.md §8: never a modal,
+    /// never a spinner over the grid), and the clock (ID-2). Always tappable:
+    /// the time pill is the room's facts (owner ruling 2026-07-10), so a tap
+    /// opens the facts card mid-solve and the stats card once the room
+    /// completes. The clock reports its own frame: it is the card's rider, and
+    /// the rider launches from the glyphs it left, not from the pill's center
+    /// (the weather sits beside the clock now).
+    private func timePill(now: Date) -> some View {
+        Button(action: onTapTimePill) {
+            HStack(spacing: 8) {
+                weatherCluster(now: now)
+                Text(
+                    verbatim: AmbientClock.display(
+                        firstFillAt: firstFillAt, completedAt: completedAt, now: now)
+                )
+                .font(.system(size: 13, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+                .reportChromeFrame(.timePillClock)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: ChromeLayout.pillHeight)
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: ChromeLayout.pillCornerRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+        .accessibilityLabel(Text(verbatim: timePillAccessibilityLabel))
+        .opacity(timeHandedOff ? 0 : 1)
+        // The yield includes touch (DESIGN.md §4: transient panels yield to
+        // intent): a tap on the handed-off pill's ghost is a touch outside the
+        // panel, so it falls to the bar's dismiss layer instead of the button.
+        .allowsHitTesting(!timeHandedOff)
+        .reportChromeFrame(.timePill)
+    }
+
+    /// ID-2's grammar at completion, the facts card's summon otherwise. The
+    /// weather's spoken words are RoomWeather's own, unchanged.
+    private var timePillAccessibilityLabel: String {
+        completed
+            ? "Solved together, show stats"
+            : "Shared time, \(weatherAccessibilityLabel), show room facts"
     }
 
     @ViewBuilder
@@ -137,43 +195,6 @@ struct RoomBar: View {
         case .breathing: return "Catching up"
         case .dimmed: return weather.label ?? "Reconnecting"
         }
-    }
-
-    // MARK: The time pill
-
-    /// The ambient clock (ID-2) as its own pill, and the stats morph's rest:
-    /// the whole pill's frame is reported for the card's geometry, its
-    /// rendering yields while the card exists (the time rides the card from
-    /// the pill's center), and the frozen value takes a tap to summon the card
-    /// back.
-    @ViewBuilder
-    private func timePill(now: Date) -> some View {
-        let display = Text(
-            verbatim: AmbientClock.display(
-                firstFillAt: firstFillAt, completedAt: completedAt, now: now)
-        )
-        .font(.system(size: 13, weight: .medium))
-        .monospacedDigit()
-        .foregroundStyle(Color(rgb: ground.tokens.number))
-
-        Group {
-            if let onTapClock {
-                Button(action: onTapClock) { display.contentShape(Rectangle()) }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(verbatim: "Solved together, show stats"))
-            } else {
-                display.accessibilityLabel(Text(verbatim: "Shared time"))
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: ChromeLayout.pillHeight)
-        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
-        .opacity(timeHandedOff ? 0 : 1)
-        // The yield includes touch (DESIGN.md §4: transient panels yield to
-        // intent): a tap on the handed-off pill's ghost is a touch outside the
-        // panel, so it falls to the bar's dismiss layer instead of the button.
-        .allowsHitTesting(!timeHandedOff)
-        .reportChromeFrame(.timePill)
     }
 
 }

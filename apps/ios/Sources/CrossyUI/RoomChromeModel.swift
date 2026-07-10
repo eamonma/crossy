@@ -32,10 +32,11 @@ public final class RoomChromeModel {
     /// True while a finger scrubs the melt (gesture bookkeeping for the views).
     public var isMeltDragging = false
 
-    /// The stats morph (ID-2: the timer becomes the headline only at
-    /// completion, so the headline comes FROM the timer): 0 is the room bar's
-    /// frozen clock, 1 the open stats card.
-    public var statsProgress: CGFloat = 0
+    /// The facts morph (the time pill is the room's facts, owner ruling
+    /// 2026-07-10; at completion ID-2 holds: the timer becomes the headline,
+    /// so the headline comes FROM the timer): 0 is the room bar's time pill,
+    /// 1 the open facts card.
+    public var factsProgress: CGFloat = 0
 
     /// When the reconnect adapter will dial next, for the quiet countdown
     /// (DESIGN.md §8). Set by the composition root; nil renders the bare word.
@@ -49,12 +50,12 @@ public final class RoomChromeModel {
     public var kicked = false
 
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
-    @ObservationIgnored private var statsSettleTask: Task<Void, Never>?
+    @ObservationIgnored private var factsSettleTask: Task<Void, Never>?
 
     public init() {}
 
     public var isBrowserOpen: Bool { meltProgress > 0 }
-    public var isStatsOpen: Bool { statsProgress > 0 }
+    public var isFactsOpen: Bool { factsProgress > 0 }
 
     // MARK: Settling (the one animation, on release)
 
@@ -85,12 +86,12 @@ public final class RoomChromeModel {
         settleMelt(open: false, animated: animated)
     }
 
-    public func settleStats(open: Bool, animated: Bool = true) {
-        statsSettleTask?.cancel()
-        statsSettleTask = Self.walk(
-            from: statsProgress, to: open ? 1 : 0, animated: animated
+    public func settleFacts(open: Bool, animated: Bool = true) {
+        factsSettleTask?.cancel()
+        factsSettleTask = Self.walk(
+            from: factsProgress, to: open ? 1 : 0, animated: animated
         ) { [weak self] value in
-            self?.statsProgress = value
+            self?.factsProgress = value
         }
     }
 
@@ -101,6 +102,13 @@ public final class RoomChromeModel {
     public func presentBrowser() {
         meltSettleTask?.cancel()
         meltProgress = 1
+    }
+
+    /// Scripted entry for the facts card (the presentBrowser pattern): land
+    /// the card open with no walk, so simctl can capture it without a tap.
+    public func presentFacts() {
+        factsSettleTask?.cancel()
+        factsProgress = 1
     }
 
     /// The settle walk: the chrome spring's own curve (ChromeSettleCurve), one

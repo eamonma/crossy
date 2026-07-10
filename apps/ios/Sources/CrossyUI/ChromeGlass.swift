@@ -107,13 +107,18 @@ struct ChromeGlassSurface: ViewModifier {
 enum ChromePiece: Hashable {
     case roomBar
     case clueBarSlot
-    /// The time pill, whole: the stats morph's rest surface (ID-2, the timer
-    /// becomes the headline at completion; the pill centers its clock, so the
-    /// rider's launch point is the pill's own center).
+    /// The time pill, whole: the facts card's rest surface (the time pill is
+    /// the room's facts, owner ruling 2026-07-10; at completion the card is
+    /// the stats card, ID-2).
     case timePill
-    /// The leading pill (name and weather): no morph rests on it, but a panel
-    /// that eclipses it must know its frame (PanelEclipse).
-    case leadingPill
+    /// The clock's own glyphs inside the time pill: the card's rider launches
+    /// from the clock it left (the weather sits beside it, so the pill's
+    /// center is not the clock's).
+    case timePillClock
+    /// The back button (owner ruling 2026-07-10, replacing the retired
+    /// leading pill): no morph rests on it, but a panel that eclipses it must
+    /// know its frame (PanelEclipse).
+    case backButton
 }
 
 /// DESIGN.md §4, the Mail-button rule's corollary: a panel covers its own pill
