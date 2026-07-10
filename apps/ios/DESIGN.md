@@ -140,6 +140,13 @@ ever carries, with one scripted exception at completion (section 8).
 - Survive Reduce Transparency as-is. Every glass surface has a considered solid
   fallback.
 
+**Below iOS 26.** The floor is iOS 18 (owner ruling 2026-07-10, amending root
+DESIGN.md D06). Glass APIs need 26, so on 18 through 25 every glass surface
+renders as one simple blur material: same geometry, same layout, same motion,
+the system's regular material in place of glass. One fallback for all chrome,
+never a second design system, and no per-piece fallback decisions. Degraded is
+accepted.
+
 ## 5. Two grounds, one app
 
 One identity with a light ground and a dark ground, not two directions. Studio is

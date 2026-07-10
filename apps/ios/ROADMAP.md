@@ -99,8 +99,10 @@ depends on is open.
 
 - [x] a. Xcode project shell: a thin, committed `.xcodeproj` whose sources live in
       the SwiftPM package (new app-facing targets alongside `CrossyEngine`; the
-      engine target stays pure, INV-9, imports nothing). App name Crossy, iOS 26
-      floor, no generators until it hurts. Target decomposition is decided:
+      engine target stays pure, INV-9, imports nothing). App name Crossy, iOS 18
+      floor (26 at scaffold; lowered by owner ruling 2026-07-10, glass on 26+
+      with one simple blur fallback below, DESIGN.md section 4), no generators
+      until it hurts. Target decomposition is decided:
       `apps/ios/ARCHITECTURE.md` AD-2 is the module graph this wave scaffolds.
 - [x] b. CI: `ios.yml` gains a simulator build of the app target, path-filtered as
       today; `swift test` stays required and green throughout.

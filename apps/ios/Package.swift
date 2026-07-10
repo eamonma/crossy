@@ -11,12 +11,13 @@ import PackageDescription
 // targets are declared up front so build waves add sources without editing this file.
 let package = Package(
     name: "Crossy",
-    // The app's decided floor (iOS 26, pbxproj IPHONEOS_DEPLOYMENT_TARGET) and the
+    // The app's decided floor (iOS 18, owner ruling 2026-07-10: glass needs 26, so
+    // 18 through 25 renders chrome as one simple blur material fallback) and the
     // macOS the test host actually needs (@Observable wants 14). Without this, an iOS
     // build of the package assumes SwiftPM's oldest default and async protocol
     // requirements fail with "concurrency is only available in iOS 13.0.0 or newer".
     platforms: [
-        .iOS("26.0"),
+        .iOS("18.0"),
         .macOS(.v14),
     ],
     products: [
