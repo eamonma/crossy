@@ -17,6 +17,7 @@ public struct CrossyGridView: View {
     private let puzzle: GridPuzzle
     private let ground: GridGround
     private let selection: GridSelection?
+    private let onSwipe: ((SwipeIntent) -> Void)?
     private let onPlaceCursor: (Int) -> Void
 
     /// nil until the first layout pass sizes the initial camera.
@@ -30,18 +31,22 @@ public struct CrossyGridView: View {
     /// `initialCamera` seeds the first camera (nil opens at the clamp, centered):
     /// the hook for restoring a solver's zoom across scene changes. Every camera is
     /// re-clamped in body, so no seed can start the board offscreen or blurred.
+    /// `onSwipe` receives drags the camera could not spend (the board fits, pan is
+    /// inert), classified per root DESIGN.md §5; a drag that panned stays a pan.
     public init(
         store: GameStore,
         puzzle: GridPuzzle,
         ground: GridGround,
         selection: GridSelection?,
         initialCamera: GridCamera? = nil,
+        onSwipe: ((SwipeIntent) -> Void)? = nil,
         onPlaceCursor: @escaping (Int) -> Void
     ) {
         self.store = store
         self.puzzle = puzzle
         self.ground = ground
         self.selection = selection
+        self.onSwipe = onSwipe
         self.onPlaceCursor = onPlaceCursor
         _camera = State(initialValue: initialCamera)
     }
@@ -97,7 +102,22 @@ public struct CrossyGridView: View {
                             by: value.translation,
                             viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
                     }
-                    .onEnded { _ in dragBase = nil }
+                    .onEnded { value in
+                        let base = dragBase
+                        dragBase = nil
+                        // A drag the camera spent is a pan; only a drag the clamp
+                        // held inert (the board fits the viewport) reads as a
+                        // swipe, so the two gestures never double-fire. Along the
+                        // solving direction is next/previous word, across it
+                        // toggles (root DESIGN.md §5); the classifier is pure and
+                        // pinned in tests.
+                        guard let onSwipe, let base, base == self.camera,
+                            let intent = SwipeClassifier.classify(
+                                translation: value.translation,
+                                isAcross: selection?.isAcross ?? true)
+                        else { return }
+                        onSwipe(intent)
+                    }
             )
             .onChange(of: viewport) { _, size in
                 self.camera = self.camera?.clamped(

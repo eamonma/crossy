@@ -49,5 +49,12 @@ public enum Motion {
         /// allowed to overshoot.
         public static let celebrationResponse: TimeInterval = 0.45
         public static let celebrationDampingFraction: Double = 0.78
+
+        /// The key deck press pop (apps/ios/DESIGN.md §7, ID-4). Deliberately
+        /// tighter than `chromeResponse` so the pop reads at sixty presses a
+        /// minute; the value is the SP-i2 rig's, the geometry the owner confirmed
+        /// on hardware. Damping stays at the chrome no-overshoot guarantee.
+        /// Tuning candidate per the SP-i2 report.
+        public static let keyPressResponse: TimeInterval = 0.14
     }
 }
