@@ -14,6 +14,7 @@
 //    -i2bScript             type SOL into 1-Across (-i2bRebus opens the field)
 //    -i2cScript             Bee's cursor patrols the board (presence, glints)
 //    -i2cBrowser            land the clue browser open
+//    -i2cMelt 0.5           hold the melt at a progress (intermediate evidence)
 //    -i2cRoster             land the roster panel open
 //    -i2cWeather resyncing  force the breathing-dot state (a gapped event)
 //    -i2cWeather reconnecting  force the dimmed room with the quiet countdown
@@ -98,6 +99,14 @@ final class DemoRoom {
 
         if arguments.contains("-i2cBrowser") {
             chrome.presentBrowser()
+        }
+        if let index = arguments.firstIndex(of: "-i2cMelt"),
+            arguments.indices.contains(index + 1),
+            let progress = Double(arguments[index + 1])
+        {
+            // A held mid-melt frame: the SP-i1 evidence pattern (live glass at
+            // intermediate geometry), since simctl cannot scrub a finger.
+            chrome.meltProgress = min(max(progress, 0), 1)
         }
         if arguments.contains("-i2cRoster") {
             chrome.presentRoster()
