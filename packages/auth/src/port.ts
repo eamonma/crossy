@@ -57,14 +57,28 @@ export type VerifyResult = VerifySuccess | VerifyFailure;
  * The auth port both services embed. `verify` is asynchronous to match the underlying
  * WebCrypto verification, but it performs **zero network IO** on the request path: it
  * runs entirely against an in-memory key set (SP2). Two implementations satisfy this
- * interface and pass one shared contract: the Supabase adapter and the in-memory fake.
+ * interface and pass one shared contract: the JWKS adapter and the in-memory fake.
  */
 export interface AuthPort {
   verify(token: string): Promise<VerifyResult>;
 }
 
-/** The Supabase access-token audience (DESIGN.md §8, SP2): every user token carries this. */
+/**
+ * The default expected audience. `authenticated` is the vendor's (GoTrue) convention for
+ * a user access token, and every token our production issuer mints carries it. It is a
+ * default, not a constant of the verifier: an issuer that names its audience otherwise
+ * overrides it via config (DESIGN.md §8, SP2).
+ */
 export const DEFAULT_AUDIENCE = "authenticated";
+
+/**
+ * The default name of the claim carrying the anonymity flag. GoTrue (the vendor's auth
+ * server) signals an anonymous session with `is_anonymous: true`. This is the one
+ * GoTrue-specific claim the verifier reads, lifted to overridable config so the core
+ * carries no single vendor's claim vocabulary; an issuer that names it otherwise overrides
+ * it (DESIGN.md §8, SP2).
+ */
+export const DEFAULT_ANONYMOUS_CLAIM = "is_anonymous";
 
 /**
  * The asymmetric algorithm allowlist (SP2). ES256 is Supabase's default; RS256 and

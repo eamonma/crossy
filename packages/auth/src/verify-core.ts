@@ -1,4 +1,4 @@
-// The one claim-check implementation both the Supabase adapter and the in-memory fake
+// The one claim-check implementation both the JWKS adapter and the in-memory fake
 // call (SP2). Keeping it here, parameterized by a `jose` key resolver, is the cohesion
 // payoff: the two port implementations differ only in how they source keys (background
 // refresh vs. in-process generation), never in how they validate a token. This file
@@ -15,6 +15,12 @@ export interface VerifyCoreConfig {
   readonly clockToleranceSec: number;
   /** Injected clock (12-factor: no ambient time). Drives `exp`/`nbf`/`iat` checks. */
   readonly now: () => Date;
+  /**
+   * The claim name whose truthy value maps to `isAnonymous`. The port configs default it
+   * to `is_anonymous` (GoTrue's convention); read from config here so the core carries no
+   * single vendor's claim vocabulary.
+   */
+  readonly anonymousClaim: string;
 }
 
 /**
@@ -56,9 +62,9 @@ function classify(err: unknown): AuthFailureReason {
 
 /**
  * Verify one access token against an in-memory `jose` key resolver, applying SP2's
- * claim checks: asymmetric-only algorithm allowlist (HS256 refused), exact `iss`,
- * `aud === "authenticated"`, `exp`/`nbf` with clock skew, and `sub` present. On success
- * returns `{sub -> userId, is_anonymous -> isAnonymous (default false)}`.
+ * claim checks: asymmetric-only algorithm allowlist (HS256 refused), exact `iss`, `aud`
+ * equal to the configured audience, `exp`/`nbf` with clock skew, and `sub` present. On
+ * success returns `{ sub -> userId, config.anonymousClaim -> isAnonymous (default false) }`.
  */
 export async function verifyToken(
   resolver: JWTVerifyGetKey,
@@ -92,7 +98,10 @@ export async function verifyToken(
     }
     return {
       ok: true,
-      identity: { userId: sub, isAnonymous: payload["is_anonymous"] === true },
+      identity: {
+        userId: sub,
+        isAnonymous: payload[config.anonymousClaim] === true,
+      },
     };
   } catch (err) {
     return { ok: false, reason: classify(err) };

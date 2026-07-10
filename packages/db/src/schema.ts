@@ -54,7 +54,7 @@ export const gameStatus = pgEnum("game_status", [
  * "former participant".
  */
 export const users = pgTable("users", {
-  // Provider-issued UUID (Supabase `sub`); every FK in the schema points here (§8).
+  // Provider-issued UUID (the token's `sub`); every FK in the schema points here (§8).
   userId: uuid("user_id").primaryKey(),
   // PII, scrubbed to null on tombstone (§8).
   displayName: text("display_name"),

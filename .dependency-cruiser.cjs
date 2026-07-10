@@ -39,14 +39,20 @@ module.exports = {
       to: { path: "^apps/", pathNot: "^apps/$1/" },
     },
     {
-      name: "supabase-js-only-in-identity-adapter",
+      name: "supabase-sdk-only-in-web-identity-adapter",
       comment:
-        "Only the web identity adapter (apps/web/src/identity) may import supabase-js; the " +
-        "rest of the app consumes the Identity port, so the vendor stays swappable " +
-        "(DESIGN.md §8).",
+        "The Supabase vendor SDK lives in exactly one place: the web Identity adapter " +
+        "(apps/web/src/identity). Everything else consumes the Identity port so the vendor " +
+        "stays swappable, and the server side verifies tokens with jose and must never grow " +
+        "an SDK dependency (DESIGN.md §8). Fail-closed on two axes the old rule left open: " +
+        "the whole @supabase/* namespace (not just supabase-js, so a stray @supabase/ssr or " +
+        "@supabase/auth-js is caught too), and the whole repo (apps/* and packages/*, so an " +
+        "import in apps/api, apps/session, or any package fails lint, not merely by " +
+        "convention). Matching the bare `@supabase/` specifier also catches an import added " +
+        "before the dependency is installed.",
       severity: "error",
-      from: { path: "^apps/web/src", pathNot: "^apps/web/src/identity/" },
-      to: { path: "node_modules/@supabase/supabase-js" },
+      from: { path: "^(apps|packages)/", pathNot: "^apps/web/src/identity/" },
+      to: { path: "@supabase/" },
     },
     {
       name: "no-circular",
