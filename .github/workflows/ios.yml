@@ -52,7 +52,7 @@ jobs:
   # simulator build needs none. The scheme is shared (xcshareddata) for exactly this job.
   app-build:
     name: app simulator build (xcodebuild)
-    runs-on: macos-26  # same pin as swift-vectors: the glass path needs the iOS 26 SDK
+    runs-on: macos-26 # same pin as swift-vectors: the glass path needs the iOS 26 SDK
     defaults:
       run:
         working-directory: apps/ios/Crossy
