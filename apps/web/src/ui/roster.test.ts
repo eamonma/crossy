@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Cursor, Participant } from "@crossy/protocol";
 import type { Clue } from "../domain/types";
-import { buildRoster } from "./solvingNow";
+import { buildRoster } from "./roster";
 
 // A 3x3 open grid: across words on each row, down words on each column.
 const across: Clue[] = [

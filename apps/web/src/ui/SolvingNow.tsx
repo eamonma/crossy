@@ -7,8 +7,8 @@
 import { useState } from "react";
 import { ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons";
 import type { Clue } from "../domain/types";
-import type { Roster, SolverEntry } from "./solvingNow";
-import { GROUP_CAP, GROUP_PAST } from "./solvingNow";
+import type { Roster, SolverEntry } from "./roster";
+import { GROUP_CAP, GROUP_PAST } from "./roster";
 import { CapsLabel, cx } from "./primitives";
 import { Button } from "@/components/ui/button";
 
