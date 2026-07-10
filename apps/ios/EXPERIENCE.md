@@ -18,9 +18,10 @@ following you out through the Dynamic Island, an invite that unfurls in the grou
 chat and opens straight into the app.
 
 **v1 scope** (owner decisions, 2026-07-09): iPhone first. Named accounts only;
-Discord OAuth via Supabase; no Sign in with Apple yet (deliberately unrushed) and no
-guest sign-in (guests are a web-only spectate feature). iOS 26 floor (root
-DESIGN.md D06). Nothing here races a deadline.
+Discord OAuth via Supabase; no guest sign-in (guests are a web-only spectate
+feature). More sign-in options come later, Sign in with Apple and passkeys among
+them, deliberately unrushed. iOS 26 floor (root DESIGN.md D06). Nothing here races
+a deadline.
 
 **Non-goals for v1**, recorded so nobody quietly builds them: iPad-optimized layout,
 offline solving, widgets beyond the Live Activity, puzzle construction or discovery,
@@ -199,7 +200,9 @@ zoom to the 25x25 cap; account with deletion.
 
 **Follow-on:** Live Activity pushes and the away-completion moment; presence glints;
 the clarity beat; mosaic choreography; pan-thinning chrome; App Store screenshot
-pass. Sign in with Apple remains owner-gated and unscheduled.
+pass. Auth breadth (Sign in with Apple, passkeys) is owner-gated and deliberately
+unscheduled; it gates public App Store release, not the TestFlight v1
+(`apps/ios/ROADMAP.md`, distribution note).
 
 ## 7. Open questions (owner review)
 
