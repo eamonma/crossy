@@ -278,7 +278,7 @@ function navigationShapeProblems(c: JsonObject): string[] {
       if (w.toward !== "forward" && w.toward !== "backward")
         problems.push('when.toward: "forward" or "backward" required');
       if (!isInt(t.cell)) problems.push("then.cell: integer required");
-      // tab pins the unchanged axis on a clue-list wrap (vectors/README.md).
+      // tab pins the landing clue's axis: the cycle crosses axes (vectors/README.md).
       if (t.direction !== "across" && t.direction !== "down")
         problems.push('then.direction: "across" or "down" required');
       break;

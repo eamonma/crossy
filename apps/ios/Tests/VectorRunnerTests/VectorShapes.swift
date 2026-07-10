@@ -212,7 +212,7 @@ struct NavigationCase: Decodable {
         case "tab":
             problems += towardProblems()
             if then.cell == nil { problems.append("then.cell: integer required") }
-            // tab pins the unchanged axis on a clue-list wrap (vectors/README.md).
+            // tab pins the landing clue's axis: the cycle crosses axes (vectors/README.md).
             if then.direction != "across" && then.direction != "down" {
                 problems.append("then.direction: \"across\" or \"down\" required")
             }
