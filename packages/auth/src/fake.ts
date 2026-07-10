@@ -9,6 +9,7 @@ import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { JSONWebKeySet, JWK } from "jose";
 import {
   DEFAULT_ALGORITHMS,
+  DEFAULT_ANONYMOUS_CLAIM,
   DEFAULT_AUDIENCE,
   DEFAULT_CLOCK_TOLERANCE_SEC,
 } from "./port";
@@ -51,6 +52,11 @@ export interface FakeAuthConfig {
   readonly clockToleranceSec?: number;
   /** Injected clock (12-factor). Defaults to the wall clock. */
   readonly now?: () => Date;
+  /**
+   * The claim name the fake writes the anonymity flag into and reads back on verify.
+   * Defaults to `is_anonymous` (GoTrue's convention). Set it to exercise a custom claim.
+   */
+  readonly anonymousClaim?: string;
 }
 
 /**
@@ -124,8 +130,16 @@ export async function createFakeAuthProvider(
   const clockToleranceSec =
     config.clockToleranceSec ?? DEFAULT_CLOCK_TOLERANCE_SEC;
   const now = config.now ?? (() => new Date());
+  const anonymousClaim = config.anonymousClaim ?? DEFAULT_ANONYMOUS_CLAIM;
 
-  const coreConfig = { issuer, audience, algorithms, clockToleranceSec, now };
+  const coreConfig = {
+    issuer,
+    audience,
+    algorithms,
+    clockToleranceSec,
+    now,
+    anonymousClaim,
+  };
 
   let keys: SigningKey[] = [await generateSigningKey()];
   let signerKid = keys[0]!.kid;
@@ -146,7 +160,7 @@ export async function createFakeAuthProvider(
     const nowSec = Math.floor(now().getTime() / 1000);
     const payload: Record<string, unknown> = { role: "authenticated" };
     if (opts.omitAnonymousClaim !== true) {
-      payload["is_anonymous"] = opts.isAnonymous ?? false;
+      payload[anonymousClaim] = opts.isAnonymous ?? false;
     }
     const jwt = new SignJWT(payload)
       .setProtectedHeader({ alg: "ES256", kid })
@@ -224,7 +238,7 @@ export async function createFakeAuthProvider(
       const nowSec = Math.floor(now().getTime() / 1000);
       const payload: Record<string, unknown> = {
         role: "authenticated",
-        is_anonymous: opts.isAnonymous ?? false,
+        [anonymousClaim]: opts.isAnonymous ?? false,
       };
       return new SignJWT(payload)
         .setProtectedHeader({ alg: "HS256" })

@@ -1,5 +1,5 @@
 // Runtime composition root for the session service (DESIGN.md §3, §6, §8). This is the
-// ONLY place the live ports are constructed: the Supabase auth adapter behind config and
+// ONLY place the live ports are constructed: the JWKS auth adapter behind config and
 // the `pg` pool from DATABASE_URL. Tests never import this file; the integration suite
 // injects the in-memory auth fake and a role-scoped pool, so it makes zero network calls.
 // All configuration is read here (12-factor) and passed in.
@@ -9,13 +9,13 @@
 
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { createSupabaseAuthPort } from "@crossy/auth";
-import type { SupabaseAuthConfig } from "@crossy/auth";
+import { createJwksAuthPort } from "@crossy/auth";
+import type { JwksAuthConfig } from "@crossy/auth";
 import { createSessionServer } from "./server";
 
 // The JWK Set shape the auth port expects, named without importing `jose` (a service never
 // imports `jose`; only the auth package does).
-type Jwks = Awaited<ReturnType<SupabaseAuthConfig["fetchJwks"]>>;
+type Jwks = Awaited<ReturnType<JwksAuthConfig["fetchJwks"]>>;
 
 function required(name: string): string {
   const value = process.env[name];
@@ -31,9 +31,9 @@ async function main(): Promise<void> {
   // connection (restart, network blip). Log and let the pool reconnect on the next query.
   pool.on("error", (err) => console.error("pg pool error:", err.message));
 
-  // The Supabase adapter verifies tokens locally against a background-refreshed JWKS; the
+  // The JWKS adapter verifies tokens locally against a background-refreshed JWKS; the
   // service supplies the real `fetch`, the adapter never fetches on the verify path (SP2).
-  const authPort = await createSupabaseAuthPort({
+  const authPort = await createJwksAuthPort({
     issuer: required("SUPABASE_ISSUER"),
     fetchJwks: async (jwksUri) => {
       const response = await fetch(jwksUri);
