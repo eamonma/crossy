@@ -838,8 +838,9 @@ than a blank-page spec. M4's dogfood exit stands unchanged. Landed and deployed:
   and rebus entry, sheet gestures vs solving gestures, safe areas, landscape.
   **Exit: a phone-only friend solves comfortably, observed in a dogfood session.**
 - **Track B (M5)**: iOS — Swift vectors fully green, handshake, Canvas grid renderer,
-  native Sign in with Apple, universal links. Verify iOS 26 / Liquid Glass assumptions
-  against current SDKs at kickoff. Flesh-out covers at minimum: Canvas render spec
+  native Sign in with Apple, universal links. Liquid Glass assumptions verified at
+  kickoff (SP-i1); floor iOS 18, one blur-material fallback below 26 (owner ruling
+  2026-07-10, D06 as amended). Flesh-out covers at minimum: Canvas render spec
   matching the web grid rules, haptics, hardware keyboard, Dynamic Type on chrome,
   scenePhase reconnect. **Exit: an iOS user and a web user finish a puzzle together,
   observed in a dogfood session.**
