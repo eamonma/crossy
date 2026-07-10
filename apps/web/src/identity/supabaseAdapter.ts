@@ -62,6 +62,24 @@ function toSession(session: Session | null): IdentitySession | null {
   };
 }
 
+/**
+ * Did the identity actually change between two mapped sessions? supabase-js fires
+ * onAuthStateChange on token refresh and whenever the tab regains visibility (its
+ * auto-refresh ticker runs on visibilitychange), not only on real sign-in/out. Only a
+ * change in null-ness, userId, or isAnonymous is one the app must react to; a same-user
+ * re-emission (a TOKEN_REFRESHED, a re-emitted SIGNED_IN) is not. The null-to-session
+ * transition (OAuth redirect completion, INITIAL_SESSION) always counts, because the
+ * needs-auth gate depends on it.
+ */
+function identityChanged(
+  prev: IdentitySession | null,
+  next: IdentitySession | null,
+): boolean {
+  if (prev === null && next === null) return false;
+  if (prev === null || next === null) return true;
+  return prev.userId !== next.userId || prev.isAnonymous !== next.isAnonymous;
+}
+
 export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
   const create = deps.createClientFn ?? createClient;
   const currentUrl = deps.currentUrl ?? defaultCurrentUrl;
@@ -84,7 +102,13 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
   const listeners = new Set<(s: IdentitySession | null) => void>();
 
   supabase.auth.onAuthStateChange((_event, session) => {
-    current = toSession(session);
+    const next = toSession(session);
+    const changed = identityChanged(current, next);
+    // Always keep `current` fresh so getSession reads the latest mapped session, but
+    // only notify listeners on a real identity change. Otherwise every token refresh or
+    // tab refocus would churn the game (close the socket, refetch, reopen) for nothing.
+    current = next;
+    if (!changed) return;
     for (const cb of listeners) cb(current);
   });
 

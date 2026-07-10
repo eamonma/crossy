@@ -258,4 +258,59 @@ describe("supabase identity adapter", () => {
       isAnonymous: true,
     });
   });
+
+  const session = (over: Record<string, unknown> = {}): unknown => ({
+    access_token: "a",
+    user: fakeUser(over),
+  });
+
+  it("onChange notifies on the first session so the needs-auth gate opens (null to a session)", () => {
+    const { deps, fireAuthChange } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    const seen = vi.fn();
+    identity.onChange(seen);
+    fireAuthChange(session({ id: "u1" }));
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveBeenCalledWith({
+      userId: "u1",
+      displayName: "Ada Lovelace",
+      isAnonymous: false,
+    });
+  });
+
+  it("onChange suppresses a same-user re-emission (token refresh, tab refocus): the game must not churn", () => {
+    const { deps, fireAuthChange } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    fireAuthChange(session({ id: "u1" })); // establish current before listening
+    const seen = vi.fn();
+    identity.onChange(seen);
+    fireAuthChange(session({ id: "u1" })); // same identity, fresh token
+    expect(seen).not.toHaveBeenCalled();
+  });
+
+  it("onChange notifies on sign-out (a session to null)", () => {
+    const { deps, fireAuthChange } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    fireAuthChange(session({ id: "u1" }));
+    const seen = vi.fn();
+    identity.onChange(seen);
+    fireAuthChange(null);
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveBeenCalledWith(null);
+  });
+
+  it("onChange notifies when the user changes (account switch)", () => {
+    const { deps, fireAuthChange } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    fireAuthChange(session({ id: "u1" }));
+    const seen = vi.fn();
+    identity.onChange(seen);
+    fireAuthChange(session({ id: "u2" }));
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveBeenCalledWith({
+      userId: "u2",
+      displayName: "Ada Lovelace",
+      isAnonymous: false,
+    });
+  });
 });
