@@ -380,7 +380,7 @@ The seed cases for single-cell advance (`getNextCell`); `canEscapeWord` semantic
 
 Cases 8 vs 11 (both start at 1, forward) isolate the flag: 3 with escape, 1 without. Cases 7 vs 12 (both start at 0, forward) show it is a mid-word no-op: 1 either way.
 
-Planned additions under the same fixture: word-bounds cases, next-word (Tab) including the wrap to the grid's first playable cell, Tab landing on a clue's first empty cell (start or end when the clue is full), typing wrap at word end (incomplete wraps to start, complete stays), and backspace stepping back through an already-empty cell.
+Planned additions under the same fixture: word-bounds cases, next-word (Tab) and previous-word (Shift+Tab) traversing the circular cross-axis clue cycle (every across clue then every down clue), Tab skipping full clues to land on the next clue's first empty cell, typing wrap at word end (incomplete wraps to start, complete stays), and backspace stepping back through an already-empty cell. Tab's cycle and axis crossing follow the owner decision 2026-07-10, which supersedes v2's same-axis wrap.
 
 **Completion matrix vectors** (reducer cases plus actor integration): repeated completion attempts yield exactly one `gameCompleted`; a filled-but-wrong board emits nothing and stays `ongoing`; **a full-but-wrong board made correct by an in-place overwrite (no change to `filledCount`) completes exactly once**; two players filling the last two cells concurrently yield exactly one completion; any mutation after completion is rejected; a client disconnected across the completion learns of it from the snapshot.
 

@@ -159,12 +159,15 @@ outputs:
 - `wordBounds`: the word's extent along `direction` from `from`, scanning to a block
   or grid edge each way (DESIGN §5). `then.start` and `then.end` are the inclusive
   bounds.
-- `tab`: Tab (`toward: "forward"`) and Shift+Tab (`toward: "backward"`). Targets the
-  next or previous clue in `direction`'s clue list and lands on that clue's first
-  empty cell scanning from its start; a full target clue falls back to its start on
-  Tab, its end on Shift+Tab (DESIGN §5). Past either end of the clue list it wraps to
-  the grid's first playable cell with `direction` unchanged, so `then.direction` is
-  pinned alongside `then.cell`: the wrap never crosses axes.
+- `tab`: Tab (`toward: "forward"`) and Shift+Tab (`toward: "backward"`). Traverses the
+  Tab cycle, every across clue in clue order then every down clue in clue order,
+  circular (owner decision 2026-07-10). Lands on the first clue after the current one
+  that has an empty cell, at that clue's first empty cell scanning from its start;
+  `then.direction` is the landing clue's axis, so Tab skips full clues and crosses from
+  across into down. The current clue re-enters only after a full cycle. With nothing
+  empty anywhere it steps to the adjacent clue (first cell on Tab, last on Shift+Tab),
+  axis crossing included. `then.direction` is pinned alongside `then.cell`. This
+  supersedes audit Verdict 1's same-axis, no-cross wrap (DESIGN §5).
 - `typing`: the cursor move after a letter is placed at `from`. `given.fills` is the
   board after that keystroke, so `from` is filled. Advances forward with filled-skip
   inside the word to the next empty cell; at the word's end it wraps to the word's

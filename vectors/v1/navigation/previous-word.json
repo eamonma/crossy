@@ -1,6 +1,6 @@
 [
   {
-    "name": "DESIGN §5 Shift+Tab / §13: symmetric first-empty scan finds the previous clue's mid-word gap (audit Verdict 1, not v2's land-on-end)",
+    "name": "DESIGN §5 Shift+Tab / §13: first-empty scan finds the previous clue's mid-word gap, landing from its start (not v2's land-on-end)",
     "given": {
       "cols": 5,
       "rows": 4,
@@ -27,7 +27,7 @@
     "then": { "cell": 7, "direction": "across" }
   },
   {
-    "name": "DESIGN §5 Shift+Tab / §13: a full previous clue falls back to its end (the Shift+Tab full-clue case)",
+    "name": "DESIGN §5 Shift+Tab / §13 (owner decision 2026-07-10 supersedes v2's land-on-end): skips a fully filled previous clue to the previous incomplete one",
     "given": {
       "cols": 5,
       "rows": 4,
@@ -40,10 +40,21 @@
       "from": 10,
       "toward": "backward"
     },
-    "then": { "cell": 9, "direction": "across" }
+    "then": { "cell": 5, "direction": "across" }
   },
   {
-    "name": "DESIGN §5 Shift+Tab / §13: past the first down clue, wraps to the grid's first playable cell, still down (no axis cross)",
+    "name": "DESIGN §5 Shift+Tab / §13 (owner decision 2026-07-10 supersedes audit Verdict 1's no-axis-cross): from the first across clue, Shift+Tab wraps circularly to the last down clue",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 0,
+      "toward": "backward"
+    },
+    "then": { "cell": 18, "direction": "down" }
+  },
+  {
+    "name": "DESIGN §5 Shift+Tab / §13 (owner decision 2026-07-10 supersedes audit Verdict 1's no-axis-cross): from the first down clue, Shift+Tab crosses backward into the last across clue",
     "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
     "when": {
       "op": "tab",
@@ -51,6 +62,40 @@
       "from": 10,
       "toward": "backward"
     },
-    "then": { "cell": 0, "direction": "down" }
+    "then": { "cell": 15, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Shift+Tab / §13 (owner decision 2026-07-10): a fully filled board still advances Shift+Tab to the previous clue, landing on its last cell",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": {
+        "0": "X",
+        "1": "X",
+        "3": "X",
+        "4": "X",
+        "5": "X",
+        "7": "X",
+        "8": "X",
+        "9": "X",
+        "10": "X",
+        "11": "X",
+        "12": "X",
+        "14": "X",
+        "15": "X",
+        "16": "X",
+        "17": "X",
+        "18": "X",
+        "19": "X"
+      }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 10,
+      "toward": "backward"
+    },
+    "then": { "cell": 9, "direction": "across" }
   }
 ]
