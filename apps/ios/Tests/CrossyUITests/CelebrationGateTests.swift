@@ -80,7 +80,8 @@ final class CompletionModelTests: XCTestCase {
         model.observe(status: .completed, live: true, mosaicEnabled: true, now: 200)
         XCTAssertEqual(model.mosaicStartedAt, 200)
         XCTAssertTrue(model.isClarityBeat)
-        XCTAssertFalse(model.isStatsOpen)  // the stats arrive as the mosaic settles
+        // The stats arrive WITH the celebration (owner ruling 2026-07-10).
+        XCTAssertTrue(model.isStatsOpen)
     }
 
     func test_secondCompletedObservationNeverRestartsTheMosaic_INV3() {

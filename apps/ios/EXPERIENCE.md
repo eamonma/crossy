@@ -116,9 +116,10 @@ States, each honest and distinct:
   rendered as described in `DESIGN.md` section 8: calm dot, breathing dot, dimmed
   room with countdown. Input during reconnect is held gracefully, not swallowed
   silently: the overlay and reconciliation rules of PROTOCOL.md section 8 govern.
-- **Completed.** The mosaic, the frozen time, then the stats: solve time, entries,
-  solvers (`gameCompleted.stats`). The connection stays open; the room becomes a
-  finished object you can revisit from Rooms.
+- **Completed.** The mosaic plays and the stats arrive with it (owner ruling
+  2026-07-10): the frozen time, entries, solvers (`gameCompleted.stats`). The
+  connection stays open; the room becomes a finished object you can revisit
+  from Rooms.
 - **Abandoned.** Terminal and quiet: the board freezes with a one-line notice.
 - **Kicked.** `kicked` notice then close: the room exits with one honest sentence;
   the code is dead for this account thereafter (denylist).

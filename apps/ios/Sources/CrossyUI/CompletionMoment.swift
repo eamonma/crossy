@@ -159,9 +159,9 @@ public final class CompletionModel {
     /// (the fallback below 26 stays inert; §8 names no fallback).
     public private(set) var isClarityBeat = false
 
-    /// The stats card (EXPERIENCE.md Completed): auto-presents as the mosaic
-    /// settles; dismissible back to the frozen room; re-presentable from the
-    /// completed zone.
+    /// The stats card (EXPERIENCE.md Completed): arrives with the celebration
+    /// (owner ruling 2026-07-10); dismissible back to the frozen room;
+    /// re-presentable from the frozen clock.
     public var isStatsOpen = false
 
     @ObservationIgnored private var gate = CelebrationGate()
@@ -182,10 +182,12 @@ public final class CompletionModel {
         now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
     ) {
         guard gate.observe(status: status, live: live) else { return }
-        guard mosaicEnabled else {
-            isStatsOpen = true
-            return
-        }
+        // The stats arrive WITH the celebration (owner ruling 2026-07-10,
+        // amending the earlier settle-then-stats staging): the card morphs from
+        // the clock while the mosaic plays behind it. A muted mosaic (ID-1)
+        // reduces the celebration to the card alone.
+        isStatsOpen = true
+        guard mosaicEnabled else { return }
         mosaicStartedAt = now
         isClarityBeat = !reduceMotion
         celebrationTask?.cancel()
@@ -197,7 +199,6 @@ public final class CompletionModel {
                 for: .seconds(MosaicEnvelope.duration - MosaicEnvelope.clarityDuration))
             guard !Task.isCancelled else { return }
             self?.mosaicStartedAt = nil
-            self?.isStatsOpen = true
         }
     }
 }

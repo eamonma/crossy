@@ -149,6 +149,11 @@ public struct SolveScreen: View {
                     }
                 }
             }
+            // A terminal status reshapes the room (the deck leaves, the board
+            // takes its space): the grid rides the layout change on the chrome
+            // spring instead of jumping (owner finding 2026-07-10). Reduce
+            // Motion cuts.
+            .animation(reduceMotion ? nil : .crossyChrome, value: status)
 
             if let morph = meltMorph {
                 ClueChrome(
