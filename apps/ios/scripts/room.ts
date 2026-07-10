@@ -3,7 +3,8 @@
 // app configured against the stack, drive a scripted teammate over a real WebSocket
 // (letters plus cursor presence), and prove the app renders them with a simctl
 // screenshot. Run it as `corepack pnpm test:ios-room`; `--reap` sweeps orphans and
-// exits.
+// exits; `--launch '<game url>'` is the one-command dogfood against a running
+// dev-stack (see runLaunchMode and the recipe at the bottom).
 //
 // It reuses the I1e harness by import (e2e/src/harness.ts: Testcontainers Postgres,
 // migrations, jose token minting, the JWKS server, service spawn, http readiness), so
@@ -23,6 +24,7 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { get as httpGet } from "node:http";
 import {
   existsSync,
   mkdirSync,
@@ -495,6 +497,42 @@ async function driveTeammate(gameId: string, token: string): Promise<void> {
   socket.close(1000);
 }
 
+/**
+ * Readiness poll for the SESSION origin specifically, via node:http with
+ * `agent: false` so no keep-alive socket outlives the probe. The harness's
+ * fetch-based `waitForHttp` parks a pooled keep-alive connection in undici's
+ * global agent; the session's Node server reaps it after its idle timeout, and
+ * when the first WebSocket dial to that origin lands minutes later (the
+ * simulator build and boot sit in between), undici reuses the stale pooled
+ * socket for the upgrade and the dial dies as close 1006 with no frames.
+ * Diagnosed live in the Studio run of this harness (ios/i2-exit); a socket
+ * that never enters the pool cannot go stale in it.
+ */
+function waitForSessionReady(url: string, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  return new Promise((resolve, reject) => {
+    const attempt = (): void => {
+      const req = httpGet(url, { agent: false }, (res) => {
+        res.resume(); // drain so the one-shot socket closes cleanly
+        if (res.statusCode !== undefined && res.statusCode < 500) {
+          resolve();
+          return;
+        }
+        retry(`status ${res.statusCode}`);
+      });
+      req.on("error", (err) => retry(String(err)));
+    };
+    const retry = (last: string): void => {
+      if (Date.now() >= deadline) {
+        reject(new Error(`timed out waiting for ${url} (${last})`));
+        return;
+      }
+      setTimeout(attempt, 150);
+    };
+    attempt();
+  });
+}
+
 /** POST JSON to the api with a bearer token, throwing on a non-2xx. */
 async function postJson(
   path: string,
@@ -569,12 +607,69 @@ async function shutdownOnSignal(signal: string): Promise<void> {
   process.exit(1);
 }
 
+/**
+ * `--launch '<game url>'`: the one-command dogfood (ported from the Studio run,
+ * ios/i2-exit). Against a running `corepack pnpm dev:stack`, parse the printed
+ * game url (…/game/<id>?api=…&token=…), build the app, and launch a simulator
+ * straight into that room as the url's identity; the human solves in a browser
+ * on the stack's other printed url. This mode boots no services and sweeps
+ * nothing, so nothing is torn down: Ctrl+C in the dev-stack terminal stops the
+ * stack as usual, and the simulator stays up for the human. For a real device,
+ * CROSSY_ROOM_WS_BASE overrides the session origin and the same four launch
+ * arguments go into the Xcode scheme (the recipe at the bottom).
+ */
+function runLaunchMode(gameUrl: string): void {
+  const url = new URL(gameUrl);
+  const gameId = url.pathname.split("/").filter(Boolean).at(-1);
+  const apiUrl = url.searchParams.get("api");
+  const token = url.searchParams.get("token");
+  if (gameId === undefined || apiUrl === null || token === null) {
+    throw new Error(
+      "--launch expects a dev-stack game url (…/game/<id>?api=…&token=…), quoted",
+    );
+  }
+  // dev-stack's stable session port; CROSSY_ROOM_WS_BASE overrides for a device.
+  const wsBase = process.env["CROSSY_ROOM_WS_BASE"] ?? "ws://127.0.0.1:8791";
+
+  // An already-booted simulator is the human's; otherwise boot the dedicated
+  // device (a later proof run reaps it by name, so leaving it up is safe).
+  const booted = listDevices().find((d) => d.state === "Booted");
+  const udid = booted?.udid ?? createAndBootSimulator();
+  const appPath = buildApp(udid);
+  installAndLaunch(udid, appPath, {
+    CROSSY_IT_API_URL: apiUrl,
+    CROSSY_IT_WS_BASE: wsBase,
+    CROSSY_IT_GAME_ID: gameId,
+    CROSSY_IT_TOKEN: token,
+  });
+  console.log(
+    [
+      "",
+      `The real room is live on ${booted?.name ?? SIM_NAME} as this token's player.`,
+      "Open the stack's OTHER printed url in a browser and solve together.",
+      "This mode started no services, so nothing is torn down here; Ctrl+C in",
+      "the dev-stack terminal stops the stack as usual.",
+      "",
+    ].join("\n"),
+  );
+}
+
 async function main(): Promise<void> {
   process.stdout.on("error", () => undefined);
   process.stderr.on("error", () => undefined);
   process.on("SIGINT", () => void shutdownOnSignal("SIGINT"));
   process.on("SIGTERM", () => void shutdownOnSignal("SIGTERM"));
   process.on("SIGHUP", () => void shutdownOnSignal("SIGHUP"));
+
+  const launchIndex = process.argv.indexOf("--launch");
+  if (launchIndex !== -1) {
+    const gameUrl = process.argv[launchIndex + 1];
+    if (gameUrl === undefined) {
+      throw new Error("--launch needs the dev-stack game url as its argument");
+    }
+    runLaunchMode(gameUrl);
+    return;
+  }
 
   if (process.argv.includes("--reap")) {
     await reapFromPidfile();
@@ -613,7 +708,10 @@ async function main(): Promise<void> {
     PORT: String(API_PORT),
   });
   writePidfile();
-  await waitForHttp(`http://127.0.0.1:${SESSION_PORT}/`);
+  // The session origin gets the pool-free probe (its next visitor is a WebSocket
+  // upgrade); the api origin keeps waitForHttp, whose pooled socket is reused
+  // immediately by the fetch-based seeding below, never left to go stale.
+  await waitForSessionReady(`http://127.0.0.1:${SESSION_PORT}/`);
   await waitForHttp(`${API_URL}/health`);
 
   console.log(
@@ -661,12 +759,37 @@ async function main(): Promise<void> {
   const after = screenshot(simUdid, "after-teammate");
   console.log(`screenshot (teammate letters + cursor rendered): ${after}`);
 
+  // Weather evidence (ported from the Studio run): drop the session (SIGTERM,
+  // so the accepted tail flushes, INV-5) and catch the dimmed room with the
+  // quiet countdown — the reconnectRetryAt wiring over the real wire — then
+  // restart on the same port and catch the redialed, re-livened room.
+  console.log("dropping the session service for the reconnecting weather...");
+  await killChild(session, "SIGTERM");
+  session = null;
+  await delay(3_000); // a few failed dials in, the backoff walk shows the countdown
+  const reconnecting = screenshot(simUdid, "weather-reconnecting");
+  console.log(`screenshot (dimmed room, quiet countdown): ${reconnecting}`);
+
+  console.log("restarting the session service on the same port...");
+  session = spawnService("session", sessionEntry, {
+    DATABASE_URL: dbUrl,
+    SUPABASE_ISSUER: ISSUER,
+    PORT: String(SESSION_PORT),
+    HOST: "127.0.0.1",
+  });
+  writePidfile();
+  await waitForSessionReady(`http://127.0.0.1:${SESSION_PORT}/`);
+  await delay(4_000); // the app's backoff dial lands and the welcome resyncs
+  const reconnected = screenshot(simUdid, "weather-reconnected");
+  console.log(`screenshot (redialed, board rehydrated): ${reconnected}`);
+
   await teardown();
   console.log(
-    "room proof green: the app rendered a scripted teammate over the real wire.",
+    "room proof green: the app rendered a scripted teammate over the real wire,",
+    "and rode a session drop through the reconnect weather and back.",
   );
   console.log(
-    `evidence screenshots (gitignored tmp, never committed):\n  ${before}\n  ${after}`,
+    `evidence screenshots (gitignored tmp, never committed):\n  ${before}\n  ${after}\n  ${reconnecting}\n  ${reconnected}`,
   );
   process.exit(0);
 }
@@ -681,17 +804,19 @@ main().catch(async (err: unknown) => {
 // exit: an iOS simulator or device and a web browser solve a real puzzle together):
 //
 //   1. `corepack pnpm dev:stack` boots the local stack (api, session, Postgres) on the
-//      dev band (8790-8792) and prints a signed-in web URL plus a minted token and a
-//      seeded game id. Solve in the browser there.
-//   2. Point the app at that same stack. In Xcode, edit the Crossy scheme's Run action
-//      Arguments and add, as "Arguments Passed On Launch":
-//        -CROSSY_IT_API_URL   http://127.0.0.1:8790
-//        -CROSSY_IT_WS_BASE   ws://127.0.0.1:8791
-//        -CROSSY_IT_GAME_ID   <the game id dev:stack printed>
-//        -CROSSY_IT_TOKEN     <a token for a second identity dev:stack minted>
-//      (RoomConfig.resolve reads these; with none set the app stays in DemoRoom.)
-//   3. Run the app on a simulator or a real device on the same Mac's network. Both
-//      clients now sit in one room: type on the phone, watch the letters and cursor
-//      land in the browser, and the reverse. This is the phone-vs-browser dogfood the
-//      I2 exit calls for; `corepack pnpm test:ios-room` is the same shape, scripted and
+//      dev band (8790-8792) and prints two signed-in game urls, one per identity.
+//      Open one in a browser and solve there.
+//   2. Terminal 2: `corepack pnpm test:ios-room --launch '<the other printed url>'`.
+//      That builds the app, boots (or reuses) a simulator, and launches it straight
+//      into the same room as that url's identity: the browser and the simulator now
+//      solve together. This is the phone-vs-browser dogfood the I2 exit calls for.
+//   3. For a real device instead of the simulator, set the same four launch arguments
+//      in the Xcode scheme's Run action ("Arguments Passed On Launch"):
+//        -CROSSY_IT_API_URL   http://<the Mac's LAN address>:8790
+//        -CROSSY_IT_WS_BASE   ws://<the Mac's LAN address>:8791
+//        -CROSSY_IT_GAME_ID   <the game id from the printed url>
+//        -CROSSY_IT_TOKEN     <the token from the printed url>
+//      (RoomConfig.resolve reads these; with none set the app stays in DemoRoom. The
+//      phone must reach the Mac over the LAN, so loopback won't do there.)
+//      `corepack pnpm test:ios-room` with no flags is the same shape, scripted and
 //      screenshotted, with teardown proven.
