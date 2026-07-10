@@ -184,7 +184,7 @@ function ClueList({
 
   return (
     <div className="flex flex-col min-h-0 flex-1">
-      <div className="px-4 pt-2 pb-1.5">
+      <div className="px-4 py-1 text-center">
         <span className="text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text">
           {title}
         </span>
@@ -205,8 +205,7 @@ function ClueList({
           const onClue = presence?.get(`${c.direction}-${c.number}`);
           // The dimming lives on the content spans, not the whole button, so presence dots
           // keep full strength on a solved row (a child can never exceed its parent's opacity).
-          const dim =
-            solved && "opacity-40 group-hover:opacity-100 transition-opacity";
+          const dim = solved && "opacity-40 group-hover:opacity-100";
           return (
             <li key={`${c.direction}-${c.number}`}>
               <button
@@ -342,7 +341,7 @@ function DockAxis({
 
   return (
     <div className={cx("flex flex-col min-h-0 min-w-0 flex-1", className)}>
-      <div className="px-4 pt-2 pb-1.5">
+      <div className="px-4 py-1 text-center">
         <span className="text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text">
           {title}
         </span>
@@ -363,8 +362,7 @@ function DockAxis({
           const onClue = presence?.get(`${c.direction}-${c.number}`);
           // Same treatment as ClueList: dimming on the content spans, not the button, so a
           // solved row's presence dots keep full strength.
-          const dim =
-            solved && "opacity-40 group-hover:opacity-100 transition-opacity";
+          const dim = solved && "opacity-40 group-hover:opacity-100";
           return (
             <li
               key={`${c.direction}-${c.number}`}

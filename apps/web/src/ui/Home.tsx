@@ -101,7 +101,7 @@ function PanelShell({
 }) {
   return (
     <div className="h-full overflow-y-auto pb-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 md:pt-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-4 pt-4 md:pt-2">
         <div className="min-w-0">
           <h1 className="m-0 font-display text-6 text-text">{title}</h1>
           {subtitle !== undefined && (
@@ -110,7 +110,7 @@ function PanelShell({
         </div>
         {action}
       </div>
-      <Divider className="mt-4" />
+      <Divider className="mt-3" />
       {children}
     </div>
   );
@@ -118,7 +118,7 @@ function PanelShell({
 
 function PanelLoading({ label }: { label: string }) {
   return (
-    <div className="px-5 py-16 text-center text-2 text-text-subtle">
+    <div className="px-5 py-12 text-center text-2 text-text-subtle">
       {label}
     </div>
   );
@@ -132,7 +132,7 @@ function PanelError({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+    <div className="flex flex-col items-center gap-3 px-6 py-12 text-center">
       <p className="text-2 text-text-muted">{label}</p>
       <Button variant="secondary" size="sm" onClick={onRetry}>
         Try again
@@ -151,7 +151,7 @@ function PanelEmpty({
   onAction: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-4 px-6 py-12 text-center">
       <p className="max-w-[24rem] text-3 text-text-muted">{sentence}</p>
       <Button variant="default" onClick={onAction}>
         <PlusIcon />
@@ -248,7 +248,7 @@ function GamesList({
               type="button"
               onClick={() => onOpen(g.gameId)}
               aria-label={`Open ${title}`}
-              className="flex w-full items-center justify-between gap-3 border-b border-border px-5 py-3.5 text-left transition-colors hover:bg-sand-2 focus-visible:bg-sand-2 focus-visible:outline-none"
+              className="flex w-full items-center justify-between gap-3 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-sand-2 focus-visible:bg-sand-2 focus-visible:outline-none"
             >
               <span className="min-w-0">
                 <span className="flex min-w-0 items-center gap-2">
@@ -349,7 +349,7 @@ function Th({
   return (
     <th
       className={cx(
-        "border-b border-border-strong px-5 py-2.5 text-left text-1 font-medium text-text-muted",
+        "border-b border-border-strong px-4 py-2 text-left text-1 font-medium text-text-muted",
         className,
       )}
     >
@@ -396,7 +396,7 @@ function PuzzlesTable({
                 className="border-b border-border last:border-0"
               >
                 {/* w-2/5 + max-w-0 gives the title real room and still truncates overflow. */}
-                <td className="w-2/5 max-w-0 px-5 py-3">
+                <td className="w-2/5 max-w-0 px-4 py-2">
                   <div className="truncate font-medium text-text">
                     {puzzleTitle(p)}
                   </div>
@@ -406,10 +406,10 @@ function PuzzlesTable({
                     </div>
                   )}
                 </td>
-                <td className="px-5 py-3 font-mono text-text tabular-nums whitespace-nowrap">
+                <td className="px-4 py-2 font-mono text-text tabular-nums whitespace-nowrap">
                   {geometry(p.cols, p.rows)}
                 </td>
-                <td className="px-5 py-3">
+                <td className="px-4 py-2">
                   {features.length === 0 ? (
                     <span className="text-text-subtle">Standard</span>
                   ) : (
@@ -422,10 +422,10 @@ function PuzzlesTable({
                     </span>
                   )}
                 </td>
-                <td className="px-5 py-3 whitespace-nowrap text-text-muted">
+                <td className="px-4 py-2 whitespace-nowrap text-text-muted">
                   {relativeTime(p.createdAt, now)}
                 </td>
-                <td className="px-5 py-3 text-right">
+                <td className="px-4 py-2 text-right">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -452,7 +452,7 @@ function PuzzlesTable({
           return (
             <li
               key={p.puzzleId}
-              className="flex items-center justify-between gap-3 border-b border-border px-5 py-3"
+              className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5"
             >
               <div className="min-w-0">
                 <div className="truncate font-medium text-text">

@@ -100,7 +100,7 @@ export function GameToolbar({
   leading?: React.ReactNode;
 }) {
   return (
-    <header className="flex items-center gap-2 px-2 sm:px-3 py-2">
+    <header className="flex items-center gap-2 px-2 sm:px-3 py-1.5">
       {leading ?? (
         <Button
           variant="ghost"

@@ -82,7 +82,7 @@ export function SolvingNow({ roster }: { roster: Roster }) {
 
   return (
     <div className="border-b border-dashed border-border-dashed">
-      <div className="flex items-center gap-2 px-4 pt-2 pb-1.5">
+      <div className="flex items-center gap-2 px-4 py-1">
         <CapsLabel className="text-text">Solving now</CapsLabel>
         {collapsed && (
           <>
@@ -99,7 +99,7 @@ export function SolvingNow({ roster }: { roster: Roster }) {
         )}
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon-xs"
           onClick={toggle}
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand solving now" : "Collapse solving now"}
