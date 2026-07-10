@@ -82,7 +82,7 @@ function makeDeps(
     >,
     currentUrl: () => ({
       origin: "https://app.test",
-      pathAndQuery: "/?game=g1",
+      pathAndQuery: "/game/g1?code=ABCD2345",
     }),
     ...extra,
   };
@@ -216,7 +216,7 @@ describe("supabase identity adapter", () => {
     await identity.signInWithDiscord();
     expect(calls.signInWithOAuth).toHaveBeenCalledWith({
       provider: "discord",
-      options: { redirectTo: "https://app.test/?game=g1" },
+      options: { redirectTo: "https://app.test/game/g1?code=ABCD2345" },
     });
   });
 

@@ -32,9 +32,10 @@ server {
         return 200 '{"supabaseUrl":"${SUPABASE_URL}","supabasePublishableKey":"${SUPABASE_PUBLISHABLE_KEY}","apiBase":"${API_BASE}","guestsEnabled":${GUESTS_ENABLED},"turnstileSiteKey":"${TURNSTILE_SITE_KEY}"}';
     }
 
-    # SPA shell. The live game is entered as /?game=<id> (with optional ?api=/?token=
-    # overrides), and there is no server-side routing, so any unmatched path falls back to
-    # the single index.html.
+    # SPA shell. The client routes by path (/game/<id>, /puzzles, /new; legacy ?game= links
+    # redirect client-side), so deep links MUST fall back to the single index.html here; a
+    # 404 on /game/<id> would break every invite link. Optional ?api=/?token= overrides ride
+    # the query string and never reach this server's routing.
     location / {
         try_files $uri $uri/ /index.html;
         add_header Cache-Control "no-cache";

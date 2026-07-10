@@ -3,12 +3,15 @@
 // deterministic to pin.
 import { describe, expect, it } from "vitest";
 import {
+  compactTime,
   featureLabels,
   gameTitle,
   geometry,
+  puzzleTitle,
   relativeTime,
   shortDate,
   type GameSummary,
+  type PuzzleSummary,
 } from "./homeData";
 
 // Local wall-clock noon so the calendar reads (getMonth/getDate/getFullYear the formatters use)
@@ -30,7 +33,20 @@ function game(over: Partial<GameSummary> = {}): GameSummary {
     createdAt: "2026-07-09T12:00:00",
     createdBy: "u1",
     memberCount: 1,
-    puzzle: { puzzleId: "p1", rows: 15, cols: 15 },
+    puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: null },
+    ...over,
+  };
+}
+
+function puzzle(over: Partial<PuzzleSummary> = {}): PuzzleSummary {
+  return {
+    puzzleId: "p1",
+    createdAt: "2026-07-09T12:00:00",
+    rows: 15,
+    cols: 15,
+    features: null,
+    title: null,
+    author: null,
     ...over,
   };
 }
@@ -60,13 +76,32 @@ describe("gameTitle", () => {
       "Sunday themeless",
     );
   });
-  it("falls back to geometry and date when unnamed", () => {
+  it("falls back to the puzzle's title when the room is unnamed", () => {
+    const g = game({
+      name: null,
+      puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: "NYT 2026-07-05" },
+    });
+    expect(gameTitle(g, NOW)).toBe("NYT 2026-07-05");
+  });
+  it("falls back to geometry and date when unnamed and untitled", () => {
     expect(gameTitle(game({ name: null, createdAt: iso(0) }), NOW)).toBe(
       "15 × 15 · Jul 9",
     );
   });
   it("treats an empty name as unnamed", () => {
     expect(gameTitle(game({ name: "   " }), NOW)).toBe("15 × 15 · Jul 9");
+  });
+});
+
+describe("puzzleTitle", () => {
+  it("prefers the parsed title, trimmed", () => {
+    expect(puzzleTitle(puzzle({ title: "  Themeless 42 " }))).toBe(
+      "Themeless 42",
+    );
+  });
+  it("reads Untitled when the document carried none", () => {
+    expect(puzzleTitle(puzzle({ title: null }))).toBe("Untitled");
+    expect(puzzleTitle(puzzle({ title: "  " }))).toBe("Untitled");
   });
 });
 
@@ -95,5 +130,21 @@ describe("relativeTime", () => {
   it("clamps a future timestamp to just now rather than reading as the future", () => {
     const future = new Date(NOW.getTime() + 3 * 3_600_000).toISOString();
     expect(relativeTime(future, NOW)).toBe("just now");
+  });
+});
+
+describe("compactTime (sidebar rows)", () => {
+  it("uses one largest unit, abbreviated", () => {
+    expect(compactTime(iso(0, 0), NOW)).toBe("now");
+    expect(compactTime(iso(0, 3), NOW)).toBe("3h");
+    expect(compactTime(iso(2), NOW)).toBe("2d");
+    expect(compactTime(iso(14), NOW)).toBe("2w");
+    expect(compactTime(iso(90), NOW)).toBe("3mo");
+    expect(compactTime(iso(800), NOW)).toBe("2y");
+  });
+  it("clamps a future timestamp to now and is empty for garbage", () => {
+    const future = new Date(NOW.getTime() + 3_600_000).toISOString();
+    expect(compactTime(future, NOW)).toBe("now");
+    expect(compactTime("not-a-date", NOW)).toBe("");
   });
 });

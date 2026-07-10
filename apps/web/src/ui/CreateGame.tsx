@@ -1,17 +1,20 @@
-// Create (?create=1): upload or paste an XWord Info JSON puzzle, then land in the game with
+// Create (/new): upload or paste an XWord Info JSON puzzle, then land in the game with
 // a share link. Composed as v2's create dialog: one centered card with a name field, the
 // dashed dropzone, and a right-aligned Cancel / Create footer; pasting JSON is a quiet
 // disclosure under the dropzone. Creating requires a full account (guests are join-only,
-// DESIGN section 8), so a logged-out or guest visitor sees the gate first. Rejections from
-// the ingestion ACL map to plain, specific sentences shown inline, never a toast and never
-// an error code. INV-6: the uploaded JSON carries solutions to the server, but this screen
-// never renders a grid from local state; on success it navigates and the board arrives,
-// solution stripped, over the WebSocket.
+// DESIGN section 8), so a logged-out or guest visitor sees the gate first. Signed in, the
+// card centers inside the sidebar shell's content frame (the "New chat" shape); signed out
+// it keeps the standalone top-bar layout. Rejections from the ingestion ACL map to plain,
+// specific sentences shown inline, never a toast and never an error code. INV-6: the
+// uploaded JSON carries solutions to the server, but this screen never renders a grid from
+// local state; on success it navigates and the board arrives, solution stripped, over the
+// WebSocket.
 import { useEffect, useRef, useState } from "react";
 import { Cross2Icon, FileTextIcon, UploadIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
 import type { Navigate } from "../nav";
+import { gameHref, homeHref } from "../nav";
 import { TopBar } from "./TopBar";
 import { SignInButtons } from "./AuthBar";
 import { cx } from "./primitives";
@@ -60,10 +63,15 @@ export function CreateGame({
   config,
   identity,
   navigate,
+  params,
+  inShell = false,
 }: {
   config: AppConfig;
   identity: Identity;
   navigate: Navigate;
+  params: URLSearchParams;
+  /** True when the Router mounted this inside the sidebar shell (signed in). */
+  inShell?: boolean;
 }) {
   // Re-render when the session changes, so the gate swaps to the form the moment sign-in
   // lands (the top bar already tracks this; the card must not lag behind it).
@@ -74,25 +82,38 @@ export function CreateGame({
   );
   const session = identity.getSession();
 
+  const card =
+    session === null || session.isAnonymous ? (
+      <CreateGate
+        identity={identity}
+        config={config}
+        guest={session?.isAnonymous ?? false}
+      />
+    ) : (
+      <CreateForm
+        config={config}
+        identity={identity}
+        navigate={navigate}
+        params={params}
+      />
+    );
+
+  if (inShell) {
+    return (
+      <main className="h-full overflow-y-auto px-4 py-6 flex items-center justify-center">
+        <div className="w-full max-w-[28rem] pb-9">{card}</div>
+      </main>
+    );
+  }
   return (
     <div className="min-h-dvh flex flex-col">
-      <TopBar identity={identity} config={config} onHome={() => navigate("")} />
+      <TopBar
+        identity={identity}
+        config={config}
+        onHome={() => navigate(homeHref(params))}
+      />
       <main className="flex-1 px-4 py-6 flex items-center justify-center">
-        <div className="w-full max-w-[28rem] pb-9">
-          {session === null || session.isAnonymous ? (
-            <CreateGate
-              identity={identity}
-              config={config}
-              guest={session?.isAnonymous ?? false}
-            />
-          ) : (
-            <CreateForm
-              config={config}
-              identity={identity}
-              navigate={navigate}
-            />
-          )}
-        </div>
+        <div className="w-full max-w-[28rem] pb-9">{card}</div>
       </main>
     </div>
   );
@@ -133,10 +154,12 @@ function CreateForm({
   config,
   identity,
   navigate,
+  params,
 }: {
   config: AppConfig;
   identity: Identity;
   navigate: Navigate;
+  params: URLSearchParams;
 }) {
   const [raw, setRaw] = useState("");
   const [name, setName] = useState("");
@@ -146,8 +169,7 @@ function CreateForm({
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const apiOverride = new URLSearchParams(window.location.search).get("api");
-  const apiBase = apiOverride ?? config.apiBase;
+  const apiBase = params.get("api") ?? config.apiBase;
 
   async function ingestFile(file: File): Promise<void> {
     setPhase({ kind: "idle" });
@@ -251,7 +273,7 @@ function CreateForm({
       // The name no longer rides on the URL: LiveApp reads it from the game view (and still
       // falls back to a `?name=` param for links minted before this change). The invite code
       // stays in the link, since a new visitor needs it to self-join.
-      navigate(`?game=${gameId}&code=${inviteCode}`);
+      navigate(gameHref(gameId, params, { code: inviteCode }));
     } catch {
       setPhase({
         kind: "error",
@@ -374,7 +396,11 @@ function CreateForm({
       )}
 
       <div className="mt-5 flex items-center justify-end gap-2">
-        <Button variant="secondary" size="sm" onClick={() => navigate("")}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => navigate(homeHref(params))}
+        >
           Cancel
         </Button>
         <Button

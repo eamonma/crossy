@@ -305,7 +305,10 @@
   --chart-4: var(--color-sand-11);
   --chart-5: var(--color-gold-7);
   --radius: 6px; /* matches --radius-3, the panel/button radius */
-  --sidebar: var(--color-panel);
+  /* The sidebar sits on the page face, not the panel face: in the v2 shell the nav lives
+     directly on the sand background and the framed content panel floats beside it. Hover is
+     the quiet sand tint; the active row is painted gold at the component (sidebar.tsx). */
+  --sidebar: var(--color-background);
   --sidebar-foreground: var(--color-text);
   --sidebar-primary: var(--color-solid);
   --sidebar-primary-foreground: #ffffff;

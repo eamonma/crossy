@@ -20,20 +20,21 @@ export function resolveInviteField(
 }
 
 /**
- * Build the shareable invite URL from the resolved fields. The invite code is the capability a
- * new visitor needs to self-join, so it stays in the link; a null code means there is nothing to
- * share yet and the popover shows its fallback message. The optional name rides along so an
- * old-style link keeps rendering a title before the recipient becomes a member.
+ * Build the shareable invite URL from the resolved fields, in the path-route form the router
+ * serves (`/game/<id>?code=...`); links minted before path routing (`?game=<id>&code=...`)
+ * keep working through the router's one-time redirect. The invite code is the capability a
+ * new visitor needs to self-join, so it stays in the link; a null code means there is nothing
+ * to share yet and the popover shows its fallback message. The optional name rides along so
+ * an old-style link keeps rendering a title before the recipient becomes a member.
  */
 export function buildShareUrl(args: {
   origin: string;
-  pathname: string;
   gameId: string;
   code: string | null;
   name: string | null;
 }): string | null {
-  const { origin, pathname, gameId, code, name } = args;
+  const { origin, gameId, code, name } = args;
   if (code === null) return null;
-  const base = `${origin}${pathname}?game=${gameId}&code=${code}`;
+  const base = `${origin}/game/${encodeURIComponent(gameId)}?code=${code}`;
   return name === null ? base : `${base}&name=${encodeURIComponent(name)}`;
 }

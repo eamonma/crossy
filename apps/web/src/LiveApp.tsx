@@ -1,4 +1,4 @@
-// Live mode (`?game=<id>`): the real GameStore over a real WebSocket to the session service,
+// Live mode (`/game/<id>`): the real GameStore over a real WebSocket to the session service,
 // through the same store, grid, and engine navigation the demo uses. This is the path the M1
 // Playwright smoke drives (two browsers on one game).
 //
@@ -6,6 +6,12 @@
 // after auth, an invite code self-joins as spectator; a spectator sees the same live board a
 // solver sees, with one banner to upgrade in a tap. Token/api/ws keep their URL overrides so the
 // smoke and dogfood links keep working. INV-6: the board only ever renders from the WS store.
+//
+// Shell placement: signed in, the game renders inside the sidebar shell's content frame
+// (`inShell`), with the rail collapsed by default so the board keeps its room; the toolbar's
+// left slot becomes the sidebar trigger on desktop and stays the back chevron on phones,
+// where the game is full-bleed and no rail exists. Signed out (an invitee mid-gate), the
+// same component owns the viewport as before.
 import {
   useCallback,
   useEffect,
@@ -28,6 +34,7 @@ import {
   keyEffect,
 } from "./input/actions";
 import type { Selection } from "./input/actions";
+import { ChevronLeftIcon } from "@radix-ui/react-icons";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import type { StackMember } from "./ui/primitives";
@@ -41,10 +48,12 @@ import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useElapsedSeconds, formatDuration } from "./ui/gameTime";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
 import type { Navigate } from "./nav";
+import { homeHref } from "./nav";
 
 type Role = "host" | "solver" | "spectator";
 
@@ -176,15 +185,20 @@ function joinError(
 }
 
 export function LiveApp({
+  gameId,
   params,
   config,
   identity,
   navigate,
+  inShell = false,
 }: {
+  gameId: string;
   params: URLSearchParams;
   config: AppConfig;
   identity: Identity;
   navigate: Navigate;
+  /** True when the Router mounted this inside the sidebar shell (signed in). */
+  inShell?: boolean;
 }) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   const [authTick, setAuthTick] = useState(0);
@@ -198,19 +212,12 @@ export function LiveApp({
     let connection: GameConnection | null = null;
 
     void (async () => {
-      const game = params.get("game");
+      const game = gameId;
       const api = params.get("api") ?? config.apiBase;
       const code = params.get("code");
       const name = params.get("name");
       const tokenParam = params.get("token");
       const token = tokenParam ?? (await identity.getAccessToken());
-      if (game === null) {
-        setState({
-          phase: "error",
-          message: "This game link is missing its id.",
-        });
-        return;
-      }
       // Auth gate first: a logged-out invitee sees the sign-in gate before any server concern,
       // so the invite experience never leaks a deploy detail (audit voice: no error codes).
       if (token === null) {
@@ -326,14 +333,19 @@ export function LiveApp({
       cancelled = true;
       connection?.close();
     };
-  }, [params, config, identity, authTick]);
+  }, [gameId, params, config, identity, authTick]);
 
   if (state.phase === "loading") {
-    return <LoadingGameShell />;
+    return <LoadingGameShell inShell={inShell} />;
   }
   if (state.phase === "needs-auth") {
     return (
-      <GateLayout identity={identity} config={config} navigate={navigate}>
+      <GateLayout
+        identity={identity}
+        config={config}
+        navigate={navigate}
+        inShell={inShell}
+      >
         <Card tone="feature" className="enter gap-0 p-6 text-center">
           <CapsLabel className="text-text-accent">You're invited</CapsLabel>
           <h1 className="mt-2 font-display text-8 font-medium text-gold-12">
@@ -358,14 +370,22 @@ export function LiveApp({
   }
   if (state.phase === "error") {
     return (
-      <GateLayout identity={identity} config={config} navigate={navigate}>
+      <GateLayout
+        identity={identity}
+        config={config}
+        navigate={navigate}
+        inShell={inShell}
+      >
         <Card className="enter gap-0 p-6 text-center">
           <h1 className="font-display text-6 font-medium">
             This game won't open
           </h1>
           <p className="mt-2 text-3 text-text-muted">{state.message}</p>
           <div className="mt-5 flex justify-center">
-            <Button variant="secondary" onClick={() => navigate("")}>
+            <Button
+              variant="secondary"
+              onClick={() => navigate(homeHref(params))}
+            >
               Back to start
             </Button>
           </div>
@@ -374,24 +394,45 @@ export function LiveApp({
     );
   }
   return (
-    <LiveGame ready={state.ready} identity={identity} navigate={navigate} />
+    <LiveGame
+      ready={state.ready}
+      identity={identity}
+      navigate={navigate}
+      inShell={inShell}
+      params={params}
+    />
   );
 }
 
+/** The gate frame. Standalone (signed out) it owns the viewport with the slim top bar; in
+ * the shell the sidebar is the chrome, so the card just centers in the content frame. */
 function GateLayout({
   identity,
   config,
   navigate,
+  inShell,
   children,
 }: {
   identity: Identity;
   config: AppConfig;
   navigate: Navigate;
+  inShell: boolean;
   children: React.ReactNode;
 }) {
+  if (inShell) {
+    return (
+      <main className="h-full flex items-center justify-center px-4 py-6 overflow-y-auto">
+        <div className="w-full max-w-[28rem] pb-9">{children}</div>
+      </main>
+    );
+  }
   return (
     <div className="min-h-dvh flex flex-col">
-      <TopBar identity={identity} config={config} onHome={() => navigate("")} />
+      <TopBar
+        identity={identity}
+        config={config}
+        onHome={() => navigate("/")}
+      />
       <main className="flex-1 px-4 py-6 flex items-center justify-center">
         <div className="w-full max-w-[28rem] pb-9">{children}</div>
       </main>
@@ -412,9 +453,10 @@ function Skeleton({ className = "" }: { className?: string }) {
  * uses (panel chrome, dashed clue rule, the 4fr/3fr board-and-rail split), filled with
  * quiet placeholder blocks instead of a centered card. No geometry is known yet, so the
  * board area is a square shimmer; when REST lands, LiveGame renders the real grid at its
- * true geometry, so only the placeholders change, not the frame. No spinner.
+ * true geometry, so only the placeholders change, not the frame. No spinner. In the shell
+ * it fills the same content frame the live game will, so nothing jumps when it settles.
  */
-function LoadingGameShell() {
+function LoadingGameShell({ inShell }: { inShell: boolean }) {
   const railList = (
     <>
       <Skeleton className="h-3.5 w-16 rounded-1" />
@@ -424,7 +466,9 @@ function LoadingGameShell() {
     </>
   );
   return (
-    <div className="h-dvh flex flex-col overflow-hidden bg-background md:p-4">
+    <div
+      className={`${inShell ? "h-full" : "h-dvh"} flex flex-col overflow-hidden bg-background md:p-4`}
+    >
       <div
         className="relative flex-1 min-h-0 flex flex-col bg-panel overflow-hidden md:border md:border-border-strong md:rounded-3 md:shadow-sm"
         aria-busy="true"
@@ -471,10 +515,14 @@ function LiveGame({
   ready,
   identity,
   navigate,
+  inShell,
+  params,
 }: {
   ready: Ready;
   identity: Identity;
   navigate: Navigate;
+  inShell: boolean;
+  params: URLSearchParams;
 }) {
   const { connection, puzzle, apiBase, gameId, code, name } = ready;
   const store = connection.store;
@@ -679,13 +727,33 @@ function LiveGame({
   const title = name ?? `${puzzle.cols} × ${puzzle.rows}`;
   const shareUrl = buildShareUrl({
     origin: window.location.origin,
-    pathname: window.location.pathname,
     gameId,
     code,
     name,
   });
 
   const completed = store.status === "completed" && !dismissedCompletion;
+  const goHome = (): void => navigate(homeHref(params));
+
+  // In the shell, the toolbar's left slot is the sidebar trigger on desktop (the rail is the
+  // way back and the way to the recents, so a second back chevron would double the chrome);
+  // phones keep the back chevron because the game is full-bleed there and has no rail.
+  const leading = inShell ? (
+    <>
+      <span className="hidden md:inline-flex">
+        <SidebarTrigger className="text-text-subtle hover:text-text" />
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={goHome}
+        aria-label="Back to home"
+        className="md:hidden"
+      >
+        <ChevronLeftIcon />
+      </Button>
+    </>
+  ) : undefined;
 
   // The solve screen is one framed panel, v2's game screen: on desktop it floats on the
   // sand background inside a 16px gutter; on mobile it goes full bleed and the on-screen
@@ -693,7 +761,9 @@ function LiveGame({
   // then the board in calm space with the clue rail to its right. The board always fits
   // the viewport on desktop (.board-fit resolves against both axes of its stage).
   return (
-    <div className="h-dvh flex flex-col overflow-hidden bg-background md:p-4">
+    <div
+      className={`${inShell ? "h-full" : "h-dvh"} flex flex-col overflow-hidden bg-background md:p-4`}
+    >
       <div className="relative flex-1 min-h-0 flex flex-col bg-panel overflow-hidden md:border md:border-border-strong md:rounded-3 md:shadow-sm">
         <GameToolbar
           title={title}
@@ -702,7 +772,8 @@ function LiveGame({
           members={members}
           selfId={ready.selfId}
           shareUrl={shareUrl}
-          onBack={() => navigate("")}
+          onBack={goHome}
+          leading={leading}
         />
 
         {isSpectator && (
@@ -809,7 +880,7 @@ function LiveGame({
           participantCount={store.stats?.participantCount ?? null}
           shareUrl={shareUrl}
           onDismiss={() => setDismissedCompletion(true)}
-          onHome={() => navigate("")}
+          onHome={goHome}
         />
       )}
     </div>

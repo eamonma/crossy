@@ -312,8 +312,8 @@ function spawnVite(): ChildProcess {
 }
 
 function gameUrl(gameId: string, token: string): string {
-  const q = new URLSearchParams({ api: API_URL, game: gameId, token });
-  return `${WEB_ORIGIN}/?${q.toString()}`;
+  const q = new URLSearchParams({ api: API_URL, token });
+  return `${WEB_ORIGIN}/game/${gameId}?${q.toString()}`;
 }
 
 function printInstructions(opts: {

@@ -18,7 +18,13 @@ export interface GameSummary {
   createdAt: string;
   createdBy: string;
   memberCount: number;
-  puzzle: { puzzleId: string; rows: number; cols: number };
+  /** `title` is the puzzle's display title (never solution content), null when it has none. */
+  puzzle: {
+    puzzleId: string;
+    rows: number;
+    cols: number;
+    title: string | null;
+  };
 }
 
 /** Detected puzzle features, the flags GET /puzzles returns (no solution content). */
@@ -28,13 +34,16 @@ export interface PuzzleFeatures {
   shadedCircles?: boolean;
 }
 
-/** One row of GET /puzzles: the caller's own uploads. No title yet, only geometry + features. */
+/** One row of GET /puzzles: the caller's own uploads. `title`/`author` are the display
+ * metadata ingestion parses (null when the document carried none), never solution content. */
 export interface PuzzleSummary {
   puzzleId: string;
   createdAt: string;
   rows: number;
   cols: number;
   features: PuzzleFeatures | null;
+  title: string | null;
+  author: string | null;
 }
 
 /** Bearer headers for the REST calls; the token is the identity (or the ?token= dogfood override). */
@@ -110,13 +119,23 @@ export function geometry(cols: number, rows: number): string {
 }
 
 /**
- * A game's display name. When the host left it unnamed, fall back to the puzzle geometry and the
- * day it was made ("15 × 15 · Jul 9") so a row is never blank and never reads as a machine id.
+ * A game's display name: the host's room name first, then the puzzle's own title (the API
+ * returns it since the title/author persistence landed), then the geometry-and-date fallback
+ * ("15 × 15 · Jul 9") so a row is never blank and never reads as a machine id.
  */
 export function gameTitle(g: GameSummary, now: Date = new Date()): string {
   const named = g.name?.trim();
   if (named !== undefined && named !== "") return named;
+  const puzzleName = g.puzzle.title?.trim();
+  if (puzzleName !== undefined && puzzleName !== "") return puzzleName;
   return `${geometry(g.puzzle.cols, g.puzzle.rows)} · ${shortDate(g.createdAt, now)}`;
+}
+
+/** A puzzle row's display name: its parsed title, or a quiet "Untitled" (geometry and upload
+ * date already have their own columns, so repeating them here would just double the row). */
+export function puzzleTitle(p: PuzzleSummary): string {
+  const named = p.title?.trim();
+  return named !== undefined && named !== "" ? named : "Untitled";
 }
 
 /** Feature chips for a puzzle row, in a fixed order; empty when the puzzle has none. */
@@ -152,4 +171,27 @@ export function relativeTime(iso: string, now: Date = new Date()): string {
   if (months < 12) return months <= 1 ? "a month ago" : `${months} months ago`;
   const years = Math.round(days / 365);
   return years <= 1 ? "a year ago" : `${years} years ago`;
+}
+
+/**
+ * The sidebar's compact relative time ("now", "5m", "3h", "2d", "4w", "7mo", "2y"): one
+ * largest unit, mono numerals, narrow enough that a recent-game row keeps its whole name.
+ * Same clamp rule as relativeTime: a future timestamp reads "now", never a negative.
+ */
+export function compactTime(iso: string, now: Date = new Date()): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const seconds = Math.round((now.getTime() - then) / 1000);
+  if (seconds < 60) return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo`;
+  return `${Math.floor(days / 365)}y`;
 }
