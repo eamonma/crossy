@@ -134,6 +134,14 @@ public final class GameStore {
     /// trigger (PROTOCOL.md §8, D02). Vectors exclude it: ephemeral view animation.
     @ObservationIgnored public var onConflictFlash: (@MainActor (ConflictFlash) -> Void)?
 
+    /// The composition root raises the kicked terminal from this notice (EXPERIENCE.md
+    /// Kicked; the I2d flag lives on RoomChromeModel). The `kicked` frame carries no
+    /// `seq` and mutates no sequenced state (PROTOCOL.md §6: it is followed by close
+    /// 1008), so the store reconciles nothing and the vectors exclude it; it only
+    /// surfaces the notice to the root, the one place that owns the exit, exactly as
+    /// `onConflictFlash` surfaces the flash to the view. Set by the composition root.
+    @ObservationIgnored public var onKicked: (@MainActor (KickedMessage) -> Void)?
+
     @ObservationIgnored private let newCommandId: () -> String
     @ObservationIgnored private var outboxWake: AsyncStream<Void>.Continuation?
 
@@ -299,9 +307,11 @@ public final class GameStore {
             // Check styling is M6 scope (root ROADMAP Phase 5); ignored here exactly
             // as the web store skeleton ignores it.
             return
-        case .kicked:
+        case .kicked(let notice):
             // Followed by close 1008; the transport surfaces the closure. Nothing to
-            // reconcile here.
+            // reconcile in sequenced state (the notice carries no seq), so the store
+            // hands the notice to the composition root's terminal flag and returns.
+            onKicked?(notice)
             return
         }
     }

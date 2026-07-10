@@ -135,6 +135,20 @@ final class GameStoreTests: XCTestCase {
         XCTAssertTrue(store.overlay.isEmpty)
     }
 
+    // MARK: - The kicked notice surfaces to the composition root (PROTOCOL.md §6)
+
+    func test_kickedNoticeSurfacesToTheRootAndTouchesNoSequencedState_PROTOCOL6() {
+        let (store, _) = makeLiveStore(board(seq: 5))
+        var kicks: [KickedMessage] = []
+        store.onKicked = { kicks.append($0) }
+        store.receive(.kicked(KickedMessage(reason: "removed by host")))
+        // The notice carries no seq: it hands off to the root's terminal flag and
+        // moves nothing sequenced (PROTOCOL.md §6, close 1008 follows).
+        XCTAssertEqual(kicks, [KickedMessage(reason: "removed by host")])
+        XCTAssertEqual(store.seq, 5)
+        XCTAssertEqual(store.status, .ongoing)
+    }
+
     // MARK: - Connection loss and store-owned reconnect decisions (PROTOCOL.md §7; AD-6)
 
     func test_transportDropGoesReconnectingAndPreservesOverlayForResend_PROTOCOL7_INV10() {

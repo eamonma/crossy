@@ -107,6 +107,36 @@ final class SessionDriverTests: XCTestCase {
         XCTAssertEqual(clock.sleeps, [0, 1, 2], "the walk kept escalating: no false reset")
     }
 
+    // MARK: - The reconnect countdown deadline (DESIGN.md §8: the composition root's flag)
+
+    func test_publishesAReconnectDeadlineAsEachBackoffSleepBegins_PROTOCOL7_DESIGN8() async throws {
+        // The composition root feeds this to RoomChromeModel.reconnectRetryAt for the
+        // quiet countdown. It fires once per backoff sleep, with a future instant, and
+        // the driver owns the clock so the store never computes it (AD-6).
+        let store = GameStore(backoff: BackoffSchedule(random: { 1.0 }))
+        let clock = FakeClock()
+        let script = TransportScript([failing(), failing(), failing()])
+        var deadlines: [Date] = []
+        let driver = SessionDriver(
+            store: store, clock: clock,
+            onReconnectScheduled: { deadlines.append($0) }
+        ) { script.next() }
+
+        let before = Date.now
+        let task = Task { await driver.run() }
+        for _ in 0..<3 {
+            try await waitUntil("driver parks on a backoff sleep") { clock.waiterCount == 1 }
+            clock.resumeNext()
+        }
+        await task.value
+
+        XCTAssertEqual(deadlines.count, 3, "one deadline per backoff sleep")
+        for deadline in deadlines {
+            XCTAssertGreaterThanOrEqual(
+                deadline, before, "the deadline is a future instant, not a shrinking duration")
+        }
+    }
+
     // MARK: - Survival reporting (PROTOCOL.md §7: reset after 30 s, decided in the store)
 
     func test_thirtySecondSurvivalReportedToTheStoreResetsTheWalk_PROTOCOL7() async throws {

@@ -19,16 +19,26 @@ public final class SessionDriver {
     private let store: GameStore
     private let clock: any SessionClock
     private let makeTransport: () -> any Transport
+    private let onReconnectScheduled: (@MainActor (Date) -> Void)?
 
     /// `makeTransport` mints one transport per attempt (Ports.swift: one value, one
     /// connection attempt), so every redial is a fresh dial with a fresh token.
+    ///
+    /// `onReconnectScheduled` fires as each backoff sleep begins, with the wall-clock
+    /// instant the next dial is due (now plus the policy delay the store just decided).
+    /// The composition root feeds it to `RoomChromeModel.reconnectRetryAt` for the
+    /// quiet countdown (DESIGN.md §8). The store owns the delay (AD-6); the driver owns
+    /// the clock, so the deadline is computed here and never in the store, which holds
+    /// no clock. Nil by default: previews and vector tests want no deadline.
     public init(
         store: GameStore,
         clock: any SessionClock = ContinuousSessionClock(),
+        onReconnectScheduled: (@MainActor (Date) -> Void)? = nil,
         makeTransport: @escaping () -> any Transport
     ) {
         self.store = store
         self.clock = clock
+        self.onReconnectScheduled = onReconnectScheduled
         self.makeTransport = makeTransport
     }
 
@@ -74,9 +84,12 @@ public final class SessionDriver {
     }
 
     /// Consume one policy delay and sleep it. False means the sleep was cancelled:
-    /// a deliberate stop, so the caller returns instead of redialing.
+    /// a deliberate stop, so the caller returns instead of redialing. The retry
+    /// deadline is published as the sleep begins (now plus the delay), so the
+    /// countdown chrome reads a stable instant, not a shrinking duration.
     private func backoffSleep() async -> Bool {
         let seconds = store.nextReconnectDelaySeconds()
+        onReconnectScheduled?(Date.now.addingTimeInterval(seconds))
         do {
             try await clock.sleep(seconds: seconds)
             return true
