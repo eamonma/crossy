@@ -1757,3 +1757,84 @@ describe("GET /puzzles list (PROTOCOL.md §12; DESIGN.md §7, §8; INV-6)", () =
     await expectError(res, "UNAUTHORIZED");
   });
 });
+
+describe("GET /g/{code} invite unfurl (PROTOCOL.md §12; DESIGN.md §7; INV-1, INV-6)", () => {
+  it("section 12: serves a public HTML shell with OpenGraph tags to an unauthenticated fetch", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { inviteCode } = await createGame(host, puzzleId);
+
+    // No authorization header: unfurlers fetch anonymously (the §12 row is `public`).
+    const res = await app.request(`/g/${inviteCode}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const text = await res.text();
+    expect(text).toContain("<!doctype html>");
+    expect(text).toContain('property="og:title"');
+    expect(text).toContain('property="og:description"');
+    expect(text).toContain('property="og:type"');
+  });
+
+  it("section 12: an unknown code is GAME_NOT_FOUND on the REST error envelope (the code is the lookup key, as in join-by-code; §12 pins no shape here)", async () => {
+    const res = await app.request("/g/ZZZZZZZZ");
+    await expectRejectionNoLeak(res, 404, "GAME_NOT_FOUND");
+  });
+
+  it("section 12: a malformed code (wrong length or outside the invite alphabet) is the same GAME_NOT_FOUND, never a fault", async () => {
+    // Too short, excluded glyphs (0/1/I/O are not in the alphabet), too long, and symbols:
+    // none can match a stored code (the `games_invite_code_format` CHECK), so each is the
+    // identical not-found, indistinguishable from an unknown well-formed code.
+    for (const code of ["abc", "OO11IIOO", "THISCODEISTOOLONG", "1234!"]) {
+      const res = await app.request(`/g/${encodeURIComponent(code)}`);
+      await expectRejectionNoLeak(res, 404, "GAME_NOT_FOUND");
+    }
+  });
+
+  it("INV-1: a lowercase, whitespace-padded code resolves by trim + ASCII-uppercase, exactly like join-by-code, and the shell renders the stored code, never the raw input", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(
+      `/g/${encodeURIComponent(`  ${inviteCode.toLowerCase()}  `)}`,
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain(inviteCode);
+    // The raw lowercase input never appears (guarded: a rare all-digit code has no case).
+    const lower = inviteCode.toLowerCase();
+    if (lower !== inviteCode) expect(text).not.toContain(lower);
+  });
+
+  it("INV-6: the shell reads no puzzle or game content: no solution marker, no title, no author, no game name, no gameId", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const marker = await postJson("/puzzles", host, {
+      ...markerDoc(),
+      title: "Sunday Themeless",
+      author: "Anna Gram",
+    });
+    const { puzzleId } = (await marker.json()) as { puzzleId: string };
+    const created = await postJson("/games", host, {
+      puzzleId,
+      name: "Crew room",
+    });
+    expect(created.status).toBe(201);
+    const { gameId, inviteCode } = (await created.json()) as {
+      gameId: string;
+      inviteCode: string;
+    };
+
+    const res = await app.request(`/g/${inviteCode}`);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    // INV-6 on a public, third-party-cached page (DESIGN.md §7): no solution content.
+    expect(text).not.toContain(LIST_MARKER);
+    expect(text).not.toContain("solution");
+    // §12 pins title/author to GET /puzzles and GET /games only, and names neither the
+    // game name nor the gameId for this route: the OpenGraph copy is generic.
+    expect(text).not.toContain("Sunday Themeless");
+    expect(text).not.toContain("Anna Gram");
+    expect(text).not.toContain("Crew room");
+    expect(text).not.toContain(gameId);
+  });
+});

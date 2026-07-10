@@ -6,7 +6,7 @@
 import { Hono } from "hono";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
-import { asciiUppercase, toClientPuzzle } from "@crossy/protocol";
+import { toClientPuzzle } from "@crossy/protocol";
 import type { ClientPuzzle, ServerPuzzle } from "@crossy/protocol";
 import type { Role } from "@crossy/protocol";
 import type { AppDeps, ApiEnv } from "../context";
@@ -15,6 +15,7 @@ import { fail } from "../http/errors";
 import { parseBefore, parseLimit } from "../http/pagination";
 import { authMiddleware } from "../auth/middleware";
 import { generateInviteCode } from "./invite-code";
+import { findGameByInviteCode } from "./lookup";
 import { notifyMembership } from "../identity/notify";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -394,25 +395,17 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "VALIDATION", "code is required");
     }
 
-    // Normalize ASCII-only (INV-1), matching how codes are generated. The invite alphabet is all
-    // uppercase ASCII (`generateInviteCode`, `games_invite_code_format` CHECK), so ASCII-uppercasing
-    // a hand-typed lowercase code resolves it exactly when it is a real code, with no locale folding
-    // (the reverse of the cell-value rule, same INV-1 primitive). Trim surrounding whitespace a
-    // phone keyboard may add; stored codes never contain any. Lookup is backed by the
-    // `games_invite_code_key` UNIQUE index, so it is a single-row index probe.
-    const normalized = asciiUppercase(code.trim());
-    const found = await deps.db
-      .select({ gameId: schema.games.gameId })
-      .from(schema.games)
-      .where(eq(schema.games.inviteCode, normalized))
-      .limit(1);
+    // Resolution is the shared invite-code lookup (games/lookup.ts): trim + ASCII-uppercase
+    // (INV-1), then a single-row probe of the `games_invite_code_key` UNIQUE index. Shared with
+    // GET /g/{code} so every code-holding path normalizes identically.
+    const found = await findGameByInviteCode(deps.db, code);
     // A code that resolves to no game is genuinely not found: unlike the id-based join (where a
     // mismatched code is DENIED to avoid leaking that a known gameId exists), here the code IS the
     // lookup key, so there is no existence to protect. Reuse GAME_NOT_FOUND (no new code).
-    if (found.length === 0) {
+    if (found === null) {
       return fail(c, "GAME_NOT_FOUND", "no game with that code");
     }
-    const gameId = found[0]!.gameId;
+    const gameId = found.gameId;
 
     const seated = await seatJoiner(
       deps.db,

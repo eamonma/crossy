@@ -11,6 +11,7 @@ import { puzzleRoutes } from "./puzzles/routes";
 import { gameRoutes } from "./games/routes";
 import { identityRoutes } from "./identity/routes";
 import { wellKnownRoutes } from "./well-known/routes";
+import { unfurlRoutes } from "./games/unfurl";
 
 /** Compose the API from its injected dependencies. */
 export function buildApp(deps: AppDeps): Hono<ApiEnv> {
@@ -45,6 +46,8 @@ export function buildApp(deps: AppDeps): Hono<ApiEnv> {
   app.get("/health", (c) => c.json({ ok: true }));
   // Public, unauthenticated: Apple's CDN fetches the AASA anonymously (SP-i4).
   app.route("/.well-known", wellKnownRoutes(deps));
+  // Public, unauthenticated: link unfurlers fetch invite links anonymously (PROTOCOL.md §12).
+  app.route("/g", unfurlRoutes(deps));
   app.route("/puzzles", puzzleRoutes(deps));
   app.route("/games", gameRoutes(deps));
   app.route("/account", identityRoutes(deps));
