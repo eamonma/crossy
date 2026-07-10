@@ -47,8 +47,11 @@ struct ContentView: View {
 }
 
 /// The offline fixture room (DemoRoom): a typeable board with no network.
+/// `onBack` pops home when the arrival flow composes this room (-i3Fixture);
+/// the standalone -i2* launches have nowhere to go and keep the no-op.
 struct DemoRoomView: View {
     @State private var room = DemoRoom()
+    var onBack: () -> Void = {}
 
     var body: some View {
         SolveScreen(
@@ -61,9 +64,7 @@ struct DemoRoomView: View {
             puzzleDate: room.puzzleDate,
             model: room.selection,
             chrome: room.chrome,
-            // The bar's back button reports intent only; the arrival flow
-            // wires the destination when it exists (follow-on).
-            onBack: {}
+            onBack: onBack
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController).
@@ -75,18 +76,24 @@ struct DemoRoomView: View {
 /// The live-stack room (RealRoom): REST fetch then the real socket. The view rebuilds
 /// once the REST view lands (`ready` flips), so the placeholder geometry never renders
 /// as playable truth (the store holds `connecting` until the welcome anyway). A fatal
-/// wiring failure reads plainly instead of a blank room. `onExit` is the kicked
-/// terminal's way home (pop to Rooms); the harness composition has nowhere to pop to
-/// and keeps the default no-op.
+/// wiring failure reads plainly instead of a blank room. `onBack` is the bar's
+/// back button and `onExit` the kicked terminal's way home (both pop to Rooms);
+/// the harness composition has nowhere to pop to and keeps the default no-ops.
 @available(iOS 18.0, *)
 struct RealRoomView: View {
     @State private var room: RealRoom
+    private let onBack: () -> Void
     private let onExit: () -> Void
     @State private var ready = false
     @Environment(\.colorScheme) private var colorScheme
 
-    init(room: RealRoom, onExit: @escaping () -> Void = {}) {
+    init(
+        room: RealRoom,
+        onBack: @escaping () -> Void = {},
+        onExit: @escaping () -> Void = {}
+    ) {
         _room = State(initialValue: room)
+        self.onBack = onBack
         self.onExit = onExit
     }
 
@@ -102,6 +109,7 @@ struct RealRoomView: View {
                     roomName: room.roomName,
                     model: room.selection,
                     chrome: room.chrome,
+                    onBack: onBack,
                     onExit: onExit
                 )
                 // The mapped geometry changes identity once the REST view lands, so the

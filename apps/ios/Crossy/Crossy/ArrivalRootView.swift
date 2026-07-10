@@ -66,22 +66,26 @@ struct ArrivalRootView: View {
             }
         case .room(let gameId):
             if let facts = model.liveRoomFacts {
+                // Back and the kicked exit pop the same way: the room is the
+                // only pushed element (join success replaced itself), so home
+                // is Rooms.
                 RealRoomView(
                     room: RealRoom(
                         apiBaseURL: facts.apiBaseURL,
                         sessionBaseURL: facts.sessionBaseURL,
                         gameId: gameId,
                         tokenProvider: model.session.tokenProvider),
+                    onBack: { path.removeAll() },
                     onExit: { path.removeAll() }
                 )
                 .toolbar(.hidden, for: .navigationBar)
             } else {
                 // Unreachable: roomRoute(for:) only builds .room with live facts.
-                DemoRoomView()
+                DemoRoomView(onBack: { path.removeAll() })
                     .toolbar(.hidden, for: .navigationBar)
             }
         case .fixtureRoom:
-            DemoRoomView()
+            DemoRoomView(onBack: { path.removeAll() })
                 .toolbar(.hidden, for: .navigationBar)
         }
     }
