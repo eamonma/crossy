@@ -23,6 +23,9 @@
 //                           (the mosaic plays, then the stats card)
 //    -i2dAbandoned          the host ends the game (frozen board, one-line notice)
 //    -i2dKicked             the kicked notice, then the terminal exit screen
+//    -stress                extremes for chrome mockups (owner ask 2026-07-10):
+//                           eleven people with long names, a room name that must
+//                           truncate, an hours-old clock; composes with any -i2*
 //
 
 import CrossyProtocol
@@ -37,14 +40,22 @@ final class DemoRoom {
     let store = GameStore()
     let puzzle: GridPuzzle
     let clues: ClueBook
-    let roomName = "Tuesday evening"
+    let roomName: String
     let selection: SelectionModel
     let chrome = RoomChromeModel()
     private let transport: LoopbackTransport
 
     init() {
-        let spectating = ProcessInfo.processInfo.arguments.contains("-i2cSpectator")
-        let fixture = DemoFixture.mini9(selfRole: spectating ? .spectator : .host)
+        let arguments = ProcessInfo.processInfo.arguments
+        let spectating = arguments.contains("-i2cSpectator")
+        let stress = arguments.contains("-stress")
+        let fixture = DemoFixture.mini9(
+            selfRole: spectating ? .spectator : .host, stress: stress)
+        // Long enough that the leading pill must truncate honestly (-stress).
+        roomName =
+            stress
+            ? "The Sunday Extravaganza and Occasional Tuesday Society"
+            : "Tuesday evening"
         puzzle = fixture.puzzle
         clues = fixture.clues
         transport = LoopbackTransport(welcome: fixture.welcome)
@@ -164,7 +175,8 @@ final class DemoRoom {
                         seq: seq, at: DemoFixture.isoNow(),
                         stats: Stats(
                             solveTimeSeconds: max(0, Int(Date().timeIntervalSince(origin))),
-                            totalEvents: 143, participantCount: 3))))
+                            totalEvents: arguments.contains("-stress") ? 1284 : 143,
+                            participantCount: store.participants.count))))
         }
 
         if arguments.contains("-i2dAbandoned") {
@@ -195,7 +207,7 @@ enum DemoFixture {
     /// so the roster shows presence, and everything else open for typing. Wire
     /// colors are roster values (apps/ios/DESIGN.md §3); the wire is authoritative
     /// for slotting.
-    static func mini9(selfRole: Role = .host) -> (puzzle: GridPuzzle, clues: ClueBook, welcome: WelcomeMessage) {
+    static func mini9(selfRole: Role = .host, stress: Bool = false) -> (puzzle: GridPuzzle, clues: ClueBook, welcome: WelcomeMessage) {
         let rows = 9
         let cols = 9
         let blocks: Set<Int> = [4, 13, 30, 50, 67, 76]  // 180-degree symmetric
@@ -263,26 +275,53 @@ enum DemoFixture {
                 seq: fills.count,
                 status: .ongoing,
                 // A believable ambient clock (ID-2): the room's first fill landed
-                // a little over twelve minutes ago.
-                firstFillAt: iso(secondsAgo: 754),
+                // a little over twelve minutes ago; under -stress, hours ago, so
+                // the clock and the stats headline carry an hours-wide time.
+                firstFillAt: iso(secondsAgo: stress ? 11_954 : 754),
                 completedAt: nil,
                 abandonedAt: nil,
                 cells: cells,
-                participants: [
-                    Participant(
-                        userId: "you", displayName: "You", color: "#6F66D4",
-                        role: selfRole, connected: true),
-                    Participant(
-                        userId: "bee", displayName: "Bee", color: "#17917F",
-                        role: selfRole == .host ? .solver : .host, connected: true),
-                    Participant(
-                        userId: "ada", displayName: "Ada", color: "#DE5722",
-                        role: .solver, connected: false),
-                ],
+                participants: participants(selfRole: selfRole, stress: stress),
                 cursors: [Cursor(userId: "bee", cell: 41, direction: .across)],
                 recentCommandIds: [],
                 stats: nil))
         return (puzzle, clues, welcome)
+    }
+
+    /// The room's people. The plain trio matches I2's screenshots; -stress is
+    /// the extremes pass (owner ask 2026-07-10): eleven people, long Discord
+    /// names that must truncate in roster rows, a mix of connection states, so
+    /// the pills' overflow count, the panel's height clamp, and every name slot
+    /// get exercised before real rooms do it in production.
+    private static func participants(selfRole: Role, stress: Bool) -> [Participant] {
+        let core = [
+            Participant(
+                userId: "you", displayName: "You", color: "#6F66D4",
+                role: selfRole, connected: true),
+            Participant(
+                userId: "bee", displayName: "Bee", color: "#17917F",
+                role: selfRole == .host ? .solver : .host, connected: true),
+            Participant(
+                userId: "ada", displayName: "Ada", color: "#DE5722",
+                role: .solver, connected: false),
+        ]
+        guard stress else { return core }
+        let extras: [(String, String, String, Bool)] = [
+            ("bartholomew", "bartholomew-the-unhurried", "#4C8DE8", true),
+            ("anastasia", "Anastasia Wintergreen-Bellweather III", "#C2498D", true),
+            ("gus", "gus", "#7A9B3E", false),
+            ("percy", "PercyPuzzlesProfessionally", "#D9A036", true),
+            ("mo", "mo & the marginalia", "#5B5F97", true),
+            ("henrietta", "henrietta.of.the.long.crossings", "#3FA7A3", false),
+            ("kit", "Kit", "#B0563A", true),
+            ("wilhelmina", "wilhelmina_geraldine_fitzwilliam", "#8A6FC8", true),
+        ]
+        return core
+            + extras.map {
+                Participant(
+                    userId: $0.0, displayName: $0.1, color: $0.2,
+                    role: .solver, connected: $0.3)
+            }
     }
 
     static func isoNow() -> String {

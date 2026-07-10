@@ -109,7 +109,10 @@ section 10: container spacing fuses adjacent glass), so the pills stay three
 separate objects at rest; below 26 the same layout renders as separate
 blur-material capsules, the one-fallback rule below. The point is honest morphs:
 each morph-bearing pill is its own rest surface, so a panel is always the pill
-reshaped, never a capsule conjured out of standing glass.
+reshaped, never a capsule conjured out of standing glass. And the panel grows
+over the pill's own footprint, top and trailing edges shared (the Mail-button
+rule, owner ruling 2026-07-10): the open surface covers the spot it grew from,
+it never hangs beside a still-visible opener.
 
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
 one piece of glass reshaped. SP-i1 pinned the implementation

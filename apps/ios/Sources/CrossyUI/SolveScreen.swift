@@ -297,8 +297,10 @@ public struct SolveScreen: View {
     /// The stats morph: rest is the TIME PILL's reported frame (the card is the
     /// pill, inflated; ID-2, DESIGN.md §4). The pill centers its clock, so the
     /// rider's rest center (StatsRideLayout reads morph.rest's middle) is the
-    /// clock's own. Open is a card hanging under the room bar, sized by
-    /// StatsRideLayout's fixed slots.
+    /// clock's own. Open grows over the pill's own footprint, top and trailing
+    /// edges shared (the Mail-button rule, owner ruling 2026-07-10: a panel
+    /// covers the pill it grew from, never hangs beside it), sized by
+    /// StatsRideLayout's fixed slots and clamped inside the bar's span.
     private var statsMorph: GlassMorph? {
         guard let pill = frames[.timePill], let roomBar = frames[.roomBar]
         else { return nil }
@@ -307,8 +309,8 @@ public struct SolveScreen: View {
         return GlassMorph(
             rest: pill,
             open: CGRect(
-                x: roomBar.midX - width / 2,
-                y: roomBar.maxY + ChromeLayout.panelTopGap,
+                x: max(roomBar.minX, min(pill.maxX, roomBar.maxX) - width),
+                y: pill.minY,
                 width: width, height: height),
             restCornerRadius: pill.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
@@ -418,8 +420,10 @@ public struct SolveScreen: View {
 
     /// The roster: rest is the PLAYERS PILL's whole frame (DESIGN.md §4: the
     /// players pill inflates into the roster sheet; the per-puck riders keep
-    /// their own launch points); open is a small panel hanging from the room
-    /// bar's trailing edge, sized to its people.
+    /// their own launch points). Open grows over the pill's own footprint, top
+    /// and trailing edges shared (the Mail-button rule, owner ruling
+    /// 2026-07-10: a panel covers the pill it grew from, never hangs beside
+    /// it), sized to its people.
     private func rosterMorph(members: [RosterMember], spectating: Bool) -> GlassMorph? {
         guard let pill = frames[.playersPill], let roomBar = frames[.roomBar],
             let slot = frames[.clueBarSlot]
@@ -428,13 +432,13 @@ public struct SolveScreen: View {
         let content =
             CGFloat(members.count) * RosterRideLayout.rowHeight
             + RosterRideLayout.topPadding * 2 + (spectating ? 56 : 0)
-        let available = slot.minY - roomBar.maxY - ChromeLayout.panelTopGap * 2
+        let available = slot.minY - pill.minY - ChromeLayout.panelTopGap
         let height = max(ChromeLayout.barHeight, min(content, available))
         return GlassMorph(
             rest: pill,
             open: CGRect(
-                x: roomBar.maxX - width,
-                y: roomBar.maxY + ChromeLayout.panelTopGap,
+                x: max(roomBar.minX, pill.maxX - width),
+                y: pill.minY,
                 width: width, height: height),
             restCornerRadius: pill.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
