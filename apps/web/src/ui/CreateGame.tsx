@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 /** Map an API rejection code to one calm, specific sentence in the product voice. */
 function rejectionSentence(code: string): string {
@@ -100,7 +101,11 @@ export function CreateGame({
 
   if (inShell) {
     return (
-      <main className="h-full overflow-y-auto px-4 py-6 flex items-center justify-center">
+      <main className="relative h-full overflow-y-auto px-4 py-6 flex items-center justify-center">
+        {/* The sidebar toggle, anchored top-left like the other in-shell surfaces. */}
+        <div className="absolute left-3 top-3 hidden md:block">
+          <SidebarTrigger className="text-text-subtle hover:text-text" />
+        </div>
         <div className="w-full max-w-[28rem] pb-9">{card}</div>
       </main>
     );

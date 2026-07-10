@@ -50,6 +50,7 @@ import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useElapsedSeconds, formatDuration } from "./ui/gameTime";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
@@ -422,7 +423,11 @@ function GateLayout({
 }) {
   if (inShell) {
     return (
-      <main className="h-full flex items-center justify-center px-4 py-6 overflow-y-auto">
+      <main className="relative h-full flex items-center justify-center px-4 py-6 overflow-y-auto">
+        {/* The sidebar toggle, anchored top-left like the other in-shell surfaces. */}
+        <div className="absolute left-3 top-3 hidden md:block">
+          <SidebarTrigger className="text-text-subtle hover:text-text" />
+        </div>
         <div className="w-full max-w-[28rem] pb-9">{children}</div>
       </main>
     );
@@ -468,7 +473,7 @@ function LoadingGameShell({ inShell }: { inShell: boolean }) {
   );
   return (
     <div
-      className={`${inShell ? "h-full" : "h-dvh"} flex flex-col overflow-hidden bg-background md:p-4`}
+      className={`${inShell ? "h-full md:p-3 md:pl-0" : "h-dvh md:p-4"} flex flex-col overflow-hidden bg-background`}
     >
       <div
         className="relative flex-1 min-h-0 flex flex-col bg-panel overflow-hidden md:border md:border-border-strong md:rounded-3 md:shadow-sm"
@@ -790,29 +795,35 @@ function LiveGame({
   const completed = store.status === "completed" && !dismissedCompletion;
   const goHome = (): void => navigate(homeHref(params));
 
-  // In the shell, the rail carries its own toggle and the recents, so the desktop toolbar
-  // drops the back chevron entirely rather than doubling that chrome; phones keep the
-  // chevron because the game is full-bleed there and has no rail.
+  // In the shell the desktop toolbar leads with the sidebar trigger, anchored in the panel so
+  // toggling never slides the control out from under the cursor (the rail carries no trigger).
+  // Phones keep the back chevron because the game is full-bleed there and has no rail. The
+  // trigger only mounts inShell, since useSidebar needs the provider the shell supplies.
   const leading = inShell ? (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      onClick={goHome}
-      aria-label="Back to home"
-      className="md:hidden"
-    >
-      <ChevronLeftIcon />
-    </Button>
+    <>
+      <SidebarTrigger className="hidden text-text-subtle hover:text-text md:inline-flex" />
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={goHome}
+        aria-label="Back to home"
+        className="md:hidden"
+      >
+        <ChevronLeftIcon />
+      </Button>
+    </>
   ) : undefined;
 
-  // The solve screen is one framed panel, v2's game screen: on desktop it floats on the
-  // sand background inside a 16px gutter; on mobile it goes full bleed and the on-screen
-  // keyboard docks at the bottom. Inside: chrome row, clue strip (or the mobile clue bar),
-  // then the board in calm space with the clue rail to its right. The board always fits
-  // the viewport on desktop (.board-fit resolves against both axes of its stage).
+  // The solve screen is one framed panel, v2's game screen: standalone it floats on the sand
+  // background inside a 16px gutter; in the shell it sits flush at the rail edge with a 12px
+  // gutter elsewhere, matching the sidebar's own padding so left and right read even and the
+  // collapsed rail icon centers. On mobile it goes full bleed and the on-screen keyboard docks
+  // at the bottom. Inside: chrome row, clue strip (or the mobile clue bar), then the board in
+  // calm space with the clue rail to its right. The board always fits the viewport on desktop
+  // (.board-fit resolves against both axes of its stage).
   return (
     <div
-      className={`${inShell ? "h-full" : "h-dvh"} flex flex-col overflow-hidden bg-background md:p-4`}
+      className={`${inShell ? "h-full md:p-3 md:pl-0" : "h-dvh md:p-4"} flex flex-col overflow-hidden bg-background`}
     >
       <div className="relative flex-1 min-h-0 flex flex-col bg-panel overflow-hidden md:border md:border-border-strong md:rounded-3 md:shadow-sm">
         <GameToolbar

@@ -61,7 +61,6 @@ import {
   SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarProvider,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -217,18 +216,16 @@ function CrossySidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3 p-3 group-data-[collapsible=icon]:px-1">
-        {/* The brand block. Expanded it is the lockup row (mark + wordmark left, trigger
-            right); at rail width it is the column (mark on top, trigger docked under).
-            Mark and trigger are one element each across both states, so keyboard focus
-            survives a toggle and the trigger visibly rides the closing edge (its right
-            anchor) while translating down into the column; the wordmark tucks under the
-            mark (max-width) as it dissolves. Fixed numbers are the rendered sizes: mark
-            24, trigger 40 (size-7), gap 8, so 40 tall expanded and 24+8+40=72 collapsed. */}
-        <div className="sidebar-glide relative h-[40px] group-data-[collapsible=icon]:h-[72px]">
+        {/* The brand block: the mark, with the wordmark tucking and dissolving as the rail
+            narrows. The mark is one element across both states, so keyboard focus survives
+            a toggle. The sidebar toggle itself lives in the content panel (never the rail),
+            so nothing reflows under the cursor when the rail collapses. Mark 24, so the
+            block is 40 tall (translate-y centers it) in both states. */}
+        <div className="relative h-[40px]">
           <button
             type="button"
             onClick={() => go(homeHref(params))}
-            className="sidebar-glide absolute top-0 left-0 inline-flex translate-x-1 translate-y-2 items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring group-data-[collapsible=icon]:translate-x-2 group-data-[collapsible=icon]:translate-y-0"
+            className="sidebar-glide absolute top-0 left-0 inline-flex translate-x-1 translate-y-2 items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring group-data-[collapsible=icon]:translate-x-2"
             aria-label="Crossy home"
           >
             <Logo withName={false} />
@@ -239,7 +236,6 @@ function CrossySidebar({
               Crossy
             </span>
           </button>
-          <SidebarTrigger className="sidebar-glide absolute top-0 right-0 hidden text-text-subtle hover:text-text group-data-[collapsible=icon]:translate-y-[32px] md:inline-flex" />
         </div>
         <SidebarMenu className="gap-1">
           <SidebarMenuItem>

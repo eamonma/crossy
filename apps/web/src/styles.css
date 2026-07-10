@@ -629,8 +629,8 @@
  *      the click reads instantly, and text is gone before the rail can compress it, so
  *      nothing truncates mid-flight.
  *   2. Geometry glides underneath (--sidebar-rail-*): rail width, header/footer padding,
- *      the icon squares, and the transform movers (trigger dock, wordmark tuck) all share
- *      the one clock, so the sidebar moves as a single object.
+ *      the icon squares, and the wordmark tuck all share the one clock, so the sidebar
+ *      moves as a single object.
  *   3. Content that is arriving reveals once there is room (--sidebar-appear-delay, then
  *      --sidebar-appear-duration, ease-out), finishing together with the rail.
  *
@@ -690,8 +690,8 @@
       padding var(--sidebar-rail-duration) var(--sidebar-rail-ease);
   }
 
-  /* Movers on the rail clock: the trigger docking under the mark (transform), the
-     wordmark tucking (max-width/margin), the brand block height, gutter padding. */
+  /* Movers on the rail clock: the mark's nudge and the wordmark tucking
+     (transform, max-width/margin) plus the gutter padding. */
   [data-slot="sidebar-wrapper"][data-animate="true"] .sidebar-glide {
     transition:
       transform var(--sidebar-rail-duration) var(--sidebar-rail-ease),
