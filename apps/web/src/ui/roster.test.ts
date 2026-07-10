@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Cursor, Participant } from "@crossy/protocol";
 import type { Clue } from "../domain/types";
-import { buildRoster } from "./roster";
+import { buildRoster, cluePresence } from "./roster";
 
 // A 3x3 open grid: across words on each row, down words on each column.
 const across: Clue[] = [
@@ -135,5 +135,88 @@ describe("buildRoster", () => {
     });
     expect(roster.solvers.map((s) => s.name)).toEqual(["mia"]);
     expect(roster.watching).toEqual([]);
+  });
+});
+
+// Presence in the lists (PROTOCOL.md section 9): the roster re-keyed by clue so a clue row can
+// mark itself with the teammates on it. Self is dropped (their position is the amber active row),
+// disconnected members and spectators never reach the roster, and no cursors means no dots.
+describe("cluePresence", () => {
+  function presenceOf(
+    opts: Parameters<typeof buildRoster>[0],
+  ): Map<string, readonly string[]> {
+    const map = cluePresence(buildRoster(opts));
+    return new Map(
+      [...map].map(([key, people]) => [key, people.map((p) => p.name)]),
+    );
+  }
+
+  it("keys teammates by clue and never marks the self row", () => {
+    const presence = presenceOf({
+      participants: [person("me", "host"), person("mia", "solver")],
+      cursors: cursorMap([["mia", 4, "across"]]),
+      selfUserId: "me",
+      // Self sits on 1-Across; it stays the amber row, never a dot.
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    expect([...presence.keys()]).toEqual(["across-4"]);
+    expect(presence.get("across-4")).toEqual(["mia"]);
+  });
+
+  it("lists every teammate on a shared clue in roster order", () => {
+    const presence = presenceOf({
+      participants: [
+        person("me", "solver"),
+        person("jules", "solver"),
+        person("sam", "solver"),
+      ],
+      cursors: cursorMap([
+        ["jules", 0, "down"],
+        ["sam", 6, "down"],
+      ]),
+      selfUserId: "me",
+      selfSelection: { cell: 1, direction: "across" },
+      across,
+      down,
+    });
+    expect(presence.get("down-1")).toEqual(["jules", "sam"]);
+  });
+
+  it("leaves no dot for a disconnected teammate", () => {
+    const presence = presenceOf({
+      participants: [person("me", "host"), person("gone", "solver", false)],
+      cursors: cursorMap([["gone", 4, "across"]]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    expect(presence.size).toBe(0);
+  });
+
+  it("leaves no dot for a spectating teammate", () => {
+    const presence = presenceOf({
+      participants: [person("me", "host"), person("ivy", "spectator")],
+      cursors: cursorMap([["ivy", 4, "across"]]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    expect(presence.size).toBe(0);
+  });
+
+  it("is empty when no teammate has a resolvable cursor", () => {
+    const presence = presenceOf({
+      participants: [person("me", "host"), person("browsing", "solver")],
+      cursors: cursorMap([]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    expect(presence.size).toBe(0);
   });
 });
