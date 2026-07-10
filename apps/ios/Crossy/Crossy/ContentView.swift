@@ -2,16 +2,20 @@
 //  ContentView.swift
 //  Crossy
 //
-//  The app's root: the full room (SolveScreen, I2c chrome) over one of two
-//  compositions, selected by launch/env configuration (RoomConfig). A fresh clone
-//  with no configuration lands in DemoRoom (the loopback fixture, a typeable board
-//  with no network), the launch-arg precedent. When the CROSSY_IT_* facts are present
-//  (the I1e harness pattern), it lands in RealRoom against the live stack: real REST
-//  puzzle fetch, real GameStore + SessionDriver + WebSocketTransport. Ground follows
-//  system appearance inside SolveScreen (ID-3). I3 swaps only RealRoom's token source
-//  and base URLs; the composition stays.
+//  The app's root, routed by launch configuration (roadmap I3):
+//
+//    CROSSY_IT_* with a game id  straight into RealRoom against that stack (the I1e
+//                                harness pattern; unchanged from I2)
+//    any -i2* script or -demoRoom  DemoRoom, the loopback fixture (the fresh-clone
+//                                demo path, exactly as before)
+//    otherwise                   the arrival journey (EXPERIENCE.md §2): Welcome →
+//                                sign in → Rooms → tap a room → the live solve.
+//                                -i3Fixture walks it with no network and no key.
+//
+//  Ground follows system appearance inside every screen (ID-3).
 //
 
+import CrossyStore
 import CrossyUI
 import SwiftUI
 
@@ -21,16 +25,26 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("-morphLab") {
             MorphLab()
         } else if let config = RoomConfig.resolve() {
-            RealRoomView(config: config)
-        } else {
+            RealRoomView(room: RealRoom(config: config))
+        } else if wantsDemoRoom {
             DemoRoomView()
+        } else {
+            ArrivalRootView()
         }
+    }
+
+    /// The demo fixture's triggers: its own flag, or any of the -i2* scripts that
+    /// have always implied it (a scheme invocation from the I2 waves keeps landing
+    /// exactly where it used to).
+    private var wantsDemoRoom: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-demoRoom")
+            || arguments.contains { $0.hasPrefix("-i2") }
     }
 }
 
-/// The offline fixture room (DemoRoom): a typeable board with no network, the fresh
-/// clone default.
-private struct DemoRoomView: View {
+/// The offline fixture room (DemoRoom): a typeable board with no network.
+struct DemoRoomView: View {
     @State private var room = DemoRoom()
 
     var body: some View {
@@ -52,17 +66,19 @@ private struct DemoRoomView: View {
 /// The live-stack room (RealRoom): REST fetch then the real socket. The view rebuilds
 /// once the REST view lands (`ready` flips), so the placeholder geometry never renders
 /// as playable truth (the store holds `connecting` until the welcome anyway). A fatal
-/// wiring failure reads plainly instead of a blank room.
+/// wiring failure reads plainly instead of a blank room. `onExit` is the kicked
+/// terminal's way home (pop to Rooms); the harness composition has nowhere to pop to
+/// and keeps the default no-op.
 @available(iOS 18.0, *)
-private struct RealRoomView: View {
-    let config: RoomConfig
+struct RealRoomView: View {
     @State private var room: RealRoom
+    private let onExit: () -> Void
     @State private var ready = false
     @Environment(\.colorScheme) private var colorScheme
 
-    init(config: RoomConfig) {
-        self.config = config
-        _room = State(initialValue: RealRoom(config: config))
+    init(room: RealRoom, onExit: @escaping () -> Void = {}) {
+        _room = State(initialValue: room)
+        self.onExit = onExit
     }
 
     var body: some View {
@@ -76,7 +92,8 @@ private struct RealRoomView: View {
                     clues: room.clues,
                     roomName: room.roomName,
                     model: room.selection,
-                    chrome: room.chrome
+                    chrome: room.chrome,
+                    onExit: onExit
                 )
                 // The mapped geometry changes identity once the REST view lands, so the
                 // SolveScreen's own @State (selection, chrome) reinitializes against the

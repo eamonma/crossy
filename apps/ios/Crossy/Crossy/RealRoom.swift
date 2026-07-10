@@ -11,10 +11,11 @@
 //  ruling that keeps CrossyUI importing only CrossyStore + CrossyDesign), and the real
 //  GameStore + SessionDriver + WebSocketTransport (AD-1, AD-6).
 //
-//  I2 wires this against the LOCAL stack with an injected token (the CROSSY_IT_*
-//  pattern the I1e harness already speaks). I3 replaces exactly the token source with
-//  the Keychain session and the base URLs with production config; the composition and
-//  the mapping do not move.
+//  I2 wired this against the LOCAL stack with an injected token (the CROSSY_IT_*
+//  pattern the I1e harness already speaks). I3 swapped exactly the token source: the
+//  room takes any BearerTokenProviding (the Keychain-backed AuthSession in production,
+//  FixedBearerToken for the harness facts), resolved fresh on every REST call and
+//  every socket dial; the composition and the mapping did not move.
 //
 
 import CrossyAPI
@@ -43,18 +44,37 @@ final class RealRoom {
     /// surfaced plainly rather than papered over. Nil on the happy path.
     private(set) var fatal: String?
 
-    private let config: RoomConfig
+    private let gameId: String
+    private let sessionBaseURL: URL
+    private let tokenProvider: any BearerTokenProviding
     private let api: CrossyAPIClient
 
-    init(config: RoomConfig) {
-        self.config = config
+    /// The harness composition: every fact including the token is injected
+    /// (RoomConfig, the CROSSY_IT_* pattern).
+    convenience init(config: RoomConfig) {
+        self.init(
+            apiBaseURL: config.apiBaseURL,
+            sessionBaseURL: config.sessionBaseURL,
+            gameId: config.gameId,
+            tokenProvider: FixedBearerToken(token: config.token))
+    }
+
+    /// The arrival composition (I3): the token rides a provider so REST and every
+    /// socket redial resolve it fresh (a silent refresh mid-solve just works).
+    init(
+        apiBaseURL: URL,
+        sessionBaseURL: URL,
+        gameId: String,
+        tokenProvider: any BearerTokenProviding
+    ) {
+        self.gameId = gameId
+        self.sessionBaseURL = sessionBaseURL
+        self.tokenProvider = tokenProvider
         let placeholder = GridPuzzle(rows: 1, cols: 1, blocks: [])
         puzzle = placeholder
         clues = .empty
         roomName = ""
-        api = CrossyAPIClient(
-            baseURL: config.apiBaseURL,
-            tokenProvider: FixedBearerToken(token: config.token))
+        api = CrossyAPIClient(baseURL: apiBaseURL, tokenProvider: tokenProvider)
         selection = SelectionModel(store: store, puzzle: placeholder)
 
         // The kicked terminal is the composition root's flag (I2d): the store hands the
@@ -73,7 +93,7 @@ final class RealRoom {
     func run(onReady: @MainActor @escaping () -> Void) async {
         let view: GameView
         do {
-            view = try await api.game(config.gameId)
+            view = try await api.game(gameId)
         } catch {
             fatal = "Could not open this room (\(describe(error)))."
             onReady()
@@ -87,7 +107,7 @@ final class RealRoom {
         selection = SelectionModel(store: store, puzzle: mapped.puzzle)
         onReady()
 
-        guard let wsURL = RoomMapping.socketURL(from: view, sessionBaseURL: config.sessionBaseURL)
+        guard let wsURL = RoomMapping.socketURL(from: view, sessionBaseURL: sessionBaseURL)
         else {
             fatal = "This room's session endpoint is unusable."
             return
@@ -95,7 +115,7 @@ final class RealRoom {
 
         let store = store
         let chrome = chrome
-        let token = config.token
+        let tokenProvider = tokenProvider
         let driver = SessionDriver(
             store: store,
             // The reconnect countdown deadline (DESIGN.md §8): the driver owns the clock
@@ -105,12 +125,13 @@ final class RealRoom {
             // never rendered; no clear step is needed.
             onReconnectScheduled: { deadline in chrome.reconnectRetryAt = deadline },
             makeTransport: {
-                // One transport per attempt (Ports.swift), token resolved fresh inside
-                // connect(). For the local stack the token is the injected fact; I3
-                // swaps this closure for the Keychain session's current token.
+                // One transport per attempt (Ports.swift), token resolved fresh
+                // inside connect() through the same seam REST rides: the Keychain
+                // session refreshes silently in production, the harness answers its
+                // injected fact.
                 WebSocketTransport(
                     url: wsURL,
-                    tokenProvider: { token },
+                    tokenProvider: { try await tokenProvider.currentToken() },
                     resumeFromSeq: store.seq == 0 ? nil : store.seq)
             })
         // Run the driver's loop inline, exactly as DemoRoom awaits its mailbox. The
@@ -128,9 +149,9 @@ final class RealRoom {
     }
 }
 
-/// The BearerTokenProviding adapter for I2: a fixed injected token (the CROSSY_IT_*
-/// pattern). I3 replaces this with the Keychain session's current-token accessor; the
-/// REST client's port does not change.
+/// The injected-token side of the I3 auth seam: a fixed bearer (the CROSSY_IT_*
+/// pattern the harness and the fixture walk speak). Production rooms ride the
+/// Keychain-backed AuthSession through the same BearerTokenProviding port.
 struct FixedBearerToken: BearerTokenProviding {
     let token: String
     func currentToken() async throws -> String { token }

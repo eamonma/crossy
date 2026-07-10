@@ -3,8 +3,8 @@
 <plist version="1.0">
 <!-- Bundle configuration as code (apps/ios/ROADMAP.md I0c): every value here is public;
      no dashboard-only setting anywhere. Values mirror deploy/README.md. The publishable
-     key is public but lives outside the repo today; the owner pastes it before Phase I3a
-     (sign-in). Local-stack overrides for Phase I2 land with the I1e harness, not here. -->
+     key is public by design (INV-6 note there) and committed. Local-stack overrides
+     ride the CROSSY_IT_* launch facts (the I1e harness pattern), not this file. -->
 <dict>
 	<key>APIBase</key>
 	<string>https://rest.crossy.me</string>

@@ -404,6 +404,9 @@ async function main(): Promise<void> {
   console.log("seeding one game through the api (two full-account members)...");
   const tokenA = await auth.mint(randomUUID(), false);
   const tokenB = await auth.mint(randomUUID(), false);
+  // C never joins here: the REST arrival suite (I3) walks the cold path itself,
+  // an empty rooms list, then join by code, then the game listed.
+  const tokenC = await auth.mint(randomUUID(), false);
   const puzzle = (await postJson("/puzzles", tokenA, PUZZLE)) as {
     puzzleId: string;
   };
@@ -419,8 +422,10 @@ async function main(): Promise<void> {
     CROSSY_IT_API_URL: API_URL,
     CROSSY_IT_WS_BASE: SESSION_WS_BASE,
     CROSSY_IT_GAME_ID: game.gameId,
+    CROSSY_IT_INVITE_CODE: game.inviteCode,
     CROSSY_IT_TOKEN_A: tokenA,
     CROSSY_IT_TOKEN_B: tokenB,
+    CROSSY_IT_TOKEN_C: tokenC,
   });
   writePidfile(); // again, now that the swift group exists too
   const code = await new Promise<number>((resolve) => {
