@@ -54,6 +54,9 @@ let package = Package(
         .testTarget(name: "CrossyAPITests", dependencies: ["CrossyAPI"]),
         .testTarget(name: "CrossySessionTests", dependencies: ["CrossySession"]),
         .testTarget(name: "CrossyDesignTests", dependencies: ["CrossyDesign"]),
-        .testTarget(name: "CrossyUITests", dependencies: ["CrossyUI"]),
+        // CrossyEngine appears here for parity pinning only (GridPuzzle's restated
+        // word-run rule held against the engine's wordBounds, the vector-runner
+        // pattern); the shipping CrossyUI target still may not import it (AD-2).
+        .testTarget(name: "CrossyUITests", dependencies: ["CrossyUI", "CrossyEngine"]),
     ]
 )

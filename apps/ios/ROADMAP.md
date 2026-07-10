@@ -159,10 +159,18 @@ Presence needs no server work: the wire slice landed with PR #31 (connect and
 disconnect notices, the liveness timer, cursor relay, and the web client sending
 cursors), so this phase consumes and renders presence, nothing more.
 
-- [ ] a. Grid renderer: `Canvas`, the root DESIGN.md section 10 module rules
+- [x] a. Grid renderer: `Canvas`, the root DESIGN.md section 10 module rules
       (background precedence, numbers top-left, presence bottom-right per
       Wave 2.1d, circles, flash in the writer's color), both grounds (Studio,
       Observatory), pan and zoom to the 25x25 cap with a glyph-legibility floor.
+      Landed 2026-07-10: one culled Canvas pass over a pure GridFrame snapshot
+      (INV-10); geometry and precedence in headless-tested types; the floor is
+      10 pt glyphs (TypeScale.gridGlyphLegibilityFloorPoints, justified at the
+      constant); wire color is authoritative for roster slotting
+      (IdentityRoster.slot(forWireColor:), user-id hash as offline fallback);
+      GridPuzzle's word-run rule is parity-pinned against CrossyEngine in tests.
+      Local selection and the ClientPuzzle-to-GridPuzzle mapping deliberately
+      wait for I2b/I2c.
 - [ ] b. Input: the key deck per the ID-4 ruling from SP-i2; navigation through the
       engine (the vectored rules, including PR #30's Tab semantics); swipe along
       the direction for next/previous word, across it to toggle; backspace
