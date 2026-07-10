@@ -17,12 +17,21 @@ import type {
 import type { GameTransport } from "./transport";
 
 /**
- * The store's connection state (PROTOCOL.md section 7; token set normative in
- * vectors/README.md): `live` applies events in order; `resyncing` has seen a gap,
- * sent `requestSync`, and ignores sequenced events until the next snapshot;
- * `reconnecting` lost the socket and waits for the reconnect `welcome` to reconcile.
+ * The store's connection state. Three of these are the PROTOCOL.md section 7 wire
+ * lifecycle (token set normative in vectors/README.md): `live` applies events in order;
+ * `resyncing` has seen a gap, sent `requestSync`, and ignores sequenced events until the
+ * next snapshot; `reconnecting` lost the socket after a drop or fatal error and waits for
+ * the reconnect `welcome` to reconcile.
+ *
+ * `connecting` is the honest initial state before the first `welcome` ever lands: no
+ * board exists yet. It is deliberately distinct from `reconnecting` (a post-drop state)
+ * so the UI does not claim "Reconnecting..." on a healthy first connect, and so local
+ * mutations are refused until there is authoritative state to build on. It is client-
+ * local and pre-handshake: no vector encodes it (every client-store case supplies an
+ * explicit `given.sync` and only transitions produce live/resyncing/reconnecting), and
+ * no wire message carries it.
  */
-export type SyncState = "live" | "resyncing" | "reconnecting";
+export type SyncState = "connecting" | "live" | "resyncing" | "reconnecting";
 
 /**
  * A sent-but-unconfirmed mutation (PROTOCOL.md section 8). `value` is null for a
@@ -93,7 +102,10 @@ export class GameStore {
     this.transport = init.transport;
     this.newCommandId = init.newCommandId ?? (() => crypto.randomUUID());
     this.seqValue = init.initial?.seq ?? 0;
-    this.syncValue = init.initial?.sync ?? "reconnecting";
+    // Honest default: a freshly opened game is `connecting`, not `reconnecting`. The vector
+    // suite always seeds `sync` explicitly, so this default is exercised only by the real
+    // connect path (net/connect.ts); the first `welcome` flips it to `live`.
+    this.syncValue = init.initial?.sync ?? "connecting";
     this.statusValue = init.initial?.status ?? "ongoing";
     this.cellsValue = new Map(init.initial?.cells ?? []);
     this.overlayValue = [...(init.initial?.overlay ?? [])];
@@ -177,6 +189,13 @@ export class GameStore {
     value: string | null,
     commandId?: string,
   ): void {
+    // Before the first welcome there is no authoritative board yet: refuse local
+    // mutations so a keystroke cannot mint an overlay entry against an empty grid
+    // (item 3; the UI de-emphasizes and locks input in this state too). This is an
+    // explicit gate, not an accident of the old `reconnecting` default; the first
+    // welcome flips sync to `live` and unlocks input. A later drop goes `reconnecting`,
+    // where optimistic mutations are still allowed and reconciled (PROTOCOL.md section 8).
+    if (this.syncValue === "connecting") return;
     // Terminal states freeze mutation locally: refused here, never reaching the
     // wire (ROADMAP Wave 2.1d terminal-state rule; INV-4 governs the board, the
     // server would reject with GAME_NOT_ONGOING anyway).
