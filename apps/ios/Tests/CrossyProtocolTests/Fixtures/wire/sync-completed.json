@@ -1,0 +1,31 @@
+{
+  "type": "sync",
+  "board": {
+    "seq": 900,
+    "status": "completed",
+    "firstFillAt": "2026-07-07T19:02:11Z",
+    "completedAt": "2026-07-07T19:40:03Z",
+    "abandonedAt": null,
+    "cells": [
+      { "v": "A", "by": "u1" },
+      { "v": null, "by": null },
+      { "v": "B", "by": "u2" }
+    ],
+    "participants": [
+      {
+        "userId": "u1",
+        "displayName": "Ana",
+        "color": "#7F77DD",
+        "role": "host",
+        "connected": false
+      }
+    ],
+    "cursors": [],
+    "recentCommandIds": ["cmd-9"],
+    "stats": {
+      "solveTimeSeconds": 2272,
+      "totalEvents": 899,
+      "participantCount": 4
+    }
+  }
+}

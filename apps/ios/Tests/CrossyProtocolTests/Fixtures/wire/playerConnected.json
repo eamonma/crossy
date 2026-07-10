@@ -1,0 +1,7 @@
+{
+  "type": "playerConnected",
+  "userId": "u2",
+  "displayName": "Bo",
+  "color": "#33AA88",
+  "role": "solver"
+}

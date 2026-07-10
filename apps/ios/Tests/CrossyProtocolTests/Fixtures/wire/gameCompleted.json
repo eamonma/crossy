@@ -1,0 +1,10 @@
+{
+  "type": "gameCompleted",
+  "seq": 900,
+  "at": "2026-07-07T19:40:03Z",
+  "stats": {
+    "solveTimeSeconds": 2272,
+    "totalEvents": 899,
+    "participantCount": 4
+  }
+}
