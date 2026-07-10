@@ -456,7 +456,8 @@ function Skeleton({ className = "" }: { className?: string }) {
 
 /**
  * The pre-REST loading treatment (item 4): the same framed game shell the live game
- * uses (panel chrome, dashed clue rule, the 4fr/3fr board-and-rail split), filled with
+ * uses (panel chrome, dashed clue rule, the board-and-rail split that widens the rail into
+ * twin columns at the wide breakpoint), filled with
  * quiet placeholder blocks instead of a centered card. No geometry is known yet, so the
  * board area is a square shimmer; when REST lands, LiveGame renders the real grid at its
  * true geometry, so only the placeholders change, not the frame. No spinner. In the shell
@@ -498,15 +499,15 @@ function LoadingGameShell({ inShell }: { inShell: boolean }) {
           <Skeleton className="h-4 w-2/3 max-w-[24rem] rounded-2" />
         </div>
 
-        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)]">
+        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)] wide:grid-cols-[minmax(0,1fr)_45rem]">
           <div className="board-stage h-full min-h-0 overflow-hidden p-3 md:p-6 flex flex-col md:justify-center">
             <div className="board-fit" style={{ aspectRatio: "1 / 1" }}>
               <Skeleton className="w-full h-full rounded-2" />
             </div>
           </div>
 
-          <div className="hidden md:grid grid-rows-2 min-h-0 h-full border-l border-dashed border-border-dashed">
-            <div className="flex flex-col gap-2.5 p-4 border-b border-dashed border-border-dashed">
+          <div className="hidden md:grid grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 h-full border-l border-dashed border-border-dashed">
+            <div className="flex flex-col gap-2.5 p-4 border-b border-dashed border-border-dashed wide:border-b-0 wide:border-r">
               {railList}
             </div>
             <div className="flex flex-col gap-2.5 p-4">{railList}</div>
@@ -855,7 +856,7 @@ function LiveGame({
           onNext={() => stepClue("forward")}
         />
 
-        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)]">
+        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)] wide:grid-cols-[minmax(0,1fr)_45rem]">
           <div
             className="board-stage h-full min-h-0 overflow-auto md:overflow-hidden p-3 md:p-6 flex flex-col md:justify-center"
             style={{

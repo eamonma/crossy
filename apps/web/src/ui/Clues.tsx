@@ -199,8 +199,13 @@ function ClueList({
   );
 }
 
-/** Desktop rail: the two lists stacked, framed off the board by the dashed rule. The
- * optional solving-now block docks above Across and keeps the lists' flex room intact. */
+/** Desktop rail: the two lists framed off the board by the dashed rule, with the optional
+ * solving-now block docked above them at full rail width. Below the `wide` breakpoint the
+ * lists stack (Across over Down, a horizontal rule between). At `wide` the rail column
+ * widens (LiveApp's grid template) and the lists sit side by side at full height, split by
+ * a vertical rule of the same dashed language: by then the board is height-bound, so the
+ * second column spends the board's horizontal slack, not the board itself. Both forms keep
+ * the active-row scroll and the solved-row dimming identically. */
 export function ClueRail({
   across,
   down,
@@ -223,8 +228,8 @@ export function ClueRail({
   return (
     <div className="hidden md:flex flex-col min-h-0 h-full border-l border-dashed border-border-dashed">
       {solvingNow}
-      <div className="grid grid-rows-2 min-h-0 flex-1">
-        <div className="flex min-h-0 border-b border-dashed border-border-dashed">
+      <div className="grid grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 flex-1">
+        <div className="flex min-h-0 border-b border-dashed border-border-dashed wide:border-b-0 wide:border-r">
           <ClueList
             title="Across"
             clues={across}
