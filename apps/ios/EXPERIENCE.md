@@ -1,0 +1,215 @@
+# Crossy iOS Experience
+
+Status: draft 1, for owner review. Date: 2026-07-09.
+Companion: `apps/ios/DESIGN.md` (look and feel, materials, motion).
+
+**Scope and precedence.** This document owns the iPhone app's product vision, flows,
+screens, states, and copy voice. It owns no semantics: wire behavior, navigation
+rules, and store reconciliation are owned by `PROTOCOL.md` and `vectors/`; roles,
+identity, and architecture by the root `DESIGN.md`. Where a flow below touches an
+endpoint or message, the citation is the authority, not the prose here.
+
+## 1. What the iOS app is
+
+The web client is where you land from a link. The iOS app is where the ritual lives:
+the same few friends, the evening call, the room in your pocket. Its job is to make
+the recurring solve feel native and inevitable: haptics under your fingers, the room
+following you out through the Dynamic Island, an invite that unfurls in the group
+chat and opens straight into the app.
+
+**v1 scope** (owner decisions, 2026-07-09): iPhone first. Named accounts only;
+Discord OAuth via Supabase; no Sign in with Apple yet (deliberately unrushed) and no
+guest sign-in (guests are a web-only spectate feature). iOS 26 floor (root
+DESIGN.md D06). Nothing here races a deadline.
+
+**Non-goals for v1**, recorded so nobody quietly builds them: iPad-optimized layout,
+offline solving, widgets beyond the Live Activity, puzzle construction or discovery,
+analytics UI, Android (root DESIGN.md section 1 non-goals apply wholesale).
+
+## 2. The journey
+
+Seven moments, in order. Each is grounded in surface that already exists in
+production.
+
+1. **First open.** No tour, no carousel. The wordmark types itself into a few cells,
+   one line says what this is, one button continues with Discord.
+2. **Sign in.** `ASWebAuthenticationSession` to Discord through Supabase. The sheet
+   is the system's; the frame behind it stays quiet. Tokens live in the Keychain.
+3. **Rooms.** Home is the rooms you belong to (`GET /games`): the grid's geometry as
+   a fingerprint, the people as dots, the puzzle title. Cards sell people, not
+   progress; the endpoint deliberately carries no lifecycle status (PROTOCOL.md
+   section 12), and when the Archive read grant lands a status chip is an additive
+   change.
+4. **Bring a puzzle.** Paste a URL or open a file; XWord Info JSON (`POST
+/puzzles`). Rejections arrive named (PROTOCOL.md section 12), so the copy tells
+   the truth instead of apologizing.
+5. **The invite.** Create a game (`POST /games`), get the code: eight characters
+   from an alphabet built to be read aloud on a call. Share via the system sheet;
+   `/g/{code}` unfurls server-side and opens as a universal link.
+6. **Pick up a pencil.** A link or code lands you in the room as a spectator,
+   watching live cursors before you commit (`POST /games/join` or
+   `/games/{id}/join`). Upgrading is one tap (`POST /games/{id}/role`).
+7. **The room, and the mosaic.** The solve is the product (section 3). Completion is
+   server-noticed, exactly once; the timer freezes and the mosaic plays
+   (`gameCompleted`, INV-3).
+
+## 3. Screens
+
+### Welcome
+
+Cold open for the signed-out. One screen: wordmark, one line, Continue with Discord.
+When launched from an invite link while signed out, the join context is held and
+honored after auth completes. Auth failure returns here with a plain retry, never a
+dead end.
+
+### Rooms (home)
+
+The signed-in root. Room cards from `GET /games` (cursor-paginated, newest first):
+geometry fingerprint, member dots, puzzle title, optional game name. Two standing
+actions: New game, Join with a code (glass cluster, merges on scroll). Empty state
+is an invitation, not a void: one line and the same two actions. A puzzles shelf
+(`GET /puzzles`) backs game creation and is reachable here.
+
+### Create a game
+
+Pick a puzzle from your uploads or bring one (paste URL / Files picker). Optional
+name, 80 chars trimmed (PROTOCOL.md section 12). Creation returns the invite code;
+the share card is the immediate next beat, share sheet one tap away. Ingestion
+failures read as named, human sentences (section 5).
+
+### Join with a code
+
+One field, the read-aloud alphabet, autocapitalized, ambiguity-free. `POST
+/games/join` resolves the code alone; `GAME_NOT_FOUND` reads "No room answers to
+that code." `DENIED` (kicked) is honest and final. Success lands in the room as a
+spectator.
+
+### The room (solve screen)
+
+The stack: room bar / grid / clue bar / key deck (layout and materials in
+`apps/ios/DESIGN.md`). Connect on entry: `GET /games/{id}` for the solution-stripped
+puzzle, membership, and session endpoint, then the WebSocket handshake
+(PROTOCOL.md section 2).
+
+States, each honest and distinct:
+
+- **Watching (spectator).** The full live room, read-only: cursors dance, letters
+  land, the timer runs. One standing affordance: Pick up a pencil. Spectator
+  cursors are not rendered and not broadcast by default (root DESIGN.md
+  section 15). iOS v1 has no guests, so every watcher is a named account one tap
+  from solving.
+- **Solving.** Typing through the custom key deck (never the system keyboard):
+  optimistic overlay, echo clears it (INV-10). Navigation follows the vectored
+  rules; swipe along the solving direction is next/previous word, across it toggles
+  (root DESIGN.md section 5). Tap the clue bar or pull it up for the clue browser.
+  Check is a deliberate action (`checkRequest`), wrong cells render in check style
+  until next edit. Rebus entry via the bubble (D12). Conflicts are the 300 ms flash,
+  nothing silent (D02).
+- **Resyncing / reconnecting.** The three-state weather (PROTOCOL.md section 7)
+  rendered as described in `DESIGN.md` section 8: calm dot, breathing dot, dimmed
+  room with countdown. Input during reconnect is held gracefully, not swallowed
+  silently: the overlay and reconciliation rules of PROTOCOL.md section 8 govern.
+- **Completed.** The mosaic, the frozen time, then the stats: solve time, entries,
+  solvers (`gameCompleted.stats`). The connection stays open; the room becomes a
+  finished object you can revisit from Rooms.
+- **Abandoned.** Terminal and quiet: the board freezes with a one-line notice.
+- **Kicked.** `kicked` notice then close: the room exits with one honest sentence;
+  the code is dead for this account thereafter (denylist).
+
+### Roster sheet
+
+Morphs from the room-bar pucks: everyone in the room with color, name, role, and
+connection state; the invite capsule (members only, any role, PROTOCOL.md
+section 12). Host powers live here: kick (`DELETE /games/{id}/members/{userId}`,
+never themselves) and abandon (`POST /games/{id}/abandon`, one confirm, plainly
+worded). Spectators see the roster too; their one action is Pick up a pencil.
+
+### Clue browser
+
+The clue bar, stretched: both directions, current word pinned, filled words quietly
+de-emphasized, tap to jump. Cross-referenced clues link both ways ("See 17-Across"
+navigates).
+
+### Account
+
+Minimal: identity as Discord presents it, your roster color, sign out, and account
+deletion (`DELETE /account`, root DESIGN.md section 8 tombstone semantics, worded
+plainly with its consequences). Display-name editing has no API surface today; see
+section 7.
+
+## 4. System behaviors
+
+- **Universal links.** `/g/{code}` opens the app when installed (associated
+  domains against the API host serving `GET /g/{code}`); the web shell remains the
+  fallback for everyone else. Signed-out deep links hold their context through auth.
+- **Socket lifecycle.** `URLSessionWebSocketTask` running the shared reconnect state
+  machine, backoff and jitter per PROTOCOL.md section 7. Backgrounding closes the
+  socket after a grace period and condenses the room to the island; foregrounding
+  reconnects via fresh `hello` (scenePhase-driven). Heartbeat every 15 s while
+  active.
+- **The Live Activity**, staged honestly:
+  - v1: started on backgrounding an ongoing room. The shared timer renders natively
+    from `firstFillAt` (zero updates, survives app death, D15); board state is
+    last-known.
+  - later: ActivityKit push updates from the session service (fill progress,
+    presence line, the away-completion moment). New infrastructure: APNs key
+    (owner-held secret) and per-activity push tokens; scoped as its own track in the
+    roadmap, touching the session service.
+- **Store conformance.** The iOS store passes the shared client-store vectors in
+  XCTest (overlay reconciliation, gap-to-sync, crash rollback), exactly as the
+  engine port passes the engine vectors. This is the drift fence; the UI renders
+  sequenced state plus overlay and nothing else (INV-10).
+- **Errors.** Every surfaced error keys on the stable code (REST vocabulary,
+  PROTOCOL.md section 12; WS codes, section 11), mapped to one human sentence each.
+  No raw codes on screen, no prose keyed on message text.
+
+## 5. Copy voice
+
+Warm, specific, unhurried (ID-5). Controls say what happens. Errors say what went
+wrong and what to do, without apology. The API speaks in roles; the app does not
+have to.
+
+Lexicon:
+
+| surface            | word                                                    |
+| ------------------ | ------------------------------------------------------- |
+| home               | Rooms                                                   |
+| spectator state    | Watching                                                |
+| role upgrade       | Pick up a pencil                                        |
+| completion         | Solved together                                         |
+| invite share       | Anyone with this code can watch                         |
+| join failure       | No room answers to that code                            |
+| kicked             | The host closed the room to you                         |
+| abandoned          | The host put this one away                              |
+| diagramless reject | This one's diagramless. Crossy can't seat it.           |
+| oversize reject    | This grid is bigger than 25x25, which is Crossy's edge. |
+| unsolvable reject  | A cell in this puzzle can't be typed. Crossy passed.    |
+
+Rejection copy above is voice guidance, one sentence per named code; the codes
+themselves are the contract (PROTOCOL.md section 12).
+
+## 6. Launch cut
+
+**v1 blocking:** auth and Keychain session; Rooms with both list endpoints; create,
+ingest, share; join by code and universal link; the full solve room (watching,
+solving, weather, completed, abandoned, kicked); presence and conflict flash; check;
+rebus entry (a plain inline field qualifies; the bubble theater does not gate
+launch); clue browser; the mosaic in a simple form (tint, hold, settle); pan and
+zoom to the 25x25 cap; account with deletion.
+
+**Follow-on:** Live Activity pushes and the away-completion moment; presence glints;
+the clarity beat; mosaic choreography; pan-thinning chrome; App Store screenshot
+pass. Sign in with Apple remains owner-gated and unscheduled.
+
+## 7. Open questions (owner review)
+
+- ID-1 through ID-5 in `apps/ios/DESIGN.md` section 9: attribution at rest, timer
+  prominence, ground default, key deck, copy voice.
+- **Display name.** The `users` mirror carries a display name from the provider,
+  and no endpoint edits it today. Ship v1 with Discord-derived names, or add a
+  small API surface first? Leaning ship-as-is for v1.
+- **Leaving a room.** No self-leave endpoint exists; membership rows are removed
+  only by kick or deletion. v1 answer: rooms simply persist in your list. If leaving
+  matters, that is an API-side conversation, not an iOS workaround.
+- **Live Activity staging.** Confirm the v1/later split in section 4 before the
+  roadmap fences the push-infrastructure track.
