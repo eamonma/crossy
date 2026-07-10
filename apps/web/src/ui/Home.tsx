@@ -28,6 +28,7 @@ import {
 } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 export type HomeSurface = "games" | "puzzles";
 
@@ -55,24 +56,31 @@ export function Home({
   onCreate: () => void;
 }) {
   return (
-    <div className="h-full min-w-0 p-4">
-      <div className="h-full overflow-hidden rounded-3 border border-border-strong bg-panel shadow-sm">
-        {surface === "games" ? (
-          <GamesPanel
-            state={games}
-            reload={reloadGames}
-            session={session}
-            onOpen={onOpenGame}
-            onCreate={onCreate}
-          />
-        ) : (
-          <PuzzlesPanel
-            apiBase={apiBase}
-            token={token}
-            onNewGame={onStartGame}
-            onCreate={onCreate}
-          />
-        )}
+    <div className="h-full min-w-0 p-4 md:p-3 md:pl-0">
+      <div className="flex h-full flex-col overflow-hidden rounded-3 border border-border-strong bg-panel shadow-sm">
+        {/* The sidebar toggle, anchored in the panel's top-left so a collapse never slides it
+            out from under the cursor. Desktop only; the phone header owns the sheet trigger. */}
+        <div className="hidden shrink-0 px-3 pt-2 md:block">
+          <SidebarTrigger className="text-text-subtle hover:text-text" />
+        </div>
+        <div className="min-h-0 flex-1">
+          {surface === "games" ? (
+            <GamesPanel
+              state={games}
+              reload={reloadGames}
+              session={session}
+              onOpen={onOpenGame}
+              onCreate={onCreate}
+            />
+          ) : (
+            <PuzzlesPanel
+              apiBase={apiBase}
+              token={token}
+              onNewGame={onStartGame}
+              onCreate={onCreate}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -93,7 +101,7 @@ function PanelShell({
 }) {
   return (
     <div className="h-full overflow-y-auto pb-4">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 md:pt-3">
         <div className="min-w-0">
           <h1 className="m-0 font-display text-6 text-text">{title}</h1>
           {subtitle !== undefined && (
