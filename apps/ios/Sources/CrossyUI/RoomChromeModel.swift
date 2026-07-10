@@ -35,6 +35,11 @@ public final class RoomChromeModel {
     /// The roster morph: 0 is the puck cluster at rest, 1 the open panel.
     public var rosterProgress: CGFloat = 0
 
+    /// The stats morph (ID-2: the timer becomes the headline only at
+    /// completion, so the headline comes FROM the timer): 0 is the room bar's
+    /// frozen clock, 1 the open stats card.
+    public var statsProgress: CGFloat = 0
+
     /// When the reconnect adapter will dial next, for the quiet countdown
     /// (DESIGN.md §8). Set by the composition root; nil renders the bare word.
     public var reconnectRetryAt: Date?
@@ -48,11 +53,13 @@ public final class RoomChromeModel {
 
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
     @ObservationIgnored private var rosterSettleTask: Task<Void, Never>?
+    @ObservationIgnored private var statsSettleTask: Task<Void, Never>?
 
     public init() {}
 
     public var isBrowserOpen: Bool { meltProgress > 0 }
     public var isRosterOpen: Bool { rosterProgress > 0 }
+    public var isStatsOpen: Bool { statsProgress > 0 }
 
     // MARK: Settling (the one animation, on release)
 
@@ -75,6 +82,15 @@ public final class RoomChromeModel {
 
     public func rosterTouched() {
         rosterSettleTask?.cancel()
+    }
+
+    public func settleStats(open: Bool, animated: Bool = true) {
+        statsSettleTask?.cancel()
+        statsSettleTask = Self.walk(
+            from: statsProgress, to: open ? 1 : 0, animated: animated
+        ) { [weak self] value in
+            self?.statsProgress = value
+        }
     }
 
     public func settleRoster(open: Bool, animated: Bool = true) {

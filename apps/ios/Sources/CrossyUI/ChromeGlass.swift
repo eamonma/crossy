@@ -99,6 +99,9 @@ enum ChromePiece: Hashable {
     /// from where layout actually put each person (DESIGN.md §4: content rides
     /// the morph), never from arithmetic about the cluster's innards.
     case puck(String)
+    /// The room bar's clock: the stats morph's rest (ID-2, the timer becomes
+    /// the headline at completion) and its rider's launch point.
+    case clock
 }
 
 struct ChromeFramesKey: PreferenceKey {

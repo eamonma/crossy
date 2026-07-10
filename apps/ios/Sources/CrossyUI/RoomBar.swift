@@ -23,6 +23,12 @@ struct RoomBar: View {
     /// panel's riders and hides, so nobody renders twice (DESIGN.md §4). Layout
     /// and frame reporting stay; only the visual yields.
     let clusterHandedOff: Bool
+    /// True while the stats card exists: the clock is the card's rider (ID-2),
+    /// so the bar's own rendering yields, same rule as the cluster.
+    let clockHandedOff: Bool
+    /// Non-nil once the room completes: tapping the frozen clock summons the
+    /// stats card back (the card is the clock, inflated).
+    let onTapClock: (() -> Void)?
     let onTapPucks: () -> Void
 
     var body: some View {
@@ -38,12 +44,7 @@ struct RoomBar: View {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 HStack(spacing: 10) {
                     weatherCluster(now: timeline.date)
-                    Text(verbatim: AmbientClock.display(
-                        firstFillAt: firstFillAt, completedAt: completedAt, now: timeline.date))
-                        .font(.system(size: 13, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Color(rgb: ground.tokens.number))
-                        .accessibilityLabel(Text(verbatim: "Shared time"))
+                    clock(now: timeline.date)
                 }
             }
             puckCluster
@@ -86,6 +87,35 @@ struct RoomBar: View {
         case .breathing: return "Catching up"
         case .dimmed: return weather.label ?? "Reconnecting"
         }
+    }
+
+    // MARK: The clock
+
+    /// The ambient clock (ID-2), and at completion the stats morph's rest: its
+    /// frame is reported for the card's geometry, its rendering yields while the
+    /// card exists (the time rides the card), and the frozen value takes a tap
+    /// to summon the card back.
+    @ViewBuilder
+    private func clock(now: Date) -> some View {
+        let display = Text(
+            verbatim: AmbientClock.display(
+                firstFillAt: firstFillAt, completedAt: completedAt, now: now)
+        )
+        .font(.system(size: 13, weight: .medium))
+        .monospacedDigit()
+        .foregroundStyle(Color(rgb: ground.tokens.number))
+
+        Group {
+            if let onTapClock {
+                Button(action: onTapClock) { display.contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text(verbatim: "Solved together, show stats"))
+            } else {
+                display.accessibilityLabel(Text(verbatim: "Shared time"))
+            }
+        }
+        .reportChromeFrame(.clock)
+        .opacity(clockHandedOff ? 0 : 1)
     }
 
     // MARK: Pucks

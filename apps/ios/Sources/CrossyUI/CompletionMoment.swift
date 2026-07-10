@@ -217,8 +217,6 @@ public enum RoomTerminal {
     /// The kicked exit's affordance: home is Rooms (lexicon), so the way out says
     /// so plainly (ID-5: controls that say what happens).
     public static let kickedExitWord = "Back to Rooms"
-    /// The completed zone's control: presents the stats card.
-    public static let statsWord = "Stats"
 
     /// The deck leaves the room on a terminal status; taps and swipes stay live.
     public static func deckRetired(status: RoomStatus) -> Bool {

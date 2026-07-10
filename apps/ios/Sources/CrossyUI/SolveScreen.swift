@@ -90,6 +90,9 @@ public struct SolveScreen: View {
                     completedAt: store.completedAt ?? store.abandonedAt,
                     members: members,
                     clusterHandedOff: chrome.isRosterOpen,
+                    clockHandedOff: chrome.isStatsOpen,
+                    onTapClock: status == .completed
+                        ? { completion.isStatsOpen = true } : nil,
                     onTapPucks: toggleRoster
                 )
                 .reportChromeFrame(.roomBar)
@@ -131,7 +134,11 @@ public struct SolveScreen: View {
                 // browsing; taps and swipes are pure navigation after the freeze.
                 switch status {
                 case .completed:
-                    completedZone
+                    // The finished room breathes (owner ruling 2026-07-10,
+                    // removing the first build's Solved-together zone and its
+                    // Stats button): the deck just leaves, the board keeps the
+                    // space, and the stats live behind the frozen clock.
+                    Color.clear.frame(height: 12)
                 case .abandoned:
                     abandonedZone
                 case .ongoing:
@@ -180,39 +187,32 @@ public struct SolveScreen: View {
                     onJoinIn: onJoinIn)
             }
 
-            // The stats card (EXPERIENCE.md Completed), a custom overlay panel
-            // like the roster: a tap-away catcher for dismissal back to the
-            // frozen room, no scrim, one glass layer.
-            if completion.isStatsOpen {
+            // The stats card (EXPERIENCE.md Completed): the room bar's frozen
+            // clock, inflated (ID-2; DESIGN.md §4 morph grammar, owner ruling
+            // 2026-07-10 replacing the first build's transitioned overlay). A
+            // tap-away catcher pours it back, no scrim, one glass layer.
+            if chrome.isStatsOpen {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { completion.isStatsOpen = false }
-                VStack {
-                    StatsCardPanel(ground: ground, content: statsContent)
-                        .frame(maxWidth: 340)
-                        .transition(
-                            reduceMotion
-                                ? .opacity
-                                : .scale(scale: 0.94, anchor: .top).combined(with: .opacity))
-                    Spacer()
-                }
-                .padding(.horizontal, ChromeLayout.inset)
-                .padding(.top, statsCardTop)
+            }
+            if chrome.isStatsOpen, let morph = statsMorph {
+                StatsMorphPanel(
+                    ground: ground,
+                    morph: morph,
+                    content: statsContent,
+                    chrome: chrome)
             }
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
         .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
-        // Celebration overshoot is sanctioned (DESIGN.md §7); Reduce Motion
-        // crossfades instead.
-        .animation(
-            reduceMotion
-                ? .easeInOut(duration: 0.2)
-                : .spring(
-                    response: Motion.Springs.celebrationResponse,
-                    dampingFraction: Motion.Springs.celebrationDampingFraction),
-            value: completion.isStatsOpen
-        )
+        // The card's presentation fact lives in CompletionModel (the celebration
+        // owns WHEN); the morph's geometry progress lives in RoomChromeModel
+        // like every other morph, walked on the chrome spring.
+        .onChange(of: completion.isStatsOpen) { _, open in
+            chrome.settleStats(open: open, animated: !reduceMotion)
+        }
         // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
         // flag through the environment; below iOS 26 the fallback stays inert.
         .environment(\.chromeClarified, completion.isClarityBeat)
@@ -255,9 +255,22 @@ public struct SolveScreen: View {
             completedAt: store.completedAt)
     }
 
-    /// The card hangs where an open panel does: under the room bar.
-    private var statsCardTop: CGFloat {
-        (frames[.roomBar]?.maxY ?? ChromeLayout.barHeight) + ChromeLayout.panelTopGap
+    /// The stats morph: rest is the bar clock's reported frame (the card is the
+    /// clock, inflated; ID-2); open is a card hanging under the room bar, sized
+    /// by StatsRideLayout's fixed slots.
+    private var statsMorph: GlassMorph? {
+        guard let clock = frames[.clock], let roomBar = frames[.roomBar]
+        else { return nil }
+        let width = min(roomBar.width, StatsRideLayout.panelMaxWidth)
+        let height = StatsRideLayout.panelHeight(hasDetail: statsContent.detail != nil)
+        return GlassMorph(
+            rest: clock,
+            open: CGRect(
+                x: roomBar.midX - width / 2,
+                y: roomBar.maxY + ChromeLayout.panelTopGap,
+                width: width, height: height),
+            restCornerRadius: clock.height / 2,
+            openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 
     private func observeRoomState() {
@@ -421,31 +434,6 @@ public struct SolveScreen: View {
                 response: Motion.Springs.chromeResponse,
                 dampingFraction: Motion.Springs.chromeDampingFraction),
             value: model.isRebusActive)
-    }
-
-    /// The completed room (EXPERIENCE.md Completed): a finished object. The deck
-    /// is gone; the lexicon word stands where it was, and the stats card is one
-    /// tap away again after dismissal.
-    private var completedZone: some View {
-        VStack(spacing: 10) {
-            Text(verbatim: RoomTerminal.completedNotice)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(rgb: ground.tokens.number))
-            Button(action: { completion.isStatsOpen = true }) {
-                Text(verbatim: RoomTerminal.statsWord)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(rgb: ground.tokens.ink))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .modifier(ChromeGlassSurface(cornerRadius: 23))
-        }
-        .padding(.horizontal, ChromeLayout.inset)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        .background(Color(rgb: ground.tokens.canvas))
     }
 
     /// The abandoned room (EXPERIENCE.md: terminal and quiet): the board freezes

@@ -122,6 +122,9 @@ new at the open end (lists, names) fades in late. The morph targets:
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
 - Tap the roster pucks: the cluster inflates into the roster sheet.
+- At completion, the room bar's frozen clock inflates into the stats card
+  (ID-2: the timer becomes the headline, so the headline comes from the
+  timer); dismissal pours it back, and the frozen clock summons it again.
 - The invite capsule is the share card, condensed.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.
