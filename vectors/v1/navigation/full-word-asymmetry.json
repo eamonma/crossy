@@ -1,6 +1,6 @@
 [
   {
-    "name": "DESIGN §5 / §13 full-word asymmetry: Tab into a full clue lands on its start (7)",
+    "name": "DESIGN §5 / §13 full-word asymmetry (owner decision 2026-07-10 supersedes land-on-start): Tab skips a full clue entirely to the next incomplete one (10)",
     "given": {
       "cols": 5,
       "rows": 4,
@@ -13,7 +13,7 @@
       "from": 5,
       "toward": "forward"
     },
-    "then": { "cell": 7, "direction": "across" }
+    "then": { "cell": 10, "direction": "across" }
   },
   {
     "name": "DESIGN §5 / §13 full-word asymmetry: typing the last cell of that same full word stays on it (9)",

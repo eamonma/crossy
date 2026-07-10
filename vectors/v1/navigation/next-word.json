@@ -32,15 +32,36 @@
     "then": { "cell": 8, "direction": "across" }
   },
   {
-    "name": "DESIGN §5 Tab / §13: past the last across clue, wraps to the grid's first playable cell, direction unchanged",
-    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "name": "DESIGN §5 Tab / §13 (owner decision 2026-07-10): skips a fully filled clue to the next incomplete clue in the same axis",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "3": "D", "4": "E" }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 1,
+      "toward": "forward"
+    },
+    "then": { "cell": 5, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13 (owner decision 2026-07-10 supersedes audit Verdict 1's no-axis-cross): from the last across clue, Tab crosses into down and skips the full first down clue",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": { "0": "A", "5": "F", "10": "K", "15": "P" }
+    },
     "when": {
       "op": "tab",
       "direction": "across",
       "from": 15,
       "toward": "forward"
     },
-    "then": { "cell": 0, "direction": "across" }
+    "then": { "cell": 1, "direction": "down" }
   },
   {
     "name": "DESIGN §5 Tab / §13: advances to the next down clue's first empty cell in the down clue list",
@@ -54,7 +75,7 @@
     "then": { "cell": 3, "direction": "down" }
   },
   {
-    "name": "DESIGN §5 Tab / §13: past the last down clue, wraps to the grid's first playable cell, still down (no axis cross)",
+    "name": "DESIGN §5 Tab / §13 (owner decision 2026-07-10 supersedes audit Verdict 1's no-axis-cross): from the last down clue, Tab wraps circularly to the first across clue",
     "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
     "when": {
       "op": "tab",
@@ -62,6 +83,95 @@
       "from": 18,
       "toward": "forward"
     },
+    "then": { "cell": 0, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13 (owner decision 2026-07-10): a fully filled board still advances Tab to the adjacent clue, crossing from the last across into the first down clue's first cell",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": {
+        "0": "X",
+        "1": "X",
+        "3": "X",
+        "4": "X",
+        "5": "X",
+        "7": "X",
+        "8": "X",
+        "9": "X",
+        "10": "X",
+        "11": "X",
+        "12": "X",
+        "14": "X",
+        "15": "X",
+        "16": "X",
+        "17": "X",
+        "18": "X",
+        "19": "X"
+      }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 15,
+      "toward": "forward"
+    },
     "then": { "cell": 0, "direction": "down" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13 (owner decision 2026-07-10): with every other clue full, the current clue's lone empty cell is reached through its crossing down clue after a full cycle, so Tab lands there in down",
+    "given": {
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "fills": {
+        "1": "X",
+        "3": "X",
+        "4": "X",
+        "5": "X",
+        "7": "X",
+        "8": "X",
+        "9": "X",
+        "10": "X",
+        "11": "X",
+        "12": "X",
+        "14": "X",
+        "15": "X",
+        "16": "X",
+        "17": "X",
+        "18": "X",
+        "19": "X"
+      }
+    },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 1,
+      "toward": "forward"
+    },
+    "then": { "cell": 0, "direction": "down" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13: an out-of-range from clamps to the grid's first playable cell, direction unchanged",
+    "given": { "cols": 5, "rows": 4, "blocks": [2, 6, 13] },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": -1,
+      "toward": "forward"
+    },
+    "then": { "cell": 0, "direction": "across" }
+  },
+  {
+    "name": "DESIGN §5 Tab / §13: an empty grid clamps to cell 0, direction unchanged",
+    "given": { "cols": 0, "rows": 0, "blocks": [] },
+    "when": {
+      "op": "tab",
+      "direction": "across",
+      "from": 0,
+      "toward": "forward"
+    },
+    "then": { "cell": 0, "direction": "across" }
   }
 ]

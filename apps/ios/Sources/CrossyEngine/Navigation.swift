@@ -119,31 +119,66 @@ private func clues(_ grid: Grid, _ direction: Direction) -> [Clue] {
     return list
 }
 
-/// Tab (`forward`) and Shift+Tab (`backward`): move to the adjacent clue in `direction`'s
-/// clue list and land on its first empty cell scanning from its start. A full target clue
-/// falls back to its start on Tab, its end on Shift+Tab. Past either end of the clue list,
-/// wrap to the grid's first playable cell with `direction` unchanged: the wrap never crosses
-/// axes (DESIGN §5; audit Verdict 1).
+private struct CycleClue {
+    let start: Int
+    let cells: [Int]
+    let direction: Direction
+}
+
+/// The Tab cycle: every across clue in clue order, then every down clue in clue order,
+/// traversed circularly (owner decision 2026-07-10). Each entry carries its axis so a
+/// landing can report the direction it lands in.
+private func tabCycle(_ grid: Grid) -> [CycleClue] {
+    let across = clues(grid, .across).map {
+        CycleClue(start: $0.start, cells: $0.cells, direction: .across)
+    }
+    let down = clues(grid, .down).map {
+        CycleClue(start: $0.start, cells: $0.cells, direction: .down)
+    }
+    return across + down
+}
+
+/// Tab (`forward`) and Shift+Tab (`backward`): traverse the Tab cycle, every across clue
+/// in clue order then every down clue in clue order, circular. Scan the cycle starting
+/// after the current clue and land on the first clue with an empty cell, at that clue's
+/// first empty cell scanned from its start; the returned `direction` is the landing
+/// clue's axis, so Tab skips full clues, crosses from across into down, and wraps back
+/// around. The current clue re-enters candidacy only after a full cycle. With nothing
+/// empty anywhere, Tab still moves to the adjacent clue with no skipping: its first cell
+/// on Tab, its last on Shift+Tab, axis crossing included. An out-of-range, block, or
+/// empty-grid `from` clamps to the grid's first playable cell with `direction` unchanged.
+/// Owner decision 2026-07-10 supersedes audit Verdict 1's same-axis no-cross wrap (DESIGN
+/// §5; the exact cases are the next-word / previous-word / full-word-asymmetry vectors).
 public func tabTarget(
     _ grid: Grid, _ direction: Direction, _ from: Int, _ toward: Toward, _ filled: Set<Int>
 ) -> (cell: Int, direction: Direction) {
-    let list = clues(grid, direction)
-    let start = wordBounds(grid, direction, from).start
-    let current = list.firstIndex { $0.start == start } ?? -1
-    let targetIndex = toward == .forward ? current + 1 : current - 1
-
-    if current == -1 || targetIndex < 0 || targetIndex >= list.count {
+    if cellCount(grid) == 0 || !inRange(grid, from) || isBlock(grid, from) {
         return (firstPlayable(grid), direction)
     }
 
-    let target = list[targetIndex]
-    for cell in target.cells where !filled.contains(cell) {
-        return (cell, direction)
+    let cycle = tabCycle(grid)
+    let n = cycle.count
+    let start = wordBounds(grid, direction, from).start
+    guard let current = cycle.firstIndex(where: { $0.direction == direction && $0.start == start })
+    else {
+        return (firstPlayable(grid), direction)
     }
 
-    // The target clue is full: fall back to its start (Tab) or its end (Shift+Tab).
-    let fallback = toward == .forward ? target.cells.first : target.cells.last
-    return (fallback ?? from, direction)
+    let step = toward == .forward ? 1 : -1
+    // Scan the cycle after the current clue for the first clue with an empty cell. The
+    // current clue re-enters candidacy only after a full cycle (i == n).
+    for i in 1...n {
+        let clue = cycle[(((current + step * i) % n) + n) % n]
+        for cell in clue.cells where !filled.contains(cell) {
+            return (cell, clue.direction)
+        }
+    }
+
+    // Nothing empty anywhere: move to the adjacent clue with no skipping so navigation
+    // stays live after completion. Tab lands on its first cell, Shift+Tab on its last.
+    let adjacent = cycle[(((current + step) % n) + n) % n]
+    let fallback = toward == .forward ? adjacent.cells.first : adjacent.cells.last
+    return (fallback ?? from, adjacent.direction)
 }
 
 /// The cursor move after a letter is placed at `from`, with `filled` the board after that

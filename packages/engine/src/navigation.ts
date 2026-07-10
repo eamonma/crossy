@@ -138,12 +138,39 @@ function clues(grid: Grid, direction: Direction): Clue[] {
   return list;
 }
 
+interface CycleClue extends Clue {
+  readonly direction: Direction;
+}
+
 /**
- * Tab (`forward`) and Shift+Tab (`backward`): move to the adjacent clue in `direction`'s
- * clue list and land on its first empty cell scanning from its start. A full target
- * clue falls back to its start on Tab, its end on Shift+Tab. Past either end of the clue
- * list, wrap to the grid's first playable cell with `direction` unchanged: the wrap
- * never crosses axes (DESIGN §5; audit Verdict 1).
+ * The Tab cycle: every across clue in clue order, then every down clue in clue order,
+ * traversed circularly (owner decision 2026-07-10). Each entry carries its axis so a
+ * landing can report the direction it lands in.
+ */
+function tabCycle(grid: Grid): CycleClue[] {
+  const across = clues(grid, "across").map((clue) => ({
+    ...clue,
+    direction: "across" as const,
+  }));
+  const down = clues(grid, "down").map((clue) => ({
+    ...clue,
+    direction: "down" as const,
+  }));
+  return [...across, ...down];
+}
+
+/**
+ * Tab (`forward`) and Shift+Tab (`backward`): traverse the Tab cycle, every across clue
+ * in clue order then every down clue in clue order, circular. Scan the cycle starting
+ * after the current clue and land on the first clue with an empty cell, at that clue's
+ * first empty cell scanned from its start; the returned `direction` is the landing
+ * clue's axis, so Tab skips full clues, crosses from across into down, and wraps back
+ * around. The current clue re-enters candidacy only after a full cycle. With nothing
+ * empty anywhere, Tab still moves to the adjacent clue with no skipping: its first cell
+ * on Tab, its last on Shift+Tab, axis crossing included. An out-of-range, block, or
+ * empty-grid `from` clamps to the grid's first playable cell with `direction` unchanged.
+ * Owner decision 2026-07-10 supersedes audit Verdict 1's same-axis no-cross wrap (DESIGN
+ * §5; the exact cases are the next-word / previous-word / full-word-asymmetry vectors).
  */
 export function tabTarget(
   grid: Grid,
@@ -152,24 +179,34 @@ export function tabTarget(
   toward: Toward,
   filled: ReadonlySet<number>,
 ): { cell: number; direction: Direction } {
-  const list = clues(grid, direction);
-  const { start } = wordBounds(grid, direction, from);
-  const current = list.findIndex((clue) => clue.start === start);
-  const targetIndex = toward === "forward" ? current + 1 : current - 1;
-
-  if (current === -1 || targetIndex < 0 || targetIndex >= list.length)
+  if (cellCount(grid) === 0 || !inRange(grid, from) || isBlock(grid, from))
     return { cell: firstPlayable(grid), direction };
 
-  const target = list[targetIndex];
-  if (target === undefined) return { cell: firstPlayable(grid), direction };
+  const cycle = tabCycle(grid);
+  const n = cycle.length;
+  const { start } = wordBounds(grid, direction, from);
+  const current = cycle.findIndex(
+    (clue) => clue.direction === direction && clue.start === start,
+  );
+  if (current === -1) return { cell: firstPlayable(grid), direction };
 
-  for (const cell of target.cells)
-    if (!filled.has(cell)) return { cell, direction };
+  const step = toward === "forward" ? 1 : -1;
+  // Scan the cycle after the current clue for the first clue with an empty cell. The
+  // current clue re-enters candidacy only after a full cycle (i === n).
+  for (let i = 1; i <= n; i += 1) {
+    const clue = cycle[(((current + step * i) % n) + n) % n];
+    if (clue === undefined) continue;
+    for (const cell of clue.cells)
+      if (!filled.has(cell)) return { cell, direction: clue.direction };
+  }
 
-  // The target clue is full: fall back to its start (Tab) or its end (Shift+Tab).
-  const cells = target.cells;
+  // Nothing empty anywhere: move to the adjacent clue with no skipping so navigation
+  // stays live after completion. Tab lands on its first cell, Shift+Tab on its last.
+  const adjacent = cycle[(((current + step) % n) + n) % n];
+  if (adjacent === undefined) return { cell: firstPlayable(grid), direction };
+  const cells = adjacent.cells;
   const fallback = toward === "forward" ? cells[0] : cells[cells.length - 1];
-  return { cell: fallback ?? from, direction };
+  return { cell: fallback ?? from, direction: adjacent.direction };
 }
 
 /**
