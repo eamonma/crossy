@@ -238,3 +238,33 @@ describe("first-fill timing on the delta path (PROTOCOL.md section 6; the derive
     expect(store.seq).toBe(1);
   });
 });
+
+// The store's outbound cursor relay (PROTOCOL.md sections 5 and 9). The store is role-agnostic:
+// it sends the ephemeral moveCursor and refuses only before the first snapshot. The 10/s throttle
+// and the spectator suppression (PROTOCOL.md section 5) are the live view's job (LiveApp), so they
+// are out of the store's scope and not asserted here.
+describe("moveCursor relay (PROTOCOL.md sections 5, 9)", () => {
+  it("sends a moveCursor frame once the store is live", () => {
+    const { store, sent } = makeStore(board());
+    store.moveCursor(4, "across");
+    expect(sent).toEqual([
+      { type: "moveCursor", cell: 4, direction: "across" },
+    ]);
+  });
+
+  it("refuses to send before the first snapshot (connecting): no authoritative board yet", () => {
+    const sent: ClientMessage[] = [];
+    const store = new GameStore({
+      transport: { send: (message) => sent.push(message) },
+    });
+    store.moveCursor(4, "across");
+    expect(sent).toEqual([]);
+  });
+
+  it("is ephemeral: sending a cursor mutates no store state, so views do not re-render", () => {
+    const { store } = makeStore(board());
+    const before = store.getVersion();
+    store.moveCursor(7, "down");
+    expect(store.getVersion()).toBe(before);
+  });
+});

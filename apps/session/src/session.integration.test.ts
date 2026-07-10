@@ -25,6 +25,7 @@ import {
   decodeServerMessage,
   type Role,
   type ServerMessage,
+  type SyncMessage,
 } from "@crossy/protocol";
 import type { CellSet } from "@crossy/engine";
 import { createSessionServer } from "./server";
@@ -1498,6 +1499,119 @@ describe("presence and liveness (PROTOCOL.md §6, §9)", () => {
     expect(a.client.ofType("cursor")).toHaveLength(0);
 
     a.client.close();
+    b.client.close();
+  });
+
+  it("records a connected user's cursor so the next snapshot carries it (§4, §9)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+    await a.client.waitForType("playerConnected");
+
+    // A moves; the relay to b is a happens-after barrier that the actor has recorded the cursor.
+    a.client.sendJson({ type: "moveCursor", cell: 2, direction: "across" });
+    const relayed = (await b.client.waitForType("cursor")) as {
+      userId: string;
+      cell: number;
+      direction: string;
+    };
+    expect(relayed).toMatchObject({
+      userId: aId,
+      cell: 2,
+      direction: "across",
+    });
+
+    // A fresh resync snapshot to b carries a's current cursor, not an empty array (§4, §9).
+    b.client.sendJson({ type: "requestSync" });
+    const sync = (await b.client.waitForType("sync")) as SyncMessage;
+    expect(sync.board.cursors).toContainEqual({
+      userId: aId,
+      cell: 2,
+      direction: "across",
+    });
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("drops a moveCursor whose cell is out of range or a black square, silently (§9)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      // Cell 1 is a black square; the grid has 3 cells (indices 0..2).
+      snapshot: puzzle(1, 3, [1], ["A", null, "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+    await a.client.waitForType("playerConnected");
+
+    a.client.sendJson({ type: "moveCursor", cell: 99, direction: "across" }); // out of range
+    a.client.sendJson({ type: "moveCursor", cell: 1, direction: "across" }); // black square
+    a.client.sendJson({ type: "moveCursor", cell: 2, direction: "across" }); // the one valid target
+    // Barrier: once b sees a's cellSet, all of a's earlier frames have been processed in order.
+    a.client.sendJson(placeLetter(0, "A"));
+    await b.client.waitForType("cellSet");
+
+    // Only the in-bounds, non-block cursor relayed; the two invalid ones were dropped silently.
+    const cursors = b.client.ofType("cursor");
+    expect(cursors).toHaveLength(1);
+    expect(cursors[0]).toMatchObject({
+      userId: aId,
+      cell: 2,
+      direction: "across",
+    });
+
+    // And no invalid cursor lingers in a snapshot.
+    b.client.sendJson({ type: "requestSync" });
+    const sync = (await b.client.waitForType("sync")) as SyncMessage;
+    expect(sync.board.cursors).toEqual([
+      { userId: aId, cell: 2, direction: "across" },
+    ]);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("clears a user's cursor from the snapshot when their last socket closes (§9)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+    await a.client.waitForType("playerConnected");
+
+    a.client.sendJson({ type: "moveCursor", cell: 1, direction: "across" });
+    await b.client.waitForType("cursor"); // a's cursor is recorded
+
+    // A leaves; b learns via playerDisconnected, and the following snapshot carries no cursor for a.
+    a.client.close();
+    const gone = (await b.client.waitForType("playerDisconnected")) as {
+      userId: string;
+    };
+    expect(gone.userId).toBe(aId);
+
+    b.client.sendJson({ type: "requestSync" });
+    const sync = (await b.client.waitForType("sync")) as SyncMessage;
+    expect(sync.board.cursors).toEqual([]);
+
     b.client.close();
   });
 

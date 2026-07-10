@@ -199,7 +199,10 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 ## 9. Presence, heartbeat, cursors
 
 - Clients send `heartbeat` every 15 s. The server broadcasts `playerDisconnected` after 45 s with no inbound frame of any type (heartbeat or command), or on socket close; any received frame resets the liveness timer, so an actively typing client never flaps to disconnected.
+- `playerConnected` and `playerDisconnected` key on the user's first and last socket, not on each socket. A user is connected while they hold at least one socket, so with several open tabs a second socket announces nothing and closing it disconnects nothing while another socket holds them live; `playerConnected` fires on the 0-to-1 transition and `playerDisconnected` on the 1-to-0. The connecting socket learns the full participant list in its own `welcome`, so it is never sent its own `playerConnected`.
 - `moveCursor` at most 10 per second per client; the server MAY drop excess silently.
+- On a valid `moveCursor` the server relays a `cursor` notice to the other connections and does not echo it to the sender, which already knows its own cursor. It records the position as that user's current cursor, so the next snapshot's `board.cursors` carries it, and it clears that cursor when the user's last socket closes, so a `playerDisconnected` and the following snapshot agree the departed user has no cursor.
+- A `moveCursor` whose `cell` is out of range or a black square is dropped silently, with no error: presence is best-effort, and `INVALID_CELL` (section 11) is a mutation-only mapping. `moveCursor` is role `any` (section 5); a spectator's cursor is suppressed client-side by default, not filtered by the server.
 - Presence and cursor state are best-effort: never persisted, never sequenced. The board payload carries the current view at snapshot time.
 
 ## 10. Completion and check

@@ -589,10 +589,12 @@ function LiveGame({
   // Broadcast the local cursor to the room whenever the selection (cell or direction) changes in
   // the live game (PROTOCOL.md §9). Leading send plus a coalesced trailing send caps it at 10/s;
   // the store refuses it while `connecting`, and this is the live path only, so the demo boards
-  // never send. Cursors are ephemeral, so this never touches store or render state.
+  // never send. Spectators have no cursor and never send one (PROTOCOL.md §5: spectator cursors
+  // suppressed client-side by default); on an upgrade to solver the effect re-runs and the fresh
+  // selection flushes at once. Cursors are ephemeral, so this never touches store or render state.
   useEffect(() => {
     selectionRef.current = selection;
-    if (awaitingFirstSync) return;
+    if (awaitingFirstSync || isSpectator) return;
     const CAP_MS = 100; // at most 10 moveCursor per second
     const flush = (): void => {
       cursorLastSentRef.current = Date.now();
@@ -610,7 +612,7 @@ function LiveGame({
         flush();
       }, CAP_MS - since);
     }
-  }, [selection, awaitingFirstSync, store]);
+  }, [selection, awaitingFirstSync, isSpectator, store]);
 
   // Drop a pending trailing cursor send on unmount.
   useEffect(
