@@ -144,7 +144,7 @@ function ClueList({
   return (
     <div className="flex flex-col min-h-0 flex-1">
       <div className="px-4 pt-2 pb-1.5">
-        <span className="text-2 font-bold uppercase tracking-[var(--tracking-caps)] text-text">
+        <span className="text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text">
           {title}
         </span>
       </div>

@@ -685,25 +685,27 @@
       right var(--sidebar-rail-duration) var(--sidebar-rail-ease);
   }
 
-  /* Boxes that track the rail: header/footer gutters and the menu rows that morph
-     into 32px icon squares. */
+  /* Boxes that track the rail: the header/footer gutters that tighten to rail padding.
+     The menu rows themselves stay full-width and never resize; only the icon inside each
+     glides (below), so it needs no width/padding clock of its own. */
   [data-slot="sidebar-wrapper"][data-animate="true"]
     [data-slot="sidebar-header"],
   [data-slot="sidebar-wrapper"][data-animate="true"]
-    [data-slot="sidebar-footer"],
-  [data-slot="sidebar-wrapper"][data-animate="true"]
-    [data-slot="sidebar-menu-button"] {
+    [data-slot="sidebar-footer"] {
     transition:
       width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       height var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       padding var(--sidebar-rail-duration) var(--sidebar-rail-ease);
   }
 
-  /* Movers on the rail clock: the mark's nudge and the wordmark tucking
-     (transform, max-width/margin) plus the gutter padding. */
+  /* Movers on the rail clock: the mark's and menu icons' nudge (Tailwind v4 emits its
+     translate utilities on the `translate` property, not `transform`, so both are named
+     here or the nudge would snap) and the wordmark tucking (max-width/margin) plus the
+     gutter padding. */
   [data-slot="sidebar-wrapper"][data-animate="true"] .sidebar-glide {
     transition:
       transform var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      translate var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       max-width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       margin var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       height var(--sidebar-rail-duration) var(--sidebar-rail-ease),
@@ -733,6 +735,7 @@
     .sidebar-glide.sidebar-dissolve {
     transition:
       transform var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      translate var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       max-width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       margin var(--sidebar-rail-duration) var(--sidebar-rail-ease),
       height var(--sidebar-rail-duration) var(--sidebar-rail-ease),
