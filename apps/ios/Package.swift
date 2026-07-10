@@ -11,6 +11,14 @@ import PackageDescription
 // targets are declared up front so build waves add sources without editing this file.
 let package = Package(
     name: "Crossy",
+    // The app's decided floor (iOS 26, pbxproj IPHONEOS_DEPLOYMENT_TARGET) and the
+    // macOS the test host actually needs (@Observable wants 14). Without this, an iOS
+    // build of the package assumes SwiftPM's oldest default and async protocol
+    // requirements fail with "concurrency is only available in iOS 13.0.0 or newer".
+    platforms: [
+        .iOS("26.0"),
+        .macOS(.v14),
+    ],
     products: [
         .library(name: "CrossyEngine", targets: ["CrossyEngine"]),
         .library(name: "CrossyProtocol", targets: ["CrossyProtocol"]),
