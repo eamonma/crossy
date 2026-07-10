@@ -47,9 +47,10 @@ production.
 5. **The invite.** Create a game (`POST /games`), get the code: eight characters
    from an alphabet built to be read aloud on a call. Share via the system sheet;
    `/g/{code}` unfurls server-side and opens as a universal link.
-6. **Pick up a pencil.** A link or code lands you in the room as a spectator,
-   watching live cursors before you commit (`POST /games/join` or
-   `/games/{id}/join`). Upgrading is one tap (`POST /games/{id}/role`).
+6. **Walk in solving.** A link or code seats a full account as a solver at once
+   (`POST /games/join` or `/{id}/join`; owner decision 2026-07-10), so the room
+   opens live with the first letter one tap away. Spectating is the guest posture,
+   and guests are web-only: an iOS joiner never waits.
 7. **The room, and the mosaic.** The solve is the product (section 3). Completion is
    server-noticed, exactly once; the timer freezes and the mosaic plays
    (`gameCompleted`, INV-3).
@@ -82,8 +83,8 @@ failures read as named, human sentences (section 5).
 
 One field, the read-aloud alphabet, autocapitalized, ambiguity-free. `POST
 /games/join` resolves the code alone; `GAME_NOT_FOUND` reads "No room answers to
-that code." `DENIED` (kicked) is honest and final. Success lands in the room as a
-spectator.
+that code." `DENIED` (kicked) is honest and final. Success lands a full account in
+the room as a solver (owner decision 2026-07-10).
 
 ### The room (solve screen)
 
@@ -94,18 +95,21 @@ puzzle, membership, and session endpoint, then the WebSocket handshake
 
 States, each honest and distinct:
 
-- **Watching (spectator).** The full live room, read-only: cursors dance, letters
-  land, the timer runs. One standing affordance: Pick up a pencil. Spectator
-  cursors are not rendered and not broadcast by default (root DESIGN.md
-  section 15). iOS v1 has no guests, so every watcher is a named account one tap
-  from solving.
-- **Solving.** Typing through the custom key deck (never the system keyboard):
+- **Solving.** The standard landing: full accounts seat as solvers on join.
+  Typing through the custom key deck (never the system keyboard):
   optimistic overlay, echo clears it (INV-10). Navigation follows the vectored
   rules; swipe along the solving direction is next/previous word, across it toggles
   (root DESIGN.md section 5). Tap the clue bar or pull it up for the clue browser.
   Check is a deliberate action (`checkRequest`), wrong cells render in check style
   until next edit. Rebus entry via the bubble (D12). Conflicts are the 300 ms flash,
   nothing silent (D02).
+- **Watching (spectator).** An edge on iOS, not the landing: full accounts seat as
+  solvers, so this state serves the rare full-account spectator (a seat predating
+  the 2026-07-10 seating change, or a future role change), and because the
+  protocol allows it the client renders it honestly: the full live room,
+  read-only, one affordance, Pick up a pencil (`POST /games/{id}/role`). Spectator
+  cursors are neither rendered nor broadcast by default (root DESIGN.md
+  section 15).
 - **Resyncing / reconnecting.** The three-state weather (PROTOCOL.md section 7)
   rendered as described in `DESIGN.md` section 8: calm dot, breathing dot, dimmed
   room with countdown. Input during reconnect is held gracefully, not swallowed
@@ -123,7 +127,7 @@ Morphs from the room-bar pucks: everyone in the room with color, name, role, and
 connection state; the invite capsule (members only, any role, PROTOCOL.md
 section 12). Host powers live here: kick (`DELETE /games/{id}/members/{userId}`,
 never themselves) and abandon (`POST /games/{id}/abandon`, one confirm, plainly
-worded). Spectators see the roster too; their one action is Pick up a pencil.
+worded). A spectator's one action here is Pick up a pencil.
 
 ### Clue browser
 

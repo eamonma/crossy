@@ -2,7 +2,8 @@
 
 Status: draft 1, for owner review. Date: 2026-07-09.
 Companions: `apps/ios/DESIGN.md` (look and feel), `apps/ios/EXPERIENCE.md` (product
-and UX). This file owns execution only: phases, waves, exit criteria. The companions
+and UX), `apps/ios/ARCHITECTURE.md` (module graph, store formalism, concurrency).
+This file owns execution only: phases, waves, exit criteria. The companions
 own the what; `PROTOCOL.md` and `vectors/` own semantics; the root `ROADMAP.md` owns
 the program this slots into.
 
@@ -75,9 +76,8 @@ depends on is open.
 - [ ] a. Xcode project shell: a thin, committed `.xcodeproj` whose sources live in
       the SwiftPM package (new app-facing targets alongside `CrossyEngine`; the
       engine target stays pure, INV-9, imports nothing). App name Crossy, iOS 26
-      floor, no generators until it hurts. Target decomposition (engine / protocol /
-      store / app) is decided in this wave's PR, in writing, like the root Phase 1
-      open decision.
+      floor, no generators until it hurts. Target decomposition is decided:
+      `apps/ios/ARCHITECTURE.md` AD-2 is the module graph this wave scaffolds.
 - [ ] b. CI: `ios.yml` gains a simulator build of the app target, path-filtered as
       today; `swift test` stays required and green throughout.
 - [ ] c. Config as code: bundle configuration (API base, session base, Supabase
@@ -118,9 +118,9 @@ scripted client places a letter, is killed mid-word, reconnects, and converges
 
 ## Phase I2 — The room (the solve screen, end to end)
 
-Flesh-out gate: satisfied. `apps/ios/DESIGN.md` and `apps/ios/EXPERIENCE.md` are the
-interaction spec this phase builds to; taste findings during the build file as
-amendments to those documents, never as silent divergence.
+Flesh-out gate: satisfied. `apps/ios/DESIGN.md`, `apps/ios/EXPERIENCE.md`, and
+`apps/ios/ARCHITECTURE.md` are the spec this phase builds to; taste findings during
+the build file as amendments to those documents, never as silent divergence.
 
 - [ ] a. Grid renderer: `Canvas`, the root DESIGN.md section 10 module rules
       (background precedence, numbers top-left, presence bottom-right per
@@ -132,8 +132,8 @@ amendments to those documents, never as silent divergence.
       step-back; rebus inline field (baseline form).
 - [ ] c. Chrome: room bar, clue bar, clue browser (morph per SP-i1 or the recorded
       fallback), roster sheet, weather states rendered as DESIGN.md section 8
-      specifies, ambient timer (ID-2), spectator watching state with Pick up a
-      pencil.
+      specifies, ambient timer (ID-2), the spectator edge state with Pick up a
+      pencil (full accounts seat as solvers on join, owner decision 2026-07-10).
 - [ ] d. Completion and terminals: the mosaic in its simple form (tint, hold,
       settle), the stats card, board freeze on `completed` and `abandoned`, the
       kicked exit with its one honest sentence.
@@ -160,8 +160,8 @@ celebrates exactly once on both (INV-3), and an owner smoke test of typing feel
       tombstone consequences worded plainly.
 
 **Exit (= M5): on production, a fresh device signs in with Discord, joins by code,
-watches live, picks up a pencil, and finishes a puzzle with a web friend, observed
-in a dogfood session.**
+is solving within seconds, and finishes a puzzle with a web friend, observed in a
+dogfood session.**
 
 ## Phase I4 — Parity (the M6 iOS half)
 
