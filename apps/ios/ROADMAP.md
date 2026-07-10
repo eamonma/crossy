@@ -122,6 +122,10 @@ Flesh-out gate: satisfied. `apps/ios/DESIGN.md`, `apps/ios/EXPERIENCE.md`, and
 `apps/ios/ARCHITECTURE.md` are the spec this phase builds to; taste findings during
 the build file as amendments to those documents, never as silent divergence.
 
+Presence needs no server work: the wire slice landed with PR #31 (connect and
+disconnect notices, the liveness timer, cursor relay, and the web client sending
+cursors), so this phase consumes and renders presence, nothing more.
+
 - [ ] a. Grid renderer: `Canvas`, the root DESIGN.md section 10 module rules
       (background precedence, numbers top-left, presence bottom-right per
       Wave 2.1d, circles, flash in the writer's color), both grounds (Studio,
@@ -132,8 +136,8 @@ the build file as amendments to those documents, never as silent divergence.
       step-back; rebus inline field (baseline form).
 - [ ] c. Chrome: room bar, clue bar, clue browser (morph per SP-i1 or the recorded
       fallback), roster sheet, weather states rendered as DESIGN.md section 8
-      specifies, ambient timer (ID-2), the spectator edge state with Pick up a
-      pencil (full accounts seat as solvers on join, owner decision 2026-07-10).
+      specifies, ambient timer (ID-2), the spectator edge state with its Join in
+      affordance (full accounts seat as solvers on join, owner decision 2026-07-10).
 - [ ] d. Completion and terminals: the mosaic in its simple form (tint, hold,
       settle), the stats card, board freeze on `completed` and `abandoned`, the
       kicked exit with its one honest sentence.
