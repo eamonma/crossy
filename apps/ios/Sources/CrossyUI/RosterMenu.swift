@@ -71,14 +71,18 @@ struct RosterMenu: View {
     }
 
     /// The system glass button pads and shapes its own capsule, so it takes
-    /// the BARE cluster: geometry on the label here stacks the button's
+    /// the bare cluster: a full pill frame on the label stacks the button's
     /// padding on ours and inflates the pill out of the bar's register (owner
-    /// device finding 2026-07-10).
+    /// device finding 2026-07-10). Bare pucks alone land short (~38 pt), so
+    /// the label carries just enough height that content plus the style's
+    /// ~7 pt sides meets the register. Measured on the 26.5 sim; retune at
+    /// I2e if an OS revision repads.
     private var menu: some View {
         Menu {
             rows
         } label: {
             pillContent
+                .frame(height: ChromeLayout.pillHeight - 14)
         }
     }
 
