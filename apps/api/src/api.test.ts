@@ -635,6 +635,105 @@ describe("POST /games/{id}/join (PROTOCOL.md §12; DESIGN.md §7, §8)", () => {
   });
 });
 
+describe("POST /games/join (join by invite code alone) (PROTOCOL.md §12; DESIGN.md §7, §8)", () => {
+  it("seats a guest as spectator and returns the resolved gameId (the phone caller had only the code)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const guest = await auth.mintAnonymous({ sub: randomUUID() });
+    const res = await postJson("/games/join", guest, { code: inviteCode });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      gameId: string;
+      userId: string;
+      role: string;
+    };
+    // The caller did not know the gameId; the endpoint resolves and returns it.
+    expect(body.gameId).toBe(gameId);
+    expect(body.role).toBe("spectator");
+    // The seat is real: a spectator membership row exists.
+    const m = await adminPool.query(
+      "select role from memberships where game_id=$1 and user_id=$2",
+      [gameId, body.userId],
+    );
+    expect(m.rows[0].role).toBe("spectator");
+  });
+
+  it("resolves a hand-typed lowercase code by ASCII-uppercasing the lookup (INV-1)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const guest = await auth.mintAnonymous({ sub: randomUUID() });
+    const res = await postJson("/games/join", guest, {
+      code: `  ${inviteCode.toLowerCase()}  `,
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { gameId: string }).gameId).toBe(gameId);
+  });
+
+  it("refuses a denylisted user holding the correct code as DENIED, seating no one (order preserved; DESIGN.md §7)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const kickedSub = randomUUID();
+    await adminPool.query(
+      "insert into users (user_id, is_anonymous) values ($1, true)",
+      [kickedSub],
+    );
+    await adminPool.query(
+      "insert into game_denylist (game_id, user_id) values ($1, $2)",
+      [gameId, kickedSub],
+    );
+
+    const res = await postJson(
+      "/games/join",
+      await auth.mintAnonymous({ sub: kickedSub }),
+      { code: inviteCode },
+    );
+    expect(res.status).toBe(403);
+    await expectError(res, "DENIED");
+    // Denylist refusal wins over the seat: no membership row was written.
+    const m = await adminPool.query(
+      "select 1 from memberships where game_id=$1 and user_id=$2",
+      [gameId, kickedSub],
+    );
+    expect(m.rows).toHaveLength(0);
+  });
+
+  it("returns GAME_NOT_FOUND for a code that resolves to no game (the code is the lookup key)", async () => {
+    const res = await postJson("/games/join", await auth.mintUpgraded(), {
+      code: "ZZZZZZZZ",
+    });
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("is idempotent and non-demoting: a host re-joining by code keeps the host role", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await postJson("/games/join", host, { code: inviteCode });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { gameId: string; role: string };
+    expect(body.gameId).toBe(gameId);
+    expect(body.role).toBe("host");
+  });
+
+  it("rejects a missing or non-string code as VALIDATION", async () => {
+    const token = await auth.mintUpgraded();
+    const missing = await postJson("/games/join", token, {});
+    expect(missing.status).toBe(400);
+    await expectError(missing, "VALIDATION");
+    const nonString = await postJson("/games/join", token, { code: 42 });
+    expect(nonString.status).toBe(400);
+    await expectError(nonString, "VALIDATION");
+  });
+});
+
 describe("GET /games/{id} (PROTOCOL.md §12; INV-6)", () => {
   it("returns the game view to a member: puzzle, membership, and session endpoint", async () => {
     const host = await auth.mintUpgraded();
@@ -1223,7 +1322,12 @@ interface GamesList {
     createdAt: string;
     createdBy: string;
     memberCount: number;
-    puzzle: { puzzleId: string; rows: number; cols: number };
+    puzzle: {
+      puzzleId: string;
+      rows: number;
+      cols: number;
+      title: string | null;
+    };
   }[];
 }
 interface PuzzlesList {
@@ -1233,6 +1337,8 @@ interface PuzzlesList {
     rows: number;
     cols: number;
     features: unknown;
+    title: string | null;
+    author: string | null;
   }[];
 }
 
@@ -1327,6 +1433,30 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     expect(text).not.toContain(LIST_MARKER);
     // The documented gap: no lifecycle status is fabricated (game_state is unreadable here).
     expect(hasKeyDeep(body, "status")).toBe(false);
+  });
+
+  it("carries the puzzle title in the summary, null when the puzzle has none (display content; INV-6-safe)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    // A titled puzzle (with a planted solution marker) and an untitled one, each in its own game.
+    const titled = (await postJson("/puzzles", caller, {
+      ...markerDoc(),
+      title: "Sunday Themeless",
+    }).then((r) => r.json())) as { puzzleId: string };
+    const { gameId: withTitle } = await createGame(caller, titled.puzzleId);
+    const untitledPuzzle = await ingestFixture(caller); // FIXTURE: no title
+    const { gameId: withoutTitle } = await createGame(caller, untitledPuzzle);
+
+    const res = await get("/games", caller);
+    const text = await res.text();
+    const body = JSON.parse(text) as GamesList;
+    const byId = new Map(body.games.map((g) => [g.gameId, g]));
+    expect(byId.get(withTitle)!.puzzle.title).toBe("Sunday Themeless");
+    expect(byId.get(withoutTitle)!.puzzle.title).toBeNull();
+    // The title is display content and rides no solution (INV-6): the join selects a single named
+    // column, never the snapshot, so no solution/snapshot key and no marker ever leak.
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
+    expect(text).not.toContain(LIST_MARKER);
   });
 
   it("paginates by limit and the createdAt before cursor, never an offset", async () => {
@@ -1431,6 +1561,61 @@ describe("GET /puzzles list (PROTOCOL.md §12; DESIGN.md §7, §8; INV-6)", () =
     expect(hasKeyDeep(body, "solution")).toBe(false);
     expect(hasKeyDeep(body, "data")).toBe(false);
     expect(text).not.toContain(LIST_MARKER);
+  });
+
+  it("returns the parsed title and author per row, entity-decoded (display content; INV-6-safe)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    // Plant the solution marker AND display metadata: the marker must never surface, the
+    // metadata must round-trip decoded (INV-6 untouched: title/author are not solutions).
+    const created = (await postJson("/puzzles", caller, {
+      ...markerDoc(),
+      title: "Sat &amp; Sun",
+      author: "Ada &amp; Bob",
+    }).then((r) => r.json())) as { puzzleId: string };
+
+    const res = await get("/puzzles", caller);
+    const text = await res.text();
+    const body = JSON.parse(text) as PuzzlesList;
+    const p = body.puzzles.find((x) => x.puzzleId === created.puzzleId)!;
+    expect(p.title).toBe("Sat & Sun");
+    expect(p.author).toBe("Ada & Bob");
+    // The new fields ride no solution: no solution/data key, and the marker never leaks (INV-6).
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "data")).toBe(false);
+    expect(text).not.toContain(LIST_MARKER);
+  });
+
+  it("reads an absent or null title/author as null (existing puzzles read as untitled)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const absent = await ingestFixture(caller); // FIXTURE carries no title/author
+    const explicitNull = (await postJson("/puzzles", caller, {
+      ...markerDoc(),
+      title: null,
+      author: null,
+    }).then((r) => r.json())) as { puzzleId: string };
+
+    const { puzzles } = (await get("/puzzles", caller).then((r) =>
+      r.json(),
+    )) as PuzzlesList;
+    const byId = new Map(puzzles.map((p) => [p.puzzleId, p]));
+    expect(byId.get(absent)!.title).toBeNull();
+    expect(byId.get(absent)!.author).toBeNull();
+    expect(byId.get(explicitNull.puzzleId)!.title).toBeNull();
+    expect(byId.get(explicitNull.puzzleId)!.author).toBeNull();
+  });
+
+  it("caps an over-long title at 200 characters (truncated on ingest, never rejected)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const created = (await postJson("/puzzles", caller, {
+      ...markerDoc(),
+      title: "T".repeat(500),
+    }).then((r) => r.json())) as { puzzleId: string };
+    const { puzzles } = (await get("/puzzles", caller).then((r) =>
+      r.json(),
+    )) as PuzzlesList;
+    expect(
+      puzzles.find((x) => x.puzzleId === created.puzzleId)!.title,
+    ).toHaveLength(200);
   });
 
   it("paginates by limit and the createdAt before cursor, never an offset", async () => {

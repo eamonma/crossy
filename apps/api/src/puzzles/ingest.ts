@@ -27,6 +27,12 @@ import type { ServerPuzzle, Solution, Clue } from "@crossy/protocol";
 const MAX_DIMENSION = 25;
 /** DESIGN.md section 5, SP5: a solution cell holds at most 10 characters. */
 const MAX_REBUS_LENGTH = 10;
+/**
+ * Cap on the stored puzzle title and author. 200 characters is generous for a real crossword
+ * title or byline while bounding the column; an over-long value is truncated here, never a
+ * rejection (the puzzle is otherwise valid, and this is display metadata, not a domain rule).
+ */
+const MAX_METADATA_LENGTH = 200;
 /** XWord Info marks a black square with a lone `.` in the row-major `grid` array (SP5). */
 const BLOCK_TOKEN = ".";
 /** First-character acceptance charset, tested after ASCII-uppercasing (INV-1, D12). */
@@ -85,6 +91,16 @@ export type IngestResult =
       readonly ok: true;
       readonly puzzle: ServerPuzzle;
       readonly features: PuzzleFeatures;
+      /**
+       * Display metadata parsed from the document, or null when absent/empty. Kept alongside the
+       * puzzle rather than inside `ServerPuzzle` on purpose: title and author are not wire puzzle
+       * facts (they never reach the solve screen's `ClientPuzzle`), only signed-in-home list
+       * content. The API persists them to the `puzzles.title`/`puzzles.author` columns. They are
+       * display content: never normalized or compared (INV-1 does not apply) and never solutions
+       * (INV-6 untouched).
+       */
+      readonly title: string | null;
+      readonly author: string | null;
     }
   | {
       readonly ok: false;
@@ -186,6 +202,24 @@ function decodeEntities(text: string): string {
     const named = NAMED_ENTITIES[token];
     return named === undefined ? match : named;
   });
+}
+
+/**
+ * Read one optional display-metadata string (title or author) from the document. The rule is
+ * uniform with the boundary's other optional fields: absent or `null` reads as absent (real NYT
+ * exports ship `title: null` / `author: null`, see the corpus fixtures). A present but non-string
+ * value is read leniently as absent rather than rejecting the whole puzzle, matching how the
+ * boundary treats `type` (non-string is "not diagramless") and the bars arrays (non-array is "no
+ * bars"), and unlike `circles` whose shape is load-bearing: title and author are display content,
+ * so a malformed value must never block an otherwise valid puzzle. A present string is
+ * entity-decoded (the same one-pass decode used for clue text, so `&amp;` renders as `&`),
+ * trimmed, and capped at `MAX_METADATA_LENGTH`; an empty result is stored as null.
+ */
+function readMetadata(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const decoded = decodeEntities(raw).trim();
+  if (decoded === "") return null;
+  return decoded.slice(0, MAX_METADATA_LENGTH);
 }
 
 /** Split `"17. Some clue"` into its number (for ambiguity detection) and its display text. */
@@ -292,6 +326,9 @@ function readCircleIndices(
  * of puzzle regardless of its geometry. Within the per-cell rules the length cap is scanned before
  * enterability, and both are scanned over the whole grid before the next code, so the code chosen
  * never depends on where in the grid the offending cell sits.
+ *
+ * On acceptance the optional `title` and `author` display metadata are parsed (see
+ * `readMetadata`); they never influence acceptance or the chosen rejection code.
  */
 export function translateXwordInfo(body: unknown): IngestResult {
   // 1.
@@ -464,5 +501,10 @@ export function translateXwordInfo(body: unknown): IngestResult {
     shadedCircles: shadedCircles.length > 0,
   };
 
-  return { ok: true, puzzle, features };
+  // Display metadata is parsed last: it never affects acceptance or any rejection code, so a
+  // malformed title/author cannot change the outcome of an otherwise valid or invalid puzzle.
+  const title = readMetadata(body["title"]);
+  const author = readMetadata(body["author"]);
+
+  return { ok: true, puzzle, features, title, author };
 }
