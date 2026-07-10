@@ -195,11 +195,11 @@ come back `rolcanlogin = t`, `rolbypassrls = t`.
 The owner holds `crossy.me`, and `api.crossy.me` is already the Supabase custom auth domain,
 so the Railway api service must use a different name. Suggested mapping:
 
-| Domain           | Service | Replaces                                 |
-| ---------------- | ------- | ---------------------------------------- |
-| `crossy.me`      | web     | `web-production-946c3.up.railway.app`    |
+| Domain              | Service | Replaces                                 |
+| ------------------- | ------- | ---------------------------------------- |
+| `crossy.me`         | web     | `web-production-946c3.up.railway.app`    |
 | `session.crossy.me` | session | `session-production-8b77.up.railway.app` |
-| `rest.crossy.me` | api     | `api-production-c2d9.up.railway.app`     |
+| `rest.crossy.me`    | api     | `api-production-c2d9.up.railway.app`     |
 
 No rebuild is needed at any step: the images carry no domains. Everything below is env and
 DNS. Owner actions, in order:
