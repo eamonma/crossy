@@ -172,10 +172,18 @@ cursors), so this phase consumes and renders presence, nothing more.
       GridPuzzle's word-run rule is parity-pinned against CrossyEngine in tests.
       Local selection and the ClientPuzzle-to-GridPuzzle mapping deliberately
       wait for I2b/I2c.
-- [ ] b. Input: the key deck per the ID-4 ruling from SP-i2; navigation through the
+- [x] b. Input: the key deck per the ID-4 ruling from SP-i2; navigation through the
       engine (the vectored rules, including PR #30's Tab semantics); swipe along
       the direction for next/previous word, across it to toggle; backspace
-      step-back; rebus inline field (baseline form).
+      step-back; rebus inline field (baseline form). Landed 2026-07-10:
+      SelectionModel + pure InputActions run the navigation vector JSON directly
+      in XCTest; navigation flows through CrossyStore's BoardNavigation facade
+      (type mapping only, AD-2); glass pucks on 26+ with the blur fallback
+      proven on iOS 18.1, both grounds; presses fire at touch-down in the SP-i2
+      rig's latency class; SolveScreen + DemoRoom (loopback transport) behind
+      ContentView so a fresh clone runs a typeable board. Deferred to I2c:
+      cursor relay wiring, camera follow on off-screen jumps, swipe-while-zoomed
+      feel.
 - [ ] c. Chrome: room bar, clue bar, clue browser (the SP-i1 single-surface melt,
       drag-scrubbed; the owner's SP-i5 feel test ruled the layout: clue bar as
       its own glass over a separate deck; panels are custom overlays, never
