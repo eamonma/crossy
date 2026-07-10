@@ -572,6 +572,40 @@
 }
 
 /*
+ * Loading skeleton (the game shell before REST lands). A quiet sand block; the shimmer is
+ * a slow, low-contrast sweep across it, never a spinner. The sweep lives only inside the
+ * no-preference query, so prefers-reduced-motion: reduce keeps the static block with no
+ * animation. One warm neutral throughout (Sand), so it reads as the same surface the board
+ * settles into.
+ */
+.skeleton {
+  background: var(--color-sand-3);
+  border-radius: var(--radius-2);
+}
+
+@keyframes crossy-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton-shimmer {
+    background: linear-gradient(
+      100deg,
+      var(--color-sand-3) 40%,
+      var(--color-sand-4) 50%,
+      var(--color-sand-3) 60%
+    );
+    background-size: 200% 100%;
+    animation: crossy-shimmer 1.6s var(--ease-standard) infinite;
+  }
+}
+
+/*
  ---break---
  * The shadcn/ui bridge: map Tailwind's --color-* namespace to the shadcn --* variables the
  * :root block above defines from Sand + Gold. This is a regular @theme, not @theme inline, on

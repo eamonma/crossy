@@ -159,6 +159,32 @@ describe("connection loss (PROTOCOL.md section 7: reconnecting)", () => {
   });
 });
 
+describe("honest initial connect and pre-welcome input gate (PROTOCOL.md section 7)", () => {
+  it("a freshly opened game starts connecting, not reconnecting (no welcome yet)", () => {
+    const store = new GameStore({ transport: { send: () => undefined } });
+    expect(store.sync).toBe("connecting");
+  });
+
+  it("refuses local mutations before the first welcome: no overlay, nothing reaches the wire", () => {
+    const sent: ClientMessage[] = [];
+    const store = new GameStore({ transport: { send: (m) => sent.push(m) } });
+    store.placeLetter(3, "A", "c1");
+    store.clearCell(4, "c2");
+    expect(store.overlay).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it("unlocks input once the first welcome makes the store live", () => {
+    const { store, sent } = makeStore(board());
+    expect(store.sync).toBe("live");
+    store.placeLetter(3, "A", "c1");
+    expect(store.overlay).toEqual([{ commandId: "c1", cell: 3, value: "A" }]);
+    expect(sent).toEqual([
+      { type: "placeLetter", commandId: "c1", cell: 3, value: "A" },
+    ]);
+  });
+});
+
 describe("first-fill timing on the delta path (PROTOCOL.md section 6; the derived timer, gameTime.ts)", () => {
   const T1 = "2026-07-07T19:02:11Z";
 

@@ -13,12 +13,15 @@ export interface GameConnection {
 
 export function connectToGame(options: {
   url: string;
-  token: string;
+  /** Resolve a fresh token before each hello (reconnects included); null means signed
+   * out. The real path passes identity.getAccessToken; the ?token= override passes a
+   * provider that returns the fixed dogfood/smoke string. */
+  getToken: () => Promise<string | null>;
 }): GameConnection {
   let storeRef: GameStore | null = null;
   const transport = new WsTransport({
     url: options.url,
-    token: options.token,
+    getToken: options.getToken,
     onMessage: (message) => storeRef?.receive(message),
     onConnectionLost: () => storeRef?.connectionLost(),
   });
