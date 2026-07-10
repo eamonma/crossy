@@ -50,7 +50,12 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  /* ---- Type: size scale, kept numeric (Radix-style). text-1 .. text-9. */
+  /* ---- Type: size scale, kept numeric (Radix-style). text-0 .. text-9. text-0 sits
+     below the Radix floor for control chrome only (buttons, dense toolbars): prose and
+     labels never drop below text-1. */
+  --text-0: 0.6875rem;
+  --text-0--line-height: 1rem;
+  --text-0--letter-spacing: 0.005em;
   --text-1: 0.75rem;
   --text-1--line-height: 1rem;
   --text-1--letter-spacing: 0.0025em;

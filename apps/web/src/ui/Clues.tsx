@@ -75,7 +75,7 @@ export function ClueBar({
     <div className="md:hidden flex items-stretch border-b border-dashed border-border-dashed">
       <Button
         variant="ghost"
-        size="icon"
+        size="icon-lg"
         onClick={onPrev}
         aria-label="Previous clue"
         className="self-center"
@@ -105,7 +105,7 @@ export function ClueBar({
       </button>
       <Button
         variant="ghost"
-        size="icon"
+        size="icon-lg"
         onClick={onNext}
         aria-label="Next clue"
         className="self-center"
