@@ -202,7 +202,8 @@ export function LiveApp({
       const api = params.get("api") ?? config.apiBase;
       const code = params.get("code");
       const name = params.get("name");
-      const token = params.get("token") ?? (await identity.getAccessToken());
+      const tokenParam = params.get("token");
+      const token = tokenParam ?? (await identity.getAccessToken());
       if (game === null) {
         setState({
           phase: "error",
@@ -281,7 +282,14 @@ export function LiveApp({
       // back to the URL query params so old invite links keep working (expand/contract).
       const resolvedCode = resolveInviteField(view.inviteCode, code);
       const resolvedName = resolveInviteField(view.name, name);
-      connection = connectToGame({ url: wsUrl, token });
+      // Resolve a fresh token before every hello (reconnects included) so an expired
+      // access token never wedges the reconnect loop. The ?token= override (smoke and
+      // dogfood) has no identity session, so it feeds the fixed string straight back.
+      const getToken: () => Promise<string | null> =
+        tokenParam !== null
+          ? () => Promise.resolve(tokenParam)
+          : () => identity.getAccessToken();
+      connection = connectToGame({ url: wsUrl, getToken });
       if (cancelled) {
         connection.close();
         return;
@@ -321,13 +329,7 @@ export function LiveApp({
   }, [params, config, identity, authTick]);
 
   if (state.phase === "loading") {
-    return (
-      <GateLayout identity={identity} config={config} navigate={navigate}>
-        <Card className="enter gap-0 p-6 text-center">
-          <p className="text-3 text-text-muted">Opening the game...</p>
-        </Card>
-      </GateLayout>
-    );
+    return <LoadingGameShell />;
   }
   if (state.phase === "needs-auth") {
     return (
@@ -397,6 +399,74 @@ function GateLayout({
   );
 }
 
+/** One quiet placeholder block: a sand fill with a subtle shimmer, still under
+ * prefers-reduced-motion (the shimmer is defined only in a no-preference query). */
+function Skeleton({ className = "" }: { className?: string }) {
+  return (
+    <div aria-hidden className={`skeleton skeleton-shimmer ${className}`} />
+  );
+}
+
+/**
+ * The pre-REST loading treatment (item 4): the same framed game shell the live game
+ * uses (panel chrome, dashed clue rule, the 4fr/3fr board-and-rail split), filled with
+ * quiet placeholder blocks instead of a centered card. No geometry is known yet, so the
+ * board area is a square shimmer; when REST lands, LiveGame renders the real grid at its
+ * true geometry, so only the placeholders change, not the frame. No spinner.
+ */
+function LoadingGameShell() {
+  const railList = (
+    <>
+      <Skeleton className="h-3.5 w-16 rounded-1" />
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-3.5 w-full max-w-[18rem] rounded-1" />
+      ))}
+    </>
+  );
+  return (
+    <div className="h-dvh flex flex-col overflow-hidden bg-background md:p-4">
+      <div
+        className="relative flex-1 min-h-0 flex flex-col bg-panel overflow-hidden md:border md:border-border-strong md:rounded-3 md:shadow-sm"
+        aria-busy="true"
+        aria-label="Opening the game"
+      >
+        <header className="flex items-center gap-2 px-2 sm:px-3 py-2">
+          <Skeleton className="h-8 w-8 rounded-3" />
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <Skeleton className="h-6 w-40 max-w-[45%] rounded-3" />
+            <Skeleton className="h-4 w-12 rounded-2" />
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Skeleton className="h-7 w-16 rounded-3" />
+            <Skeleton className="h-8 w-8 rounded-3" />
+            <Skeleton className="h-8 w-20 rounded-3" />
+          </div>
+        </header>
+
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-dashed border-border-dashed">
+          <Skeleton className="h-4 w-8 rounded-2" />
+          <Skeleton className="h-4 w-2/3 max-w-[24rem] rounded-2" />
+        </div>
+
+        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)]">
+          <div className="board-stage h-full min-h-0 overflow-hidden p-3 md:p-6 flex flex-col md:justify-center">
+            <div className="board-fit" style={{ aspectRatio: "1 / 1" }}>
+              <Skeleton className="w-full h-full rounded-2" />
+            </div>
+          </div>
+
+          <div className="hidden md:grid grid-rows-2 min-h-0 h-full border-l border-dashed border-border-dashed">
+            <div className="flex flex-col gap-2.5 p-4 border-b border-dashed border-border-dashed">
+              {railList}
+            </div>
+            <div className="flex flex-col gap-2.5 p-4">{railList}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LiveGame({
   ready,
   identity,
@@ -432,6 +502,11 @@ function LiveGame({
 
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
   const frozen = store.status !== "ongoing";
+  // Post-REST, pre-welcome: the store is `connecting`, so the real grid renders at its
+  // true geometry with empty cells but de-emphasized, and input is locked until the first
+  // snapshot makes it live (item 3/4). `connecting` is only ever the pre-first-welcome
+  // state, so this reads as "have we synced once"; a later drop goes `reconnecting`.
+  const awaitingFirstSync = store.sync === "connecting";
   const isSpectator = role === "spectator";
   // A guest (or a client the server refused) cannot upgrade: show the sign-in deal, not the tap.
   const needsFullAccount = ready.isAnonymous || blockedByAccount;
@@ -507,7 +582,10 @@ function LiveGame({
 
   const handleKey = useCallback(
     (key: string, shift: boolean): boolean => {
-      if (isSpectator) return false;
+      // Lock input until the first welcome: the store also refuses mutations while
+      // `connecting` (defense in depth), but swallowing the key here keeps the selection
+      // from advancing over a board that has no authoritative state yet.
+      if (isSpectator || awaitingFirstSync) return false;
       const effect = keyEffect({ grid, filled, selection, frozen }, key, shift);
       if (effect === null) return false;
       for (const mutation of effect.mutations) {
@@ -520,7 +598,7 @@ function LiveGame({
       setSelection(effect.selection);
       return true;
     },
-    [isSpectator, grid, filled, selection, frozen, store],
+    [isSpectator, awaitingFirstSync, grid, filled, selection, frozen, store],
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
@@ -658,12 +736,15 @@ function LiveGame({
               style={{ aspectRatio: `${puzzle.cols} / ${puzzle.rows}` }}
             >
               <div
-                className="board-wrap outline-none"
+                className={`board-wrap outline-none transition-opacity duration-300 motion-reduce:transition-none${
+                  awaitingFirstSync ? " opacity-45" : ""
+                }`}
                 data-testid="grid"
                 ref={gridRef}
                 tabIndex={0}
                 onKeyDown={onKeyDown}
                 aria-label="Crossword grid"
+                aria-busy={awaitingFirstSync}
               >
                 <CrosswordGrid
                   puzzle={puzzle}
@@ -689,10 +770,17 @@ function LiveGame({
         </div>
 
         {!isSpectator && (
-          <Keyboard onKey={(key) => handleKey(key, false)} disabled={frozen} />
+          <Keyboard
+            onKey={(key) => handleKey(key, false)}
+            disabled={frozen || awaitingFirstSync}
+          />
         )}
 
-        {store.sync !== "live" && (
+        {/* The status pill speaks only to a lost-then-recovering connection: `resyncing`
+            (a gap) and `reconnecting` (a post-drop backoff). The honest first connect is
+            `connecting`, covered by the pre-welcome de-emphasis above, so it never shows
+            the pill (item 3). */}
+        {(store.sync === "resyncing" || store.sync === "reconnecting") && (
           <div
             className="absolute top-12 inset-x-0 flex justify-center z-[var(--z-toast)] pointer-events-none"
             aria-live="polite"

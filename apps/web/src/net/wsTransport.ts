@@ -18,8 +18,14 @@ const HEARTBEAT_INTERVAL_MS = 15_000; // PROTOCOL.md section 9
 export interface WsTransportOptions {
   /** wss://{session-host}/games/{gameId}/ws (PROTOCOL.md section 2). */
   url: string;
-  /** The identity provider's access token, sent in hello. */
-  token: string;
+  /**
+   * Resolve the identity provider's access token for the next hello. Called fresh
+   * before every hello, including each reconnect, so an expired token is never reused:
+   * the real path is `identity.getAccessToken()`, which refreshes near expiry. `null`
+   * means signed out (see connect: the transport stops rather than busy-looping a hello
+   * the server would reject with UNAUTHORIZED).
+   */
+  getToken: () => Promise<string | null>;
   /** A codec-decoded frame arrived; typically store.receive. */
   onMessage: (message: ServerMessage) => void;
   /** The socket dropped; typically store.connectionLost. Reconnection is internal. */
@@ -50,17 +56,7 @@ export class WsTransport implements GameTransport {
 
     socket.onopen = () => {
       this.openedAt = Date.now();
-      // The first frame MUST be hello (PROTOCOL.md section 2).
-      socket.send(
-        encode({
-          type: "hello",
-          protocolVersion: PROTOCOL_VERSION,
-          token: this.options.token,
-        }),
-      );
-      this.heartbeat = setInterval(() => {
-        this.send({ type: "heartbeat" });
-      }, HEARTBEAT_INTERVAL_MS);
+      void this.sendHello(socket);
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -98,6 +94,34 @@ export class WsTransport implements GameTransport {
         this.connect();
       }, this.schedule.nextDelayMs());
     };
+  }
+
+  /**
+   * Resolve a fresh token, then send the mandatory first `hello` (PROTOCOL.md section 2)
+   * and start heartbeats. A `null` token means signed out: stop deliberately rather than
+   * loop a hello the server rejects with UNAUTHORIZED. This is a stop, not a busy loop,
+   * so a signed-out client mid-reconnect settles instead of hammering the endpoint; a
+   * later connect (a fresh sign-in re-opens the game) starts a new socket. If the socket
+   * closed while the token was resolving, drop the hello and let onclose reconnect.
+   */
+  private async sendHello(socket: WebSocket): Promise<void> {
+    let token: string | null;
+    try {
+      token = await this.options.getToken();
+    } catch {
+      token = null;
+    }
+    if (token === null) {
+      this.close();
+      return;
+    }
+    if (socket !== this.socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(
+      encode({ type: "hello", protocolVersion: PROTOCOL_VERSION, token }),
+    );
+    this.heartbeat = setInterval(() => {
+      this.send({ type: "heartbeat" });
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   /** Best-effort send: with no open socket the frame drops, and the overlay plus
