@@ -247,11 +247,11 @@ come back `rolcanlogin = t`, `rolbypassrls = t`.
 The owner holds `crossy.me`, and `api.crossy.me` is already the Supabase custom auth domain,
 so the Railway api service must use a different name. Suggested mapping:
 
-| Domain           | Service | Replaces                                 |
-| ---------------- | ------- | ---------------------------------------- |
-| `crossy.me`      | web     | `web-production-946c3.up.railway.app`    |
-| `ws.crossy.me`   | session | `session-production-8b77.up.railway.app` |
-| `rest.crossy.me` | api     | `api-production-c2d9.up.railway.app`     |
+| Domain              | Service | Replaces                                 |
+| ------------------- | ------- | ---------------------------------------- |
+| `crossy.me`         | web     | `web-production-946c3.up.railway.app`    |
+| `session.crossy.me` | session | `session-production-8b77.up.railway.app` |
+| `rest.crossy.me`    | api     | `api-production-c2d9.up.railway.app`     |
 
 No rebuild is needed at any step: the images carry no domains. Everything below is env and
 DNS. Owner actions, in order:
@@ -263,13 +263,13 @@ DNS. Owner actions, in order:
    `crossy.me` needs ALIAS/ANAME (or CNAME flattening) pointed at the same target; wait for
    Railway to show the certificate as issued.
 3. Update the env that carries domains (Railway redeploys on variable change):
-   - api: `CORS_ORIGIN=https://crossy.me`, `SESSION_WS_BASE=wss://ws.crossy.me`
+   - api: `CORS_ORIGIN=https://crossy.me`, `SESSION_WS_BASE=wss://session.crossy.me`
    - web: `API_BASE=https://rest.crossy.me`
 4. Supabase dashboard, Authentication > URL Configuration: set the Site URL to
    `https://crossy.me` and add `https://crossy.me/**` to the redirect list. Keep the
    `up.railway.app` entries during the transition; remove them once nothing links there.
 5. Verify:
-   `node deploy/verify.mjs --api https://rest.crossy.me --web https://crossy.me --session wss://ws.crossy.me`
+   `node deploy/verify.mjs --api https://rest.crossy.me --web https://crossy.me --session wss://session.crossy.me`
 
 The `up.railway.app` domains keep working alongside the custom ones; old links do not break.
 
