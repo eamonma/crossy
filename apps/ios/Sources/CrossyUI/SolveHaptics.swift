@@ -19,8 +19,10 @@ import Foundation
 /// One haptic moment, named by DESIGN.md §7's grammar. The player renders it;
 /// the fold derives it; nothing else decides when the room buzzes.
 public enum SolveHaptic: Equatable, Sendable {
-    /// The cursor crossed a block: colinear travel over at least one block cell.
-    case blockTick
+    /// The cursor traveled to another word: a block crossed, a line changed, a
+    /// swipe between words, the axis toggled (owner ruling 2026-07-10
+    /// broadening §7's block-cross tick to every word-to-word travel).
+    case travelTick
     /// A word completed under the local hand.
     case wordThud
     /// A word the cursor stands in was finished by someone else.
@@ -32,7 +34,7 @@ public enum SolveHaptic: Equatable, Sendable {
 /// Starting values for the I2e device tuning pass (DESIGN.md §7: tuned on
 /// hardware). One block to edit; nothing else holds a magic number.
 public enum SolveHapticTuning {
-    public static let blockTickIntensity: Double = 0.6
+    public static let travelTickIntensity: Double = 0.6
     public static let wordThudIntensity: Double = 1.0
     public static let doubleTickIntensity: Double = 0.8
     /// The double tick's gap: wide enough to read as two, tight enough to be
@@ -63,12 +65,17 @@ public struct SolveHapticFold: Equatable, Sendable {
         else { return nil }
         let delta = filled.subtracting(before)
 
-        // Pure movement (a swipe, an advance, a backspace step): the §7 tick
-        // when the travel crosses a block. Clears are movement too.
+        // Pure movement (a swipe, an advance, a backspace step, a toggle): the
+        // tick when the travel lands in another word (owner ruling 2026-07-10:
+        // line changes and swipes tick like block crossings; within-word steps
+        // stay silent). Clears are movement too.
         if delta.isEmpty {
-            guard selection.cell != rest else { return nil }
-            return Self.crossesBlock(from: rest, to: selection.cell, puzzle: puzzle)
-                ? .blockTick : nil
+            guard selection.cell != rest || selection.isAcross != restAcross
+            else { return nil }
+            return Self.wordChanged(
+                fromCell: rest, fromIsAcross: restAcross, to: selection,
+                puzzle: puzzle)
+                ? .travelTick : nil
         }
 
         // The live wire places one letter at a time; a bulk delta is a snapshot.
@@ -76,12 +83,14 @@ public struct SolveHapticFold: Equatable, Sendable {
 
         if placed == rest {
             // The local hand. A completing letter thuds; the thud outranks the
-            // advance's block tick (one haptic per intent, the loudest fact).
+            // advance's travel tick (one haptic per intent, the loudest fact).
             if Self.completesAWord(cell: placed, after: filled, puzzle: puzzle) {
                 return .wordThud
             }
-            return Self.crossesBlock(from: rest, to: selection.cell, puzzle: puzzle)
-                ? .blockTick : nil
+            return Self.wordChanged(
+                fromCell: rest, fromIsAcross: restAcross, to: selection,
+                puzzle: puzzle)
+                ? .travelTick : nil
         }
 
         // Another hand. §7's double tick only when it finishes the word the
@@ -94,21 +103,15 @@ public struct SolveHapticFold: Equatable, Sendable {
         return nil
     }
 
-    /// Colinear travel over at least one block. A jump that changes both row
-    /// and column (a tap, a clue jump) is pointing, not crossing — no tick.
-    static func crossesBlock(from: Int, to: Int, puzzle: GridPuzzle) -> Bool {
-        guard from != to else { return false }
-        let cols = puzzle.cols
-        let lo = min(from, to)
-        let hi = max(from, to)
-        if from / cols == to / cols {
-            return ((lo + 1)..<hi).contains { puzzle.blocks.contains($0) }
-        }
-        if from % cols == to % cols {
-            return stride(from: lo + cols, to: hi, by: cols)
-                .contains { puzzle.blocks.contains($0) }
-        }
-        return false
+    /// Whether the travel landed in another word: the standing word's cells
+    /// before against after (a block crossing, a line change, an axis toggle,
+    /// and any jump all change the word; a step within the word does not).
+    static func wordChanged(
+        fromCell: Int, fromIsAcross: Bool, to selection: GridSelection,
+        puzzle: GridPuzzle
+    ) -> Bool {
+        puzzle.wordCells(through: fromCell, isAcross: fromIsAcross)
+            != puzzle.wordCells(through: selection.cell, isAcross: selection.isAcross)
     }
 
     /// True when a word through the cell stands fully filled: the placed letter
@@ -145,8 +148,8 @@ public final class SolveHaptics {
 
         public func play(_ haptic: SolveHaptic) {
             switch haptic {
-            case .blockTick:
-                tick.impactOccurred(intensity: SolveHapticTuning.blockTickIntensity)
+            case .travelTick:
+                tick.impactOccurred(intensity: SolveHapticTuning.travelTickIntensity)
                 tick.prepare()
             case .wordThud:
                 thud.impactOccurred(intensity: SolveHapticTuning.wordThudIntensity)

@@ -232,10 +232,13 @@ reduced-motion equivalent that crossfades instead of moving.
 - **The flash** (PROTOCOL.md section 8): roughly 300 ms in the winner's color when a
   visible value changes under you. The loudest thing in the room; it gets a tuned
   curve (sharp attack, long decay), not a linear fade.
-- **Haptics**: a light tick when the cursor crosses a block; a soft thud when a word
-  completes; a double tick when a word you were mid-typing is finished by someone
-  else; a distinct completion pattern for `gameCompleted`. Never a haptic for a
-  teammate's routine letters (that would buzz constantly in a lively room).
+- **Haptics**: a light tick when the cursor travels to another word — a block
+  crossed, a line changed, a swipe between words, the axis toggled (owner ruling
+  2026-07-10, broadening the block-cross tick; steps within a word stay silent); a
+  soft thud when a word completes; a double tick when a word you were mid-typing is
+  finished by someone else; a distinct completion pattern for `gameCompleted`.
+  Never a haptic for a teammate's routine letters (that would buzz constantly in a
+  lively room).
 - **The key deck**: specular pop plus haptic tick per press, sixty times a minute,
   tuned on hardware before anything else is (ID-4).
 

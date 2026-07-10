@@ -2,7 +2,8 @@ import XCTest
 
 @testable import CrossyUI
 
-// The haptic grammar (DESIGN.md §7): block-cross tick, word thud, the double
+// The haptic grammar (DESIGN.md §7): the travel tick (owner ruling 2026-07-10:
+// every word-to-word travel, not just block crossings), word thud, the double
 // tick for a word finished under you, and silence for a teammate's routine
 // letters. The fold derives whose hand moved from the delta's position against
 // the cursor, so every rule pins headlessly against scripted observations.
@@ -37,7 +38,7 @@ final class SolveHapticsTests: XCTestCase {
             fold.observe(
                 filled: [], selection: GridSelection(cell: 3, isAcross: true),
                 puzzle: puzzle),
-            .blockTick)
+            .travelTick)
     }
 
     func test_columnTravelOverABlock_ticks_section7() {
@@ -46,7 +47,7 @@ final class SolveHapticsTests: XCTestCase {
             fold.observe(
                 filled: [], selection: GridSelection(cell: 15, isAcross: false),
                 puzzle: puzzle),
-            .blockTick)
+            .travelTick)
     }
 
     func test_travelWithoutABlockIsSilent_section7() {
@@ -57,15 +58,26 @@ final class SolveHapticsTests: XCTestCase {
                 puzzle: puzzle))
     }
 
-    // A tap or clue jump that changes row AND column is pointing, not
-    // crossing: §7 names the tick for the cursor crossing a block, the typing
-    // flow's travel.
-    func test_aJumpAcrossTheGridIsPointingNotCrossing_section7() {
+    // Owner ruling 2026-07-10: every word-to-word travel ticks, so a line
+    // change (landing in another row's word) ticks like a block crossing.
+    func test_aLineChangeTicks_section7() {
         var fold = seeded(cell: 1)
-        XCTAssertNil(
+        XCTAssertEqual(
             fold.observe(
                 filled: [], selection: GridSelection(cell: 8, isAcross: true),
-                puzzle: puzzle))
+                puzzle: puzzle),
+            .travelTick)
+    }
+
+    // The axis toggle stands the cursor in a different word on the same cell:
+    // a travel, so it ticks (owner ruling 2026-07-10).
+    func test_theAxisToggleTicks_section7() {
+        var fold = seeded(cell: 0, isAcross: true)
+        XCTAssertEqual(
+            fold.observe(
+                filled: [], selection: GridSelection(cell: 0, isAcross: false),
+                puzzle: puzzle),
+            .travelTick)
     }
 
     func test_localLetterCompletingTheWord_thuds_section7() {
@@ -85,7 +97,7 @@ final class SolveHapticsTests: XCTestCase {
             filled: [0, 1], selection: GridSelection(cell: 3, isAcross: true),
             puzzle: puzzle)
         XCTAssertEqual(haptic, .wordThud)
-        XCTAssertNotEqual(haptic, .blockTick)
+        XCTAssertNotEqual(haptic, .travelTick)
     }
 
     func test_localLetterMidWordIsSilent_section7() {
