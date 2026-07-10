@@ -1,8 +1,10 @@
 // Client routing (SPA, no server routing): query params select the surface. `?game=<id>` (plus
 // optional `?code=`, and the smoke's `?api=`/`?token=`) drives the live game; `?create=1` is the
-// upload flow; `?demo=1` keeps the old fake-session boards for hacking; everything else is the
-// landing hero. Navigation is pushState so the app never full-reloads between screens, and the
-// identity session survives. The M1 smoke path (`?game=`) is unchanged.
+// upload flow; `?demo=1` keeps the old fake-session boards for hacking. The root splits on auth:
+// a signed-out visitor sees the landing hero unchanged, a signed-in one lands on the home (the
+// sidebar shell, `?puzzles=1` selects its Puzzles tab). Navigation is pushState so the app never
+// full-reloads between screens, and the identity session survives. The M1 smoke path (`?game=`)
+// is unchanged.
 import {
   useCallback,
   useEffect,
@@ -28,6 +30,7 @@ import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
 import { Landing } from "./ui/Landing";
+import { Home } from "./ui/Home";
 import { CreateGame } from "./ui/CreateGame";
 import { Button } from "@/components/ui/button";
 import { ThemeProvider } from "./ui/useTheme";
@@ -66,6 +69,10 @@ function Router({
   const [search, setSearch] = useState(() =>
     typeof window === "undefined" ? "" : window.location.search,
   );
+  // Re-render when the identity session changes so the root flips between the landing and the
+  // home the instant a sign-in or sign-out lands (getSession is read synchronously below).
+  const [, bumpAuth] = useState(0);
+  useEffect(() => identity.onChange(() => bumpAuth((t) => t + 1)), [identity]);
 
   useEffect(() => {
     const onPop = (): void => setSearch(window.location.search);
@@ -98,6 +105,20 @@ function Router({
   }
   if (params.get("demo") !== null) {
     return <DemoApp config={config} identity={identity} />;
+  }
+  // Root. A signed-in session (or the `?token=` dogfood override) lands on the home; everyone
+  // else keeps the landing hero exactly as before.
+  const signedIn =
+    identity.getSession() !== null || params.get("token") !== null;
+  if (signedIn) {
+    return (
+      <Home
+        config={config}
+        identity={identity}
+        navigate={navigate}
+        params={params}
+      />
+    );
   }
   return (
     <Landing

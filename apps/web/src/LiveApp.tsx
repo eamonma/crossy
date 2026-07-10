@@ -115,19 +115,29 @@ function toPuzzle(cp: ClientPuzzleView): Puzzle {
   };
 }
 
-/** Decode the token subject (the user id) without a dependency, for both the identity session
- * and the smoke's `?token=` override. Best-effort: a malformed token yields null. */
-function jwtSub(token: string): string | null {
+/** Decode a claim off the token payload without a dependency, for both the identity session and
+ * the smoke's `?token=` override. Best-effort: a malformed token yields an empty payload. */
+function jwtPayload(token: string): Record<string, unknown> {
   try {
     const payload = token.split(".")[1];
-    if (payload === undefined) return null;
+    if (payload === undefined) return {};
     const padded = payload.replace(/-/g, "+").replace(/_/g, "/");
     const decoded = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
-    const json = JSON.parse(decoded) as { sub?: unknown };
-    return typeof json.sub === "string" ? json.sub : null;
+    return JSON.parse(decoded) as Record<string, unknown>;
   } catch {
-    return null;
+    return {};
   }
+}
+
+function jwtSub(token: string): string | null {
+  const sub = jwtPayload(token)["sub"];
+  return typeof sub === "string" ? sub : null;
+}
+
+/** The `is_anonymous` claim (guests). Same claim the server reads (packages/auth), so the client
+ * gate matches the server's FULL_ACCOUNT_REQUIRED refusal instead of guessing. */
+function jwtIsAnonymous(token: string): boolean {
+  return jwtPayload(token)["is_anonymous"] === true;
 }
 
 interface Ready {
@@ -139,6 +149,8 @@ interface Ready {
   name: string | null;
   apiBase: string;
   selfId: string | null;
+  /** True for a guest: they can never hold solver or host (DESIGN.md section 8). */
+  isAnonymous: boolean;
 }
 
 type LoadState =
@@ -214,6 +226,10 @@ export function LiveApp({
 
       const auth = { authorization: `Bearer ${token}` };
       const selfId = jwtSub(token);
+      // Guest status: the identity session is authoritative when present (the real product path);
+      // the `?token=` dogfood path has no session, so fall back to the token's own claim.
+      const isAnonymous =
+        identity.getSession()?.isAnonymous ?? jwtIsAnonymous(token);
 
       // Fetch the game view. A non-member gets 403; with an invite code we self-join as a
       // spectator (DESIGN section 8), then read the view again.
@@ -286,6 +302,7 @@ export function LiveApp({
           name: resolvedName,
           apiBase: api,
           selfId,
+          isAnonymous,
         },
       });
     })().catch(() => {
@@ -322,7 +339,7 @@ export function LiveApp({
           </h1>
           <p className="mt-3 text-3 text-text-muted">
             {state.invited
-              ? "Sign in to join. You'll land as a spectator and can start solving with one tap."
+              ? "Sign in to join. Watching is free, and solving together needs a Discord account."
               : "Sign in to join this game."}
           </p>
           <div className="mt-6 max-w-[20rem] mx-auto">
@@ -403,6 +420,10 @@ function LiveGame({
   );
   const [role, setRole] = useState<Role>(ready.role);
   const [upgrading, setUpgrading] = useState(false);
+  // Guests can never hold solver (server FULL_ACCOUNT_REQUIRED). blockedByAccount also flips on
+  // for a stale client the server refuses, so the sign-in gate replaces a raw error in that race.
+  const [blockedByAccount, setBlockedByAccount] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dismissedCompletion, setDismissedCompletion] = useState(false);
   const flashNonce = useRef(0);
@@ -411,6 +432,8 @@ function LiveGame({
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
   const frozen = store.status !== "ongoing";
   const isSpectator = role === "spectator";
+  // A guest (or a client the server refused) cannot upgrade: show the sign-in deal, not the tap.
+  const needsFullAccount = ready.isAnonymous || blockedByAccount;
 
   useEffect(() => {
     gridRef.current?.focus();
@@ -542,10 +565,22 @@ function LiveGame({
       if (res.ok) {
         setRole("solver");
         gridRef.current?.focus();
+        return;
+      }
+      // Defense for stale clients and races: the server refuses a guest with
+      // FULL_ACCOUNT_REQUIRED (403). Swap the banner to the sign-in deal, never a raw error.
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 403 && body.error === "FULL_ACCOUNT_REQUIRED") {
+        setBlockedByAccount(true);
       }
     } finally {
       setUpgrading(false);
     }
+  }
+
+  function startSignIn(): void {
+    setSigningIn(true);
+    void identity.signInWithDiscord().catch(() => setSigningIn(false));
   }
 
   const activeClue = clueOn(
@@ -592,8 +627,11 @@ function LiveGame({
 
         {isSpectator && (
           <SpectateBanner
+            guest={needsFullAccount}
             onUpgrade={() => void upgrade()}
+            onSignIn={startSignIn}
             upgrading={upgrading}
+            signingIn={signingIn}
           />
         )}
 
