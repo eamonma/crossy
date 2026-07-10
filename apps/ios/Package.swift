@@ -36,7 +36,11 @@ let package = Package(
         // adapter: SwiftUI views, Canvas grid, key deck, haptics
         .target(name: "CrossyUI", dependencies: ["CrossyStore", "CrossyDesign"]),
         .testTarget(name: "VectorRunnerTests", dependencies: ["CrossyEngine"]),
-        .testTarget(name: "CrossyProtocolTests", dependencies: ["CrossyProtocol"]),
+        // Fixtures/ holds the contract-snapshot JSON, read from the checkout via
+        // #filePath (the VectorRunnerTests pattern), so it is excluded, not bundled.
+        .testTarget(
+            name: "CrossyProtocolTests", dependencies: ["CrossyProtocol"],
+            exclude: ["Fixtures"]),
         .testTarget(name: "CrossyStoreTests", dependencies: ["CrossyStore"]),
         .testTarget(name: "CrossyAPITests", dependencies: ["CrossyAPI"]),
         .testTarget(name: "CrossySessionTests", dependencies: ["CrossySession"]),
