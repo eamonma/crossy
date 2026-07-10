@@ -82,6 +82,12 @@ depends on is open.
       via PR #38 (`APPLE_APP_ID`, fail closed); the proof waits on the owner-held
       app record. Found along the way: `GET /g/{code}` is specified but not yet
       implemented anywhere; it must exist before this spike's proof.
+- [ ] **SP-i5 The detent browser** (half day, on device). Follow-up to SP-i1's
+      finding that custom drag-driven morphs need choreography we would own: the
+      clue bar living in a persistent non-modal sheet with detents (small = bar
+      plus deck, large = the browser), Apple's drag physics, grid interactive
+      behind it, tap a clue to jump and pour back. Owner feel test decides
+      detent sheet vs custom panel for I2c. Blocks: I2c.
 
 ## Phase I0 — Shell (app target and CI)
 
