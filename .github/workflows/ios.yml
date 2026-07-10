@@ -33,7 +33,11 @@ concurrency:
 jobs:
   swift-vectors:
     name: swift vector runner (XCTest)
-    runs-on: macos-latest
+    # macos-26, not macos-latest: the glass chrome (I2b+) needs an iOS 26 SDK, and the
+    # macos-latest label is mid-migration to macos-26 through 2026-07-15, so the label
+    # is a lottery between Xcode 16.4 (no glass symbols, app-build fails) and Xcode 26.
+    # Pin the image; revisit once macos-latest settles on 26.
+    runs-on: macos-26
     defaults:
       run:
         working-directory: apps/ios
@@ -48,7 +52,7 @@ jobs:
   # simulator build needs none. The scheme is shared (xcshareddata) for exactly this job.
   app-build:
     name: app simulator build (xcodebuild)
-    runs-on: macos-latest
+    runs-on: macos-26  # same pin as swift-vectors: the glass path needs the iOS 26 SDK
     defaults:
       run:
         working-directory: apps/ios/Crossy
