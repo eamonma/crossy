@@ -321,6 +321,7 @@ function DockAxis({
   activeNumber,
   isCurrentAxis,
   filled,
+  presence,
   onJump,
   className,
 }: {
@@ -329,6 +330,7 @@ function DockAxis({
   activeNumber: number | null;
   isCurrentAxis: boolean;
   filled?: ReadonlySet<number> | undefined;
+  presence?: CluePresence | undefined;
   onJump: (clue: Clue) => void;
   className?: string;
 }) {
@@ -358,6 +360,11 @@ function DockAxis({
             !active &&
             filled !== undefined &&
             c.cells.every((cell) => filled.has(cell));
+          const onClue = presence?.get(`${c.direction}-${c.number}`);
+          // Same treatment as ClueList: dimming on the content spans, not the button, so a
+          // solved row's presence dots keep full strength.
+          const dim =
+            solved && "opacity-40 group-hover:opacity-100 transition-opacity";
           return (
             <li
               key={`${c.direction}-${c.number}`}
@@ -368,28 +375,27 @@ function DockAxis({
                 type="button"
                 onClick={() => onJump(c)}
                 className={cx(
-                  "grid grid-cols-[3.2ch_1fr] w-full text-left cursor-pointer",
+                  "group relative grid grid-cols-[3.2ch_1fr] w-full text-left cursor-pointer",
                   active
                     ? isCurrentAxis
                       ? "bg-amber-5"
                       : "bg-amber-3"
                     : "hover:bg-amber-3",
-                  solved && "opacity-40 hover:opacity-100 transition-opacity",
                 )}
               >
                 <span
                   className={cx(
-                    "py-1 pr-1.5 text-right text-2 tabular-nums",
-                    active
-                      ? "font-semibold text-text"
-                      : "font-semibold text-text-muted",
+                    "py-1 pr-1.5 text-right text-2 font-semibold tabular-nums",
+                    active ? "text-text" : "text-text-muted",
+                    dim,
                   )}
                 >
                   {c.number}
                 </span>
-                <span className="py-1 pl-2 pr-4 text-2 text-text">
+                <span className={cx("py-1 pl-2 pr-4 text-2 text-text", dim)}>
                   {c.text ?? "—"}
                 </span>
+                {onClue !== undefined && <PresenceDots people={onClue} />}
               </button>
             </li>
           );
@@ -412,6 +418,7 @@ export function ClueDock({
   activeDown,
   currentDirection,
   filled,
+  presence,
   solvingNow,
   onJump,
 }: {
@@ -421,6 +428,7 @@ export function ClueDock({
   activeDown: number | null;
   currentDirection: Direction;
   filled?: ReadonlySet<number> | undefined;
+  presence?: CluePresence | undefined;
   solvingNow?: React.ReactNode;
   onJump: (clue: Clue) => void;
 }) {
@@ -435,6 +443,7 @@ export function ClueDock({
         activeNumber={activeAcross}
         isCurrentAxis={currentDirection === "across"}
         filled={filled}
+        presence={presence}
         onJump={onJump}
         className="border-r border-dashed border-border-dashed"
       />
@@ -444,6 +453,7 @@ export function ClueDock({
         activeNumber={activeDown}
         isCurrentAxis={currentDirection === "down"}
         filled={filled}
+        presence={presence}
         onJump={onJump}
       />
     </div>

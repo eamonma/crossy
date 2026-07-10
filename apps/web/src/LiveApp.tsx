@@ -969,6 +969,7 @@ function LiveGame({
             activeDown={activeDown}
             currentDirection={selection.direction}
             filled={filled}
+            presence={presenceByClue}
             solvingNow={<SolvingNow roster={roster} />}
             onJump={jumpToClue}
           />
