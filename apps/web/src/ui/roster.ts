@@ -102,3 +102,24 @@ export function buildRoster(opts: {
 
   return { solvers, watching, groups };
 }
+
+/** Teammates on a clue, keyed `${direction}-${number}` so a clue row looks itself up in O(1). */
+export type CluePresence = ReadonlyMap<string, readonly SolverEntry[]>;
+
+/**
+ * Presence in the lists: which teammates sit on each clue right now, so a clue row can mark
+ * itself with their colored dots. Derived straight off the roster's `groups` (already
+ * people-by-clue, ordered by number then across before down), with self dropped: your own
+ * position is the amber active row, never a dot. A clue nobody else is on has no entry, so the
+ * common row renders exactly as before, and an empty roster (no cursors) yields an empty map.
+ * Disconnected teammates and spectators never reach `groups`, so they never leave a dot behind.
+ */
+export function cluePresence(roster: Roster): CluePresence {
+  const byClue = new Map<string, readonly SolverEntry[]>();
+  for (const group of roster.groups) {
+    const teammates = group.people.filter((s) => !s.self);
+    if (teammates.length === 0) continue;
+    byClue.set(`${group.clue.direction}-${group.clue.number}`, teammates);
+  }
+  return byClue;
+}

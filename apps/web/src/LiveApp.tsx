@@ -42,7 +42,7 @@ import { CapsLabel } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import { ClueBar, ClueRail, ClueSheet, ClueStrip, clueOn } from "./ui/Clues";
 import { SolvingNow } from "./ui/SolvingNow";
-import { buildRoster } from "./ui/roster";
+import { buildRoster, cluePresence } from "./ui/roster";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
@@ -709,6 +709,11 @@ function LiveGame({
     });
   }, [store, version, isSpectator, selection, puzzle]);
 
+  // Presence in the lists: the same roster, re-keyed by clue so each clue row can mark itself
+  // with the teammates on it. Self is dropped (your row is already amber), so a solo game and a
+  // room where only you have a resolvable cursor both yield an empty map and unchanged rows.
+  const presenceByClue = useMemo(() => cluePresence(roster), [roster]);
+
   const handleKey = useCallback(
     (key: string, shift: boolean): boolean => {
       // Lock input until the first welcome: the store also refuses mutations while
@@ -919,6 +924,7 @@ function LiveGame({
             activeDown={activeDown}
             currentDirection={selection.direction}
             filled={filled}
+            presence={presenceByClue}
             solvingNow={<SolvingNow roster={roster} />}
             onJump={jumpToClue}
           />
@@ -956,6 +962,7 @@ function LiveGame({
         activeDown={activeDown}
         currentDirection={selection.direction}
         filled={filled}
+        presence={presenceByClue}
         onJump={jumpToClue}
       />
 

@@ -12,6 +12,7 @@ import {
 } from "@radix-ui/react-icons";
 import type { Direction } from "@crossy/engine";
 import type { Clue } from "../domain/types";
+import type { CluePresence, SolverEntry } from "./roster";
 import { Divider, cx } from "./primitives";
 import { Button } from "@/components/ui/button";
 import {
@@ -115,17 +116,56 @@ export function ClueBar({
   );
 }
 
+/** Past this many teammates on one clue the row shows a +N instead of more dots. Matches the
+ * solving-now block's grouped-cluster cap so the two presence surfaces count crowds alike. */
+const PRESENCE_CAP = 2;
+
+/** Teammate presence at a clue row's right edge: one small colored dot per person on the clue,
+ * capped with a +N, the same overlap-and-count vocabulary the solving-now block uses for a
+ * crowded clue, shrunk to a marker. No initial (color alone reads at this size; the block above
+ * owns names) and no self (your position is the amber row). It is absolutely positioned so it
+ * rides the prose column's right padding without narrowing it: the clue text still wraps as it
+ * did and the whole row stays the click target. Rendered at full strength even on a dimmed
+ * (solved) row, since "someone is here" outranks the crossed-off treatment. */
+function PresenceDots({ people }: { people: readonly SolverEntry[] }) {
+  const shown = people.slice(0, PRESENCE_CAP);
+  const extra = people.length - shown.length;
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 flex items-center"
+    >
+      <span className="flex -space-x-1">
+        {shown.map((s) => (
+          <span
+            key={s.userId}
+            className="h-[7px] w-[7px] rounded-full ring-1 ring-panel"
+            style={{ background: s.color }}
+          />
+        ))}
+      </span>
+      {extra > 0 && (
+        <span className="ml-0.5 text-1 font-semibold leading-none text-text-subtle tabular-nums">
+          +{extra}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** One direction's list, v2's rows: a right-aligned number gutter, then the prose. The
  * active row is amber-5 on your axis and amber-3 on the crossing one, the same language
  * as the board's active word and cross-reference tints. A solved row (every cell filled)
  * sits back like a crossed-off newsprint entry and recovers on hover; the active and
- * crossing rows never dim. */
+ * crossing rows never dim. Teammate presence dots ride the row's right edge (see
+ * PresenceDots) and outlast the dimming. */
 function ClueList({
   title,
   clues,
   activeNumber,
   isCurrentAxis,
   filled,
+  presence,
   onJump,
 }: {
   title: string;
@@ -133,6 +173,7 @@ function ClueList({
   activeNumber: number | null;
   isCurrentAxis: boolean;
   filled?: ReadonlySet<number> | undefined;
+  presence?: CluePresence | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -161,6 +202,11 @@ function ClueList({
             !active &&
             filled !== undefined &&
             c.cells.every((cell) => filled.has(cell));
+          const onClue = presence?.get(`${c.direction}-${c.number}`);
+          // The dimming lives on the content spans, not the whole button, so presence dots
+          // keep full strength on a solved row (a child can never exceed its parent's opacity).
+          const dim =
+            solved && "opacity-40 group-hover:opacity-100 transition-opacity";
           return (
             <li key={`${c.direction}-${c.number}`}>
               <button
@@ -168,28 +214,27 @@ function ClueList({
                 type="button"
                 onClick={() => onJump(c)}
                 className={cx(
-                  "grid grid-cols-[3.2ch_1fr] w-full text-left cursor-pointer",
+                  "group relative grid grid-cols-[3.2ch_1fr] w-full text-left cursor-pointer",
                   active
                     ? isCurrentAxis
                       ? "bg-amber-5"
                       : "bg-amber-3"
                     : "hover:bg-amber-3",
-                  solved && "opacity-40 hover:opacity-100 transition-opacity",
                 )}
               >
                 <span
                   className={cx(
-                    "py-1 pr-1.5 text-right text-2 tabular-nums",
-                    active
-                      ? "font-semibold text-text"
-                      : "font-semibold text-text-muted",
+                    "py-1 pr-1.5 text-right text-2 font-semibold tabular-nums",
+                    active ? "text-text" : "text-text-muted",
+                    dim,
                   )}
                 >
                   {c.number}
                 </span>
-                <span className="py-1 pl-2 pr-4 text-2 text-text">
+                <span className={cx("py-1 pl-2 pr-4 text-2 text-text", dim)}>
                   {c.text ?? "—"}
                 </span>
+                {onClue !== undefined && <PresenceDots people={onClue} />}
               </button>
             </li>
           );
@@ -213,6 +258,7 @@ export function ClueRail({
   activeDown,
   currentDirection,
   filled,
+  presence,
   solvingNow,
   onJump,
 }: {
@@ -222,6 +268,7 @@ export function ClueRail({
   activeDown: number | null;
   currentDirection: Direction;
   filled?: ReadonlySet<number> | undefined;
+  presence?: CluePresence | undefined;
   solvingNow?: React.ReactNode;
   onJump: (clue: Clue) => void;
 }) {
@@ -236,6 +283,7 @@ export function ClueRail({
             activeNumber={activeAcross}
             isCurrentAxis={currentDirection === "across"}
             filled={filled}
+            presence={presence}
             onJump={onJump}
           />
         </div>
@@ -246,6 +294,7 @@ export function ClueRail({
             activeNumber={activeDown}
             isCurrentAxis={currentDirection === "down"}
             filled={filled}
+            presence={presence}
             onJump={onJump}
           />
         </div>
@@ -264,6 +313,7 @@ export function ClueSheet({
   activeDown,
   currentDirection,
   filled,
+  presence,
   onJump,
 }: {
   open: boolean;
@@ -274,6 +324,7 @@ export function ClueSheet({
   activeDown: number | null;
   currentDirection: Direction;
   filled?: ReadonlySet<number> | undefined;
+  presence?: CluePresence | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const jumpAndClose = (clue: Clue): void => {
@@ -324,6 +375,7 @@ export function ClueSheet({
               activeNumber={activeAcross}
               isCurrentAxis={currentDirection === "across"}
               filled={filled}
+              presence={presence}
               onJump={jumpAndClose}
             />
           </div>
@@ -334,6 +386,7 @@ export function ClueSheet({
               activeNumber={activeDown}
               isCurrentAxis={currentDirection === "down"}
               filled={filled}
+              presence={presence}
               onJump={jumpAndClose}
             />
           </div>
