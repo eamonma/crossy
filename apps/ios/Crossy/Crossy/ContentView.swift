@@ -17,7 +17,10 @@ import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        if let config = RoomConfig.resolve() {
+        // The glassEffectID recheck rig (MorphLab.swift): evidence only.
+        if ProcessInfo.processInfo.arguments.contains("-morphLab") {
+            MorphLab()
+        } else if let config = RoomConfig.resolve() {
             RealRoomView(config: config)
         } else {
             DemoRoomView()
