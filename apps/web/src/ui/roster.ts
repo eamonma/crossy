@@ -4,6 +4,11 @@
 // selection (fresher than the store's echo of our own cursor); teammates read from the
 // cursor map. A cursor on an axis with no word yields a null clue: the person still
 // counts as solving, but no row can name their clue.
+//
+// Named roster.ts, not solvingNow.ts: SolvingNow.tsx lives beside it, and on a
+// case-insensitive filesystem (any macOS clone) TypeScript resolves "./SolvingNow" to
+// whichever file it finds first, breaking `pnpm typecheck` (TS1149). Module basenames
+// here must differ in more than case.
 import type { Direction } from "@crossy/engine";
 import type { Cursor, Participant } from "@crossy/protocol";
 import type { Clue } from "../domain/types";

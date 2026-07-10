@@ -42,7 +42,7 @@ import { CapsLabel } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import { ClueBar, ClueRail, ClueSheet, ClueStrip, clueOn } from "./ui/Clues";
 import { SolvingNow } from "./ui/SolvingNow";
-import { buildRoster } from "./ui/solvingNow";
+import { buildRoster } from "./ui/roster";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { CompletionOverlay } from "./ui/Completion";
