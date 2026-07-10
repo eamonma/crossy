@@ -2,7 +2,7 @@
   "reason": "Wave 2.1a bound every engine family (reducer, comparator, navigation, completion) to an entry point and drained this list; it stays empty. A non-foreign family reappears here only if its engine binding is intentionally removed, which the per-family guard in src/vectors.test.ts then flags.",
   "families": [],
   "foreign": {
-    "reason": "client-store's consumer is apps/web's store (Wave 2.1d) and later the iOS store, never packages/engine (PROTOCOL.md §13). The engine runner discovers and shape-validates these vectors but never executes them; execution lives in apps/web's and the iOS suites. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the Wave 2.1a per-family rebind that drains `families` must not touch it.",
+    "reason": "client-store's consumer is apps/web's store (Wave 2.1d) and the iOS store (Phase I1b, apps/ios/Tests/CrossyStoreTests), never packages/engine (PROTOCOL.md §13). The engine runner discovers and shape-validates these vectors but never executes them; execution lives in the two consumer suites. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the Wave 2.1a per-family rebind that drains `families` must not touch it.",
     "families": ["client-store"]
   }
 }
