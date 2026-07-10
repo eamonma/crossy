@@ -93,7 +93,9 @@ struct StatsMorphPanel: View {
         .clipShape(shape)
         .modifier(ChromeGlassSurface(cornerRadius: radius))
         .contentShape(shape)
-        .onTapGesture {}  // a tap inside the card never falls through to the catcher
+        // An inside tap stays the card's: only touches OUTSIDE a transient
+        // dismiss it (DESIGN.md §4), the RosterPanel blocker rule.
+        .onTapGesture {}
         .position(x: frame.midX, y: frame.midY)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: accessibilityLine))

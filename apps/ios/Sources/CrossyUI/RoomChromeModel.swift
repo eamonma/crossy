@@ -80,6 +80,16 @@ public final class RoomChromeModel {
         }
     }
 
+    /// The melt's forced pour-back (DESIGN.md §4: transient panels yield to
+    /// intent, so another panel's opening or a terminal status pours the melt
+    /// back). Never while a finger scrubs it: the finger owns progress (the
+    /// SP-i1 discipline), so a dragged melt keeps its surface and the release
+    /// settles it wherever the finger sends it.
+    public func pourBackMeltUnlessDragging(animated: Bool = true) {
+        guard !isMeltDragging else { return }
+        settleMelt(open: false, animated: animated)
+    }
+
     public func rosterTouched() {
         rosterSettleTask?.cancel()
     }

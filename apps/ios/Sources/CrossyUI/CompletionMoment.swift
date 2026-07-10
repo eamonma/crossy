@@ -203,6 +203,27 @@ public final class CompletionModel {
     }
 }
 
+/// The terminal pour-back's trigger (DESIGN.md §4: transient panels yield to
+/// intent, and the room's own moments count as intent): fires exactly on an
+/// observed transition from ongoing into a terminal status, when the solve
+/// screen pours back the melt and the roster (the stats card then owns the
+/// completion stage). A pure fold, the CelebrationGate pattern: a reconnect
+/// whose first observation is already terminal fires nothing (there was no
+/// open room on screen to pour back), and repeated terminal observations (two
+/// onChange observers read one store) never refire.
+public struct TerminalPourBackGate: Equatable, Sendable {
+    private var last: RoomStatus?
+
+    public init() {}
+
+    /// Feed one observed status; true exactly when an ongoing room turned
+    /// terminal.
+    public mutating func observe(_ status: RoomStatus) -> Bool {
+        defer { last = status }
+        return status != .ongoing && last == .ongoing
+    }
+}
+
 /// Terminal-state facts the room renders: the ID-5 lexicon sentences
 /// (EXPERIENCE.md §5, verbatim) and the frozen-deck rule. The store already
 /// refuses mutations after a terminal status (InputActions pins it); this is the

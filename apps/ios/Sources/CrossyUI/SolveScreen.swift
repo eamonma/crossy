@@ -24,6 +24,7 @@ public struct SolveScreen: View {
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
+    @State private var terminalPourBack = TerminalPourBackGate()
     @State private var frames: [ChromePiece: CGRect] = [:]
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
@@ -91,63 +92,86 @@ public struct SolveScreen: View {
                     members: members,
                     playersHandedOff: chrome.isRosterOpen,
                     timeHandedOff: chrome.isStatsOpen,
-                    onTapClock: status == .completed
-                        ? { completion.isStatsOpen = true } : nil,
+                    onTapClock: status == .completed ? { openStats() } : nil,
                     onTapPucks: toggleRoster
                 )
                 .reportChromeFrame(.roomBar)
+                // Transient panels yield to intent (DESIGN.md §4): a touch on
+                // the bar outside its pills dismisses too. A plain tap cannot
+                // double-fire an opening pill: the pills' buttons outrank it,
+                // and a handed-off pill drops hit-testing so its ghost area
+                // lands here instead of re-summoning.
+                .contentShape(Rectangle())
+                .onTapGesture { dismissTransients() }
                 .padding(.horizontal, ChromeLayout.inset)
                 .padding(.top, 6)
 
-                CrossyGridView(
-                    store: store, puzzle: puzzle, ground: ground,
-                    selection: model.selection,
-                    mosaicStartedAt: completion.mosaicStartedAt,
-                    onSwipe: { model.swipe($0) },
-                    onPlaceCursor: { model.tap(cell: $0) })
-                    .overlay {
-                        // Reconnecting dims the room (DESIGN.md §8): a paper wash,
-                        // never a modal, never a spinner. Input stays live; the
-                        // store holds it gracefully (PROTOCOL.md §8).
-                        if weather.boardDimmed {
-                            Color(rgb: ground.tokens.canvas)
-                                .opacity(RoomWeather.boardDimOpacity)
-                                .allowsHitTesting(false)
+                VStack(spacing: 0) {
+                    CrossyGridView(
+                        store: store, puzzle: puzzle, ground: ground,
+                        selection: model.selection,
+                        mosaicStartedAt: completion.mosaicStartedAt,
+                        // A swipe never becomes a tap, so the yield law needs
+                        // its own hook here (DESIGN.md §4): panels pour back,
+                        // the swipe still navigates.
+                        onSwipe: { intent in
+                            dismissTransients()
+                            model.swipe(intent)
+                        },
+                        onPlaceCursor: { cell in
+                            dismissTransients()
+                            model.tap(cell: cell)
+                        })
+                        .overlay {
+                            // Reconnecting dims the room (DESIGN.md §8): a paper wash,
+                            // never a modal, never a spinner. Input stays live; the
+                            // store holds it gracefully (PROTOCOL.md §8).
+                            if weather.boardDimmed {
+                                Color(rgb: ground.tokens.canvas)
+                                    .opacity(RoomWeather.boardDimOpacity)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .animation(.crossyChrome, value: weather.boardDimmed)
+                        .padding(.top, 8)
+
+                    // The clue bar's rest slot: the melting surface renders in the
+                    // overlay at exactly this frame, so layout owns the geometry and
+                    // the morph only borrows it.
+                    Color.clear
+                        .frame(height: ChromeLayout.barHeight)
+                        .reportChromeFrame(.clueBarSlot)
+                        .padding(.horizontal, ChromeLayout.inset)
+                        .padding(.top, 8)
+
+                    // A terminal status retires the deck for everyone, spectator or
+                    // not (RoomTerminal.deckRetired; a frozen room has no seat worth
+                    // upgrading): mutations were already refused by the store and
+                    // InputActions, this is the rendered truth. Selection stays for
+                    // browsing; taps and swipes are pure navigation after the freeze.
+                    switch status {
+                    case .completed:
+                        // The finished room breathes (owner ruling 2026-07-10,
+                        // removing the first build's Solved-together zone and its
+                        // Stats button): the deck just leaves, the board keeps the
+                        // space, and the stats live behind the frozen clock.
+                        Color.clear.frame(height: 12)
+                    case .abandoned:
+                        abandonedZone
+                    case .ongoing:
+                        if spectating {
+                            watchingZone
+                        } else {
+                            deckZone
                         }
                     }
-                    .animation(.crossyChrome, value: weather.boardDimmed)
-                    .padding(.top, 8)
-
-                // The clue bar's rest slot: the melting surface renders in the
-                // overlay at exactly this frame, so layout owns the geometry and
-                // the morph only borrows it.
-                Color.clear
-                    .frame(height: ChromeLayout.barHeight)
-                    .reportChromeFrame(.clueBarSlot)
-                    .padding(.horizontal, ChromeLayout.inset)
-                    .padding(.top, 8)
-
-                // A terminal status retires the deck for everyone, spectator or
-                // not (RoomTerminal.deckRetired; a frozen room has no seat worth
-                // upgrading): mutations were already refused by the store and
-                // InputActions, this is the rendered truth. Selection stays for
-                // browsing; taps and swipes are pure navigation after the freeze.
-                switch status {
-                case .completed:
-                    // The finished room breathes (owner ruling 2026-07-10,
-                    // removing the first build's Solved-together zone and its
-                    // Stats button): the deck just leaves, the board keeps the
-                    // space, and the stats live behind the frozen clock.
-                    Color.clear.frame(height: 12)
-                case .abandoned:
-                    abandonedZone
-                case .ongoing:
-                    if spectating {
-                        watchingZone
-                    } else {
-                        deckZone
-                    }
                 }
+                // Transient panels yield to intent (DESIGN.md §4): every touch
+                // below the bar dismisses an open roster or stats card AND
+                // lands (simultaneous, so grid taps, deck presses, and the
+                // zones' buttons all keep firing). The panels sit above this
+                // layer and their inner blockers keep panel taps inside.
+                .simultaneousGesture(TapGesture().onEnded { dismissTransients() })
             }
             // A terminal status reshapes the room (the deck leaves, the board
             // takes its space): the grid rides the layout change on the chrome
@@ -166,20 +190,17 @@ public struct SolveScreen: View {
                         clues.down, selection: model.selection, filled: filledCells),
                     glintMarks: glintMarks,
                     chrome: chrome,
+                    onDismissTransients: dismissTransients,
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
                     onJump: { model.jump(to: ClueBrowserList.jumpTarget($0)) })
             }
 
-            // The roster's tap-away catcher: dismissal only, no scrim, the room
-            // never dims dead (DESIGN.md §4). It sits above the clue chrome so a
-            // touch there closes the roster instead of opening a second panel:
-            // one glass layer, structurally (the never-list).
-            if chrome.isRosterOpen {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { chrome.settleRoster(open: false, animated: !reduceMotion) }
-            }
+            // No tap-away catchers anywhere (DESIGN.md §4: transient panels
+            // yield to intent): a touch outside an open panel dismisses it
+            // through the surfaces it lands on, and still lands. The panels'
+            // own inner tap blockers are the only thing keeping a touch from
+            // falling through them.
 
             if chrome.isRosterOpen, let morph = rosterMorph(members: members, spectating: spectating) {
                 RosterPanel(
@@ -194,13 +215,8 @@ public struct SolveScreen: View {
 
             // The stats card (EXPERIENCE.md Completed): the time pill, inflated
             // (ID-2; DESIGN.md §4 morph grammar, owner ruling 2026-07-10
-            // replacing the first build's transitioned overlay). A tap-away
-            // catcher pours it back, no scrim, one glass layer.
-            if chrome.isStatsOpen {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { completion.isStatsOpen = false }
-            }
+            // replacing the first build's transitioned overlay). Any outside
+            // touch pours it back and lands, no scrim, one glass layer.
             if chrome.isStatsOpen, let morph = statsMorph {
                 StatsMorphPanel(
                     ground: ground,
@@ -281,6 +297,18 @@ public struct SolveScreen: View {
     }
 
     private func observeRoomState() {
+        // The room's own moments yield like any touch (DESIGN.md §4): the one
+        // observed transition into a terminal status pours back the melt and
+        // the roster, and on completion the stats card then owns the stage.
+        // A fold, not a render fact, so a reconnect into an already-terminal
+        // room never replays the pour-back.
+        if terminalPourBack.observe(roomStatus) {
+            chrome.settleRoster(open: false, animated: !reduceMotion)
+            // Never rip the melt from a live finger (SP-i1: the finger owns
+            // progress): a melt mid-drag when the room turns terminal stays
+            // with the finger, and the release settles it as usual.
+            chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
+        }
         completion.observe(
             status: roomStatus,
             live: store.sync == .live,
@@ -383,14 +411,41 @@ public struct SolveScreen: View {
 
     // MARK: - Intents
 
+    /// The one dismissal path (DESIGN.md §4: transient panels yield to
+    /// intent). A touch outside an open roster or stats panel dismisses it
+    /// and still lands, so every outside surface routes here before its own
+    /// action. The melt is not a tap-away transient (a gesture owns it); it
+    /// pours back only when another panel opens or the room turns terminal.
+    private func dismissTransients() {
+        if chrome.isRosterOpen {
+            chrome.settleRoster(open: false, animated: !reduceMotion)
+        }
+        if completion.isStatsOpen {
+            completion.isStatsOpen = false
+        }
+    }
+
     private func toggleRoster() {
         let animated = !reduceMotion
         if chrome.isRosterOpen {
             chrome.settleRoster(open: false, animated: animated)
         } else {
-            chrome.settleMelt(open: false, animated: animated)
+            // Panels are mutually exclusive (DESIGN.md §4): opening the
+            // roster closes the stats card and pours back a still melt (a
+            // dragged melt is the finger's, SP-i1).
+            completion.isStatsOpen = false
+            chrome.pourBackMeltUnlessDragging(animated: animated)
             chrome.settleRoster(open: true, animated: animated)
         }
+    }
+
+    /// The frozen clock's summon (ID-2), mutually exclusive like every panel
+    /// (DESIGN.md §4): the card's arrival closes the roster (owner ruling
+    /// 2026-07-10) and pours back a still melt.
+    private func openStats() {
+        chrome.settleRoster(open: false, animated: !reduceMotion)
+        chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
+        completion.isStatsOpen = true
     }
 
     /// The cursor relay (deferred from I2b): every selection change goes to the
@@ -431,6 +486,9 @@ public struct SolveScreen: View {
                 RebusField(buffer: buffer, ground: ground)
             }
             KeyDeck(ground: ground, isRebusActive: model.isRebusActive) { key in
+                // A press is intent (DESIGN.md §4): panels yield at touch-down
+                // (the deck presses on first contact), the letter still lands.
+                dismissTransients()
                 model.press(key)
             }
         }

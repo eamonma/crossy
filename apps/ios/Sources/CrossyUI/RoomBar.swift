@@ -155,6 +155,10 @@ struct RoomBar: View {
         .frame(height: ChromeLayout.pillHeight)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
         .opacity(timeHandedOff ? 0 : 1)
+        // The yield includes touch (DESIGN.md §4: transient panels yield to
+        // intent): a tap on the handed-off pill's ghost is a touch outside the
+        // panel, so it falls to the bar's dismiss layer instead of the button.
+        .allowsHitTesting(!timeHandedOff)
         .reportChromeFrame(.timePill)
     }
 
@@ -184,6 +188,9 @@ struct RoomBar: View {
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
         .opacity(playersHandedOff ? 0 : 1)
+        // Same touch yield as the time pill: while the roster is open, the
+        // ghost area dismisses through the bar rather than re-toggling.
+        .allowsHitTesting(!playersHandedOff)
         .reportChromeFrame(.playersPill)
         .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
     }

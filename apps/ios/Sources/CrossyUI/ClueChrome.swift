@@ -28,6 +28,11 @@ struct ClueChrome: View {
     /// Teammates whose cursors sit under the bar's clue right now (glint inputs).
     let glintMarks: [PresenceMark]
     let chrome: RoomChromeModel
+    /// Transient panels yield to intent (DESIGN.md §4): any touch on the clue
+    /// chrome is intent, so the room dismisses an open roster or stats card
+    /// through this while the touch still lands here. Fired by the surface's
+    /// simultaneous tap and by the melt drag's first tick.
+    let onDismissTransients: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onJump: (ClueEntry) -> Void
@@ -68,6 +73,10 @@ struct ClueChrome: View {
             }
         }
         .contentShape(shape)
+        // Simultaneous, so the chevrons, the toggle, and the browser's rows
+        // all keep firing while an open roster or stats card yields (DESIGN.md
+        // §4: the touch dismisses AND lands, never one or the other).
+        .simultaneousGesture(TapGesture().onEnded { onDismissTransients() })
         .position(x: frame.midX, y: frame.midY)
         .onChange(of: glintMarks.map(\.userId)) { _, ids in
             glintChanged(ids)
@@ -213,6 +222,10 @@ struct ClueChrome: View {
                     chrome.meltTouched()
                     dragBase = chrome.meltProgress
                     chrome.isMeltDragging = true
+                    // The drag's first tick is intent (DESIGN.md §4): an open
+                    // roster or stats card pours back as the finger takes the
+                    // surface, so panels stay mutually exclusive.
+                    onDismissTransients()
                 }
                 // Finger down: geometry tracks the finger directly. Animations are
                 // suppressed on the interpolating property, so nothing can retarget

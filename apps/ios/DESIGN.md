@@ -142,6 +142,14 @@ new at the open end (lists, names) fades in late. The morph targets:
   scroll.
 - On a panning 25x25, standing bars thin while you travel and return at rest.
 
+**Transient panels yield to intent** (owner ruling 2026-07-10). A touch outside
+an open roster or stats panel dismisses it and still lands where it fell: no
+dead tap-catchers, the room never eats a touch. Panels are mutually exclusive,
+opening any one pours back the others, and a status transition to completed or
+abandoned pours back the melt and the roster (the stats card then owns the
+completion stage). The one exception is a live finger: a melt being scrubbed is
+never force-closed, because the finger owns progress (SP-i1).
+
 **Presence glints.** Chrome stays achromatic until a person passes beneath it: a
 cursor sliding under the clue bar throws a brief specular in that player's color
 across its edge. Glass borrows color from the room; this is the only color glass

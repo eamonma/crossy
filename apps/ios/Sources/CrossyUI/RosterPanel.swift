@@ -95,7 +95,10 @@ struct RosterPanel: View {
         .clipShape(shape)
         .modifier(ChromeGlassSurface(cornerRadius: radius))
         .contentShape(shape)
-        .onTapGesture {}  // a tap inside the panel never falls through to the catcher
+        // An inside tap stays the panel's: only touches OUTSIDE a transient
+        // dismiss it (DESIGN.md §4), so this blocker keeps a panel tap from
+        // falling through to the room's dismiss-and-land layer.
+        .onTapGesture {}
         .position(x: frame.midX, y: frame.midY)
     }
 
