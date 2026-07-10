@@ -242,10 +242,16 @@ Format follows the root decision log. ID-1 through ID-5 were ruled by the owner 
   whip. Before the first fill it reads 0:00 quietly (the timer starts at first
   fill, root DESIGN.md D15).
 - **ID-3 Ground follows system appearance; screenshots lead Observatory**
-  (adopted 2026-07-10).
+  (adopted 2026-07-10). **Superseded 2026-07-10 (owner ruling): v1 builds Studio
+  only and pins light appearance.** Observatory's tokens stay in CrossyDesign and
+  the grid already renders both, but no design or tuning effort goes to the dark
+  ground until it earns its way back post-v1; nothing may hard-code Studio values
+  past the token layer.
 - **ID-4 The key deck is clear glass pucks** (adopted 2026-07-10, hardware-gated).
   Build the acrylic deck per SP-i2; if it proves too much in hand, revert to
-  Studio-quiet keys, the named alternate.
+  Studio-quiet keys, the named alternate. **Hardware-confirmed 2026-07-10: the
+  owner ran the SP-i2 rig on device and ruled for the glass.** Below iOS 26 the
+  pucks render as the section 4 blur-material fallback.
 - **ID-5 Copy is plain and warm** (adopted 2026-07-10). Common words, controls that
   say what happens, no metaphors on controls, nothing precious. The spectator
   upgrade reads Join in. Lexicon in `apps/ios/EXPERIENCE.md` section 5.
