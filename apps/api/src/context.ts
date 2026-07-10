@@ -67,6 +67,14 @@ export interface AppDeps {
    * API-owned tombstone still runs); the composition root sets the real adapter at M3b.
    */
   readonly vendorIdentity?: VendorIdentityPort;
+  /**
+   * Apple app identifier `<TeamID>.<bundleID>` published in the AASA file
+   * (`/.well-known/apple-app-site-association`), so `/g/{code}` links open the iOS app as
+   * universal links (apps/ios/ROADMAP.md SP-i4). Omit to serve 404 there: fail closed, no
+   * association published. Never hardcoded; the Apple team and app record are owner-held.
+   * The composition root sets it from APPLE_APP_ID.
+   */
+  readonly appleAppId?: string;
 }
 
 /** Hono environment: the request-scoped variables the auth middleware populates. */

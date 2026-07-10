@@ -44,6 +44,11 @@ async function main(): Promise<void> {
 
   const corsOrigin = process.env["CORS_ORIGIN"];
 
+  // Apple app identifier for the AASA file (apps/ios/ROADMAP.md SP-i4), `<TeamID>.<bundleID>`.
+  // Optional and owner-held: until the owner creates the Apple app record and sets it, the
+  // route fails closed with 404 and universal links stay dark.
+  const appleAppId = process.env["APPLE_APP_ID"];
+
   // The membership notifier (DESIGN.md §6). Configured only when both the session's private
   // internal base URL and the shared static bearer are present; otherwise it is omitted and
   // membership changes stay authoritative in Postgres (a kicked user is still refused at
@@ -72,6 +77,7 @@ async function main(): Promise<void> {
     authPort,
     sessionWsBase: required("SESSION_WS_BASE"),
     ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
+    ...(appleAppId !== undefined && appleAppId !== "" ? { appleAppId } : {}),
     ...(membershipNotifier !== undefined ? { membershipNotifier } : {}),
   });
 

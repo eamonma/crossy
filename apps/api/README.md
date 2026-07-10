@@ -31,8 +31,17 @@ walking-skeleton slice.
   (DESIGN.md section 7), and remove the vendor identity behind an injected port. PROTOCOL.md
   section 12 lists no account-deletion route; this is flagged for the docs ledger.
 
-Every route is bearer-authenticated through the `AuthPort`; the first authenticated request
-mirrors the identity into `users` (JIT upsert, the API being the single writer on `users`).
+- `GET /.well-known/apple-app-site-association`: public, no auth, no redirect (Apple's CDN
+  follows none). The AASA file that lets `/g/{code}` invite links open the iOS app as
+  universal links (apps/ios/ROADMAP.md SP-i4); it lives on the API because the API is the
+  normative home of `GET /g/{code}` (PROTOCOL.md section 12). Serves the modern components
+  format scoped to `/g/*` only, appID from `APPLE_APP_ID` (`<TeamID>.<bundleID>`); when that
+  is unset the route is 404, fail closed, since the Apple app record is owner-held and does
+  not exist yet. `webcredentials` (passkeys) is a post-v1 addition to the same file.
+
+Every route except the well-known file is bearer-authenticated through the `AuthPort`; the
+first authenticated request mirrors the identity into `users` (JIT upsert, the API being the
+single writer on `users`).
 
 ## Membership lifecycle (M3a) and the internal signal
 
@@ -141,6 +150,9 @@ in-memory fake, which mints real ES256 tokens; the Supabase adapter is construct
 ## Runtime
 
 `server.ts` is the composition root: it reads `DATABASE_URL`, `SUPABASE_ISSUER`, and
-`SESSION_WS_BASE`, constructs the live ports, and listens. Deployment provisions a login role
-carrying `crossy_api`'s privileges (see the migration note), so no `SET ROLE` is needed in
+`SESSION_WS_BASE` (required), plus the optional `CORS_ORIGIN`, `SESSION_INTERNAL_BASE`,
+`INTERNAL_BEARER_TOKEN`, and `APPLE_APP_ID` (the iOS `<TeamID>.<bundleID>` for the AASA
+route; owner-set in Railway once the Apple app record exists, see `deploy/README.md`).
+It constructs the live ports and listens. Deployment provisions a login role carrying
+`crossy_api`'s privileges (see the migration note), so no `SET ROLE` is needed in
 production.
