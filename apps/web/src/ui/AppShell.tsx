@@ -10,6 +10,16 @@
 // the board keeps the room), but an explicit toggle wins and persists in localStorage next
 // to the theme choice. On phones there is no rail: home surfaces get a slim header that
 // opens the sheet, and the game stays full-bleed with its own back affordance.
+//
+// Motion: an explicit toggle animates, everything else snaps. The shell arms the CSS
+// choreography (styles.css, "Sidebar collapse/expand choreography") by setting
+// data-animate on the provider inside the toggle handler, and drops it during render
+// whenever the route changes, so a route-driven default flip (home -> game) and first
+// paint land instantly. The choreography itself: leaving content dissolves at once, the
+// rail and its movers glide on one clock, arriving content reveals once there is room.
+// The brand block and user card below are shaped for that: the mark, the trigger, and
+// the avatar are single persistent elements (focus survives a toggle), and wide content
+// is pinned to the expanded width so nothing reflows or re-truncates mid-flight.
 import { useCallback, useMemo, useState } from "react";
 import {
   ExitIcon,
@@ -92,7 +102,21 @@ export function AppShell({
   // expanded at home so the recents read, collapsed in a game so the board keeps the room.
   const [pref, setPref] = useState<SidebarPref | null>(() => storedPref());
   const open = pref !== null ? pref === "expanded" : route.kind !== "game";
+
+  // Animate only the explicit toggle. onOpenChange fires for exactly those (trigger,
+  // cmd+B); a route-driven default flip changes `open` without it. Dropping the flag
+  // during the same render that sees a new route (the render-phase adjustment pattern)
+  // guarantees the disarm and the width change reach the DOM in one commit, so the
+  // browser never paints an armed transition around a navigation.
+  const [animate, setAnimate] = useState(false);
+  const [lastRouteKind, setLastRouteKind] = useState(route.kind);
+  if (route.kind !== lastRouteKind) {
+    setLastRouteKind(route.kind);
+    if (animate) setAnimate(false);
+  }
+
   const onOpenChange = useCallback((next: boolean) => {
+    setAnimate(true);
     const value: SidebarPref = next ? "expanded" : "collapsed";
     setPref(value);
     try {
@@ -108,6 +132,7 @@ export function AppShell({
     <SidebarProvider
       open={open}
       onOpenChange={onOpenChange}
+      data-animate={animate ? "true" : undefined}
       className="h-dvh overflow-hidden"
     >
       <TooltipProvider delayDuration={150}>
@@ -192,21 +217,29 @@ function CrossySidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="gap-3 p-3 group-data-[collapsible=icon]:px-1">
-        <div className="flex items-center justify-between pl-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:pl-0">
+        {/* The brand block. Expanded it is the lockup row (mark + wordmark left, trigger
+            right); at rail width it is the column (mark on top, trigger docked under).
+            Mark and trigger are one element each across both states, so keyboard focus
+            survives a toggle and the trigger visibly rides the closing edge (its right
+            anchor) while translating down into the column; the wordmark tucks under the
+            mark (max-width) as it dissolves. Fixed numbers are the rendered sizes: mark
+            24, trigger 40 (size-7), gap 8, so 40 tall expanded and 24+8+40=72 collapsed. */}
+        <div className="sidebar-glide relative h-[40px] group-data-[collapsible=icon]:h-[72px]">
           <button
             type="button"
             onClick={() => go(homeHref(params))}
-            className="inline-flex items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            className="sidebar-glide absolute top-0 left-0 inline-flex translate-x-1 translate-y-2 items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring group-data-[collapsible=icon]:translate-x-2 group-data-[collapsible=icon]:translate-y-0"
             aria-label="Crossy home"
           >
-            <span className="group-data-[collapsible=icon]:hidden">
-              <Logo />
-            </span>
-            <span className="hidden group-data-[collapsible=icon]:inline-flex">
-              <Logo withName={false} />
+            <Logo withName={false} />
+            {/* The wordmark half of the Logo lockup (primitives.tsx), split out so it can
+                tuck and dissolve while the mark holds still. Type recipe kept in sync
+                with Logo: display serif, semibold, 18px (24 * 0.75), 6px gap. */}
+            <span className="sidebar-dissolve sidebar-glide ml-1.5 max-w-[64px] overflow-hidden font-display text-[18px] leading-none font-semibold tracking-[-0.00625em] whitespace-nowrap group-data-[collapsible=icon]:ml-0 group-data-[collapsible=icon]:max-w-0 group-data-[collapsible=icon]:opacity-0">
+              Crossy
             </span>
           </button>
-          <SidebarTrigger className="hidden text-text-subtle hover:text-text md:inline-flex" />
+          <SidebarTrigger className="sidebar-glide absolute top-0 right-0 hidden text-text-subtle hover:text-text group-data-[collapsible=icon]:translate-y-[32px] md:inline-flex" />
         </div>
         <SidebarMenu className="gap-1">
           <SidebarMenuItem>
@@ -236,15 +269,18 @@ function CrossySidebar({
         </SidebarMenu>
       </SidebarHeader>
 
-      <div className="px-3 group-data-[collapsible=icon]:px-1">
+      <div className="sidebar-glide px-3 group-data-[collapsible=icon]:px-1">
         <Divider />
       </div>
 
-      {/* Recents make no sense at rail width, so the group folds away with the rail (the
+      {/* Recents make no sense at rail width, so the group dissolves with the rail (the
           content block itself keeps its flex-1 so the user card stays pinned to the foot);
-          the icons above stay as the persistent affordances. */}
+          the icons above stay as the persistent affordances. The group is pinned to the
+          expanded width (not w-full) and clipped by SidebarContent, so its rows never
+          reflow or re-truncate while the rail moves; visibility rides the fade so the
+          rows leave the tab order exactly as `hidden` had them. */}
       <SidebarContent>
-        <SidebarGroup className="px-3 py-2 group-data-[collapsible=icon]:hidden">
+        <SidebarGroup className="sidebar-dissolve w-(--sidebar-width) px-3 py-2 group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:opacity-0">
           <SidebarGroupLabel>Recent</SidebarGroupLabel>
           <SidebarGroupContent>
             <RecentGames
@@ -258,7 +294,8 @@ function CrossySidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 group-data-[collapsible=icon]:px-1">
+      {/* overflow-hidden clips the pinned-width user card at the rail edge mid-flight. */}
+      <SidebarFooter className="overflow-hidden p-3 group-data-[collapsible=icon]:px-1">
         <UserCard session={session} onSignOut={onSignOut} />
       </SidebarFooter>
     </Sidebar>
@@ -358,7 +395,10 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
 }
 
 /** The v2 user card pinned at the sidebar's foot; at rail width it condenses to the avatar,
- * which becomes the menu trigger itself. */
+ * which becomes the menu trigger itself. The two faces are stacked (the chip overlays the
+ * card's bottom-left corner) and crossfade on the dissolve/reveal clocks; the card is
+ * pinned to its expanded width so its text never reflows while the rail moves, and the
+ * footer clips it at the rail edge. */
 function UserCard({
   session,
   onSignOut,
@@ -376,8 +416,10 @@ function UserCard({
     </Avatar>
   );
   return (
-    <>
-      <div className="flex items-center justify-between gap-2 rounded-4 border border-border bg-panel p-3 shadow-sm group-data-[collapsible=icon]:hidden">
+    <div className="relative">
+      {/* Pinned width: the expanded footer gutter is p-3, so the card face is the
+          sidebar width minus 24px in every state. */}
+      <div className="sidebar-dissolve flex w-[calc(var(--sidebar-width)-24px)] items-center justify-between gap-2 rounded-4 border border-border bg-panel p-3 shadow-sm group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:opacity-0">
         <div className="flex min-w-0 items-center gap-2">
           {avatar}
           <div className="min-w-0 leading-tight">
@@ -400,7 +442,9 @@ function UserCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="hidden justify-center group-data-[collapsible=icon]:flex">
+      {/* The rail chip: bottom-anchored over the card so its resting spot matches the
+          old collapsed layout, centered in the rail's 40px gutter (48 minus px-1). */}
+      <div className="sidebar-reveal invisible absolute bottom-0 left-0 flex w-[calc(var(--sidebar-width-icon)-8px)] justify-center opacity-0 group-data-[collapsible=icon]:visible group-data-[collapsible=icon]:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -416,6 +460,6 @@ function UserCard({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </>
+    </div>
   );
 }

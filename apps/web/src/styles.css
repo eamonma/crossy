@@ -234,6 +234,16 @@
   --duration-base: 200ms;
   --duration-slow: 300ms;
 
+  /* Sidebar collapse/expand clocks (choreography block near the end of this file).
+     The rail glides on an ease-in-out quart: the soft start covers the dissolve of the
+     leaving content, the long settle lands 208px of travel without bounce. Vanish and
+     appear are the two fade clocks; appear waits until the rail has opened room. */
+  --sidebar-rail-duration: 260ms;
+  --sidebar-rail-ease: cubic-bezier(0.77, 0, 0.175, 1);
+  --sidebar-vanish-duration: 120ms;
+  --sidebar-appear-duration: 160ms;
+  --sidebar-appear-delay: 100ms;
+
   /* Crossword geometry. v2-kept + new mobile floor */
   --grid-cell: 36px; /* base cell module */
   --grid-cell-min: 30px; /* floor before a board scrolls instead of shrinking further */
@@ -609,6 +619,147 @@
     background-size: 200% 100%;
     animation: crossy-shimmer 1.6s var(--ease-standard) infinite;
   }
+}
+
+/*
+ * Sidebar collapse/expand choreography (ui/AppShell.tsx + components/ui/sidebar.tsx).
+ *
+ * One rhythm, three clocks:
+ *   1. Content that is leaving dissolves at once (--sidebar-vanish-duration, ease-out):
+ *      the click reads instantly, and text is gone before the rail can compress it, so
+ *      nothing truncates mid-flight.
+ *   2. Geometry glides underneath (--sidebar-rail-*): rail width, header/footer padding,
+ *      the icon squares, and the transform movers (trigger dock, wordmark tuck) all share
+ *      the one clock, so the sidebar moves as a single object.
+ *   3. Content that is arriving reveals once there is room (--sidebar-appear-delay, then
+ *      --sidebar-appear-duration, ease-out), finishing together with the rail.
+ *
+ * Transitions arm only under [data-animate="true"], which AppShell sets on an explicit
+ * toggle (trigger click, the rail edge, cmd+B) and drops whenever the route changes, so
+ * the per-surface default (expanded at home, collapsed in a game) and first paint snap
+ * into place. Reduced motion never arms them: every state change lands instantly.
+ *
+ * Cost discipline: the fades are opacity/visibility and the movers are transform, all
+ * compositor work. Per-frame layout is confined to the rail width itself (the point of
+ * the exercise: the content panel must reflow live) plus the few sidebar-internal boxes
+ * that track it, all inside the fixed-position rail. Wide sidebar content (recents, the
+ * user card) is pinned to the expanded width and clipped, never re-laid-out per frame.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  /* The fade clocks resolve per direction: whichever content the target state hides
+     vanishes immediately; whichever it shows appears late. One pair of rules serves
+     both classes below in both directions. */
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar"][data-state="collapsed"] {
+    --sb-dissolve-duration: var(--sidebar-vanish-duration);
+    --sb-dissolve-delay: 0ms;
+    --sb-reveal-duration: var(--sidebar-appear-duration);
+    --sb-reveal-delay: var(--sidebar-appear-delay);
+  }
+
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar"][data-state="expanded"] {
+    --sb-dissolve-duration: var(--sidebar-appear-duration);
+    --sb-dissolve-delay: var(--sidebar-appear-delay);
+    --sb-reveal-duration: var(--sidebar-vanish-duration);
+    --sb-reveal-delay: 0ms;
+  }
+
+  /* The rail: the in-flow gap that pushes the content panel and the fixed container
+     that paints the sidebar, on the same clock (left/right cover offcanvas mode). */
+  [data-slot="sidebar-wrapper"][data-animate="true"] [data-slot="sidebar-gap"],
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar-container"] {
+    transition:
+      width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      left var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      right var(--sidebar-rail-duration) var(--sidebar-rail-ease);
+  }
+
+  /* Boxes that track the rail: header/footer gutters and the menu rows that morph
+     into 32px icon squares. */
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar-header"],
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar-footer"],
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar-menu-button"] {
+    transition:
+      width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      height var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      padding var(--sidebar-rail-duration) var(--sidebar-rail-ease);
+  }
+
+  /* Movers on the rail clock: the trigger docking under the mark (transform), the
+     wordmark tucking (max-width/margin), the brand block height, gutter padding. */
+  [data-slot="sidebar-wrapper"][data-animate="true"] .sidebar-glide {
+    transition:
+      transform var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      max-width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      margin var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      height var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      padding var(--sidebar-rail-duration) var(--sidebar-rail-ease);
+  }
+
+  /* Expanded-only content (recents, the user card, the wordmark): out at once, back
+     when there is room. Visibility rides the same total time so it flips to hidden
+     only after the fade and returns instantly on the way in. */
+  [data-slot="sidebar-wrapper"][data-animate="true"] .sidebar-dissolve {
+    transition:
+      opacity var(--sb-dissolve-duration) var(--ease-out)
+        var(--sb-dissolve-delay),
+      visibility calc(var(--sb-dissolve-duration) + var(--sb-dissolve-delay));
+  }
+
+  /* Rail-only content (the avatar chip): the mirror image. */
+  [data-slot="sidebar-wrapper"][data-animate="true"] .sidebar-reveal {
+    transition:
+      opacity var(--sb-reveal-duration) var(--ease-out) var(--sb-reveal-delay),
+      visibility calc(var(--sb-reveal-duration) + var(--sb-reveal-delay));
+  }
+
+  /* An element that both glides and dissolves (the wordmark) needs the union in one
+     declaration; a second transition shorthand would silently replace the first. */
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    .sidebar-glide.sidebar-dissolve {
+    transition:
+      transform var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      max-width var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      margin var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      height var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      padding var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      opacity var(--sb-dissolve-duration) var(--ease-out)
+        var(--sb-dissolve-delay),
+      visibility calc(var(--sb-dissolve-duration) + var(--sb-dissolve-delay));
+  }
+
+  /* Group labels reclaim their row (margin, rail clock) while fading on the dissolve
+     clock; replaces the stock 200ms linear margin+opacity pair. */
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar-group-label"] {
+    transition:
+      margin var(--sidebar-rail-duration) var(--sidebar-rail-ease),
+      opacity var(--sb-dissolve-duration) var(--ease-out)
+        var(--sb-dissolve-delay);
+  }
+
+  /* Menu-row labels fade on the dissolve clock so the narrowing button never clips
+     legible text (the rest state below holds them at 0 while collapsed). */
+  [data-slot="sidebar-wrapper"][data-animate="true"]
+    [data-slot="sidebar-menu-button"]
+    > span:last-child {
+    transition: opacity var(--sb-dissolve-duration) var(--ease-out)
+      var(--sb-dissolve-delay);
+  }
+}
+
+/* Rest state, motion or not: at rail width a menu row's label box is fully clipped by
+   the 32px square anyway; holding its opacity at 0 is what makes the dissolve/reveal
+   above symmetric. Desktop only ([data-collapsible] never applies to the mobile sheet). */
+[data-slot="sidebar"][data-collapsible="icon"]
+  [data-slot="sidebar-menu-button"]
+  > span:last-child {
+  opacity: 0;
 }
 
 /*
