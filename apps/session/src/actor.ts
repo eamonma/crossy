@@ -212,8 +212,20 @@ export class GameActor {
       return;
     }
 
+    // Capture whether firstFillAt was already set before applying: the reducer sets it
+    // once, on the first placeLetter (PROTOCOL.md §4). A null-to-value transition here
+    // means this command's cellSet is the first fill.
+    const hadFirstFillBefore = this.state.firstFillAt !== null;
     this.state = result.state;
     this.recordCommandId(message.commandId);
+
+    // The first fill's cellSet carries firstFillAt so already-connected clients start the
+    // shared timer on the delta, not only at their next snapshot (PROTOCOL.md §6). It rides
+    // exactly this one event; every later cellSet omits it.
+    const firstFillDelta =
+      !hadFirstFillBefore && this.state.firstFillAt !== null
+        ? this.state.firstFillAt
+        : undefined;
 
     let completion: number | null = null;
     for (const event of result.events) {
@@ -221,7 +233,7 @@ export class GameActor {
         // Buffer for the write-behind flush, then broadcast immediately (DESIGN.md §3
         // steps 4 and 5): Postgres is never on the keystroke path.
         this.pending.push(event);
-        this.broadcast(cellSetToWire(event));
+        this.broadcast(cellSetToWire(event, firstFillDelta));
         continue;
       }
       // gameCompleted: the engine emits {type, seq}; the actor drives the terminal flush.

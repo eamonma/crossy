@@ -313,9 +313,18 @@ export class GameStore {
     value: string | null;
     by: string;
     commandId: string;
+    firstFillAt?: string;
   }): void {
     const renderedBefore = this.renderValue(message.cell);
     this.cellsValue.set(message.cell, { v: message.value, by: message.by });
+    // The first fill's cellSet carries firstFillAt, so the shared timer (gameTime.ts)
+    // starts on the delta instead of waiting for the next snapshot (PROTOCOL.md section 6).
+    // Set-once, mirroring the reducer's rule: only the first fill's frame carries it, and a
+    // stale or redelivered frame never reaches here (the section 7 seq gate in
+    // applySequenced), so the origin is set exactly once and never moves.
+    if (message.firstFillAt !== undefined && this.firstFillAtValue === null) {
+      this.firstFillAtValue = message.firstFillAt;
+    }
     // Your own echo clears its overlay entry (INV-10).
     this.removeOverlayEntry(message.commandId);
     // Conflict flash (PROTOCOL.md section 8): another user's event changed the

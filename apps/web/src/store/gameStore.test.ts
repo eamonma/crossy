@@ -158,3 +158,57 @@ describe("connection loss (PROTOCOL.md section 7: reconnecting)", () => {
     ]);
   });
 });
+
+describe("first-fill timing on the delta path (PROTOCOL.md section 6; the derived timer, gameTime.ts)", () => {
+  const T1 = "2026-07-07T19:02:11Z";
+
+  it("starts the timer on the delta: the first fill's cellSet sets firstFillAt without waiting for a snapshot", () => {
+    const { store } = makeStore(board({ seq: 0, firstFillAt: null }));
+    expect(store.firstFillAt).toBe(null);
+    store.receive(
+      cellSet({ seq: 1, cell: 0, value: "A", by: "u1", firstFillAt: T1 }),
+    );
+    expect(store.firstFillAt).toBe(T1);
+  });
+
+  it("is set once: a later fill's cellSet without firstFillAt does not move the origin (PROTOCOL.md section 6)", () => {
+    const { store } = makeStore(board({ seq: 0, firstFillAt: null }));
+    store.receive(
+      cellSet({ seq: 1, cell: 0, value: "A", by: "u1", firstFillAt: T1 }),
+    );
+    store.receive(cellSet({ seq: 2, cell: 1, value: "B", by: "u2" }));
+    expect(store.firstFillAt).toBe(T1);
+    expect(store.seq).toBe(2);
+  });
+
+  it("reconnect keeps the origin: a welcome snapshot after the first fill reports the same firstFillAt (PROTOCOL.md section 7)", () => {
+    const { store } = makeStore(board({ seq: 0, firstFillAt: null }));
+    store.receive(
+      cellSet({ seq: 1, cell: 0, value: "A", by: "u1", firstFillAt: T1 }),
+    );
+    store.connectionLost();
+    const cells = board().cells.map((c, i) =>
+      i === 0 ? { v: "A", by: "u1" } : c,
+    );
+    store.receive({
+      type: "welcome",
+      protocolVersion: 1,
+      self: { userId: "me", role: "solver" },
+      board: board({ seq: 1, firstFillAt: T1, cells }),
+    });
+    expect(store.firstFillAt).toBe(T1);
+    expect(store.sync).toBe("live");
+  });
+
+  it("is idempotent on redelivery: a stale first-fill cellSet re-applies neither the origin nor the seq (PROTOCOL.md section 7)", () => {
+    const { store } = makeStore(board({ seq: 0, firstFillAt: null }));
+    store.receive(
+      cellSet({ seq: 1, cell: 0, value: "A", by: "u1", firstFillAt: T1 }),
+    );
+    store.receive(
+      cellSet({ seq: 1, cell: 0, value: "A", by: "u1", firstFillAt: T1 }),
+    );
+    expect(store.firstFillAt).toBe(T1);
+    expect(store.seq).toBe(1);
+  });
+});
