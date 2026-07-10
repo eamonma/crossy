@@ -246,7 +246,7 @@ function CrossySidebar({
               aria-current={route.kind === "create" ? "page" : undefined}
               className="text-gold-11 hover:bg-gold-3 hover:text-gold-12 active:bg-gold-3 active:text-gold-12"
             >
-              <PlusIcon />
+              <PlusIcon className="sidebar-glide group-data-[collapsible=icon]:translate-x-1" />
               <span>New game</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -258,14 +258,17 @@ function CrossySidebar({
               aria-current={route.kind === "puzzles" ? "page" : undefined}
               className="text-text-muted"
             >
-              <FileTextIcon />
+              <FileTextIcon className="sidebar-glide group-data-[collapsible=icon]:translate-x-1" />
               <span>Puzzles</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
 
-      <div className="sidebar-glide px-3 group-data-[collapsible=icon]:px-1">
+      {/* The dashed rule only earns its place by separating the nav from the recents below
+          it; at rail width the recents dissolve, so the rule dissolves with them (same clock)
+          and returns on expand, rather than hanging under the icons with nothing to divide. */}
+      <div className="sidebar-dissolve px-3 group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:opacity-0">
         <Divider />
       </div>
 

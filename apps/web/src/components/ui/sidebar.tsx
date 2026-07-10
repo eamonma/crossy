@@ -487,7 +487,12 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 // icon square the label fades on the dissolve clock behind a clean edge, instead of a "..."
 // re-rendering against every frame of the width change.
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-3 p-2 text-left text-2 font-medium ring-sidebar-ring outline-hidden group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-6! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-gold-3 data-active:font-medium data-active:text-gold-12 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:overflow-hidden [&>span:last-child]:whitespace-nowrap",
+  // At rail width the row stays full-width (a centered pill, not a floating square): its
+  // icon is nudged to the rail's center by a gliding translate on the caller (like the
+  // brand mark), so nothing is auto-centered against the still-animating rail width. That
+  // auto-centering was the collapse artifact where the icon shot to the middle of the wide
+  // rail on frame one, then slid back left; a fixed translate on the glide clock is monotonic.
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-3 p-2 text-left text-2 font-medium ring-sidebar-ring outline-hidden group-has-data-[sidebar=menu-action]/menu-item:pr-8 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-gold-3 data-active:font-medium data-active:text-gold-12 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:overflow-hidden [&>span:last-child]:whitespace-nowrap",
   {
     variants: {
       variant: {
