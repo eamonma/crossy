@@ -13,12 +13,14 @@
 /** Push a new location (path plus optional query), e.g. `/game/abc?code=X`. */
 export type Navigate = (to: string) => void;
 
-/** The parsed surface. `demo` is the dev-only fake-session board behind `?demo=1`. */
+/** The parsed surface. `demo` is the dev-only fake-session board behind `?demo=1`. `party` on the
+ * game route is the read-only projector screen (`/game/<id>?party=1`), opened on a TV; it is a
+ * presentation flag on the same game, not a separate surface, so the game still loads normally. */
 export type Route =
   | { readonly kind: "home" }
   | { readonly kind: "puzzles" }
   | { readonly kind: "create" }
-  | { readonly kind: "game"; readonly gameId: string }
+  | { readonly kind: "game"; readonly gameId: string; readonly party?: boolean }
   | { readonly kind: "demo" };
 
 /** The dogfood/dev override params carried across every in-app link. */
@@ -64,6 +66,19 @@ export function gameHref(
   return `/game/${encodeURIComponent(gameId)}${qs(p)}`;
 }
 
+/** The projector link: the game URL plus `?party=1`, the read-only screen a host opens on a TV. */
+export function partyHref(gameId: string, params: URLSearchParams): string {
+  return gameHref(gameId, params, { party: "1" });
+}
+
+/** The game route with its projector flag read off `?party=1` (present on either the path or a
+ * legacy query URL). `party` is only attached when set, so a plain game link stays `{ kind, gameId }`. */
+function gameRoute(gameId: string, params: URLSearchParams): Route {
+  return params.get("party") !== null
+    ? { kind: "game", gameId, party: true }
+    : { kind: "game", gameId };
+}
+
 /**
  * Parse a location into a Route. Legacy query keys win over the path so an old-style URL
  * renders the right surface on the very first paint, before `canonicalHref` cleans the
@@ -73,7 +88,7 @@ export function parseRoute(pathname: string, params: URLSearchParams): Route {
   if (params.get("demo") !== null) return { kind: "demo" };
   const legacyGame = params.get("game");
   if (legacyGame !== null && legacyGame !== "") {
-    return { kind: "game", gameId: legacyGame };
+    return gameRoute(legacyGame, params);
   }
   if (params.get("create") !== null) return { kind: "create" };
   if (params.get("puzzles") !== null) return { kind: "puzzles" };
@@ -82,7 +97,7 @@ export function parseRoute(pathname: string, params: URLSearchParams): Route {
   if (segments[0] === "puzzles") return { kind: "puzzles" };
   if (segments[0] === "new") return { kind: "create" };
   if (segments[0] === "game" && segments[1] !== undefined) {
-    return { kind: "game", gameId: decodeURIComponent(segments[1]) };
+    return gameRoute(decodeURIComponent(segments[1]), params);
   }
   return { kind: "home" };
 }
@@ -106,6 +121,9 @@ export function canonicalHref(
     const name = params.get("name");
     if (code !== null) extras["code"] = code;
     if (name !== null) extras["name"] = name;
+    // The projector flag survives the one-time redirect, so a legacy `?game=<id>&party=1` link
+    // canonicalizes to `/game/<id>?party=1` and still opens the TV screen.
+    if (params.get("party") !== null) extras["party"] = "1";
     return gameHref(game, params, extras);
   }
   if (params.get("create") !== null) return createHref(params);

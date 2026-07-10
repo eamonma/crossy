@@ -45,6 +45,7 @@ import { SolvingNow } from "./ui/SolvingNow";
 import { buildRoster } from "./ui/solvingNow";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
+import { PartyView } from "./ui/PartyView";
 import { CompletionOverlay } from "./ui/Completion";
 import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
@@ -193,6 +194,7 @@ export function LiveApp({
   identity,
   navigate,
   inShell = false,
+  party = false,
 }: {
   gameId: string;
   params: URLSearchParams;
@@ -201,6 +203,9 @@ export function LiveApp({
   navigate: Navigate;
   /** True when the Router mounted this inside the sidebar shell (signed in). */
   inShell?: boolean;
+  /** True for the read-only projector screen (`?party=1`): reuse this loader, then render the
+   * full-bleed PartyView instead of the interactive game once the store is ready. */
+  party?: boolean;
 }) {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   const [authTick, setAuthTick] = useState(0);
@@ -393,6 +398,19 @@ export function LiveApp({
           </div>
         </Card>
       </GateLayout>
+    );
+  }
+  // The projector screen shares the whole loader above (auth, self-join, the live store), then
+  // renders read-only: no LiveGame, so there is no key handler, cursor relay, or upgrade path.
+  if (party) {
+    return (
+      <PartyView
+        store={state.ready.connection.store}
+        puzzle={state.ready.puzzle}
+        gameId={state.ready.gameId}
+        code={state.ready.code}
+        name={state.ready.name}
+      />
     );
   }
   return (
