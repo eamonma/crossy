@@ -314,8 +314,8 @@ function decodeSync(o: Record<string, unknown>): SyncMessage {
 }
 
 function decodeCellSet(o: Record<string, unknown>): CellSetMessage {
-  return {
-    type: "cellSet",
+  const base = {
+    type: "cellSet" as const,
     seq: asInt(o.seq, "seq"),
     cell: asInt(o.cell, "cell"),
     value: asNullableString(o.value, "value"),
@@ -323,6 +323,11 @@ function decodeCellSet(o: Record<string, unknown>): CellSetMessage {
     commandId: asString(o.commandId, "commandId"),
     at: asString(o.at, "at"),
   };
+  // firstFillAt rides only the first-fill cellSet (PROTOCOL.md §6); absent on every other.
+  // Additive and optional (§3, §14): copy it when present, leave the field off otherwise.
+  return o.firstFillAt === undefined
+    ? base
+    : { ...base, firstFillAt: asString(o.firstFillAt, "firstFillAt") };
 }
 
 function decodeGameCompleted(o: Record<string, unknown>): GameCompletedMessage {

@@ -53,9 +53,17 @@ export function toEngineCommand(
   return command;
 }
 
-/** An engine `cellSet` event and the wire `cellSet` frame share a shape; copy it across explicitly. */
-export function cellSetToWire(event: CellSet): CellSetMessage {
-  return {
+/**
+ * An engine `cellSet` event and the wire `cellSet` frame share a shape; copy it across
+ * explicitly. `firstFillAt` is threaded in by the actor only for the single cellSet that
+ * establishes the first fill (PROTOCOL.md §6), so an already-connected client starts the
+ * shared timer on the delta; every other cellSet omits it.
+ */
+export function cellSetToWire(
+  event: CellSet,
+  firstFillAt?: string,
+): CellSetMessage {
+  const frame: CellSetMessage = {
     type: "cellSet",
     seq: event.seq,
     cell: event.cell,
@@ -64,6 +72,7 @@ export function cellSetToWire(event: CellSet): CellSetMessage {
     commandId: event.commandId,
     at: event.at,
   };
+  return firstFillAt === undefined ? frame : { ...frame, firstFillAt };
 }
 
 /** Inputs the board payload needs beyond the engine board state. */

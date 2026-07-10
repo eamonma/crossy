@@ -127,6 +127,23 @@ Validation and error mapping (non-fatal unless stated):
 
 `value` is a string or `null` (a clear). `commandId` echoes the originating command so the writer can clear its optimistic overlay.
 
+**First-fill timing on the delta path.** The single `cellSet` that establishes the first fill, the one whose `placeLetter` moves `firstFillAt` from null to its value, MUST carry an additional `firstFillAt` field, the same server timestamp section 4's board payload reports:
+
+```json
+{
+  "type": "cellSet",
+  "seq": 8,
+  "cell": 0,
+  "value": "A",
+  "by": "<userId>",
+  "commandId": "<origin>",
+  "at": "2026-07-07T19:02:11Z",
+  "firstFillAt": "2026-07-07T19:02:11Z"
+}
+```
+
+It appears on exactly that one event and on no other `cellSet`: a later fill, an overwrite, a clear, or a no-op never carries it, matching the reducer's set-once rule (section 4). Its purpose is that a client already connected at the moment of the first fill starts the shared game timer (DESIGN.md section 2) from the delta, rather than waiting for its next snapshot. The field is additive and optional on the wire (section 14): a client that ignores it loses nothing, because the timer origin still arrives in every subsequent snapshot's `board.firstFillAt`. Because it rides the sequenced `cellSet`, it inherits section 7 ordering: it is applied under the same `seq == lastApplied + 1` gate, so a stale or redelivered frame never re-applies it, and a client sets its timer origin exactly once and never moves it. Reconnect is unchanged: the snapshot stays authoritative for `firstFillAt`, where this field is redundant.
+
 `gameCompleted`:
 
 ```json
@@ -362,7 +379,7 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) inc
 
 **Completion matrix vectors** (reducer cases plus actor integration): repeated completion attempts yield exactly one `gameCompleted`; a filled-but-wrong board emits nothing and stays `ongoing`; **a full-but-wrong board made correct by an in-place overwrite (no change to `filledCount`) completes exactly once**; two players filling the last two cells concurrently yield exactly one completion; any mutation after completion is rejected; a client disconnected across the completion learns of it from the snapshot.
 
-**Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `error`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells. A non-fatal `error` is in scope because it is what clears the immortal overlay (section 8), the case this family must cover. These pin the duplicated web + iOS reconciliation logic (overlay clear on echo, gap-to-sync re-send, rollback) where drift is most expensive, and cover the immortal-overlay case in section 8.
+**Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `error`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells, and where a case pins it the store's derived `firstFillAt` (the timer origin the first fill's `cellSet` carries on the delta path, section 6). A non-fatal `error` is in scope because it is what clears the immortal overlay (section 8), the case this family must cover. These pin the duplicated web + iOS reconciliation logic (overlay clear on echo, gap-to-sync re-send, rollback) where drift is most expensive, and cover the immortal-overlay case in section 8.
 
 ## 14. Versioning
 

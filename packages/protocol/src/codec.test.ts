@@ -188,6 +188,38 @@ describe("sequenced events (PROTOCOL.md §6)", () => {
     if (result.ok) expect(result.value).toEqual(cleared);
   });
 
+  it("decodes the first-fill cellSet carrying firstFillAt on the delta path (§6)", () => {
+    const firstFill = {
+      type: "cellSet",
+      seq: 8,
+      cell: 0,
+      value: "A",
+      by: "u1",
+      commandId: "c-first",
+      at: "2026-07-07T19:02:11Z",
+      firstFillAt: "2026-07-07T19:02:11Z",
+    };
+    const result = decodeServerMessage(firstFill);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(firstFill);
+  });
+
+  it("omits firstFillAt when absent, so an older/non-first cellSet is unchanged (§3, §6, §14)", () => {
+    const later = {
+      type: "cellSet",
+      seq: 9,
+      cell: 1,
+      value: "B",
+      by: "u2",
+      commandId: "c-second",
+      at: "2026-07-07T19:03:00Z",
+    };
+    const result = decodeServerMessage(later);
+    assertOk(result);
+    // The decoded value carries no firstFillAt key, so `toEqual` against the input holds.
+    if (result.ok) expect(result.value).toEqual(later);
+  });
+
   it("decodes the §6 gameCompleted example", () => {
     const completed = {
       type: "gameCompleted",

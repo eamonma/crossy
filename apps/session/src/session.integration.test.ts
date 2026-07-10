@@ -506,6 +506,55 @@ describe("placeLetter to cellSet broadcast (PROTOCOL.md §6)", () => {
     second.client.close();
   });
 
+  it("carries firstFillAt on the first fill's cellSet to already-connected clients; a later fill omits it and the snapshot agrees (§4, §6)", async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["X", "Y", "Z"]),
+      members: [
+        { userId: a, role: "solver" },
+        { userId: b, role: "solver" },
+      ],
+    });
+    const first = await connectAndHello(gameId, a);
+    const second = await connectAndHello(gameId, b);
+
+    // First fill: both connections see firstFillAt on the delta, equal to the event's `at`.
+    first.client.sendJson(placeLetter(0, "X"));
+    const firstA = (await first.client.waitForType("cellSet")) as {
+      seq: number;
+      at: string;
+      firstFillAt?: string;
+    };
+    const firstB = (await second.client.waitForType("cellSet")) as {
+      seq: number;
+      firstFillAt?: string;
+    };
+    expect(firstA.seq).toBe(1);
+    expect(typeof firstA.firstFillAt).toBe("string");
+    expect(firstA.firstFillAt).toBe(firstA.at);
+    expect(firstB.firstFillAt).toBe(firstA.firstFillAt);
+
+    // A later fill consumes a seq but never re-carries firstFillAt (set-once; §6).
+    first.client.sendJson(placeLetter(1, "Y"));
+    const cellSetsA = (await first.client.waitForCount("cellSet", 2)) as Array<{
+      seq: number;
+      firstFillAt?: string;
+    }>;
+    expect(cellSetsA[1]?.seq).toBe(2);
+    expect(cellSetsA[1]?.firstFillAt).toBeUndefined();
+
+    // The snapshot stays authoritative and agrees with the delta's firstFillAt (§4).
+    first.client.sendJson({ type: "requestSync" });
+    const snap = (await first.client.waitForType("sync")) as {
+      board: { firstFillAt: string | null };
+    };
+    expect(snap.board.firstFillAt).toBe(firstA.firstFillAt);
+
+    first.client.close();
+    second.client.close();
+  });
+
   it("maps a spectator mutation to ROLE_FORBIDDEN and a bad value to INVALID_VALUE (§5, §11)", async () => {
     const spectatorId = randomUUID();
     const solverId = randomUUID();

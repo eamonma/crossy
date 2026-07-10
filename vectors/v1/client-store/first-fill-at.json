@@ -1,0 +1,241 @@
+[
+  {
+    "name": "§4/§6: the first fill's cellSet carries firstFillAt, so an already-connected store starts the timer from the delta",
+    "given": {
+      "seq": 7,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 8,
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "commandId": "c-first",
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      }
+    ],
+    "then": {
+      "seq": 8,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A" },
+      "send": [],
+      "firstFillAt": "2026-07-07T19:02:11Z"
+    }
+  },
+  {
+    "name": "§4/§6: firstFillAt is set once on the delta; a later cellSet without the field does not move it",
+    "given": {
+      "seq": 7,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 8,
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "commandId": "c-first",
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      },
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 9,
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "commandId": "c-second"
+      }
+    ],
+    "then": {
+      "seq": 9,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A", "1": "B" },
+      "send": [],
+      "firstFillAt": "2026-07-07T19:02:11Z"
+    }
+  },
+  {
+    "name": "§4/§6: a later cellSet carrying a different firstFillAt never moves the origin the store already set (set-once)",
+    "given": {
+      "seq": 7,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 8,
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "commandId": "c-first",
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      },
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 9,
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "commandId": "c-second",
+        "firstFillAt": "2026-07-07T20:00:00Z"
+      }
+    ],
+    "then": {
+      "seq": 9,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A", "1": "B" },
+      "send": [],
+      "firstFillAt": "2026-07-07T19:02:11Z"
+    }
+  },
+  {
+    "name": "§6/§7: a redelivered first-fill cellSet is stale and does not double-apply firstFillAt or the seq",
+    "given": {
+      "seq": 7,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 8,
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "commandId": "c-first",
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      },
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 8,
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "commandId": "c-first",
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      }
+    ],
+    "then": {
+      "seq": 8,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A" },
+      "send": [],
+      "firstFillAt": "2026-07-07T19:02:11Z"
+    }
+  },
+  {
+    "name": "§4/§7: a snapshot after the first fill reports the same firstFillAt the delta established (delta and snapshot agree)",
+    "given": {
+      "seq": 7,
+      "sync": "live",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "cellSet",
+        "seq": 8,
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "commandId": "c-first",
+        "firstFillAt": "2026-07-07T19:02:11Z"
+      },
+      {
+        "source": "server",
+        "type": "sync",
+        "board": {
+          "seq": 9,
+          "status": "ongoing",
+          "firstFillAt": "2026-07-07T19:02:11Z",
+          "cells": {
+            "0": { "v": "A", "by": "u1" },
+            "1": { "v": "B", "by": "u2" }
+          },
+          "recentCommandIds": []
+        }
+      }
+    ],
+    "then": {
+      "seq": 9,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A", "1": "B" },
+      "send": [],
+      "firstFillAt": "2026-07-07T19:02:11Z"
+    }
+  },
+  {
+    "name": "§4/§7: a store that never saw the delta learns firstFillAt from the reconnect welcome snapshot (snapshot path stays authoritative)",
+    "given": {
+      "seq": 0,
+      "sync": "reconnecting",
+      "cols": 5,
+      "rows": 4,
+      "blocks": [2, 6, 13],
+      "cells": {},
+      "overlay": []
+    },
+    "when": [
+      {
+        "source": "server",
+        "type": "welcome",
+        "board": {
+          "seq": 9,
+          "status": "ongoing",
+          "firstFillAt": "2026-07-07T19:02:11Z",
+          "cells": {
+            "0": { "v": "A", "by": "u1" },
+            "1": { "v": "B", "by": "u2" }
+          },
+          "recentCommandIds": []
+        }
+      }
+    ],
+    "then": {
+      "seq": 9,
+      "sync": "live",
+      "overlay": [],
+      "render": { "0": "A", "1": "B" },
+      "send": [],
+      "firstFillAt": "2026-07-07T19:02:11Z"
+    }
+  }
+]

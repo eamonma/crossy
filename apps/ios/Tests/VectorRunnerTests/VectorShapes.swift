@@ -328,13 +328,16 @@ struct ClientStoreGiven: Decodable {
 
 /// The store state after: `seq`, `sync`, the resulting `overlay` (send order), `render` (the
 /// composite the user sees, string or null per cell), and `send` (ordered outbound frames).
-/// `render`'s keys are decimal cell indices, checked in `shapeProblems`.
+/// `render`'s keys are decimal cell indices, checked in `shapeProblems`. `firstFillAt` is the
+/// store's derived timer origin (PROTOCOL.md §6), asserted only where a case lists it; optional
+/// here, so a case that omits it decodes unchanged (a present non-string fails decoding).
 struct ClientStoreOutcome: Decodable {
     let seq: Int
     let sync: String
     let overlay: [OverlayEntry]
     let render: RenderMap
     let send: [OutboundFrame]
+    let firstFillAt: String?
 }
 
 /// A pending optimistic write: `commandId`, `cell`, and `value` (a string re-sends

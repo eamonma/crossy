@@ -348,14 +348,21 @@ DESIGN.md §10, INV-10), the duplicated web + iOS surface where drift is most ex
   (the user acted, `type` is `placeLetter` or `clearCell`) or `source: "server"` (a
   frame arrived, `type` is `cellSet`, `error`, `sync`, or `welcome`); the wire message
   fields sit inline. A `sync`/`welcome` carries a `board` with `seq`, `status`, a
-  sparse `cells` map, and `recentCommandIds`.
+  sparse `cells` map, and `recentCommandIds`, and MAY carry `firstFillAt`. A `cellSet`
+  step MAY carry `firstFillAt`, present only on the first fill (PROTOCOL.md §6).
 - `then` is the store state after: `seq`, `sync`, the resulting `overlay` (send order),
   `render` (sparse map of cell index to the displayed value, string or `null`, the
   composite the user sees: sequenced `cells` painted with the overlay, most recently
   sent winning per cell), and `send`, the ordered outbound frames the store emitted
   (`requestSync`; a re-sent command; `[]` when none). A re-sent command reconstructs
   from the overlay entry's `value`: a string re-sends `placeLetter`, `null` re-sends
-  `clearCell`.
+  `clearCell`. `then` MAY also carry `firstFillAt` (string or `null`), the store's
+  derived timer origin; it is asserted only in cases that list it (the assertion rule).
+- First-fill timing (PROTOCOL.md §6): the first fill's `cellSet` carries `firstFillAt`,
+  so an already-connected store sets its timer origin from the delta, not only from a
+  later snapshot. It is set once and a later `cellSet` without the field never moves it;
+  a stale or redelivered frame does not re-apply it (the §7 seq gate); and a snapshot's
+  `board.firstFillAt` agrees with the value the delta established.
 - Overlay lifecycle (INV-10, PROTOCOL.md §8): a local command adds an entry and sends
   it; a `cellSet` echo (`commandId` match) clears it; a non-fatal `error` for that
   `commandId` clears it (the immortal-overlay case, the cell's true value is never
