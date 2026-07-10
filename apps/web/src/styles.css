@@ -4,17 +4,21 @@
  * @theme block feeds Tailwind's utility generation (bg-sand-3, text-gold-11, rounded-4,
  * shadow-sm, text-display-lg). Grid-paint tokens stay plain :root custom properties the
  * SVG renderer reads directly (var(--cell-*), var(--stroke)); Tailwind never touches them.
- * Fonts are self-hosted via @fontsource (latin subsets), never a CDN.
+ * UI and numeral fonts are self-hosted via @fontsource (latin subsets); the display serif
+ * (Harfang Pro) loads from the Typekit kit in index.html, with self-hosted Newsreader as
+ * its fallback.
  */
 
-/* Self-hosted fonts. Newsreader for display/hero, Inter for UI, Geist Mono for numerals. */
+/* Self-hosted UI/numeral fonts. Schibsted Grotesk for UI (a newsroom grotesque, on-brief for
+   a crossword), Geist Mono for numerals. Display serif is Harfang Pro (Typekit, see
+   index.html); Newsreader is the self-hosted display fallback. */
 @import "@fontsource/newsreader/latin-400.css";
 @import "@fontsource/newsreader/latin-500.css";
 @import "@fontsource/newsreader/latin-600.css";
-@import "@fontsource/inter/latin-400.css";
-@import "@fontsource/inter/latin-500.css";
-@import "@fontsource/inter/latin-600.css";
-@import "@fontsource/inter/latin-700.css";
+@import "@fontsource/schibsted-grotesk/latin-400.css";
+@import "@fontsource/schibsted-grotesk/latin-500.css";
+@import "@fontsource/schibsted-grotesk/latin-600.css";
+@import "@fontsource/schibsted-grotesk/latin-700.css";
 @import "@fontsource/geist-mono/latin-400.css";
 @import "@fontsource/geist-mono/latin-500.css";
 
@@ -31,11 +35,10 @@
 @theme {
   /* ---- Type: families -------------------------------------- v2-kept */
   --font-display:
-    "Newsreader", "Harfang Pro", "harfang-pro", Georgia, "Times New Roman",
-    serif;
+    "harfang-pro", "Newsreader", Georgia, "Times New Roman", serif;
   --font-sans:
-    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
-    sans-serif;
+    "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
   --font-mono:
     "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
     monospace;
@@ -621,7 +624,7 @@
 
 @theme {
   /* shadcn's "nova" preset ships Geist Variable and re-points --font-sans at it; both are
-     dropped so Inter (defined above) stays the one UI typeface. font-heading maps to our
+     dropped so Schibsted Grotesk (defined above) stays the one UI typeface. font-heading maps to our
      display serif instead, in case a future shadcn block reaches for it. */
   --font-heading: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
