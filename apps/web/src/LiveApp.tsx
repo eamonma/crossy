@@ -41,6 +41,8 @@ import type { StackMember } from "./ui/primitives";
 import { CapsLabel } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import { ClueBar, ClueRail, ClueSheet, ClueStrip, clueOn } from "./ui/Clues";
+import { SolvingNow } from "./ui/SolvingNow";
+import { buildRoster } from "./ui/solvingNow";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { CompletionOverlay } from "./ui/Completion";
@@ -666,6 +668,21 @@ function LiveGame({
     }));
   }, [store, version]);
 
+  // The solving-now roster: teammates read from the store's best-effort cursors, self
+  // from the local selection (fresher than the store's echo). Spectating self has no
+  // cursor, so it contributes no row.
+  const roster = useMemo(() => {
+    void version;
+    return buildRoster({
+      participants: store.participants,
+      cursors: store.cursors,
+      selfUserId: store.selfUserId,
+      selfSelection: isSpectator ? null : selection,
+      across: puzzle.acrossClues,
+      down: puzzle.downClues,
+    });
+  }, [store, version, isSpectator, selection, puzzle]);
+
   const handleKey = useCallback(
     (key: string, shift: boolean): boolean => {
       // Lock input until the first welcome: the store also refuses mutations while
@@ -869,6 +886,8 @@ function LiveGame({
             activeAcross={activeAcross}
             activeDown={activeDown}
             currentDirection={selection.direction}
+            filled={filled}
+            solvingNow={<SolvingNow roster={roster} />}
             onJump={jumpToClue}
           />
         </div>
@@ -904,6 +923,7 @@ function LiveGame({
         activeAcross={activeAcross}
         activeDown={activeDown}
         currentDirection={selection.direction}
+        filled={filled}
         onJump={jumpToClue}
       />
 
