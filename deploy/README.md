@@ -89,10 +89,10 @@ token.
 
 ### CI / GitHub (not Railway service variables)
 
-| Secret                   | Where                 | Meaning                                                                       |
-| ------------------------ | --------------------- | ----------------------------------------------------------------------------- |
-| `RAILWAY_TOKEN`          | GitHub Actions secret | Railway PROJECT token scoped to `crossy`/`production`. Rolls services.        |
-| `MIGRATION_DATABASE_URL` | GitHub Actions secret | Hosted Postgres DIRECT (privileged) DSN. Only the gated migrate job reads it. |
+| Secret                   | Where                 | Meaning                                                                                                                                                                      |
+| ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RAILWAY_TOKEN`          | GitHub Actions secret | Railway PROJECT token scoped to `crossy`/`production`. Rolls services.                                                                                                       |
+| `MIGRATION_DATABASE_URL` | GitHub Actions secret | Hosted Postgres DIRECT (privileged) DSN. Read on EVERY deploy: the migrate job applies expand-only migrations ahead of the roll. Its absence fails the deploy (never skips). |
 
 ## GHCR private pull
 
@@ -137,9 +137,12 @@ Run in order. Steps marked (dashboard) cannot be done by the CLI.
 6. Replace the placeholder variables on api and session (dashboard or `railway variables`):
    `SUPABASE_ISSUER`, and `DATABASE_URL` (api = `crossy_api` pooled DSN, session =
    `crossy_session` pooled DSN).
-7. Mint a Railway project token (dashboard: project > Settings > Tokens) and add it to GitHub
-   as the `RAILWAY_TOKEN` Actions secret (dashboard: GitHub repo > Settings > Secrets and
-   variables > Actions).
+7. Add the two GitHub Actions secrets (dashboard: GitHub repo > Settings > Secrets and
+   variables > Actions):
+   - `RAILWAY_TOKEN`: a Railway project token (dashboard: project > Settings > Tokens).
+   - `MIGRATION_DATABASE_URL`: the hosted Postgres DIRECT (privileged) DSN from step 1. The
+     migrate job reads it on EVERY deploy and fails the deploy if it is absent, so set it
+     before the first pipeline deploy.
 8. Trigger the deploy: push to `main`, or run the `Deploy` workflow via workflow_dispatch.
 9. Verify: `node deploy/verify.mjs --api https://<api> --web https://<web> --session wss://<session>`.
 
@@ -158,9 +161,48 @@ MIGRATION_DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/post
   pnpm exec tsx deploy/migrate.ts
 ```
 
-The `migrate` job in the deploy workflow does the same, but only on a manual
-`workflow_dispatch` with `run_migrations=true`. It never auto-migrates on a push to `main`:
-cross-service schema changes are expand/contract and are applied deliberately (DESIGN.md section 9).
+### Migration flow in the pipeline
+
+Owner decision 2026-07-09: expand-only migrations ride the pipeline. Every migration in this
+repo is expand-only by hard rule (CLAUDE.md), CI already proves each one against a fresh
+Postgres (`packages/db` Testcontainers tests), and the Drizzle journal makes the applier
+idempotent, so there is nothing to gain from a manual gate for the additive case. The
+deliberateness that DESIGN.md section 9 calls for now lives in PR review plus the guard below,
+not in a hand-run job.
+
+On every deploy (push to `main` and `workflow_dispatch`) the `migrate` job runs BEFORE `roll`:
+
+1. `deploy/migration-guard.mjs` (plain node, no install) scans every committed migration
+   against a conservative deny-list (DROP, RENAME, TRUNCATE, ALTER COLUMN ... TYPE,
+   DELETE FROM, UPDATE, SET NOT NULL, REVOKE). It strips comments and string literals first, so
+   a comment mentioning `DROP` does not trip it, and it scans DO-block bodies, so a destructive
+   statement cannot hide there. If anything trips, the deploy FAILS and points here.
+2. `deploy/migrate.ts` applies the migrations over the DIRECT connection.
+
+Because migrate precedes roll in the same pipeline, expand-before-code is enforced by job
+ordering: by the time the new image serves traffic its columns exist, and the old code
+meanwhile ignores the additive columns (expand/contract, DESIGN.md section 9). If
+`MIGRATION_DATABASE_URL` is absent the job FAILS rather than skipping: a skipped migration with
+pending schema is exactly the outage this closes.
+
+The held-PR / apply-from-a-laptop dance is retired for expand-only migrations. You no longer
+hold a PR to hand-apply its migration first; merge it and the pipeline applies the expand ahead
+of the roll.
+
+#### Destructive or contract-phase migrations (the manual escape hatch)
+
+A contract-phase change (drop a column after readers migrated, a type change, a backfill) is
+deliberate and must not ride an auto deploy. Apply it by hand:
+
+> GitHub > Actions > Deploy > Run workflow, pick your branch, check `migrations_only`, and type
+> `migrations-only` into `confirm`.
+
+That run applies migrations from the SELECTED ref and builds and rolls NOTHING (rolling
+non-`main` code would violate main-is-golden), and it bypasses the guard. Because it respects
+the ref, it can apply from a branch before the PR merges. Then add the migration's filename to
+`ALLOWLIST` in `deploy/migration-guard.mjs` (with the review justification) in the same PR:
+the guard scans the whole tree on every later deploy, so a committed destructive file that is
+not allowlisted would block all future auto-deploys.
 
 Then bind login credentials to the NOLOGIN roles (idempotent; rotates the password on re-run):
 
@@ -227,7 +269,10 @@ The `up.railway.app` domains keep working alongside the custom ones; old links d
    lint / typecheck / test / smoke (a comment in the workflow says so).
 2. `build-and-push` builds `apps/{api,session,web}/Dockerfile` (context = repo root) and
    pushes `ghcr.io/eamonma/crossy-{api,session,web}` tagged `:latest` and `:<sha>`.
-3. `migrate` is skipped (it runs only on a gated workflow_dispatch).
+3. `migrate` runs the expand-only guard, then applies the committed migrations to hosted
+   Postgres (see Migration flow above). It runs BEFORE `roll`, so expand-before-code holds by
+   job ordering. If the guard trips or `MIGRATION_DATABASE_URL` is absent, the deploy fails here
+   and `roll` does not run.
 4. `roll` installs the Railway CLI and runs `railway redeploy --service <svc> --yes` for api,
    session, and web (scoped by `RAILWAY_TOKEN`), so each service pulls the new `:latest`.
    Railway pulls the private images with the pull credential from the checklist. The `:<sha>`
@@ -252,6 +297,9 @@ survive `railway ssh -- <cmd>`, so run it from the interactive shell.
 ## Files
 
 - `provision.sh`: create-only, idempotent Railway bootstrap (`--dry-run` prints the plan).
+- `migration-guard.mjs`: plain-node expand-only guard run before `migrate.ts` in the pipeline
+  (`node deploy/migration-guard.mjs`). Its pure functions are unit-tested in
+  `packages/db/src/migration-guard.test.ts` (with the `migration-guard.d.mts` type companion).
 - `migrate.ts`: apply `packages/db` migrations to hosted Postgres (DIRECT connection).
 - `bind-service-roles.sql` / `bind-service-roles.sh`: grant LOGIN to the NOLOGIN service roles.
 - `verify.mjs`: post-deploy HTTPS + WS + private-endpoint checks.
