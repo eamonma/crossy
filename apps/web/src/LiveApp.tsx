@@ -40,7 +40,14 @@ import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import type { StackMember } from "./ui/primitives";
 import { CapsLabel } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
-import { ClueBar, ClueRail, ClueSheet, ClueStrip, clueOn } from "./ui/Clues";
+import {
+  ClueBar,
+  ClueDock,
+  ClueRail,
+  ClueSheet,
+  ClueStrip,
+  clueOn,
+} from "./ui/Clues";
 import { SolvingNow } from "./ui/SolvingNow";
 import { buildRoster, cluePresence } from "./ui/roster";
 import { Keyboard } from "./ui/Keyboard";
@@ -490,6 +497,16 @@ function LoadingGameShell({ inShell }: { inShell: boolean }) {
       ))}
     </>
   );
+  // A dock region's placeholder: the caps label, then a handful of clue-height rows. Narrower
+  // than the rail's so it reads as a newspaper column rather than a full-width row.
+  const dockColumn = (
+    <>
+      <Skeleton className="h-3.5 w-16 rounded-1" />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-3.5 w-full max-w-[14rem] rounded-1" />
+      ))}
+    </>
+  );
   return (
     <div
       className={`${inShell ? "h-full md:p-3 md:pl-0" : "h-dvh md:p-4"} flex flex-col overflow-hidden bg-background`}
@@ -517,18 +534,30 @@ function LoadingGameShell({ inShell }: { inShell: boolean }) {
           <Skeleton className="h-4 w-2/3 max-w-[24rem] rounded-2" />
         </div>
 
-        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)] wide:grid-cols-[minmax(0,1fr)_45rem]">
-          <div className="board-stage h-full min-h-0 overflow-hidden p-3 md:p-6 flex flex-col md:justify-center">
+        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)] wide:grid-cols-[minmax(0,1fr)_45rem] ultra:grid-cols-1 ultra:grid-rows-[minmax(0,1fr)_auto]">
+          <div className="board-stage h-full min-h-0 overflow-hidden p-3 md:p-6 ultra:[--cell-cap:5.5rem] flex flex-col md:justify-center">
             <div className="board-fit" style={{ aspectRatio: "1 / 1" }}>
               <Skeleton className="w-full h-full rounded-2" />
             </div>
           </div>
 
-          <div className="hidden md:grid grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 h-full border-l border-dashed border-border-dashed">
+          {/* The rail's placeholder below `ultra`; the dock's above it, so the frame the live
+              game settles into is the same one the skeleton already drew (no geometry jump). */}
+          <div className="hidden md:grid ultra:hidden grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 h-full border-l border-dashed border-border-dashed">
             <div className="flex flex-col gap-2.5 p-4 border-b border-dashed border-border-dashed wide:border-b-0 wide:border-r">
               {railList}
             </div>
             <div className="flex flex-col gap-2.5 p-4">{railList}</div>
+          </div>
+
+          <div className="clue-dock hidden ultra:flex min-h-0 border-t border-dashed border-border-dashed">
+            <div className="shrink-0 w-[20rem] flex flex-col gap-2.5 p-4 border-r border-dashed border-border-dashed">
+              {dockColumn}
+            </div>
+            <div className="flex-1 flex flex-col gap-2.5 p-4 border-r border-dashed border-border-dashed">
+              {dockColumn}
+            </div>
+            <div className="flex-1 flex flex-col gap-2.5 p-4">{dockColumn}</div>
           </div>
         </div>
       </div>
@@ -881,9 +910,13 @@ function LiveGame({
           onNext={() => stepClue("forward")}
         />
 
-        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)] wide:grid-cols-[minmax(0,1fr)_45rem]">
+        {/* At `ultra` the twin-column grid rotates to a stacked one: the board takes the top
+            row and grows toward its raised cap, the full-width ClueDock takes the bottom.
+            ClueRail hides at `ultra` and ClueDock hides below it, so exactly one is ever laid
+            out and the board-stage sibling is shared. */}
+        <div className="flex-1 min-h-0 md:grid md:grid-cols-[minmax(0,4fr)_minmax(0,3fr)] wide:grid-cols-[minmax(0,1fr)_45rem] ultra:grid-cols-1 ultra:grid-rows-[minmax(0,1fr)_auto]">
           <div
-            className="board-stage h-full min-h-0 overflow-auto md:overflow-hidden p-3 md:p-6 flex flex-col md:justify-center"
+            className="board-stage h-full min-h-0 overflow-auto md:overflow-hidden p-3 md:p-6 ultra:[--cell-cap:5.5rem] flex flex-col md:justify-center"
             style={{
               ["--board-cols" as string]: puzzle.cols,
               ["--board-aspect" as string]: `${puzzle.cols} / ${puzzle.rows}`,
@@ -918,6 +951,18 @@ function LiveGame({
           </div>
 
           <ClueRail
+            across={puzzle.acrossClues}
+            down={puzzle.downClues}
+            activeAcross={activeAcross}
+            activeDown={activeDown}
+            currentDirection={selection.direction}
+            filled={filled}
+            presence={presenceByClue}
+            solvingNow={<SolvingNow roster={roster} />}
+            onJump={jumpToClue}
+          />
+
+          <ClueDock
             across={puzzle.acrossClues}
             down={puzzle.downClues}
             activeAcross={activeAcross}
