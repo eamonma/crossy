@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { ExitIcon, PersonIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity, IdentitySession } from "../identity";
+import { Divider } from "./primitives";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -70,7 +71,7 @@ export function SignInButtons({
     allowGuest && config.guestsEnabled && turnstileSiteKey !== undefined;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       <Button
         variant="default"
         size="lg"
@@ -81,14 +82,22 @@ export function SignInButtons({
         {discordLabel}
       </Button>
       {guestReady && turnstileSiteKey !== undefined && (
-        <GuestSignIn
-          identity={identity}
-          siteKey={turnstileSiteKey}
-          onNotice={setNotice}
-        />
+        <>
+          {/* The system's dashed rule carries the fork in the road; "or" sits in it. */}
+          <div className="flex items-center gap-3" aria-hidden>
+            <Divider className="m-0 flex-1" />
+            <span className="text-1 text-text-subtle">or</span>
+            <Divider className="m-0 flex-1" />
+          </div>
+          <GuestSignIn
+            identity={identity}
+            siteKey={turnstileSiteKey}
+            onNotice={setNotice}
+          />
+        </>
       )}
       {notice !== null && (
-        <p className="text-2 text-danger-text" role="status">
+        <p className="m-0 text-2 text-danger-text" role="status">
           {notice}
         </p>
       )}

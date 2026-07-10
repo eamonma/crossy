@@ -1,15 +1,17 @@
-// Create (/new): upload or paste an XWord Info JSON puzzle, then land in the game with
-// a share link. Composed as v2's create dialog: one centered card with a name field, the
-// dashed dropzone, and a right-aligned Cancel / Create footer; pasting JSON is a quiet
-// disclosure under the dropzone. Creating requires a full account (guests are join-only,
-// DESIGN section 8), so a logged-out or guest visitor sees the gate first. Signed in, the
-// card centers inside the sidebar shell's content frame (the "New chat" shape); signed out
-// it keeps the standalone top-bar layout. Rejections from the ingestion ACL map to plain,
-// specific sentences shown inline, never a toast and never an error code. INV-6: the
-// uploaded JSON carries solutions to the server, but this screen never renders a grid from
-// local state; on success it navigates and the board arrives, solution stripped, over the
-// WebSocket.
-import { useEffect, useRef, useState } from "react";
+// Create (/new): drop in a crossword JSON file, watch its title and byline appear, and land
+// in the game with a share link. Composed as v2's create dialog: one centered card where the
+// puzzle leads (the dashed dropzone, or the loaded puzzle's preview), the room name beneath it
+// (prefilled from the puzzle's own title the moment one loads, still fully editable), and a
+// right-aligned Cancel / Create footer; pasting JSON is a quiet disclosure under the dropzone.
+// Creating requires a full account (guests are join-only, DESIGN section 8), so a logged-out
+// or guest visitor sees the gate first. Signed in, the card centers inside the sidebar shell's
+// content frame (the "New chat" shape); signed out it keeps the standalone top-bar layout.
+// Rejections from the ingestion ACL map to plain, specific sentences shown inline, never a
+// toast and never an error code. INV-6: the uploaded JSON carries solutions to the server, but
+// this screen reads only display metadata from it (puzzleMeta.ts) and never renders a grid
+// from local state; on success it navigates and the board arrives, solution stripped, over
+// the WebSocket.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Cross2Icon, FileTextIcon, UploadIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
@@ -17,7 +19,10 @@ import type { Navigate } from "../nav";
 import { gameHref, homeHref } from "../nav";
 import { TopBar } from "./TopBar";
 import { SignInButtons } from "./AuthBar";
-import { cx } from "./primitives";
+import { CapsLabel, cx, Divider } from "./primitives";
+import { readPuzzleMeta } from "./puzzleMeta";
+import type { PuzzleMeta } from "./puzzleMeta";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,7 +33,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 function rejectionSentence(code: string): string {
   switch (code) {
     case "VALIDATION":
-      return "That doesn't look like an XWord Info puzzle. Check the JSON and try again.";
+      return "That doesn't look like a crossword Crossy can read. Check the JSON and try again.";
     case "UNSOLVABLE_CELL":
       return "This puzzle has a square no letter can fill, so it can't be solved here.";
     case "REBUS_TOO_LONG":
@@ -55,9 +60,29 @@ interface Rejection {
   message?: string;
 }
 
-/** The one dialog recipe: warm face, hairline, card radius, dialog elevation. */
+/** The one dialog recipe: warm face, hairline, card radius, dialog elevation. Sections
+ * bring their own gutters so the dashed rules between them run edge to edge. */
 function DialogCard({ children }: { children: React.ReactNode }) {
-  return <Card className="enter gap-0 p-5 shadow-xl">{children}</Card>;
+  return <Card className="enter gap-0 p-0 shadow-xl">{children}</Card>;
+}
+
+/** The dialog's masthead: serif title over one quiet sentence, closed by the dashed rule. */
+function DialogHeader({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <div className="px-5 pt-5 pb-4">
+        <h1 className="m-0 font-display text-6">{title}</h1>
+        <p className="mt-1 mb-0 text-2 text-text-muted">{children}</p>
+      </div>
+      <Divider className="m-0" />
+    </>
+  );
 }
 
 export function CreateGame({
@@ -135,17 +160,19 @@ function CreateGate({
 }) {
   return (
     <DialogCard>
-      <h1 className="font-display text-6 m-0">Create a game</h1>
-      <p className="mt-1.5 text-3 text-text-muted">
+      <DialogHeader title="Create a game">
         {guest
-          ? "Guests can join and solve. Creating a game needs a full account."
-          : "Sign in with Discord to create a game."}
-      </p>
-      <div className="mt-5">
+          ? "You're here as a guest, and guests can watch but not host. Sign in with Discord to create games of your own."
+          : "Upload a puzzle, share one link, and solve it together. Hosting takes a Discord account."}
+      </DialogHeader>
+      {/* Guest sign-in is a dead end here (guests can't create), so the gate offers
+          Discord alone. */}
+      <div className="px-5 py-5">
         <SignInButtons
           identity={identity}
           config={config}
           discordLabel="Sign in with Discord"
+          allowGuest={false}
         />
       </div>
     </DialogCard>
@@ -154,6 +181,79 @@ function CreateGate({
 
 type Phase =
   { kind: "idle" } | { kind: "creating" } | { kind: "error"; message: string };
+
+/**
+ * The loaded puzzle as a small dossier in the dropzone's place: the parsed title leads (the
+ * file name stands in when the document is untitled), then the byline, then quiet fact chips
+ * (geometry, day, clue count). All of it comes from readPuzzleMeta's display-only read; a
+ * document with no metadata degrades to the file name and no chips, one recipe either way.
+ */
+function PuzzlePreview({
+  meta,
+  fileName,
+  kb,
+  onClear,
+}: {
+  meta: PuzzleMeta | null;
+  fileName: string | null;
+  kb: number;
+  onClear: () => void;
+}) {
+  const title = meta?.title ?? fileName ?? "Pasted puzzle";
+  const byline = [
+    meta?.author !== undefined && meta.author !== null
+      ? `By ${meta.author}`
+      : null,
+    meta?.editor !== undefined && meta.editor !== null
+      ? `Edited by ${meta.editor}`
+      : null,
+  ]
+    .filter((part) => part !== null)
+    .join(" · ");
+  const chips: string[] = [];
+  if (meta?.rows != null && meta.cols != null) {
+    chips.push(`${meta.cols} × ${meta.rows}`);
+  }
+  if (meta?.dayOfWeek != null) chips.push(meta.dayOfWeek);
+  if (meta?.clueCount != null) chips.push(`${meta.clueCount} clues`);
+
+  return (
+    <div className="rounded-3 border border-dashed border-border-dashed px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <FileTextIcon className="mt-0.5 shrink-0 text-text-accent" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-2 font-medium text-text">{title}</div>
+          {byline !== "" && (
+            <div className="mt-0.5 truncate text-1 text-text-muted">
+              {byline}
+            </div>
+          )}
+          {chips.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1">
+              {chips.map((c) => (
+                <Badge key={c} variant="neutral" className="tabular-nums">
+                  {c}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+        <span className="shrink-0 text-1 text-text-subtle tabular-nums">
+          {kb} KB
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          onClick={onClear}
+          aria-label="Remove puzzle"
+        >
+          <Cross2Icon />
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function CreateForm({
   config,
@@ -168,6 +268,9 @@ function CreateForm({
 }) {
   const [raw, setRaw] = useState("");
   const [name, setName] = useState("");
+  // True once the user has typed a name of their own; an auto-fill never overwrites that.
+  // An emptied field counts as untouched again, so the next loaded puzzle can refill it.
+  const [nameEdited, setNameEdited] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -176,11 +279,31 @@ function CreateForm({
 
   const apiBase = params.get("api") ?? config.apiBase;
 
+  // The display-metadata read (title, byline, geometry) over whatever is loaded or pasted.
+  // Null means "not a JSON object", which is also the one shape the server rejects outright.
+  const meta = useMemo(
+    () => (raw.trim() === "" ? null : readPuzzleMeta(raw)),
+    [raw],
+  );
+
+  // Prefill the room name from the puzzle's own title (capped at the server's 80-char bound)
+  // whenever a titled puzzle is loaded and the user hasn't written a name themselves.
+  useEffect(() => {
+    if (nameEdited) return;
+    if (meta?.title != null) setName(meta.title.slice(0, 80));
+  }, [meta, nameEdited]);
+
   async function ingestFile(file: File): Promise<void> {
     setPhase({ kind: "idle" });
     try {
-      setRaw(await file.text());
+      const text = await file.text();
+      setRaw(text);
       setFileName(file.name);
+      // A file that isn't a JSON object will be rejected on create anyway; saying so now,
+      // while the file is still in hand, beats saying it after the round trip.
+      if (readPuzzleMeta(text) === null) {
+        setPhase({ kind: "error", message: rejectionSentence("VALIDATION") });
+      }
     } catch {
       setPhase({
         kind: "error",
@@ -200,6 +323,7 @@ function CreateForm({
     setRaw("");
     setFileName(null);
     setPhase({ kind: "idle" });
+    if (!nameEdited) setName("");
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -293,124 +417,137 @@ function CreateForm({
 
   return (
     <DialogCard>
-      <h1 className="font-display text-6 m-0">Create a game</h1>
-      <p className="mt-1.5 text-3 text-text-muted">
-        Upload an XWord Info JSON puzzle and get a link to share.
-      </p>
+      <DialogHeader title="Create a game">
+        Upload a crossword and get one link your friends can join.
+      </DialogHeader>
 
-      <div className="mt-4 flex flex-col gap-1.5">
-        <Label htmlFor="game-name" className="text-2 text-text-muted">
-          Name
-        </Label>
-        <Input
-          id="game-name"
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Sunday themeless"
-          maxLength={80}
-          className="h-9"
-        />
-      </div>
-
-      <div className="mt-4 flex flex-col gap-1.5">
-        <span className="text-2 font-medium text-text-muted">Puzzle</span>
-        {loaded ? (
-          <div className="flex items-center gap-2 border border-dashed border-border-dashed rounded-3 px-3 py-2.5">
-            <FileTextIcon className="shrink-0 text-text-accent" />
-            <span className="min-w-0 truncate text-2 text-text">
-              {fileName}
-            </span>
-            <span className="ml-auto shrink-0 text-1 text-text-subtle tabular-nums">
-              {Math.max(1, Math.round(raw.length / 1024))} KB
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              onClick={clearFile}
-              aria-label="Remove file"
-            >
-              <Cross2Icon />
-            </Button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
-            className={cx(
-              "flex flex-col items-center justify-center gap-1.5 w-full py-6 px-4",
-              "rounded-3 border border-dashed text-center transition-colors",
-              dragging
-                ? "border-gold-8 bg-gold-3"
-                : "border-border-dashed hover:bg-sand-2",
-            )}
-          >
-            <UploadIcon className="text-text-subtle" width={18} height={18} />
-            <span className="text-2 text-text-subtle">
-              Drop a puzzle file here, or click to browse
-            </span>
-          </button>
-        )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void ingestFile(file);
-          }}
-        />
-        {!loaded && (
-          <div>
+      <div className="flex flex-col gap-4 px-5 py-4">
+        <div className="flex flex-col gap-2">
+          <CapsLabel>Puzzle</CapsLabel>
+          {loaded ? (
+            <PuzzlePreview
+              meta={meta}
+              fileName={fileName}
+              kb={Math.max(1, Math.round(raw.length / 1024))}
+              onClear={clearFile}
+            />
+          ) : (
             <button
               type="button"
-              onClick={() => setPasteOpen((v) => !v)}
-              className="text-1 text-text-muted hover:text-text underline decoration-dashed underline-offset-4"
+              onClick={() => fileRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              className={cx(
+                "group flex flex-col items-center justify-center gap-1 w-full py-6 px-4",
+                "rounded-3 border border-dashed text-center transition-colors",
+                dragging
+                  ? "border-gold-8 bg-gold-3"
+                  : "border-border-dashed hover:bg-sand-2",
+              )}
             >
-              {pasteOpen ? "Hide the paste box" : "Or paste the JSON"}
+              <span
+                className={cx(
+                  "mb-1 flex size-6 items-center justify-center rounded-full transition-colors",
+                  dragging
+                    ? "bg-gold-4 text-gold-11"
+                    : "bg-gold-3 text-gold-11 group-hover:bg-gold-4",
+                )}
+              >
+                <UploadIcon width={16} height={16} />
+              </span>
+              <span className="text-2 font-medium text-text">
+                Drop a crossword here, or browse
+              </span>
+              <span className="text-1 text-text-subtle">
+                Crossword JSON files
+              </span>
             </button>
-          </div>
-        )}
-        {!loaded && pasteOpen && (
-          <textarea
-            value={raw}
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
             onChange={(e) => {
-              setRaw(e.target.value);
-              if (phase.kind === "error") setPhase({ kind: "idle" });
+              const file = e.target.files?.[0];
+              if (file) void ingestFile(file);
             }}
-            spellCheck={false}
-            rows={6}
-            placeholder='{ "size": { "rows": 15, "cols": 15 }, "grid": [ ... ], "clues": { ... } }'
-            className="field w-full p-3 font-mono text-1 resize-y"
           />
+          {!loaded && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setPasteOpen((v) => !v)}
+                className="text-1 text-text-muted hover:text-text underline decoration-dashed underline-offset-4"
+              >
+                {pasteOpen ? "Hide the paste box" : "Or paste the JSON"}
+              </button>
+            </div>
+          )}
+          {!loaded && pasteOpen && (
+            <>
+              <textarea
+                value={raw}
+                onChange={(e) => {
+                  setRaw(e.target.value);
+                  if (phase.kind === "error") setPhase({ kind: "idle" });
+                }}
+                spellCheck={false}
+                rows={6}
+                placeholder='{ "size": { "rows": 15, "cols": 15 }, "grid": [ ... ], "clues": { ... } }'
+                className="field w-full p-2 font-mono text-1 resize-y"
+              />
+              {meta !== null && (
+                <PuzzlePreview
+                  meta={meta}
+                  fileName={null}
+                  kb={Math.max(1, Math.round(raw.length / 1024))}
+                  onClear={() => {
+                    setRaw("");
+                    if (!nameEdited) setName("");
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="game-name" className="w-fit">
+            <CapsLabel>Game name</CapsLabel>
+          </Label>
+          <Input
+            id="game-name"
+            type="text"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setNameEdited(e.target.value.trim() !== "");
+            }}
+            placeholder="Optional. The puzzle's title fills in here."
+            maxLength={80}
+          />
+        </div>
+
+        {phase.kind === "error" && (
+          <p role="alert" className="m-0 text-2 text-danger-text">
+            {phase.message}
+          </p>
         )}
       </div>
 
-      {phase.kind === "error" && (
-        <p role="alert" className="mt-3 text-2 text-danger-text">
-          {phase.message}
-        </p>
-      )}
-
-      <div className="mt-5 flex items-center justify-end gap-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => navigate(homeHref(params))}
-        >
+      {/* The action tray: page-toned, closed off by the dashed rule, echoing the ticket
+          structure the sign-in gate uses. */}
+      <div className="flex items-center justify-end gap-2 border-t border-dashed border-border-dashed bg-sand-2 px-5 py-3">
+        <Button variant="ghost" onClick={() => navigate(homeHref(params))}>
           Cancel
         </Button>
         <Button
           variant="default"
-          size="sm"
           onClick={() => void submit()}
           disabled={raw.trim() === "" || creating}
         >

@@ -38,7 +38,7 @@ import { ChevronLeftIcon } from "@radix-ui/react-icons";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import type { StackMember } from "./ui/primitives";
-import { CapsLabel } from "./ui/primitives";
+import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import {
   ClueBar,
@@ -360,23 +360,31 @@ export function LiveApp({
         navigate={navigate}
         inShell={inShell}
       >
-        <Card tone="feature" className="enter gap-0 p-6 text-center">
-          <CapsLabel className="text-text-accent">You're invited</CapsLabel>
-          <h1 className="mt-2 font-display text-8 font-medium text-gold-12">
-            Solve this one together.
-          </h1>
-          <p className="mt-3 text-3 text-text-muted">
-            {state.invited
-              ? "Sign in to join. Watching is free, and solving together needs a Discord account."
-              : "Sign in to open your game."}
-          </p>
-          <div className="mt-6 max-w-[20rem] mx-auto">
-            <SignInButtons
-              identity={identity}
-              config={config}
-              discordLabel="Sign in with Discord"
-              allowGuest={state.invited}
-            />
+        {/* The gate reads as a ticket: the invitation on the gold-cream face, then the
+            dashed rule (the system's structural device) as its perforation, then the
+            actions on the plain panel tray. */}
+        <Card tone="feature" className="enter gap-0 p-0 text-center">
+          <div className="px-6 pt-6 pb-5">
+            <CapsLabel className="text-text-accent">You're invited</CapsLabel>
+            <h1 className="mt-2 font-display text-8 font-medium text-gold-12 text-balance">
+              Solve this one together.
+            </h1>
+            <p className="mx-auto mt-3 mb-0 max-w-[24rem] text-2 text-text-muted text-balance">
+              {state.invited
+                ? "Your friends left this puzzle open. Sign in with Discord to solve with them, or watch as a guest."
+                : "Sign in with Discord to open your game."}
+            </p>
+          </div>
+          <Divider className="m-0" />
+          <div className="bg-panel px-6 py-5">
+            <div className="mx-auto max-w-[18rem]">
+              <SignInButtons
+                identity={identity}
+                config={config}
+                discordLabel="Sign in with Discord"
+                allowGuest={state.invited}
+              />
+            </div>
           </div>
         </Card>
       </GateLayout>

@@ -53,7 +53,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -280,7 +279,6 @@ function CrossySidebar({
           rows leave the tab order exactly as `hidden` had them. */}
       <SidebarContent>
         <SidebarGroup className="sidebar-dissolve w-(--sidebar-width) px-3 py-2 group-data-[collapsible=icon]:invisible group-data-[collapsible=icon]:opacity-0">
-          <SidebarGroupLabel>Recent</SidebarGroupLabel>
           <SidebarGroupContent>
             <RecentGames
               games={games}
@@ -316,7 +314,7 @@ function RecentGames({
 }) {
   if (games.phase === "loading") {
     return (
-      <SidebarMenu>
+      <SidebarMenu className="gap-0.5">
         {Array.from({ length: 4 }).map((_, i) => (
           <SidebarMenuItem key={i}>
             <SidebarMenuSkeleton />
@@ -349,7 +347,7 @@ function RecentGames({
     );
   }
   return (
-    <SidebarMenu>
+    <SidebarMenu className="gap-0.5">
       {games.data.map((g) => {
         const title = gameTitle(g, now);
         const active = g.gameId === activeGameId;
