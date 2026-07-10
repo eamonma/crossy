@@ -27,7 +27,7 @@ import { CrosswordGrid } from "./CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./CrosswordGrid";
 import { buildRoster, GROUP_CAP, GROUP_PAST } from "./roster";
 import type { ClueGroup, SolverEntry } from "./roster";
-import { partyProgress } from "./partyView";
+import { partyProgress } from "./partyProgress";
 import { buildShareUrl } from "../domain/invite";
 import { useElapsedSeconds, formatDuration } from "./gameTime";
 import { useWakeLock } from "./useWakeLock";

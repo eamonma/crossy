@@ -4,6 +4,11 @@
 // "solved" whether or not its letters are correct, because correctness is a server-side check the
 // party screen never receives; the bar reads "how much of the grid is filled", not "how much is
 // right". The QR's join target is derived elsewhere (domain/invite `buildShareUrl`), reused as-is.
+//
+// Named partyProgress.ts, not partyView.ts: PartyView.tsx lives beside it, and on a
+// case-insensitive filesystem (any macOS clone) TypeScript resolves "./PartyView" to
+// whichever file it finds first, breaking `pnpm typecheck` (TS1149). Module basenames
+// here must differ in more than case (the roster.ts rule).
 import type { Clue } from "../domain/types";
 
 export interface PartyProgress {
