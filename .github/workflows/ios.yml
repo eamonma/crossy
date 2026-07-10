@@ -41,3 +41,23 @@ jobs:
       - uses: actions/checkout@v4
       - run: swift --version
       - run: swift test
+
+  # Phase I0b (apps/ios/ROADMAP.md): the app target builds for the simulator on every
+  # iOS-touching push, so a broken xcodeproj or package wiring fails the PR, not the
+  # owner's next Xcode session. Signing is disabled: CI holds no certificates, and a
+  # simulator build needs none. The scheme is shared (xcshareddata) for exactly this job.
+  app-build:
+    name: app simulator build (xcodebuild)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/ios/Crossy
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      - run: >
+          xcodebuild build
+          -project Crossy.xcodeproj
+          -scheme Crossy
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
