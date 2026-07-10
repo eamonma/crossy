@@ -89,10 +89,10 @@ token.
 
 ### CI / GitHub (not Railway service variables)
 
-| Secret                   | Where                 | Meaning                                                                                                                                                                      |
-| ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RAILWAY_TOKEN`          | GitHub Actions secret | Railway PROJECT token scoped to `crossy`/`production`. Rolls services.                                                                                                       |
-| `MIGRATION_DATABASE_URL` | GitHub Actions secret | Hosted Postgres DIRECT (privileged) DSN. Read on EVERY deploy: the migrate job applies expand-only migrations ahead of the roll. Its absence fails the deploy (never skips). |
+| Secret                   | Where                 | Meaning                                                                                                                                                                                                                                              |
+| ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `RAILWAY_TOKEN`          | GitHub Actions secret | Railway PROJECT token scoped to `crossy`/`production`. Rolls services.                                                                                                                                                                               |
+| `MIGRATION_DATABASE_URL` | GitHub Actions secret | Hosted Postgres privileged DSN over the SESSION pooler, NOT the direct host (IPv6-only; see Migrations + roles). Read on EVERY deploy: the migrate job applies expand-only migrations ahead of the roll. Its absence fails the deploy (never skips). |
 
 ## GHCR private pull
 
@@ -140,9 +140,13 @@ Run in order. Steps marked (dashboard) cannot be done by the CLI.
 7. Add the two GitHub Actions secrets (dashboard: GitHub repo > Settings > Secrets and
    variables > Actions):
    - `RAILWAY_TOKEN`: a Railway project token (dashboard: project > Settings > Tokens).
-   - `MIGRATION_DATABASE_URL`: the hosted Postgres DIRECT (privileged) DSN from step 1. The
-     migrate job reads it on EVERY deploy and fails the deploy if it is absent, so set it
-     before the first pipeline deploy.
+   - `MIGRATION_DATABASE_URL`: the privileged `postgres` DSN over the SESSION pooler,
+     `postgresql://postgres.<ref>:<password>@aws-0-us-east-1.pooler.supabase.com:5432/postgres`
+     (dashboard: Connect > Session pooler). NOT the direct DSN: `db.<ref>.supabase.co` has
+     no A record (IPv6-only) and GitHub runners have no IPv6 route, so the direct host fails
+     from Actions with ENETUNREACH. NOT the transaction pooler (port 6543): DDL and advisory
+     locks break there. The migrate job reads this secret on EVERY deploy and fails the
+     deploy if it is absent, so set it before the first pipeline deploy.
 8. Trigger the deploy: push to `main`, or run the `Deploy` workflow via workflow_dispatch.
 9. Verify: `node deploy/verify.mjs --api https://<api> --web https://<web> --session wss://<session>`.
 
@@ -154,7 +158,10 @@ tables, the deny-all RLS tripwire, and the two NOLOGIN service roles `crossy_api
 so each holds only the grants on the tables it owns.
 
 Apply migrations with the shared applier (the same code CI, the Testcontainers test, and the
-dev-stack use), over the DIRECT connection, as the privileged `postgres` role:
+dev-stack use), as the privileged `postgres` role. From an IPv6-capable machine the DIRECT
+connection works; from an IPv4-only environment (GitHub Actions runners) it does not (the
+direct host has no A record), so use the SESSION pooler DSN there, which holds one real
+backend per session and behaves like direct:
 
 ```
 MIGRATION_DATABASE_URL='postgresql://postgres:...@db.<ref>.supabase.co:5432/postgres' \
@@ -177,7 +184,8 @@ On every deploy (push to `main` and `workflow_dispatch`) the `migrate` job runs 
    DELETE FROM, UPDATE, SET NOT NULL, REVOKE). It strips comments and string literals first, so
    a comment mentioning `DROP` does not trip it, and it scans DO-block bodies, so a destructive
    statement cannot hide there. If anything trips, the deploy FAILS and points here.
-2. `deploy/migrate.ts` applies the migrations over the DIRECT connection.
+2. `deploy/migrate.ts` applies the migrations over `MIGRATION_DATABASE_URL` (the session
+   pooler: the runner cannot reach the IPv6-only direct host).
 
 Because migrate precedes roll in the same pipeline, expand-before-code is enforced by job
 ordering: by the time the new image serves traffic its columns exist, and the old code
@@ -220,8 +228,10 @@ api     : postgresql://crossy_api:<api_pw>@<pooler-host>:5432/postgres
 session : postgresql://crossy_session:<session_pw>@<pooler-host>:5432/postgres
 ```
 
-Only `migrate.ts` and `bind-service-roles.sh` use the DIRECT connection (advisory locks +
-DDL break under a transaction pooler); the services use the pooler.
+`migrate.ts` and `bind-service-roles.sh` must never run over the TRANSACTION pooler (port
+6543: advisory locks + DDL break there). The DIRECT connection and the SESSION pooler (port
+5432 on the pooler host) both work; from an IPv4-only environment only the session pooler
+does. The services use the pooler.
 
 Supabase caveat to confirm at apply time: the migration runs `ALTER ROLE crossy_api
 BYPASSRLS` (and the same for `crossy_session`). The service roles must bypass the deny-all
@@ -300,6 +310,7 @@ survive `railway ssh -- <cmd>`, so run it from the interactive shell.
 - `migration-guard.mjs`: plain-node expand-only guard run before `migrate.ts` in the pipeline
   (`node deploy/migration-guard.mjs`). Its pure functions are unit-tested in
   `packages/db/src/migration-guard.test.ts` (with the `migration-guard.d.mts` type companion).
-- `migrate.ts`: apply `packages/db` migrations to hosted Postgres (DIRECT connection).
+- `migrate.ts`: apply `packages/db` migrations to hosted Postgres (privileged DSN: direct
+  or session pooler, never the transaction pooler).
 - `bind-service-roles.sql` / `bind-service-roles.sh`: grant LOGIN to the NOLOGIN service roles.
 - `verify.mjs`: post-deploy HTTPS + WS + private-endpoint checks.
