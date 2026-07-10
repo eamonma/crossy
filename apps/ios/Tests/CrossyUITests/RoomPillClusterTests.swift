@@ -43,4 +43,18 @@ final class RoomPillClusterTests: XCTestCase {
         XCTAssertEqual(morph.frame(at: 0), pill)
         XCTAssertEqual(morph.cornerRadius(at: 1), ChromeLayout.panelCornerRadius)
     }
+
+    // A panel covers its own pill by right; any OTHER pill it eclipses yields
+    // for the panel's life (buried glass refracts through the surface — the
+    // -stress mockups caught the leading pill's name mirrored inside the
+    // stats card). A hairline graze is not an eclipse.
+    func test_aPanelEclipsingAStandingPill_handsItOff_section4() {
+        let panel = CGRect(x: 40, y: 10, width: 340, height: 120)
+        let buried = CGRect(x: 24, y: 10, width: 160, height: 44)
+        let abutting = CGRect(x: 378, y: 10, width: 84, height: 44)
+        let clear = CGRect(x: 400, y: 10, width: 84, height: 44)
+        XCTAssertTrue(PanelEclipse.eclipses(panel: panel, pill: buried))
+        XCTAssertFalse(PanelEclipse.eclipses(panel: panel, pill: abutting))
+        XCTAssertFalse(PanelEclipse.eclipses(panel: panel, pill: clear))
+    }
 }

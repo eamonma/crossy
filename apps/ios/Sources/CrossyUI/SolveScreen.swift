@@ -91,8 +91,15 @@ public struct SolveScreen: View {
                     // the abandonment rather than ticking over a dead board.
                     completedAt: store.completedAt ?? store.abandonedAt,
                     members: members,
-                    playersHandedOff: chrome.isRosterOpen,
-                    timeHandedOff: chrome.isStatsOpen,
+                    // A pill hands off when its own panel opens, and when any
+                    // open panel eclipses it (PanelEclipse: buried glass
+                    // refracts through a panel's surface).
+                    leadingHandedOff: pillEclipsed(
+                        .leadingPill, members: members, spectating: spectating),
+                    playersHandedOff: chrome.isRosterOpen
+                        || pillEclipsed(.playersPill, members: members, spectating: spectating),
+                    timeHandedOff: chrome.isStatsOpen
+                        || pillEclipsed(.timePill, members: members, spectating: spectating),
                     onTapClock: status == .completed ? { openStats() } : nil,
                     onTapPucks: toggleRoster
                 )
@@ -445,6 +452,24 @@ public struct SolveScreen: View {
     }
 
     // MARK: - Intents
+
+    /// Whether the open panel (roster or stats, mutually exclusive) eclipses a
+    /// standing pill's reported frame (PanelEclipse, DESIGN.md §4).
+    private func pillEclipsed(
+        _ piece: ChromePiece, members: [RosterMember], spectating: Bool
+    ) -> Bool {
+        guard let pill = frames[piece] else { return false }
+        let panel: CGRect?
+        if chrome.isRosterOpen {
+            panel = rosterMorph(members: members, spectating: spectating)?.open
+        } else if chrome.isStatsOpen {
+            panel = statsMorph?.open
+        } else {
+            panel = nil
+        }
+        guard let panel else { return false }
+        return PanelEclipse.eclipses(panel: panel, pill: pill)
+    }
 
     /// The one dismissal path (DESIGN.md §4: transient panels yield to
     /// intent). A touch outside an open roster or stats panel dismisses it

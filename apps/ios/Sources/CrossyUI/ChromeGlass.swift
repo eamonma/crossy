@@ -119,6 +119,23 @@ enum ChromePiece: Hashable {
     /// becomes the headline at completion; the pill centers its clock, so the
     /// rider's launch point is the pill's own center).
     case timePill
+    /// The leading pill (name and weather): no morph rests on it, but a panel
+    /// that eclipses it must know its frame (PanelEclipse).
+    case leadingPill
+}
+
+/// DESIGN.md §4, the Mail-button rule's corollary: a panel covers its own pill
+/// by right, and any OTHER standing pill it happens to eclipse yields for the
+/// panel's life. Glass over glass refracts the buried pill's content through
+/// the panel's surface (the -stress mockups caught the leading pill's name
+/// mirrored inside the stats card's top edge), so an eclipsed pill hands off
+/// exactly like a morph rest and returns on dismissal.
+enum PanelEclipse {
+    /// A hairline graze is not an eclipse: the pill insets before the test so
+    /// pills that merely abut the panel's edge stay standing.
+    static func eclipses(panel: CGRect, pill: CGRect) -> Bool {
+        panel.intersects(pill.insetBy(dx: 4, dy: 4))
+    }
 }
 
 struct ChromeFramesKey: PreferenceKey {

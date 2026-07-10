@@ -28,6 +28,10 @@ struct RoomBar: View {
     let firstFillAt: String?
     let completedAt: String?
     let members: [RosterMember]
+    /// True while an open panel eclipses the leading pill (PanelEclipse): no
+    /// morph rests here, but buried glass refracts through a panel's surface,
+    /// so the pill yields for the panel's life. Layout and reporting stay.
+    let leadingHandedOff: Bool
     /// True while the roster panel exists: the players pill is the panel at
     /// rest (DESIGN.md §4), so the whole pill, glass and pucks, hands off and
     /// yields. Layout and frame reporting stay; the visual goes with the morph.
@@ -92,6 +96,10 @@ struct RoomBar: View {
         .padding(.horizontal, 14)
         .frame(height: ChromeLayout.pillHeight)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+        .opacity(leadingHandedOff ? 0 : 1)
+        // The eclipse yield includes touch, the handed-off pill rule.
+        .allowsHitTesting(!leadingHandedOff)
+        .reportChromeFrame(.leadingPill)
     }
 
     @ViewBuilder
