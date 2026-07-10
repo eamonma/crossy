@@ -27,6 +27,10 @@ public struct CrossyGridView: View {
     @State private var magnifyBase: GridCamera?
     @State private var dragBase: GridCamera?
     @State private var flashes = FlashBook()
+    /// The camera-follow animator (I2c): Canvas draws through context transforms,
+    /// which SwiftUI cannot animate, so the follow pan interpolates by hand.
+    @State private var followTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// `initialCamera` seeds the first camera (nil opens at the clamp, centered):
     /// the hook for restoring a solver's zoom across scene changes. Every camera is
@@ -84,6 +88,7 @@ public struct CrossyGridView: View {
             .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { value in
+                        followTask?.cancel()
                         let base = magnifyBase ?? camera
                         magnifyBase = base
                         self.camera = base.zoomed(
@@ -96,6 +101,7 @@ public struct CrossyGridView: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in
+                        followTask?.cancel()
                         let base = dragBase ?? camera
                         dragBase = base
                         self.camera = base.panned(
@@ -123,10 +129,48 @@ public struct CrossyGridView: View {
                 self.camera = self.camera?.clamped(
                     viewport: size, rows: puzzle.rows, cols: puzzle.cols)
             }
+            // Camera follow (I2c): a jump that lands the cursor off-screen (a
+            // clue-browser tap, a Tab past the viewport edge) pans the minimal
+            // distance that shows it. Only real jumps move anything: a visible
+            // cursor returns nil from `following`, and a live pinch or drag owns
+            // the camera unchallenged.
+            .onChange(of: selection) { _, next in
+                guard let next, dragBase == nil, magnifyBase == nil,
+                    let target = camera.following(
+                        cell: next.cell, viewport: viewport,
+                        rows: puzzle.rows, cols: puzzle.cols)
+                else { return }
+                followCamera(from: camera, to: target)
+            }
             .onAppear { wireFlashSink() }
+            .onDisappear { followTask?.cancel() }
         }
         .accessibilityLabel(
             Text(verbatim: "\(puzzle.cols) by \(puzzle.rows) crossword grid"))
+    }
+
+    /// The follow pan, interpolated by hand at display cadence: the Canvas draws
+    /// through context transforms, so `withAnimation` on the camera state would
+    /// snap, not glide. Chrome grammar (DESIGN.md §7): the chrome spring's
+    /// duration, an ease-out, no overshoot. Reduce Motion cuts straight to the
+    /// target. Gestures cancel the task and take the camera back mid-flight.
+    private func followCamera(from start: GridCamera, to target: GridCamera) {
+        followTask?.cancel()
+        if reduceMotion {
+            camera = target
+            return
+        }
+        followTask = Task { @MainActor in
+            let duration = Motion.Springs.chromeResponse
+            let began = Date.now
+            while !Task.isCancelled {
+                let t = min(Date.now.timeIntervalSince(began) / duration, 1)
+                let eased = 1 - pow(1 - t, 3)
+                camera = start.interpolated(to: target, fraction: eased)
+                if t >= 1 { return }
+                try? await Task.sleep(for: .milliseconds(12))
+            }
+        }
     }
 
     /// The store detects the conflict trigger; the view animates the ~300 ms flash

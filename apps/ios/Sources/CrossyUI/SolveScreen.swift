@@ -1,9 +1,12 @@
-// The solve surface, I2b shape: grid above, key deck below on solid canvas (the
-// deck sits over canvas, never over the grid, ID-4), one SelectionModel wiring the
-// two together. Ground follows system appearance through CrossyDesign tokens (ID-3:
-// Studio light, Observatory dark; two renders of one drawing, never two code
-// paths). The room's chrome (room bar, clue bar, browser) grows around this in I2c;
-// composition roots hand in a store and a mapped puzzle and nothing else.
+// The room (roadmap I2c): room bar over the grid, the clue bar as its own glass
+// over a separate key deck (owner ruling 2026-07-10; SP-i5), the clue browser and
+// roster as custom overlay panels morphing from their chrome (SP-i1's single
+// surface; never a system sheet), weather per DESIGN.md §8, the ambient clock
+// (ID-2), and the spectator edge with its one affordance, Join in. Ground follows
+// system appearance through CrossyDesign tokens (ID-3: two renders of one drawing,
+// never two code paths). Composition roots hand in a store, a mapped puzzle, a
+// clue book, and a room name; the transport behind the store is the only thing
+// that changes between the demo room and I3's real connection.
 
 import CrossyDesign
 import CrossyStore
@@ -14,15 +17,37 @@ import SwiftUI
 public struct SolveScreen: View {
     private let store: GameStore
     private let puzzle: GridPuzzle
+    private let clues: ClueBook
+    private let roomName: String
+    private let onJoinIn: () -> Void
     @State private var model: SelectionModel
+    @State private var chrome: RoomChromeModel
+    @State private var frames: [ChromePiece: CGRect] = [:]
+    @State private var relay = CursorRelayThrottle()
+    @State private var relayTrailing: Task<Void, Never>?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// `model` lets a composition root own the selection (the room will drive it
-    /// from clue-bar taps in I2c); nil owns a store-bound one locally.
-    public init(store: GameStore, puzzle: GridPuzzle, model: SelectionModel? = nil) {
+    /// `model` lets a composition root own the selection; `chrome` likewise owns
+    /// the room's overlay state (the demo room scripts both for screenshots).
+    /// `onJoinIn` is the spectator's seat-change intent, wired to the real
+    /// endpoint in I3.
+    public init(
+        store: GameStore,
+        puzzle: GridPuzzle,
+        clues: ClueBook = .empty,
+        roomName: String = "",
+        model: SelectionModel? = nil,
+        chrome: RoomChromeModel? = nil,
+        onJoinIn: @escaping () -> Void = {}
+    ) {
         self.store = store
         self.puzzle = puzzle
+        self.clues = clues
+        self.roomName = roomName
+        self.onJoinIn = onJoinIn
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
+        _chrome = State(initialValue: chrome ?? RoomChromeModel())
     }
 
     private var ground: GridGround {
@@ -30,16 +55,229 @@ public struct SolveScreen: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            CrossyGridView(
-                store: store, puzzle: puzzle, ground: ground,
-                selection: model.selection,
-                onSwipe: { model.swipe($0) },
-                onPlaceCursor: { model.tap(cell: $0) })
-            deckZone
+        let weather = RoomWeather.from(sync: store.sync)
+        let members = rosterMembers
+        let spectating = RosterList.selfIsSpectator(members, selfUserId: store.selfUserId)
+
+        ZStack {
+            VStack(spacing: 0) {
+                RoomBar(
+                    roomName: roomName,
+                    ground: ground,
+                    weather: weather,
+                    reconnectRetryAt: chrome.reconnectRetryAt,
+                    firstFillAt: store.firstFillAt,
+                    completedAt: store.completedAt,
+                    members: members,
+                    onTapPucks: toggleRoster
+                )
+                .reportChromeFrame(.roomBar)
+                .padding(.horizontal, ChromeLayout.inset)
+                .padding(.top, 6)
+
+                CrossyGridView(
+                    store: store, puzzle: puzzle, ground: ground,
+                    selection: model.selection,
+                    onSwipe: { model.swipe($0) },
+                    onPlaceCursor: { model.tap(cell: $0) })
+                    .overlay {
+                        // Reconnecting dims the room (DESIGN.md §8): a paper wash,
+                        // never a modal, never a spinner. Input stays live; the
+                        // store holds it gracefully (PROTOCOL.md §8).
+                        if weather.boardDimmed {
+                            Color(rgb: ground.tokens.canvas)
+                                .opacity(RoomWeather.boardDimOpacity)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .animation(.crossyChrome, value: weather.boardDimmed)
+                    .padding(.top, 8)
+
+                // The clue bar's rest slot: the melting surface renders in the
+                // overlay at exactly this frame, so layout owns the geometry and
+                // the morph only borrows it.
+                Color.clear
+                    .frame(height: ChromeLayout.barHeight)
+                    .reportChromeFrame(.clueBarSlot)
+                    .padding(.horizontal, ChromeLayout.inset)
+                    .padding(.top, 8)
+
+                if spectating {
+                    watchingZone
+                } else {
+                    deckZone
+                }
+            }
+
+            // The roster's tap-away catcher: dismissal only, no scrim, the room
+            // never dims dead (DESIGN.md §4).
+            if chrome.isRosterOpen {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { chrome.settleRoster(open: false, animated: !reduceMotion) }
+            }
+
+            if let morph = meltMorph {
+                ClueChrome(
+                    ground: ground,
+                    morph: morph,
+                    current: clues.current(for: model.selection),
+                    acrossRows: ClueBrowserList.rows(
+                        clues.across, selection: model.selection, filled: filledCells),
+                    downRows: ClueBrowserList.rows(
+                        clues.down, selection: model.selection, filled: filledCells),
+                    glintMarks: glintMarks,
+                    chrome: chrome,
+                    onPrevious: { model.swipe(.previousWord) },
+                    onNext: { model.swipe(.nextWord) },
+                    onJump: { model.jump(to: ClueBrowserList.jumpTarget($0)) })
+            }
+
+            if chrome.isRosterOpen, let morph = rosterMorph(members: members, spectating: spectating) {
+                RosterPanel(
+                    ground: ground,
+                    morph: morph,
+                    members: members,
+                    selfUserId: store.selfUserId,
+                    chrome: chrome,
+                    onJoinIn: onJoinIn)
+            }
         }
+        .coordinateSpace(name: ChromeLayout.roomSpace)
+        .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+        .onChange(of: model.selection) { _, selection in
+            relayCursor(selection, spectating: spectating)
+        }
+        .onDisappear {
+            relayTrailing?.cancel()
+            relay.trailingCancelled()
+        }
     }
+
+    // MARK: - Derived render inputs
+
+    /// The store's participants as chrome-shaped data (the GridPresence pattern:
+    /// the view maps, the types stay in their rings).
+    private var rosterMembers: [RosterMember] {
+        store.participants.map {
+            RosterMember(
+                userId: $0.userId,
+                displayName: $0.displayName,
+                wireColor: $0.color,
+                isHost: $0.role == .host,
+                isSpectator: $0.role == .spectator,
+                connected: $0.connected)
+        }
+    }
+
+    /// Cells rendering non-null (the INV-10 composite), for the browser's
+    /// de-emphasis rule.
+    private var filledCells: Set<Int> {
+        Set((0..<puzzle.cellCount).filter { store.renderValue($0) != nil })
+    }
+
+    /// Teammates whose cursors sit under the bar's clue: presence marks (already
+    /// filtered of self and spectators, colored for the ground) on the current
+    /// word's cells, ordered for deterministic glint attribution.
+    private var glintMarks: [PresenceMark] {
+        let word = puzzle.wordCells(
+            through: model.selection.cell, isAcross: model.selection.isAcross)
+        guard !word.isEmpty, !store.cursors.isEmpty else { return [] }
+        let marks = GridPresence.marks(
+            cursors: store.cursors.values.map {
+                GridPresence.CursorInput(
+                    userId: $0.userId, cell: $0.cell, isAcross: $0.direction == .across)
+            },
+            participants: store.participants.map {
+                GridPresence.ParticipantInput(
+                    userId: $0.userId, displayName: $0.displayName, color: $0.color,
+                    isSpectator: $0.role == .spectator)
+            },
+            selfUserId: store.selfUserId,
+            ground: ground)
+        return word.sorted().flatMap { marks[$0] ?? [] }
+    }
+
+    // MARK: - Morph geometry
+
+    /// The melt: rest is the bar's layout slot; open grows the top edge to just
+    /// under the room bar, bottom edge anchored, so the surface never overlaps
+    /// the deck or the room bar (glass never stacks, DESIGN.md §4).
+    private var meltMorph: GlassMorph? {
+        guard let rest = frames[.clueBarSlot], let roomBar = frames[.roomBar],
+            rest.height > 0
+        else { return nil }
+        let top = roomBar.maxY + ChromeLayout.panelTopGap
+        guard rest.maxY > top else { return nil }
+        return GlassMorph(
+            rest: rest,
+            open: CGRect(x: rest.minX, y: top, width: rest.width, height: rest.maxY - top),
+            restCornerRadius: ChromeLayout.barCornerRadius,
+            openCornerRadius: ChromeLayout.panelCornerRadius)
+    }
+
+    /// The roster: rest is the puck cluster's own frame; open is a small panel
+    /// hanging from the room bar's trailing edge, sized to its people.
+    private func rosterMorph(members: [RosterMember], spectating: Bool) -> GlassMorph? {
+        guard let cluster = frames[.puckCluster], let roomBar = frames[.roomBar],
+            let slot = frames[.clueBarSlot]
+        else { return nil }
+        let width = min(roomBar.width, 320)
+        let content = CGFloat(members.count) * 44 + 20 + (spectating ? 56 : 0)
+        let available = slot.minY - roomBar.maxY - ChromeLayout.panelTopGap * 2
+        let height = max(ChromeLayout.barHeight, min(content, available))
+        return GlassMorph(
+            rest: cluster,
+            open: CGRect(
+                x: roomBar.maxX - width,
+                y: roomBar.maxY + ChromeLayout.panelTopGap,
+                width: width, height: height),
+            restCornerRadius: cluster.height / 2,
+            openCornerRadius: ChromeLayout.panelCornerRadius)
+    }
+
+    // MARK: - Intents
+
+    private func toggleRoster() {
+        let animated = !reduceMotion
+        if chrome.isRosterOpen {
+            chrome.settleRoster(open: false, animated: animated)
+        } else {
+            chrome.settleMelt(open: false, animated: animated)
+            chrome.settleRoster(open: true, animated: animated)
+        }
+    }
+
+    /// The cursor relay (deferred from I2b): every selection change goes to the
+    /// room, throttled to the wire's 10/s cap with a leading send and one
+    /// coalesced trailing send that always carries the latest position (the web's
+    /// posture, PROTOCOL.md §9). Spectators never send (their cursors are
+    /// suppressed by default, root DESIGN.md §15); the store refuses sends while
+    /// `connecting`.
+    private func relayCursor(_ selection: GridSelection, spectating: Bool) {
+        if spectating { return }
+        switch relay.selectionChanged(now: Date.now.timeIntervalSinceReferenceDate) {
+        case .send:
+            sendCursor(selection)
+        case .scheduleTrailing(let afterSeconds):
+            relayTrailing = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(afterSeconds))
+                guard !Task.isCancelled else { return }
+                relay.trailingFired(now: Date.now.timeIntervalSinceReferenceDate)
+                sendCursor(model.selection)
+            }
+        case .coalesce:
+            break
+        }
+    }
+
+    private func sendCursor(_ selection: GridSelection) {
+        store.moveCursor(
+            cell: selection.cell, direction: selection.isAcross ? .across : .down)
+    }
+
+    // MARK: - The deck zone
 
     /// The deck over solid canvas (ID-4), the rebus inline field surfacing above it
     /// while an entry is open (EXPERIENCE.md baseline; the exhale bubble is I4).
@@ -52,7 +290,7 @@ public struct SolveScreen: View {
                 model.press(key)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, ChromeLayout.inset)
         .padding(.top, 10)
         .padding(.bottom, 6)
         .background(Color(rgb: ground.tokens.canvas))
@@ -61,6 +299,30 @@ public struct SolveScreen: View {
                 response: Motion.Springs.chromeResponse,
                 dampingFraction: Motion.Springs.chromeDampingFraction),
             value: model.isRebusActive)
+    }
+
+    /// The spectator edge (EXPERIENCE.md Watching): the full live room, read-only,
+    /// one affordance. The deck leaves; the words are plain (ID-5).
+    private var watchingZone: some View {
+        VStack(spacing: 10) {
+            Text(verbatim: "Watching")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+            Button(action: onJoinIn) {
+                Text(verbatim: "Join in")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .modifier(ChromeGlassSurface(cornerRadius: 23))
+        }
+        .padding(.horizontal, ChromeLayout.inset)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .background(Color(rgb: ground.tokens.canvas))
     }
 }
 

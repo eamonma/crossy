@@ -1,0 +1,99 @@
+// The morph grammar's geometry (apps/ios/DESIGN.md §4, as amended by SP-i1): a morph
+// is ONE persistent glass surface whose frame and corner radius interpolate with
+// gesture progress. Never two views swapped under glassEffectID (SP-i1: the ID swap
+// snaps instead of scrubbing), never a system sheet (SP-i5: grow-then-swap, not the
+// melt). Everything here is pure math so the interpolation is pinned in tests; the
+// gesture discipline (finger-tracked while down, animated only on release) lives at
+// the gesture site in ClueChrome and RosterPanel.
+
+import CoreGraphics
+
+/// One glass surface's two shapes and the interpolation between them. `rest` is the
+/// standing chrome (the clue bar, the puck cluster); `open` is the panel it melts
+/// into. Progress 0 is rest, 1 is open, always clamped.
+public struct GlassMorph: Equatable, Sendable {
+    public let rest: CGRect
+    public let open: CGRect
+    public let restCornerRadius: CGFloat
+    public let openCornerRadius: CGFloat
+
+    public init(rest: CGRect, open: CGRect, restCornerRadius: CGFloat, openCornerRadius: CGFloat) {
+        self.rest = rest
+        self.open = open
+        self.restCornerRadius = restCornerRadius
+        self.openCornerRadius = openCornerRadius
+    }
+
+    /// Linear interpolation with the parameter clamped to [0, 1]: a morph never
+    /// overshoots its endpoints geometrically, whatever the driving spring does.
+    public static func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat {
+        let clamped = min(max(t, 0), 1)
+        return a + (b - a) * clamped
+    }
+
+    /// The surface's frame at a progress: every edge interpolates independently, so
+    /// a bottom-anchored melt (the clue bar: shared maxY, top edge travels) and a
+    /// free inflation (the roster cluster: all four edges travel) are one rule.
+    public func frame(at progress: CGFloat) -> CGRect {
+        let minX = Self.lerp(rest.minX, open.minX, progress)
+        let minY = Self.lerp(rest.minY, open.minY, progress)
+        let maxX = Self.lerp(rest.maxX, open.maxX, progress)
+        let maxY = Self.lerp(rest.maxY, open.maxY, progress)
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    public func cornerRadius(at progress: CGFloat) -> CGFloat {
+        Self.lerp(restCornerRadius, openCornerRadius, progress)
+    }
+
+    /// The finger's travel budget: how far the surface's top edge moves across the
+    /// whole morph. The melt maps drag distance to progress 1:1 against this, so
+    /// geometry tracks the finger directly (the SP-i1 discipline), never a scaled
+    /// or eased ghost of it.
+    public var topEdgeTravel: CGFloat {
+        rest.minY - open.minY
+    }
+
+    /// Progress for a drag: `base` is the progress where the finger went down and
+    /// `translationY` the gesture's vertical translation (negative is up). Clamped;
+    /// a degenerate zero-travel morph holds its base rather than dividing by zero.
+    public func progress(draggedBy translationY: CGFloat, from base: CGFloat) -> CGFloat {
+        guard topEdgeTravel > 0 else { return min(max(base, 0), 1) }
+        return min(max(base + (-translationY) / topEdgeTravel, 0), 1)
+    }
+}
+
+/// The release rule: while the finger is down geometry tracks it; the ONE animation
+/// runs on release, settling open or pouring back (the SP-i1 gesture discipline).
+/// A flick beats position: a fast upward release opens from low progress and a fast
+/// downward one pours back from high, which is how every system sheet feels.
+public enum GlassSettle {
+    /// Below this progress a still release pours back; at or above it settles open.
+    public static let openThreshold: CGFloat = 0.5
+
+    /// The flick: past this vertical speed (points per second) the direction of
+    /// travel decides, wherever the finger stopped.
+    public static let flickPointsPerSecond: CGFloat = 350
+
+    /// `upwardVelocity` is positive when the finger was moving up at release
+    /// (the negation of a DragGesture's predicted vertical velocity).
+    public static func settlesOpen(progress: CGFloat, upwardVelocity: CGFloat) -> Bool {
+        if upwardVelocity >= flickPointsPerSecond { return true }
+        if upwardVelocity <= -flickPointsPerSecond { return false }
+        return progress >= openThreshold
+    }
+}
+
+/// Content opacity inside a morphing surface. The clue bar's row rides the surface
+/// (it IS the pinned row, so it never fades); the browser list below it fades in
+/// late so mid-drag the surface reads as clean glass, and fades out early on the
+/// pour back for the same reason in reverse.
+public enum GlassMorphContent {
+    /// The list is invisible until this progress, then ramps linearly to full at 1.
+    public static let listFadeStart: CGFloat = 0.55
+
+    public static func listOpacity(at progress: CGFloat) -> CGFloat {
+        guard progress > listFadeStart else { return 0 }
+        return min((progress - listFadeStart) / (1 - listFadeStart), 1)
+    }
+}
