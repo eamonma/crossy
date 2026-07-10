@@ -273,7 +273,7 @@ export function ClueRail({
   onJump: (clue: Clue) => void;
 }) {
   return (
-    <div className="hidden md:flex flex-col min-h-0 h-full border-l border-dashed border-border-dashed">
+    <div className="hidden md:flex ultra:hidden flex-col min-h-0 h-full border-l border-dashed border-border-dashed">
       {solvingNow}
       <div className="grid grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 flex-1">
         <div className="flex min-h-0 border-b border-dashed border-border-dashed wide:border-b-0 wide:border-r">
@@ -299,6 +299,153 @@ export function ClueRail({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** One axis inside the dock: the caps label, the dashed rule, then a newspaper block of
+ * clue rows (styles.css `.clue-dock-list`). The block is fixed-height and multi-column, so
+ * clues fill a column top to bottom and flow rightward, wrapping to two or three lines and
+ * never eliding; past the region's width the columns overflow and the block scrolls sideways.
+ * The active row is scrolled into view horizontally (`inline: "nearest"`), the dock's answer
+ * to the rail's vertical auto-scroll. Each region owns its own scroll, so Across and Down
+ * never fight over one scroll position.
+ *
+ * The row markup is a deliberate twin of ClueList's row, not a shared extraction: a sibling
+ * track is adding presence dots inside ClueList's row, so keeping the dock's row separate
+ * lets both land without a merge across the same JSX. It speaks the same vocabulary (right
+ * gutter, amber-5 on your axis, amber-3 crossing, solved rows dimmed with hover recovery). */
+function DockAxis({
+  title,
+  clues,
+  activeNumber,
+  isCurrentAxis,
+  filled,
+  onJump,
+  className,
+}: {
+  title: string;
+  clues: readonly Clue[];
+  activeNumber: number | null;
+  isCurrentAxis: boolean;
+  filled?: ReadonlySet<number> | undefined;
+  onJump: (clue: Clue) => void;
+  className?: string;
+}) {
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [activeNumber, isCurrentAxis]);
+
+  return (
+    <div className={cx("flex flex-col min-h-0 min-w-0 flex-1", className)}>
+      <div className="px-4 pt-2 pb-1.5">
+        <span className="text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text">
+          {title}
+        </span>
+      </div>
+      <Divider />
+      <ul className="clue-dock-list list-none m-0 p-0 min-h-0 flex-1 overflow-x-auto overflow-y-hidden px-3 py-1">
+        {clues.length === 0 && (
+          <li className="px-1 py-2 text-2 text-text-subtle">
+            No clues on this axis.
+          </li>
+        )}
+        {clues.map((c) => {
+          const active = c.number === activeNumber;
+          const solved =
+            !active &&
+            filled !== undefined &&
+            c.cells.every((cell) => filled.has(cell));
+          return (
+            <li
+              key={`${c.direction}-${c.number}`}
+              className="break-inside-avoid"
+            >
+              <button
+                ref={active ? activeRef : undefined}
+                type="button"
+                onClick={() => onJump(c)}
+                className={cx(
+                  "grid grid-cols-[3.2ch_1fr] w-full text-left cursor-pointer",
+                  active
+                    ? isCurrentAxis
+                      ? "bg-amber-5"
+                      : "bg-amber-3"
+                    : "hover:bg-amber-3",
+                  solved && "opacity-40 hover:opacity-100 transition-opacity",
+                )}
+              >
+                <span
+                  className={cx(
+                    "py-1 pr-1.5 text-right text-2 tabular-nums",
+                    active
+                      ? "font-semibold text-text"
+                      : "font-semibold text-text-muted",
+                  )}
+                >
+                  {c.number}
+                </span>
+                <span className="py-1 pl-2 pr-4 text-2 text-text">
+                  {c.text ?? "—"}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** The ultrawide response (only at `ultra`): the rail rotates into a full-width dock under
+ * the board, separated by the same dashed rule. Solving-now leads as a column, then Across
+ * and Down as their own newspaper regions, each split off by the dashed vertical rule. The
+ * board math (why `ultra` is 137.5rem, why the dock is bounded at 22rem) lives with the token
+ * in styles.css. The solving-now column collapses out entirely in a solo game, where the
+ * SolvingNow block renders nothing and `empty:hidden` takes its rule with it. */
+export function ClueDock({
+  across,
+  down,
+  activeAcross,
+  activeDown,
+  currentDirection,
+  filled,
+  solvingNow,
+  onJump,
+}: {
+  across: readonly Clue[];
+  down: readonly Clue[];
+  activeAcross: number | null;
+  activeDown: number | null;
+  currentDirection: Direction;
+  filled?: ReadonlySet<number> | undefined;
+  solvingNow?: React.ReactNode;
+  onJump: (clue: Clue) => void;
+}) {
+  return (
+    <div className="clue-dock hidden ultra:flex min-h-0 border-t border-dashed border-border-dashed">
+      <div className="empty:hidden shrink-0 w-[20rem] overflow-y-auto border-r border-dashed border-border-dashed">
+        {solvingNow}
+      </div>
+      <DockAxis
+        title="Across"
+        clues={across}
+        activeNumber={activeAcross}
+        isCurrentAxis={currentDirection === "across"}
+        filled={filled}
+        onJump={onJump}
+        className="border-r border-dashed border-border-dashed"
+      />
+      <DockAxis
+        title="Down"
+        clues={down}
+        activeNumber={activeDown}
+        isCurrentAxis={currentDirection === "down"}
+        filled={filled}
+        onJump={onJump}
+      />
     </div>
   );
 }

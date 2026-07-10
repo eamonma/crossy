@@ -87,6 +87,24 @@
      every pixel. */
   --breakpoint-wide: 100rem; /* 1600px at the default root size */
 
+  /* One step above `wide`, where the layout rotates: the board centers large in the top
+     region and the clues move into a full-width dock along the bottom (ui/Clues.tsx
+     ClueDock; LiveApp's grid template). The trigger is board math, not a user setting. In
+     the twin rail the board caps near 960px (15 cols x 64px) and the rail holds 45rem
+     (720px), so the board column is panel width minus 720. Past a 2160px panel that column
+     tops 1440px, half again the board, and the board floats in dead space with the clues
+     pinned to the far edge; a phone-length saccade from grid to clue. Accounting for the
+     shell's collapsed sidebar and gutters, a 2200px viewport is where that waste sets in.
+     Below `ultra` nothing changes.
+       - 2560x1440: dock on. Twin-rail board column ~1780px around a 960px board (~85%
+         slack); the dock recenters the board and drops the clues under it. Height 1440 gives
+         the dock its 22rem and still ~928px of board.
+       - 3440x1440: dock on, decisively. Twin-rail board column ~2660px around 960px; the
+         dock is the whole point of the resolution.
+       - 3840x2160: dock on. 2160 of height lets --cell-cap carry the board to its 5.5rem
+         (1320px) ceiling above a 22rem dock, the puzzle read at arm's length on a wall. */
+  --breakpoint-ultra: 137.5rem; /* 2200px at the default root size */
+
   /* Oversized hero lockups. display-lg steepens v2's 12vw to 16vw so a phone keeps the
      v2 landing's scale (62px at 390w, where 12vw had clamped to the floor) while a 320px
      viewport still clears "crosswords"; upper bound and line height follow the v2 hero
@@ -522,6 +540,31 @@
   .board-scroll {
     min-width: 0;
   }
+}
+
+/*
+ * The ultrawide clue dock (ui/Clues.tsx ClueDock, only at the `ultra` breakpoint). The dock
+ * is bounded in height so the board keeps the top two thirds of the stage: min(34vh, 22rem)
+ * lands ~352px, leaving a ~928px board at 1440 of height and letting the board grow toward
+ * its cap on taller screens. The dashed rule against the board is set on the element.
+ *
+ * Each axis is a newspaper block: a fixed-height multi-column list where clues fill a column
+ * top to bottom, then flow into the next column to the right. column-fill: auto is what makes
+ * the fill sequential (the default balances across the columns that fit and grows downward),
+ * so extra columns overflow in the inline direction and the block scrolls sideways, the active
+ * clue kept in view by the same nearest-scroll the rail uses vertically. Clues wrap to two or
+ * three lines and never clip; break-inside: avoid (on each row) keeps one whole. A dashed
+ * column rule carries the surface's one structural device between the columns.
+ */
+.clue-dock {
+  height: min(34vh, 22rem);
+}
+
+.clue-dock-list {
+  column-width: 17rem;
+  column-gap: 2rem;
+  column-fill: auto;
+  column-rule: 1px dashed var(--color-border-dashed);
 }
 
 /* Board focus: the outer frame turns gold instead of a halo ring (v2's gameboard puts
