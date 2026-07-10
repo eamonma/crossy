@@ -7,6 +7,8 @@
 //   state; no border between the rail and the content (the framed content panel provides the
 //   separation, as in the v2 shell). The paint itself flows through the --sidebar-* bridge
 //   variables in styles.css.
+// - Sizes re-pinned to this repo's Radix spacing scale, where the stock classes land wrong
+//   (spacing-8 is 48px here, not 32px): rows and the icon-rail squares are h-6/size-6 (32px).
 // The structure, behaviors (icon-rail collapse, cmd+B, the mobile Sheet), and data-slot
 // contract are the stock component's.
 import * as React from "react";
@@ -406,7 +408,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-3 px-2 text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-subtle ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        "flex h-6 shrink-0 items-center rounded-3 px-2 text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-subtle ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-6 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
         className,
       )}
       {...props}
@@ -473,7 +475,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 // The active row is gold (bg gold-3, text gold-12), the same current-state recipe the home
 // nav used pre-shell; hover stays the quiet sand tint via --sidebar-accent.
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-3 p-2 text-left text-2 font-medium ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-gold-3 data-active:font-medium data-active:text-gold-12 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-3 p-2 text-left text-2 font-medium ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-6! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-gold-3 data-active:font-medium data-active:text-gold-12 [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
@@ -482,9 +484,9 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-2",
-        sm: "h-7 text-1",
-        lg: "h-12 text-2 group-data-[collapsible=icon]:p-0!",
+        default: "h-6 text-2",
+        sm: "h-5 text-1",
+        lg: "h-8 text-2 group-data-[collapsible=icon]:p-0!",
       },
     },
     defaultVariants: {
@@ -603,7 +605,7 @@ function SidebarMenuSkeleton({
     <div
       data-slot="sidebar-menu-skeleton"
       data-sidebar="menu-skeleton"
-      className={cn("flex h-8 items-center gap-2 rounded-3 px-2", className)}
+      className={cn("flex h-6 items-center gap-2 rounded-3 px-2", className)}
       {...props}
     >
       {showIcon && (

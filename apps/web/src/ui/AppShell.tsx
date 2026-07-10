@@ -191,8 +191,8 @@ function CrossySidebar({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-3 p-3 group-data-[collapsible=icon]:px-1.5">
-        <div className="flex items-center justify-between pl-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:pl-0">
+      <SidebarHeader className="gap-3 p-3 group-data-[collapsible=icon]:px-1">
+        <div className="flex items-center justify-between pl-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-2 group-data-[collapsible=icon]:pl-0">
           <button
             type="button"
             onClick={() => go(homeHref(params))}
@@ -236,14 +236,15 @@ function CrossySidebar({
         </SidebarMenu>
       </SidebarHeader>
 
-      <div className="px-3 group-data-[collapsible=icon]:px-1.5">
+      <div className="px-3 group-data-[collapsible=icon]:px-1">
         <Divider />
       </div>
 
-      {/* Recents make no sense at rail width, so the whole group folds away with the rail;
+      {/* Recents make no sense at rail width, so the group folds away with the rail (the
+          content block itself keeps its flex-1 so the user card stays pinned to the foot);
           the icons above stay as the persistent affordances. */}
-      <SidebarContent className="group-data-[collapsible=icon]:hidden">
-        <SidebarGroup className="px-3 py-2">
+      <SidebarContent>
+        <SidebarGroup className="px-3 py-2 group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>Recent</SidebarGroupLabel>
           <SidebarGroupContent>
             <RecentGames
@@ -257,7 +258,7 @@ function CrossySidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 group-data-[collapsible=icon]:px-1.5">
+      <SidebarFooter className="p-3 group-data-[collapsible=icon]:px-1">
         <UserCard session={session} onSignOut={onSignOut} />
       </SidebarFooter>
     </Sidebar>

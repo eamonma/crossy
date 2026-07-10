@@ -48,7 +48,6 @@ import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useElapsedSeconds, formatDuration } from "./ui/gameTime";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
@@ -735,24 +734,19 @@ function LiveGame({
   const completed = store.status === "completed" && !dismissedCompletion;
   const goHome = (): void => navigate(homeHref(params));
 
-  // In the shell, the toolbar's left slot is the sidebar trigger on desktop (the rail is the
-  // way back and the way to the recents, so a second back chevron would double the chrome);
-  // phones keep the back chevron because the game is full-bleed there and has no rail.
+  // In the shell, the rail carries its own toggle and the recents, so the desktop toolbar
+  // drops the back chevron entirely rather than doubling that chrome; phones keep the
+  // chevron because the game is full-bleed there and has no rail.
   const leading = inShell ? (
-    <>
-      <span className="hidden md:inline-flex">
-        <SidebarTrigger className="text-text-subtle hover:text-text" />
-      </span>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={goHome}
-        aria-label="Back to home"
-        className="md:hidden"
-      >
-        <ChevronLeftIcon />
-      </Button>
-    </>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={goHome}
+      aria-label="Back to home"
+      className="md:hidden"
+    >
+      <ChevronLeftIcon />
+    </Button>
   ) : undefined;
 
   // The solve screen is one framed panel, v2's game screen: on desktop it floats on the

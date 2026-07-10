@@ -387,7 +387,8 @@ function PuzzlesTable({
                 key={p.puzzleId}
                 className="border-b border-border last:border-0"
               >
-                <td className="max-w-0 px-5 py-3">
+                {/* w-2/5 + max-w-0 gives the title real room and still truncates overflow. */}
+                <td className="w-2/5 max-w-0 px-5 py-3">
                   <div className="truncate font-medium text-text">
                     {puzzleTitle(p)}
                   </div>
