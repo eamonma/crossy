@@ -164,6 +164,11 @@ public final class CompletionModel {
     /// re-presentable from the frozen clock.
     public var isStatsOpen = false
 
+    /// The celebration's instant, set on the gate's one firing (INV-3) whatever
+    /// the mosaic switch says: one-shot riders (the §7 completion haptic)
+    /// observe this, never the muteable mosaic clock (ID-1).
+    public private(set) var celebrationFiredAt: TimeInterval?
+
     @ObservationIgnored private var gate = CelebrationGate()
     @ObservationIgnored private var celebrationTask: Task<Void, Never>?
 
@@ -187,6 +192,7 @@ public final class CompletionModel {
         // the clock while the mosaic plays behind it. A muted mosaic (ID-1)
         // reduces the celebration to the card alone.
         isStatsOpen = true
+        celebrationFiredAt = now
         guard mosaicEnabled else { return }
         mosaicStartedAt = now
         isClarityBeat = !reduceMotion

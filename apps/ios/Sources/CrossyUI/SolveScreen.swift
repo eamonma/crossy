@@ -25,6 +25,7 @@ public struct SolveScreen: View {
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
     @State private var terminalPourBack = TerminalPourBackGate()
+    @State private var hapticFold = SolveHapticFold()
     @State private var frames: [ChromePiece: CGRect] = [:]
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
@@ -239,6 +240,17 @@ public struct SolveScreen: View {
         .environment(\.chromeClarified, completion.isClarityBeat)
         .onChange(of: model.selection) { _, selection in
             relayCursor(selection, spectating: spectating)
+            observeHaptics()
+        }
+        // The board's haptic moments (DESIGN.md §7): selection above and the
+        // filled composite here feed one fold with whole current state, so the
+        // observers can fire in either order or collapse into one
+        // (SolveHapticFold derives whose hand moved from the delta).
+        .onChange(of: filledCells) { _, _ in observeHaptics() }
+        // The §7 completion pattern rides the INV-3 gate's one firing, never
+        // the muteable mosaic clock (ID-1).
+        .onChange(of: completion.celebrationFiredAt) { _, fired in
+            if fired != nil { SolveHaptics.shared.play(.completion) }
         }
         // The celebration derives from store TRANSITIONS, observed here and
         // seeded once on appear, never from render (INV-3; the gate is the
@@ -246,7 +258,13 @@ public struct SolveScreen: View {
         // fact can move alone; the gate is idempotent on repeats.
         .onChange(of: store.status) { _, _ in observeRoomState() }
         .onChange(of: store.sync) { _, _ in observeRoomState() }
-        .onAppear { observeRoomState() }
+        .onAppear {
+            observeRoomState()
+            // Seed the haptic fold (the first observation never buzzes) and
+            // keep the generators warm (the KeyHaptics discipline).
+            observeHaptics()
+            SolveHaptics.shared.prepare()
+        }
         .onDisappear {
             relayTrailing?.cancel()
             relay.trailingCancelled()
@@ -313,6 +331,19 @@ public struct SolveScreen: View {
             status: roomStatus,
             live: store.sync == .live,
             reduceMotion: reduceMotion)
+    }
+
+    /// The board's haptic moments (DESIGN.md §7), derived by the pure fold and
+    /// rendered by the player. A frozen room browses silently (the finished
+    /// board is an object, not a solve); the completion pattern rides the
+    /// INV-3 gate, not this fold.
+    private func observeHaptics() {
+        guard store.status == .ongoing else { return }
+        guard
+            let haptic = hapticFold.observe(
+                filled: filledCells, selection: model.selection, puzzle: puzzle)
+        else { return }
+        SolveHaptics.shared.play(haptic)
     }
 
     /// The store's participants as chrome-shaped data (the GridPresence pattern:

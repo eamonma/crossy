@@ -82,6 +82,8 @@ final class CompletionModelTests: XCTestCase {
         XCTAssertTrue(model.isClarityBeat)
         // The stats arrive WITH the celebration (owner ruling 2026-07-10).
         XCTAssertTrue(model.isStatsOpen)
+        // One-shot riders (the §7 completion haptic) key on the gate's instant.
+        XCTAssertEqual(model.celebrationFiredAt, 200)
     }
 
     func test_secondCompletedObservationNeverRestartsTheMosaic_INV3() {
@@ -101,6 +103,8 @@ final class CompletionModelTests: XCTestCase {
         XCTAssertNil(model.mosaicStartedAt)
         XCTAssertFalse(model.isClarityBeat)
         XCTAssertTrue(model.isStatsOpen)
+        // ID-1 mutes the mosaic, not the fact: the celebration still fired.
+        XCTAssertEqual(model.celebrationFiredAt, 200)
     }
 
     // Reduce Motion keeps the mosaic (a pure crossfade, the DESIGN.md §7
@@ -120,5 +124,6 @@ final class CompletionModelTests: XCTestCase {
         XCTAssertNil(model.mosaicStartedAt)
         XCTAssertFalse(model.isClarityBeat)
         XCTAssertFalse(model.isStatsOpen)
+        XCTAssertNil(model.celebrationFiredAt)
     }
 }
