@@ -123,6 +123,69 @@ public struct GridCamera: Equatable, Sendable {
         return row * cols + col
     }
 
+    // MARK: Follow
+
+    /// Breathing room around a followed cell, in viewport points: enough that a
+    /// landed cursor never kisses the viewport edge, small enough that the pan
+    /// stays minimal.
+    public static let followMarginPoints: CGFloat = 24
+
+    /// The minimal pan that brings `cell` fully on screen with `margin` breathing
+    /// room (I2c camera follow: a jump that lands the cursor off-screen pans the
+    /// least distance that shows it; a visible cursor moves nothing). Returns nil
+    /// when no pan is needed or possible (the clamp already centers a fitting
+    /// board), so callers animate only real movement. Scale never changes: follow
+    /// is a pan, not a zoom.
+    public func following(
+        cell: Int, viewport: CGSize, rows: Int, cols: Int,
+        margin: CGFloat = GridCamera.followMarginPoints
+    ) -> GridCamera? {
+        guard cell >= 0, cell < rows * cols else { return nil }
+        let rect = GridModule.cellRect(cell, cols: cols)
+        let target = GridCamera(
+            scale: scale,
+            offset: CGPoint(
+                x: Self.followedAxis(
+                    offset.x, cellMin: rect.minX * scale, cellMax: rect.maxX * scale,
+                    viewport: viewport.width, margin: margin),
+                y: Self.followedAxis(
+                    offset.y, cellMin: rect.minY * scale, cellMax: rect.maxY * scale,
+                    viewport: viewport.height, margin: margin)))
+            .clamped(viewport: viewport, rows: rows, cols: cols)
+        return target == self ? nil : target
+    }
+
+    /// Straight-line interpolation toward another camera, fraction clamped: the
+    /// follow animator's step function (Canvas transforms cannot ride SwiftUI
+    /// animation, so the glide is computed).
+    public func interpolated(to other: GridCamera, fraction: CGFloat) -> GridCamera {
+        let t = min(max(fraction, 0), 1)
+        return GridCamera(
+            scale: scale + (other.scale - scale) * t,
+            offset: CGPoint(
+                x: offset.x + (other.offset.x - offset.x) * t,
+                y: offset.y + (other.offset.y - offset.y) * t))
+    }
+
+    /// One axis of the minimal pan: shift only as far as the near edge demands.
+    /// `cellMin`/`cellMax` are the cell's bounds in scaled content points; the
+    /// margin collapses when the viewport is too small to honor it.
+    private static func followedAxis(
+        _ offset: CGFloat, cellMin: CGFloat, cellMax: CGFloat,
+        viewport: CGFloat, margin: CGFloat
+    ) -> CGFloat {
+        let inset = min(margin, max(0, (viewport - (cellMax - cellMin)) / 2))
+        let visibleMin = cellMin + offset
+        let visibleMax = cellMax + offset
+        if visibleMin < inset {
+            return inset - cellMin
+        }
+        if visibleMax > viewport - inset {
+            return viewport - inset - cellMax
+        }
+        return offset
+    }
+
     // MARK: Culling
 
     /// The rows and columns intersecting the viewport: the draw pass touches only

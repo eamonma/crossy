@@ -89,6 +89,18 @@ public final class SelectionModel {
         selection = next
     }
 
+    /// A clue-browser jump (the web's clueClick, via ClueBrowserList.jumpTarget):
+    /// land on the given cell with the given axis, unconditionally. Blocks and
+    /// out-of-range cells are refused (a malformed clue must not strand the
+    /// cursor); an open rebus entry is discarded like every other move-away.
+    public func jump(to target: GridSelection) {
+        guard target.cell >= 0, target.cell < puzzle.cellCount,
+            !puzzle.blocks.contains(target.cell)
+        else { return }
+        rebusBuffer = nil
+        selection = target
+    }
+
     /// A grid swipe: along the solving direction is next/previous word, across it
     /// toggles (root DESIGN.md §5). Discards an open rebus entry.
     public func swipe(_ intent: SwipeIntent) {
