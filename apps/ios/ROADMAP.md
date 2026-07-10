@@ -133,14 +133,21 @@ device; CI builds the app target on every iOS-touching push.**
       live / resyncing / reconnecting as a published enum the UI consumes.
 - [x] d. REST client: bearer auth, the section 12 error vocabulary keyed on stable
       codes, cursor pagination for the two list endpoints.
-- [ ] e. Integration harness: a script boots the local stack (api, session,
+- [x] e. Integration harness: a script boots the local stack (api, session,
       Postgres), an XCTest integration tag drives a real socket round trip with an
       injected token. Teardown plus orphan sweep is part of the harness, not a
-      convention.
+      convention. Landed 2026-07-10: `corepack pnpm test:ios-integration` runs
+      apps/ios/scripts/integration.ts (reuses e2e/src/harness.ts; ports 8890-8892,
+      one band above dev-stack), injecting CROSSY_IT_* facts into `swift test`;
+      without them the suite skips, so CI stays green with no Docker.
 
 **Exit: client-store vectors green in XCTest in CI; against the local stack, a
 scripted client places a letter, is killed mid-word, reconnects, and converges
-(the M1 exit shape, replayed in Swift).**
+(the M1 exit shape, replayed in Swift). Met 2026-07-10: the kill is
+invalidateAndCancel (no close handshake), convergence via welcome snapshot
+reconciliation, a second identity observes the converged board; harness green
+twice back-to-back plus an orchestrator re-run, orphan sweep proven against a
+simulated crash.**
 
 ## Phase I2 — The room (the solve screen, end to end)
 
