@@ -4,17 +4,21 @@ name: Deploy
 # ruleset requires a PR plus the two green checks ("lint + typecheck + unit" and "M1
 # Playwright smoke"), so anything on main already passed CI. This workflow therefore does
 # NOT re-run lint / typecheck / test / smoke: re-running them would be pure latency with no
-# added safety. It builds the three images, pushes them to GHCR, and rolls each Railway
-# service onto the new image.
+# added safety. It builds and pushes the three images, applies the committed expand-only
+# migrations (guarded) ahead of the roll, and rolls each Railway service onto the new image.
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
-      run_migrations:
-        description: "Apply packages/db migrations to hosted Postgres before rolling services"
+      migrations_only:
+        description: "Escape hatch: apply migrations from the chosen ref ONLY, bypassing the expand-only guard. Builds and rolls NOTHING. For reviewed contract/destructive migrations, owner-invoked."
         type: boolean
         default: false
+      confirm:
+        description: "Type 'migrations-only' to confirm. Required when migrations_only is checked (fat-finger guard)."
+        type: string
+        default: ""
 
 concurrency:
   # One rollout at a time; never cancel a half-finished one (a cancelled roll can leave
@@ -29,6 +33,10 @@ permissions:
 jobs:
   build-and-push:
     name: Build and push images (GHCR)
+    # migrations_only is a schema-only escape hatch that builds and rolls NOTHING (rolling
+    # non-main code from a branch would violate main-is-golden). Skip the build under it; on a
+    # push and on a normal dispatch, inputs.migrations_only is empty/false, so this runs.
+    if: ${{ !inputs.migrations_only }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -62,21 +70,55 @@ jobs:
           cache-to: type=gha,mode=max
 
   migrate:
-    name: Apply migrations (manual, gated)
+    name: Apply migrations (guard, then apply)
     runs-on: ubuntu-latest
     needs: build-and-push
-    # Never auto-migrates on a push to main: cross-service schema changes are expand/contract
-    # and must be applied deliberately (DESIGN.md section 9). Runs only when the owner dispatches this
-    # workflow with run_migrations=true and MIGRATION_DATABASE_URL (the DIRECT, privileged DSN)
-    # is configured as a secret.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations }}
+    # Runs on EVERY deploy (push to main and workflow_dispatch), before roll. Because migrate
+    # precedes roll in the same pipeline, expand-before-code is enforced by job ordering: by the
+    # time the new image serves traffic its columns exist, and old code meanwhile ignores the
+    # additive columns (expand/contract, DESIGN.md section 9). This replaces the old
+    # never-auto-migrates gate, under which a push skipped migrate and rolled code whose columns
+    # did not yet exist (a production 500 until the owner applied the migration by hand).
+    #
+    # Runs after a successful build (push / normal dispatch) or when build was skipped
+    # (migrations_only). A failed build stops migrate too, so schema and code advance together.
+    if: ${{ always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') }}
     steps:
+      # workflow_dispatch checks out the SELECTED ref, so migrations_only can apply an expand
+      # from a branch BEFORE its code merges. The held-PR / apply-from-a-laptop dance is retired.
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: pnpm
+      # Plain-node guard, no install: a destructive/lock-hazardous statement fails the job in
+      # seconds, before anything touches the database. Skipped ONLY under migrations_only, where
+      # the owner is deliberately applying a reviewed contract/destructive change.
+      - name: Expand-only guard
+        if: ${{ !inputs.migrations_only }}
+        run: node deploy/migration-guard.mjs
+      # migrations_only bypasses the guard, so require a typed confirmation: a stray checkbox
+      # must not be enough to apply an unguarded migration.
+      - name: Confirm migrations_only intent
+        if: ${{ inputs.migrations_only }}
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "${CONFIRM}" != "migrations-only" ]; then
+            echo "::error::migrations_only requires confirm=migrations-only (fat-finger guard); got '${CONFIRM}'." >&2
+            exit 1
+          fi
+      # Fail LOUDLY if the DIRECT, privileged DSN is not configured. Never skip silently: a
+      # skipped migration with pending schema is exactly the outage this pipeline closes.
+      - name: Require MIGRATION_DATABASE_URL
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: |
+          if [ -z "${MIGRATION_DATABASE_URL:-}" ]; then
+            echo "::error::MIGRATION_DATABASE_URL is not configured. Add it as a GitHub Actions secret (repo Settings > Secrets and variables > Actions); see deploy/README.md. Refusing to skip: a skipped migration with pending schema is an outage." >&2
+            exit 1
+          fi
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec tsx deploy/migrate.ts
         env:
@@ -86,9 +128,11 @@ jobs:
     name: Roll Railway services
     runs-on: ubuntu-latest
     needs: [build-and-push, migrate]
-    # Run after the build always, and after migrate whether it ran or was skipped (a skipped
-    # gated job must not block the normal push-to-main rollout).
-    if: ${{ always() && needs.build-and-push.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
+    # Roll only when this is a full deploy: build succeeded AND migrate succeeded, and never
+    # under migrations_only (it builds nothing and may run from a branch; rolling that would
+    # violate main-is-golden). If migrate fails (guard block, missing secret, or apply error),
+    # roll is skipped, so new code never serves traffic against schema that was not applied.
+    if: ${{ always() && needs.build-and-push.result == 'success' && needs.migrate.result == 'success' && !inputs.migrations_only }}
     steps:
       - name: Install Railway CLI
         run: npm install -g @railway/cli@4
