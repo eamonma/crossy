@@ -28,8 +28,9 @@ export interface FlashEntry {
 
 interface Props {
   puzzle: Puzzle;
+  /** Null on read-only surfaces (the party view): no current cell, no active word. */
+  selection: Selection | null;
   fills: ReadonlyMap<number, string>;
-  selection: Selection;
   presence: ReadonlyMap<number, readonly PresenceEntry[]>;
   flashes: ReadonlyMap<number, FlashEntry>;
   onCellClick: (cell: number) => void;
@@ -41,12 +42,12 @@ interface Props {
 function cellRole(
   cell: number,
   puzzle: Puzzle,
-  selection: Selection,
+  selection: Selection | null,
   activeWord: ReadonlySet<number>,
   teammateCells: ReadonlySet<number>,
 ): string {
   if (puzzle.blocks.has(cell)) return "block";
-  if (cell === selection.cell) return "current";
+  if (cell === selection?.cell) return "current";
   if (puzzle.wrong.has(cell)) return "wrong";
   if (activeWord.has(cell)) return "word";
   if (teammateCells.has(cell)) return "teammate";
@@ -60,8 +61,8 @@ function cursorPath(direction: Direction): string {
 }
 
 /** The active word: the wordBounds run through the cursor on the current axis. */
-function activeWordCells(grid: Grid, selection: Selection): Set<number> {
-  if (grid.blocks.has(selection.cell)) return new Set();
+function activeWordCells(grid: Grid, selection: Selection | null): Set<number> {
+  if (selection === null || grid.blocks.has(selection.cell)) return new Set();
   const { start, end } = wordBounds(grid, selection.direction, selection.cell);
   const stride = selection.direction === "across" ? 1 : grid.cols;
   const cells = new Set<number>();

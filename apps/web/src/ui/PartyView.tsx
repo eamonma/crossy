@@ -23,7 +23,6 @@ import {
 import { renderSVG } from "uqr";
 import type { GameStore } from "../store/gameStore";
 import type { Clue, Puzzle } from "../domain/types";
-import type { Selection } from "../input/actions";
 import { CrosswordGrid } from "./CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./CrosswordGrid";
 import { buildRoster, GROUP_CAP, GROUP_PAST } from "./solvingNow";
@@ -205,15 +204,6 @@ export function PartyView({
   const title = name ?? `${puzzle.cols} × ${puzzle.rows}`;
   const live = store.sync === "live" || store.sync === "connecting";
 
-  // An inert selection so the grid paints no "current cell" or active-word highlight: a block
-  // cell wins the background precedence, so nothing lights up. A blockless puzzle (rare) falls
-  // back to cell 0, harmlessly tinting one word.
-  const inertSelection = useMemo<Selection>(() => {
-    for (const block of puzzle.blocks)
-      return { cell: block, direction: "across" };
-    return { cell: 0, direction: "across" };
-  }, [puzzle]);
-
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background text-text">
       <div
@@ -221,6 +211,9 @@ export function PartyView({
         style={{
           ["--board-cols" as string]: puzzle.cols,
           ["--board-aspect" as string]: `${puzzle.cols} / ${puzzle.rows}`,
+          // Double the game view's per-cell cap: this board is read across a room, so a
+          // small grid grows into the stage instead of holding the at-your-desk size.
+          ["--cell-cap" as string]: "128px",
         }}
       >
         <div
@@ -231,7 +224,7 @@ export function PartyView({
             <CrosswordGrid
               puzzle={puzzle}
               fills={fills}
-              selection={inertSelection}
+              selection={null}
               presence={presence}
               flashes={flashes}
               onCellClick={NOOP}
