@@ -38,8 +38,14 @@ walking-skeleton slice.
   format scoped to `/g/*` only, appID from `APPLE_APP_ID` (`<TeamID>.<bundleID>`); when that
   is unset the route is 404, fail closed, since the Apple app record is owner-held and does
   not exist yet. `webcredentials` (passkeys) is a post-v1 addition to the same file.
+- `GET /g/{code}`: public, no auth. The shareable invite link: an HTML shell with OpenGraph
+  tags for link unfurlers (PROTOCOL.md section 12), which never execute JavaScript, so the
+  SPA cannot serve its own preview. The copy is generic: no puzzle content is read at all
+  (INV-6; the endpoint is public and third-party-cached, DESIGN.md section 7). The code is
+  resolved with the join-by-code normalization (`games/lookup.ts`, INV-1); an unknown or
+  malformed code is `GAME_NOT_FOUND` on the REST error envelope.
 
-Every route except the well-known file is bearer-authenticated through the `AuthPort`; the
+Every route except the well-known file and `GET /g/{code}` is bearer-authenticated through the `AuthPort`; the
 first authenticated request mirrors the identity into `users` (JIT upsert, the API being the
 single writer on `users`).
 
