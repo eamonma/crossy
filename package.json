@@ -15,6 +15,8 @@
     "smoke": "pnpm --filter @crossy/web build && pnpm --filter @crossy/e2e smoke",
     "dev:stack": "tsx e2e/scripts/dev-stack.ts",
     "dev:stack:reap": "tsx e2e/scripts/dev-stack.ts --reap",
+    "test:ios-integration": "tsx apps/ios/scripts/integration.ts",
+    "test:ios-integration:reap": "tsx apps/ios/scripts/integration.ts --reap",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
