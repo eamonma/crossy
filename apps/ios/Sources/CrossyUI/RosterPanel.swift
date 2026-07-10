@@ -21,8 +21,6 @@ struct RosterPanel: View {
     let chrome: RoomChromeModel
     let onJoinIn: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
         let progress = chrome.rosterProgress
         let frame = morph.frame(at: progress)
