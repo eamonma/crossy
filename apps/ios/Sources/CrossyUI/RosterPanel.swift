@@ -1,15 +1,17 @@
-// The roster panel (EXPERIENCE.md roster sheet, I2c slice): the room bar's puck
-// cluster inflates into a small floating panel, the same single-surface morph
-// grammar as the melt (SP-i1: one persistent surface interpolating frame and
-// radius; the glassEffectID two-view swap snaps and is not built on). Tap-driven,
-// so the discipline is trivial: the one animation runs on the tap, none mid-flight.
+// The roster panel (EXPERIENCE.md roster sheet, I2c slice): the room bar's
+// players pill inflates into a small floating panel, whole (owner ruling
+// 2026-07-10: the pill is the morph's rest surface, so no glass ever grows out
+// of standing glass), the same single-surface morph grammar as the melt (SP-i1:
+// one persistent surface interpolating frame and radius; the glassEffectID
+// two-view swap snaps and is not built on). Tap-driven, so the discipline is
+// trivial: the one animation runs on the tap, none mid-flight.
 //
 // Content rides the morph (owner device finding 2026-07-10: the first build
 // inflated hollow glass and left the bar's cluster rendering beneath the panel's
-// rows, the same people twice). The pucks are the continuity carriers: the bar's
-// cluster hands off the moment the panel exists, and each clustered puck travels
-// from its reported bar frame into its row slot as one object, growing from
-// cluster to row diameter on the way. Names, state words, and any overflow rows
+// rows, the same people twice). The pucks are the continuity carriers: the
+// players pill hands off the moment the panel exists, and each clustered puck
+// travels from its reported bar frame into its row slot as one object, growing
+// from cluster to row diameter on the way. Names, state words, and any overflow rows
 // fade in late (GlassMorphContent), the panel's new content rather than its
 // riders.
 //

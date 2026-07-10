@@ -1,10 +1,19 @@
-// The room bar (apps/ios/DESIGN.md §4): frosted, standing; name, the shared
-// ambient clock, the roster pucks, the weather dot. The clock is ID-2's: small,
-// tabular, quiet, 0:00 before the first fill, frozen at completion, ticking
-// natively from `firstFillAt` with no store updates (root DESIGN.md D15). The bar
-// is a capsule because the island is (DESIGN.md §8: backgrounding condenses the
-// room bar into the island; I5 builds that, this shape must not preclude it).
-// Chrome carries no color of its own (§3); the pucks are the people.
+// The room bar (apps/ios/DESIGN.md §4): a cluster of glass pills, not one bar
+// (owner ruling 2026-07-10). A leading pill carries the name and the weather, a
+// time pill the ambient clock, a players pill the pucks; small standing chrome in
+// the compact-toolbar register. Each morph-bearing pill is its own morph rest:
+// the players pill inflates into the roster sheet and the time pill into the
+// stats card, so a panel is always the pill reshaped, never new glass conjured
+// over old (the glass-on-glass moment the cluster replaces). On iOS 26+ the
+// pills share one GlassEffectContainer at a spacing below the metaball fuse
+// (SP-i1, DESIGN.md §10); below 26 the same layout renders as separate
+// blur-material capsules through ChromeGlassSurface, the §4 one-fallback rule.
+//
+// The clock is ID-2's: small, tabular, quiet, 0:00 before the first fill, frozen
+// at completion, ticking natively from `firstFillAt` with no store updates (root
+// DESIGN.md D15). Pills keep the capsule register the island shares (DESIGN.md
+// §8; I5 condenses the room into it, this shape must not preclude that). Chrome
+// carries no color of its own (§3); the pucks are the people.
 
 import CrossyDesign
 import SwiftUI
@@ -19,45 +28,72 @@ struct RoomBar: View {
     let firstFillAt: String?
     let completedAt: String?
     let members: [RosterMember]
-    /// True while the roster panel exists: the cluster hands its pucks to the
-    /// panel's riders and hides, so nobody renders twice (DESIGN.md §4). Layout
-    /// and frame reporting stay; only the visual yields.
-    let clusterHandedOff: Bool
-    /// True while the stats card exists: the clock is the card's rider (ID-2),
-    /// so the bar's own rendering yields, same rule as the cluster.
-    let clockHandedOff: Bool
+    /// True while the roster panel exists: the players pill is the panel at
+    /// rest (DESIGN.md §4), so the whole pill, glass and pucks, hands off and
+    /// yields. Layout and frame reporting stay; the visual goes with the morph.
+    let playersHandedOff: Bool
+    /// True while the stats card exists: the time pill is the card at rest
+    /// (ID-2), so the whole pill yields, same rule as the players pill.
+    let timeHandedOff: Bool
     /// Non-nil once the room completes: tapping the frozen clock summons the
-    /// stats card back (the card is the clock, inflated).
+    /// stats card back (the card is the pill, inflated).
     let onTapClock: (() -> Void)?
     let onTapPucks: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        // One container so the cluster reads as one system of glass; the blend
+        // spacing stays below the metaball threshold so the pills never fuse at
+        // rest (SP-i1's caution, DESIGN.md §10). macOS test builds and iOS
+        // below 26 take the same layout with no container (KeyDeck's gating).
+        #if os(iOS)
+            if #available(iOS 26.0, *) {
+                GlassEffectContainer(spacing: ChromeLayout.pillClusterBlend) {
+                    pills
+                }
+            } else {
+                pills
+            }
+        #else
+            pills
+        #endif
+    }
+
+    // MARK: The cluster
+
+    private var pills: some View {
+        HStack(spacing: ChromeLayout.pillGap) {
+            // The 1 Hz timeline drives both the clock and the countdown; at
+            // rest it is the only thing in the room that ticks.
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                HStack(spacing: ChromeLayout.pillGap) {
+                    leadingPill(now: timeline.date)
+                    Spacer(minLength: 0)
+                    timePill(now: timeline.date)
+                }
+            }
+            playersPill
+        }
+    }
+
+    // MARK: The leading pill (name and weather)
+
+    /// The room's name with its weather: the dot, and during a reconnect the
+    /// quiet countdown next to it (DESIGN.md §8: never a modal, never a
+    /// spinner over the grid).
+    private func leadingPill(now: Date) -> some View {
+        HStack(spacing: 8) {
             Text(verbatim: roomName)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
                 .lineLimit(1)
                 .truncationMode(.tail)
-            Spacer(minLength: 6)
-            // The 1 Hz timeline drives both the clock and the countdown; at rest
-            // it is the only thing in the room that ticks.
-            TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                HStack(spacing: 10) {
-                    weatherCluster(now: timeline.date)
-                    clock(now: timeline.date)
-                }
-            }
-            puckCluster
+            weatherCluster(now: now)
         }
-        .padding(.horizontal, 16)
-        .frame(height: ChromeLayout.barHeight)
-        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
+        .padding(.horizontal, 14)
+        .frame(height: ChromeLayout.pillHeight)
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
     }
 
-    // MARK: Weather
-
-    /// The dot, and during a reconnect the quiet countdown next to it
-    /// (DESIGN.md §8: never a modal, never a spinner over the grid).
     @ViewBuilder
     private func weatherCluster(now: Date) -> some View {
         HStack(spacing: 5) {
@@ -89,14 +125,15 @@ struct RoomBar: View {
         }
     }
 
-    // MARK: The clock
+    // MARK: The time pill
 
-    /// The ambient clock (ID-2), and at completion the stats morph's rest: its
-    /// frame is reported for the card's geometry, its rendering yields while the
-    /// card exists (the time rides the card), and the frozen value takes a tap
-    /// to summon the card back.
+    /// The ambient clock (ID-2) as its own pill, and the stats morph's rest:
+    /// the whole pill's frame is reported for the card's geometry, its
+    /// rendering yields while the card exists (the time rides the card from
+    /// the pill's center), and the frozen value takes a tap to summon the card
+    /// back.
     @ViewBuilder
-    private func clock(now: Date) -> some View {
+    private func timePill(now: Date) -> some View {
         let display = Text(
             verbatim: AmbientClock.display(
                 firstFillAt: firstFillAt, completedAt: completedAt, now: now)
@@ -114,13 +151,16 @@ struct RoomBar: View {
                 display.accessibilityLabel(Text(verbatim: "Shared time"))
             }
         }
-        .reportChromeFrame(.clock)
-        .opacity(clockHandedOff ? 0 : 1)
+        .padding(.horizontal, 12)
+        .frame(height: ChromeLayout.pillHeight)
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+        .opacity(timeHandedOff ? 0 : 1)
+        .reportChromeFrame(.timePill)
     }
 
-    // MARK: Pucks
+    // MARK: The players pill
 
-    private var puckCluster: some View {
+    private var playersPill: some View {
         let cluster = RosterList.cluster(members)
         return Button(action: onTapPucks) {
             HStack(spacing: 4) {
@@ -137,10 +177,14 @@ struct RoomBar: View {
                         .foregroundStyle(Color(rgb: ground.tokens.number))
                 }
             }
+            .padding(.horizontal, 10)
+            .frame(height: ChromeLayout.pillHeight)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .opacity(clusterHandedOff ? 0 : 1)
-        .reportChromeFrame(.puckCluster)
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+        .opacity(playersHandedOff ? 0 : 1)
+        .reportChromeFrame(.playersPill)
         .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
     }
 }

@@ -89,8 +89,8 @@ public struct SolveScreen: View {
                     // the abandonment rather than ticking over a dead board.
                     completedAt: store.completedAt ?? store.abandonedAt,
                     members: members,
-                    clusterHandedOff: chrome.isRosterOpen,
-                    clockHandedOff: chrome.isStatsOpen,
+                    playersHandedOff: chrome.isRosterOpen,
+                    timeHandedOff: chrome.isStatsOpen,
                     onTapClock: status == .completed
                         ? { completion.isStatsOpen = true } : nil,
                     onTapPucks: toggleRoster
@@ -192,10 +192,10 @@ public struct SolveScreen: View {
                     onJoinIn: onJoinIn)
             }
 
-            // The stats card (EXPERIENCE.md Completed): the room bar's frozen
-            // clock, inflated (ID-2; DESIGN.md §4 morph grammar, owner ruling
-            // 2026-07-10 replacing the first build's transitioned overlay). A
-            // tap-away catcher pours it back, no scrim, one glass layer.
+            // The stats card (EXPERIENCE.md Completed): the time pill, inflated
+            // (ID-2; DESIGN.md §4 morph grammar, owner ruling 2026-07-10
+            // replacing the first build's transitioned overlay). A tap-away
+            // catcher pours it back, no scrim, one glass layer.
             if chrome.isStatsOpen {
                 Color.clear
                     .contentShape(Rectangle())
@@ -260,21 +260,23 @@ public struct SolveScreen: View {
             completedAt: store.completedAt)
     }
 
-    /// The stats morph: rest is the bar clock's reported frame (the card is the
-    /// clock, inflated; ID-2); open is a card hanging under the room bar, sized
-    /// by StatsRideLayout's fixed slots.
+    /// The stats morph: rest is the TIME PILL's reported frame (the card is the
+    /// pill, inflated; ID-2, DESIGN.md §4). The pill centers its clock, so the
+    /// rider's rest center (StatsRideLayout reads morph.rest's middle) is the
+    /// clock's own. Open is a card hanging under the room bar, sized by
+    /// StatsRideLayout's fixed slots.
     private var statsMorph: GlassMorph? {
-        guard let clock = frames[.clock], let roomBar = frames[.roomBar]
+        guard let pill = frames[.timePill], let roomBar = frames[.roomBar]
         else { return nil }
         let width = min(roomBar.width, StatsRideLayout.panelMaxWidth)
         let height = StatsRideLayout.panelHeight(hasDetail: statsContent.detail != nil)
         return GlassMorph(
-            rest: clock,
+            rest: pill,
             open: CGRect(
                 x: roomBar.midX - width / 2,
                 y: roomBar.maxY + ChromeLayout.panelTopGap,
                 width: width, height: height),
-            restCornerRadius: clock.height / 2,
+            restCornerRadius: pill.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 
@@ -355,10 +357,12 @@ public struct SolveScreen: View {
             openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 
-    /// The roster: rest is the puck cluster's own frame; open is a small panel
-    /// hanging from the room bar's trailing edge, sized to its people.
+    /// The roster: rest is the PLAYERS PILL's whole frame (DESIGN.md §4: the
+    /// players pill inflates into the roster sheet; the per-puck riders keep
+    /// their own launch points); open is a small panel hanging from the room
+    /// bar's trailing edge, sized to its people.
     private func rosterMorph(members: [RosterMember], spectating: Bool) -> GlassMorph? {
-        guard let cluster = frames[.puckCluster], let roomBar = frames[.roomBar],
+        guard let pill = frames[.playersPill], let roomBar = frames[.roomBar],
             let slot = frames[.clueBarSlot]
         else { return nil }
         let width = min(roomBar.width, 320)
@@ -368,12 +372,12 @@ public struct SolveScreen: View {
         let available = slot.minY - roomBar.maxY - ChromeLayout.panelTopGap * 2
         let height = max(ChromeLayout.barHeight, min(content, available))
         return GlassMorph(
-            rest: cluster,
+            rest: pill,
             open: CGRect(
                 x: roomBar.maxX - width,
                 y: roomBar.maxY + ChromeLayout.panelTopGap,
                 width: width, height: height),
-            restCornerRadius: cluster.height / 2,
+            restCornerRadius: pill.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 

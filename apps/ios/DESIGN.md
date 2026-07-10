@@ -95,12 +95,21 @@ The standing pieces:
 
 | piece        | register | notes                                                            |
 | ------------ | -------- | ---------------------------------------------------------------- |
-| room bar     | frosted  | name, shared clock, roster pucks, weather dot                    |
+| room bar     | frosted  | a cluster of pills: leading (name, weather dot, reconnect countdown), time (the ambient clock), players (pucks, overflow count) |
 | clue bar     | frosted  | active clue, direction chip, prev/next                           |
 | sheets       | frosted  | clue browser, roster, share card; custom overlay panels (SP-i1), each a morph target below |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
+
+**The room bar is a cluster** (owner ruling 2026-07-10). Three small standing
+pills in the compact-toolbar register, not one bar. On iOS 26+ they share one
+GlassEffectContainer with spacing held below the metaball threshold (SP-i1,
+section 10: container spacing fuses adjacent glass), so the pills stay three
+separate objects at rest; below 26 the same layout renders as separate
+blur-material capsules, the one-fallback rule below. The point is honest morphs:
+each morph-bearing pill is its own rest surface, so a panel is always the pill
+reshaped, never a capsule conjured out of standing glass.
 
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
 one piece of glass reshaped. SP-i1 pinned the implementation
@@ -121,10 +130,11 @@ new at the open end (lists, names) fades in late. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
-- Tap the roster pucks: the cluster inflates into the roster sheet.
-- At completion, the room bar's frozen clock inflates into the stats card
-  (ID-2: the timer becomes the headline, so the headline comes from the
-  timer); dismissal pours it back, and the frozen clock summons it again.
+- Tap the players pill: the players pill inflates into the roster sheet, its
+  pucks riding.
+- At completion, the time pill inflates into the stats card (ID-2: the timer
+  becomes the headline, so the headline comes from the timer); dismissal pours
+  it back, and the frozen clock summons it again.
 - The invite capsule is the share card, condensed.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.

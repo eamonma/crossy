@@ -21,6 +21,19 @@ enum ChromeLayout {
     static let inset: CGFloat = 12
     /// A capsule's radius at bar height.
     static var barCornerRadius: CGFloat { barHeight / 2 }
+    /// The room bar's pills (owner ruling 2026-07-10: a cluster of glass pills,
+    /// not one bar): the compact-toolbar register, smaller than a standing bar.
+    static let pillHeight: CGFloat = 44
+    /// A capsule's radius at pill height.
+    static var pillCornerRadius: CGFloat { pillHeight / 2 }
+    /// Air between pills in the cluster.
+    static let pillGap: CGFloat = 8
+    /// The cluster's GlassEffectContainer spacing. SP-i1's caution (DESIGN.md
+    /// §10): container spacing metaball-fuses adjacent glass, and 24 melted the
+    /// deck's keys into wavy rows. The deck's 6 is the hardware-proven discrete
+    /// value at 6 pt gaps; the pills sit farther apart than the keys did, so 6
+    /// keeps the cluster three separate objects at rest.
+    static let pillClusterBlend: CGFloat = 6
     /// Open panels (the browser, the roster).
     static let panelCornerRadius: CGFloat = 24
     /// Air between the room bar and an open panel's top edge.
@@ -94,14 +107,18 @@ struct ChromeGlassSurface: ViewModifier {
 enum ChromePiece: Hashable {
     case roomBar
     case clueBarSlot
-    case puckCluster
+    /// The players pill, whole: the roster morph's rest surface (DESIGN.md §4:
+    /// the players pill inflates into the roster sheet), so the panel is always
+    /// the pill reshaped, never new glass conjured over old.
+    case playersPill
     /// One cluster puck's frame, by userId: the roster morph's riders launch
     /// from where layout actually put each person (DESIGN.md §4: content rides
     /// the morph), never from arithmetic about the cluster's innards.
     case puck(String)
-    /// The room bar's clock: the stats morph's rest (ID-2, the timer becomes
-    /// the headline at completion) and its rider's launch point.
-    case clock
+    /// The time pill, whole: the stats morph's rest surface (ID-2, the timer
+    /// becomes the headline at completion; the pill centers its clock, so the
+    /// rider's launch point is the pill's own center).
+    case timePill
 }
 
 struct ChromeFramesKey: PreferenceKey {

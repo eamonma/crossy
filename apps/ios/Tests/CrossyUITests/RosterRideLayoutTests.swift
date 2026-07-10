@@ -11,13 +11,14 @@ import XCTest
 // row size, so the hand-off on both ends is pixel-exact by construction.
 
 final class RosterRideLayoutTests: XCTestCase {
-    /// A roster-shaped morph: rest is a puck cluster on the room bar's trailing
-    /// edge; open is a panel hanging beneath it, sized to four rows
-    /// (4 x 44 + 2 x 10, the SolveScreen sizing rule over these same constants).
+    /// A roster-shaped morph: rest is the players pill on the room bar's
+    /// trailing edge (the whole pill is the rest surface, DESIGN.md §4); open
+    /// is a panel hanging beneath it, sized to four rows (4 x 44 + 2 x 10, the
+    /// SolveScreen sizing rule over these same constants).
     private let morph = GlassMorph(
-        rest: CGRect(x: 300, y: 20, width: 70, height: 24),
+        rest: CGRect(x: 290, y: 10, width: 84, height: 44),
         open: CGRect(x: 73, y: 66, width: 320, height: 196),
-        restCornerRadius: 12,
+        restCornerRadius: 22,
         openCornerRadius: 24)
 
     func test_rider_atRest_sitsExactlyOnItsBarPuck() {

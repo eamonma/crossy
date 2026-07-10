@@ -2,9 +2,9 @@
 // The card is a morph, not a presentation (owner ruling 2026-07-10, replacing the
 // first build's transitioned overlay and its Stats button): ID-2 says the timer
 // becomes the headline only at completion, so the headline comes FROM the timer.
-// The room bar's frozen clock inflates into the card, the time itself riding the
-// surface from bar size to headline size (DESIGN.md §4: content rides the morph;
-// the clock hands off exactly as the roster's pucks do); label and detail fade in
+// The time pill inflates into the card, the time itself riding the surface from
+// pill size to headline size (DESIGN.md §4: content rides the morph; the whole
+// pill hands off exactly as the players pill does); label and detail fade in
 // late as the card's new content. Dismissal pours the time back into the bar, and
 // tapping the frozen clock summons the card again. The kicked exit is the room's
 // terminal screen: paper, the one honest sentence, and a way back (ID-5;
@@ -25,7 +25,7 @@ enum StatsRideLayout {
     static let rowGap: CGFloat = 6
     static let timeHeight: CGFloat = 48
     static let detailHeight: CGFloat = 16
-    /// The clock's size in the bar and the headline's size in the card.
+    /// The clock's size in the time pill and the headline's size in the card.
     static let restFontSize: CGFloat = 13
     static let openFontSize: CGFloat = 40
 
@@ -44,9 +44,9 @@ enum StatsRideLayout {
     }
 
     /// The rider's center at a progress, in the CURRENT frame's local space: a
-    /// straight room-space line from the bar clock's center (the morph's rest
-    /// center, since the clock IS the rest surface) to the headline slot,
-    /// re-expressed against the interpolating surface.
+    /// straight room-space line from the clock's center (the morph's rest
+    /// center, since the time pill IS the rest surface and centers its clock)
+    /// to the headline slot, re-expressed against the interpolating surface.
     static func timeCenter(morph: GlassMorph, progress: CGFloat) -> CGPoint {
         let rest = CGPoint(x: morph.rest.midX, y: morph.rest.midY)
         let openRoom = CGPoint(
@@ -100,7 +100,10 @@ struct StatsMorphPanel: View {
     }
 
     /// The card's new content: fixed-height slots (the rider lands by arithmetic),
-    /// the headline slot left clear for it.
+    /// the headline slot left clear for it. Both lines take .fixedSize() so a
+    /// mid-morph width never truncates them to an ellipsis (owner device
+    /// finding 2026-07-10, the stats pour-back): each keeps its intrinsic
+    /// width and clips under the surface's clipShape while listOpacity fades it.
     private var rows: some View {
         VStack(spacing: StatsRideLayout.rowGap) {
             // An uppercase label takes a touch of tracking (DESIGN.md §6).
@@ -108,6 +111,7 @@ struct StatsMorphPanel: View {
                 .font(.system(size: 11, weight: .semibold))
                 .tracking(1.4)
                 .foregroundStyle(Color(rgb: ground.tokens.number))
+                .fixedSize()
                 .frame(height: StatsRideLayout.labelHeight)
             Color.clear
                 .frame(height: StatsRideLayout.timeHeight)
@@ -116,6 +120,7 @@ struct StatsMorphPanel: View {
                     .font(.system(size: 13, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(Color(rgb: ground.tokens.number))
+                    .fixedSize()
                     .frame(height: StatsRideLayout.detailHeight)
             }
         }
