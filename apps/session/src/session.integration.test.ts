@@ -1370,3 +1370,225 @@ describe("abandon via membership-changed (INV-4; DESIGN.md §6, §7)", () => {
     expect(gs?.lastSeq).toBe(5); // no new terminal seq: the terminal state is final (INV-4)
   });
 });
+
+// Presence, cursors, and liveness (PROTOCOL.md §6, §9; DESIGN.md §8). The section 9 slice
+// implemented server-side: playerConnected/playerDisconnected keyed on the user's first/last
+// socket, cursor relay with a 10/s cap, and the 45 s idle reap (exercised with a small injected
+// livenessTimeoutMs, never a real sleep).
+describe("presence and liveness (PROTOCOL.md §6, §9)", () => {
+  it("broadcasts playerConnected to the other connections, not to the joiner (§6, §9)", async () => {
+    const hostId = randomUUID();
+    const joinerId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: hostId, role: "host" },
+        { userId: joinerId, role: "solver" },
+      ],
+    });
+    const host = await connectAndHello(gameId, hostId);
+    const joiner = await connectAndHello(gameId, joinerId);
+
+    // The already-connected host learns the joiner arrived, with the display-name-only grant
+    // (INV-8), the deterministic color, and the joiner's role.
+    const connected = (await host.client.waitForType("playerConnected")) as {
+      userId: string;
+      displayName: string;
+      color: string;
+      role: string;
+    };
+    expect(connected.userId).toBe(joinerId);
+    expect(connected.role).toBe("solver");
+    expect(typeof connected.displayName).toBe("string");
+    expect(connected.color).toMatch(/^#[0-9A-F]{6}$/);
+
+    // The joiner is never told about itself: its participant list came in its own welcome. A
+    // requestSync round-trip is a happens-after barrier; by the time sync lands, any (buggy)
+    // self-directed playerConnected would already have arrived.
+    joiner.client.sendJson({ type: "requestSync" });
+    await joiner.client.waitForType("sync");
+    expect(joiner.client.ofType("playerConnected")).toHaveLength(0);
+
+    host.client.close();
+    joiner.client.close();
+  });
+
+  it("broadcasts playerDisconnected when the user's last socket closes (§6, §9)", async () => {
+    const hostId = randomUUID();
+    const joinerId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: hostId, role: "host" },
+        { userId: joinerId, role: "solver" },
+      ],
+    });
+    const host = await connectAndHello(gameId, hostId);
+    const joiner = await connectAndHello(gameId, joinerId);
+    await host.client.waitForType("playerConnected");
+
+    joiner.client.close();
+    const gone = (await host.client.waitForType("playerDisconnected")) as {
+      userId: string;
+    };
+    expect(gone.userId).toBe(joinerId);
+    host.client.close();
+  });
+
+  it("a second socket for the same user broadcasts neither connect nor disconnect (§9 first/last socket)", async () => {
+    const observerId = randomUUID();
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: observerId, role: "host" },
+        { userId, role: "solver" },
+      ],
+    });
+    const observer = await connectAndHello(gameId, observerId);
+    const first = await connectAndHello(gameId, userId);
+    await observer.client.waitForType("playerConnected"); // exactly one connect so far
+
+    // A second socket for the same user announces nothing (it is not the first socket)...
+    const second = await connectAndHello(gameId, userId);
+    // ...and closing it disconnects nothing (the first socket still holds the user live).
+    second.client.close();
+    await second.client.waitForClose();
+
+    // Barrier: the user's first socket writes a cell; when the observer sees the cellSet, every
+    // prior presence broadcast (if any escaped) has already been delivered in order.
+    first.client.sendJson(placeLetter(0, "A"));
+    await observer.client.waitForType("cellSet");
+    expect(observer.client.ofType("playerConnected")).toHaveLength(1);
+    expect(observer.client.ofType("playerDisconnected")).toHaveLength(0);
+
+    observer.client.close();
+    first.client.close();
+  });
+
+  it("relays a cursor to the other connections and drops beyond 10 per second (§9)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+
+    // Fire 15 cursors in one tight window; at most 10 relay to the other socket (§9).
+    for (let i = 0; i < 15; i++) {
+      a.client.sendJson({
+        type: "moveCursor",
+        cell: i % 3,
+        direction: "across",
+      });
+    }
+    // Barrier: once b sees a's cellSet, all of a's earlier frames have been processed in order.
+    a.client.sendJson(placeLetter(0, "A"));
+    await b.client.waitForType("cellSet");
+
+    const cursors = b.client.ofType("cursor");
+    expect(cursors).toHaveLength(10);
+    expect(cursors[0]).toMatchObject({ userId: aId, direction: "across" });
+    // The sender never receives its own cursor back (broadcastExcept the origin).
+    expect(a.client.ofType("cursor")).toHaveLength(0);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("terminates an idle connection after the liveness window, broadcasting playerDisconnected (§9)", async () => {
+    // A small injected liveness window exercises the 45 s reap without a real sleep in CI.
+    const liveServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushIntervalMs: 600_000 },
+      livenessTimeoutMs: 200,
+    });
+    try {
+      const observerId = randomUUID();
+      const idleId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [
+          { userId: observerId, role: "host" },
+          { userId: idleId, role: "solver" },
+        ],
+      });
+      const observer = await connectAndHelloOn(liveServer, gameId, observerId);
+      const idle = await connectAndHelloOn(liveServer, gameId, idleId);
+      await observer.client.waitForType("playerConnected");
+
+      // Keep the observer alive with heartbeats; the idle client sends nothing and is reaped,
+      // and the reaped socket's close broadcasts the disconnect (§9).
+      const beat = setInterval(
+        () => observer.client.sendJson({ type: "heartbeat" }),
+        60,
+      );
+      try {
+        const gone = (await observer.client.waitForType(
+          "playerDisconnected",
+        )) as { userId: string };
+        expect(gone.userId).toBe(idleId);
+        await idle.client.waitForClose(); // the server terminated the idle socket
+      } finally {
+        clearInterval(beat);
+      }
+      observer.client.close();
+    } finally {
+      await liveServer.close();
+    }
+  });
+
+  it("a heartbeat resets liveness, so an actively pinging client is not reaped (§9)", async () => {
+    const liveServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushIntervalMs: 600_000 },
+      livenessTimeoutMs: 200,
+    });
+    try {
+      const observerId = randomUUID();
+      const beaterId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [
+          { userId: observerId, role: "host" },
+          { userId: beaterId, role: "solver" },
+        ],
+      });
+      const observer = await connectAndHelloOn(liveServer, gameId, observerId);
+      const beater = await connectAndHelloOn(liveServer, gameId, beaterId);
+      await observer.client.waitForType("playerConnected");
+
+      // Both clients beat well inside the 200 ms window for ~600 ms (three windows). Every beat
+      // resets the timer, so neither is reaped and no disconnect is seen.
+      const obeat = setInterval(
+        () => observer.client.sendJson({ type: "heartbeat" }),
+        60,
+      );
+      const bbeat = setInterval(
+        () => beater.client.sendJson({ type: "heartbeat" }),
+        60,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      expect(observer.client.ofType("playerDisconnected")).toHaveLength(0);
+      clearInterval(bbeat);
+
+      // The beater goes silent; the next idle window reaps it and the close path broadcasts.
+      const gone = (await observer.client.waitForType(
+        "playerDisconnected",
+      )) as { userId: string };
+      expect(gone.userId).toBe(beaterId);
+      clearInterval(obeat);
+      observer.client.close();
+      beater.client.close();
+    } finally {
+      await liveServer.close();
+    }
+  });
+});

@@ -18,8 +18,15 @@
 // Drain (DESIGN.md §6, INV-5): SIGTERM stops accepting connections, flushes every live
 // actor, then closes all sockets with 1001 (clients reconnect on 1001, PROTOCOL.md §2).
 //
-// Out of this slice (reported as deferrals): presence/heartbeat/cursors are accepted and
-// ignored (PROTOCOL.md §9); checkRequest is Phase 3.
+// Presence (PROTOCOL.md §6, §9): a socket going live broadcasts `playerConnected` to the
+// others when it is the user's first live socket; its close broadcasts `playerDisconnected`
+// when it was the user's last. `moveCursor` relays as a `cursor` notice, rate-capped at 10/s
+// per socket. Liveness: 45 s with no inbound frame of any type terminates the socket, so the
+// close path broadcasts the disconnect; any received frame (heartbeat included) resets the
+// timer. The liveness timer lives on the socket, not the actor, so it cannot leak across actor
+// passivation: a close always clears it, and a passivated actor has no sockets.
+//
+// Out of this slice (reported as deferrals): checkRequest is Phase 3.
 
 import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
@@ -37,6 +44,7 @@ import type {
   ClientMessage,
   Decoded,
   Participant,
+  PlayerConnectedMessage,
   ServerMessage,
   WelcomeMessage,
 } from "@crossy/protocol";
@@ -60,6 +68,18 @@ const MAX_INTERNAL_BODY_BYTES = 4096;
 
 /** A tombstoned user has a null display name; render it per DESIGN.md §8. */
 const FORMER_PARTICIPANT = "former participant";
+
+/**
+ * Liveness window (PROTOCOL.md §9): 45 s with no inbound frame of any type marks a connection
+ * dead. Any received frame (heartbeat every 15 s, or a command) resets the timer, so an active
+ * client never flaps. Tunable per server for tests, which set a small value rather than sleeping
+ * 45 s in CI.
+ */
+const LIVENESS_TIMEOUT_MS = 45_000;
+
+/** At most 10 `moveCursor` relays per second per socket (PROTOCOL.md §9); excess is dropped. */
+const CURSOR_MAX_PER_SECOND = 10;
+const CURSOR_WINDOW_MS = 1000;
 
 /** Snapshot frames are the only ones worth compressing (SP4). */
 function isSnapshotFrame(frame: ServerMessage): boolean {
@@ -91,6 +111,12 @@ export interface SessionServerConfig {
    * When omitted (local, dev-stack, tests), `/internal` is served on `port` as before.
    */
   readonly internalPort?: number;
+  /**
+   * Liveness window in ms (PROTOCOL.md §9); defaults to 45 s. A connection with no inbound
+   * frame for this long is terminated so the close path broadcasts `playerDisconnected`. Tests
+   * inject a small value to exercise the reap without a real 45 s sleep.
+   */
+  readonly livenessTimeoutMs?: number;
 }
 
 export interface SessionServer {
@@ -183,6 +209,7 @@ export function createSessionServer(
           authPort: config.authPort,
           pool: config.pool,
           registry,
+          livenessTimeoutMs: config.livenessTimeoutMs ?? LIVENESS_TIMEOUT_MS,
         });
       });
     },
@@ -235,6 +262,7 @@ interface ConnectionDeps {
   readonly authPort: AuthPort;
   readonly pool: Pool;
   readonly registry: ActorRegistry;
+  readonly livenessTimeoutMs: number;
 }
 
 function handleConnection(
@@ -255,7 +283,41 @@ function handleConnection(
     }
   };
 
+  // Liveness (PROTOCOL.md §9): the timer lives on the socket, so it cannot leak across actor
+  // passivation. Armed now (a socket that never sends `hello` is reaped too), reset on every
+  // inbound frame, cleared on close. On expiry the socket is terminated, and its `close` runs
+  // the disconnect broadcast, exactly as a real drop would.
+  let livenessTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearLiveness = (): void => {
+    if (livenessTimer !== null) {
+      clearTimeout(livenessTimer);
+      livenessTimer = null;
+    }
+  };
+  const resetLiveness = (): void => {
+    clearLiveness();
+    livenessTimer = setTimeout(() => ws.terminate(), deps.livenessTimeoutMs);
+    livenessTimer.unref?.();
+  };
+  resetLiveness();
+
+  // Per-socket cursor rate limit (PROTOCOL.md §9): a sliding 1 s window capped at 10 relays.
+  const cursorSentAt: number[] = [];
+  const allowCursor = (nowMs: number): boolean => {
+    while (
+      cursorSentAt.length > 0 &&
+      nowMs - cursorSentAt[0]! >= CURSOR_WINDOW_MS
+    ) {
+      cursorSentAt.shift();
+    }
+    if (cursorSentAt.length >= CURSOR_MAX_PER_SECOND) return false;
+    cursorSentAt.push(nowMs);
+    return true;
+  };
+
   ws.on("message", (data: RawData) => {
+    // Any inbound frame resets liveness (PROTOCOL.md §9), heartbeat included, before routing.
+    resetLiveness();
     void frames
       .post(async () => {
         const decoded = parseFrame(data);
@@ -271,8 +333,16 @@ function handleConnection(
   });
 
   ws.on("close", () => {
+    clearLiveness();
     if (actor !== null && connection !== null) {
-      actor.removeConnection(connection);
+      // If this was the user's last live socket, tell the rest they went away (PROTOCOL.md §9).
+      const wasLast = actor.removeConnection(connection);
+      if (wasLast) {
+        actor.broadcastExcept(connection, {
+          type: "playerDisconnected",
+          userId: connection.userId,
+        });
+      }
     }
   });
   ws.on("error", () => {
@@ -292,11 +362,17 @@ function handleConnection(
       send,
       close: (code, reason) => ws.close(code, reason),
     };
-    result.actor.addConnection(conn);
+    const firstForUser = result.actor.addConnection(conn);
     actor = result.actor;
     connection = conn;
     live = true;
+    // The connecting socket gets the full participant list in its own welcome, so it is excluded
+    // from the connect notice. Only the user's FIRST live socket announces (PROTOCOL.md §6, §9).
     send(await buildWelcome(deps.pool, gameId, result.actor, conn));
+    if (firstForUser) {
+      const notice = await buildPlayerConnected(deps.pool, gameId, conn);
+      result.actor.broadcastExcept(conn, notice);
+    }
   }
 
   async function handleLiveFrame(
@@ -326,8 +402,21 @@ function handleConnection(
         }
         return;
       case "moveCursor":
+        // Relay the cursor to the other connections, rate-capped at 10/s (PROTOCOL.md §9).
+        // Spectator cursors relay too (DESIGN.md §8: clients suppress by default, not the server).
+        if (actor !== null && connection !== null && allowCursor(Date.now())) {
+          actor.broadcastExcept(connection, {
+            type: "cursor",
+            userId: connection.userId,
+            cell: message.cell,
+            direction: message.direction,
+          });
+        }
+        return;
       case "heartbeat":
-        return; // accepted and ignored (PROTOCOL.md §9, out of this slice)
+        // Liveness already reset for every inbound frame (above); heartbeat carries no other
+        // action. It is no longer ignored: it is precisely what keeps an idle client alive (§9).
+        return;
       case "checkRequest":
         return; // deferred: check is Phase 3 (see the report)
       case "hello":
@@ -352,6 +441,29 @@ async function buildBoardPayload(
     connected: connected.has(member.userId),
   }));
   return actor.snapshotBoard(participants);
+}
+
+/**
+ * Build a `playerConnected` notice (PROTOCOL.md §6). Reuses the same `loadMembers`/`colorForUser`
+ * machinery as `buildBoardPayload`, so the display name (INV-8: the read grant is display_name
+ * only), color, and role match the participant list. The "former participant" fallback applies to
+ * a tombstoned user's null display name (DESIGN.md §8). If the member row is somehow absent, fall
+ * back to the connection's handshake-verified role so the notice is still well-formed.
+ */
+async function buildPlayerConnected(
+  pool: Pool,
+  gameId: string,
+  conn: Connection,
+): Promise<PlayerConnectedMessage> {
+  const members = await loadMembers(pool, gameId);
+  const member = members.find((m) => m.userId === conn.userId);
+  return {
+    type: "playerConnected",
+    userId: conn.userId,
+    displayName: member?.displayName ?? FORMER_PARTICIPANT,
+    color: colorForUser(conn.userId),
+    role: member?.role ?? conn.role,
+  };
 }
 
 /** Build the `welcome` frame with a full board snapshot (PROTOCOL.md §2, §4). */

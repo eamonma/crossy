@@ -9,10 +9,10 @@
 // server, service spawn, migrations, http readiness). The only orchestration it adds over
 // the harness is stable ports and a Vite dev server in place of the built static client.
 //
-// Seed-surface note (called out in the report): the second player joins through the api as
-// a spectator, and spectators cannot mutate the board (apps/session actor.ts). To make two
-// typing identities (presence color, conflict flash) this script elevates the joined member
-// to `solver` and sets display names with direct seed writes. No app code is changed.
+// Seed-surface note (called out in the report): the second player is a full account, so joining
+// through the api now seats it directly as `solver` (owner decision 2026-07-10), ready to type.
+// The `solver` seed write below is therefore an idempotent belt-and-suspenders; the display-name
+// writes give the two players distinct presence initials and colors. No app code is changed.
 
 import { randomUUID } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
@@ -475,9 +475,10 @@ async function main(): Promise<void> {
     code: game.inviteCode,
   });
 
-  // Seed writes: elevate the joined spectator to a writer and give both players a name so
-  // presence shows distinct initials and colors. Both users already exist in `users` from
-  // their api calls (the JIT upsert), so these are updates.
+  // Seed writes: userB already joined as `solver` (full account seating, owner decision
+  // 2026-07-10), so this role write is idempotent; the display-name writes give both players a
+  // name so presence shows distinct initials and colors. Both users already exist in `users`
+  // from their api calls (the JIT upsert), so these are updates.
   const dbClient = new Client({ connectionString: dbUrl });
   await dbClient.connect();
   await dbClient.query(

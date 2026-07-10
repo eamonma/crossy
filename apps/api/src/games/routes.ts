@@ -80,24 +80,31 @@ async function loadGameAccess(
   return { createdBy: game[0]!.createdBy, role: membership[0]?.role ?? null };
 }
 
-/** The outcome of a spectator join: refused by the denylist, or seated with the resulting role. */
+/** The outcome of a join: refused by the denylist, or seated with the resulting role. */
 type SeatResult =
   { readonly denied: true } | { readonly denied: false; readonly role: Role };
 
 /**
- * Seat a caller as a spectator in a game whose existence the caller already proved (by id + code,
- * or by resolving the invite code). This is the shared tail of both join paths, so join-by-id and
+ * Seat a caller in a game whose existence the caller already proved (by id + code, or by
+ * resolving the invite code). This is the shared tail of both join paths, so join-by-id and
  * join-by-code have byte-identical semantics: the denylist is checked first and refuses a kicked
- * user with DENIED before any seat (DESIGN.md §7); the seat itself is an idempotent, non-demoting
- * upsert (`onConflictDoNothing`), so a re-join by an existing host or solver keeps their role
- * (DESIGN.md §8: join is an upsert). No session notify: a fresh join has no live socket to update
- * (unlike a role change or kick); the joiner connects afterward and the session reads authoritative
- * membership on `hello`.
+ * user with DENIED before any seat (DESIGN.md §7).
+ *
+ * A genuinely NEW membership seats a full account directly as `solver`, so a joiner can play at
+ * once, and a guest as `spectator` (owner decision 2026-07-10; DESIGN.md §7, §8). Guests never
+ * hold solver or host (owner decision 2026-07-09), so a guest keeps the one-tap upgrade path
+ * (POST /games/{id}/role, refused FULL_ACCOUNT_REQUIRED for guests). The seat is an idempotent,
+ * non-demoting upsert (`onConflictDoNothing`), so an EXISTING member keeps their role: a re-join
+ * by a host or solver stays as-is, and a pre-existing spectator stays spectator (and still
+ * upgrades via the self-upgrade endpoint). Only a new row gets the role-by-account seating. No
+ * session notify: a fresh join has no live socket to update (unlike a role change or kick); the
+ * joiner connects afterward and the session reads authoritative membership on `hello`.
  */
-async function seatSpectator(
+async function seatJoiner(
   db: Db,
   gameId: string,
   userId: string,
+  isAnonymous: boolean,
 ): Promise<SeatResult> {
   const denied = await db
     .select({ userId: schema.gameDenylist.userId })
@@ -111,9 +118,12 @@ async function seatSpectator(
     .limit(1);
   if (denied.length > 0) return { denied: true };
 
+  // Full account seats solver (play at once); guest seats spectator (upgrade path). Existing
+  // members keep their role via onConflictDoNothing (DESIGN.md §7, §8; owner decision 2026-07-10).
+  const seatRole: Role = isAnonymous ? "spectator" : "solver";
   await db
     .insert(schema.memberships)
-    .values({ gameId, userId, role: "spectator" })
+    .values({ gameId, userId, role: seatRole })
     .onConflictDoNothing({
       target: [schema.memberships.gameId, schema.memberships.userId],
     });
@@ -366,9 +376,10 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
   // POST /games/join: join by invite code alone, no gameId. For a phone user who holds only the
   // code (web invite links carry both gameId and code; a hand-typed or read-aloud code does not).
   // Any authenticated user, guests included. Resolves the game by its unique invite code, then
-  // seats the caller as a spectator with the exact same semantics as POST /games/{id}/join
-  // (`seatSpectator`). The response is that endpoint's shape plus the resolved `gameId`, which the
-  // caller needs to GET the view and open the WebSocket.
+  // seats the caller with the exact same semantics as POST /games/{id}/join (`seatJoiner`): a full
+  // account lands as solver, a guest as spectator, an existing member keeps their role. The
+  // response is that endpoint's shape plus the resolved `gameId`, which the caller needs to GET
+  // the view and open the WebSocket.
   app.post("/join", async (c) => {
     const identity = c.get("identity");
 
@@ -403,14 +414,20 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     }
     const gameId = found[0]!.gameId;
 
-    const seated = await seatSpectator(deps.db, gameId, identity.userId);
+    const seated = await seatJoiner(
+      deps.db,
+      gameId,
+      identity.userId,
+      identity.isAnonymous,
+    );
     if (seated.denied) {
       return fail(c, "DENIED", "removed from this game");
     }
     return c.json({ gameId, userId: identity.userId, role: seated.role });
   });
 
-  // POST /games/{id}/join: join by invite code. Any authenticated user, guests included.
+  // POST /games/{id}/join: join by invite code. Any authenticated user, guests included. A full
+  // account is seated directly as solver (play at once), a guest as spectator (DESIGN.md §7, §8).
   app.post("/:id/join", async (c) => {
     const identity = c.get("identity");
     const gameId = c.req.param("id");
@@ -443,7 +460,12 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "DENIED", "invalid invite code");
     }
 
-    const seated = await seatSpectator(deps.db, gameId, identity.userId);
+    const seated = await seatJoiner(
+      deps.db,
+      gameId,
+      identity.userId,
+      identity.isAnonymous,
+    );
     if (seated.denied) {
       return fail(c, "DENIED", "removed from this game");
     }

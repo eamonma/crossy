@@ -14,9 +14,10 @@ import type { DbTx } from "../db/client";
  *
  * Guests never inherit the host role (owner decision 2026-07-09, DESIGN.md §8). The candidate
  * join to `users` filtering `is_anonymous = false` is defense in depth: no anonymous user can
- * be a solver in the first place, since the sole solver upgrade (POST /games/{id}/role) is
- * full-account gated and join only ever seats a spectator, so this filter changes nothing for
- * valid data. It encodes the "no guest host" rule structurally at the promotion site rather
+ * be a solver in the first place, since join seats a guest only as spectator (a full account
+ * lands as solver, owner decision 2026-07-10) and the sole solver upgrade (POST /games/{id}/role)
+ * is full-account gated, so this filter changes nothing for valid data. It encodes the "no guest
+ * host" rule structurally at the promotion site rather
  * than resting on that upstream invariant, and it fails safe: a game whose only remaining
  * solver were somehow a guest is auto-abandoned, never handed to the guest.
  */

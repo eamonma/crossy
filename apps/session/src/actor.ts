@@ -112,12 +112,48 @@ export class GameActor {
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
   }
 
-  addConnection(connection: Connection): void {
+  /**
+   * Register a live socket. Returns `true` when this is the user's FIRST live socket on the
+   * game, so the caller broadcasts `playerConnected` to the others (PROTOCOL.md §6, §9). A
+   * second socket for the same user returns `false`: no connect notice (presence keys on the
+   * first/last socket per user, not per socket).
+   */
+  addConnection(connection: Connection): boolean {
+    const first = !this.hasUserConnection(connection.userId);
     this.connections.add(connection);
+    return first;
   }
 
-  removeConnection(connection: Connection): void {
-    this.connections.delete(connection);
+  /**
+   * Drop a live socket. Returns `true` when the socket was present AND it was the user's LAST
+   * live socket, so the caller broadcasts `playerDisconnected` to the rest (PROTOCOL.md §6, §9).
+   * A socket already removed (e.g. a kicked socket dropped in `disconnectUser` before its close
+   * fires) returns `false`, so the close path never double-broadcasts.
+   */
+  removeConnection(connection: Connection): boolean {
+    const existed = this.connections.delete(connection);
+    if (!existed) return false;
+    return !this.hasUserConnection(connection.userId);
+  }
+
+  /** Whether the user still holds any live socket (the first/last-socket presence pivot). */
+  private hasUserConnection(userId: string): boolean {
+    for (const conn of this.connections) {
+      if (conn.userId === userId) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Send an ephemeral notice to every live connection except `origin` (PROTOCOL.md §6, §9):
+   * `playerConnected` and `cursor` skip the originating socket, and `playerDisconnected` passes
+   * the already-removed socket so it reaches everyone still connected. Best-effort, no `seq`, no
+   * mailbox: presence never enters the total order (D20).
+   */
+  broadcastExcept(origin: Connection, frame: ServerMessage): void {
+    for (const connection of this.connections) {
+      if (connection !== origin) connection.send(frame);
+    }
   }
 
   /**
