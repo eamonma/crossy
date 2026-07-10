@@ -6,16 +6,21 @@
 // view tree).
 //
 // The settle animators enforce the SP-i1 gesture discipline structurally: progress
-// is the ONE source of geometry truth, stepped by hand here on release (an eased
-// walk to 0 or 1, the chrome spring's duration, no overshoot per DESIGN.md §7), and
-// never implicitly animated. So there is no second animation system to retarget
-// mid-gesture (the spasm SP-i1 diagnosed), and a finger that catches the surface
-// mid-settle reads the true current progress and scrubs on from there.
+// is the ONE source of geometry truth, stepped by hand here on release (the chrome
+// spring's own critically damped curve, ChromeSettleCurve, no overshoot per
+// DESIGN.md §7), and never implicitly animated. So there is no second animation
+// system to retarget mid-gesture (the spasm SP-i1 diagnosed), and a finger that
+// catches the surface mid-settle reads the true current progress and scrubs on
+// from there.
 
 import CoreGraphics
 import CrossyDesign
 import Foundation
 import Observation
+
+#if os(iOS)
+    import QuartzCore
+#endif
 
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
@@ -90,8 +95,12 @@ public final class RoomChromeModel {
         rosterProgress = 1
     }
 
-    /// The eased walk: cubic ease-out over the chrome response, stepped at display
-    /// cadence. Returns nil when the change was a cut.
+    /// The settle walk: the chrome spring's own curve (ChromeSettleCurve), one
+    /// application per display frame. iOS awaits real frames through
+    /// CADisplayLink; a slept interval is not frame-synced, and its jitter
+    /// against the display read as lag on the owner's device (finding
+    /// 2026-07-10). The macOS test build keeps the fine-sleep loop, which only
+    /// tests ever see. Returns nil when the change was a cut.
     private static func walk(
         from start: CGFloat, to target: CGFloat, animated: Bool,
         apply: @escaping @MainActor (CGFloat) -> Void
@@ -101,15 +110,88 @@ public final class RoomChromeModel {
             return nil
         }
         return Task { @MainActor in
-            let duration = Motion.Springs.chromeResponse
             let began = Date.now
-            while !Task.isCancelled {
-                let t = min(Date.now.timeIntervalSince(began) / duration, 1)
-                let eased = 1 - pow(1 - t, 3)
-                apply(start + (target - start) * eased)
-                if t >= 1 { return }
-                try? await Task.sleep(for: .milliseconds(8))
-            }
+            #if os(iOS)
+                let ticker = FrameTicker()
+                defer { ticker.stop() }
+                for await _ in ticker.frames() {
+                    if Task.isCancelled { return }
+                    if step(began: began, start: start, target: target, apply: apply) {
+                        return
+                    }
+                }
+            #else
+                while !Task.isCancelled {
+                    if step(began: began, start: start, target: target, apply: apply) {
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(8))
+                }
+            #endif
         }
     }
+
+    /// One spring application; true when the walk has arrived (which snaps the
+    /// last fraction of a point so progress ends exactly at its endpoint).
+    private static func step(
+        began: Date, start: CGFloat, target: CGFloat,
+        apply: @MainActor (CGFloat) -> Void
+    ) -> Bool {
+        let fraction = ChromeSettleCurve.fraction(at: Date.now.timeIntervalSince(began))
+        if fraction >= 1 {
+            apply(target)
+            return true
+        }
+        apply(start + (target - start) * CGFloat(fraction))
+        return false
+    }
 }
+
+/// The settle's curve: the chrome spring itself (DESIGN.md §7; response
+/// Motion.Springs.chromeResponse, damping 1 so nothing overshoots), solved in
+/// closed form and stepped by hand. A cubic ease-out read wrong on the owner's
+/// device (2026-07-10): it stops instead of settling. This is the exact curve
+/// `Animation.crossyChrome` would draw, without an animation system ever owning
+/// progress (the SP-i1 law).
+enum ChromeSettleCurve {
+    /// Critically damped spring: x(t) = 1 - e^(-wt)(1 + wt), w = 2pi/response.
+    /// Reports 1 once within a thousandth, so a walk terminates.
+    static func fraction(at elapsed: TimeInterval) -> Double {
+        guard elapsed > 0 else { return 0 }
+        let t = 2 * Double.pi / Motion.Springs.chromeResponse * elapsed
+        let fraction = 1 - exp(-t) * (1 + t)
+        return fraction >= 0.999 ? 1 : fraction
+    }
+}
+
+#if os(iOS)
+    /// CADisplayLink bridged to an AsyncStream: each yield is one real display
+    /// frame, ProMotion included, so a walk steps exactly once per frame.
+    @MainActor
+    private final class FrameTicker: NSObject {
+        private var link: CADisplayLink?
+        private var continuation: AsyncStream<Void>.Continuation?
+
+        func frames() -> AsyncStream<Void> {
+            AsyncStream { continuation in
+                self.continuation = continuation
+                let link = CADisplayLink(target: self, selector: #selector(tick))
+                link.add(to: .main, forMode: .common)
+                self.link = link
+            }
+        }
+
+        @objc private func tick() {
+            continuation?.yield()
+        }
+
+        /// The link retains its target; invalidating breaks the cycle. Callers
+        /// pair every `frames()` with a `stop()` (the walk's `defer`).
+        func stop() {
+            link?.invalidate()
+            link = nil
+            continuation?.finish()
+            continuation = nil
+        }
+    }
+#endif

@@ -68,7 +68,6 @@ struct ClueChrome: View {
             }
         }
         .contentShape(shape)
-        .gesture(meltDrag)
         .position(x: frame.midX, y: frame.midY)
         .onChange(of: glintMarks.map(\.userId)) { _, ids in
             glintChanged(ids)
@@ -114,6 +113,13 @@ struct ClueChrome: View {
         }
         .padding(.horizontal, 10)
         .frame(height: ChromeLayout.barHeight)
+        .contentShape(Rectangle())
+        // High priority or the row's buttons win the touch and the melt never
+        // scrubs (a plain .gesture ranks BELOW child gestures; owner device
+        // finding 2026-07-10). The 12 pt floor keeps taps flowing to the
+        // buttons, and the row alone carries the drag so the open browser's
+        // list scrolls freely beneath it.
+        .highPriorityGesture(meltDrag)
     }
 
     private func chevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -192,7 +198,13 @@ struct ClueChrome: View {
     // MARK: The gesture (the discipline)
 
     private var meltDrag: some Gesture {
-        DragGesture(minimumDistance: 12)
+        // Global space, and nothing else: the default .local space belongs to
+        // the very view this drag resizes, so a still finger reads a changing
+        // translation as the surface grows and the melt oscillates (the spasm
+        // the owner hit on device, 2026-07-10; distinct from SP-i1's animation
+        // retargeting). Only translation deltas and velocity are consumed, so
+        // global is safe under any safe-area or layout inset.
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
             .onChanged { value in
                 if !isDragActive {
                     isDragActive = true
