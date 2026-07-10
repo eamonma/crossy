@@ -2,20 +2,38 @@
 //  MorphLab.swift
 //  Crossy
 //
-//  The gooey-morph recheck rig, round three (owner rulings 2026-07-10; the
-//  owner's Mail recording is the reference: the button dissolves into a soft
-//  droplet that leaps toward the panel's center while swelling, resolving into
-//  the panel late; open ~350 ms, close ~180 ms). Three candidates cycle:
+//  The gooey-morph recheck rig, round four. Ground truth arrived: the owner's
+//  Mail recording is a stock UIMenu opening from the "..." button (the frames
+//  show a Categories/List View palette picker, standard menu furniture). The
+//  goo is the SYSTEM's presentation under Liquid Glass, not hand math. Frame
+//  study of the recording at 60 fps:
 //
-//  A. The canonical glassEffectID idiom per Apple's "Applying Liquid Glass to
-//     custom views": UNIQUE ids, one shape inserted/removed inside
-//     withAnimation, container spacing 40 (round two used one id on both
-//     sides of an if/else, which is not the documented pattern).
-//  B. Same idiom, but the pill PERSISTS (the doc's pencil) and the panel
-//     inserts next to it, morphing out of the pill's glass.
-//  C. Hand-built droplet on our progress-driven math (the GlassMorph
-//     discipline): position leaps ahead of growth, radius stays blobby until
-//     late, content resolves through blur. Scrubbable by construction.
+//    100 ms  capsule intact
+//    133 ms  content gone; the glass is a small featureless egg dropping out
+//            of the button's spot
+//    167 ms  teardrop ~2x, drifting toward the panel's center, edges SOFT
+//    250 ms  near-panel-size oval, content resolving through blur inside
+//    300 ms  panel arrived with oversized soft corners, content near-crisp
+//    ~380 ms rest; close runs ~180 ms
+//
+//  The soft mid-flight edges are the glass shader blending two shapes' fields.
+//  One crisp glassEffect rect tweened by hand cannot produce them, so the
+//  droplet-math variant is retired. Candidates now ride the real mechanism
+//  (WWDC25 session 323: menus and popovers flow out of glass controls):
+//
+//  A. glassEffectID swap: unique ids, panel inserted / pill removed inside
+//     withAnimation, container spacing 40, Mail's timing (0.35 open, 0.18
+//     close).
+//  B. A real system Menu — Mail's actual mechanism, the reference rendering.
+//     Kept OUTSIDE any GlassEffectContainer (26.1 breaks Menu morphs inside).
+//  C. A popover presentation from a glass pill, hosting custom panel content
+//     via presentationCompactAdaptation(.popover) — the shape the roster
+//     panel could actually take, since popovers host arbitrary views.
+//
+//  All three are TAP-driven: the pill panels open on tap, so the SP-i1 melt
+//  law (finger writes raw progress; no animation on scrubbed morphs) does not
+//  govern them. Verdicts come from the device only; the simulator renders the
+//  glass blend linearly and lies about goo.
 //
 //  Evidence only: nothing in the room composes through this screen.
 //
@@ -23,7 +41,8 @@
 import SwiftUI
 
 struct MorphLab: View {
-    @State private var open = false
+    @State private var openSwap = false
+    @State private var openPopover = false
     @Namespace private var glass
 
     var body: some View {
@@ -38,27 +57,14 @@ struct MorphLab: View {
             }
             .padding(20)
 
-            VStack(alignment: .trailing, spacing: 10) {
-                labeled("A — swap, unique ids") { variantSwap }
-                labeled("B — pill persists, panel inserts") { variantInsert }
-                labeled("C — hand-built droplet") { DropletStage() }
+            VStack(alignment: .trailing, spacing: 22) {
+                labeled("A — glassEffectID swap (tap)") { variantSwap }
+                labeled("B — system Menu, Mail's mechanism (tap)") { variantMenu }
+                labeled("C — popover, custom content (tap)") { variantPopover }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 14)
             .padding(.top, 14)
-        }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1.3))
-                withAnimation(.easeInOut(duration: DropletStage.openSeconds)) {
-                    open = true
-                }
-                try? await Task.sleep(for: .seconds(1.3 + DropletStage.openSeconds))
-                withAnimation(.easeInOut(duration: DropletStage.closeSeconds)) {
-                    open = false
-                }
-                try? await Task.sleep(for: .seconds(DropletStage.closeSeconds))
-            }
         }
     }
 
@@ -78,15 +84,21 @@ struct MorphLab: View {
         if #available(iOS 26.0, *) {
             GlassEffectContainer(spacing: 40) {
                 ZStack(alignment: .topTrailing) {
-                    if open {
+                    if openSwap {
                         LabPanel(rows: 3)
                             .frame(width: 220, height: 170)
                             .glassEffect(.regular, in: .rect(cornerRadius: 24))
                             .glassEffectID("swap-panel", in: glass)
+                            .onTapGesture {
+                                withAnimation(.smooth(duration: 0.18)) { openSwap = false }
+                            }
                     } else {
                         LabPill()
-                            .glassEffect(.regular, in: .capsule)
+                            .glassEffect(.regular.interactive(), in: .capsule)
                             .glassEffectID("swap-pill", in: glass)
+                            .onTapGesture {
+                                withAnimation(.smooth(duration: 0.35)) { openSwap = true }
+                            }
                     }
                 }
                 .frame(width: 220, height: 170, alignment: .topTrailing)
@@ -96,126 +108,106 @@ struct MorphLab: View {
         }
     }
 
-    // MARK: - B: the doc's pencil-and-eraser (pill persists, panel inserts)
+    // MARK: - B: the real thing (Mail's "..." is a UIMenu; this is the target)
 
+    // Menu rows take real images, not just symbols: a non-template image passes
+    // through in full color (Messages' pin menus show contact photos; Mail's
+    // palette row is full color). The pucks render once through ImageRenderer.
     @ViewBuilder
-    private var variantInsert: some View {
+    private var variantMenu: some View {
         if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 40) {
-                ZStack(alignment: .topTrailing) {
-                    if open {
-                        LabPanel(rows: 3)
-                            .frame(width: 220, height: 170)
-                            .glassEffect(.regular, in: .rect(cornerRadius: 24))
-                            .glassEffectID("insert-panel", in: glass)
+            Menu {
+                Section("Solving now") {
+                    Button {} label: {
+                        Label { Text(verbatim: "You") } icon: { LabPuckArt.puck(0) }
                     }
-                    LabPill()
-                        .opacity(open ? 0 : 1)
-                        .glassEffect(.regular, in: .capsule)
-                        .glassEffectID("insert-pill", in: glass)
+                    Button {} label: {
+                        Label {
+                            Text(verbatim: "Bee")
+                            Text(verbatim: "23 letters this round")
+                        } icon: {
+                            LabPuckArt.puck(1)
+                        }
+                    }
+                    Button {} label: {
+                        Label { Text(verbatim: "Ada") } icon: { LabPuckArt.puck(2) }
+                    }
                 }
-                .frame(width: 220, height: 170, alignment: .topTrailing)
+                Button {} label: {
+                    Label {
+                        Text(verbatim: "gus")
+                        Text(verbatim: "resting")
+                    } icon: {
+                        LabPuckArt.puck(3)
+                    }
+                }
+            } label: {
+                LabPill()
             }
-        } else {
-            Text(verbatim: "needs iOS 26 glass")
-        }
-    }
-}
-
-// MARK: - C: the droplet, by hand
-
-/// The Mail choreography rebuilt on pure progress math, per the owner's
-/// recording: the surface leaps toward the panel's center ahead of its growth,
-/// stays a soft blob until late, and the content resolves through blur in the
-/// back half. Driven per-frame by TimelineView, so it renders every
-/// intermediate on any hardware and a finger could scrub it (the melt law's
-/// shape, SP-i1).
-struct DropletStage: View {
-    static let openSeconds = 0.45
-    static let closeSeconds = 0.25
-    private static let hold = 1.3
-
-    private let pill = CGRect(x: 124, y: 0, width: 96, height: 44)
-    private let panel = CGRect(x: 0, y: 0, width: 220, height: 170)
-
-    var body: some View {
-        if #available(iOS 26.0, *) {
-            TimelineView(.animation) { timeline in
-                stage(progress: Self.progress(
-                    at: timeline.date.timeIntervalSinceReferenceDate))
-            }
-            .frame(width: 220, height: 170)
+            .buttonStyle(.glass)
         } else {
             Text(verbatim: "needs iOS 26 glass")
         }
     }
 
-    /// The cycle: closed hold, open (0→1), open hold, close (1→0), aligned to
-    /// the reference clock so every lab launch runs the same movie.
-    static func progress(at t: TimeInterval) -> Double {
-        let cycle = hold + openSeconds + hold + closeSeconds
-        let phase = t.truncatingRemainder(dividingBy: cycle)
-        if phase < hold { return 0 }
-        if phase < hold + openSeconds { return (phase - hold) / openSeconds }
-        if phase < hold + openSeconds + hold { return 1 }
-        return 1 - (phase - hold - openSeconds - hold) / closeSeconds
-    }
+    // MARK: - C: popover (the presentation that can host the real roster)
 
-    @available(iOS 26.0, *)
     @ViewBuilder
-    private func stage(progress p: Double) -> some View {
-        // The leap runs ahead of the growth (the recording's signature): the
-        // center moves on a hard ease-out while the size lags, so the surface
-        // detaches as a droplet and swims to the panel's middle before it
-        // swells to fill the rect.
-        let leap = 1 - pow(1 - p, 3)
-        let growth = easeInOut(clamped((p - 0.12) / 0.88))
-        let w = lerp(pill.width, panel.width, growth)
-        let h = lerp(pill.height, panel.height, growth)
-        let cx = lerp(pill.midX, panel.midX, leap)
-        let cy = lerp(pill.midY, panel.midY, leap)
-        // Blobby until late: the radius holds at the capsule's half-height and
-        // resolves to the panel's 24 pt in the back half.
-        let r = lerp(min(w, h) / 2, 24, easeIn(clamped((p - 0.55) / 0.45)))
-        // Content resolves through blur in the back half; the pill's content
-        // dissolves first (the dots vanish by ~130 ms in the recording).
-        let contentAlpha = clamped((p - 0.3) / 0.45)
-        let blur = 18 * pow(1 - p, 2)
-        let pillAlpha = 1 - clamped(p / 0.22)
-
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .frame(width: w, height: h)
-                .glassEffect(.regular, in: .rect(cornerRadius: r))
-                .position(x: cx, y: cy)
-            LabPanel(rows: 3)
-                .frame(width: panel.width, height: panel.height)
-                .position(x: panel.midX, y: panel.midY)
-                .opacity(contentAlpha)
-                .blur(radius: blur)
-                .mask {
-                    RoundedRectangle(cornerRadius: r, style: .continuous)
-                        .frame(width: w, height: h)
-                        .position(x: cx, y: cy)
-                }
-            LabPill()
-                .position(x: pill.midX, y: pill.midY)
-                .opacity(pillAlpha)
+    private var variantPopover: some View {
+        if #available(iOS 26.0, *) {
+            Button {
+                openPopover = true
+            } label: {
+                LabPill()
+            }
+            .buttonStyle(.glass)
+            .popover(isPresented: $openPopover) {
+                LabPanel(rows: 4)
+                    .frame(width: 240)
+                    .padding(.vertical, 6)
+                    .presentationCompactAdaptation(.popover)
+            }
+        } else {
+            Text(verbatim: "needs iOS 26 glass")
         }
-        .frame(width: 220, height: 170)
-    }
-
-    private func lerp(_ a: CGFloat, _ b: CGFloat, _ t: Double) -> CGFloat {
-        a + (b - a) * CGFloat(t)
-    }
-    private func clamped(_ t: Double) -> Double { min(1, max(0, t)) }
-    private func easeIn(_ t: Double) -> Double { t * t }
-    private func easeInOut(_ t: Double) -> Double {
-        t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
     }
 }
 
 // MARK: - Shared lab content
+
+/// The roster pucks as menu-row images: an initial on a colored circle,
+/// rasterized once at 3x through ImageRenderer so UIKit's menu treats them as
+/// original (colored) images rather than template symbols.
+@MainActor
+private enum LabPuckArt {
+    static let players: [(initial: String, color: Color)] = [
+        ("E", Color(red: 0.44, green: 0.4, blue: 0.83)),
+        ("B", Color(red: 0.09, green: 0.57, blue: 0.5)),
+        ("A", Color(red: 0.87, green: 0.34, blue: 0.13)),
+        ("G", Color(white: 0.55)),
+    ]
+    private static var cache: [Int: Image] = [:]
+
+    static func puck(_ index: Int) -> Image {
+        if let cached = cache[index] { return cached }
+        let art = players[index]
+        let renderer = ImageRenderer(
+            content: ZStack {
+                Circle().fill(art.color)
+                Text(verbatim: art.initial)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 28, height: 28))
+        renderer.scale = 3
+        guard let ui = renderer.uiImage else {
+            return Image(systemName: "person.crop.circle.fill")
+        }
+        let image = Image(uiImage: ui)
+        cache[index] = image
+        return image
+    }
+}
 
 /// A players-like pill: three pucks and an overflow count, 44 pt capsule.
 private struct LabPill: View {
