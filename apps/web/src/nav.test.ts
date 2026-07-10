@@ -7,6 +7,7 @@ import {
   gameHref,
   homeHref,
   parseRoute,
+  partyHref,
   preservedParams,
   puzzlesHref,
 } from "./nav";
@@ -50,6 +51,24 @@ describe("parseRoute (paths select the surface)", () => {
       gameId: "g-1",
     });
   });
+
+  it("flags the projector screen from ?party=1 on the path or a legacy URL, and only then", () => {
+    expect(parseRoute("/game/g-1", p("?party=1"))).toEqual({
+      kind: "game",
+      gameId: "g-1",
+      party: true,
+    });
+    expect(parseRoute("/", p("?game=g-1&party=1"))).toEqual({
+      kind: "game",
+      gameId: "g-1",
+      party: true,
+    });
+    // A plain game link carries no party key, so existing surfaces are untouched.
+    expect(parseRoute("/game/g-1", p(""))).toEqual({
+      kind: "game",
+      gameId: "g-1",
+    });
+  });
 });
 
 describe("href builders (dev/smoke overrides survive every in-app link)", () => {
@@ -77,6 +96,19 @@ describe("href builders (dev/smoke overrides survive every in-app link)", () => 
     expect(url.searchParams.get("token")).toBe("T");
     expect(url.searchParams.get("code")).toBe("ABCD2345");
   });
+
+  it("builds the projector link as the game URL plus party=1", () => {
+    const url = new URL(partyHref("g-1", overrides), "http://x");
+    expect(url.pathname).toBe("/game/g-1");
+    expect(url.searchParams.get("party")).toBe("1");
+    expect(url.searchParams.get("token")).toBe("T");
+    // Round-trips back to the projector route.
+    expect(parseRoute(url.pathname, url.searchParams)).toEqual({
+      kind: "game",
+      gameId: "g-1",
+      party: true,
+    });
+  });
 });
 
 describe("canonicalHref (one-time redirect of legacy URLs to the path form)", () => {
@@ -98,6 +130,14 @@ describe("canonicalHref (one-time redirect of legacy URLs to the path form)", ()
   it("maps ?puzzles=1 and ?create=1 to their paths", () => {
     expect(canonicalHref("/", p("?puzzles=1"))).toBe("/puzzles");
     expect(canonicalHref("/", p("?create=1"))).toBe("/new");
+  });
+
+  it("keeps the projector flag when canonicalizing a legacy ?game= link", () => {
+    const href = canonicalHref("/", p("?game=g-1&code=ABCD2345&party=1"));
+    const url = new URL(href!, "http://x");
+    expect(url.pathname).toBe("/game/g-1");
+    expect(url.searchParams.get("code")).toBe("ABCD2345");
+    expect(url.searchParams.get("party")).toBe("1");
   });
 
   it("returns null for canonical locations and the demo surface", () => {

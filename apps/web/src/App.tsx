@@ -154,6 +154,9 @@ function Router({
   );
 
   if (route.kind === "game") {
+    // The projector screen (`?party=1`) owns the whole viewport: no sidebar shell, so nothing on
+    // the wall implies interactivity. Otherwise the game renders in the shell when signed in.
+    const party = route.party === true;
     const live = (
       <LiveApp
         key={route.gameId}
@@ -162,10 +165,11 @@ function Router({
         config={config}
         identity={identity}
         navigate={navigate}
-        inShell={signedIn}
+        inShell={signedIn && !party}
+        party={party}
       />
     );
-    return signedIn ? shell(live) : live;
+    return signedIn && !party ? shell(live) : live;
   }
 
   if (route.kind === "create") {

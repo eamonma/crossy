@@ -495,7 +495,9 @@
  * both axes, so the whole board is always inside the viewport. No scrolling, ever.
  */
 .board-fit {
-  width: min(100%, calc(var(--board-cols, 15) * 64px));
+  /* --cell-cap is the largest a cell may render; 64px suits the game view's at-your-desk
+     reading, and the party view raises it so a small grid grows into a projector stage. */
+  width: min(100%, calc(var(--board-cols, 15) * var(--cell-cap, 64px)));
   /* Inline auto margins center a board that fits and zero out when it overflows the
      stage (column flex, cross axis), so a scrolling 15x15 keeps its left gutter
      instead of clipping its first column off-screen. */
@@ -514,7 +516,7 @@
     width: min(
       100cqw,
       calc(100cqh * var(--board-aspect, 1)),
-      calc(var(--board-cols, 15) * 64px)
+      calc(var(--board-cols, 15) * var(--cell-cap, 64px))
     );
   }
   .board-scroll {
