@@ -546,6 +546,11 @@ function LiveGame({
   const [dismissedCompletion, setDismissedCompletion] = useState(false);
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
+  // Cursor relay throttle (PROTOCOL.md §9): a leading send plus one coalesced trailing send,
+  // capped at 10/s. `selectionRef` carries the latest selection to a pending trailing send.
+  const cursorLastSentRef = useRef(0);
+  const cursorTrailRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectionRef = useRef(selection);
 
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
   const frozen = store.status !== "ongoing";
@@ -572,6 +577,40 @@ function LiveGame({
         setFlashes((prev) => new Map(prev).set(cell, { color, nonce }));
       }),
     [store],
+  );
+
+  // Broadcast the local cursor to the room whenever the selection (cell or direction) changes in
+  // the live game (PROTOCOL.md §9). Leading send plus a coalesced trailing send caps it at 10/s;
+  // the store refuses it while `connecting`, and this is the live path only, so the demo boards
+  // never send. Cursors are ephemeral, so this never touches store or render state.
+  useEffect(() => {
+    selectionRef.current = selection;
+    if (awaitingFirstSync) return;
+    const CAP_MS = 100; // at most 10 moveCursor per second
+    const flush = (): void => {
+      cursorLastSentRef.current = Date.now();
+      store.moveCursor(
+        selectionRef.current.cell,
+        selectionRef.current.direction,
+      );
+    };
+    const since = Date.now() - cursorLastSentRef.current;
+    if (since >= CAP_MS) {
+      flush();
+    } else if (cursorTrailRef.current === null) {
+      cursorTrailRef.current = setTimeout(() => {
+        cursorTrailRef.current = null;
+        flush();
+      }, CAP_MS - since);
+    }
+  }, [selection, awaitingFirstSync, store]);
+
+  // Drop a pending trailing cursor send on unmount.
+  useEffect(
+    () => () => {
+      if (cursorTrailRef.current !== null) clearTimeout(cursorTrailRef.current);
+    },
+    [],
   );
 
   const onFlashEnd = useCallback((cell: number, nonce: number) => {

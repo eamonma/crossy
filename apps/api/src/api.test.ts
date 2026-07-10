@@ -636,6 +636,26 @@ describe("POST /games/{id}/join (PROTOCOL.md §12; DESIGN.md §7, §8)", () => {
     expect(await roleOf(res)).toBe("spectator");
   });
 
+  it("seats a new full account directly as solver, so a joiner plays at once (owner decision 2026-07-10; DESIGN.md §7, §8)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const joinerSub = randomUUID();
+    const joiner = await auth.mintUpgraded({ sub: joinerSub });
+    const res = await postJson(`/games/${gameId}/join`, joiner, {
+      code: inviteCode,
+    });
+    expect(res.status).toBe(200);
+    expect(await roleOf(res)).toBe("solver");
+    // The seat is a real solver membership row, not a spectator awaiting an upgrade tap.
+    const m = await adminPool.query(
+      "select role from memberships where game_id=$1 and user_id=$2",
+      [gameId, joinerSub],
+    );
+    expect(m.rows[0].role).toBe("solver");
+  });
+
   it("rejects a wrong invite code as DENIED without leaking game existence", async () => {
     const host = await auth.mintUpgraded();
     const puzzleId = await ingestFixture(host);
@@ -718,6 +738,19 @@ describe("POST /games/join (join by invite code alone) (PROTOCOL.md §12; DESIGN
       [gameId, body.userId],
     );
     expect(m.rows[0].role).toBe("spectator");
+  });
+
+  it("seats a new full account as solver, not spectator (owner decision 2026-07-10)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const joiner = await auth.mintUpgraded({ sub: randomUUID() });
+    const res = await postJson("/games/join", joiner, { code: inviteCode });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { gameId: string; role: string };
+    expect(body.gameId).toBe(gameId);
+    expect(body.role).toBe("solver");
   });
 
   it("resolves a hand-typed lowercase code by ASCII-uppercasing the lookup (INV-1)", async () => {
@@ -1058,15 +1091,23 @@ describe("kick (DELETE /games/{id}/members/{userId}) (PROTOCOL.md §12; DESIGN.m
 });
 
 describe("role upgrade (POST /games/{id}/role) (PROTOCOL.md §12; DESIGN.md §8)", () => {
-  it("a spectator self-upgrades to solver, idempotently, signaling the session (DESIGN.md §8)", async () => {
+  it("a pre-existing spectator self-upgrades to solver, idempotently, signaling the session (DESIGN.md §8)", async () => {
     resetRecorders();
     const host = await auth.mintUpgraded({ sub: randomUUID() });
     const puzzleId = await ingestFixture(host);
     const { gameId, inviteCode } = await createGame(host, puzzleId);
+    // A guest join seats a spectator (guests never seat solver, owner decision 2026-07-09);
+    // the guest then upgrades their account in place (same user_id) and taps upgrade-to-solver.
+    // Since a fresh full-account join now seats solver (owner decision 2026-07-10), this path
+    // serves the pre-existing spectator and the former guest.
     const specSub = randomUUID();
-    const spec = await auth.mintUpgraded({ sub: specSub });
-    const joined = await join(gameId, spec, inviteCode);
+    const joined = await join(
+      gameId,
+      await auth.mintAnonymous({ sub: specSub }),
+      inviteCode,
+    );
     expect(await roleOf(joined)).toBe("spectator");
+    const spec = await auth.mintUpgraded({ sub: specSub });
 
     const res = await postJson(`/games/${gameId}/role`, spec, {
       role: "solver",
@@ -1285,8 +1326,11 @@ describe("account deletion + host succession (DELETE /account) (DESIGN.md §7, �
     const host = await auth.mintUpgraded({ sub: hostSub });
     const puzzleId = await ingestFixture(host);
     const { gameId, inviteCode } = await createGame(host, puzzleId);
-    // Only a spectator remains: not eligible to inherit the host role (DESIGN.md §7).
-    const spec = await auth.mintUpgraded({ sub: randomUUID() });
+    // Only a guest spectator remains: not eligible to inherit the host role. A guest join seats
+    // spectator (a full account would now seat solver, owner decision 2026-07-10), and guests
+    // never hold host or solver (owner decision 2026-07-09), so succession finds no successor
+    // and the game auto-abandons (DESIGN.md §7, §8).
+    const spec = await auth.mintAnonymous({ sub: randomUUID() });
     await join(gameId, spec, inviteCode);
 
     const res = await del("/account", host);
@@ -1455,7 +1499,8 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     const byId = new Map(games.map((g) => [g.gameId, g]));
     expect(byId.get(hosted)!.role).toBe("host");
     expect(byId.get(hosted)!.memberCount).toBe(1);
-    expect(byId.get(joined)!.role).toBe("spectator");
+    // A full account joining now seats solver directly (owner decision 2026-07-10).
+    expect(byId.get(joined)!.role).toBe("solver");
     expect(byId.get(joined)!.memberCount).toBe(2); // host plus the caller who joined
   });
 

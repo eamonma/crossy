@@ -184,6 +184,17 @@ export class GameStore {
     this.sendMutation(cell, null, commandId);
   }
 
+  /**
+   * Relay the local cursor to the room (PROTOCOL.md sections 5 and 9). Ephemeral: no overlay,
+   * no seq, best-effort. Refused before the first snapshot (`connecting`), since there is no
+   * authoritative game to move a cursor over yet; the 10/s throttle is the caller's job (LiveApp
+   * caps it, PROTOCOL.md section 9). Nothing here mutates store state, so views do not re-render.
+   */
+  moveCursor(cell: number, direction: Direction): void {
+    if (this.syncValue === "connecting") return;
+    this.transport.send({ type: "moveCursor", cell, direction });
+  }
+
   private sendMutation(
     cell: number,
     value: string | null,
