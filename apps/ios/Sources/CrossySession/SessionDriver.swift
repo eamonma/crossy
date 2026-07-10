@@ -18,17 +18,27 @@ import Foundation
 public final class SessionDriver {
     private let store: GameStore
     private let clock: any SessionClock
+    private let onBackoffSleep: ((Double) -> Void)?
     private let makeTransport: () -> any Transport
 
     /// `makeTransport` mints one transport per attempt (Ports.swift: one value, one
     /// connection attempt), so every redial is a fresh dial with a fresh token.
+    ///
+    /// `onBackoffSleep` fires with each backoff delay just before the driver sleeps
+    /// it, so a composition root can surface the next-dial deadline (the DESIGN.md §8
+    /// quiet countdown, `RoomChromeModel.reconnectRetryAt`). Purely observational:
+    /// the delay is still the store's decision, and the driver still only sleeps and
+    /// dials (AD-6). This parameter is the minimal I2-exit surface the countdown
+    /// wiring needed; nothing else in this class changed.
     public init(
         store: GameStore,
         clock: any SessionClock = ContinuousSessionClock(),
+        onBackoffSleep: ((Double) -> Void)? = nil,
         makeTransport: @escaping () -> any Transport
     ) {
         self.store = store
         self.clock = clock
+        self.onBackoffSleep = onBackoffSleep
         self.makeTransport = makeTransport
     }
 
@@ -77,6 +87,7 @@ public final class SessionDriver {
     /// a deliberate stop, so the caller returns instead of redialing.
     private func backoffSleep() async -> Bool {
         let seconds = store.nextReconnectDelaySeconds()
+        onBackoffSleep?(seconds)
         do {
             try await clock.sleep(seconds: seconds)
             return true
