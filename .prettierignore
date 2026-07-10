@@ -8,6 +8,15 @@ reports/
 # YAML manifests SwiftPM writes) out of formatting explicitly.
 .build/
 
+# Xcode-generated files (apps/ios/Crossy): asset-catalog JSON and the pbxproj are
+# written by Xcode in its own style; reformatting them makes every Xcode save a diff.
+*.xcassets/
+*.xcodeproj/
+
+# Untracked local reference bundle (never committed); ignored so local `format:check`
+# matches what CI sees on a clean clone.
+crossy-design-system (v2 reference)/
+
 # Installed agent skills: vendored third-party content, not ours to format.
 .agents/
 
