@@ -54,28 +54,37 @@ struct RosterMenu: View {
 
     /// Below 26 (and the macOS test build) the same Menu presents the system's
     /// plain menu from the pill's fallback material: one mechanism, the §4
-    /// one-fallback rule.
+    /// one-fallback rule. This branch draws its own capsule, so the label
+    /// carries the pill's full geometry.
     private var fallbackMenu: some View {
         Menu {
             rows
         } label: {
-            pill.modifier(
-                ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+            pillContent
+                .padding(.horizontal, 10)
+                .frame(height: ChromeLayout.pillHeight)
+                .contentShape(Capsule())
+                .modifier(
+                    ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
         }
         .buttonStyle(.plain)
     }
 
+    /// The system glass button pads and shapes its own capsule, so it takes
+    /// the BARE cluster: geometry on the label here stacks the button's
+    /// padding on ours and inflates the pill out of the bar's register (owner
+    /// device finding 2026-07-10).
     private var menu: some View {
         Menu {
             rows
         } label: {
-            pill
+            pillContent
         }
     }
 
     // MARK: The pill (the cluster at rest, unchanged vocabulary)
 
-    private var pill: some View {
+    private var pillContent: some View {
         let cluster = RosterList.cluster(members)
         return HStack(spacing: 4) {
             HStack(spacing: -7) {
@@ -90,9 +99,6 @@ struct RosterMenu: View {
                     .foregroundStyle(Color(rgb: ground.tokens.number))
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: ChromeLayout.pillHeight)
-        .contentShape(Capsule())
     }
 
     // MARK: The rows (people, then the spectator's one action)
