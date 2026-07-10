@@ -80,6 +80,13 @@
   --text-9--letter-spacing: -0.025em;
   --tracking-caps: 0.06em; /* v2-kept: ACROSS / DOWN micro-labels */
 
+  /* ---- Breakpoints: Tailwind's defaults plus one wide step above 2xl. The clue rail
+     splits into twin full-height lists at `wide` (ui/Clues.tsx): by 1600px the board is
+     height-bound with horizontal slack to spare, so the second list is paid for out of
+     that slack, never the board. Below it the rail stays stacked and the board keeps
+     every pixel. */
+  --breakpoint-wide: 100rem; /* 1600px at the default root size */
+
   /* Oversized hero lockups. display-lg steepens v2's 12vw to 16vw so a phone keeps the
      v2 landing's scale (62px at 390w, where 12vw had clamped to the floor) while a 320px
      viewport still clears "crosswords"; upper bound and line height follow the v2 hero
