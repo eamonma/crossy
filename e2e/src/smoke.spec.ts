@@ -44,8 +44,29 @@ test.afterAll(async () => {
   await harness?.stop();
 });
 
-/** Open the built web client in live mode and wait until its store is live. */
+/** Open the built web client in live mode (the path route) and wait until its store is live. */
 async function openGame(
+  page: Page,
+  game: CreatedGame,
+  token: string,
+): Promise<void> {
+  const url =
+    `${harness.webUrl}/game/${game.gameId}` +
+    `?api=${encodeURIComponent(harness.apiUrl)}` +
+    `&token=${encodeURIComponent(token)}`;
+  await page.goto(url);
+  await page.waitForFunction(
+    () => window.__crossy?.store.sync === "live",
+    null,
+    {
+      timeout: 30_000,
+    },
+  );
+}
+
+/** Open the client through the LEGACY query-string URL (`/?game=<id>&...`): old invite links
+ * are in the wild, and the router must redirect once to the path form, preserving overrides. */
+async function openGameLegacy(
   page: Page,
   game: CreatedGame,
   token: string,
@@ -89,8 +110,17 @@ test("two browsers converge after one socket is killed mid-word (M1 exit)", asyn
   const game = await harness.createGame();
   const a = await browser.newPage();
   const b = await browser.newPage();
-  await openGame(a, game, game.hostToken);
+  // A enters through an old-style query URL to prove the back-compat redirect end to end;
+  // B uses the canonical path route.
+  await openGameLegacy(a, game, game.hostToken);
   await openGame(b, game, game.bToken);
+
+  // The legacy URL canonicalized to the path form, keeping the api/token overrides.
+  const aUrl = new URL(a.url());
+  expect(aUrl.pathname).toBe(`/game/${game.gameId}`);
+  expect(aUrl.searchParams.get("api")).toBe(harness.apiUrl);
+  expect(aUrl.searchParams.get("token")).toBe(game.hostToken);
+  expect(aUrl.searchParams.get("game")).toBeNull();
 
   // A types a mid-word partial (3 of the 5-cell first word); it appears in B.
   await typeInto(a, "HEL");

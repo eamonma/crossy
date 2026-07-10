@@ -1,38 +1,26 @@
-// The signed-in home (root when signed in, and ?puzzles=1): v2's sidebar shell rebuilt on the
-// shadcn substrate. Left: the nav (Games / Puzzles), the New game action, dashed dividers, and
-// the user card pinned at the bottom. Right: one framed panel that lists your games or your
-// uploaded puzzles. There is deliberately no game status here: lifecycle is session-owned and
-// the API cannot report it (DESIGN.md section 9), so games are one list, newest first.
+// The signed-in content surfaces inside the shell (AppShell owns the sidebar and chrome).
+// `/` is the landing-in view: a serif welcome, the one gold New game action, and the games
+// you're in as full rows. The sidebar's recents are navigation, one truncated line each;
+// this panel is the detail view of the same list (players, your role, when it started), the
+// claude.ai home pattern of sidebar recents plus a richer recent list in the frame. `/puzzles`
+// is the library: your uploads, each row starting a fresh game (POST /games), the
+// replay-without-reupload path. Titles and authors come off the API where ingestion parsed
+// them; nothing here invents a status, because lifecycle is session-owned and the API cannot
+// report it (DESIGN.md section 9).
 //
-// Two data reads back this screen: GET /games (games you host or joined) and GET /puzzles (your
-// own uploads), both solution-free (INV-6). A puzzle row starts a fresh game from that puzzle
-// (POST /games), the replay-without-reupload path. Fetch shapes and formatters live in homeData.
-//
-// Routing stays the query-param pushState router. The api/token overrides (dogfood and the dev
-// stack) are carried across every in-home link so a `?token=` session keeps working; a real user
-// has neither in the URL and the links stay clean.
-import { useEffect, useState } from "react";
-import {
-  ChevronRightIcon,
-  ExitIcon,
-  FileTextIcon,
-  HamburgerMenuIcon,
-  HomeIcon,
-  MoonIcon,
-  PlusIcon,
-  SunIcon,
-} from "@radix-ui/react-icons";
-import type { AppConfig } from "../config/config";
-import type { Identity, IdentitySession } from "../identity";
-import type { Navigate } from "../nav";
-import { cx, Divider, Logo } from "./primitives";
-import { useTheme } from "./useTheme";
+// Both reads are solution-free (INV-6). Fetch shapes and formatters live in homeData.
+import { useState } from "react";
+import { ChevronRightIcon, PlusIcon } from "@radix-ui/react-icons";
+import type { IdentitySession } from "../identity";
+import { cx, Divider } from "./primitives";
+import { useResource } from "./useResource";
+import type { Resource } from "./useResource";
 import {
   featureLabels,
-  fetchGames,
   fetchPuzzles,
   gameTitle,
   geometry,
+  puzzleTitle,
   relativeTime,
   startGameFromPuzzle,
   type GameSummary,
@@ -40,359 +28,81 @@ import {
 } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
-type Tab = "games" | "puzzles";
-
-/** Carry only the dogfood/dev overrides (api, token) across an in-home link. */
-function preserved(params: URLSearchParams): URLSearchParams {
-  const next = new URLSearchParams();
-  const api = params.get("api");
-  const token = params.get("token");
-  if (api !== null) next.set("api", api);
-  if (token !== null) next.set("token", token);
-  return next;
-}
-
-function qs(p: URLSearchParams): string {
-  const s = p.toString();
-  return s === "" ? "" : `?${s}`;
-}
-
-function homeSearch(params: URLSearchParams, tab: Tab): string {
-  const p = preserved(params);
-  if (tab === "puzzles") p.set("puzzles", "1");
-  return qs(p);
-}
-
-function withParams(
-  params: URLSearchParams,
-  extra: Record<string, string>,
-): string {
-  const p = preserved(params);
-  for (const [k, v] of Object.entries(extra)) p.set(k, v);
-  return qs(p);
-}
+export type HomeSurface = "games" | "puzzles";
 
 export function Home({
-  config,
-  identity,
-  navigate,
-  params,
-}: {
-  config: AppConfig;
-  identity: Identity;
-  navigate: Navigate;
-  params: URLSearchParams;
-}) {
-  const tab: Tab = params.get("puzzles") !== null ? "puzzles" : "games";
-  const apiBase = params.get("api") ?? config.apiBase;
-  const urlToken = params.get("token");
-  const session = identity.getSession();
-  const [sheetOpen, setSheetOpen] = useState(false);
-
-  // undefined while unresolved; a string once the ?token= override or the identity token lands.
-  const [token, setToken] = useState<string | null | undefined>(
-    urlToken !== null ? urlToken : undefined,
-  );
-  useEffect(() => {
-    if (urlToken !== null) {
-      setToken(urlToken);
-      return;
-    }
-    let live = true;
-    void identity.getAccessToken().then((t) => {
-      if (live) setToken(t);
-    });
-    return () => {
-      live = false;
-    };
-  }, [identity, urlToken]);
-
-  function go(next: string): void {
-    setSheetOpen(false);
-    navigate(next);
-  }
-
-  const nav = (
-    <SidebarNav
-      tab={tab}
-      session={session}
-      onGames={() => go(homeSearch(params, "games"))}
-      onPuzzles={() => go(homeSearch(params, "puzzles"))}
-      onCreate={() => go(withParams(params, { create: "1" }))}
-      onSignOut={() => void identity.signOut()}
-    />
-  );
-
-  return (
-    <div className="h-dvh flex flex-col md:flex-row bg-background overflow-hidden">
-      <div className="md:hidden px-4 pt-4">
-        <div className="flex h-12 items-center justify-between rounded-3 border border-border bg-panel px-3">
-          <button
-            type="button"
-            onClick={() => go(homeSearch(params, "games"))}
-            className="inline-flex items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-            aria-label="Crossy home"
-          >
-            <Logo />
-          </button>
-          <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon-sm" aria-label="Open menu">
-                <HamburgerMenuIcon />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 gap-0 p-0">
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
-              {nav}
-            </SheetContent>
-          </Sheet>
-        </div>
-      </div>
-
-      <aside className="hidden md:flex md:w-64 md:shrink-0">{nav}</aside>
-
-      <main className="flex-1 min-w-0 p-4">
-        <div className="h-full overflow-hidden rounded-3 border border-border-strong bg-panel shadow-sm">
-          {tab === "games" ? (
-            <GamesPanel
-              apiBase={apiBase}
-              token={token}
-              onOpen={(gameId) => go(withParams(params, { game: gameId }))}
-              onCreate={() => go(withParams(params, { create: "1" }))}
-            />
-          ) : (
-            <PuzzlesPanel
-              apiBase={apiBase}
-              token={token}
-              onNewGame={(gameId, code) =>
-                go(withParams(params, { game: gameId, code }))
-              }
-              onCreate={() => go(withParams(params, { create: "1" }))}
-            />
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-function SidebarNav({
-  tab,
+  surface,
+  apiBase,
+  token,
   session,
-  onGames,
-  onPuzzles,
+  games,
+  reloadGames,
+  onOpenGame,
+  onStartGame,
   onCreate,
-  onSignOut,
 }: {
-  tab: Tab;
+  surface: HomeSurface;
+  apiBase: string;
+  token: string | null | undefined;
   session: IdentitySession | null;
-  onGames: () => void;
-  onPuzzles: () => void;
+  /** The games read is shared with the sidebar (one GET /games, owned by the Router). */
+  games: Resource<GameSummary[]>;
+  reloadGames: () => void;
+  onOpenGame: (gameId: string) => void;
+  /** A fresh game just created from a puzzle row: open it, carrying its invite code. */
+  onStartGame: (gameId: string, code: string) => void;
   onCreate: () => void;
-  onSignOut: () => void;
 }) {
   return (
-    <nav className="flex h-full w-full flex-col justify-between gap-4 p-4 md:pr-0">
-      <div className="flex flex-col gap-4">
-        <div className="px-2 pt-1">
-          <button
-            type="button"
-            onClick={onGames}
-            className="inline-flex items-center rounded-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
-            aria-label="Crossy home"
-          >
-            <Logo />
-          </button>
-        </div>
-        <Divider />
-        <ul className="m-0 flex list-none flex-col gap-1 p-0">
-          <li>
-            <NavItem
-              icon={<HomeIcon />}
-              label="Games"
-              active={tab === "games"}
-              onClick={onGames}
-            />
-          </li>
-          <li>
-            <NavItem
-              icon={<FileTextIcon />}
-              label="Puzzles"
-              active={tab === "puzzles"}
-              onClick={onPuzzles}
-            />
-          </li>
-          <li>
-            <NavItem
-              icon={<PlusIcon />}
-              label="New game"
-              accent
-              onClick={onCreate}
-            />
-          </li>
-        </ul>
-        <Divider />
-      </div>
-      <UserCard session={session} onSignOut={onSignOut} />
-    </nav>
-  );
-}
-
-function NavItem({
-  icon,
-  label,
-  active = false,
-  accent = false,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  accent?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={cx(
-        "group flex w-full items-center gap-2.5 rounded-3 px-2.5 py-2 text-2 font-medium transition-colors",
-        active
-          ? "bg-gold-3 text-gold-12"
-          : "text-text-muted hover:bg-sand-3 hover:text-text",
-      )}
-    >
-      <span
-        className={cx(
-          "shrink-0",
-          active || accent
-            ? "text-gold-11"
-            : "text-text-subtle group-hover:text-text-muted",
+    <div className="h-full min-w-0 p-4">
+      <div className="h-full overflow-hidden rounded-3 border border-border-strong bg-panel shadow-sm">
+        {surface === "games" ? (
+          <GamesPanel
+            state={games}
+            reload={reloadGames}
+            session={session}
+            onOpen={onOpenGame}
+            onCreate={onCreate}
+          />
+        ) : (
+          <PuzzlesPanel
+            apiBase={apiBase}
+            token={token}
+            onNewGame={onStartGame}
+            onCreate={onCreate}
+          />
         )}
-      >
-        {icon}
-      </span>
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function UserCard({
-  session,
-  onSignOut,
-}: {
-  session: IdentitySession | null;
-  onSignOut: () => void;
-}) {
-  const { theme, toggle } = useTheme();
-  const name = session?.displayName ?? "You";
-  const initial = (session?.displayName ?? "Y").slice(0, 1).toUpperCase();
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-4 border border-border bg-panel p-3 shadow-sm">
-      <div className="flex min-w-0 items-center gap-2">
-        <Avatar size="sm">
-          <AvatarFallback className="bg-gold-4 text-gold-11">
-            {initial}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 leading-tight">
-          <div className="truncate text-2 font-semibold text-text">{name}</div>
-          {session?.isAnonymous === true && (
-            <div className="text-1 text-text-subtle">Guest</div>
-          )}
-        </div>
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label="Account">
-            <HamburgerMenuIcon />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuLabel className="text-text-muted">
-            Account
-          </DropdownMenuLabel>
-          <DropdownMenuItem onClick={toggle}>
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-            {theme === "dark" ? "Light theme" : "Dark theme"}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={onSignOut}>
-            <ExitIcon />
-            Sign out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </div>
   );
 }
 
-/* ---- Panels ---- */
-
-type Resource<T> =
-  { phase: "loading" } | { phase: "error" } | { phase: "ready"; data: T };
-
-/** Load a resource when its loader is non-null, re-running on the listed deps or a reload(). */
-function useResource<T>(
-  loader: (() => Promise<T>) | null,
-  deps: React.DependencyList,
-): [Resource<T>, () => void] {
-  const [state, setState] = useState<Resource<T>>({ phase: "loading" });
-  const [nonce, setNonce] = useState(0);
-  useEffect(() => {
-    if (loader === null) return;
-    let live = true;
-    setState({ phase: "loading" });
-    loader()
-      .then((data) => {
-        if (live) setState({ phase: "ready", data });
-      })
-      .catch(() => {
-        if (live) setState({ phase: "error" });
-      });
-    return () => {
-      live = false;
-    };
-    // loader is recreated each render; the primitive deps below drive re-runs.
-  }, [...deps, nonce]);
-  return [state, () => setNonce((n) => n + 1)];
-}
+/* ---- Panel scaffolding ---- */
 
 function PanelShell({
   title,
   subtitle,
+  action,
   children,
 }: {
   title: string;
   subtitle?: string;
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="h-full overflow-y-auto pb-4">
-      <div className="px-5 pt-5">
-        <h1 className="m-0 font-display text-6 text-text">{title}</h1>
-        {subtitle !== undefined && (
-          <p className="mt-1 text-2 text-text-muted">{subtitle}</p>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
+        <div className="min-w-0">
+          <h1 className="m-0 font-display text-6 text-text">{title}</h1>
+          {subtitle !== undefined && (
+            <p className="mt-1 text-2 text-text-muted">{subtitle}</p>
+          )}
+        </div>
+        {action}
       </div>
-      <Divider className="mt-3" />
+      <Divider className="mt-4" />
       {children}
     </div>
   );
@@ -443,42 +153,50 @@ function PanelEmpty({
   );
 }
 
-function Th({
-  children,
-  className,
-}: {
-  children?: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <th
-      className={cx(
-        "border-b border-border-strong px-5 py-2.5 text-left text-1 font-medium text-text-muted",
-        className,
-      )}
-    >
-      {children}
-    </th>
-  );
+/* ---- Home: your games ---- */
+
+/** "Welcome back, Ada." with graceful fallbacks; guests get the plain form. */
+function welcome(session: IdentitySession | null): string {
+  const name = session?.displayName.trim();
+  if (
+    session === null ||
+    session.isAnonymous ||
+    name === undefined ||
+    name === ""
+  ) {
+    return "Welcome back.";
+  }
+  return `Welcome back, ${name}.`;
+}
+
+function players(count: number): string {
+  return `${count} ${count === 1 ? "player" : "players"}`;
 }
 
 function GamesPanel({
-  apiBase,
-  token,
+  state,
+  reload,
+  session,
   onOpen,
   onCreate,
 }: {
-  apiBase: string;
-  token: string | null | undefined;
+  state: Resource<GameSummary[]>;
+  reload: () => void;
+  session: IdentitySession | null;
   onOpen: (gameId: string) => void;
   onCreate: () => void;
 }) {
-  const [state, reload] = useResource<GameSummary[]>(
-    token != null ? () => fetchGames(apiBase, token) : null,
-    [apiBase, token],
-  );
   return (
-    <PanelShell title="Your games" subtitle="Games you host or have joined.">
+    <PanelShell
+      title={welcome(session)}
+      subtitle="Pick up a game you're in, or start a new one."
+      action={
+        <Button variant="default" onClick={onCreate}>
+          <PlusIcon />
+          New game
+        </Button>
+      }
+    >
       {state.phase === "loading" && (
         <PanelLoading label="Loading your games..." />
       )}
@@ -493,22 +211,18 @@ function GamesPanel({
             onAction={onCreate}
           />
         ) : (
-          <GamesTable games={state.data} onOpen={onOpen} />
+          <GamesList games={state.data} onOpen={onOpen} />
         ))}
     </PanelShell>
   );
 }
 
-function players(count: number): string {
-  return `${count} ${count === 1 ? "player" : "players"}`;
-}
-
 /**
- * The games list. Desktop keeps v2's columned table (the baseline to hold, DESIGN brief). Mobile,
- * which v2 never specced, collapses to stacked rows so nothing clips at 390px: the name leads and
- * the counts and time drop to a quiet meta line. Both open the game on tap (?game=<id>).
+ * The games detail rows, one recipe at every width: name leads (room name, then the puzzle
+ * title, then geometry-and-date), a quiet meta line beneath (players, started), your role as
+ * a badge when you're not the host. Each row opens the game.
  */
-function GamesTable({
+function GamesList({
   games,
   onOpen,
 }: {
@@ -517,92 +231,43 @@ function GamesTable({
 }) {
   const now = new Date();
   return (
-    <>
-      <table className="hidden w-full border-collapse text-2 md:table">
-        <thead>
-          <tr>
-            <Th>Name</Th>
-            <Th>Players</Th>
-            <Th>Started</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {games.map((g) => {
-            const title = gameTitle(g, now);
-            return (
-              <tr
-                key={g.gameId}
-                tabIndex={0}
-                role="button"
-                aria-label={`Open ${title}`}
-                onClick={() => onOpen(g.gameId)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onOpen(g.gameId);
-                  }
-                }}
-                className="cursor-pointer border-b border-border transition-colors last:border-0 hover:bg-sand-2 focus-visible:bg-sand-2 focus-visible:outline-none"
-              >
-                <td className="px-5 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium text-text">
-                      {title}
-                    </span>
-                    {g.role !== "host" && (
-                      <Badge variant="neutral" className="shrink-0 capitalize">
-                        {g.role}
-                      </Badge>
-                    )}
-                  </div>
-                </td>
-                <td className="px-5 py-3 tabular-nums text-text-muted">
-                  {g.memberCount}
-                </td>
-                <td className="px-5 py-3 whitespace-nowrap text-text-muted">
-                  {relativeTime(g.createdAt, now)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      <ul className="m-0 list-none p-0 md:hidden">
-        {games.map((g) => {
-          const title = gameTitle(g, now);
-          return (
-            <li key={g.gameId}>
-              <button
-                type="button"
-                onClick={() => onOpen(g.gameId)}
-                aria-label={`Open ${title}`}
-                className="flex w-full items-center justify-between gap-3 border-b border-border px-5 py-3 text-left transition-colors hover:bg-sand-2 focus-visible:bg-sand-2 focus-visible:outline-none"
-              >
-                <span className="min-w-0">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate font-medium text-text">
-                      {title}
-                    </span>
-                    {g.role !== "host" && (
-                      <Badge variant="neutral" className="shrink-0 capitalize">
-                        {g.role}
-                      </Badge>
-                    )}
+    <ul className="m-0 list-none p-0">
+      {games.map((g) => {
+        const title = gameTitle(g, now);
+        return (
+          <li key={g.gameId}>
+            <button
+              type="button"
+              onClick={() => onOpen(g.gameId)}
+              aria-label={`Open ${title}`}
+              className="flex w-full items-center justify-between gap-3 border-b border-border px-5 py-3.5 text-left transition-colors hover:bg-sand-2 focus-visible:bg-sand-2 focus-visible:outline-none"
+            >
+              <span className="min-w-0">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-3 font-medium text-text">
+                    {title}
                   </span>
-                  <span className="mt-0.5 block text-1 text-text-muted">
-                    {players(g.memberCount)} · {relativeTime(g.createdAt, now)}
-                  </span>
+                  {g.role !== "host" && (
+                    <Badge variant="neutral" className="shrink-0 capitalize">
+                      {g.role}
+                    </Badge>
+                  )}
                 </span>
-                <ChevronRightIcon className="shrink-0 text-text-subtle" />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </>
+                <span className="mt-0.5 block text-1 text-text-muted">
+                  {players(g.memberCount)} · started{" "}
+                  {relativeTime(g.createdAt, now)}
+                </span>
+              </span>
+              <ChevronRightIcon className="shrink-0 text-text-subtle" />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
+
+/* ---- Puzzles: the library ---- */
 
 function PuzzlesPanel({
   apiBase,
@@ -666,10 +331,29 @@ function PuzzlesPanel({
   );
 }
 
+function Th({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <th
+      className={cx(
+        "border-b border-border-strong px-5 py-2.5 text-left text-1 font-medium text-text-muted",
+        className,
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
 /**
- * The uploads list. Desktop is a columned table (Size / Features / Uploaded + the start action);
- * mobile stacks each puzzle so the row never clips. Every row's one action starts a fresh game
- * from that puzzle, the replay-without-reupload path (POST /games).
+ * The uploads list. Desktop is a columned table, now led by the parsed title and author
+ * (persisted by ingestion since the title/author API change); mobile stacks each puzzle so
+ * the row never clips. Every row's one action starts a fresh game from that puzzle.
  */
 function PuzzlesTable({
   puzzles,
@@ -686,6 +370,7 @@ function PuzzlesTable({
       <table className="hidden w-full border-collapse text-2 md:table">
         <thead>
           <tr>
+            <Th>Puzzle</Th>
             <Th>Size</Th>
             <Th>Features</Th>
             <Th>Uploaded</Th>
@@ -702,7 +387,18 @@ function PuzzlesTable({
                 key={p.puzzleId}
                 className="border-b border-border last:border-0"
               >
-                <td className="px-5 py-3 font-mono text-text tabular-nums">
+                {/* w-2/5 + max-w-0 gives the title real room and still truncates overflow. */}
+                <td className="w-2/5 max-w-0 px-5 py-3">
+                  <div className="truncate font-medium text-text">
+                    {puzzleTitle(p)}
+                  </div>
+                  {p.author !== null && p.author.trim() !== "" && (
+                    <div className="mt-0.5 truncate text-1 text-text-muted">
+                      {p.author}
+                    </div>
+                  )}
+                </td>
+                <td className="px-5 py-3 font-mono text-text tabular-nums whitespace-nowrap">
                   {geometry(p.cols, p.rows)}
                 </td>
                 <td className="px-5 py-3">
@@ -740,19 +436,24 @@ function PuzzlesTable({
       <ul className="m-0 list-none p-0 md:hidden">
         {puzzles.map((p) => {
           const features = featureLabels(p.features);
+          const meta = [
+            geometry(p.cols, p.rows),
+            ...(features.length > 0 ? [features.join(" · ")] : []),
+            relativeTime(p.createdAt, now),
+          ].join(" · ");
           return (
             <li
               key={p.puzzleId}
               className="flex items-center justify-between gap-3 border-b border-border px-5 py-3"
             >
               <div className="min-w-0">
-                <div className="font-mono text-text tabular-nums">
-                  {geometry(p.cols, p.rows)}
+                <div className="truncate font-medium text-text">
+                  {puzzleTitle(p)}
                 </div>
-                <div className="mt-0.5 text-1 text-text-muted">
-                  {(features.length === 0 ? "Standard" : features.join(" · ")) +
-                    " · " +
-                    relativeTime(p.createdAt, now)}
+                <div className="mt-0.5 truncate text-1 text-text-muted">
+                  {p.author !== null && p.author.trim() !== ""
+                    ? `${p.author} · ${meta}`
+                    : meta}
                 </div>
               </div>
               <Button

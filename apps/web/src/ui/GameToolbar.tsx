@@ -86,6 +86,7 @@ export function GameToolbar({
   selfId = null,
   shareUrl,
   onBack,
+  leading,
 }: {
   title: string;
   timer: string;
@@ -94,17 +95,22 @@ export function GameToolbar({
   selfId?: string | null;
   shareUrl: string | null;
   onBack: () => void;
+  /** Replaces the back chevron; inside the shell this is the sidebar trigger on desktop
+   * (a rail plus a back button would double the chrome) with the chevron kept on phones. */
+  leading?: React.ReactNode;
 }) {
   return (
     <header className="flex items-center gap-2 px-2 sm:px-3 py-2">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        onClick={onBack}
-        aria-label="Back to start"
-      >
-        <ChevronLeftIcon />
-      </Button>
+      {leading ?? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onBack}
+          aria-label="Back to start"
+        >
+          <ChevronLeftIcon />
+        </Button>
+      )}
 
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <Badge variant="neutral" className="min-w-0">

@@ -1,10 +1,11 @@
-// Client routing (SPA, no server routing): query params select the surface. `?game=<id>` (plus
-// optional `?code=`, and the smoke's `?api=`/`?token=`) drives the live game; `?create=1` is the
-// upload flow; `?demo=1` keeps the old fake-session boards for hacking. The root splits on auth:
-// a signed-out visitor sees the landing hero unchanged, a signed-in one lands on the home (the
-// sidebar shell, `?puzzles=1` selects its Puzzles tab). Navigation is pushState so the app never
-// full-reloads between screens, and the identity session survives. The M1 smoke path (`?game=`)
-// is unchanged.
+// Client routing (SPA): a small hand-rolled history-API router (nav.ts) selects the surface
+// by path. `/` is the signed-in home (the sidebar shell) or the landing hero when signed out;
+// `/puzzles` is the library; `/new` is the create flow; `/game/<id>` is the live game (invite
+// links carry `?code=`). Legacy query-routed URLs (`?game=`, `?puzzles=1`, `?create=1`) parse
+// to the same surfaces and are canonicalized once via replaceState, so old invite links keep
+// working; `?demo=1` keeps the fake-session boards for hacking. The `?api=`/`?ws=`/`?token=`
+// overrides (smoke and dogfood) stay query params on any route. Navigation is pushState so
+// the app never full-reloads between screens, and the identity session survives.
 import {
   useCallback,
   useEffect,
@@ -31,18 +32,23 @@ import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
 import { Landing } from "./ui/Landing";
 import { Home } from "./ui/Home";
+import { AppShell } from "./ui/AppShell";
 import { CreateGame } from "./ui/CreateGame";
+import { useResource, useAccessToken } from "./ui/useResource";
+import { fetchGames } from "./ui/homeData";
+import type { GameSummary } from "./ui/homeData";
 import { Button } from "@/components/ui/button";
 import { ThemeProvider } from "./ui/useTheme";
 import { LiveApp } from "./LiveApp";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
 import type { Navigate } from "./nav";
+import { canonicalHref, createHref, gameHref, parseRoute } from "./nav";
 
 type Theme = "light" | "dark";
 
 /**
- * The root: one theme provider around the router. A real game (`?game=<id>`) drives the live
+ * The root: one theme provider around the router. A real game (`/game/<id>`) drives the live
  * session service; the live path is what the M1 smoke exercises with two real browsers.
  */
 export function App({
@@ -59,6 +65,29 @@ export function App({
   );
 }
 
+interface Loc {
+  pathname: string;
+  search: string;
+}
+
+/**
+ * Read the current location, canonicalizing a legacy query-routed URL (`?game=`, `?puzzles=1`,
+ * `?create=1`) to its path form via replaceState FIRST, so the app only ever renders against
+ * stable params. Doing this before state lands (not in an effect) matters: an effect-time
+ * rewrite would change the params object under a mounted LiveApp and churn its WebSocket.
+ * The rewrite is idempotent, so StrictMode's double initializer invoke is harmless.
+ */
+function readLocation(): Loc {
+  if (typeof window === "undefined") return { pathname: "/", search: "" };
+  const { pathname, search } = window.location;
+  const canonical = canonicalHref(pathname, new URLSearchParams(search));
+  if (canonical !== null) window.history.replaceState({}, "", canonical);
+  return {
+    pathname: window.location.pathname,
+    search: window.location.search,
+  };
+}
+
 function Router({
   config,
   identity,
@@ -66,66 +95,116 @@ function Router({
   config: AppConfig;
   identity: Identity;
 }) {
-  const [search, setSearch] = useState(() =>
-    typeof window === "undefined" ? "" : window.location.search,
-  );
+  const [loc, setLoc] = useState<Loc>(() => readLocation());
   // Re-render when the identity session changes so the root flips between the landing and the
   // home the instant a sign-in or sign-out lands (getSession is read synchronously below).
   const [, bumpAuth] = useState(0);
   useEffect(() => identity.onChange(() => bumpAuth((t) => t + 1)), [identity]);
 
   useEffect(() => {
-    const onPop = (): void => setSearch(window.location.search);
+    const onPop = (): void => setLoc(readLocation());
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const navigate = useCallback<Navigate>((next) => {
-    window.history.pushState({}, "", window.location.pathname + next);
-    setSearch(next);
+  const navigate = useCallback<Navigate>((to) => {
+    window.history.pushState({}, "", to === "" ? "/" : to);
+    setLoc(readLocation());
     window.scrollTo(0, 0);
   }, []);
 
-  const params = useMemo(() => new URLSearchParams(search), [search]);
+  const params = useMemo(() => new URLSearchParams(loc.search), [loc.search]);
+  const route = useMemo(
+    () => parseRoute(loc.pathname, params),
+    [loc.pathname, params],
+  );
 
-  if (params.get("game") !== null) {
-    return (
-      <LiveApp
-        params={params}
-        config={config}
-        identity={identity}
-        navigate={navigate}
-      />
-    );
-  }
-  if (params.get("create") !== null) {
-    return (
-      <CreateGame config={config} identity={identity} navigate={navigate} />
-    );
-  }
-  if (params.get("demo") !== null) {
-    return <DemoApp config={config} identity={identity} />;
-  }
-  // Root. A signed-in session (or the `?token=` dogfood override) lands on the home; everyone
-  // else keeps the landing hero exactly as before.
+  // A signed-in session (or the `?token=` dogfood override) gets the sidebar shell; everyone
+  // else keeps the landing hero and the standalone gates exactly as before.
   const signedIn =
     identity.getSession() !== null || params.get("token") !== null;
-  if (signedIn) {
-    return (
-      <Home
+
+  // The recents read (GET /games) backs both the sidebar and the home panel, so it lives
+  // here and is fetched once. It re-reads on every surface change (routeEpoch) so a game
+  // created or joined a moment ago shows up without a manual refresh; one first-page read.
+  const apiBase = params.get("api") ?? config.apiBase;
+  const token = useAccessToken(identity, params.get("token"));
+  const routeEpoch =
+    route.kind === "game" ? `game:${route.gameId}` : route.kind;
+  const [games, reloadGames] = useResource<GameSummary[]>(
+    signedIn && token != null ? () => fetchGames(apiBase, token) : null,
+    [apiBase, token, routeEpoch, signedIn],
+  );
+
+  if (route.kind === "demo") {
+    return <DemoApp config={config} identity={identity} />;
+  }
+
+  const shell = (children: React.ReactNode): React.ReactNode => (
+    <AppShell
+      route={route}
+      params={params}
+      navigate={navigate}
+      identity={identity}
+      games={games}
+      reloadGames={reloadGames}
+    >
+      {children}
+    </AppShell>
+  );
+
+  if (route.kind === "game") {
+    const live = (
+      <LiveApp
+        key={route.gameId}
+        gameId={route.gameId}
+        params={params}
+        config={config}
+        identity={identity}
+        navigate={navigate}
+        inShell={signedIn}
+      />
+    );
+    return signedIn ? shell(live) : live;
+  }
+
+  if (route.kind === "create") {
+    const create = (
+      <CreateGame
         config={config}
         identity={identity}
         navigate={navigate}
         params={params}
+        inShell={signedIn}
+      />
+    );
+    return signedIn ? shell(create) : create;
+  }
+
+  if (!signedIn) {
+    return (
+      <Landing
+        identity={identity}
+        config={config}
+        onCreate={() => navigate(createHref(params))}
       />
     );
   }
-  return (
-    <Landing
-      identity={identity}
-      config={config}
-      onCreate={() => navigate("?create=1")}
-    />
+
+  return shell(
+    <Home
+      surface={route.kind === "puzzles" ? "puzzles" : "games"}
+      apiBase={apiBase}
+      token={token}
+      session={identity.getSession()}
+      games={games}
+      reloadGames={reloadGames}
+      onOpenGame={(gameId) => navigate(gameHref(gameId, params))}
+      onStartGame={(gameId, code) =>
+        navigate(gameHref(gameId, params, { code }))
+      }
+      onCreate={() => navigate(createHref(params))}
+    />,
   );
 }
 
