@@ -1,9 +1,11 @@
 // Key deck geometry (ID-4; apps/ios/DESIGN.md §4). The numbers are the SP-i2 rig's,
-// the deck the owner confirmed on hardware: three letter rows, spacing 6, key height
-// 46, corner radius 10, specials at one and a half letter units. I2b adds the rebus
-// key (EXPERIENCE.md baseline rebus entry) opposite backspace, which keeps the third
-// row full width. Pure math so the layout is testable without a view; the material
-// (glass on iOS 26+, one blur material below, DESIGN.md §4) is KeyDeck's business.
+// the deck the owner confirmed on hardware: three letter rows, spacing 6, corner
+// radius 10, specials at one and a half letter units. Key height is the exception:
+// the rig's 46 read too small in the full room and the owner ruled it 15% taller
+// on device (2026-07-10). I2b adds the rebus key (EXPERIENCE.md baseline rebus
+// entry) opposite backspace, which keeps the third row full width. Pure math so
+// the layout is testable without a view; the material (glass on iOS 26+, one blur
+// material below, DESIGN.md §4) is KeyDeck's business.
 
 import CoreGraphics
 
@@ -22,7 +24,8 @@ public enum DeckLayout {
     public static let keySpacing: CGFloat = 6
     /// Row pitch from the rig: key spacing plus 2.
     public static let rowSpacing: CGFloat = 8
-    public static let keyHeight: CGFloat = 46
+    /// The rig's 46 plus the owner's on-device ruling: 15% taller (2026-07-10).
+    public static let keyHeight: CGFloat = 53
     public static let keyCornerRadius: CGFloat = 10
     /// Special keys (rebus, backspace) span one and a half letter units plus the
     /// half spacing that a letter-and-a-half would have enclosed.
