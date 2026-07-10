@@ -2,7 +2,7 @@
   "reason": "The Wave 3 Swift port bound every engine family (reducer, comparator, navigation, completion) to CrossyEngine and drained this list; it stays empty. A non-foreign family reappears here only if its engine binding is intentionally removed, which the per-family guard in Tests/VectorRunnerTests then flags. Mirrors packages/engine/vectors.skip.json.",
   "families": [],
   "foreign": {
-    "reason": "client-store's consumer is apps/web's store (Wave 2.1d) and later the iOS store, never CrossyEngine (PROTOCOL.md §13). The runner discovers and shape-validates these vectors but never executes them; execution lives in apps/web's and the iOS store's suites. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the Wave 3 per-family rebind that drains `families` must not touch it. Mirrors packages/engine/vectors.skip.json.",
+    "reason": "client-store's consumer is apps/web's store (Wave 2.1d) and the iOS store (Phase I1b), never CrossyEngine (PROTOCOL.md §13). The runner discovers and shape-validates these vectors but never executes them; execution lives in apps/web's suite and apps/ios/Tests/CrossyStoreTests. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the Wave 3 per-family rebind that drains `families` must not touch it. Mirrors packages/engine/vectors.skip.json.",
     "families": ["client-store"]
   }
 }
