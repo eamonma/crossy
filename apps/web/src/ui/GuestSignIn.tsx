@@ -44,6 +44,8 @@ export function GuestSignIn({
 
   if (phase === "idle") {
     return (
+      // "Watch": a guest seat is a spectator seat (DESIGN section 8), so the label
+      // promises exactly what the click delivers.
       <Button
         variant="secondary"
         size="lg"
@@ -53,7 +55,7 @@ export function GuestSignIn({
           setPhase("verifying");
         }}
       >
-        Continue as guest
+        Watch as a guest
       </Button>
     );
   }

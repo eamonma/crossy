@@ -14,10 +14,12 @@ import { AvatarStack } from "./primitives";
 import type { StackMember } from "./primitives";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ThemeToggle } from "./TopBar";
@@ -49,29 +51,38 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
           <span className="hidden sm:inline">Share</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[19rem]">
-        <p className="text-2 text-text-muted">
-          Anyone with this link can join or invite others.
-        </p>
+      <PopoverContent align="end" className="w-[19rem] gap-2">
+        <PopoverHeader>
+          <PopoverTitle>Share this game</PopoverTitle>
+          <PopoverDescription className="text-1">
+            Anyone with the link can join or invite others.
+          </PopoverDescription>
+        </PopoverHeader>
         {shareUrl === null ? (
-          <p className="text-2 text-text-subtle">
+          <p className="m-0 text-1 text-text-subtle">
             Open this game from an invite link to get one you can share.
           </p>
         ) : (
-          <>
-            <Input
+          // One 28px bar: the link and its copy action share a single field, so the
+          // popover holds a sentence and a control instead of three stacked rows.
+          <div className="field flex h-[1.75rem] items-center gap-1.5 pr-1 pl-2">
+            <input
               readOnly
               value={shareUrl}
               onFocus={(e) => e.currentTarget.select()}
-              className="font-mono text-1"
+              aria-label="Invite link"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 font-mono text-1 text-text-muted outline-none"
             />
-            <div className="flex justify-end">
-              <Button variant="default" size="sm" onClick={() => void copy()}>
-                {copied ? <CheckIcon /> : <CopyIcon />}
-                {copied ? "Copied" : "Copy link"}
-              </Button>
-            </div>
-          </>
+            <Button
+              variant="default"
+              size="xs"
+              onClick={() => void copy()}
+              className="min-w-[3.75rem]"
+            >
+              {copied ? <CheckIcon /> : <CopyIcon />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
         )}
       </PopoverContent>
     </Popover>
