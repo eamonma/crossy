@@ -108,7 +108,11 @@ one piece of glass reshaped. SP-i1 pinned the implementation
 frame and corner radius interpolate with gesture progress. The two-view
 glassEffectID swap snaps instead of scrubbing (device recheck rides I2c), and a
 system sheet presentation cannot morph at all, so every sheet below is a custom
-overlay panel living in the room's own hierarchy:
+overlay panel living in the room's own hierarchy. SP-i5 ratified this by owner
+feel test on device (reports/spikes/sp-i5-detent-browser.md): the system detent
+sheet is grow-then-swap, not the melt, and fuses the clue bar and the deck into
+one surface; the ruling is the clue bar as its own glass over a separate deck.
+The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
