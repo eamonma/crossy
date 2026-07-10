@@ -66,7 +66,8 @@ depends on is open.
       sixty presses a minute. Owner smoke test is the instrument; rules ID-4.
       Blocks: I2b. **Rig delivered 2026-07-10** and installed on the owner's device
       (reports/spikes/sp-i2-deck.md); pipeline latency 8-11 ms on simulator. The
-      ID-4 verdict stays open until the owner's smoke test.
+      ID-4 verdict stays open until the owner's smoke test. **Verdict 2026-07-10:
+      glass pucks confirmed on device; ID-4 stands, I2b unblocked.**
 - [x] **SP-i3 Live Activity timer** (half day). An activity whose timer renders
       natively from a fixed `firstFillAt`: ticks with zero updates, survives app
       kill, island and lock screen render. Blocks: I5a. **Closed 2026-07-10, yes on
