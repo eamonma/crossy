@@ -1,9 +1,10 @@
 // The signed-in shell: one sidebar around one content frame, the claude.ai shape on the v2
 // language. Pinned on top: the wordmark (home), New game (the one accent action), and
 // Puzzles (the library). The middle is the recent-games list straight off GET /games, one
-// quiet line per game, newest first; there is deliberately no status dot, because lifecycle
-// is session-owned and the API cannot report it (DESIGN.md section 9). The user card holds
-// the bottom.
+// quiet line per game, newest first. A finished game (completedAt present, read from the
+// session-owned game_state under the API's read grant, DESIGN.md section 9) wears a small,
+// muted check ahead of its name; ongoing games carry nothing, so the list stays calm. The
+// user card holds the bottom.
 //
 // Collapse model: shadcn's Sidebar gives the icon rail, cmd+B, and the mobile Sheet; this
 // shell controls `open`. Default is per surface (expanded at home, collapsed in a game, so
@@ -22,6 +23,7 @@
 // is pinned to the expanded width so nothing reflows or re-truncates mid-flight.
 import { useCallback, useMemo, useState } from "react";
 import {
+  CheckIcon,
   DesktopIcon,
   ExitIcon,
   FileTextIcon,
@@ -42,7 +44,7 @@ import {
 import { Divider, Logo } from "./primitives";
 import { useTheme } from "./useTheme";
 import type { Resource } from "./useResource";
-import { compactTime, gameTitle } from "./homeData";
+import { compactTime, gameTitle, isCompleted } from "./homeData";
 import type { GameSummary } from "./homeData";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -369,15 +371,22 @@ function RecentGames({
       {games.data.map((g) => {
         const title = gameTitle(g, now);
         const active = g.gameId === activeGameId;
+        const done = isCompleted(g);
         return (
           <SidebarMenuItem key={g.gameId}>
             <SidebarMenuButton
               onClick={() => onOpen(g.gameId)}
               isActive={active}
               aria-current={active ? "page" : undefined}
-              title={title}
+              title={done ? `${title} (completed)` : title}
               className="font-normal text-text-muted data-active:font-normal"
             >
+              {done && (
+                <CheckIcon
+                  aria-label="Completed"
+                  className="size-3.5 shrink-0 text-text-subtle"
+                />
+              )}
               <span className="min-w-0 flex-1 truncate">{title}</span>
               <span className="shrink-0 font-mono text-1 tabular-nums text-text-subtle">
                 {compactTime(g.createdAt, now)}
