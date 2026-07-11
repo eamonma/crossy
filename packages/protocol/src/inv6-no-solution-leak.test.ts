@@ -3,7 +3,7 @@
 // layers: a compile-time structural proof (a leak is a tsc error under `pnpm typecheck`) and a
 // runtime proof that a serialized ClientPuzzle contains no solution.
 import { describe, expect, it } from "vitest";
-import { toClientPuzzle } from "./puzzle";
+import { deriveMask, toClientPuzzle } from "./puzzle";
 import type { ClientPuzzle, ServerPuzzle, Solution } from "./puzzle";
 import type { Board } from "./board";
 import type { ClientMessage, ServerMessage } from "./messages";
@@ -79,5 +79,43 @@ describe("no solution leak (INV-6, DESIGN.md §4, §7)", () => {
     expect(json).not.toContain("CAT");
     // The client shape still carries geometry and clues.
     expect(json).toContain("Feline pet");
+  });
+});
+
+describe("deriveMask, the black-square silhouette (PROTOCOL.md §12; INV-6)", () => {
+  it("matches the puzzle geometry: rows strings, each cols characters", () => {
+    // A 3x4 grid with two blocks; the mask is row-major (cell i = r*cols + c).
+    const mask = deriveMask({ rows: 3, cols: 4, blocks: [1, 11] });
+    expect(mask).toHaveLength(3);
+    expect(mask.every((row) => row.length === 4)).toBe(true);
+    expect(mask).toEqual([".#..", "....", "...#"]);
+  });
+
+  it("marks black squares only, from the block indices and nothing else", () => {
+    // Every character is one of the two pattern glyphs; the block count matches exactly.
+    const mask = deriveMask({ rows: 2, cols: 2, blocks: [0, 3] });
+    expect(mask).toEqual(["#.", ".#"]);
+    const flat = mask.join("");
+    expect(flat).toMatch(/^[#.]+$/);
+    expect([...flat].filter((ch) => ch === "#")).toHaveLength(2);
+  });
+
+  it("INV-6: the mask carries no letter, number, or solution content, ever", () => {
+    // Derived from a rebus puzzle whose solution plants a distinctive marker; the marker
+    // (and any letter or digit) must never surface, because deriveMask never reads the solution.
+    const server = sampleServerPuzzle();
+    const mask = deriveMask(server);
+    // Every row is only the two pattern glyphs; no letter, digit, or solution content survives.
+    expect(mask.every((row) => /^[#.]*$/.test(row))).toBe(true);
+    const json = JSON.stringify(mask);
+    expect(json).not.toContain("CAT");
+    expect(json).not.toMatch(/[A-Za-z0-9]/); // no letters or digits leak into the pattern
+  });
+
+  it("is derivable from ClientPuzzle geometry alone, no ServerPuzzle needed (INV-6)", () => {
+    // The list endpoints hold only public geometry; the mask must derive from that, not the
+    // solution. This proves the derivation's inputs are the INV-6-safe fields.
+    const client: ClientPuzzle = toClientPuzzle(sampleServerPuzzle());
+    expect(deriveMask(client)).toEqual([".#"]); // 1x2, cell 1 is the black square
   });
 });

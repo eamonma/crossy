@@ -26,6 +26,10 @@ function iso(daysAgo: number, hoursAgo = 0): string {
   ).toISOString();
 }
 
+// A placeholder all-playable silhouette sized to the fixture geometry; the formatter tests below
+// never read the mask, so a plain grid keeps the builders honest to the shape without noise.
+const PLAIN_15 = Array.from({ length: 15 }, () => ".".repeat(15));
+
 function game(over: Partial<GameSummary> = {}): GameSummary {
   return {
     gameId: "g1",
@@ -35,7 +39,7 @@ function game(over: Partial<GameSummary> = {}): GameSummary {
     createdBy: "u1",
     memberCount: 1,
     completedAt: null,
-    puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: null },
+    puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: null, mask: PLAIN_15 },
     ...over,
   };
 }
@@ -49,6 +53,7 @@ function puzzle(over: Partial<PuzzleSummary> = {}): PuzzleSummary {
     features: null,
     title: null,
     author: null,
+    mask: PLAIN_15,
     ...over,
   };
 }
@@ -81,7 +86,13 @@ describe("gameTitle", () => {
   it("falls back to the puzzle's title when the room is unnamed", () => {
     const g = game({
       name: null,
-      puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: "NYT 2026-07-05" },
+      puzzle: {
+        puzzleId: "p1",
+        rows: 15,
+        cols: 15,
+        title: "NYT 2026-07-05",
+        mask: PLAIN_15,
+      },
     });
     expect(gameTitle(g, NOW)).toBe("NYT 2026-07-05");
   });

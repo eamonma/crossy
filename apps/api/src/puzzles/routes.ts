@@ -7,8 +7,8 @@
 import { Hono } from "hono";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
-import { toClientPuzzle } from "@crossy/protocol";
-import type { ClientPuzzle } from "@crossy/protocol";
+import { deriveMask, toClientPuzzle } from "@crossy/protocol";
+import type { ClientPuzzle, Mask } from "@crossy/protocol";
 import type { AppDeps, ApiEnv } from "../context";
 import { fail } from "../http/errors";
 import { parseBefore, parseLimit } from "../http/pagination";
@@ -30,6 +30,12 @@ interface PuzzleView {
  * flags (rebus, circles, ...), which carry no solution. `title`/`author` are the display metadata
  * ingestion parses, read from their own columns (never from `data`), null when the document
  * carried none; they are shown back verbatim and are not solutions (INV-6 untouched).
+ *
+ * `mask` is the black-square silhouette (PROTOCOL.md §12): an array of row strings of `#` and `.`,
+ * derived from the puzzle's block indices, the one other pattern-only field projected out of
+ * `data` (`data -> 'blocks'`, a jsonb array of integers). It carries the pattern and nothing else:
+ * no letters, no numbering, no solution (INV-6 untouched). Only geometry and blocks cross into the
+ * process; the solution-bearing `data` is never selected whole.
  */
 interface PuzzleSummary {
   readonly puzzleId: string;
@@ -39,6 +45,7 @@ interface PuzzleSummary {
   readonly features: unknown;
   readonly title: string | null;
   readonly author: string | null;
+  readonly mask: Mask;
 }
 
 export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
@@ -109,7 +116,10 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
 
     // INV-6: an explicit column list, never a select-all. Geometry is projected out of `data`
     // in SQL (`->> 'rows'`/`'cols'`), so the solution-bearing jsonb never crosses into the
-    // process; only `features` (no solution) is returned whole.
+    // process; only `features` (no solution) is returned whole. `blocks` is the other pattern-only
+    // field the mask needs: `data -> 'blocks'` is a jsonb array of integer cell indices, no
+    // solution, projected the same way. The mask itself is derived below (deriveMask); the
+    // solution never enters this query.
     const rows = await deps.db
       .select({
         puzzleId: schema.puzzles.puzzleId,
@@ -119,6 +129,7 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
         author: schema.puzzles.author,
         puzzleRows: sql<number>`(${schema.puzzles.data} ->> 'rows')::int`,
         puzzleCols: sql<number>`(${schema.puzzles.data} ->> 'cols')::int`,
+        blocks: sql<number[]>`${schema.puzzles.data} -> 'blocks'`,
       })
       .from(schema.puzzles)
       .where(
@@ -138,6 +149,12 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
       features: r.features,
       title: r.title,
       author: r.author,
+      // The pattern-only silhouette, derived from geometry and block indices (PROTOCOL.md §12).
+      mask: deriveMask({
+        rows: r.puzzleRows,
+        cols: r.puzzleCols,
+        blocks: r.blocks ?? [],
+      }),
     }));
     return c.json({ puzzles });
   });
