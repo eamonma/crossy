@@ -30,10 +30,13 @@ import type { Db } from "../db/client";
  * upsert for them. If a tombstoned user ever re-authenticates, re-mirroring here is the deliberate
  * reactivation of that account, not a leak.
  */
-export async function jitUpsertUser(db: Db, identity: Identity): Promise<void> {
+export async function jitUpsertUser(
+  db: Db,
+  identity: Identity,
+): Promise<{ created: boolean }> {
   const displayName =
     identity.displayName ?? (identity.isAnonymous ? "Guest" : null);
-  await db
+  const rows = await db
     .insert(schema.users)
     .values({
       userId: identity.userId,
@@ -48,5 +51,9 @@ export async function jitUpsertUser(db: Db, identity: Identity): Promise<void> {
         displayName: sql`coalesce(excluded.display_name, ${schema.users.displayName})`,
         avatar: sql`coalesce(excluded.avatar, ${schema.users.avatar})`,
       },
-    });
+    })
+    // xmax = 0 on the RETURNING row means this call inserted the user (a first sighting), not
+    // updated an existing one: the once-per-user signal the signup starter-seed keys on.
+    .returning({ inserted: sql<boolean>`(xmax = 0)` });
+  return { created: rows[0]?.inserted ?? false };
 }

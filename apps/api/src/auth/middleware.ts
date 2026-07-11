@@ -5,6 +5,7 @@
 import { createMiddleware } from "hono/factory";
 import type { AppDeps, ApiEnv } from "../context";
 import { fail } from "../http/errors";
+import { seedStarterGame } from "../starter/seed";
 import { jitUpsertUser } from "./jit-upsert";
 
 const BEARER = /^Bearer (.+)$/;
@@ -22,7 +23,21 @@ export function authMiddleware(deps: AppDeps) {
       return fail(c, "UNAUTHORIZED", `token rejected: ${result.reason}`);
     }
     // Materialize the identity mirror before any handler writes a row that references it.
-    await jitUpsertUser(deps.db, result.identity);
+    const mirror = await jitUpsertUser(deps.db, result.identity);
+    // First sight of a full account: seed a solo starter game they host, so the signed-in home
+    // is never empty (owner decision 2026-07-11). Guests are excluded, they cannot hold host
+    // (DESIGN.md §8). Best effort: a seed failure logs and is swallowed so it never blocks auth.
+    if (
+      deps.starterSeedEnabled &&
+      mirror.created &&
+      !result.identity.isAnonymous
+    ) {
+      try {
+        await seedStarterGame(deps.db, result.identity.userId);
+      } catch (err) {
+        console.error("starter game seed failed:", err);
+      }
+    }
     c.set("identity", result.identity);
     await next();
   });
