@@ -74,9 +74,8 @@ public enum IslandPresentation {
         let day = 86_400
         if ageSeconds < day { return .ticking }
         if ageSeconds >= 7 * day { return .infinity }
-        let days = ageSeconds / day
-        let hours = (ageSeconds % day) / 3600
-        return .coarse(hours > 0 ? "\(days) d \(hours) h" : "\(days) d")
+        // Days only (owner ruling 2026-07-11): past a day the hours are noise too.
+        return .coarse("\(ageSeconds / day) d")
     }
 
     private static func pad(_ value: Int) -> String {
