@@ -390,10 +390,13 @@ final class ArrivalModel {
     /// nil in the fixture composition: cards open the loopback room, not RealRoom.
     let liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?
     let authConfigured: Bool
-    /// Where Welcome and Settings open the Privacy Policy row/link. Always a real
-    /// URL, even in the fixture and unconfigured compositions (ArrivalConfig.defaultWebOrigin),
-    /// so the legal affordance never depends on the auth/session seam being live.
+    /// The legal pages Welcome and Settings open in the in-app Safari sheet. The
+    /// screens only signal intent (onOpenLegal); this model supplies the URLs.
+    /// Always real URLs, even in the fixture and unconfigured compositions
+    /// (ArrivalConfig.defaultWebOrigin), so the legal affordances never depend on
+    /// the auth/session seam being live.
     let privacyURL: URL
+    let termsURL: URL
 
     private init(
         session: any ArrivalSessioning,
@@ -401,7 +404,8 @@ final class ArrivalModel {
         puzzles: any PuzzlesProviding,
         liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?,
         authConfigured: Bool,
-        privacyURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "privacy")
+        privacyURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "privacy"),
+        termsURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "terms")
     ) {
         self.session = session
         self.rooms = rooms
@@ -409,6 +413,7 @@ final class ArrivalModel {
         self.liveRoomFacts = liveRoomFacts
         self.authConfigured = authConfigured
         self.privacyURL = privacyURL
+        self.termsURL = termsURL
     }
 
     /// The launch-time resolution described in the header comment.
@@ -469,7 +474,8 @@ final class ArrivalModel {
             puzzles: RealPuzzles(api: api),
             liveRoomFacts: (config.apiBaseURL, config.sessionBaseURL),
             authConfigured: configured,
-            privacyURL: config.webOrigin.appending(path: "privacy"))
+            privacyURL: config.webOrigin.appending(path: "privacy"),
+            termsURL: config.webOrigin.appending(path: "terms"))
     }
 
     /// The Welcome screen's state, mapped from the session phase and the config.

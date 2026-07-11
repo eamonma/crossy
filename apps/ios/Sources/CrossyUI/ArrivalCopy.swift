@@ -28,6 +28,14 @@ public struct ArrivalFailure: Error, Equatable, Sendable {
     public var isFinal: Bool { code == "DENIED" }
 }
 
+/// The legal page a footer button asks for. Screens signal this intent through
+/// `onOpenLegal` and never hold URLs (AD-2); the composition root maps it to the
+/// web origin's live page and presents an in-app Safari sheet.
+public enum LegalPage: Sendable, Equatable {
+    case privacy
+    case terms
+}
+
 public enum ArrivalCopy {
     // MARK: - Welcome (EXPERIENCE.md §3: wordmark, one line, one button)
 
@@ -39,9 +47,10 @@ public enum ArrivalCopy {
     public static let signInFailed = "Sign-in didn't finish. Try again."
     /// The honest unconfigured state: the plist slots are empty in this build.
     public static let signInUnconfigured = "This build isn't set up for sign-in yet."
-    /// The quiet legal link shown before sign-in and again inside Settings; opens the
-    /// live policy at /privacy in the system browser.
+    /// The quiet legal pair shown before sign-in and again inside Settings; each
+    /// opens its live page (/privacy, /terms) in an in-app Safari sheet.
     public static let privacyPolicy = "Privacy Policy"
+    public static let termsOfService = "Terms of Service"
 
     // MARK: - Rooms (lexicon: home is Rooms)
 
