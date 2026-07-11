@@ -41,6 +41,18 @@ cross-reference highlights, conflict flashes, the completion mosaic. Grids up to
 25x25 ingestion cap must render legibly; past comfortable glyph size the grid pans
 and zooms under the standing chrome.
 
+**The board is full-bleed** (owner ruling 2026-07-10). The canvas fills the solve
+screen from the screen's top edge to the key deck's top edge; the room bar and the
+clue bar float over it as glass. The deck is the one hard boundary: the board never
+runs under it (ID-4, the deck sits over solid canvas). Because the bars float, the
+camera, not the layout, keeps content readable: the clamp treats the room bar and
+the one-line clue bar plus feather as standing insets (a fitting board centers
+between the bars; a panned board rests its first row just below the room bar and
+its last just above the feather, the scroll-inset grammar), and a wrapped clue's
+taller bar rescues only the selected cell, panning it clear on the chrome spring,
+never during a live pinch or drag. The standing insets are built from constants, so
+clue length can never move the board: that is the point of the whole arrangement.
+
 **Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
 only person-marker on the board at rest is the presence puck in the cell corner. A
 writer's color appears in motion (the flash, a cursor) and at completion (the
@@ -96,7 +108,7 @@ The standing pieces:
 | piece        | register | notes                                                            |
 | ------------ | -------- | ---------------------------------------------------------------- |
 | room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable), players (pucks, overflow count) |
-| clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict) |
+| clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict); floats over the full-bleed board on a feather, a wash of the ground's canvas fading up from beneath the glass so live cells never meet a hard edge (both grounds by token, ID-3) |
 | sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
@@ -179,14 +191,23 @@ chrome they left, so nothing inflates hollow and nobody renders twice. Only
 content new at the open end (lists, names) fades in late. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
-  it pours back.
+  it pours back. With the browser open, a downward drag scrubs the melt back under
+  the finger (SP-i1 unchanged: the finger owns progress raw; release settles by
+  position and velocity, the sheet grammar). The drag resolves against the
+  scrolling clue list the way system sheets resolve it: it takes the surface only
+  while the list rests at its top, otherwise the list scrolls, and a pull that
+  runs the list into its top hands the surface over mid-gesture (PanelDismiss
+  pins the arbitration). The pinned row keeps its own bidirectional drag.
   The bar itself breathes with the clue (owner ruling 2026-07-10, the ClueFitLab
-  verdict): a long clue wraps to at most three lines, the bar's layout slot sizes
-  to the same words (ClueBarSizer, the row's invisible twin), and the room re-lays
-  out around it on the chrome spring; the capsule keeps radius = height/2 as it
-  grows. One line floors at the standing 52, so short clues are untouched. Past
-  three lines the ellipsis returns (the pathological clue on the narrowest phone).
-  Reduce Motion cuts the height change.
+  verdict): a long clue wraps to at most three lines and the bar's slot sizes to
+  the same words (ClueBarSizer, the row's invisible twin). Since the full-bleed
+  ruling the slot floats over the board, bottom edge pinned above the deck, so the
+  bar grows upward over live cells on the chrome spring and NOTHING else re-lays
+  out; the board never moves with clue length (the camera rescues an occluded
+  selected cell, section 2). The capsule keeps radius = height/2 as it grows. One
+  line floors at the standing 52, so short clues are untouched. Past three lines
+  the ellipsis returns (the pathological clue on the narrowest phone). Reduce
+  Motion cuts the height change.
 - Tap the players pill: the roster menu flows out of it, the system's morph
   (rows carry rendered pucks, names, and the quiet state word; the spectator's
   Join in is a real menu action, and a host's row for anyone else nests a

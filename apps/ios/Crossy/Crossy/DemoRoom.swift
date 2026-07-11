@@ -16,6 +16,9 @@
 //    -i2cBrowser            land the clue browser open
 //    -i2cWord 2             advance the selection two words from 1-Across (the
 //                           wrapped-clue-bar evidence; simctl cannot tap)
+//    -i2cClueCycle          walk the across words on a loop so the bar cycles
+//                           one, two, and three lines (the full-bleed proof:
+//                           the bar breathes, the board never moves)
 //    -i2cMelt 0.5           hold the melt at a progress (intermediate evidence)
 //    -i2cFacts              land the room-facts card open (the time pill,
 //                           inflated; simctl cannot tap, the presentBrowser
@@ -241,6 +244,19 @@ final class DemoRoom {
             try? await Task.sleep(for: .milliseconds(800))
             await transport.deliver(.kicked(KickedMessage(reason: "kicked")))
             chrome.kicked = true
+        }
+
+        if arguments.contains("-i2cClueCycle") {
+            // The breathing proof (the full-bleed ruling, owner ask 2026-07-10):
+            // the selection walks the across words on a loop, so the bar cycles
+            // one, two, and three lines while the board holds still under it.
+            // A hand on the device and a screenshot pair read the same fact:
+            // clue length never moves the grid. Last, because it never returns;
+            // it composes with the one-shot scripts above.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(1400))
+                selection.swipe(.nextWord)
+            }
         }
     }
 }

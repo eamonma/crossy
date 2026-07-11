@@ -124,6 +124,51 @@ public struct SolveScreen: View {
         let status = roomStatus
 
         return ZStack {
+            // The base layer: the full-bleed board over the deck (the owner's
+            // full-bleed ruling, 2026-07-10). The board runs from the screen's
+            // top edge to the deck's top and never under the deck (ID-4: the
+            // deck sits over solid canvas, never over the grid); the room bar
+            // and the clue bar float over it as separate layers, so neither
+            // bar's height is the board's business.
+            VStack(spacing: 0) {
+                boardArea(weather: weather)
+
+                // A terminal status retires the deck for everyone, spectator or
+                // not (RoomTerminal.deckRetired; a frozen room has no seat worth
+                // upgrading): mutations were already refused by the store and
+                // InputActions, this is the rendered truth. Selection stays for
+                // browsing; taps and swipes are pure navigation after the freeze.
+                switch status {
+                case .completed:
+                    // The finished room breathes (owner ruling 2026-07-10,
+                    // removing the first build's Solved-together zone and its
+                    // Stats button): the deck just leaves, the board keeps the
+                    // space, and the stats live behind the frozen clock.
+                    Color.clear.frame(height: 12)
+                case .abandoned:
+                    abandonedZone
+                case .ongoing:
+                    if spectating {
+                        watchingZone
+                    } else {
+                        deckZone
+                    }
+                }
+            }
+            // Transient panels yield to intent (DESIGN.md §4): every touch
+            // below the bar dismisses an open roster or stats card AND
+            // lands (simultaneous, so grid taps, deck presses, and the
+            // zones' buttons all keep firing). The panels sit above this
+            // layer and their inner blockers keep panel taps inside.
+            .simultaneousGesture(TapGesture().onEnded { dismissTransients() })
+            // A terminal status reshapes the room (the deck leaves, the board
+            // takes its space): the board rides the layout change on the chrome
+            // spring instead of jumping (owner finding 2026-07-10). Reduce
+            // Motion cuts.
+            .animation(reduceMotion ? nil : .crossyChrome, value: status)
+
+            // The room bar floats over the board, its own glass layer (the
+            // full-bleed ruling): layout above never moves the board below.
             VStack(spacing: 0) {
                 RoomBar(
                     ground: ground,
@@ -180,86 +225,8 @@ public struct SolveScreen: View {
                 .padding(.horizontal, ChromeLayout.inset)
                 .padding(.top, 6)
 
-                VStack(spacing: 0) {
-                    CrossyGridView(
-                        store: store, puzzle: puzzle, ground: ground,
-                        selection: model.selection,
-                        mosaicStartedAt: completion.mosaicStartedAt,
-                        // A swipe never becomes a tap, so the yield law needs
-                        // its own hook here (DESIGN.md §4): panels pour back,
-                        // the swipe still navigates.
-                        onSwipe: { intent in
-                            dismissTransients()
-                            model.swipe(intent)
-                        },
-                        onPlaceCursor: { cell in
-                            dismissTransients()
-                            model.tap(cell: cell)
-                        })
-                        .overlay {
-                            // Reconnecting dims the room (DESIGN.md §8): a paper wash,
-                            // never a modal, never a spinner. Input stays live; the
-                            // store holds it gracefully (PROTOCOL.md §8).
-                            if weather.boardDimmed {
-                                Color(rgb: ground.tokens.canvas)
-                                    .opacity(RoomWeather.boardDimOpacity)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                        .animation(.crossyChrome, value: weather.boardDimmed)
-                        .padding(.top, 8)
-
-                    // The clue bar's rest slot: the melting surface renders in the
-                    // overlay at exactly this frame, so layout owns the geometry and
-                    // the morph only borrows it. The slot is the row's invisible
-                    // twin (ClueBarSizer), so a wrapping clue grows the slot and
-                    // the room re-lays out honestly: board above, deck below. The
-                    // height change between clues rides the chrome spring (the
-                    // terminal-reshape precedent, owner finding 2026-07-10);
-                    // Reduce Motion cuts. Keyed on the clue, so mid-word cursor
-                    // moves never enter an animated transaction.
-                    ClueBarSizer(ground: ground, current: clues.current(for: model.selection))
-                        .reportChromeFrame(.clueBarSlot)
-                        .padding(.horizontal, ChromeLayout.inset)
-                        .padding(.top, 8)
-                        .animation(
-                            reduceMotion ? nil : .crossyChrome,
-                            value: clues.current(for: model.selection)?.tag)
-
-                    // A terminal status retires the deck for everyone, spectator or
-                    // not (RoomTerminal.deckRetired; a frozen room has no seat worth
-                    // upgrading): mutations were already refused by the store and
-                    // InputActions, this is the rendered truth. Selection stays for
-                    // browsing; taps and swipes are pure navigation after the freeze.
-                    switch status {
-                    case .completed:
-                        // The finished room breathes (owner ruling 2026-07-10,
-                        // removing the first build's Solved-together zone and its
-                        // Stats button): the deck just leaves, the board keeps the
-                        // space, and the stats live behind the frozen clock.
-                        Color.clear.frame(height: 12)
-                    case .abandoned:
-                        abandonedZone
-                    case .ongoing:
-                        if spectating {
-                            watchingZone
-                        } else {
-                            deckZone
-                        }
-                    }
-                }
-                // Transient panels yield to intent (DESIGN.md §4): every touch
-                // below the bar dismisses an open roster or stats card AND
-                // lands (simultaneous, so grid taps, deck presses, and the
-                // zones' buttons all keep firing). The panels sit above this
-                // layer and their inner blockers keep panel taps inside.
-                .simultaneousGesture(TapGesture().onEnded { dismissTransients() })
+                Spacer(minLength: 0)
             }
-            // A terminal status reshapes the room (the deck leaves, the board
-            // takes its space): the grid rides the layout change on the chrome
-            // spring instead of jumping (owner finding 2026-07-10). Reduce
-            // Motion cuts.
-            .animation(reduceMotion ? nil : .crossyChrome, value: status)
 
             if let morph = meltMorph {
                 ClueChrome(
@@ -345,6 +312,80 @@ public struct SolveScreen: View {
         .onDisappear {
             relayTrailing?.cancel()
             relay.trailingCancelled()
+        }
+    }
+
+    // MARK: - The full-bleed board
+
+    /// The board and the clue bar's floating rest slot, one layer (the
+    /// full-bleed ruling, owner ask 2026-07-10). The grid is the base, bled to
+    /// the screen's top edge; the slot rides the board's bottom edge with the
+    /// feather washing up beneath it, so a wrapping clue grows the slot upward
+    /// on the chrome spring and the board underneath never moves. The camera,
+    /// not the layout, keeps the selected cell readable: the standing insets
+    /// clamp (GridOcclusion.standing, constant under clue growth) and the live
+    /// slot only rescues the occluded cell (keepClear).
+    private func boardArea(weather: RoomWeather) -> some View {
+        ZStack(alignment: .bottom) {
+            CrossyGridView(
+                store: store, puzzle: puzzle, ground: ground,
+                selection: model.selection,
+                mosaicStartedAt: completion.mosaicStartedAt,
+                occlusion: .standing(
+                    board: frames[.board], roomBar: frames[.roomBar]),
+                keepClear: .keepClear(
+                    board: frames[.board], roomBar: frames[.roomBar],
+                    clueSlot: frames[.clueBarSlot]),
+                // A swipe never becomes a tap, so the yield law needs
+                // its own hook here (DESIGN.md §4): panels pour back,
+                // the swipe still navigates.
+                onSwipe: { intent in
+                    dismissTransients()
+                    model.swipe(intent)
+                },
+                onPlaceCursor: { cell in
+                    dismissTransients()
+                    model.tap(cell: cell)
+                })
+                .overlay {
+                    // Reconnecting dims the room (DESIGN.md §8): a paper wash,
+                    // never a modal, never a spinner. Input stays live; the
+                    // store holds it gracefully (PROTOCOL.md §8).
+                    if weather.boardDimmed {
+                        Color(rgb: ground.tokens.canvas)
+                            .opacity(RoomWeather.boardDimOpacity)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .animation(.crossyChrome, value: weather.boardDimmed)
+                // Reported BEFORE the safe-area bleed, so the frame rides the
+                // expansion and the occlusion insets convert into the board's
+                // real coordinates (reported after, the frame stays the safe
+                // slot and the top inset comes up a safe-area short; measured
+                // on the 17 Pro sim, 2026-07-10).
+                .reportChromeFrame(.board)
+                .ignoresSafeArea(edges: .top)
+
+            // The clue bar's rest slot: the melting surface renders in the
+            // outer overlay at exactly this frame, so layout owns the geometry
+            // and the morph only borrows it. The slot is the row's invisible
+            // twin (ClueBarSizer), bottom edge pinned to the board's floor, so
+            // a wrapping clue grows the bar UP over the board and nothing else
+            // re-lays out. The height change between clues rides the chrome
+            // spring (the terminal-reshape precedent, owner finding
+            // 2026-07-10); Reduce Motion cuts. Keyed on the clue, so mid-word
+            // cursor moves never enter an animated transaction. The feather
+            // rides as the slot's background, sized by the same layout.
+            ClueBarSizer(ground: ground, current: clues.current(for: model.selection))
+                .reportChromeFrame(.clueBarSlot)
+                .padding(.horizontal, ChromeLayout.inset)
+                .background(alignment: .bottom) {
+                    ClueFeatherWash(ground: ground)
+                        .padding(.top, -ClueFeather.extent)
+                }
+                .animation(
+                    reduceMotion ? nil : .crossyChrome,
+                    value: clues.current(for: model.selection)?.tag)
         }
     }
 
@@ -658,6 +699,39 @@ public struct SolveScreen: View {
         .padding(.top, 10)
         .padding(.bottom, 12)
         .background(Color(rgb: ground.tokens.canvas))
+    }
+}
+
+// MARK: - The feather
+
+/// The feather: the clue bar floats over live cells now (the full-bleed
+/// ruling, owner ask 2026-07-10), so the ground's canvas washes up from the
+/// board's bottom edge, full strength behind the glass and fading to nothing
+/// over ClueFeather.extent above it. No hard edge anywhere; Studio and
+/// Observatory differ only by token (ID-3). Inert to touch: cells under the
+/// feather still take taps.
+@available(iOS 17.0, macOS 14.0, *)
+struct ClueFeatherWash: View {
+    let ground: GridGround
+
+    var body: some View {
+        let canvas = Color(rgb: ground.tokens.canvas)
+        VStack(spacing: 0) {
+            LinearGradient(
+                stops: [
+                    .init(color: canvas.opacity(0), location: 0),
+                    .init(
+                        color: canvas.opacity(ClueFeather.kneeAlpha),
+                        location: ClueFeather.kneeLocation),
+                    .init(color: canvas.opacity(ClueFeather.barAlpha), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: ClueFeather.extent)
+            canvas.opacity(ClueFeather.barAlpha)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
