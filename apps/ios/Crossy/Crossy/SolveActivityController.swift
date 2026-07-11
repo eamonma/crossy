@@ -68,14 +68,23 @@ final class SolveActivityController {
 
     /// Feed one observed state. The anchor parses here so the policy never
     /// starts on an unusable timestamp (D15: the island renders from the anchor
-    /// or not at all).
+    /// or not at all). The board counts (`filled`, `total`) and each participant's
+    /// live `connected` flag ride along so a start can be BORN LIVE: the island
+    /// requests carrying the room's real state, not an empty content-state that
+    /// waits up to ~20s for the first push (PROTOCOL.md §12a). `total` is grid
+    /// geometry (playable cells, blocks excluded), read off the puzzle at the
+    /// composition root; `filled` is the store's confirmed count. All data, no
+    /// store reference reaches here.
     func observe(
         scenePhase: ScenePhase,
         status: GameStatus,
         kicked: Bool,
         firstFillAt: String?,
+        completedAt: String?,
         roomName: String,
-        participants: [Participant]
+        participants: [Participant],
+        filled: Int,
+        total: Int
     ) {
         let anchor = firstFillAt.flatMap(AmbientClock.parse)
         let action = policy.observe(
@@ -86,7 +95,9 @@ final class SolveActivityController {
         switch action {
         case .start:
             guard let anchor else { return }
-            start(anchor: anchor, roomName: roomName, participants: participants)
+            start(
+                anchor: anchor, roomName: roomName, participants: participants,
+                filled: filled, total: total, status: status, completedAt: completedAt)
         case .end:
             endAll()
         case .none:
@@ -96,7 +107,10 @@ final class SolveActivityController {
 
     /// Request at the .inactive transition, while the app is still effectively
     /// foreground (SP-i3). Gated on the user's per-app Live Activities switch.
-    private func start(anchor: Date, roomName: String, participants: [Participant]) {
+    private func start(
+        anchor: Date, roomName: String, participants: [Participant],
+        filled: Int, total: Int, status: GameStatus, completedAt: String?
+    ) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         let members = participants.map {
             RosterMember(
@@ -106,14 +120,35 @@ final class SolveActivityController {
         }
         // The room bar's own cluster order and cap (RosterList), colors resolved
         // to the dark ground once, at request time: the island is always black
-        // glass (apps/ios/DESIGN.md section 8).
-        let pucks = RosterList.cluster(members).pucks.map { member -> SolveActivityAttributes.Puck in
+        // glass (apps/ios/DESIGN.md section 8). The SAME cluster feeds both the
+        // immutable attributes fallback (initial + color) and the born-live
+        // content-state (which adds each member's live `connected`).
+        let cluster = RosterList.cluster(members).pucks
+        let pucks = cluster.map { member -> SolveActivityAttributes.Puck in
             let color = member.identity.darkGround
             return SolveActivityAttributes.Puck(
                 initial: member.initial, red: color.red, green: color.green, blue: color.blue)
         }
         let attributes = SolveActivityAttributes(
             firstFillAt: anchor, roomName: roomName, pucks: pucks)
+        // Born live (PROTOCOL.md §12a): the island starts carrying the room's real state
+        // at the moment of backgrounding, so it renders live data at zero seconds instead
+        // of an empty content-state waiting up to ~20s for the first push. The server
+        // takes over over APNs once it has this activity's token; this is just frame one.
+        // The builder maps the SAME cluster (presence order, cap, dark ground) plus each
+        // member's live `connected`, and the confirmed counts, to the payload the emitter
+        // pushes, so frame one and push two speak the identical shape.
+        let bornLive = IslandContentState.bornLive(
+            cluster: cluster.map {
+                let color = $0.identity.darkGround
+                return IslandContentState.ClusterMember(
+                    initial: $0.initial, red: Int(color.red), green: Int(color.green),
+                    blue: Int(color.blue), connected: $0.connected)
+            },
+            filled: filled,
+            total: total,
+            status: mapIslandStatus(status),
+            completedAt: completedAt)
         // Zero local updates follow (D15): the server drives the island over APNs once it
         // has this activity's update token. A refused request (authorization raced off,
         // system cap) simply means no island this leave, never a broken room.
@@ -124,7 +159,7 @@ final class SolveActivityController {
         // empty token registry, and not one error line anywhere).
         guard let activity = try? Activity.request(
             attributes: attributes,
-            content: .init(state: SolveActivityAttributes.ContentState(), staleDate: nil),
+            content: .init(state: bornLive, staleDate: nil),
             pushType: .token)
         else { return }
         streamPushToken(for: activity)
@@ -221,6 +256,17 @@ final class SolveActivityController {
         case .abandoned: return .abandoned
         }
     }
+
+    /// The store's status as the content-state carries it (PROTOCOL.md §12a). The policy
+    /// only ever hands `.start` for an ongoing room, so frame one is ongoing in practice;
+    /// this maps the real status regardless so the born-live payload never assumes.
+    private func mapIslandStatus(_ status: GameStatus) -> IslandStatus {
+        switch status {
+        case .ongoing: return .ongoing
+        case .completed: return .completed
+        case .abandoned: return .abandoned
+        }
+    }
 }
 
 /// The push-token registration a room hands the island: the game id the two endpoints
@@ -241,6 +287,12 @@ struct SolveActivityHost: ViewModifier {
     let store: GameStore
     let chrome: RoomChromeModel
     let roomName: String
+    /// The grid's playable-cell count (cells minus blocks), the born-live frame's `total`
+    /// (PROTOCOL.md §12a). Read off the puzzle at the composition root because the store
+    /// never holds geometry; this agrees with the server's BoardFacts total so frame one
+    /// and the first push report the same denominator. The fixture path passes its own
+    /// puzzle's count unchanged.
+    let total: Int
     /// The push-token registration for this room, nil offline. Bound into the controller
     /// on appear so a start knows where to POST the token.
     let registration: LiveActivityRegistration?
@@ -273,22 +325,29 @@ struct SolveActivityHost: ViewModifier {
             status: store.status,
             kicked: chrome.kicked,
             firstFillAt: store.firstFillAt,
+            completedAt: store.completedAt,
             roomName: roomName,
-            participants: store.participants)
+            participants: store.participants,
+            filled: store.filledCount,
+            total: total)
     }
 }
 
 extension View {
-    /// The Live Activity lifecycle for one room (roadmap I5a). `registration` carries the
-    /// game id and REST sink for the push-token upload (§12a), nil for a room with no REST.
+    /// The Live Activity lifecycle for one room (roadmap I5a). `total` is the puzzle's
+    /// playable-cell count, the born-live frame's denominator (§12a). `registration`
+    /// carries the game id and REST sink for the push-token upload (§12a), nil for a room
+    /// with no REST.
     func solveActivity(
         store: GameStore,
         chrome: RoomChromeModel,
         roomName: String,
+        total: Int,
         registration: LiveActivityRegistration? = nil
     ) -> some View {
         modifier(
             SolveActivityHost(
-                store: store, chrome: chrome, roomName: roomName, registration: registration))
+                store: store, chrome: chrome, roomName: roomName, total: total,
+                registration: registration))
     }
 }

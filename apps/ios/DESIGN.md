@@ -430,9 +430,13 @@ reduced-motion equivalent that crossfades instead of moving.
   cluster to the crew reading, away members at the 0.38 register, counts trailing
   the room line in quiet white, and under the whole row a ticked meter: a hairline
   with nine ticks at the tenths, so quantized advances land as detents. The lock
-  screen banner takes the same meter as a baseline rule under its line. Before the
-  first push the island renders the attributes snapshot and hides progress; no
-  data, no meter, no ring. Completion flips terminal: every puck at full, the
+  screen banner takes the same meter as a baseline rule under its line. The island
+  is born live: it starts carrying the room's real state at the moment of
+  backgrounding (the resolved cluster, the confirmed fill counts, live presence),
+  so it renders live data at zero seconds and the server takes over over APNs from
+  there. The attributes snapshot is the fallback the system falls back to when it
+  has no content-state to render; that fallback hides progress, no meter, no ring.
+  Completion flips terminal: every puck at full, the
   meter sealed, the ring closed, the room line reads "Solved together", and the
   timer freezes at `completedAt` minus `firstFillAt`, a static string, MM:SS under
   an hour and H:MM past it, never three sections. An abandoned room freezes where
