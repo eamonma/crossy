@@ -30,7 +30,7 @@ import {
 import type { CellSet } from "@crossy/engine";
 import { createSessionServer } from "./server";
 import type { SessionServer } from "./server";
-import { flushToPostgres } from "./writer";
+import { flushToPostgres, SnapshotRegressionError } from "./writer";
 import type { StateSnapshot } from "./writer";
 import { hydrateGame } from "./hydrate";
 import { loadGameState, loadPuzzleSnapshot } from "./repo";
@@ -943,6 +943,326 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
     );
     expect(ev.rows).toHaveLength(0);
     expect(await loadGameState(adminPool, gameId)).toBeNull();
+  });
+});
+
+describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-7, INV-4)", () => {
+  // Read the stored game_state row exactly as Postgres holds it, so a test can assert the
+  // guarded fields (board, status, last_seq) are byte-identical after a rejected flush.
+  interface StoredRow {
+    status: string;
+    board: RawCell[];
+    last_seq: string;
+  }
+  async function storedRow(gameId: string): Promise<StoredRow> {
+    const { rows } = await adminPool.query<StoredRow>(
+      "select status, board, last_seq::text as last_seq from game_state where game_id = $1",
+      [gameId],
+    );
+    if (rows.length !== 1)
+      throw new Error(`expected one game_state row for ${gameId}`);
+    return rows[0]!;
+  }
+
+  function snapshot(
+    status: "ongoing" | "completed" | "abandoned",
+    board: RawCell[],
+    lastSeq: number,
+    stats: Record<string, unknown> | null = null,
+  ): StateSnapshot {
+    return {
+      status,
+      board,
+      lastSeq,
+      firstFillAt: "2026-07-08T00:00:00.000Z",
+      completedAt: status === "completed" ? "2026-07-08T00:10:00.000Z" : null,
+      abandonedAt: status === "abandoned" ? "2026-07-08T00:10:00.000Z" : null,
+      stats,
+      recentCommandIds: [],
+    };
+  }
+
+  it("INV-7: a lower-last_seq flush throws SnapshotRegressionError and leaves the row intact", async () => {
+    const userId = randomUUID();
+    // Seed a stored row already at seq 5 with a specific board and events log.
+    const stored: RawCell[] = [
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: "C", by: userId },
+    ];
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: stored,
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+      },
+    });
+    const before = await storedRow(gameId);
+
+    // A stale writer flushes an OLDER snapshot (seq 3): seq must never regress (INV-7).
+    const stale = snapshot(
+      "ongoing",
+      [
+        { v: "X", by: userId },
+        { v: null, by: null },
+        { v: null, by: null },
+      ],
+      3,
+    );
+    const events = [makeCellSet(3, 0, "X", userId)];
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, events, stale),
+    ).rejects.toBeInstanceOf(SnapshotRegressionError);
+
+    // The stored row is byte-identical: the stale board, status, and seq never landed.
+    expect(await storedRow(gameId)).toEqual(before);
+  });
+
+  it("INV-5: the rejected flush's cell_events inserts roll back with it (atomicity of the reject)", async () => {
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: [
+          { v: "A", by: userId },
+          { v: "B", by: userId },
+          { v: "C", by: userId },
+        ],
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+      },
+    });
+
+    // The rejected flush carries a fresh cell_events row at seq 3. The guard throws on the
+    // snapshot, which rolls back the whole transaction, so that event must not survive (INV-5).
+    const stale = snapshot(
+      "ongoing",
+      [
+        { v: "X", by: userId },
+        { v: null, by: null },
+        { v: null, by: null },
+      ],
+      3,
+    );
+    const events = [makeCellSet(3, 0, "X", userId)];
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, events, stale),
+    ).rejects.toBeInstanceOf(SnapshotRegressionError);
+
+    const ev = await adminPool.query(
+      "select 1 from cell_events where game_id = $1",
+      [gameId],
+    );
+    expect(ev.rows).toHaveLength(0);
+  });
+
+  it("INV-4: a higher-seq ongoing snapshot cannot overwrite a stored terminal row (abandoned)", async () => {
+    const userId = randomUUID();
+    const stored: RawCell[] = [
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: "C", by: userId },
+    ];
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: stored,
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+        status: "abandoned",
+      },
+    });
+    const before = await storedRow(gameId);
+    expect(before.status).toBe("abandoned");
+
+    // An ongoing snapshot with a HIGHER seq must still be refused: a terminal state is
+    // final and never regresses back to ongoing (INV-4), even carrying a newer seq.
+    const regressing = snapshot(
+      "ongoing",
+      [
+        { v: "Z", by: userId },
+        { v: null, by: null },
+        { v: null, by: null },
+      ],
+      9,
+    );
+    const events = [makeCellSet(9, 0, "Z", userId)];
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, events, regressing),
+    ).rejects.toBeInstanceOf(SnapshotRegressionError);
+
+    expect(await storedRow(gameId)).toEqual(before);
+  });
+
+  it("INV-4: a higher-seq ongoing snapshot cannot overwrite a stored terminal row (completed)", async () => {
+    const userId = randomUUID();
+    const stored: RawCell[] = [
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: "C", by: userId },
+    ];
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: stored,
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+        status: "completed",
+      },
+    });
+    const before = await storedRow(gameId);
+    expect(before.status).toBe("completed");
+
+    const regressing = snapshot(
+      "ongoing",
+      [
+        { v: "Z", by: userId },
+        { v: null, by: null },
+        { v: null, by: null },
+      ],
+      9,
+    );
+    const events = [makeCellSet(9, 0, "Z", userId)];
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, events, regressing),
+    ).rejects.toBeInstanceOf(SnapshotRegressionError);
+
+    expect(await storedRow(gameId)).toEqual(before);
+  });
+
+  it("INV-4: a higher-seq terminal snapshot cannot switch a stored terminal row to a different terminal status (completed to abandoned)", async () => {
+    const userId = randomUUID();
+    const stored: RawCell[] = [
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: "C", by: userId },
+    ];
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: stored,
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+        status: "completed",
+      },
+    });
+    const before = await storedRow(gameId);
+    expect(before.status).toBe("completed");
+
+    // A second writer flushes an abandoned snapshot with a HIGHER seq. Terminal is final
+    // (INV-4): completed never becomes abandoned, so the guard refuses even the newer seq.
+    // Only a same-status reflush is allowed, so this must trip the tripwire.
+    const switching = snapshot(
+      "abandoned",
+      [
+        { v: "Z", by: userId },
+        { v: null, by: null },
+        { v: null, by: null },
+      ],
+      9,
+    );
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, [], switching),
+    ).rejects.toBeInstanceOf(SnapshotRegressionError);
+
+    expect(await storedRow(gameId)).toEqual(before);
+  });
+
+  it("re-flushing an identical terminal snapshot at equal last_seq succeeds without throwing (idempotent retry)", async () => {
+    const userId = randomUUID();
+    const stored: RawCell[] = [
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: "C", by: userId },
+    ];
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: stored,
+        lastSeq: 6,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+        status: "completed",
+      },
+    });
+    const before = await storedRow(gameId);
+
+    // The retry after a partially-observed terminal flush re-sends the same terminal
+    // snapshot at the same seq. >= (not >) keeps this from being refused (INV-4 still holds:
+    // completed stays completed). No events (the terminal seq is never appended, §9).
+    const retry = snapshot("completed", stored, 6, {
+      solveTimeSeconds: 42,
+      totalEvents: 5,
+      participantCount: 1,
+    });
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, [], retry),
+    ).resolves.toBeUndefined();
+
+    const after = await storedRow(gameId);
+    expect(after.status).toBe("completed");
+    expect(after.last_seq).toBe(before.last_seq);
+    expect(after.board).toEqual(stored);
+  });
+
+  it("a normal monotonic flush (higher last_seq, ongoing over ongoing) still applies", async () => {
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: [
+          { v: "A", by: userId },
+          { v: null, by: null },
+          { v: null, by: null },
+        ],
+        lastSeq: 1,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+      },
+    });
+
+    // The everyday write-behind case: a newer ongoing snapshot advances the row.
+    const advanced = snapshot(
+      "ongoing",
+      [
+        { v: "A", by: userId },
+        { v: "B", by: userId },
+        { v: null, by: null },
+      ],
+      2,
+    );
+    const events = [makeCellSet(2, 1, "B", userId)];
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, events, advanced),
+    ).resolves.toBeUndefined();
+
+    const after = await storedRow(gameId);
+    expect(after.status).toBe("ongoing");
+    expect(after.last_seq).toBe("2");
+    expect(after.board).toEqual([
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: null, by: null },
+    ]);
+    // The advancing event landed too: the pair is consistent.
+    const ev = await adminPool.query<{ seq: string }>(
+      "select seq from cell_events where game_id = $1 order by seq",
+      [gameId],
+    );
+    expect(ev.rows.map((r) => Number(r.seq))).toEqual([2]);
   });
 });
 

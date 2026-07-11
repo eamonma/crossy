@@ -104,7 +104,7 @@ export class GameActor {
   private readonly flushIntervalMs: number;
 
   constructor(
-    private readonly gameId: string,
+    readonly gameId: string,
     hydrated: HydratedGame,
     private readonly persistence: GamePersistence,
     private readonly now: () => Date,
@@ -389,8 +389,11 @@ export class GameActor {
         // Post through the mailbox so the timed flush is serialized with mutations too.
         void this.mailbox
           .post(() => this.doFlush())
-          .catch(() => {
+          .catch((error: unknown) => {
             // A flush fault keeps the buffer for the next trigger; never crash the actor.
+            // Log it so a SnapshotRegressionError (a second writer clobbering our row) is
+            // loud rather than silent; the buffer is retained, the actor stays up.
+            console.error(`flush fault for game ${this.gameId}:`, error);
           });
       }, this.flushIntervalMs);
       this.flushTimer.unref?.();

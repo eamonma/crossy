@@ -14,6 +14,24 @@ import type { CellSet } from "@crossy/engine";
 import type { Stats } from "@crossy/protocol";
 import type { Pool, PoolClient } from "pg";
 
+/**
+ * A snapshot flush the game_state guard refused (§9): the stored row already holds a newer
+ * seq or a terminal status, so this writer is not the sole writer of the row (INV-7). Carries
+ * the gameId and the attempted lastSeq for the log. The refusal rolls back the whole flush,
+ * so the events that would have ridden the snapshot never land either (INV-5).
+ */
+export class SnapshotRegressionError extends Error {
+  constructor(
+    readonly gameId: string,
+    readonly attemptedLastSeq: number,
+  ) {
+    super(
+      `snapshot flush for game ${gameId} at last_seq ${attemptedLastSeq} lost single-writer status: a newer or terminal game_state row exists (INV-7)`,
+    );
+    this.name = "SnapshotRegressionError";
+  }
+}
+
 /** The game_state row this flush upserts (DESIGN.md §9). Column shapes match hydrate.ts. */
 export interface StateSnapshot {
   readonly status: "ongoing" | "completed" | "abandoned";
@@ -46,13 +64,25 @@ async function insertEvents(
   }
 }
 
-/** Upsert the board snapshot. game_state is full DML for the session role (§9). */
+/**
+ * Upsert the board snapshot. game_state is full DML for the session role (§9). The DO UPDATE
+ * WHERE is a single-writer tripwire (INV-7), not a coordination mechanism: an update only
+ * applies when the stored row is still ongoing, or the incoming snapshot repeats the stored
+ * terminal status, AND the incoming seq is at least the stored seq. So seq never regresses, and
+ * a terminal row is final (INV-4): it is never rolled back to ongoing, nor switched between
+ * completed and abandoned, even by a snapshot carrying a higher seq. A terminal row accepts only
+ * an identical-status reflush, and the bound is >= not >, so re-flushing the same terminal
+ * snapshot at the same seq still applies (the idempotent retry after a partially-observed flush).
+ * A rejected update leaves rowCount 0: for INSERT ... ON CONFLICT DO UPDATE a fresh insert and an
+ * applied update both report 1, so 0 means only the guard refused, and this writer has lost the
+ * row to a newer or terminal writer.
+ */
 async function upsertSnapshot(
   client: PoolClient,
   gameId: string,
   snap: StateSnapshot,
 ): Promise<void> {
-  await client.query(
+  const result = await client.query(
     `insert into game_state
        (game_id, status, board, last_seq, first_fill_at,
         completed_at, abandoned_at, stats, recent_command_ids)
@@ -65,7 +95,9 @@ async function upsertSnapshot(
        completed_at = excluded.completed_at,
        abandoned_at = excluded.abandoned_at,
        stats = excluded.stats,
-       recent_command_ids = excluded.recent_command_ids`,
+       recent_command_ids = excluded.recent_command_ids
+     where (game_state.status = 'ongoing' or excluded.status = game_state.status)
+       and excluded.last_seq >= game_state.last_seq`,
     [
       gameId,
       snap.status,
@@ -78,6 +110,9 @@ async function upsertSnapshot(
       JSON.stringify(snap.recentCommandIds),
     ],
   );
+  if (result.rowCount === 0) {
+    throw new SnapshotRegressionError(gameId, snap.lastSeq);
+  }
 }
 
 /** DISTINCT writers over cell_events: the authoritative participantCount (PROTOCOL.md §4). */
