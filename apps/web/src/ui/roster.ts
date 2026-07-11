@@ -103,6 +103,17 @@ export function buildRoster(opts: {
   return { solvers, watching, groups };
 }
 
+/**
+ * The top-bar presence rule (owner ruling 2026-07-10): the avatar stack and its count show the
+ * people PLAYING, so host and solver only. Spectators are dropped: a guest always seats as a
+ * spectator (PROTOCOL.md section 12 join semantics), so this removes guests from the top with no
+ * wire change, and a full-account spectator is honestly watching, not solving. Order is preserved
+ * so the stack reads in store order; the full participants list keeps everyone, spectators marked.
+ */
+export function isPlaying(participant: Participant): boolean {
+  return participant.role === "host" || participant.role === "solver";
+}
+
 /** Teammates on a clue, keyed `${direction}-${number}` so a clue row looks itself up in O(1). */
 export type CluePresence = ReadonlyMap<string, readonly SolverEntry[]>;
 

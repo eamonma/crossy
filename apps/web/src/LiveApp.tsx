@@ -49,7 +49,7 @@ import {
   clueOn,
 } from "./ui/Clues";
 import { SolvingNow } from "./ui/SolvingNow";
-import { buildRoster, cluePresence } from "./ui/roster";
+import { buildRoster, cluePresence, isPlaying } from "./ui/roster";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
@@ -725,9 +725,12 @@ function LiveGame({
     return byCell;
   }, [store, version]);
 
+  // Top-bar presence shows people PLAYING only (owner ruling 2026-07-10): host and solver, never
+  // spectators. The filter is pinned in roster.ts (isPlaying); the full participants list below
+  // keeps everyone, spectators quietly marked.
   const members: StackMember[] = useMemo(() => {
     void version;
-    return store.participants.map((p) => ({
+    return store.participants.filter(isPlaying).map((p) => ({
       userId: p.userId,
       initial: p.displayName.charAt(0) || "?",
       color: p.color,

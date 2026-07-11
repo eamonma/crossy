@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Cursor, Participant } from "@crossy/protocol";
 import type { Clue } from "../domain/types";
-import { buildRoster, cluePresence } from "./roster";
+import { buildRoster, cluePresence, isPlaying } from "./roster";
 
 // A 3x3 open grid: across words on each row, down words on each column.
 const across: Clue[] = [
@@ -135,6 +135,33 @@ describe("buildRoster", () => {
     });
     expect(roster.solvers.map((s) => s.name)).toEqual(["mia"]);
     expect(roster.watching).toEqual([]);
+  });
+});
+
+// Top-bar presence (owner ruling 2026-07-10): the avatar stack and its count show people PLAYING,
+// so host and solver only. Spectators (guests always seat as spectators, PROTOCOL.md section 12)
+// never appear in the top; the full participants list keeps everyone.
+describe("isPlaying", () => {
+  it("counts host and solver as playing", () => {
+    expect(isPlaying(person("h", "host"))).toBe(true);
+    expect(isPlaying(person("s", "solver"))).toBe(true);
+  });
+
+  it("drops spectators from top-bar presence", () => {
+    expect(isPlaying(person("v", "spectator"))).toBe(false);
+  });
+
+  it("keeps only the playing members when filtering a roster", () => {
+    const participants = [
+      person("host", "host"),
+      person("solver", "solver"),
+      person("guest", "spectator"),
+      person("watcher", "spectator"),
+    ];
+    expect(participants.filter(isPlaying).map((p) => p.userId)).toEqual([
+      "host",
+      "solver",
+    ]);
   });
 });
 
