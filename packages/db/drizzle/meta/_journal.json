@@ -57,6 +57,13 @@
       "when": 1783900000000,
       "tag": "0007_live_activity_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783986400000,
+      "tag": "0008_api_reads_cell_events",
+      "breakpoints": true
     }
   ]
 }

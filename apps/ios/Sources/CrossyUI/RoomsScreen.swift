@@ -159,7 +159,11 @@ public struct RoomsScreen: View {
         failure = nil
         switch await loadPage(nil) {
         case .success(let page):
-            rooms = page.rooms
+            // Sort WITHIN the page by activity (PROTOCOL.md §12), the same order the server sends;
+            // the client sort is belt-and-suspenders. Never re-sort across pages: pages are
+            // createdAt-bounded and shown in order (page 2 is below the fold), so appending
+            // preserves the documented "first page fully activity-ordered, deeper pages stable".
+            rooms = RoomCardModel.orderedByActivity(page.rooms)
             nextBefore = page.nextBefore
             exhausted = page.nextBefore == nil
         case .failure(let arrivalFailure):
@@ -175,8 +179,9 @@ public struct RoomsScreen: View {
         switch await loadPage(cursor) {
         case .success(let page):
             // An empty page is the §12 end of iteration; appending nothing and
-            // stopping is exactly the cursor contract.
-            rooms.append(contentsOf: page.rooms)
+            // stopping is exactly the cursor contract. The incoming page is activity-ordered
+            // within itself, then appended after the pages already shown (never a global re-sort).
+            rooms.append(contentsOf: RoomCardModel.orderedByActivity(page.rooms))
             nextBefore = page.nextBefore
             exhausted = page.rooms.isEmpty || page.nextBefore == nil
         case .failure:

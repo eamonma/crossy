@@ -185,8 +185,16 @@ interface GameView {
  * a full `status` enum (ongoing/completed/abandoned) is a later additive extension, but the one
  * fact the home needs today is "is this game done", which `completed_at` answers directly. A
  * game with no `game_state` row yet (created but never connected, so the actor has not
- * materialized it) reads as ongoing, `completedAt` null, via the left join. Ordering stays by
- * `createdAt`, not last-move activity, which also lives in `game_state`.
+ * materialized it) reads as ongoing, `completedAt` null, via the left join.
+ *
+ * `lastActivityAt` is `MAX(cell_events.at)` for the game, read from the session-owned event log
+ * under the API's SELECT-only grant (migration 0008); it is null for a game no one has played. The
+ * page is ORDERED by it (most recent first, unplayed games last), so the home reads by activity,
+ * not creation. The read is a bare timestamp aggregate, never a cell `value`, so no solution leaves
+ * the server (INV-6), and it is read only, so the session stays the single writer (INV-7). The page
+ * is still SELECTED and paginated by `createdAt` (see the handler): activity moves, so ordering the
+ * whole paginated set by it would be unstable; the stable `createdAt` cursor bounds the page and
+ * activity reorders only the rows within it (PROTOCOL.md §12).
  *
  * `puzzle` carries only INV-6-safe geometry (rows, cols) projected out of `puzzle_snapshot` in
  * SQL; the snapshot jsonb, which holds the solution, is never selected whole. `puzzle.title` is
@@ -213,6 +221,14 @@ interface GameSummary {
    * grant (migration 0005); never written by the API (INV-7).
    */
   readonly completedAt: string | null;
+  /**
+   * The game's last activity: `MAX(cell_events.at)` (PROTOCOL.md §12), null for a game no one has
+   * played yet. Read from the session-owned event log under the API's SELECT-only grant (migration
+   * 0008); never written by the API (INV-7). The list page is ordered by this field, most recent
+   * first; a null (unplayed) game sorts after every played game, then by `createdAt`. It is a bare
+   * timestamp aggregate, never a cell value, so no solution leaves the server (INV-6).
+   */
+  readonly lastActivityAt: string | null;
   readonly puzzle: {
     readonly puzzleId: string;
     readonly rows: number;
@@ -222,6 +238,36 @@ interface GameSummary {
     /** The black-square silhouette, pattern only (PROTOCOL.md §12). No solution content. */
     readonly mask: Mask;
   };
+}
+
+/**
+ * Order one page of `GET /games` rows by most recent activity, most recent first (PROTOCOL.md §12).
+ * A played game (`lastActivityAt` non-null) always outranks an unplayed one; two played games
+ * compare by `lastActivityAt` DESC; unplayed games (and activity ties) fall back to `createdAt`
+ * DESC, then `gameId` DESC. That fallback chain matches the SQL selection tiebreak, so the whole
+ * ordering is total and deterministic. Timestamps are ISO 8601 UTC strings; compared by parsed
+ * epoch so a differing fractional-second precision cannot mis-sort (a lexicographic compare would).
+ *
+ * This reorders only the rows already SELECTED into the page by the stable `createdAt` cursor, so
+ * it never touches pagination continuity: the moving activity key reshuffles within a page but
+ * cannot move a game across page boundaries (PROTOCOL.md §12).
+ */
+function orderByActivity(a: GameSummary, b: GameSummary): number {
+  const activityA =
+    a.lastActivityAt === null ? null : Date.parse(a.lastActivityAt);
+  const activityB =
+    b.lastActivityAt === null ? null : Date.parse(b.lastActivityAt);
+  if (activityA !== activityB) {
+    // A played game (non-null) sorts before an unplayed one (null sorts last).
+    if (activityA === null) return 1;
+    if (activityB === null) return -1;
+    return activityB - activityA; // more recent first
+  }
+  // Equal activity (both null, or the same timestamp): fall back to createdAt DESC, then gameId.
+  const createdA = Date.parse(a.createdAt);
+  const createdB = Date.parse(b.createdAt);
+  if (createdA !== createdB) return createdB - createdA;
+  return a.gameId < b.gameId ? 1 : a.gameId > b.gameId ? -1 : 0;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -327,12 +373,19 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     );
   });
 
-  // GET /games: the caller's games, newest first. Visibility is the membership join
-  // (`WHERE user_id = caller`), so a caller sees exactly the games they belong to and no
-  // others; a game leaks to no one who is not a member. Any authenticated user, guests
-  // included: a guest is a real member of games they joined (DESIGN.md §8), so this is not
-  // gated to full accounts. Cursor pagination by `createdAt` (see GameSummary for why status
-  // and activity ordering are out of reach here).
+  // GET /games: the caller's games, most-recently-active first within the page (PROTOCOL.md §12).
+  // Visibility is the membership join (`WHERE user_id = caller`), so a caller sees exactly the
+  // games they belong to and no others; a game leaks to no one who is not a member. Any
+  // authenticated user, guests included: a guest is a real member of games they joined (DESIGN.md
+  // §8), so this is not gated to full accounts.
+  //
+  // The ordering tension the design resolves (PROTOCOL.md §12): last activity is a MOVING key, so
+  // ordering the whole paginated set by it would let a game jump pages between requests. So the
+  // page is SELECTED and paginated by the stable `createdAt` DESC cursor (unchanged), and the rows
+  // of that page are REORDERED by activity for display. The bounded first page the home shows is
+  // fully activity-ordered; deep pagination below the fold stays stable on `createdAt`. Because
+  // the shown last row is then not the page's oldest `createdAt`, the response also returns a
+  // server-computed `nextBefore` (the page-minimum `createdAt`), the cursor a client MUST page by.
   app.get("/", async (c) => {
     const identity = c.get("identity");
 
@@ -355,8 +408,12 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     // grant (migration 0005); it is a LEFT join, so a game whose actor never materialized its
     // `game_state` row (created but never connected) still lists, reading ongoing (completedAt
     // null). Only the one terminal timestamp is selected, never the board or the rest of the row.
-    // Order and cursor are both `createdAt`, with `gameId` as a deterministic tiebreaker for rows
-    // sharing a timestamp.
+    // `lastActivityAt` is `MAX(cell_events.at)` for the game, a correlated subquery under the API's
+    // SELECT grant on cell_events (migration 0008); it reads only the timestamp, never a cell
+    // `value` (INV-6), and never writes (INV-7). Null for a game with no events.
+    // SELECTION order and cursor are `createdAt` DESC (with `gameId` as a deterministic tiebreaker
+    // for shared timestamps), which the LIMIT slices into a stable page; the activity reorder for
+    // display happens after, in JS, over exactly this page's rows.
     const rows = await deps.db
       .select({
         gameId: schema.games.gameId,
@@ -370,6 +427,15 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         puzzleBlocks: sql<number[]>`${schema.games.puzzleSnapshot} -> 'blocks'`,
         puzzleTitle: schema.puzzles.title,
         completedAt: schema.gameState.completedAt,
+        // MAX(at) as an ISO 8601 UTC string, formatted in SQL so it matches Date.toISOString()
+        // exactly (millisecond precision, trailing `Z`). A scalar aggregate subquery loses the
+        // timestamptz OID node-postgres needs to auto-parse it to a Date, so it would otherwise
+        // arrive as Postgres's own text format; formatting here keeps the value an ISO string
+        // end to end and null when the game has no events. It reads only `at`, never `value`
+        // (INV-6). The UTC cast pins the zone so the string is zone-independent of the server.
+        lastActivityAt: sql<
+          string | null
+        >`(select to_char((max(ce."at") at time zone 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') from "cell_events" ce where ce."game_id" = ${schema.games.gameId})`,
         memberCount: sql<number>`(select count(*)::int from "memberships" mc where mc."game_id" = ${schema.games.gameId})`,
       })
       .from(schema.memberships)
@@ -394,6 +460,14 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       .orderBy(desc(schema.games.createdAt), desc(schema.games.gameId))
       .limit(limit);
 
+    // The next cursor is the page-minimum `createdAt` under the SELECTION order (createdAt DESC),
+    // which is the last SQL row before the activity reorder. Null when the page did not fill to
+    // `limit`: a short page is the end of the list, so there is no next page (PROTOCOL.md §12).
+    const nextBefore =
+      rows.length === limit
+        ? rows[rows.length - 1]!.createdAt.toISOString()
+        : null;
+
     const games: GameSummary[] = rows.map((r) => ({
       gameId: r.gameId,
       name: r.name,
@@ -404,6 +478,9 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       // `completed_at` is null while ongoing, and null when no game_state row exists yet (the
       // left join): both read as "not done" on the home. Present only for a completed game.
       completedAt: r.completedAt === null ? null : r.completedAt.toISOString(),
+      // `MAX(cell_events.at)` as an ISO 8601 UTC string (formatted in SQL), null for an unplayed
+      // game. Drives the activity reorder below.
+      lastActivityAt: r.lastActivityAt,
       puzzle: {
         puzzleId: r.puzzleId,
         rows: r.puzzleRows,
@@ -417,7 +494,15 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         }),
       },
     }));
-    return c.json({ games });
+
+    // Reorder THIS page (only) by activity for display, most recent first. A played game
+    // (non-null `lastActivityAt`) outranks every unplayed one; ties and unplayed games fall back
+    // to `createdAt` DESC, then `gameId` DESC, so the order is total and deterministic and matches
+    // the SQL selection tiebreak. The cursor was already fixed from the selection order above, so
+    // this reorder never affects pagination continuity (PROTOCOL.md §12).
+    games.sort(orderByActivity);
+
+    return c.json({ games, nextBefore });
   });
 
   // POST /games/join: join by invite code alone, no gameId. For a phone user who holds only the

@@ -310,6 +310,12 @@ public struct GameSummary: Sendable, Equatable, Codable {
     public let createdBy: String
     /// Total members (all roles), for the list card.
     public let memberCount: Int
+    /// The game's last activity: the newest board event's ISO 8601 timestamp, or nil when no one
+    /// has played yet (§12). `MAX(cell_events.at)` read server-side under a SELECT-only grant,
+    /// never a cell value or a solution (INV-6-safe). The list arrives ordered by this field,
+    /// most recent first. Additive and optional on the wire (§14): decoded with
+    /// `decodeIfPresent` so an older server that omits it still decodes (nil = unplayed).
+    public let lastActivityAt: String?
     public let puzzle: PuzzleRef
 
     public init(
@@ -319,6 +325,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         createdAt: String,
         createdBy: String,
         memberCount: Int,
+        lastActivityAt: String?,
         puzzle: PuzzleRef
     ) {
         self.gameId = gameId
@@ -327,6 +334,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         self.createdAt = createdAt
         self.createdBy = createdBy
         self.memberCount = memberCount
+        self.lastActivityAt = lastActivityAt
         self.puzzle = puzzle
     }
 
@@ -337,6 +345,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         case createdAt
         case createdBy
         case memberCount
+        case lastActivityAt
         case puzzle
     }
 
@@ -348,6 +357,8 @@ public struct GameSummary: Sendable, Equatable, Codable {
         createdAt = try container.decode(String.self, forKey: .createdAt)
         createdBy = try container.decode(String.self, forKey: .createdBy)
         memberCount = try container.decode(Int.self, forKey: .memberCount)
+        // Optional and additive (§14): a server that omits it, or sends null, reads as unplayed.
+        lastActivityAt = try container.decodeIfPresent(String.self, forKey: .lastActivityAt)
         puzzle = try container.decode(PuzzleRef.self, forKey: .puzzle)
     }
 
@@ -359,17 +370,62 @@ public struct GameSummary: Sendable, Equatable, Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(createdBy, forKey: .createdBy)
         try container.encode(memberCount, forKey: .memberCount)
+        try container.encode(lastActivityAt, forKey: .lastActivityAt)
         try container.encode(puzzle, forKey: .puzzle)
     }
 }
 
-/// The `GET /games` response body: `{ games }`, newest first, cursor-paginated (§12;
-/// `limit`/`before` are query parameters, not body fields).
+/// The `GET /games` response body: `{ games, nextBefore }`, most-recently-active first within the
+/// page, cursor-paginated (§12; `limit`/`before` are query parameters, not body fields). The page
+/// is SELECTED by createdAt but SHOWN by activity, so the visual last row is not the page's oldest
+/// createdAt; `nextBefore` is the server-computed next cursor (the page-minimum createdAt), null
+/// when the list is exhausted. A client MUST page by `nextBefore`, never by re-deriving a cursor
+/// from the reordered rows (§12).
+///
+/// The field is additive (§14) but its ABSENCE and its NULL mean different things, so decoding
+/// tracks presence, not just value. Key present with a value: that is the cursor. Key present and
+/// null: the list is exhausted, so there is no next page. Key absent (an older server that predates
+/// activity ordering): `hasCursor` is false and the caller falls back to the last row's createdAt,
+/// valid there because that server did not reorder the page. `hasCursor` distinguishes present-null
+/// (stop) from absent (fall back), which a plain optional cannot.
 public struct GamesListResponse: Sendable, Equatable, Codable {
     public let games: [GameSummary]
+    /// The next cursor when present; null both when the server sent it as null (exhausted) and
+    /// when the server omitted it entirely. Read `hasCursor` to tell those apart.
+    public let nextBefore: String?
+    /// True when the server included the `nextBefore` key at all (present, value or null). False
+    /// only for an older server that omits it. Lets the client honor a present-null as "exhausted"
+    /// rather than falling back into a paging loop.
+    public let hasCursor: Bool
 
-    public init(games: [GameSummary]) {
+    public init(games: [GameSummary], nextBefore: String? = nil, hasCursor: Bool = true) {
         self.games = games
+        self.nextBefore = nextBefore
+        self.hasCursor = hasCursor
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case games
+        case nextBefore
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        games = try container.decode([GameSummary].self, forKey: .games)
+        hasCursor = container.contains(.nextBefore)
+        // decodeIfPresent reads a present-null as nil, which is exactly the "exhausted" value; the
+        // hasCursor flag above carries whether the key was there at all.
+        nextBefore = try container.decodeIfPresent(String.self, forKey: .nextBefore)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(games, forKey: .games)
+        // Emit the key when the server would have (hasCursor), preserving present-null vs absent
+        // across a decode/encode round trip (the snapshot test relies on this).
+        if hasCursor {
+            try container.encode(nextBefore, forKey: .nextBefore)
+        }
     }
 }
 

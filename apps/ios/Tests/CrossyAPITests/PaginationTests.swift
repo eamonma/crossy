@@ -55,8 +55,10 @@ final class PaginationTests: XCTestCase {
         XCTAssertEqual(page1.rows.count, 2)
         XCTAssertEqual(
             page1.nextBefore, "2026-07-07T09:30:00.000Z",
-            "the cursor is the last row's createdAt, verbatim")
+            "the cursor is the server-computed nextBefore (the page-minimum createdAt)")
 
+        // The older page predates activity ordering (no nextBefore key), so the client falls back
+        // to the last row's createdAt: the two paths meet at the same cursor value here.
         let page2 = try await client.listGames(limit: 2, before: page1.nextBefore)
         XCTAssertEqual(page2.rows.count, 1)
         XCTAssertEqual(page2.rows[0].createdAt, "2026-07-06T08:00:00.000Z")

@@ -329,6 +329,37 @@ describe("single writer per table via least-privilege roles (INV-7; DESIGN.md §
       asRole("crossy_api", (c) => c.query("delete from game_state")),
     ).rejects.toThrow(/permission denied/i);
   });
+
+  it("grants the api role SELECT on cell_events for activity ordering, but never a write (INV-7)", async () => {
+    // Read expand (migration 0008, DESIGN.md §9): the API orders the signed-in home's rooms by
+    // most recent activity, MAX(cell_events.at) per game (PROTOCOL.md §12). The grant is read only,
+    // so the session stays the single writer and the log stays append-only for it too (§9).
+    await asRole("crossy_api", async (c) => {
+      // The aggregate the list needs is readable; the read touches only the timestamp, not value.
+      const { rows } = await c.query<{ last: Date | null }>(
+        "select max(at) as last from cell_events",
+      );
+      expect(rows.length).toBe(1);
+    });
+    // The read grant is not a write grant: cell_events stays session-owned and append-only (INV-7,
+    // §9 immutability). The api role can INSERT/UPDATE/DELETE none of it.
+    await expect(
+      asRole("crossy_api", (c) =>
+        c.query(
+          "insert into cell_events (game_id, seq, cell, user_id, value) values ($1, 2, 0, $2, 'A')",
+          [seed.gameId, seed.userId],
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_api", (c) =>
+        c.query("update cell_events set value = 'Z'"),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_api", (c) => c.query("delete from cell_events")),
+    ).rejects.toThrow(/permission denied/i);
+  });
 });
 
 describe("session read-coupling contract (INV-7; DESIGN.md §9)", () => {

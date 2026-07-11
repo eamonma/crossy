@@ -149,7 +149,9 @@ struct RealRooms: RoomsProviding {
                             rows: summary.puzzle.rows,
                             cols: summary.puzzle.cols,
                             memberCount: summary.memberCount,
-                            createdBy: summary.createdBy)
+                            createdBy: summary.createdBy,
+                            createdAt: summary.createdAt,
+                            lastActivityAt: summary.lastActivityAt)
                     },
                     nextBefore: page.nextBefore))
         } catch {
@@ -296,15 +298,21 @@ struct FixtureRooms: RoomsProviding {
                     RoomCardModel(
                         gameId: "fixture-tuesday", name: "Tuesday evening",
                         puzzleTitle: "A door left ajar", rows: 9, cols: 9,
-                        memberCount: 3, createdBy: "you"),
+                        memberCount: 3, createdBy: "you",
+                        createdAt: "2026-07-06T19:00:00.000Z",
+                        lastActivityAt: "2026-07-09T21:14:00.000Z"),
                     RoomCardModel(
                         gameId: "fixture-themeless", name: nil,
                         puzzleTitle: "Themeless Saturday", rows: 15, cols: 15,
-                        memberCount: 2, createdBy: "bee"),
+                        memberCount: 2, createdBy: "bee",
+                        createdAt: "2026-07-04T11:00:00.000Z",
+                        lastActivityAt: "2026-07-08T15:02:00.000Z"),
                     RoomCardModel(
                         gameId: "fixture-stumper", name: "Sunday call",
                         puzzleTitle: "The Stumper", rows: 21, cols: 21,
-                        memberCount: 6, createdBy: "ada"),
+                        memberCount: 6, createdBy: "ada",
+                        createdAt: "2026-07-05T09:00:00.000Z",
+                        lastActivityAt: nil),
                 ],
                 nextBefore: nil))
     }

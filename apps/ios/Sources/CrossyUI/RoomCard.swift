@@ -22,12 +22,21 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// The creator's user id: the one member the list row names, so the one honest
     /// person-color the card can carry.
     public let createdBy: String
+    /// When the room was created (ISO 8601), the fallback sort key for a room no one
+    /// has played yet (§12). Kept off the card face; it feeds ordering only.
+    public let createdAt: String
+    /// The room's last activity (ISO 8601), or nil when no one has played yet: the
+    /// newest board event's time, `MAX(cell_events.at)` server-side (§12). It is the
+    /// key the rooms list orders on, most recent first; a played room leads. INV-6-safe
+    /// (a bare timestamp, never a cell value). Kept off the card face; it feeds ordering.
+    public let lastActivityAt: String?
 
     public var id: String { gameId }
 
     public init(
         gameId: String, name: String?, puzzleTitle: String?,
-        rows: Int, cols: Int, memberCount: Int, createdBy: String
+        rows: Int, cols: Int, memberCount: Int, createdBy: String,
+        createdAt: String, lastActivityAt: String?
     ) {
         self.gameId = gameId
         self.name = name
@@ -36,6 +45,8 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.cols = cols
         self.memberCount = memberCount
         self.createdBy = createdBy
+        self.createdAt = createdAt
+        self.lastActivityAt = lastActivityAt
     }
 
     /// The headline: the game's own name when it has one, else the puzzle title,
@@ -52,6 +63,31 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         guard let name, !name.isEmpty else { return nil }
         guard let puzzleTitle, !puzzleTitle.isEmpty, puzzleTitle != name else { return nil }
         return puzzleTitle
+    }
+
+    /// Order rooms most-recently-active first, matching the server's within-page order
+    /// (PROTOCOL.md §12): a played room (non-nil `lastActivityAt`) outranks an unplayed
+    /// one, ties and unplayed rooms fall back to `createdAt`, then `gameId`, so the order
+    /// is total and stable. The server already sends the page in this order; sorting again
+    /// keeps the list correct across merged pages and never fights the server since the
+    /// rule is identical. Timestamps are ISO 8601 UTC with the same server format, so a
+    /// lexicographic compare is chronological (no date parsing in the view layer). Pure and
+    /// non-mutating.
+    public static func orderedByActivity(_ rooms: [RoomCardModel]) -> [RoomCardModel] {
+        rooms.sorted { a, b in
+            switch (a.lastActivityAt, b.lastActivityAt) {
+            case let (lhs?, rhs?):
+                if lhs != rhs { return lhs > rhs }  // more recent first
+            case (nil, _?):
+                return false  // an unplayed room sorts after a played one
+            case (_?, nil):
+                return true  // a played room sorts before an unplayed one
+            case (nil, nil):
+                break  // both unplayed: fall through to createdAt
+            }
+            if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
+            return a.gameId > b.gameId
+        }
     }
 }
 
