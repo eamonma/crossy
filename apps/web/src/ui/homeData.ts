@@ -5,7 +5,10 @@
 //
 // The home shows one "Your games" list, newest first. It reports completion (completedAt) but no
 // full lifecycle status enum: the API reads the session-owned completed_at under a read grant
-// (see apps/api games/routes.ts), and "done" is the one lifecycle fact the sidebar needs.
+// (see apps/api games/routes.ts), and "done" is the one lifecycle fact the sidebar needs. Each
+// row also carries the puzzle's `mask`, its black-square silhouette (PROTOCOL section 12), the
+// face the home renders per room and per upload.
+import type { Mask } from "@crossy/protocol";
 
 /** The caller's role in a game (PROTOCOL roles). */
 export type Role = "host" | "solver" | "spectator";
@@ -29,6 +32,8 @@ export interface GameSummary {
     rows: number;
     cols: number;
     title: string | null;
+    /** The black-square silhouette, row strings of `#`/`.`, pattern only (PROTOCOL section 12). */
+    mask: Mask;
   };
 }
 
@@ -54,6 +59,8 @@ export interface PuzzleSummary {
   features: PuzzleFeatures | null;
   title: string | null;
   author: string | null;
+  /** The black-square silhouette, row strings of `#`/`.`, pattern only (PROTOCOL section 12). */
+  mask: Mask;
 }
 
 /** Bearer headers for the REST calls; the token is the identity (or the ?token= dogfood override). */

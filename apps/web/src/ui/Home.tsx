@@ -1,18 +1,28 @@
-// The signed-in content surfaces inside the shell (AppShell owns the sidebar and chrome).
-// `/` is the landing-in view: a serif welcome, the one gold New game action, and the games
-// you're in as full rows. The sidebar's recents are navigation, one truncated line each;
-// this panel is the detail view of the same list (players, your role, when it started), the
-// claude.ai home pattern of sidebar recents plus a richer recent list in the frame. `/puzzles`
-// is the library: your uploads, each row starting a fresh game (POST /games), the
-// replay-without-reupload path. Titles and authors come off the API where ingestion parsed
-// them; nothing here invents a status, because lifecycle is session-owned and the API cannot
-// report it (DESIGN.md section 9).
+// The signed-in content surfaces inside the shell (AppShell owns the sidebar and chrome). One
+// idea runs through both: a crossword's black-square pattern is its face. The API ships that
+// pattern as a solution-free `mask` (PROTOCOL section 12) on every list row, and the Silhouette
+// component renders it small in the board's own ink-on-paper tokens.
 //
-// Both reads are solution-free (INV-6). Fetch shapes and formatters live in homeData.
+// `/` is the shelf: the rooms you're in as physical objects, cards whose material is the puzzle's
+// silhouette, the serif welcome above and the one gold New game action beside it. Each card
+// carries the room name, the human facts (players, your role, when it started), and its
+// completion state (the base branch's `completedAt`); finished rooms gather in a trailing, quiet
+// "Solved" shelf so the live rooms stay up top. Newest first throughout.
+//
+// `/puzzles` is the hybrid gallery: the few most recent uploads as larger silhouette cards, the
+// deeper archive as the existing tight index rows below (date-led, byline, size). Every entry
+// starts a fresh game (POST /games), the replay-without-reupload path. The /new dropzone is a
+// separate decision and is not absorbed here.
+//
+// Titles and authors come off the API where ingestion parsed them; nothing here invents a
+// lifecycle status, because status is session-owned and the API reports only completion
+// (DESIGN.md section 9). Both reads are solution-free (INV-6). Fetch shapes and the pure
+// formatters live in homeData; the silhouette is the artwork, typography does the rest.
 import { useState } from "react";
-import { ChevronRightIcon, PlusIcon } from "@radix-ui/react-icons";
+import { PlusIcon } from "@radix-ui/react-icons";
 import type { IdentitySession } from "../identity";
-import { cx, Divider } from "./primitives";
+import { cx, CapsLabel, Divider } from "./primitives";
+import { Silhouette } from "./Silhouette";
 import { useResource } from "./useResource";
 import type { Resource } from "./useResource";
 import {
@@ -20,6 +30,7 @@ import {
   fetchPuzzles,
   gameTitle,
   geometry,
+  isCompleted,
   puzzleTitle,
   relativeTime,
   startGameFromPuzzle,
@@ -226,9 +237,88 @@ function GamesPanel({
 }
 
 /**
- * The games detail rows, one recipe at every width: name leads (room name, then the puzzle
- * title, then geometry-and-date), a quiet meta line beneath (players, started), your role as
- * a badge when you're not the host. Each row opens the game.
+ * One room as a physical object: the puzzle's silhouette is the card's material, the name and
+ * facts sit beside it. The whole card opens the game. A completed room reads quietly done, the
+ * silhouette dimmed and a small "Solved" caption in place of the started line, no loud badge.
+ */
+function RoomCard({
+  game,
+  now,
+  onOpen,
+}: {
+  game: GameSummary;
+  now: Date;
+  onOpen: (gameId: string) => void;
+}) {
+  const title = gameTitle(game, now);
+  const done = isCompleted(game);
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(game.gameId)}
+      aria-label={done ? `Open ${title} (solved)` : `Open ${title}`}
+      className="group flex w-full flex-col overflow-hidden rounded-4 border border-border bg-panel text-left transition-colors hover:border-border-strong focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+    >
+      {/* The silhouette fills the card's top: the face you recognize before the name. */}
+      <span className="block border-b border-border bg-sand-2 p-4">
+        <Silhouette
+          mask={game.puzzle.mask}
+          muted={done}
+          className="mx-auto h-auto w-full max-w-[8rem]"
+        />
+      </span>
+      <span className="flex min-w-0 flex-col gap-1 px-4 py-3">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-3 font-medium text-text">
+            {title}
+          </span>
+          {game.role !== "host" && (
+            <Badge variant="neutral" className="shrink-0 capitalize">
+              {game.role}
+            </Badge>
+          )}
+        </span>
+        <span className="text-1 text-text-muted">
+          {done ? (
+            <span className="text-text-subtle">
+              {players(game.memberCount)} · Solved
+            </span>
+          ) : (
+            <>
+              {players(game.memberCount)} · started{" "}
+              {relativeTime(game.createdAt, now)}
+            </>
+          )}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+/** A responsive gallery of room cards: one column on a phone, more as the panel widens. */
+function RoomGrid({
+  games,
+  now,
+  onOpen,
+}: {
+  games: readonly GameSummary[];
+  now: Date;
+  onOpen: (gameId: string) => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {games.map((g) => (
+        <RoomCard key={g.gameId} game={g} now={now} onOpen={onOpen} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The shelf: live rooms first as silhouette cards, then a trailing "Solved" section that gathers
+ * the finished rooms so the shelf reads calm and current at the top. Ordering inside each group
+ * stays newest-first (the API's order is preserved). When nothing is solved, the trailing section
+ * simply does not render, so an all-live shelf carries no empty header.
  */
 function GamesList({
   games,
@@ -238,40 +328,18 @@ function GamesList({
   onOpen: (gameId: string) => void;
 }) {
   const now = new Date();
+  const live = games.filter((g) => !isCompleted(g));
+  const solved = games.filter((g) => isCompleted(g));
   return (
-    <ul className="m-0 list-none p-0">
-      {games.map((g) => {
-        const title = gameTitle(g, now);
-        return (
-          <li key={g.gameId}>
-            <button
-              type="button"
-              onClick={() => onOpen(g.gameId)}
-              aria-label={`Open ${title}`}
-              className="flex w-full items-center justify-between gap-3 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-sand-2 focus-visible:bg-sand-2 focus-visible:outline-none"
-            >
-              <span className="min-w-0">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-3 font-medium text-text">
-                    {title}
-                  </span>
-                  {g.role !== "host" && (
-                    <Badge variant="neutral" className="shrink-0 capitalize">
-                      {g.role}
-                    </Badge>
-                  )}
-                </span>
-                <span className="mt-0.5 block text-1 text-text-muted">
-                  {players(g.memberCount)} · started{" "}
-                  {relativeTime(g.createdAt, now)}
-                </span>
-              </span>
-              <ChevronRightIcon className="shrink-0 text-text-subtle" />
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col gap-8 px-4 pt-4">
+      {live.length > 0 && <RoomGrid games={live} now={now} onOpen={onOpen} />}
+      {solved.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <CapsLabel className="text-text-subtle">Solved</CapsLabel>
+          <RoomGrid games={solved} now={now} onOpen={onOpen} />
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -329,7 +397,7 @@ function PuzzlesPanel({
             onAction={onCreate}
           />
         ) : (
-          <PuzzlesTable
+          <PuzzlesLibrary
             puzzles={state.data}
             starting={starting}
             onStart={start}
@@ -358,12 +426,112 @@ function Th({
   );
 }
 
+/** How many recent uploads lead the library as larger silhouette cards; the rest is the index. */
+const GALLERY_COUNT = 4;
+
 /**
- * The uploads list. Desktop is a columned table, now led by the parsed title and author
- * (persisted by ingestion since the title/author API change); mobile stacks each puzzle so
- * the row never clips. Every row's one action starts a fresh game from that puzzle.
+ * One recent upload as a larger silhouette card. The face leads; the parsed title, the byline,
+ * and size sit beneath; the one action starts a fresh game. Same behavior as an index row, given
+ * the gallery's larger frame.
  */
-function PuzzlesTable({
+function PuzzleCard({
+  puzzle,
+  starting,
+  onStart,
+}: {
+  puzzle: PuzzleSummary;
+  starting: boolean;
+  onStart: (p: PuzzleSummary) => void;
+}) {
+  const features = featureLabels(puzzle.features);
+  return (
+    <div className="flex flex-col overflow-hidden rounded-4 border border-border bg-panel">
+      <div className="border-b border-border bg-sand-2 p-4">
+        <Silhouette
+          mask={puzzle.mask}
+          className="mx-auto h-auto w-full max-w-[9rem]"
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1 px-4 py-3">
+        <div className="truncate text-3 font-medium text-text">
+          {puzzleTitle(puzzle)}
+        </div>
+        {puzzle.author !== null && puzzle.author.trim() !== "" && (
+          <div className="truncate text-1 text-text-muted">{puzzle.author}</div>
+        )}
+        <div className="mt-0.5 flex items-center gap-2 text-1 text-text-subtle">
+          <span className="font-mono tabular-nums">
+            {geometry(puzzle.cols, puzzle.rows)}
+          </span>
+          {features.length > 0 && <span aria-hidden>·</span>}
+          {features.length > 0 && <span>{features.join(" · ")}</span>}
+        </div>
+      </div>
+      <div className="px-4 pb-4">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full"
+          disabled={starting}
+          onClick={() => onStart(puzzle)}
+        >
+          {starting ? "Starting..." : "New game"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The library, the hybrid gallery: the most recent uploads lead as larger silhouette cards, then
+ * the deeper archive follows as the tight index (date-led, byline, size). Desktop is a columned
+ * table, mobile stacks each row so it never clips. Every entry's one action starts a fresh game.
+ * When there are only a few uploads, they are all gallery cards and the index simply does not
+ * render, so a small library reads as a clean wall of faces rather than a table of one row.
+ */
+function PuzzlesLibrary({
+  puzzles,
+  starting,
+  onStart,
+}: {
+  puzzles: readonly PuzzleSummary[];
+  starting: string | null;
+  onStart: (p: PuzzleSummary) => void;
+}) {
+  const gallery = puzzles.slice(0, GALLERY_COUNT);
+  const archive = puzzles.slice(GALLERY_COUNT);
+  return (
+    <div className="flex flex-col gap-8 px-4 pt-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
+        {gallery.map((p) => (
+          <PuzzleCard
+            key={p.puzzleId}
+            puzzle={p}
+            starting={starting === p.puzzleId}
+            onStart={onStart}
+          />
+        ))}
+      </div>
+      {archive.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <CapsLabel className="text-text-subtle">Archive</CapsLabel>
+          <PuzzlesIndex
+            puzzles={archive}
+            starting={starting}
+            onStart={onStart}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The deeper archive as tight index rows: desktop a columned table led by the parsed title and
+ * author, mobile a stacked list so a row never clips. Unchanged behavior from the prior uploads
+ * table; every row's one action starts a fresh game from that puzzle.
+ */
+function PuzzlesIndex({
   puzzles,
   starting,
   onStart,
