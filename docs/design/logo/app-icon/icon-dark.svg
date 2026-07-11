@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Crossy app icon (crop-medium). Anti-diagonal CROSSY core, frame slices the outer ring mid-cell; 5x5, cell 256px, block density 0.28, 180-symmetric=True. Full square; iOS masks the corners. -->
+  <defs><clipPath id="mask"><rect width="1024" height="1024" rx="0"/></clipPath></defs>
+  <rect width="1024" height="1024" rx="0" fill="#121118"/>
+  <g clip-path="url(#mask)">
+  <rect x="-122.24" y="-122.24" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="-122.24" y="389.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="-122.24" y="645.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="-122.24" y="901.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="133.76" y="-122.24" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="133.76" y="133.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="133.76" y="389.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="389.76" y="-122.24" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="389.76" y="133.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="389.76" y="645.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="389.76" y="901.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="645.76" y="389.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="645.76" y="645.76" width="244.48" height="244.48" fill="#978365"/>
+  <rect x="645.76" y="901.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="901.76" y="-122.24" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="901.76" y="133.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="901.76" y="389.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <rect x="901.76" y="901.76" width="244.48" height="244.48" fill="#EDEAE2"/>
+  <path d="M 42.89 -36 A 55.99 55.99 0 1 0 42.89 36" transform="translate(256 256)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M -36.63 55.99 L -36.63 -55.99 L 8.64 -55.99 A 27.99 27.99 0 0 1 8.64 0 L -36.63 0 M 8.64 0 L 36.63 55.99" transform="translate(512 256)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M -55.99 0 A 55.99 55.99 0 1 0 55.99 0 A 55.99 55.99 0 1 0 -55.99 0" transform="translate(256 512)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 32.73 -41.99 A 37.79 27.99 0 1 0 0 0 A 37.79 27.99 0 1 1 -32.73 41.99" transform="translate(768 512)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 32.73 -41.99 A 37.79 27.99 0 1 0 0 0 A 37.79 27.99 0 1 1 -32.73 41.99" transform="translate(512 768)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M -38.71 -55.99 L 0 0 L 38.71 -55.99 M 0 0 L 0 55.99" transform="translate(768 768)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
