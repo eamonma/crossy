@@ -204,10 +204,10 @@ struct RoomFactsPanel: View {
     private var rows: some View {
         let width = FactsRideLayout.contentWidth(openWidth: morph.open.width)
         return VStack(spacing: FactsRideLayout.rowGap) {
-            // An uppercase label takes a touch of tracking (DESIGN.md §6).
-            Text(verbatim: content.label.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(1.4)
+            // Natural casing: the uppercased small-caps register read wrong
+            // on device (owner ruling 2026-07-10).
+            Text(verbatim: content.label)
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color(rgb: ground.tokens.number))
                 .lineLimit(1)
                 .truncationMode(.tail)
