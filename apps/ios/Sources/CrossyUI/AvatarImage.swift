@@ -1,18 +1,17 @@
-// The avatar image, layered over the colored initial puck (apps/ios/DESIGN.md §3:
-// the people are the color; PROTOCOL.md §4: the avatarUrl is opaque and nullable).
-// The initial is always the floor: a null url, a url still loading, or a url that
-// failed all render as the initial, and the fetched image returns the moment it
-// arrives. So this file draws only the image layer; RosterPuckView owns the puck
-// beneath it and the overlay simply sits on top when there is something to show.
+// The avatar image cache: one url-keyed, in-memory store that fetches a participant's
+// avatar once and hands the decoded image to every surface that shows that person
+// (apps/ios/DESIGN.md §3: the people are the color; PROTOCOL.md §4: the avatarUrl is
+// opaque and nullable, and a null, loading, or failed url is the colored initial, the
+// floor). This file owns only "url -> image"; the puck composition and the live bridge
+// that reads this cache live in RosterPuck.swift.
 //
-// Why a small cache and not AsyncImage: the pill cluster re-renders every second
-// (the room bar's 1 Hz TimelineView drives the clock), and AsyncImage restarts its
-// fetch on each identity churn, so it would re-hit the network every tick and flash
-// the initial back in between. A url-keyed in-memory cache fetches once and hands
-// the same decoded image to every later render, so the image is stable and the
-// initial shows only until the first load lands. URLSession resolves http(s) and
-// data: urls alike, so a bundled data-url fixture proves the layering with no
-// network (DemoRoom).
+// Why a cache and not AsyncImage: the pill cluster re-renders every second (the room
+// bar's 1 Hz TimelineView drives the clock), and AsyncImage restarts its fetch on each
+// identity churn, so it would re-hit the network every tick and flash the initial back
+// in between. A url-keyed cache fetches once and returns the same decoded image to every
+// later render, so the image is stable and the initial shows only until the first load
+// lands. URLSession resolves http(s) and data: urls alike, so a bundled data-url fixture
+// proves the path with no network (DemoRoom).
 
 import CrossyDesign
 import SwiftUI
@@ -114,36 +113,5 @@ extension EnvironmentValues {
     var avatarImageCache: AvatarImageCache? {
         get { self[AvatarImageCacheKey.self] }
         set { self[AvatarImageCacheKey.self] = newValue }
-    }
-}
-
-/// The image layer over the initial puck: nothing until the url's image resolves,
-/// then the image scaled to fill and clipped to the circle. The ring stroke and the
-/// away-dim opacity live on the puck beneath (RosterPuckView), so they apply to the
-/// image too once it lands. A nil url, a loading url, and a failed url all draw
-/// nothing here, leaving the initial as the render (PROTOCOL.md §4).
-@available(iOS 17.0, macOS 14.0, *)
-struct AvatarPuckOverlay: View {
-    let avatarUrl: String?
-    let diameter: CGFloat
-    @Environment(\.avatarImageCache) private var cache
-
-    var body: some View {
-        Group {
-            if let avatarUrl, let cache, let image = cache.image(for: avatarUrl) {
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: diameter, height: diameter)
-                    .clipShape(Circle())
-            }
-        }
-        .onAppear { requestLoad() }
-        .onChange(of: avatarUrl) { _, _ in requestLoad() }
-    }
-
-    private func requestLoad() {
-        guard let avatarUrl, let cache else { return }
-        cache.load(avatarUrl)
     }
 }

@@ -43,6 +43,11 @@ struct RosterMenu: View {
     /// and the confirmationDialog fires on the pill itself.
     @State private var kickTarget: RosterMember?
 
+    /// The shared avatar cache the room injects (the pill cluster and the rows read
+    /// the same instance). Reading it here resolves the row snapshots' images; a
+    /// surface with no cache renders every row as its initial.
+    @Environment(\.avatarImageCache) private var avatarCache
+
     var body: some View {
         if members.isEmpty {
             // The welcome has not landed: an empty cluster squishes the glass
@@ -229,27 +234,34 @@ struct RosterMenu: View {
                 Text(verbatim: word)
             }
         } icon: {
-            RosterPuckArt.image(member: member, ground: ground)
+            RosterPuckArt.image(
+                member: member, ground: ground, avatar: resolvedAvatar(member))
         }
+    }
+
+    /// The cache's image for this member, or nil when there is no url, it is still
+    /// loading, or there is no cache. Read during body so the rows rebuild (and the
+    /// snapshot re-renders with the image) once the shared cache publishes.
+    private func resolvedAvatar(_ member: RosterMember) -> Image? {
+        guard let url = member.avatarUrl, let cache = avatarCache else { return nil }
+        return cache.image(for: url)
     }
 }
 
 // MARK: - Rendered pucks
 
-/// Menu rows take an Image, not a live view, so each puck renders once per
-/// (member, ground) through ImageRenderer at 3x and caches. The render bakes in
-/// the away dim (RosterPuckView's own opacity); non-template, so color survives
-/// the menu.
+/// Menu rows take a rendered Image, not a live view (a system Menu rasterizes its rows
+/// and never refreshes them once open), so each puck renders once per (member, ground,
+/// avatar) through ImageRenderer at 3x and caches. The render bakes in the away dim
+/// (RosterPuckBody's own opacity); non-template, so color and photo survive the menu.
 ///
-/// Menu rows stay initials, deliberately (avatars documented decision). ImageRenderer
-/// is a synchronous one-shot: it captures the puck at render time, and the avatar
-/// image resolves asynchronously, so a remote image is never in the snapshot. Baking
-/// the fetched image in would need a fetch-then-re-render step, but a system Menu does
-/// not refresh its already-rendered rows once open, so the fetched image would land in
-/// a menu the user has closed. The pill cluster, a live SwiftUI surface, carries the
-/// image (RosterPuckView layers AvatarPuckOverlay); the menu row shows the colored
-/// initial, which is the same first-class fallback a null or failed url gets
-/// everywhere (PROTOCOL.md §4). So the row key below need not include the avatar.
+/// The snapshot bakes in whatever the caller resolved from the avatar cache: the image
+/// when it is present, else the colored initial, the same first-class fallback a null or
+/// failed url gets everywhere (PROTOCOL.md §4). The pill cluster is a live surface always
+/// on screen before the menu, so it has usually loaded the image into the shared cache by
+/// the time the menu opens; a rare avatar still in flight then shows the initial for that
+/// opening and lands on the next. The row key includes an avatar token so a resolved image
+/// makes a fresh snapshot instead of being masked by an earlier initials-only one.
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 enum RosterPuckArt {
@@ -258,15 +270,20 @@ enum RosterPuckArt {
 
     private static var cache: [String: Image] = [:]
 
-    static func image(member: RosterMember, ground: GridGround) -> Image {
+    static func image(member: RosterMember, ground: GridGround, avatar: Image?) -> Image {
         let ink = ground.tokens.ink
+        // The avatar token: the url when a resolved image is in this snapshot, else
+        // empty. Without it the initials-only render would be served under the same key
+        // forever, masking the image once it lands.
+        let avatarToken = avatar == nil ? "" : (member.avatarUrl ?? "")
         let key = [
             member.userId, member.initial, member.wireColor,
             String(member.connected), "\(ink.red).\(ink.green).\(ink.blue)",
+            avatarToken,
         ].joined(separator: "|")
         if let hit = cache[key] { return hit }
 
-        // The puck's ring is a centered stroke (RosterPuckView), so it overhangs the
+        // The puck's ring is a centered stroke (RosterPuckBody), so it overhangs the
         // frame by half its line width; the live pill has room around it, but
         // ImageRenderer rasterizes to the frame and would clip that overhang at the
         // four cardinal points (the top/left/right/bottom of the circle, where it
@@ -274,8 +291,8 @@ enum RosterPuckArt {
         // the ring renders whole, and it leaves the icon symmetric so the menu's
         // slotting is unmoved.
         let renderer = ImageRenderer(
-            content: RosterPuckView(
-                member: member, ground: ground, diameter: puckDiameter)
+            content: RosterPuckBody(
+                member: member, ground: ground, diameter: puckDiameter, avatar: avatar)
                 .padding(1))
         renderer.scale = 3
         var rendered: Image?

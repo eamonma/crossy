@@ -214,42 +214,6 @@ struct RoomBar<FactsPopover: View>: View {
 
 }
 
-// MARK: - One puck
-
-/// A participant's puck: their roster color, their initial in the paper's cell
-/// tone, and, when the member carries an avatarUrl, the fetched image layered over
-/// the initial and clipped to the circle (PROTOCOL.md §4). The initial is always
-/// the floor: it renders until the image arrives and returns the moment the image
-/// fails, so a null, loading, or failed url is just the initial (AvatarPuckOverlay
-/// draws nothing in those states). The ring stroke and the away-dim opacity wrap
-/// the whole stack, so they apply to the image the same as the initial. Away
-/// members sit back; presence is honest, not decorative.
-@available(iOS 17.0, macOS 14.0, *)
-struct RosterPuckView: View {
-    let member: RosterMember
-    let ground: GridGround
-    let diameter: CGFloat
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color(rgb: ground.rosterColor(member.identity)))
-            Text(verbatim: member.initial)
-                .font(.system(size: diameter * 0.42, weight: .bold))
-                .foregroundStyle(Color(rgb: ground.tokens.cell))
-            // Over the initial: the image, when it has resolved. Nothing here for a
-            // null, loading, or failed url, so the initial beneath is the render.
-            AvatarPuckOverlay(avatarUrl: member.avatarUrl, diameter: diameter)
-        }
-        .frame(width: diameter, height: diameter)
-        .overlay(
-            Circle().stroke(Color(rgb: ground.tokens.cell), lineWidth: 1.5)
-        )
-        .opacity(member.connected ? 1 : 0.35)
-        .accessibilityHidden(true)
-    }
-}
-
 // MARK: - The weather dot
 
 /// Three registers (DESIGN.md §8): calm, breathing, dimmed-hollow. Achromatic:

@@ -75,6 +75,11 @@ public struct SettingsScreen: View {
     @State private var confirmingDelete = false
     @State private var deleting = false
     @State private var deleteFailure: ArrivalFailure?
+    // The identity puck is a live RosterPuckView, so its avatar layer reads a cache
+    // from the environment (AvatarImage). This screen mounts outside the room, so it
+    // owns its own instance; without one the puck would have no cache to load from and
+    // stay the colored initial (its one puck makes a shared cache unnecessary).
+    @State private var avatarCache = AvatarImageCache()
 
     public init(
         identity: AccountIdentity,
@@ -119,6 +124,9 @@ public struct SettingsScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+        // The identity puck's avatar layer reads its cache here (PROTOCOL.md §4: a
+        // null or unresolved url just shows the initial).
+        .environment(\.avatarImageCache, avatarCache)
         // The two-beat confirmation: a system dialog with a destructive action, its
         // body stating the consequence plainly (roadmap I3). The system owns its
         // placement and dismissal (the Mail-mechanism grammar, DESIGN.md §4).
