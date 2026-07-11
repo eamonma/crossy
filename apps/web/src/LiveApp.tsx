@@ -50,6 +50,7 @@ import {
 } from "./ui/Clues";
 import { SolvingNow } from "./ui/SolvingNow";
 import { buildRoster, cluePresence } from "./ui/roster";
+import { parseClueRefs } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
@@ -849,6 +850,27 @@ function LiveGame({
   const activeDown =
     clueOn(puzzle.downClues, "down", selection.cell)?.number ?? null;
 
+  // Clues the active clue names ("See 42-Down", "17, 20, and 49 across"), keyed
+  // `${direction}-${number}` like the presence map so a list row looks itself up in O(1). The
+  // parser reads intent only; here we filter to entries that actually exist in this puzzle, so a
+  // reference to a clue this grid lacks (or the active clue naming itself) never lights a row.
+  const referenced = useMemo(() => {
+    const exists = new Set<string>();
+    for (const c of puzzle.acrossClues) exists.add(`across-${c.number}`);
+    for (const c of puzzle.downClues) exists.add(`down-${c.number}`);
+    const marks = new Set<string>();
+    for (const ref of parseClueRefs(activeClue?.text)) {
+      const key = `${ref.direction}-${ref.number}`;
+      if (
+        exists.has(key) &&
+        key !== `${activeClue?.direction}-${activeClue?.number}`
+      ) {
+        marks.add(key);
+      }
+    }
+    return marks;
+  }, [activeClue, puzzle]);
+
   const elapsed = useElapsedSeconds(store.firstFillAt, store.completedAt);
   // `name` and `code` are API-preferred with a URL-param fallback (resolved in the loader), so
   // the title and the share popover work without the current URL carrying `?name=`/`?code=`.
@@ -971,6 +993,7 @@ function LiveGame({
             currentDirection={selection.direction}
             filled={filled}
             presence={presenceByClue}
+            referenced={referenced}
             solvingNow={<SolvingNow roster={roster} />}
             onJump={jumpToClue}
           />
@@ -983,6 +1006,7 @@ function LiveGame({
             currentDirection={selection.direction}
             filled={filled}
             presence={presenceByClue}
+            referenced={referenced}
             solvingNow={<SolvingNow roster={roster} />}
             onJump={jumpToClue}
           />
@@ -1021,6 +1045,7 @@ function LiveGame({
         currentDirection={selection.direction}
         filled={filled}
         presence={presenceByClue}
+        referenced={referenced}
         onJump={jumpToClue}
       />
 
