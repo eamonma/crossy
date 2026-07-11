@@ -25,7 +25,6 @@ import { buildApp } from "./app";
 import { createDb } from "./db/client";
 import {
   STARTER_GAME_NAME,
-  STARTER_PUZZLE_ID,
   STARTER_PUZZLE_TITLE,
 } from "./starter/starter-puzzle";
 import type {
@@ -2532,35 +2531,54 @@ describe("signup starter seed (DESIGN.md §8; INV-6 no-solution-leak; INV-7 user
     return rows;
   }
 
-  it("seeds one solo starter game the first time a full account is seen (INV-7)", async () => {
+  /** Puzzles the user owns (created_by), read as admin. */
+  async function ownedPuzzles(
+    sub: string,
+  ): Promise<{ puzzle_id: string; title: string | null }[]> {
+    const { rows } = await adminPool.query(
+      "select puzzle_id, title from puzzles where created_by = $1",
+      [sub],
+    );
+    return rows;
+  }
+
+  it("seeds one solo starter game on a user-owned puzzle the first time a full account is seen (INV-7)", async () => {
     const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
     const res = await seedApp.request("/games", {
-      headers: { authorization: `Bearer ${await auth.mintUpgraded({ sub })}` },
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(res.status).toBe(200);
-    const rows = await gamesOf(sub);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.name).toBe(STARTER_GAME_NAME);
-    expect(rows[0]!.puzzle_id).toBe(STARTER_PUZZLE_ID);
-    expect(rows[0]!.role).toBe("host");
-    // The shared starter puzzle is provisioned once, by its fixed id.
-    const p = await adminPool.query(
-      "select title from puzzles where puzzle_id = $1",
-      [STARTER_PUZZLE_ID],
-    );
-    expect(p.rows).toHaveLength(1);
-    expect(p.rows[0].title).toBe(STARTER_PUZZLE_TITLE);
+    const games = await gamesOf(sub);
+    expect(games).toHaveLength(1);
+    expect(games[0]!.name).toBe(STARTER_GAME_NAME);
+    expect(games[0]!.role).toBe("host");
+    // The user owns their own copy of the starter puzzle, and the game points at it.
+    const owned = await ownedPuzzles(sub);
+    expect(owned).toHaveLength(1);
+    expect(owned[0]!.title).toBe(STARTER_PUZZLE_TITLE);
+    expect(games[0]!.puzzle_id).toBe(owned[0]!.puzzle_id);
+    // It surfaces in the owned-puzzles list (GET /puzzles filters created_by = caller).
+    const listRes = await seedApp.request("/puzzles", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const list = (await listRes.json()) as {
+      puzzles: { title: string | null }[];
+    };
+    expect(list.puzzles).toHaveLength(1);
+    expect(list.puzzles[0]!.title).toBe(STARTER_PUZZLE_TITLE);
   });
 
-  it("never seeds a guest: a guest cannot hold host (DESIGN.md §8)", async () => {
+  it("never seeds a guest: no game and no owned puzzle (DESIGN.md §8)", async () => {
     const sub = randomUUID();
     await seedApp.request("/games", {
       headers: { authorization: `Bearer ${await auth.mintAnonymous({ sub })}` },
     });
     expect(await gamesOf(sub)).toHaveLength(0);
+    expect(await ownedPuzzles(sub)).toHaveLength(0);
   });
 
-  it("seeds once, not on every request (idempotent on the users insert)", async () => {
+  it("seeds once, not on every request: one game and one owned puzzle (idempotent)", async () => {
     const sub = randomUUID();
     const token = await auth.mintUpgraded({ sub });
     for (let i = 0; i < 3; i += 1) {
@@ -2569,6 +2587,7 @@ describe("signup starter seed (DESIGN.md §8; INV-6 no-solution-leak; INV-7 user
       });
     }
     expect(await gamesOf(sub)).toHaveLength(1);
+    expect(await ownedPuzzles(sub)).toHaveLength(1);
   });
 
   it("exposes no solution on the seeded game view (INV-6)", async () => {
