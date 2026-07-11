@@ -90,6 +90,23 @@ export async function fetchPuzzles(
   return body.puzzles ?? [];
 }
 
+/**
+ * Delete the caller's own account (DELETE /account, DESIGN.md §8): the API tombstones the mirror
+ * row (display name and avatar scrubbed, the opaque id kept so past contributions replay), hands
+ * off or ends every hosted game, and removes the vendor identity. Resolves on success; throws on
+ * any non-2xx so the caller shows an inline error rather than a silent failure.
+ */
+export async function deleteAccount(
+  apiBase: string,
+  token: string,
+): Promise<void> {
+  const res = await fetch(`${apiBase}/account`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(`DELETE /account ${res.status}`);
+}
+
 /** Start a fresh game from an existing puzzle: the reusability story (replay with a new group). */
 export async function startGameFromPuzzle(
   apiBase: string,
