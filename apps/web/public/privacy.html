@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — Crossy</title>
+    <meta
+      name="description"
+      content="How Crossy collects, uses, and protects your information. We collect only what the app needs, run no ads or trackers, and never sell your data."
+    />
+    <link rel="canonical" href="https://crossy.me/privacy" />
+    <!-- Display serif (Harfang Pro), same Typekit kit the app shell loads. -->
+    <link rel="stylesheet" href="https://use.typekit.net/ckp4hdg.css" />
+    <!-- Body sans + serif fallback for this standalone page (the app self-hosts these via @fontsource). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Schibsted+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #fdfdfc;
+        --surface: #f9f9f8;
+        --ink: #21201c;
+        --muted: #63635e;
+        --rule: #e2e1de;
+        --font-display: "harfang-pro", "Newsreader", Georgia, serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1917;
+          --surface: #211f1c;
+          --ink: #f1f0ef;
+          --muted: #a1a099;
+          --rule: #35332f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font-sans);
+        font-size: 1.0625rem;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .wrap {
+        max-width: 44rem;
+        margin: 0 auto;
+        padding: 5rem 1.5rem 7rem;
+      }
+      .home {
+        display: inline-block;
+        margin-bottom: 3.5rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .home:hover {
+        opacity: 0.7;
+      }
+      h1 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: clamp(2.5rem, 8vw, 3.75rem);
+        line-height: 1;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.75rem;
+      }
+      .updated {
+        color: var(--muted);
+        font-size: 0.9375rem;
+        margin: 0 0 2.5rem;
+      }
+      .lede {
+        font-size: 1.1875rem;
+        line-height: 1.6;
+        margin: 0 0 1.25rem;
+      }
+      h2 {
+        font-family: var(--font-sans);
+        font-weight: 600;
+        font-size: 1.375rem;
+        letter-spacing: -0.01em;
+        margin: 3rem 0 0.85rem;
+        padding-top: 1.75rem;
+        border-top: 1px solid var(--rule);
+      }
+      h2:first-of-type {
+        border-top: none;
+        padding-top: 0;
+      }
+      p {
+        margin: 0 0 1.1rem;
+      }
+      ul {
+        margin: 0 0 1.1rem;
+        padding-left: 1.2rem;
+      }
+      li {
+        margin: 0 0 0.5rem;
+      }
+      a {
+        color: var(--ink);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        text-decoration-thickness: 1px;
+        text-decoration-color: var(--muted);
+      }
+      a:hover {
+        text-decoration-color: var(--ink);
+      }
+      .toc {
+        margin: 0 0 1rem;
+        padding: 0;
+        list-style: none;
+        color: var(--muted);
+      }
+      .toc li {
+        margin: 0 0 0.35rem;
+      }
+      strong {
+        font-weight: 600;
+      }
+      footer {
+        margin-top: 4rem;
+        padding-top: 1.75rem;
+        border-top: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 0.9375rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <a class="home" href="/">← Crossy</a>
+
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: July 10, 2026</p>
+
+      <p class="lede">
+        Crossy is a collaborative crossword app. You solve puzzles with other
+        people in shared rooms, in real time. This policy explains what we
+        collect, why, how we handle it, and the rights you have over your
+        information.
+      </p>
+      <p>
+        The short version: we collect only what the app needs to work. We do not
+        run ads, we do not use third-party analytics or trackers, and we never
+        sell your data.
+      </p>
+      <p>
+        This policy covers the Crossy app and the crossy.me website. It does not
+        cover Discord or Apple, who run their own sign-in services under their
+        own policies.
+      </p>
+
+      <ul class="toc">
+        <li><a href="#collect">What we collect and why</a></li>
+        <li><a href="#others">How other players see you</a></li>
+        <li><a href="#dont">What we don't collect</a></li>
+        <li><a href="#share">Who we share data with</a></li>
+        <li><a href="#retention">How long we keep it</a></li>
+        <li><a href="#delete">Deleting your account</a></li>
+        <li><a href="#rights">Your rights</a></li>
+        <li><a href="#security">How we protect your data</a></li>
+        <li><a href="#children">Children</a></li>
+        <li><a href="#location">Where your data is handled</a></li>
+        <li><a href="#changes">Changes and questions</a></li>
+      </ul>
+
+      <h2 id="collect">What we collect and why</h2>
+      <p>
+        <strong>Your account.</strong> You sign in with Discord or with Apple.
+        We never see your Discord or Apple password. From that sign-in we
+        receive and store a display name and, if your provider has one, an
+        avatar image. Your email address is held by our authentication provider,
+        Supabase, so we can recognize your account across sessions and devices.
+        We use this information to create your account, show who is in a room,
+        and keep you signed in.
+      </p>
+      <p>
+        <strong>Your gameplay.</strong> When you join or create a room, we store
+        the room, its invite code, who is in it, and the letters you type into
+        the grid along with when you typed them. This is what makes a shared
+        solve work: your entries have to reach the other people in the room, and
+        the board has to still be there when you come back. We also record
+        simple timing, such as when a solve started, finished, or was abandoned.
+      </p>
+      <p>
+        <strong>Technical data.</strong> Our servers keep basic logs, including
+        IP addresses, to run the service, keep it secure, and debug problems.
+      </p>
+
+      <h2 id="others">How other players see you</h2>
+      <p>
+        Crossy is multiplayer, so some of your information is visible to the
+        other people in a room by design. While you are in a room, they can see
+        your display name, your avatar, where your cursor is, and the letters
+        you enter. Only people who have a room's invite code, or whom you
+        invite, can join it.
+      </p>
+
+      <h2 id="dont">What we don't collect</h2>
+      <p>To be clear about the things we deliberately don't do:</p>
+      <ul>
+        <li>No advertising, and no advertising identifiers.</li>
+        <li>No third-party analytics or tracking SDKs.</li>
+        <li>No location data.</li>
+        <li>No payment information. Crossy is free and has nothing to buy.</li>
+        <li>
+          We never sell your personal information, and we never share it for
+          cross-context behavioral advertising.
+        </li>
+      </ul>
+
+      <h2 id="share">Who we share data with</h2>
+      <p>We keep the list of companies that handle data on our behalf short:</p>
+      <ul>
+        <li>
+          <strong>Supabase</strong> manages sign-in and stores your account.
+        </li>
+        <li><strong>Railway</strong> hosts the servers the app talks to.</li>
+        <li>
+          <strong>Gravatar</strong>, operated by Automattic: if your sign-in
+          provider has no avatar for you, we show a Gravatar image instead. That
+          image is requested using a one-way hash of your email address. Your
+          actual email is never sent to Gravatar.
+        </li>
+      </ul>
+      <p>Beyond that, we share information only:</p>
+      <ul>
+        <li>
+          <strong>To comply with the law.</strong> If a valid legal order
+          compels us, we may disclose data. Where we are allowed to, we will
+          tell you first.
+        </li>
+        <li>
+          <strong>To protect people.</strong> We may act on information to
+          investigate abuse or protect the safety of our users.
+        </li>
+        <li>
+          <strong>If Crossy is ever sold.</strong> We don't plan on it, but if
+          the app changes hands, we will tell you before your information moves
+          under a different policy.
+        </li>
+      </ul>
+      <p>
+        Discord and Apple receive information when you sign in through them,
+        under their own privacy policies.
+      </p>
+
+      <h2 id="retention">How long we keep it</h2>
+      <p>
+        We keep your account and its data for as long as your account exists.
+        Server logs that contain IP addresses are kept only as long as we need
+        them to operate and secure the service, then discarded. When you delete
+        your account, the next section applies.
+      </p>
+
+      <h2 id="delete">Deleting your account</h2>
+      <p>
+        You can delete your account at any time from the Account screen in the
+        app. When you do, we remove the identifying information tied to your
+        account, including your display name and avatar, and we sign you out on
+        the device. If you signed in with Apple, we also revoke Apple's sign-in
+        token, as Apple requires.
+      </p>
+      <p>
+        Some gameplay records, such as the letters entered during past solves,
+        may remain so that the shared boards other people took part in stay
+        intact. Those records are no longer tied to your name or avatar once
+        your account is deleted.
+      </p>
+
+      <h2 id="rights">Your rights</h2>
+      <p>
+        Wherever you live, we try to give everyone the same rights over their
+        data. You can:
+      </p>
+      <ul>
+        <li>Ask what personal information we hold about you.</li>
+        <li>Ask us to correct it.</li>
+        <li>
+          Delete your account and its identifying data, which you can do
+          yourself in the app.
+        </li>
+        <li>Ask for a copy of your data.</li>
+        <li>Object to how we use it.</li>
+      </ul>
+      <p>
+        Some of this you can do directly in the app. For anything else, email us
+        at <a href="mailto:privacy@crossy.me">privacy@crossy.me</a>. We may need
+        to verify your identity before acting on a request. If you are in the EU
+        or UK, you also have the right to complain to your local data protection
+        authority.
+      </p>
+
+      <h2 id="security">How we protect your data</h2>
+      <p>
+        Traffic between the app and our servers is encrypted with TLS. We take
+        reasonable steps to protect your information, and we limit how much we
+        collect in the first place. No system is ever perfectly secure, so we
+        cannot promise absolute security.
+      </p>
+
+      <h2 id="children">Children</h2>
+      <p>
+        Crossy is intended for people aged 18 and older, and we do not knowingly
+        collect information from anyone under 18. If you believe someone under
+        18 has given us their information, email us and we will delete it.
+      </p>
+
+      <h2 id="location">Where your data is handled</h2>
+      <p>
+        Crossy is operated from the United States, and your data is processed
+        and stored there. If you use Crossy from outside the United States, you
+        are sending your information to the United States, where privacy laws
+        may differ from those in your own country.
+      </p>
+
+      <h2 id="changes">Changes and questions</h2>
+      <p>
+        We may update this policy as the app changes or the law requires. When
+        we make a meaningful change, we will update the date at the top of this
+        page.
+      </p>
+      <p>
+        If you have any question about this policy or your data, email us at
+        <a href="mailto:privacy@crossy.me">privacy@crossy.me</a>.
+      </p>
+
+      <footer>Crossy</footer>
+    </main>
+  </body>
+</html>

@@ -46,6 +46,16 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    # The privacy policy is a static page (public/privacy.html), served at a clean /privacy
+    # path so it never depends on the SPA shell: a legal page must load for crawlers and app
+    # reviewers with JavaScript off. The .html file is also reachable directly via the SPA
+    # try_files below; this exact match just gives it the extensionless canonical URL.
+    location = /privacy {
+        default_type text/html;
+        try_files /privacy.html =404;
+        add_header Cache-Control "no-cache";
+    }
+
     # SPA shell. The client routes by path (/game/<id>, /puzzles, /new; legacy ?game= links
     # redirect client-side), so deep links MUST fall back to the single index.html here; a
     # 404 on /game/<id> would break every invite link. Optional ?api=/?token= overrides ride
