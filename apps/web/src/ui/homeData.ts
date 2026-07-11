@@ -63,16 +63,31 @@ export interface PuzzleSummary {
   mask: Mask;
 }
 
-/** Bearer headers for the REST calls; the token is the identity (or the ?token= dogfood override). */
-function authHeaders(token: string): Record<string, string> {
+/**
+ * Resolves the bearer for one REST call: the identity port's access token (refreshed near
+ * expiry) or the fixed `?token=` dogfood override. Every fetcher here takes the source and
+ * resolves it per call, never a pre-resolved string: a string frozen in state at mount
+ * outlives its own expiry in any tab open past the token's TTL, and every read after that
+ * rides a dead bearer into a 401. Null means signed out.
+ */
+export type TokenSource = () => Promise<string | null>;
+
+/** Bearer headers for the REST calls, resolved fresh through the source per call. */
+async function authHeaders(
+  getToken: TokenSource,
+): Promise<Record<string, string>> {
+  const token = await getToken();
+  if (token === null) throw new Error("signed out: no bearer to send");
   return { authorization: `Bearer ${token}` };
 }
 
 export async function fetchGames(
   apiBase: string,
-  token: string,
+  getToken: TokenSource,
 ): Promise<GameSummary[]> {
-  const res = await fetch(`${apiBase}/games`, { headers: authHeaders(token) });
+  const res = await fetch(`${apiBase}/games`, {
+    headers: await authHeaders(getToken),
+  });
   if (!res.ok) throw new Error(`GET /games ${res.status}`);
   const body = (await res.json()) as { games?: GameSummary[] };
   return body.games ?? [];
@@ -80,10 +95,10 @@ export async function fetchGames(
 
 export async function fetchPuzzles(
   apiBase: string,
-  token: string,
+  getToken: TokenSource,
 ): Promise<PuzzleSummary[]> {
   const res = await fetch(`${apiBase}/puzzles`, {
-    headers: authHeaders(token),
+    headers: await authHeaders(getToken),
   });
   if (!res.ok) throw new Error(`GET /puzzles ${res.status}`);
   const body = (await res.json()) as { puzzles?: PuzzleSummary[] };
@@ -98,11 +113,11 @@ export async function fetchPuzzles(
  */
 export async function deleteAccount(
   apiBase: string,
-  token: string,
+  getToken: TokenSource,
 ): Promise<void> {
   const res = await fetch(`${apiBase}/account`, {
     method: "DELETE",
-    headers: authHeaders(token),
+    headers: await authHeaders(getToken),
   });
   if (!res.ok) throw new Error(`DELETE /account ${res.status}`);
 }
@@ -110,12 +125,15 @@ export async function deleteAccount(
 /** Start a fresh game from an existing puzzle: the reusability story (replay with a new group). */
 export async function startGameFromPuzzle(
   apiBase: string,
-  token: string,
+  getToken: TokenSource,
   puzzleId: string,
 ): Promise<{ gameId: string; inviteCode: string }> {
   const res = await fetch(`${apiBase}/games`, {
     method: "POST",
-    headers: { ...authHeaders(token), "content-type": "application/json" },
+    headers: {
+      ...(await authHeaders(getToken)),
+      "content-type": "application/json",
+    },
     body: JSON.stringify({ puzzleId }),
   });
   if (!res.ok) throw new Error(`POST /games ${res.status}`);
