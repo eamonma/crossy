@@ -14,6 +14,8 @@
 //    -i2bScript             type SOL into 1-Across (-i2bRebus opens the field)
 //    -i2cScript             Bee's cursor patrols the board (presence, glints)
 //    -i2cBrowser            land the clue browser open
+//    -i2cWord 2             advance the selection two words from 1-Across (the
+//                           wrapped-clue-bar evidence; simctl cannot tap)
 //    -i2cMelt 0.5           hold the melt at a progress (intermediate evidence)
 //    -i2cFacts              land the room-facts card open (the time pill,
 //                           inflated; simctl cannot tap, the presentBrowser
@@ -97,6 +99,18 @@ final class DemoRoom {
     private func script() async {
         let arguments = ProcessInfo.processInfo.arguments
         try? await Task.sleep(for: .milliseconds(400))  // let the welcome land
+
+        if let index = arguments.firstIndex(of: "-i2cWord"),
+            arguments.indices.contains(index + 1),
+            let steps = Int(arguments[index + 1])
+        {
+            // Land the bar on a chosen word with no gesture (the presentBrowser
+            // precedent): the wrapped bar's evidence needs the long fixture
+            // clues selected, and simctl cannot tap.
+            for _ in 0..<max(steps, 0) {
+                selection.swipe(.nextWord)
+            }
+        }
 
         if arguments.contains("-i2bScript") {
             // The cursor opens on 1-Across (first playable, across); type into it.
@@ -391,9 +405,12 @@ enum DemoFixture {
     private static let acrossTexts = [
         "Sunrise direction",
         "Kettle's whisper",
-        "Pocket-sized garden",
+        // Two long ones on purpose (the ClueFitLab corpus's honest lengths):
+        // the bar must wrap them, three lines and two, and a fixture screenshot
+        // must be able to land on them (-i2cWord). Warm and plain still (ID-5).
+        "Pocket-sized garden a windowsill keeps through the winter, watered on Sundays, just in case",
         "Half a laugh",
-        "Letters between friends",
+        "Letters between friends who still trust the post",
         "Slow river bend",
         "It crosses words, together",
         "Morning window light",

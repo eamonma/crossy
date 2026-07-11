@@ -21,6 +21,18 @@ enum ChromeLayout {
     static let inset: CGFloat = 12
     /// A capsule's radius at bar height.
     static var barCornerRadius: CGFloat { barHeight / 2 }
+    /// The clue bar wraps long clues to this many lines (owner ruling
+    /// 2026-07-10, the ClueFitLab verdict: three lines, the bar breathes).
+    /// Three carries the worst honest clue on the narrowest phone; past the
+    /// cap the ellipsis returns.
+    static let clueLineCap = 3
+    /// Air above and below a wrapped clue block. One line comes to less than
+    /// the standing bar and floors at barHeight, so a short clue's bar is
+    /// pixel-identical to the fixed bar it replaced.
+    static let clueAirPadding: CGFloat = 13
+    /// The bar's chevron slot; the layout twin (ClueBarSizer) reserves the
+    /// same span so the slot and the pinned row wrap at one width.
+    static let clueChevronWidth: CGFloat = 36
     /// The room bar's pills (owner ruling 2026-07-10: a cluster of glass pills,
     /// not one bar): the compact-toolbar register, smaller than a standing bar.
     static let pillHeight: CGFloat = 44

@@ -59,7 +59,9 @@ struct ClueChrome: View {
             browserList
                 .opacity(GlassMorphContent.listOpacity(at: progress))
                 .allowsHitTesting(progress >= 1)
-                .padding(.top, ChromeLayout.barHeight)
+                // The rest height IS the pinned row's height (the slot sizes
+                // to ClueBarSizer), so the list clears the row at any wrap.
+                .padding(.top, morph.rest.height)
             pinnedRow(open: progress > 0.5)
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
@@ -94,34 +96,19 @@ struct ClueChrome: View {
         HStack(spacing: 0) {
             chevron("chevron.left", label: "Previous clue", action: onPrevious)
             Button(action: toggle) {
-                HStack(spacing: 8) {
-                    if let current {
-                        Text(verbatim: current.tag)
-                            .font(.system(size: 12, weight: .semibold))
-                            .tracking(0.8)
-                            .monospacedDigit()
-                            .foregroundStyle(Color(rgb: ground.tokens.number))
-                        Text(verbatim: current.text)
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color(rgb: ground.tokens.ink))
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        Text(verbatim: "No word here")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Color(rgb: ground.tokens.number))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .contentShape(Rectangle())
+                ClueBarLabel(ground: ground, current: current)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: open ? "Hide clues" : "Show all clues"))
             chevron("chevron.right", label: "Next clue", action: onNext)
         }
         .padding(.horizontal, 10)
-        .frame(height: ChromeLayout.barHeight)
+        .frame(minHeight: ChromeLayout.barHeight)
+        // The row owns its natural height even while the melting surface's
+        // frame is still travelling toward it: a new line reveals as the bar
+        // grows instead of reflowing against the old height.
+        .fixedSize(horizontal: false, vertical: true)
         .contentShape(Rectangle())
         // High priority or the row's buttons win the touch and the melt never
         // scrubs (a plain .gesture ranks BELOW child gestures; owner device
@@ -136,7 +123,7 @@ struct ClueChrome: View {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
-                .frame(width: 36, height: 40)
+                .frame(width: ChromeLayout.clueChevronWidth, height: 40)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -272,6 +259,66 @@ struct ClueChrome: View {
         else { return }
         glintKey += 1
         glint = GlintEvent(key: glintKey, color: mark.color)
+    }
+}
+
+// MARK: - The bar's words (one dress, worn twice)
+
+/// The clue bar's words: the tag riding the clue's first line, the clue
+/// wrapping to at most three lines (owner ruling 2026-07-10, the ClueFitLab
+/// verdict: the bar breathes rather than elides; past the cap the ellipsis
+/// returns for the pathological clue on the narrowest phone). One view worn
+/// by both the pinned row and the layout slot's twin (ClueBarSizer), so the
+/// slot's height and the row's height cannot diverge.
+@available(iOS 17.0, macOS 14.0, *)
+struct ClueBarLabel: View {
+    let ground: GridGround
+    let current: ClueEntry?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let current {
+                Text(verbatim: current.tag)
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(0.8)
+                    .monospacedDigit()
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+                Text(verbatim: current.text)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    .lineLimit(ChromeLayout.clueLineCap)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(verbatim: "No word here")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, ChromeLayout.clueAirPadding)
+    }
+}
+
+/// The clue bar's layout twin: the same words at the same insets, invisible
+/// and inert, standing in the room's layout where the bar rests. The slot
+/// takes exactly the height the pinned row will render at, the deck below
+/// moves honestly, and the melting surface still only borrows the geometry
+/// (SolveScreen's slot comment). Hidden, so it draws nothing and reads to no
+/// one; the real words live on the glass.
+@available(iOS 17.0, macOS 14.0, *)
+struct ClueBarSizer: View {
+    let ground: GridGround
+    let current: ClueEntry?
+
+    var body: some View {
+        ClueBarLabel(ground: ground, current: current)
+            .padding(.horizontal, ChromeLayout.clueChevronWidth)
+            .padding(.horizontal, 10)
+            .frame(minHeight: ChromeLayout.barHeight)
+            .hidden()
+            .accessibilityHidden(true)
     }
 }
 

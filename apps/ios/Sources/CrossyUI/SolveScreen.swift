@@ -211,12 +211,20 @@ public struct SolveScreen: View {
 
                     // The clue bar's rest slot: the melting surface renders in the
                     // overlay at exactly this frame, so layout owns the geometry and
-                    // the morph only borrows it.
-                    Color.clear
-                        .frame(height: ChromeLayout.barHeight)
+                    // the morph only borrows it. The slot is the row's invisible
+                    // twin (ClueBarSizer), so a wrapping clue grows the slot and
+                    // the room re-lays out honestly: board above, deck below. The
+                    // height change between clues rides the chrome spring (the
+                    // terminal-reshape precedent, owner finding 2026-07-10);
+                    // Reduce Motion cuts. Keyed on the clue, so mid-word cursor
+                    // moves never enter an animated transaction.
+                    ClueBarSizer(ground: ground, current: clues.current(for: model.selection))
                         .reportChromeFrame(.clueBarSlot)
                         .padding(.horizontal, ChromeLayout.inset)
                         .padding(.top, 8)
+                        .animation(
+                            reduceMotion ? nil : .crossyChrome,
+                            value: clues.current(for: model.selection)?.tag)
 
                     // A terminal status retires the deck for everyone, spectator or
                     // not (RoomTerminal.deckRetired; a frozen room has no seat worth
@@ -503,7 +511,9 @@ public struct SolveScreen: View {
         return GlassMorph(
             rest: rest,
             open: CGRect(x: rest.minX, y: top, width: rest.width, height: rest.maxY - top),
-            restCornerRadius: ChromeLayout.barCornerRadius,
+            // Half the slot's height, not the bar constant: a wrapped clue
+            // grows the bar and the capsule register holds (DESIGN.md §5).
+            restCornerRadius: rest.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 

@@ -96,7 +96,7 @@ The standing pieces:
 | piece        | register | notes                                                            |
 | ------------ | -------- | ---------------------------------------------------------------- |
 | room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable), players (pucks, overflow count) |
-| clue bar     | frosted  | active clue, direction chip, prev/next                           |
+| clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict) |
 | sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
@@ -180,6 +180,13 @@ content new at the open end (lists, names) fades in late. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back.
+  The bar itself breathes with the clue (owner ruling 2026-07-10, the ClueFitLab
+  verdict): a long clue wraps to at most three lines, the bar's layout slot sizes
+  to the same words (ClueBarSizer, the row's invisible twin), and the room re-lays
+  out around it on the chrome spring; the capsule keeps radius = height/2 as it
+  grows. One line floors at the standing 52, so short clues are untouched. Past
+  three lines the ellipsis returns (the pathological clue on the narrowest phone).
+  Reduce Motion cuts the height change.
 - Tap the players pill: the roster menu flows out of it, the system's morph
   (rows carry rendered pucks, names, and the quiet state word; the spectator's
   Join in is a real menu action, and a host's row for anyone else nests a
