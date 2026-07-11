@@ -9,6 +9,7 @@ export const PROTOCOL_VERSION = 1;
 export * from "./values";
 export * from "./puzzle";
 export * from "./board";
+export * from "./live-activity";
 export * from "./errors";
 export * from "./messages";
 export * from "./codec";

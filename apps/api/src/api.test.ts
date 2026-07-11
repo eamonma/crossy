@@ -2056,3 +2056,206 @@ describe("GET /g/{code} invite unfurl (PROTOCOL.md §12; DESIGN.md §7; INV-1, I
     expect(text).not.toContain(gameId);
   });
 });
+
+describe("Live Activity token registry (PROTOCOL.md Live Activity push; DESIGN.md §9; INV-7)", () => {
+  // A hex-ish ActivityKit token. The real token is opaque hex; any non-empty string is accepted
+  // by the contract, since the column is text and the token is a capability, not a validated id.
+  const tokenFor = (label: string): string =>
+    `${label}-${randomUUID().replace(/-/g, "")}`;
+
+  it("registers a member's token and returns 204, writing one row under the API single writer (INV-7)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const token = tokenFor("reg");
+
+    const res = await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token,
+      environment: "sandbox",
+    });
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+
+    const rows = await adminPool.query(
+      "select user_id, game_id, apns_environment from live_activity_tokens where token=$1",
+      [token],
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].game_id).toBe(gameId);
+    expect(rows.rows[0].apns_environment).toBe("sandbox");
+  });
+
+  it("records the apns_environment so the emitter targets the matching APNs host (sandbox vs production)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const token = tokenFor("prod");
+
+    const res = await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token,
+      environment: "production",
+    });
+    expect(res.status).toBe(204);
+    const rows = await adminPool.query(
+      "select apns_environment from live_activity_tokens where token=$1",
+      [token],
+    );
+    expect(rows.rows[0].apns_environment).toBe("production");
+  });
+
+  it("upserts on token conflict: a re-registration after app restart updates the row, not a duplicate", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const token = tokenFor("rereg");
+
+    await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token,
+      environment: "sandbox",
+    });
+    // The same token re-registers with a different environment (e.g. a debug-to-release rebuild).
+    const res = await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token,
+      environment: "production",
+    });
+    expect(res.status).toBe(204);
+
+    const rows = await adminPool.query(
+      "select apns_environment from live_activity_tokens where token=$1",
+      [token],
+    );
+    // One row (primary key on token), updated in place.
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].apns_environment).toBe("production");
+  });
+
+  it("forbids a non-member registering a token as NOT_PARTICIPANT (same gate as member endpoints)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const strangerSub = randomUUID();
+    const stranger = await auth.mintUpgraded({ sub: strangerSub });
+    const strangerToken = tokenFor("stranger");
+    const res = await postJson(
+      `/games/${gameId}/live-activity-tokens`,
+      stranger,
+      { token: strangerToken, environment: "sandbox" },
+    );
+    expect(res.status).toBe(403);
+    await expectError(res, "NOT_PARTICIPANT");
+    // Nothing was written for the non-member.
+    const rows = await adminPool.query(
+      "select 1 from live_activity_tokens where token=$1",
+      [strangerToken],
+    );
+    expect(rows.rows).toHaveLength(0);
+  });
+
+  it("rejects a missing token or a bad environment as VALIDATION", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const noToken = await postJson(
+      `/games/${gameId}/live-activity-tokens`,
+      host,
+      { environment: "sandbox" },
+    );
+    expect(noToken.status).toBe(400);
+    await expectError(noToken, "VALIDATION");
+
+    const badEnv = await postJson(
+      `/games/${gameId}/live-activity-tokens`,
+      host,
+      { token: tokenFor("bad"), environment: "staging" },
+    );
+    expect(badEnv.status).toBe(400);
+    await expectError(badEnv, "VALIDATION");
+  });
+
+  it("returns GAME_NOT_FOUND for an unknown game", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const res = await postJson(
+      `/games/${randomUUID()}/live-activity-tokens`,
+      host,
+      { token: tokenFor("nogame"), environment: "sandbox" },
+    );
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("deletes a caller's own token and returns 204", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const token = tokenFor("del");
+    await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token,
+      environment: "sandbox",
+    });
+
+    const res = await del(
+      `/games/${gameId}/live-activity-tokens/${token}`,
+      host,
+    );
+    expect(res.status).toBe(204);
+    const rows = await adminPool.query(
+      "select 1 from live_activity_tokens where token=$1",
+      [token],
+    );
+    expect(rows.rows).toHaveLength(0);
+  });
+
+  it("is idempotent: deleting an already-gone token still returns 204", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await del(
+      `/games/${gameId}/live-activity-tokens/${tokenFor("ghost")}`,
+      host,
+    );
+    expect(res.status).toBe(204);
+  });
+
+  it("a caller may delete only their own rows: another user's token survives (user_id scope)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const otherSub = randomUUID();
+    const other = await auth.mintUpgraded({ sub: otherSub });
+    await join(gameId, other, inviteCode);
+
+    const otherToken = tokenFor("other");
+    await postJson(`/games/${gameId}/live-activity-tokens`, other, {
+      token: otherToken,
+      environment: "sandbox",
+    });
+
+    // The host tries to delete the other member's token: 204 (idempotent), but the row survives.
+    const res = await del(
+      `/games/${gameId}/live-activity-tokens/${otherToken}`,
+      host,
+    );
+    expect(res.status).toBe(204);
+    const rows = await adminPool.query(
+      "select user_id from live_activity_tokens where token=$1",
+      [otherToken],
+    );
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0].user_id).toBe(otherSub);
+  });
+
+  it("INV-6: the registry stores no board content, only a token, ids, environment, and timestamp", async () => {
+    // The registry is presence and routing metadata, never solution content. Assert the column
+    // set carries nothing board-derived (no value, no cell, no board, no solution).
+    const { rows } = await adminPool.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_schema='public' and table_name='live_activity_tokens'",
+    );
+    const cols = rows.map((r) => r.column_name).sort();
+    expect(cols).toEqual(
+      ["apns_environment", "created_at", "game_id", "token", "user_id"].sort(),
+    );
+  });
+});

@@ -297,6 +297,52 @@ Puzzle ingestion (`POST /puzzles`) rejects an unacceptable puzzle with a named r
 
 Barred and uniclue puzzles (section 12 table; DESIGN.md section 7) belong to the same reason-per-rejection contract but ship no code: SP5 records no JSON field or flag that identifies either, so there is nothing to trigger on (DESIGN.md section 15). Asymmetric grids and unchecked cells are valid puzzles and are never rejected (SP5).
 
+## 12a. Live Activity push
+
+The iOS app starts a Live Activity locally when it backgrounds an ongoing room. The server keeps that activity current by pushing a new content-state to it over APNs, and ends it when the game reaches a terminal state. This is a server-to-device push channel, separate from the gameplay WebSocket (which carries only the live session) and from the REST core (which owns everything else). The two REST endpoints below register and unregister the per-activity update tokens the push channel needs.
+
+### Content-state payload
+
+One JSON object rides inside the standard APNs Live Activity envelope as `aps.content-state`:
+
+```json
+{
+  "pucks": [
+    { "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true }
+  ],
+  "filled": 34,
+  "total": 78,
+  "status": "ongoing",
+  "completedAt": null
+}
+```
+
+- `pucks`: the live roster cluster, at most 4, in presence order. Each puck is render-ready for the island's dark ground: `initial` is a single ASCII-uppercased letter (INV-1), `red`/`green`/`blue` are 8-bit sRGB components (0 to 255) resolved server-side, and `connected` drives away-dimming. The cluster rides the content-state, not the activity's immutable attributes, so a member who joins after the activity started still appears.
+- `filled` / `total`: fill progress as counts. Counts only: no letters, no cell coordinates, nothing derivable toward the solution (INV-6). The lock-screen surface shows how full the grid is, never what fills it.
+- `status`: `ongoing`, `completed`, or `abandoned`, mirroring section 4.
+- `completedAt`: an ISO 8601 UTC timestamp, set exactly when `status` is `completed`, and null otherwise. An abandoned game never completed, so it carries null.
+
+### APNs envelope and lifecycle
+
+The payload travels inside the standard ActivityKit envelope. An update carries `aps.event: "update"`, a server `aps.timestamp`, and the content-state above under `aps.content-state`. A terminal state (completed or abandoned) ships as an `end` event: `aps.event: "end"` with the final content-state under `aps.content-state`, so the last frame the activity shows is the terminal one.
+
+Swift decoding MUST stay tolerant of unknown keys: the payload grows by expand/contract (an additive field bumps nothing, section 14), and the two sides deploy on different clocks. The widget ships inside the app and updates only on an App Store release, while the server deploys independently and continuously, so the server may add a field the installed widget has never seen. The widget MUST ignore any key it does not recognize rather than fail to decode, exactly as section 3 requires of the WebSocket receiver.
+
+### REST endpoints
+
+Both are bearer-authenticated with the same tokens as the rest of the API, and live on the core API alongside the section 12 routes.
+
+| Route                                               | Who    | Behavior                                                                                                                        |
+| --------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /games/{gameId}/live-activity-tokens`         | member | `{ token, environment }` registers an ActivityKit per-activity update token; upsert on token conflict; `204`                     |
+| `DELETE /games/{gameId}/live-activity-tokens/{token}` | member | unregister a token; idempotent (`204` even if the row is gone); a caller may delete only rows whose `user_id` is their own       |
+
+`POST` requires the caller to be a member of the game (any role), the same membership gate the section 12 member endpoints use: a non-member is `NOT_PARTICIPANT`, an unknown game `GAME_NOT_FOUND`, and a missing token or an `environment` outside `{ sandbox, production }` is `VALIDATION`. The write is an upsert on the token (its primary key), so a re-registration after an app restart refreshes the row rather than erroring. `environment` records which APNs host minted the token: a Debug build mints a sandbox token, so the emitter must push to `api.sandbox.push.apple.com` for it and `api.push.apple.com` for a production token, never the wrong host.
+
+`DELETE` is idempotent and returns `204` whether or not the row existed, so an app tearing down its activity never has to check first. The delete is scoped by `user_id` as well as token, so a caller can remove only their own registrations; another user's token is never touched, and the response does not reveal whether it existed.
+
+The registry is API-owned (single writer `crossy_api`, INV-7); the push emitter reads it under a SELECT grant, the same cross-service read-coupling shape section 12 already uses for the completion and avatar reads. It carries no board content: a token, the owning `user_id` and `game_id`, the environment, and a `created_at`, nothing solution-bearing (INV-6). Rows are short-lived by nature: a lock-screen Live Activity caps at about 12 hours, so a token older than that is dead. The reader filters by a `created_at` window rather than trusting the table to be swept, so no sweeper job is required for correctness; a stale row simply falls outside the window.
+
 ## 13. Conformance vectors
 
 Location: `vectors/` at the repo root. JSON files, one per behavior cluster, each an array of cases. Two runners consume the same files in CI: vitest for the TypeScript engine, XCTest for the Swift port. A divergence between runners, or between a runner and this document, is a build failure. Vectors are normative over this prose.

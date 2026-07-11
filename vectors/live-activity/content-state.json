@@ -1,0 +1,134 @@
+[
+  {
+    "name": "ongoing room, mixed connected and disconnected pucks",
+    "contentState": {
+      "pucks": [
+        {
+          "initial": "E",
+          "red": 214,
+          "green": 178,
+          "blue": 92,
+          "connected": true
+        },
+        {
+          "initial": "A",
+          "red": 127,
+          "green": 119,
+          "blue": 221,
+          "connected": false
+        },
+        {
+          "initial": "M",
+          "red": 92,
+          "green": 184,
+          "blue": 148,
+          "connected": true
+        }
+      ],
+      "filled": 34,
+      "total": 78,
+      "status": "ongoing",
+      "completedAt": null
+    }
+  },
+  {
+    "name": "at-cap cluster of four pucks in presence order",
+    "contentState": {
+      "pucks": [
+        {
+          "initial": "H",
+          "red": 214,
+          "green": 178,
+          "blue": 92,
+          "connected": true
+        },
+        {
+          "initial": "B",
+          "red": 127,
+          "green": 119,
+          "blue": 221,
+          "connected": true
+        },
+        {
+          "initial": "R",
+          "red": 92,
+          "green": 184,
+          "blue": 148,
+          "connected": false
+        },
+        {
+          "initial": "J",
+          "red": 224,
+          "green": 122,
+          "blue": 95,
+          "connected": true
+        }
+      ],
+      "filled": 61,
+      "total": 78,
+      "status": "ongoing",
+      "completedAt": null
+    }
+  },
+  {
+    "name": "completed room stamps completedAt with the final fill",
+    "contentState": {
+      "pucks": [
+        {
+          "initial": "E",
+          "red": 214,
+          "green": 178,
+          "blue": 92,
+          "connected": true
+        },
+        {
+          "initial": "A",
+          "red": 127,
+          "green": 119,
+          "blue": 221,
+          "connected": true
+        }
+      ],
+      "filled": 78,
+      "total": 78,
+      "status": "completed",
+      "completedAt": "2026-07-11T19:40:03Z"
+    }
+  },
+  {
+    "name": "abandoned room freezes a partial fill, no completedAt",
+    "contentState": {
+      "pucks": [
+        {
+          "initial": "E",
+          "red": 214,
+          "green": 178,
+          "blue": 92,
+          "connected": false
+        }
+      ],
+      "filled": 12,
+      "total": 78,
+      "status": "abandoned",
+      "completedAt": null
+    }
+  },
+  {
+    "name": "minimal single-puck room on a small grid",
+    "contentState": {
+      "pucks": [
+        {
+          "initial": "Z",
+          "red": 224,
+          "green": 122,
+          "blue": 95,
+          "connected": true
+        }
+      ],
+      "filled": 5,
+      "total": 25,
+      "status": "ongoing",
+      "completedAt": null
+    }
+  }
+]
