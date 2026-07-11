@@ -337,6 +337,60 @@ final class GameStoreTests: XCTestCase {
         XCTAssertEqual(store.firstFillAt, "2026-07-07T19:02:11Z")
     }
 
+    // MARK: - Filled count for the born-live island frame (PROTOCOL.md §12a)
+
+    /// A fresh store carries nothing, so no fill: the born-live frame reads 0 filled, the
+    /// same floor the server's empty board reports.
+    func test_filledCountIsZeroOnAFreshStore_PROTOCOL12a() {
+        XCTAssertEqual(GameStore().filledCount, 0)
+    }
+
+    /// Filled counts one cell per non-nil value from the snapshot: exactly the server's
+    /// filledCount rule (apps/session/src/hydrate.ts, `v !== null`), so the island's first
+    /// frame and the emitter's first push agree on how full the grid is.
+    func test_filledCountMatchesTheServersNonNullValueRule_PROTOCOL12a() {
+        var cells = Array(repeating: Cell(v: nil, by: nil), count: 20)
+        cells[0] = Cell(v: "A", by: "me")
+        cells[3] = Cell(v: "B", by: "u-other")
+        cells[7] = Cell(v: "C", by: "me")
+        let (store, _) = makeLiveStore(board(cells: cells))
+        XCTAssertEqual(store.filledCount, 3)
+    }
+
+    /// A cleared cell keeps its clearer as `by` with `v:nil` (PROTOCOL.md §4, §6) and does
+    /// NOT count as filled, matching the server (a cell counts only when `v !== null`), so a
+    /// clear lowers the born-live count exactly as it lowers the pushed one.
+    func test_filledCountExcludesClearedCells_PROTOCOL12a() {
+        var cells = Array(repeating: Cell(v: nil, by: nil), count: 20)
+        cells[0] = Cell(v: "A", by: "me")
+        cells[3] = Cell(v: nil, by: "me")  // cleared: has a writer, no value
+        let (store, _) = makeLiveStore(board(cells: cells))
+        XCTAssertEqual(store.filledCount, 1, "a cleared cell holds a writer but no value: not filled")
+    }
+
+    /// The optimistic overlay is a render concern (INV-10); the born-live frame carries
+    /// CONFIRMED progress, so a pending place does not inflate the count until the server's
+    /// echo lands as sequenced state.
+    func test_filledCountCountsConfirmedStateNotTheOptimisticOverlay_INV10() {
+        let (store, _) = makeLiveStore()
+        store.placeLetter(cell: 0, value: "A", commandId: "c1")
+        XCTAssertEqual(store.filledCount, 0, "a pending overlay entry is not confirmed fill")
+        store.receive(
+            cellSet(seq: 1, cell: 0, value: "A", by: "me", commandId: "c1"))
+        XCTAssertEqual(store.filledCount, 1, "the server echo confirms the fill")
+    }
+
+    /// A live delta raises the count and a delta erase lowers it, tracking sequenced state
+    /// cell by cell so the born-live frame is always the room's real progress at request time.
+    func test_filledCountTracksLiveDeltasAndErases_PROTOCOL12a() {
+        let (store, _) = makeLiveStore()
+        store.receive(cellSet(seq: 1, cell: 0, value: "A", firstFillAt: "2026-07-07T19:02:11Z"))
+        store.receive(cellSet(seq: 2, cell: 1, value: "B"))
+        XCTAssertEqual(store.filledCount, 2)
+        store.receive(cellSet(seq: 3, cell: 0, value: nil))
+        XCTAssertEqual(store.filledCount, 1, "an erase drops the value: no longer filled")
+    }
+
     // MARK: - The mailbox (AD-1): one consumption loop, one ordered outbound pump
 
     func test_mailboxAppliesInboundInOrderAndForwardsEmissionsFIFO_AD1_PROTOCOL7() async throws {

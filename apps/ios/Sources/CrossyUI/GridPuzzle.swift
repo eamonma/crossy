@@ -34,6 +34,12 @@ public struct GridPuzzle: Sendable, Equatable {
 
     public var cellCount: Int { rows * cols }
 
+    /// Playable cells: the grid minus the black squares (PROTOCOL.md §4). The Live
+    /// Activity's progress denominator, born-live and pushed alike; it matches the
+    /// server's BoardFacts total (cols * rows minus blocks, apps/session/src/actor.ts) so
+    /// the island's first frame and the emitter's first push agree.
+    public var playableCellCount: Int { cellCount - blocks.count }
+
     /// Cell numbering from clue starts: each clue numbers its first cell, and an
     /// across and a down clue starting in the same cell share the number by crossword
     /// construction (the caller passes `(clue.number, clue.cellIndices.first)` for

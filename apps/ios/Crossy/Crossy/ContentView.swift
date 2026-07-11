@@ -80,8 +80,12 @@ struct DemoRoomView: View {
             onKick: { _ in }
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
-        // policy the composition root feeds (SolveActivityController).
-        .solveActivity(store: room.store, chrome: room.chrome, roomName: room.roomName)
+        // policy the composition root feeds (SolveActivityController). `total` is
+        // the puzzle's playable-cell count, so the born-live first frame carries the
+        // room's real progress (§12a).
+        .solveActivity(
+            store: room.store, chrome: room.chrome, roomName: room.roomName,
+            total: room.puzzle.playableCellCount)
         .task { await room.run() }
     }
 }
@@ -142,9 +146,12 @@ struct RealRoomView: View {
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so
-                // the server can drive the island. The offline fixture passes none.
+                // the server can drive the island. `total` is the puzzle's playable-cell
+                // count for the born-live first frame (§12a). The offline fixture passes
+                // no registration.
                 .solveActivity(
                     store: room.store, chrome: room.chrome, roomName: room.roomName,
+                    total: room.puzzle.playableCellCount,
                     registration: room.liveActivityRegistration)
             }
         }

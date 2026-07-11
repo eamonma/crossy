@@ -111,7 +111,11 @@ struct IslandLab: View {
     // MARK: - Steps
 
     /// Start (or restart) the activity with fixture attributes and an EMPTY content-state:
-    /// the pre-push island, which must look exactly like it did before the push track.
+    /// the attributes fallback, which must look exactly like it did before the push track.
+    /// This step exists precisely to prove the fallback render (no meter, no ring), so it
+    /// keeps requesting the empty state on purpose. The REAL journey is BORN LIVE: the room
+    /// requests carrying its real state at backgrounding (SolveActivityController.start),
+    /// so a real island never shows this frame; the server drives it from there over APNs.
     private func stepPrePush() async {
         await end()
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {

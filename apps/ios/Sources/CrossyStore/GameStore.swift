@@ -173,6 +173,19 @@ public final class GameStore {
         return cells[cell]?.v
     }
 
+    /// Filled playable cells: the count the Live Activity carries at frame one, so the
+    /// island is born live instead of waiting for the first push (PROTOCOL.md §12a). One
+    /// cell per non-nil sequenced value; the optimistic overlay is a render concern
+    /// (INV-10) and stays out, so the island's first frame carries confirmed progress. A
+    /// cleared cell keeps its `by` with `v:nil` and does NOT count, mirroring the server's
+    /// `filledCount` exactly (apps/session/src/hydrate.ts), so the born-live first frame
+    /// and the emitter's first push agree on how full the grid is. `total` is not here: it
+    /// is grid geometry (playable cells, blocks excluded), which the store never holds; the
+    /// composition root supplies it from the puzzle.
+    public var filledCount: Int {
+        cells.values.reduce(0) { $0 + ($1.v != nil ? 1 : 0) }
+    }
+
     // MARK: - Local intents (PROTOCOL.md §8: overlay entry plus send)
 
     public func placeLetter(cell: Int, value: String, commandId: String? = nil) {
