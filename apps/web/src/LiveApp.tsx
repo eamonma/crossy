@@ -944,6 +944,8 @@ function LiveGame({
           members={members}
           selfId={ready.selfId}
           shareUrl={shareUrl}
+          inviteCode={code}
+          admin={{ apiBase, gameId, getToken: identity.getAccessToken }}
           onBack={goHome}
           leading={leading}
         />
