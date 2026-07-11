@@ -422,7 +422,23 @@ reduced-motion equivalent that crossfades instead of moving.
 - **The island.** The room condensed: pucks leading, the derived timer trailing,
   black glass. The room bar and the island share capsule geometry so backgrounding
   reads as the same object changing state. The timer ticks natively from
-  `firstFillAt` with zero updates (root DESIGN.md D15).
+  `firstFillAt` with zero updates (root DESIGN.md D15). Push updates dress the
+  same object (owner rulings 2026-07-11): chrome stays achromatic, color stays
+  with the pucks, and the roster colors arrive render-ready in the content-state.
+  Compact carries a thin progress ring beside the clock. Minimal is the ringed
+  puck, one person inside the same arc at the slot's edge. Expanded grows the
+  cluster to the crew reading, away members at the 0.38 register, counts trailing
+  the room line in quiet white, and under the whole row a ticked meter: a hairline
+  with nine ticks at the tenths, so quantized advances land as detents. The lock
+  screen banner takes the same meter as a baseline rule under its line. Before the
+  first push the island renders the attributes snapshot and hides progress; no
+  data, no meter, no ring. Completion flips terminal: every puck at full, the
+  meter sealed, the ring closed, the room line reads "Solved together", and the
+  timer freezes at `completedAt` minus `firstFillAt`, a static string, MM:SS under
+  an hour and H:MM past it, never three sections. An abandoned room freezes where
+  it stood, no celebration. Stale is law: a stale content-state drops everything
+  push-fed to the away register while the timer stays full white, computed on
+  device, unable to lie.
 
 ## 9. Decision log
 
