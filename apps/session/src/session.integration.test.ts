@@ -301,6 +301,10 @@ function placeLetter(cell: number, value: string): Record<string, unknown> {
   return { type: "placeLetter", commandId: randomUUID(), cell, value };
 }
 
+function clearCell(cell: number): Record<string, unknown> {
+  return { type: "clearCell", commandId: randomUUID(), cell };
+}
+
 /** Open a client and handshake against a specific server (the shared one has its own helper). */
 async function connectAndHelloOn(
   srv: SessionServer,
@@ -607,6 +611,35 @@ describe("placeLetter to cellSet broadcast (PROTOCOL.md §6)", () => {
 
     spectator.client.close();
     solver.client.close();
+  });
+
+  it("refuses a spectator's clearCell with ROLE_FORBIDDEN, same gate as placeLetter (§5, §11)", async () => {
+    // Guests seat as spectators (owner decision 2026-07-10, PROTOCOL.md §12); the server is
+    // the real guard, so every mutation type a spectator can send must hit the same role gate
+    // (actor.ts handleMutation), not just placeLetter. checkRequest is not exercised here: it
+    // is a deferred no-op for every role today (server.ts "checkRequest is Phase 3"), so there
+    // is no ROLE_FORBIDDEN behavior yet to assert for it.
+    const spectatorId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: spectatorId, role: "spectator" },
+        { userId: randomUUID(), role: "host" },
+      ],
+    });
+    const { client } = await connectAndHello(gameId, spectatorId);
+    const cmd = clearCell(0);
+    client.sendJson(cmd);
+    const forbidden = (await client.waitForType("error")) as {
+      code: string;
+      fatal: boolean;
+      commandId: string;
+    };
+    expect(forbidden.code).toBe("ROLE_FORBIDDEN");
+    expect(forbidden.fatal).toBe(false);
+    expect(forbidden.commandId).toBe(cmd.commandId);
+
+    client.close();
   });
 
   it("drops a duplicate commandId silently: no second cellSet (§5, §6)", async () => {
