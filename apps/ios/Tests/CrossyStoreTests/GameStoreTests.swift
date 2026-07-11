@@ -272,6 +272,30 @@ final class GameStoreTests: XCTestCase {
         XCTAssertNil(store.cursors["u2"], "a departed player's cursor never lingers")
     }
 
+    func test_removeParticipantDropsTheRosterRowAndCursorNotJustGreysIt_PROTOCOL12() {
+        let host = Participant(
+            userId: "u1", displayName: "Host", color: "#7F77DD", role: .host, connected: true)
+        let target = Participant(
+            userId: "u2", displayName: "Ana", color: "#77DD9A", role: .solver, connected: true)
+        let cursor = Cursor(userId: "u2", cell: 7, direction: .down)
+        let (store, _) = makeLiveStore(
+            board(participants: [host, target], cursors: [cursor]))
+        // A confirmed host kick removes the row outright, unlike a disconnect which
+        // only greys it: the kicked member is no longer a member (PROTOCOL.md §12).
+        store.removeParticipant(userId: "u2")
+        XCTAssertEqual(store.participants.map(\.userId), ["u1"])
+        XCTAssertNil(store.cursors["u2"], "the kicked member's cursor never lingers")
+        XCTAssertEqual(store.seq, 0, "presence is never sequenced")
+    }
+
+    func test_removeParticipantIsIdempotentForAnUnknownUser_PROTOCOL12() {
+        let host = Participant(
+            userId: "u1", displayName: "Host", color: "#7F77DD", role: .host, connected: true)
+        let (store, _) = makeLiveStore(board(participants: [host]))
+        store.removeParticipant(userId: "ghost")
+        XCTAssertEqual(store.participants.map(\.userId), ["u1"])
+    }
+
     func test_cursorNoticeUpdatesRenderOnlyPresence_PROTOCOL9() {
         let (store, _) = makeLiveStore()
         store.receive(.cursor(CursorMessage(userId: "u2", cell: 17, direction: .across)))

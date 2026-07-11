@@ -172,6 +172,12 @@ final class RealRoom {
         Task { @MainActor in
             do {
                 _ = try await api.kickMember(gameId: gameId, userId: userId)
+                // The kick removed the membership server-side, but no frame tells this
+                // host's socket (the `kicked` frame is the kicked user's; their socket
+                // dropping would only grey the row). Reflect the confirmed removal so
+                // the roster drops them at once instead of at the next snapshot
+                // (PROTOCOL.md §12).
+                store.removeParticipant(userId: userId)
             } catch {
                 logRESTGap("kick", error)
             }

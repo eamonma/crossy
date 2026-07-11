@@ -192,6 +192,21 @@ public final class GameStore {
         emit(.moveCursor(MoveCursorMessage(cell: cell, direction: direction)))
     }
 
+    /// Drop a participant from the roster after a host kick the server has confirmed
+    /// (`DELETE /games/{id}/members/{userId}`, PROTOCOL.md §12). The kick removes the
+    /// membership row server-side, but nothing tells this host's own socket: the
+    /// `kicked` frame is unicast to the kicked user, and the `playerDisconnected` for
+    /// their dropped socket would only grey the row (`connected: false`), not remove
+    /// it. So the composition root calls this on the REST success to reflect the
+    /// confirmed removal at once; the next snapshot rebuilds `participants` without
+    /// them regardless (PROTOCOL.md §7), so this only closes the gap until then.
+    /// Idempotent: an unknown userId is a no-op, and a late presence frame cannot
+    /// resurrect a denylisted user (they can never reconnect to emit `playerConnected`).
+    public func removeParticipant(userId: String) {
+        participants.removeAll { $0.userId == userId }
+        cursors[userId] = nil
+    }
+
     /// Liveness ping (PROTOCOL.md §5, §9). The adapter owns the 15 s timer
     /// (`ReconnectPolicy.heartbeatIntervalSeconds`); emitting through the store keeps
     /// one ordered outbound path. Meaningless before the first welcome, so gated like
