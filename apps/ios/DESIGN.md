@@ -257,11 +257,13 @@ honest mechanisms on 26 were weighed by motion quality:
   melt into the clue browser; arrival has no melt law, so that finding does not bind
   here, and the owner explicitly asked for a sheet. Adopted.
 
-The keyboard race is resolved by deferring focus: the field asks for focus one
-presentation-length after it appears (`JoinSheetPresentation.focusDelay`), so the
-sheet settles first and the keyboard rises into a still surface, never during the
-grow. The task cancels with the sheet, so a fast dismiss never fights a pending
-focus. Below iOS 26 (and the macOS test host, floor 14) the sheet slides in as a
+The keyboard rises WITH the presentation, not after it (amended the same evening:
+deferring focus one presentation-length let the sheet settle at its detent and
+then jump, the system's keyboard avoidance shoving the whole container up with the
+content following, owner device report). In a sheet the keyboard is part of the
+rise: the field focuses as the sheet appears and the system lifts sheet and
+keyboard as one motion from the bottom. The focus task still cancels with the
+sheet, so a fast dismiss never fights a pending focus. Below iOS 26 (and the macOS test host, floor 14) the sheet slides in as a
 plain material sheet and the zoom is skipped: no glass required, the §4 one-fallback
 rule. Semantics are unchanged from the push: success dismisses the sheet and sets
 the path to the room alone, so back from the room and the kicked exit both land on

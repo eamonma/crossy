@@ -14,21 +14,14 @@
 import CrossyDesign
 import SwiftUI
 
-/// The sheet the screen presents in (arrival notes, DESIGN.md §4). The values are
-/// named so the keyboard-race fix and the one-field detent are pinnable, not magic.
+/// The sheet the screen presents in (arrival notes, DESIGN.md §4): a card detent,
+/// named so the composition root and the tests share one pinnable value.
 public enum JoinSheetPresentation {
     /// The detent the sheet claims: title, one field, the failure line, and the
     /// button, with room for the keyboard, nothing more. A fraction of the height
     /// so it reads as a card grown from the button, not a full page. The
     /// composition root sizes the sheet with this.
     public static let detentFraction: CGFloat = 0.42
-
-    /// How long the field waits before asking for focus. The keyboard must rise
-    /// AFTER the sheet lands, never during the presentation (the jolt, owner
-    /// device report 2026-07-10). A hair past the sheet's own spring settles the
-    /// surface first, then the keyboard rises into a still sheet. Nonzero is the
-    /// whole point: focus in onAppear is what raced the push.
-    static let focusDelay: Duration = .milliseconds(420)
 }
 
 public struct JoinCodeScreen: View {
@@ -80,13 +73,14 @@ public struct JoinCodeScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
-        // Focus after the sheet settles, not in onAppear: raising the keyboard
-        // mid-presentation raced the surface and jolted (owner device report
-        // 2026-07-10). The task cancels with the sheet, so a fast dismiss never
-        // fights a pending focus.
+        // Focus WITH the presentation, not after it: in a sheet the keyboard is
+        // part of the rise, and the system lifts sheet and keyboard as one
+        // motion from the bottom. Deferring focus split that in two, the sheet
+        // settling at its detent and then jumping as keyboard avoidance shoved
+        // the container up (owner device report 2026-07-10, the evening's
+        // second finding; the deferral was solving the retired push's race).
+        // The task still cancels with the sheet on a fast dismiss.
         .task {
-            try? await Task.sleep(for: JoinSheetPresentation.focusDelay)
-            guard !Task.isCancelled else { return }
             fieldFocused = true
         }
     }
