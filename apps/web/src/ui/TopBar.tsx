@@ -51,6 +51,12 @@ export function TopBar({
         </button>
         <div className="flex items-center gap-3">
           <a
+            href="/terms"
+            className="text-1 text-text-subtle hover:text-text-muted hidden sm:inline"
+          >
+            Terms
+          </a>
+          <a
             href="/privacy"
             className="text-1 text-text-subtle hover:text-text-muted hidden sm:inline"
           >

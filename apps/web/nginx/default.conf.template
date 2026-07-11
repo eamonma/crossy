@@ -57,6 +57,15 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    # The terms of service page mirrors /privacy: a static page (public/terms.html) served
+    # at the clean /terms path, so it loads for crawlers and app reviewers with JavaScript
+    # off. Same exact-match pattern; the extensionless URL is the canonical one.
+    location = /terms {
+        default_type text/html;
+        try_files /terms.html =404;
+        add_header Cache-Control "no-cache";
+    }
+
     # SPA shell. The client routes by path (/game/<id>, /puzzles, /new; legacy ?game= links
     # redirect client-side), so deep links MUST fall back to the single index.html here; a
     # 404 on /game/<id> would break every invite link. Optional ?api=/?token= overrides ride
