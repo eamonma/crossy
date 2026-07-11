@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- 06-crossword tile-crop / crop-medium. Anti-diagonal CROSSY core, frame slices the outer ring mid-cell; 5x5, cell 256px, block density 0.28, 180-symmetric=True. -->
+  <defs><clipPath id="mask"><rect width="1024" height="1024" rx="0"/></clipPath></defs>
+  <rect width="1024" height="1024" rx="0" fill="#F2F1EC"/>
+  <g clip-path="url(#mask)">
+  <rect x="640" y="640" width="256" height="256" fill="#978365"/>
+  <rect x="-128" y="128" width="256" height="256" fill="#1D1B18"/>
+  <rect x="896" y="640" width="256" height="256" fill="#1D1B18"/>
+  <rect x="384" y="384" width="256" height="256" fill="#1D1B18"/>
+  <rect x="640" y="128" width="256" height="256" fill="#1D1B18"/>
+  <rect x="128" y="640" width="256" height="256" fill="#1D1B18"/>
+  <rect x="128" y="896" width="256" height="256" fill="#1D1B18"/>
+  <rect x="640" y="-128" width="256" height="256" fill="#1D1B18"/>
+  <line x1="-128" y1="-384" x2="-128" y2="1408" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="-384" y1="-128" x2="1408" y2="-128" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="128" y1="-384" x2="128" y2="1408" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="-384" y1="128" x2="1408" y2="128" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="384" y1="-384" x2="384" y2="1408" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="-384" y1="384" x2="1408" y2="384" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="640" y1="-384" x2="640" y2="1408" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="-384" y1="640" x2="1408" y2="640" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="896" y1="-384" x2="896" y2="1408" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="-384" y1="896" x2="1408" y2="896" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="1152" y1="-384" x2="1152" y2="1408" stroke="#1D1B18" stroke-width="11.52"/>
+  <line x1="-384" y1="1152" x2="1408" y2="1152" stroke="#1D1B18" stroke-width="11.52"/>
+  <path d="M 42.89 -36 A 55.99 55.99 0 1 0 42.89 36" transform="translate(256 256)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M -36.63 55.99 L -36.63 -55.99 L 8.64 -55.99 A 27.99 27.99 0 0 1 8.64 0 L -36.63 0 M 8.64 0 L 36.63 55.99" transform="translate(512 256)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M -55.99 0 A 55.99 55.99 0 1 0 55.99 0 A 55.99 55.99 0 1 0 -55.99 0" transform="translate(256 512)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 32.73 -41.99 A 37.79 27.99 0 1 0 0 0 A 37.79 27.99 0 1 1 -32.73 41.99" transform="translate(768 512)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 32.73 -41.99 A 37.79 27.99 0 1 0 0 0 A 37.79 27.99 0 1 1 -32.73 41.99" transform="translate(512 768)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M -38.71 -55.99 L 0 0 L 38.71 -55.99 M 0 0 L 0 55.99" transform="translate(768 768)" fill="none" stroke="#1D1B18" stroke-width="26.27" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
