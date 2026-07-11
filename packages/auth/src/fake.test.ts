@@ -42,14 +42,24 @@ describe("fake provider helpers (DESIGN §8, SP1/SP2)", () => {
     const anon = await idp.verify(await idp.mintAnonymous({ sub: "guest-1" }));
     expect(anon).toEqual({
       ok: true,
-      identity: { userId: "guest-1", isAnonymous: true, displayName: null },
+      identity: {
+        userId: "guest-1",
+        isAnonymous: true,
+        displayName: null,
+        avatarUrl: null,
+      },
     });
     const permanent = await idp.verify(
       await idp.mintUpgraded({ sub: "guest-1" }),
     );
     expect(permanent).toEqual({
       ok: true,
-      identity: { userId: "guest-1", isAnonymous: false, displayName: null },
+      identity: {
+        userId: "guest-1",
+        isAnonymous: false,
+        displayName: null,
+        avatarUrl: null,
+      },
     });
   });
 
@@ -60,7 +70,12 @@ describe("fake provider helpers (DESIGN §8, SP1/SP2)", () => {
     );
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "named-1", isAnonymous: false, displayName: "Ada" },
+      identity: {
+        userId: "named-1",
+        isAnonymous: false,
+        displayName: "Ada",
+        avatarUrl: null,
+      },
     });
   });
 
@@ -73,7 +88,12 @@ describe("fake provider helpers (DESIGN §8, SP1/SP2)", () => {
     );
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "keeps-id", isAnonymous: true, displayName: null },
+      identity: {
+        userId: "keeps-id",
+        isAnonymous: true,
+        displayName: null,
+        avatarUrl: null,
+      },
     });
   });
 

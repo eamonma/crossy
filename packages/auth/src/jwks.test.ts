@@ -300,7 +300,12 @@ describe("jwks adapter mechanics (SP2)", () => {
     const result = await adapter.verify(await idp.mintAnonymous({ sub: "u" }));
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "u", isAnonymous: true, displayName: null },
+      identity: {
+        userId: "u",
+        isAnonymous: true,
+        displayName: null,
+        avatarUrl: null,
+      },
     });
     adapter.stop();
   });
@@ -332,6 +337,7 @@ describe("jwks adapter mechanics (SP2)", () => {
         userId: "u",
         isAnonymous: false,
         displayName: "Ada Lovelace",
+        avatarUrl: null,
       },
     });
     adapter.stop();
@@ -361,7 +367,12 @@ describe("jwks adapter mechanics (SP2)", () => {
     );
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "u", isAnonymous: false, displayName: "ada" },
+      identity: {
+        userId: "u",
+        isAnonymous: false,
+        displayName: "ada",
+        avatarUrl: null,
+      },
     });
     adapter.stop();
   });
@@ -387,7 +398,12 @@ describe("jwks adapter mechanics (SP2)", () => {
     );
     expect(result).toEqual({
       ok: true,
-      identity: { userId: "u", isAnonymous: false, displayName: "grace" },
+      identity: {
+        userId: "u",
+        isAnonymous: false,
+        displayName: "grace",
+        avatarUrl: null,
+      },
     });
     adapter.stop();
   });

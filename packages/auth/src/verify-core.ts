@@ -4,8 +4,10 @@
 // refresh vs. in-process generation), never in how they validate a token. This file
 // does no IO of its own — the resolver is fully in-memory — so `verify` is zero-network.
 
+import { createHash } from "node:crypto";
 import { decodeProtectedHeader, jwtVerify } from "jose";
 import type { JWTVerifyGetKey } from "jose";
+import { GRAVATAR_BASE_URL } from "./port";
 import type { AuthFailureReason, VerifyResult } from "./port";
 
 export interface VerifyCoreConfig {
@@ -33,6 +35,18 @@ export interface VerifyCoreConfig {
    * configs default it to `full_name`, `name`, `user_name`, `preferred_username`.
    */
   readonly nameKeys: readonly string[];
+  /**
+   * Candidate keys inside the metadata object for a provider avatar, in priority order. The first
+   * key whose value is a non-empty string is taken verbatim as `avatarUrl`; an exhausted list falls
+   * through to the Gravatar derivation. The port configs default it to `avatar_url`, `picture`.
+   */
+  readonly avatarKeys: readonly string[];
+  /**
+   * The top-level claim name carrying the account email, read only to derive a Gravatar URL when no
+   * provider avatar is present. The email is hashed here and never returned. The port configs
+   * default it to `email`.
+   */
+  readonly emailClaim: string;
 }
 
 /**
@@ -53,6 +67,55 @@ function extractDisplayName(
     if (typeof value === "string" && value.trim() !== "") return value;
   }
   return null;
+}
+
+/**
+ * Read a top-level string claim, or `null` when it is absent, not a string, or empty after trim.
+ */
+function readStringClaim(
+  payload: Record<string, unknown>,
+  claim: string,
+): string | null {
+  const value = payload[claim];
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/**
+ * Resolve the avatar URL from the token (DESIGN.md §8), in priority order: a provider avatar from
+ * the metadata claim (Discord's `avatar_url`, OIDC `picture`), else a Gravatar URL derived from the
+ * account email, else `null`.
+ *
+ * The Gravatar hash is the MD5 of the email lowercased and trimmed (ASCII-only lowercasing, INV-1,
+ * so the two ports agree), per Gravatar's spec, with `d=404` so an absent Gravatar returns a 404
+ * the client treats as absent (PROTOCOL.md §4). The email is hashed here and discarded: it is never
+ * returned on the identity and so never crosses a service boundary or the wire (INV-6 spirit).
+ */
+function resolveAvatarUrl(
+  payload: Record<string, unknown>,
+  metadataClaim: string,
+  avatarKeys: readonly string[],
+  emailClaim: string,
+): string | null {
+  const meta = payload[metadataClaim];
+  if (typeof meta === "object" && meta !== null) {
+    const record = meta as Record<string, unknown>;
+    for (const key of avatarKeys) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim() !== "") return value;
+    }
+  }
+  // No provider avatar: fall back to Gravatar from the email. The email is a hash input only.
+  const email =
+    readStringClaim(payload, emailClaim) ??
+    (typeof meta === "object" && meta !== null
+      ? readStringClaim(meta as Record<string, unknown>, emailClaim)
+      : null);
+  if (email === null) return null;
+  // ASCII-only lowercasing (INV-1): map A-Z to a-z, leave every other code point unchanged, so the
+  // TS and Swift ports hash byte-identically. The email never reaches locale-aware casing.
+  const normalized = email.trim().replace(/[A-Z]/g, (c) => c.toLowerCase());
+  const hash = createHash("md5").update(normalized).digest("hex");
+  return `${GRAVATAR_BASE_URL}/${hash}?d=404`;
 }
 
 /**
@@ -97,7 +160,9 @@ function classify(err: unknown): AuthFailureReason {
  * claim checks: asymmetric-only algorithm allowlist (HS256 refused), exact `iss`, `aud`
  * equal to the configured audience, `exp`/`nbf` with clock skew, and `sub` present. On
  * success returns `{ sub -> userId, config.anonymousClaim -> isAnonymous (default false),
- * config.metadataClaim[config.nameKeys] -> displayName (default null) }`.
+ * config.metadataClaim[config.nameKeys] -> displayName (default null), avatarUrl resolved from the
+ * provider avatar or a Gravatar URL over the email (default null; the email is hashed here and
+ * never returned) }`.
  */
 export async function verifyToken(
   resolver: JWTVerifyGetKey,
@@ -138,6 +203,12 @@ export async function verifyToken(
           payload,
           config.metadataClaim,
           config.nameKeys,
+        ),
+        avatarUrl: resolveAvatarUrl(
+          payload,
+          config.metadataClaim,
+          config.avatarKeys,
+          config.emailClaim,
         ),
       },
     };

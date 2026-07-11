@@ -163,6 +163,12 @@ interface GameView {
     readonly userId: string;
     readonly role: Role;
     readonly joinedAt: string;
+    /**
+     * The opaque nullable avatar URL (PROTOCOL.md §4, §12): the same value the API resolved into
+     * `users.avatar` and the session reads for the WebSocket participant payload, so the REST view
+     * and the live roster cannot drift. Never an email; no client can derive one (INV-6 spirit).
+     */
+    readonly avatarUrl: string | null;
   }[];
   readonly session: { readonly ws: string };
 }
@@ -516,13 +522,22 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     }
     const game = found[0]!;
 
+    // Join users for the avatar URL only (INV-6-safe display field). The inner join on user_id
+    // drops no member row: every membership references a users row that the JIT upsert has
+    // materialized. avatar is the resolved URL, never an email (the port hashed it), so this view
+    // exposes no email.
     const members = await deps.db
       .select({
         userId: schema.memberships.userId,
         role: schema.memberships.role,
         joinedAt: schema.memberships.joinedAt,
+        avatarUrl: schema.users.avatar,
       })
       .from(schema.memberships)
+      .innerJoin(
+        schema.users,
+        eq(schema.users.userId, schema.memberships.userId),
+      )
       .where(eq(schema.memberships.gameId, gameId));
 
     // Membership gate: everything below is member-only. The invite code is added to the view
@@ -550,6 +565,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         userId: m.userId,
         role: m.role,
         joinedAt: m.joinedAt.toISOString(),
+        avatarUrl: m.avatarUrl,
       })),
       session: { ws: `${deps.sessionWsBase}/games/${game.gameId}/ws` },
     };

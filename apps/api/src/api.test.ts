@@ -846,6 +846,66 @@ describe("GET /games/{id} (PROTOCOL.md §12; INV-6)", () => {
     expect(body.session.ws).toBe(`${SESSION_WS_BASE}/games/${gameId}/ws`);
   });
 
+  it("surfaces each member's resolved avatarUrl on the view (PROTOCOL.md §4, §12)", async () => {
+    const hostSub = randomUUID();
+    // A Discord avatar in metadata: the JIT upsert mirrors what the port resolved into users.avatar.
+    const host = await auth.mintUpgraded({
+      sub: hostSub,
+      userMetadata: { avatar_url: "https://cdn.discordapp.com/avatars/h.png" },
+    });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      members: { userId: string; avatarUrl: string | null }[];
+    };
+    const hostMember = body.members.find((m) => m.userId === hostSub);
+    expect(hostMember?.avatarUrl).toBe(
+      "https://cdn.discordapp.com/avatars/h.png",
+    );
+  });
+
+  it("resolves an email-only member to a Gravatar avatarUrl and never leaks the email (INV-6 spirit)", async () => {
+    const hostSub = randomUUID();
+    // No provider avatar, only an email: the port derives a Gravatar URL server-side and the API
+    // mirrors it. The email must appear nowhere in the response body.
+    const host = await auth.mintUpgraded({
+      sub: hostSub,
+      email: "ada@example.com",
+    });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    expect(res.status).toBe(200);
+    const raw = await res.text();
+    expect(raw).not.toContain("ada@example.com");
+    const body = JSON.parse(raw) as {
+      members: { userId: string; avatarUrl: string | null }[];
+    };
+    const hostMember = body.members.find((m) => m.userId === hostSub);
+    expect(hostMember?.avatarUrl).toMatch(
+      /^https:\/\/www\.gravatar\.com\/avatar\/[0-9a-f]{32}\?d=404$/,
+    );
+  });
+
+  it("resolves a member with no avatar and no email to a null avatarUrl (first-class null)", async () => {
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    const body = (await res.json()) as {
+      members: { userId: string; avatarUrl: string | null }[];
+    };
+    expect(
+      body.members.find((m) => m.userId === hostSub)?.avatarUrl,
+    ).toBeNull();
+  });
+
   it("never carries a solution field in the response (INV-6, structural)", async () => {
     const host = await auth.mintUpgraded();
     const puzzleId = await ingestFixture(host);
