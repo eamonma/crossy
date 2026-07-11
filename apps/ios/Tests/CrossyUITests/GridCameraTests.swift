@@ -114,6 +114,132 @@ final class GridCameraTests: XCTestCase {
         XCTAssertEqual(out.scale, GridCamera.minScale(viewport: viewport, rows: 25, cols: 25))
     }
 
+    // MARK: Pinch (the Photos/Maps anchor)
+
+    /// The board point under a viewport point through a camera, in module units.
+    private func boardPoint(_ camera: GridCamera, under viewportPoint: CGPoint) -> CGPoint {
+        CGPoint(
+            x: (viewportPoint.x - camera.offset.x) / camera.scale,
+            y: (viewportPoint.y - camera.offset.y) / camera.scale)
+    }
+
+    func test_pinched_withoutDrift_matchesZoomedAboutTheAnchor() {
+        // A pinch whose centroid never moves is the old fixed-anchor zoom: the
+        // two entry points must agree, so `zoomed` can route through `pinched`.
+        let start = GridCamera(scale: 1.0, offset: CGPoint(x: -200, y: -300))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let anchor = CGPoint(x: 200, y: 250)
+        let viaZoomed = start.zoomed(
+            by: 1.6, anchor: anchor, viewport: viewport, rows: 25, cols: 25)
+        let viaPinched = start.pinched(
+            by: 1.6, startCentroid: anchor, centroid: anchor,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(viaPinched.scale, viaZoomed.scale, accuracy: 0.0001)
+        XCTAssertEqual(viaPinched.offset.x, viaZoomed.offset.x, accuracy: 0.0001)
+        XCTAssertEqual(viaPinched.offset.y, viaZoomed.offset.y, accuracy: 0.0001)
+    }
+
+    func test_pinched_startCentroidBoardPoint_landsUnderTheLiveCentroid() {
+        // The core anchor law: the board point under the START centroid must sit
+        // under the LIVE (drifted) centroid after the pinch, so a centroid that
+        // wanders mid-pinch pans the content with it. Both axes overflow before
+        // and after, so no clamp interferes.
+        let start = GridCamera(scale: 1.0, offset: CGPoint(x: -220, y: -260))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let startCentroid = CGPoint(x: 180, y: 240)
+        let liveCentroid = CGPoint(x: 240, y: 210)
+        let anchoredBoardPoint = boardPoint(start, under: startCentroid)
+        let pinched = start.pinched(
+            by: 1.4, startCentroid: startCentroid, centroid: liveCentroid,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(pinched.scale, 1.4, accuracy: 0.0001)
+        // That same board point now sits under the live centroid.
+        let landed = boardPoint(pinched, under: liveCentroid)
+        XCTAssertEqual(landed.x, anchoredBoardPoint.x, accuracy: 0.01)
+        XCTAssertEqual(landed.y, anchoredBoardPoint.y, accuracy: 0.01)
+    }
+
+    func test_pinched_pureCentroidDrift_pansWithoutScaling() {
+        // Magnification 1 with a drifting centroid is a pure pan: the board point
+        // under the start centroid moves to the live centroid, scale unchanged.
+        // The board is deep-zoomed (content far larger than the viewport) and the
+        // centroid drifts up-left, so the pan lands inside the clamp and the
+        // offset moves by exactly the centroid's drift, no clamp interference.
+        let start = GridCamera(scale: GridCamera.maxScale, offset: CGPoint(x: -400, y: -400))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let startCentroid = CGPoint(x: 260, y: 340)
+        let liveCentroid = CGPoint(x: 200, y: 300)
+        let pinned = boardPoint(start, under: startCentroid)
+        let pinched = start.pinched(
+            by: 1.0, startCentroid: startCentroid, centroid: liveCentroid,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(pinched.scale, start.scale, accuracy: 0.0001)
+        let landed = boardPoint(pinched, under: liveCentroid)
+        XCTAssertEqual(landed.x, pinned.x, accuracy: 0.01)
+        XCTAssertEqual(landed.y, pinned.y, accuracy: 0.01)
+        // The offset moved by exactly the centroid's drift (-60, -40).
+        XCTAssertEqual(pinched.offset.x, start.offset.x - 60, accuracy: 0.01)
+        XCTAssertEqual(pinched.offset.y, start.offset.y - 40, accuracy: 0.01)
+    }
+
+    func test_pinched_atACorner_keepsThatCornerUnderTheCentroid() {
+        // Zoom in with the centroid over the board's top-left corner: since
+        // scaling in only grows the board, both axes stay overflowing, so the
+        // corner's board point holds under the centroid with no clamp fighting it.
+        let start = GridCamera(scale: 1.0, offset: .zero)
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let corner = CGPoint(x: 6, y: 6)
+        let pinnedBefore = boardPoint(start, under: corner)
+        let pinched = start.pinched(
+            by: 1.8, startCentroid: corner, centroid: corner,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(pinched.scale, 1.8, accuracy: 0.0001)
+        let pinnedAfter = boardPoint(pinched, under: corner)
+        XCTAssertEqual(pinnedAfter.x, pinnedBefore.x, accuracy: 0.01)
+        XCTAssertEqual(pinnedAfter.y, pinnedBefore.y, accuracy: 0.01)
+    }
+
+    func test_pinched_clampsScaleFloorAndCeiling() {
+        // The clamp still holds under the drift-aware pinch: pinching far out
+        // floors at minScale, far in ceils at maxScale, whatever the centroids.
+        let start = GridCamera.initial(viewport: viewport, rows: 25, cols: 25)
+        let out = start.pinched(
+            by: 0.01, startCentroid: CGPoint(x: 120, y: 90),
+            centroid: CGPoint(x: 40, y: 300),
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(out.scale, GridCamera.minScale(viewport: viewport, rows: 25, cols: 25))
+        let deepIn = GridCamera(scale: GridCamera.maxScale, offset: .zero)
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let over = deepIn.pinched(
+            by: 100, startCentroid: CGPoint(x: 200, y: 300),
+            centroid: CGPoint(x: 260, y: 260),
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(over.scale, GridCamera.maxScale)
+    }
+
+    func test_pinched_neverFliesTheBoardOffscreen_evenWithADriftingCentroid() {
+        // A drift that would drag the board off its edge is caught by the clamp:
+        // the offset never opens a gap between board and viewport at rest.
+        let start = GridCamera(scale: GridCamera.maxScale, offset: .zero)
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let pinched = start.pinched(
+            by: 1.0, startCentroid: CGPoint(x: 10, y: 10),
+            centroid: CGPoint(x: 380, y: 540),
+            viewport: viewport, rows: 25, cols: 25)
+        // Pulling the top-left corner toward the bottom-right would expose the
+        // board's top-left edge; the clamp pins the offset back to zero.
+        XCTAssertEqual(pinched.offset, .zero)
+    }
+
+    func test_pinched_nonPositiveMagnificationIsInert() {
+        let start = GridCamera(scale: 1.0, offset: CGPoint(x: -100, y: -120))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let out = start.pinched(
+            by: 0, startCentroid: CGPoint(x: 100, y: 100), centroid: CGPoint(x: 150, y: 150),
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(out, start)
+    }
+
     func test_panned_translatesAndClamps() {
         let start = GridCamera(scale: GridCamera.maxScale, offset: .zero)
             .clamped(viewport: viewport, rows: 25, cols: 25)

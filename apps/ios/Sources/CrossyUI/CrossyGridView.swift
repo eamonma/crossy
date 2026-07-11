@@ -13,6 +13,13 @@ import SwiftUI
 
 @MainActor
 public struct CrossyGridView: View {
+    /// A coordinate space pinned to the board's own frame, stable under the
+    /// zoom: the Canvas transforms internally through its GraphicsContext, so
+    /// this frame never scales, and a pinch measured here cannot feed its own
+    /// output back and spasm (the SP-i1 melt law's spirit for scrubbed
+    /// geometry). All pinch centroids are read in this one space.
+    private static let boardSpace = "crossy.grid.board"
+
     private let store: GameStore
     private let puzzle: GridPuzzle
     private let ground: GridGround
@@ -24,9 +31,14 @@ public struct CrossyGridView: View {
     /// nil until the first layout pass sizes the initial camera.
     @State private var camera: GridCamera?
     /// The camera frozen at gesture start, so a pinch or drag composes against a
-    /// stable base instead of its own partial output.
-    @State private var magnifyBase: GridCamera?
+    /// stable base instead of its own partial output. One base for both, because
+    /// pinch and pan are one gesture now (they solve together, not in a race).
     @State private var dragBase: GridCamera?
+    /// The pinch centroid at gesture start, in `boardSpace`. A live pinch pins
+    /// the board point under this to the drifting live centroid (Photos/Maps),
+    /// so the two-finger drag pans the zoom instead of racing it. nil when no
+    /// pinch is live; set by whichever of magnify/drag fires first.
+    @State private var pinchStartCentroid: CGPoint?
     @State private var flashes = FlashBook()
     /// The camera-follow animator (I2c): Canvas draws through context transforms,
     /// which SwiftUI cannot animate, so the follow pan interpolates by hand.
@@ -107,41 +119,61 @@ public struct CrossyGridView: View {
                     onPlaceCursor(cell)
                 }
             )
+            // Pinch and pan are ONE gesture, so a two-finger pinch solves scale
+            // and centroid-pan together off one frozen base, never two gestures
+            // racing the same camera against separate bases. The drag reports the
+            // touch centroid, measured in `boardSpace` (stable under the zoom);
+            // the magnify reports the scalar scale. Both closures write raw here,
+            // no animation on the scrubbed camera (SP-i1): springs only settle
+            // the follow pan, after the fingers lift.
+            .coordinateSpace(name: Self.boardSpace)
             .simultaneousGesture(
                 MagnifyGesture()
-                    .onChanged { value in
-                        followTask?.cancel()
-                        let base = magnifyBase ?? camera
-                        magnifyBase = base
-                        self.camera = base.zoomed(
-                            by: value.magnification,
-                            anchor: value.startLocation,
-                            viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
-                    }
-                    .onEnded { _ in magnifyBase = nil }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 1)
+                    .simultaneously(
+                        with: DragGesture(
+                            minimumDistance: 1, coordinateSpace: .named(Self.boardSpace)))
                     .onChanged { value in
                         followTask?.cancel()
                         let base = dragBase ?? camera
                         dragBase = base
-                        self.camera = base.panned(
-                            by: value.translation,
-                            viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
+                        if let magnify = value.first {
+                            // A pinch: pin the board point under the start centroid
+                            // to the live centroid at the new scale, so a drifting
+                            // centroid pans and the zoom anchors on the fingers
+                            // (Photos/Maps). The start centroid is frozen with the
+                            // base; the live centroid rides the drag. Both are read
+                            // in `boardSpace`; the magnify's own start location
+                            // (same origin, that space is on this view) fills the
+                            // first frame before the drag clears its 1 pt slop.
+                            let start = pinchStartCentroid
+                                ?? value.second?.startLocation ?? magnify.startLocation
+                            pinchStartCentroid = start
+                            let centroid = value.second?.location ?? start
+                            self.camera = base.pinched(
+                                by: magnify.magnification,
+                                startCentroid: start, centroid: centroid,
+                                viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
+                        } else if let drag = value.second {
+                            // One finger, no scale: a plain pan.
+                            self.camera = base.panned(
+                                by: drag.translation,
+                                viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
+                        }
                     }
                     .onEnded { value in
                         let base = dragBase
                         dragBase = nil
-                        // A drag the camera spent is a pan; only a drag the clamp
-                        // held inert (the board fits the viewport) reads as a
-                        // swipe, so the two gestures never double-fire. Along the
-                        // solving direction is next/previous word, across it
-                        // toggles (root DESIGN.md §5); the classifier is pure and
-                        // pinned in tests.
-                        guard let onSwipe, let base, base == self.camera,
+                        pinchStartCentroid = nil
+                        // A drag the camera spent is a pan; only a one-finger drag
+                        // the clamp held inert (the board fits the viewport) reads
+                        // as a swipe, so pan and swipe never double-fire. A pinch
+                        // (scale present) is never a swipe. Along the solving
+                        // direction is next/previous word, across it toggles (root
+                        // DESIGN.md §5); the classifier is pure and pinned in tests.
+                        guard value.first == nil, let onSwipe, let base,
+                            let drag = value.second, base == self.camera,
                             let intent = SwipeClassifier.classify(
-                                translation: value.translation,
+                                translation: drag.translation,
                                 isAcross: selection?.isAcross ?? true)
                         else { return }
                         onSwipe(intent)
@@ -157,7 +189,7 @@ public struct CrossyGridView: View {
             // cursor returns nil from `following`, and a live pinch or drag owns
             // the camera unchallenged.
             .onChange(of: selection) { _, next in
-                guard let next, dragBase == nil, magnifyBase == nil,
+                guard let next, dragBase == nil,
                     let target = camera.following(
                         cell: next.cell, viewport: viewport,
                         rows: puzzle.rows, cols: puzzle.cols)

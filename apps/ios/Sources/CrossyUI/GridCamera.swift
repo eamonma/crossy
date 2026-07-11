@@ -85,19 +85,40 @@ public struct GridCamera: Equatable, Sendable {
 
     // MARK: Gestures
 
-    /// Pinch: rescale about a fixed viewport anchor (the board point under the
-    /// fingers stays under them), then clamp.
+    /// Pinch about a fixed anchor (the board point under the fingers stays under
+    /// them), then clamp. The centroid holds still across the zoom; `pinched`
+    /// generalizes this to a centroid that also drifts.
     public func zoomed(
         by magnification: CGFloat, anchor: CGPoint, viewport: CGSize, rows: Int, cols: Int
     ) -> GridCamera {
-        guard magnification > 0 else { return self }
+        pinched(
+            by: magnification, startCentroid: anchor, centroid: anchor,
+            viewport: viewport, rows: rows, cols: cols)
+    }
+
+    /// Pinch, the Photos/Maps rule: the board point under the pinch's START
+    /// centroid stays pinned under the LIVE centroid as scale changes. So a
+    /// centroid that drifts mid-pinch pans the board with it, and the zoom
+    /// anchors on the fingers. Scale and pan solve in one step off the frozen
+    /// base (self), never as two gestures compounding against separate bases.
+    /// `startCentroid` and `centroid` share one stable coordinate space; the
+    /// solved offset is clamped so the board never flies offscreen at rest.
+    public func pinched(
+        by magnification: CGFloat, startCentroid: CGPoint, centroid: CGPoint,
+        viewport: CGSize, rows: Int, cols: Int
+    ) -> GridCamera {
+        guard magnification > 0, scale > 0 else { return self }
         let target = scale * magnification
-        let ratio = target / scale
+        // The board point under the start centroid, in module units.
+        let boardPoint = CGPoint(
+            x: (startCentroid.x - offset.x) / scale,
+            y: (startCentroid.y - offset.y) / scale)
+        // Put that board point back under the live centroid at the new scale.
         let moved = GridCamera(
             scale: target,
             offset: CGPoint(
-                x: anchor.x - (anchor.x - offset.x) * ratio,
-                y: anchor.y - (anchor.y - offset.y) * ratio))
+                x: centroid.x - boardPoint.x * target,
+                y: centroid.y - boardPoint.y * target))
         return moved.clamped(viewport: viewport, rows: rows, cols: cols)
     }
 
