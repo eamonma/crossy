@@ -31,7 +31,11 @@ function AvatarImage({
     <AvatarPrimitive.Image
       data-slot="avatar-image"
       className={cn(
-        "aspect-square size-full rounded-full object-cover",
+        // Radix only mounts this <img> once it has finished loading, so it never
+        // occupies layout on its own: absolute + inset-0 lays it directly over the
+        // fallback's footprint (Root is the reserved box) instead of appending a
+        // flex sibling that could nudge the row. Zero reflow when the image resolves.
+        "absolute inset-0 aspect-square size-full rounded-full object-cover",
         className,
       )}
       {...props}
