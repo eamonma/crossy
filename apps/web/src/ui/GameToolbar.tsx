@@ -111,7 +111,10 @@ export function GameToolbar({
   leading?: React.ReactNode;
 }) {
   return (
-    <header className="flex items-center gap-2 px-2 sm:px-3 py-1.5">
+    // Reserve a stable row height so late-arriving presence never jolts the chrome or the
+    // board below it: 24px controls plus the py-1.5 gutter is the resting height already, so
+    // pinning it as a floor keeps the first paint (before members load) the same height.
+    <header className="flex min-h-[calc(1.5rem+0.75rem)] items-center gap-2 px-2 sm:px-3 py-1.5">
       {leading ?? (
         <Button
           variant="ghost"
@@ -137,9 +140,14 @@ export function GameToolbar({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
-        {members.length > 0 && (
+        {/* The presence slot always occupies its space, right-aligned, with a stable width
+            that already fits the capped stack (5 avatars at 24px overlapped by 6px, plus the
+            +N tail). Reserving it means the theme toggle and Share never slide, and the title
+            never re-truncates, when members populate after the first paint. The stack still
+            grows into this reservation, so the width never overflows it. */}
+        <div className="flex min-w-[8rem] shrink-0 items-center justify-end">
           <AvatarStack members={members} selfId={selfId} />
-        )}
+        </div>
         <ThemeToggle />
         <SharePopover shareUrl={shareUrl} />
       </div>
