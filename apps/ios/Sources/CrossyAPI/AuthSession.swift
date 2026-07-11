@@ -27,6 +27,11 @@ public final class AuthSession {
     /// The Keychain account the session blob lives under (one session, one account).
     public static let keychainAccount = "supabase-session"
 
+    /// The Keychain account the provider marker lives under: a tiny separate blob so
+    /// the session schema (and its tests) stays untouched, and the Account screen can
+    /// name the provider after a relaunch when only the token has survived.
+    public static let providerKeychainAccount = "auth-provider"
+
     /// Refresh this many seconds before nominal expiry, so a token never dies in
     /// flight between the check here and the server's own clock.
     public static let refreshMargin: TimeInterval = 60
@@ -37,6 +42,11 @@ public final class AuthSession {
     /// The signed-in user id when the grant carried one (display concerns only;
     /// identity authority is the token itself, DESIGN.md §8).
     public var userId: String? { stored?.userId }
+
+    /// Which provider minted the standing session, remembered from the leg that ran
+    /// and restored from the Keychain marker at launch (display only; nil when a
+    /// pre-marker session was restored). The Account screen reads this.
+    public private(set) var provider: AuthProvider?
 
     private let client: SupabaseAuthClient
     private let web: any WebAuthenticating
@@ -72,7 +82,18 @@ public final class AuthSession {
             let session = try? JSONDecoder().decode(SupabaseSession.self, from: data)
         else { return }
         stored = session
+        provider = restoredProvider()
         machine.apply(.sessionRestored)
+    }
+
+    /// The provider marker as the Keychain holds it, nil when absent or unrecognized
+    /// (a pre-marker session, or a value from a future build): display degrades to
+    /// "no provider named" rather than misreporting one.
+    private func restoredProvider() -> AuthProvider? {
+        guard let data = try? keychain.read(account: Self.providerKeychainAccount),
+            let raw = String(data: data, encoding: .utf8)
+        else { return nil }
+        return AuthProvider(rawValue: raw)
     }
 
     /// The full sign-in leg: PKCE pair, the web sheet, the code exchange, persist.
@@ -88,6 +109,7 @@ public final class AuthSession {
             else { throw SupabaseAuthError.invalidCallback }
             let session = try await client.exchangeCode(code, verifier: verifier, now: now())
             persist(session)
+            recordProvider(.discord)
             machine.apply(.signInCompleted)
         } catch WebAuthenticationError.canceled {
             machine.apply(.signInCanceled)
@@ -116,6 +138,7 @@ public final class AuthSession {
             let session = try await client.exchangeAppleIDToken(
                 authorization.idToken, nonce: rawNonce, now: now())
             persist(session)
+            recordProvider(.apple)
             if let fullName = authorization.fullName {
                 await pushFullName(fullName, on: session)
             }
@@ -143,13 +166,41 @@ public final class AuthSession {
     /// clearing never waits on the network verdict.
     public func signOut() async {
         let token = stored?.accessToken
-        stored = nil
-        refreshTask?.cancel()
-        refreshTask = nil
-        try? keychain.remove(account: Self.keychainAccount)
+        purgeLocal()
         machine.apply(.signedOut)
         if let token {
             await client.signOut(accessToken: token)
+        }
+    }
+
+    /// The local half of account deletion (roadmap I3, settings): the server-side
+    /// `DELETE /account` is the API client's, and lands the tombstone. This purges the
+    /// same local state sign-out does, with no vendor logout call (the account is gone,
+    /// not just this session), and drops the phase to signed out so routing lands at
+    /// Welcome. The composition root calls the REST leg first, then this on success.
+    public func purgeForAccountDeletion() {
+        purgeLocal()
+        machine.apply(.signedOut)
+    }
+
+    /// Drop the in-memory session and provider and clear both Keychain blobs. Shared by
+    /// sign-out and account deletion; never waits on the network.
+    private func purgeLocal() {
+        stored = nil
+        provider = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        try? keychain.remove(account: Self.keychainAccount)
+        try? keychain.remove(account: Self.providerKeychainAccount)
+    }
+
+    /// Remember the provider that minted the standing session, in memory and in the
+    /// Keychain marker so a relaunch can still name it. Best-effort: a failed marker
+    /// write only costs the provider name after a relaunch, never the sign-in.
+    private func recordProvider(_ provider: AuthProvider) {
+        self.provider = provider
+        if let data = provider.rawValue.data(using: .utf8) {
+            try? keychain.write(data, account: Self.providerKeychainAccount)
         }
     }
 

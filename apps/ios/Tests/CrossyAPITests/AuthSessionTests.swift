@@ -473,4 +473,86 @@ final class AuthSessionTests: XCTestCase {
                 supabaseURL: "https://api.crossy.me", publishableKey: "sb_publishable_x",
                 redirect: "crossy://auth/callback"))
     }
+
+    // MARK: - Provider marker (roadmap I3, settings: the Account screen names the provider)
+
+    func test_signInRemembersDiscordAndSurvivesARelaunch() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let keychain = InMemoryKeychain()
+        let (session, _, _, _) = makeSession(keychain: keychain)
+
+        await session.signIn()
+        XCTAssertEqual(session.provider, .discord)
+
+        // A relaunch restores only from the Keychain: the marker still names the provider.
+        StubURLProtocol.install { _ in (500, Data()) }
+        let (relaunched, _, _, _) = makeSession(keychain: keychain)
+        relaunched.restore()
+        XCTAssertEqual(relaunched.phase, .signedIn)
+        XCTAssertEqual(relaunched.provider, .discord, "the marker survives a relaunch")
+    }
+
+    func test_signInWithAppleRemembersApple() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, _, _) = makeSession(
+            apple: .authorization(idToken: "apple-id-token", fullName: nil))
+
+        await session.signInWithApple()
+        XCTAssertEqual(session.provider, .apple)
+    }
+
+    func test_signOutForgetsTheProviderMarker() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let keychain = InMemoryKeychain()
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        await session.signIn()
+        XCTAssertEqual(session.provider, .discord)
+
+        StubURLProtocol.install { _ in (204, Data()) }
+        await session.signOut()
+
+        XCTAssertNil(session.provider)
+        XCTAssertNil(
+            try keychain.read(account: AuthSession.providerKeychainAccount),
+            "the marker is cleared alongside the session")
+    }
+
+    func test_accountDeletionPurgeDropsTheSessionAndProviderAndLandsSignedOut() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let keychain = InMemoryKeychain()
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        await session.signIn()
+        XCTAssertEqual(session.phase, .signedIn)
+
+        // The server-side DELETE /account is the API client's; this is the local purge
+        // the composition root runs on its success, with no vendor logout call.
+        session.purgeForAccountDeletion()
+
+        XCTAssertEqual(session.phase, .signedOut)
+        XCTAssertNil(session.provider)
+        XCTAssertNil(try keychain.read(account: AuthSession.keychainAccount))
+        XCTAssertNil(try keychain.read(account: AuthSession.providerKeychainAccount))
+        do {
+            _ = try await session.currentToken()
+            XCTFail("a deleted account has no token")
+        } catch is SignedOutError {}
+    }
+
+    func test_restoringAPreMarkerSessionNamesNoProvider() async throws {
+        // A session written by a build before the marker existed restores fine and
+        // simply names no provider (the Account screen degrades, never misreports).
+        let keychain = InMemoryKeychain()
+        let stored = SupabaseSession(
+            accessToken: "stored-access", refreshToken: "stored-refresh",
+            expiresAt: 2_000_000, userId: "u1")
+        try keychain.write(
+            try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
+        StubURLProtocol.install { _ in (500, Data()) }
+        let (session, _, _, _) = makeSession(keychain: keychain)
+
+        session.restore()
+
+        XCTAssertEqual(session.phase, .signedIn)
+        XCTAssertNil(session.provider, "no marker, no provider named")
+    }
 }

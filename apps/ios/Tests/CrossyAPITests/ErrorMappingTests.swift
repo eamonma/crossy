@@ -106,6 +106,34 @@ final class ErrorMappingTests: XCTestCase {
         XCTAssertEqual(status, 200)
     }
 
+    func test_deleteAccountSurfacesAnUnauthorizedRejectionTyped() async throws {
+        // The settings surface must render a delete failure inline and retryable, never
+        // swallow it (roadmap I3): a 401 from DELETE /account arrives typed, so the
+        // composition root can key its sentence on the stable code.
+        let body = Data(#"{"error":"UNAUTHORIZED","message":"the session expired"}"#.utf8)
+        StubURLProtocol.install { _ in (401, body) }
+
+        let error = await expectFailure { _ = try await makeStubbedClient().deleteAccount() }
+        guard case .api(let status, let envelope) = error else {
+            return XCTFail("expected .api, got \(String(describing: error))")
+        }
+        XCTAssertEqual(status, 401)
+        XCTAssertEqual(envelope.code, .unauthorized)
+        XCTAssertEqual(error?.apiCodeString, "UNAUTHORIZED")
+    }
+
+    func test_deleteAccountTransportWeatherIsRetryableNotAServerVerdict() async throws {
+        // Network weather during a delete is distinct from a server rejection: nothing
+        // was judged, so the settings surface offers a plain retry.
+        StubURLProtocol.install { _ in throw URLError(.timedOut) }
+
+        let error = await expectFailure { _ = try await makeStubbedClient().deleteAccount() }
+        guard case .transport = error else {
+            return XCTFail("expected .transport, got \(String(describing: error))")
+        }
+        XCTAssertNil(error?.apiCodeString, "network weather carries no API code")
+    }
+
     func test_aFailedTokenProviderThrowsTokenUnavailableAndSendsNothing() async throws {
         StubURLProtocol.install { _ in (200, Data("{}".utf8)) }
         let client = makeStubbedClient(tokenProvider: NoSessionTokenProvider())

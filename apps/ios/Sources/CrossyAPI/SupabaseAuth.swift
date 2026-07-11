@@ -46,6 +46,15 @@ public struct SupabaseAuthConfiguration: Sendable, Equatable {
     }
 }
 
+/// Which provider minted the session (display only; the token is the identity
+/// authority, DESIGN.md §8). Remembered beside the session so the Account screen can
+/// name the provider after a relaunch, never derived from the opaque token. Raw
+/// values are the stable strings the Keychain marker stores.
+public enum AuthProvider: String, Codable, Sendable, Equatable, CaseIterable {
+    case discord
+    case apple
+}
+
 /// One signed-in session as Supabase grants it and the Keychain stores it. Codable
 /// because the Keychain blob is exactly this, JSON-encoded. `expiresAt` is unix
 /// seconds; the token itself stays opaque (no JWT decode: the `exp` we need arrives
