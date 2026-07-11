@@ -6,7 +6,7 @@
     <title>Privacy Policy — Crossy</title>
     <meta
       name="description"
-      content="How Crossy collects, uses, and protects your information. We collect only what the app needs, run no ads or trackers, and never sell your data."
+      content="How Crossy collects, uses, and protects your information. We collect only what the app needs, run no ads, and never sell your data."
     />
     <link rel="canonical" href="https://crossy.me/privacy" />
     <!-- Display serif (Harfang Pro), same Typekit kit the app shell loads. -->
@@ -148,7 +148,7 @@
       <a class="home" href="/">← Crossy</a>
 
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: July 10, 2026</p>
+      <p class="updated">Last updated: July 11, 2026</p>
 
       <p class="lede">
         Crossy is a collaborative crossword app. You solve puzzles with other
@@ -157,9 +157,9 @@
         information.
       </p>
       <p>
-        The short version: we collect only what the app needs to work. We do not
-        run ads, we do not use third-party analytics or trackers, and we never
-        sell your data.
+        The short version: we collect what the app needs to work, plus basic
+        statistics about how Crossy is used. We do not run ads, we never sell
+        your data, and our analytics never sees what you type into a puzzle.
       </p>
       <p>
         This policy covers the Crossy app and the crossy.me website. It does not
@@ -171,6 +171,7 @@
         <li><a href="#collect">What we collect and why</a></li>
         <li><a href="#others">How other players see you</a></li>
         <li><a href="#dont">What we don't collect</a></li>
+        <li><a href="#cookies">Cookies and local storage</a></li>
         <li><a href="#share">Who we share data with</a></li>
         <li><a href="#retention">How long we keep it</a></li>
         <li><a href="#delete">Deleting your account</a></li>
@@ -203,6 +204,16 @@
         <strong>Technical data.</strong> Our servers keep basic logs, including
         IP addresses, to run the service, keep it secure, and debug problems.
       </p>
+      <p>
+        <strong>Usage analytics.</strong> We use PostHog, an analytics service,
+        to understand how Crossy is used. It receives events such as a room
+        being created, joined, finished, or abandoned, a sign-in completing, and
+        which pages you visit. Those events carry your account's internal ID,
+        room IDs, counts, and basic device details such as browser and operating
+        system. They never include the letters you type, the contents of a
+        board, or a puzzle's solution, and we do not record your screen or your
+        session. We use this to see what is working and what to fix.
+      </p>
 
       <h2 id="others">How other players see you</h2>
       <p>
@@ -217,14 +228,26 @@
       <p>To be clear about the things we deliberately don't do:</p>
       <ul>
         <li>No advertising, and no advertising identifiers.</li>
-        <li>No third-party analytics or tracking SDKs.</li>
-        <li>No location data.</li>
+        <li>
+          No session recording. Our analytics never captures your screen, your
+          keystrokes, or what is on a board.
+        </li>
+        <li>No device location. We never ask where you are.</li>
         <li>No payment information. Crossy is free and has nothing to buy.</li>
         <li>
           We never sell your personal information, and we never share it for
           cross-context behavioral advertising.
         </li>
       </ul>
+
+      <h2 id="cookies">Cookies and local storage</h2>
+      <p>
+        Crossy uses your browser's storage for two things: keeping you signed
+        in, and giving our analytics a stable identifier so your visits count as
+        one person rather than many. We set no advertising cookies. Clearing
+        your browser's storage for crossy.me signs you out and resets that
+        identifier.
+      </p>
 
       <h2 id="share">Who we share data with</h2>
       <p>We keep the list of companies that handle data on our behalf short:</p>
@@ -233,6 +256,10 @@
           <strong>Supabase</strong> manages sign-in and stores your account.
         </li>
         <li><strong>Railway</strong> hosts the servers the app talks to.</li>
+        <li>
+          <strong>PostHog</strong> provides our usage analytics and stores that
+          data in the United States.
+        </li>
         <li>
           <strong>Gravatar</strong>, operated by Automattic: if your sign-in
           provider has no avatar for you, we show a Gravatar image instead. That
@@ -266,8 +293,10 @@
       <p>
         We keep your account and its data for as long as your account exists.
         Server logs that contain IP addresses are kept only as long as we need
-        them to operate and secure the service, then discarded. When you delete
-        your account, the next section applies.
+        them to operate and secure the service, then discarded. Usage analytics
+        are held by PostHog on our behalf and kept only while they are useful
+        for understanding how Crossy is used. When you delete your account, the
+        next section applies.
       </p>
 
       <h2 id="delete">Deleting your account</h2>
@@ -283,6 +312,12 @@
         may remain so that the shared boards other people took part in stay
         intact. Those records are no longer tied to your name or avatar once
         your account is deleted.
+      </p>
+      <p>
+        Analytics records are kept under an internal ID, not your name or email.
+        If you want them removed along with your account, email us at
+        <a href="mailto:privacy@crossy.me">privacy@crossy.me</a> and we will
+        delete them.
       </p>
 
       <h2 id="rights">Your rights</h2>
