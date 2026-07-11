@@ -54,13 +54,19 @@ struct SolveActivityWidget: Widget {
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     // The crew reading: the cluster grows, away members drop to the away
-                    // register (owner ruling), terminal brings everyone to full.
-                    PuckCluster(pucks: frame.pucks, diameter: 36, overlap: -10)
-                        .padding(.leading, 4)
+                    // register (owner ruling), terminal brings everyone to full. The
+                    // vertical padding is deliberate mass: the expanded island shrink-wraps
+                    // its content, and a shallow row reads as a thin pill instead of the
+                    // full card (owner device report 2026-07-11). The crew at 44 with air
+                    // claims the Music-scale rectangle.
+                    PuckCluster(pucks: frame.pucks, diameter: 44, overlap: -12)
+                        .padding(.leading, 6)
+                        .padding(.vertical, 10)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimerLabel(frame: frame, size: 24, weight: .semibold, maxWidth: 108)
-                        .padding(.trailing, 4)
+                    TimerLabel(frame: frame, size: 32, weight: .semibold, maxWidth: 140)
+                        .padding(.trailing, 6)
+                        .padding(.vertical, 10)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     ExpandedBottom(frame: frame)
@@ -324,16 +330,20 @@ private struct ExpandedBottom: View {
     let frame: IslandFrame
 
     var body: some View {
-        VStack(spacing: 6) {
+        // Card-scale air (owner device report 2026-07-11): the bottom region carries the
+        // mass that turns the shrink-wrapped pill into the full rectangle. Type steps up
+        // to 15, the meter gets room above and below, and the region pads itself instead
+        // of hugging the sensor row.
+        VStack(spacing: 12) {
             HStack {
                 Text(verbatim: frame.roomLine)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 if let counts = frame.counts {
                     Text(verbatim: counts)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.45 * frame.dim))
                 }
@@ -342,6 +352,9 @@ private struct ExpandedBottom: View {
                 TickedMeter(fraction: fraction, sealed: frame.sealed, dim: frame.dim)
             }
         }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
     }
 }
 
