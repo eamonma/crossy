@@ -35,6 +35,7 @@ protocol ArrivalSessioning: AnyObject {
     var phase: AuthPhase { get }
     var tokenProvider: any BearerTokenProviding { get }
     func signIn() async
+    func signInWithApple() async
     func signOut() async
 }
 
@@ -63,6 +64,7 @@ final class RealArrivalSession: ArrivalSessioning {
     var phase: AuthPhase { auth.phase }
     var tokenProvider: any BearerTokenProviding { auth }
     func signIn() async { await auth.signIn() }
+    func signInWithApple() async { await auth.signInWithApple() }
     func signOut() async { await auth.signOut() }
 }
 
@@ -79,6 +81,7 @@ final class InjectedArrivalSession: ArrivalSessioning {
     var phase: AuthPhase { .signedIn }
     var tokenProvider: any BearerTokenProviding { FixedBearerToken(token: token) }
     func signIn() async {}
+    func signInWithApple() async {}
     func signOut() async {}
 }
 
@@ -153,7 +156,14 @@ final class FixtureArrivalSession: ArrivalSessioning {
 
     var tokenProvider: any BearerTokenProviding { FixedBearerToken(token: "fixture-token") }
 
-    func signIn() async {
+    func signIn() async { await beat() }
+
+    /// The -i3Fixture device walk exercises both Welcome buttons; Apple takes the same
+    /// beat as Discord, so the authenticating state and the tapped-button spinner show
+    /// identically on either path.
+    func signInWithApple() async { await beat() }
+
+    private func beat() async {
         phase = .authenticating
         try? await Task.sleep(for: .milliseconds(600))
         phase = .signedIn
@@ -259,6 +269,7 @@ final class ArrivalModel {
                 auth: AuthSession(
                     client: SupabaseAuthClient(configuration: auth),
                     web: WebAuthenticationPresenter(),
+                    apple: AppleSignInPresenter(),
                     keychain: SystemKeychain()))
             configured = true
         } else {

@@ -53,9 +53,11 @@ struct ArrivalRootView: View {
             )
             .toolbar(.hidden, for: .navigationBar)
         } else {
-            WelcomeScreen(state: model.welcomeState) {
-                Task { await model.session.signIn() }
-            }
+            WelcomeScreen(
+                state: model.welcomeState,
+                onContinueApple: { Task { await model.session.signInWithApple() } },
+                onContinueDiscord: { Task { await model.session.signIn() } }
+            )
             .toolbar(.hidden, for: .navigationBar)
         }
     }
