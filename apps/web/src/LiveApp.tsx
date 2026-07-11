@@ -716,6 +716,7 @@ function LiveGame({
       const entry: PresenceEntry = {
         userId: cursor.userId,
         initial: participant?.displayName.charAt(0) ?? "?",
+        avatarUrl: participant?.avatarUrl ?? null,
         color: participant?.color ?? "#3e63dd",
         direction: cursor.direction,
       };
@@ -731,6 +732,7 @@ function LiveGame({
     return store.participants.map((p) => ({
       userId: p.userId,
       initial: p.displayName.charAt(0) || "?",
+      avatarUrl: p.avatarUrl,
       color: p.color,
       connected: p.connected,
       role: p.role,

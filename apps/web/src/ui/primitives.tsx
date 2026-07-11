@@ -5,7 +5,7 @@
 // src/components/ui/* (shadcn/ui, themed to Sand + Gold in styles.css); this file only keeps
 // what shadcn does not provide.
 import type { ReactNode } from "react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
 /** Join class names, dropping falsy entries. */
@@ -63,6 +63,12 @@ export function CapsLabel({
 export interface StackMember {
   userId: string;
   initial: string;
+  /**
+   * The opaque avatar URL, or null (PROTOCOL.md §4). When present the chip renders the image; while
+   * it loads, on a load error, or when null it falls back to the initial. Radix's Avatar.Image ->
+   * Avatar.Fallback swap gives that behavior for free, so null never breaks the render.
+   */
+  avatarUrl: string | null;
   color: string;
   connected: boolean;
   role: "host" | "solver" | "spectator";
@@ -105,6 +111,7 @@ export function AvatarStack({
             title={m.initial}
             className={cx("ring-2 ring-panel", !m.connected && "opacity-55")}
           >
+            {m.avatarUrl !== null && <AvatarImage src={m.avatarUrl} alt="" />}
             <AvatarFallback
               className={
                 m.userId === selfId

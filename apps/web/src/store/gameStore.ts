@@ -274,6 +274,7 @@ export class GameStore {
         const joined: Participant = {
           userId: message.userId,
           displayName: message.displayName,
+          avatarUrl: message.avatarUrl,
           color: message.color,
           role: message.role,
           connected: true,

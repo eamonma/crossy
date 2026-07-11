@@ -32,19 +32,25 @@ import { buildShareUrl } from "../domain/invite";
 import { useElapsedSeconds, formatDuration } from "./gameTime";
 import { useWakeLock } from "./useWakeLock";
 import { CapsLabel, Logo } from "./primitives";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 /** One presence chip in the roster, the solving-now Dot at projector scale (em-relative). */
 function Dot({ entry, ring = false }: { entry: SolverEntry; ring?: boolean }) {
+  // The avatar paints over the colored initial when it loads; a null URL or a load failure leaves
+  // the initial showing, the same fallback the solve screen uses (PROTOCOL.md §4).
   return (
-    <span
+    <Avatar
       aria-hidden
-      className={`flex h-[1.7em] w-[1.7em] shrink-0 items-center justify-center rounded-full text-[0.85em] font-bold text-white${
-        ring ? " ring-2 ring-panel" : ""
-      }`}
-      style={{ background: entry.color }}
+      className={`h-[1.7em] w-[1.7em] shrink-0${ring ? " ring-2 ring-panel" : ""}`}
     >
-      {entry.initial}
-    </span>
+      {entry.avatarUrl !== null && <AvatarImage src={entry.avatarUrl} alt="" />}
+      <AvatarFallback
+        className="text-[0.85em] font-bold text-white"
+        style={{ background: entry.color }}
+      >
+        {entry.initial}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
@@ -148,6 +154,7 @@ export function PartyView({
       const entry: PresenceEntry = {
         userId: cursor.userId,
         initial: participant?.displayName.charAt(0) ?? "?",
+        avatarUrl: participant?.avatarUrl ?? null,
         color: participant?.color ?? "#3e63dd",
         direction: cursor.direction,
       };

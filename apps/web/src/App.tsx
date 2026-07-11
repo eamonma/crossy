@@ -324,6 +324,7 @@ function DemoApp({
       const entry: PresenceEntry = {
         userId: cursor.userId,
         initial: participant?.displayName.charAt(0) ?? "?",
+        avatarUrl: participant?.avatarUrl ?? null,
         color: participant?.color ?? "#3e63dd",
         direction: cursor.direction,
       };

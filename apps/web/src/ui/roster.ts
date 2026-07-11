@@ -17,6 +17,8 @@ export interface SolverEntry {
   userId: string;
   name: string;
   initial: string;
+  /** The opaque avatar URL, or null (PROTOCOL.md §4). Null, loading, and errors render the initial. */
+  avatarUrl: string | null;
   color: string;
   self: boolean;
   clue: Clue | null;
@@ -78,6 +80,7 @@ export function buildRoster(opts: {
       userId: p.userId,
       name: self ? "You" : p.displayName,
       initial: (p.displayName.charAt(0) || "?").toUpperCase(),
+      avatarUrl: p.avatarUrl,
       color: p.color,
       self,
       clue: at === null ? null : clueAt(across, down, at.direction, at.cell),

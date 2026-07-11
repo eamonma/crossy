@@ -16,6 +16,12 @@ const CELL = 36;
 export interface PresenceEntry {
   userId: string;
   initial: string;
+  /**
+   * The opaque avatar URL, or null (PROTOCOL.md §4). When present the puck paints the image inside
+   * its circle; when null, still loading, or on a load error the colored initial underneath shows
+   * through, so the existing initial puck is the render for every non-image case.
+   */
+  avatarUrl: string | null;
   color: string;
   direction: Direction;
 }
@@ -160,6 +166,24 @@ export function CrosswordGrid({
             >
               {here[0].initial}
             </text>
+            {/* The avatar paints over the colored initial when it loads; a null URL or a load
+                failure leaves the initial puck below untouched (PROTOCOL.md §4 fallback). */}
+            {here[0].avatarUrl !== null && (
+              <>
+                <clipPath id={`presence-clip-${cell}`}>
+                  <circle cx={x + 30} cy={y + 30} r={5} />
+                </clipPath>
+                <image
+                  href={here[0].avatarUrl}
+                  x={x + 25}
+                  y={y + 25}
+                  width={10}
+                  height={10}
+                  preserveAspectRatio="xMidYMid slice"
+                  clipPath={`url(#presence-clip-${cell})`}
+                />
+              </>
+            )}
           </>
         )}
         {here.length > 1 && (
