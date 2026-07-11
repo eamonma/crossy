@@ -10,6 +10,7 @@ import type { JwksAuthConfig } from "@crossy/auth";
 import { buildApp } from "./app";
 import { createDb } from "./db/client";
 import { createHttpMembershipNotifier } from "./identity/http-notifier";
+import { createSupabaseAdminIdentity } from "./identity/supabase-admin";
 
 // The JWK Set shape the auth port expects, named without importing `jose` (a service never
 // imports `jose`; only the auth package does). Deriving it from the port's own config type
@@ -72,6 +73,30 @@ async function main(): Promise<void> {
     );
   }
 
+  // The vendor identity admin port for account deletion (DESIGN.md §8). Configured only when both
+  // the Supabase URL and the service_role key are present; otherwise it is omitted and deletion
+  // still runs the API-owned tombstone (display_name/avatar scrubbed, opaque user_id kept) but
+  // skips the vendor call, exactly the M3a behavior. The service_role key is a privileged,
+  // owner-held secret set only in the deploy environment.
+  const supabaseUrl = process.env["SUPABASE_URL"];
+  const supabaseServiceRoleKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
+  const vendorIdentity =
+    supabaseUrl !== undefined &&
+    supabaseUrl !== "" &&
+    supabaseServiceRoleKey !== undefined &&
+    supabaseServiceRoleKey !== ""
+      ? createSupabaseAdminIdentity({
+          url: supabaseUrl,
+          serviceRoleKey: supabaseServiceRoleKey,
+        })
+      : undefined;
+  if (vendorIdentity === undefined) {
+    console.warn(
+      "vendor identity deletion disabled: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY " +
+        "to remove the Supabase identity on account deletion (the tombstone still runs)",
+    );
+  }
+
   const app = buildApp({
     db,
     authPort,
@@ -79,6 +104,7 @@ async function main(): Promise<void> {
     ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
     ...(appleAppId !== undefined && appleAppId !== "" ? { appleAppId } : {}),
     ...(membershipNotifier !== undefined ? { membershipNotifier } : {}),
+    ...(vendorIdentity !== undefined ? { vendorIdentity } : {}),
   });
 
   const port = Number(process.env["PORT"] ?? "8080");
