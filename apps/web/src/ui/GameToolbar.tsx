@@ -11,13 +11,14 @@
 // dialog (DELETE /games/{id}/members/{userId}). Both reuse the existing REST endpoints the API
 // already serves; no new wire field. Gating is `isHost` from roomAdmin.ts; the server enforces
 // host-only and self-target regardless, so a non-host simply never sees these rows.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckIcon,
   ChevronLeftIcon,
   CopyIcon,
   Share1Icon,
 } from "@radix-ui/react-icons";
+import { renderSVG } from "uqr";
 import { AvatarStack } from "./primitives";
 import type { StackMember } from "./primitives";
 import { abandonGame, isHost, kickMember } from "./roomAdmin";
@@ -107,8 +108,65 @@ function CopyRow({
   );
 }
 
+/** The invite QR, the share surface's in-person channel (secondary in the hierarchy the iOS
+ * share card decides too, docs/design/share-surface.md): opening the popover IS the act: you
+ * show your screen, no further click. Same generator and register as the party projector
+ * (PartyView: uqr, ecc M, dark modules on white regardless of theme, the way a scannable code
+ * must be), so the code a phone reads here is module-for-module the projector's. */
+function ShareQR({ shareUrl }: { shareUrl: string }) {
+  const qrMarkup = useMemo(
+    () =>
+      renderSVG(shareUrl, {
+        ecc: "M",
+        border: 2,
+        whiteColor: "#ffffff",
+        blackColor: "#21201c",
+      }),
+    [shareUrl],
+  );
+  return (
+    <div className="flex items-center gap-3">
+      <div
+        role="img"
+        aria-label="QR code to join this game"
+        className="w-[7.5rem] shrink-0 rounded-md bg-white p-1.5 leading-none shadow-sm [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+        dangerouslySetInnerHTML={{ __html: qrMarkup }}
+      />
+      <p className="m-0 min-w-0 text-1 text-text-subtle">
+        Scan with a phone camera to join in person.
+      </p>
+    </div>
+  );
+}
+
+/** The system share, the catch-all channel (tertiary): navigator.share where the platform
+ * offers it, feature-detected, and simply absent where it does not; the copy row above is
+ * the graceful fallback, never a broken button. */
+function NativeShareRow({ shareUrl }: { shareUrl: string }) {
+  if (
+    typeof navigator === "undefined" ||
+    typeof navigator.share !== "function"
+  ) {
+    return null;
+  }
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      className="w-full justify-center"
+      onClick={() => {
+        // A dismissed sheet rejects with AbortError; dismissal is not an error.
+        void navigator.share({ url: shareUrl }).catch(() => {});
+      }}
+    >
+      <Share1Icon />
+      Share…
+    </Button>
+  );
+}
+
 /** End game: the one destructive host row, a two-beat confirm (Settings.tsx's DeleteBlock
- * pattern; iOS's RoomFactsPopover confirmationDialog is the same shape). */
+ * pattern; iOS's RoomFactsPanel confirmationDialog is the same shape). */
 function EndGameRow({ admin }: { admin: RoomAdmin }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -205,6 +263,12 @@ function SharePopover({
             Anyone with the link can join or invite others.
           </PopoverDescription>
         </PopoverHeader>
+        {/* The hierarchy, decided with the iOS share card
+            (docs/design/share-surface.md): copy-link primary (the group-chat
+            paste, one click, inline feedback), the QR secondary (the
+            in-person scan; the popover being open is the act), the system
+            share tertiary (everything else, where the platform offers it).
+            The bare code rides beside the link as the spoken channel. */}
         {shareUrl === null ? (
           <p className="m-0 text-1 text-text-subtle">
             Open this game from an invite link to get one you can share.
@@ -222,6 +286,12 @@ function SharePopover({
             value={inviteCode}
             ariaLabel="Invite code"
           />
+        )}
+        {shareUrl !== null && (
+          <>
+            <ShareQR shareUrl={shareUrl} />
+            <NativeShareRow shareUrl={shareUrl} />
+          </>
         )}
         {hostHere && admin !== null && (
           <>

@@ -25,6 +25,16 @@
 //                           pattern). Mid-solve the card carries the §12
 //                           operations (redesign 2026-07-11, the popover
 //                           retired); -i2cSpectator drops the host's end-game
+//    -i2fShare              land the share card open (the share pill,
+//                           inflated: the code headline, the QR, copy link,
+//                           Share…; the presentFacts pattern)
+//    -gooOvershoot          the pill-inflation prototype (PillInflation): the
+//                           facts and share cards open on the underdamped
+//                           inflation curve, a hair past the frame and back
+//    -gooMetaball           iOS 26: the same opens ride the system's
+//                           materialize swap in a GlassEffectContainer (the
+//                           MorphLab variant-A goo); both compose with any
+//                           -i2*/-demoRoom launch for live taps on device
 //    -i2eSealedPill         complete the room, then pour the stats card back
 //                           so the sealed terminal pill stands alone (the
 //                           redesign's terminal register; simctl cannot tap)
@@ -64,6 +74,10 @@ final class DemoRoom {
     // §12: the room view carries it to any member). The fixture supplies a
     // read-aloud eight-character code so the row renders offline.
     let inviteCode = "TIDECOVE"
+    // A fixture id so the share card (ShareInvite.url) also renders offline;
+    // the demo transport never dials a real backend, so this id names nothing
+    // real, exactly as the fixture's invite code does.
+    let gameId = "demo-room"
     let selection: SelectionModel
     let chrome = RoomChromeModel()
     private let transport: LoopbackTransport
@@ -162,6 +176,12 @@ final class DemoRoom {
             // lands open with the §12 operation rows; the -i2eFactsPopover
             // flag retired with the popover it raised.
             chrome.presentFacts()
+        }
+        if arguments.contains("-i2fShare") {
+            // The share card (owner ask 2026-07-11): land it open with no
+            // walk, so simctl can capture the panel, the QR, and both action
+            // rows without a tap (the presentFacts pattern).
+            chrome.presentShare()
         }
         if let index = arguments.firstIndex(of: "-i2cMelt"),
             arguments.indices.contains(index + 1),

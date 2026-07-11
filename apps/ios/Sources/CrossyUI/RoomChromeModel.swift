@@ -40,6 +40,13 @@ public final class RoomChromeModel {
     /// the headline, so the headline comes FROM the timer).
     public var factsProgress: CGFloat = 0
 
+    /// The share morph (the dedicated share pill, owner ask 2026-07-11): 0 is
+    /// the round pill in the room bar's cluster, 1 the open share card (copy
+    /// link, the QR, the system share). The same tap-opened grammar as the
+    /// facts card: the pill reshaped, walked on the chrome spring, never a
+    /// system presentation.
+    public var shareProgress: CGFloat = 0
+
     /// When the reconnect adapter will dial next, for the quiet countdown
     /// (DESIGN.md §8). Set by the composition root; nil renders the bare word.
     public var reconnectRetryAt: Date?
@@ -53,11 +60,13 @@ public final class RoomChromeModel {
 
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
     @ObservationIgnored private var factsSettleTask: Task<Void, Never>?
+    @ObservationIgnored private var shareSettleTask: Task<Void, Never>?
 
     public init() {}
 
     public var isBrowserOpen: Bool { meltProgress > 0 }
     public var isFactsOpen: Bool { factsProgress > 0 }
+    public var isShareOpen: Bool { shareProgress > 0 }
 
     // MARK: Settling (the one animation, on release)
 
@@ -91,9 +100,22 @@ public final class RoomChromeModel {
     public func settleFacts(open: Bool, animated: Bool = true) {
         factsSettleTask?.cancel()
         factsSettleTask = Self.walk(
-            from: factsProgress, to: open ? 1 : 0, animated: animated
+            from: factsProgress, to: open ? 1 : 0, animated: animated,
+            // The inflation prototype (PillInflation, owner-gated): the OPEN
+            // walk may ride the underdamped curve; the pour-back never does.
+            overshoots: open && PillInflation.walksWithOvershoot
         ) { [weak self] value in
             self?.factsProgress = value
+        }
+    }
+
+    public func settleShare(open: Bool, animated: Bool = true) {
+        shareSettleTask?.cancel()
+        shareSettleTask = Self.walk(
+            from: shareProgress, to: open ? 1 : 0, animated: animated,
+            overshoots: open && PillInflation.walksWithOvershoot
+        ) { [weak self] value in
+            self?.shareProgress = value
         }
     }
 
@@ -113,14 +135,28 @@ public final class RoomChromeModel {
         factsProgress = 1
     }
 
+    /// Scripted entry for the share card (the presentFacts pattern): land the
+    /// card open with no walk, so simctl can capture it without a tap.
+    public func presentShare() {
+        shareSettleTask?.cancel()
+        shareProgress = 1
+    }
+
     /// The settle walk: the chrome spring's own curve (ChromeSettleCurve), one
     /// application per display frame. iOS awaits real frames through
     /// CADisplayLink; a slept interval is not frame-synced, and its jitter
     /// against the display read as lag on the owner's device (finding
     /// 2026-07-10). The macOS test build keeps the fine-sleep loop, which only
     /// tests ever see. Returns nil when the change was a cut.
+    ///
+    /// `overshoots` is the inflation prototype's lever (PillInflation,
+    /// owner-gated): the walk steps the underdamped PillInflationCurve
+    /// instead, whose fraction breathes a hair past 1 before settling. Only
+    /// the pill panels' OPEN walks ever pass true; the melt and every
+    /// pour-back stay on the critically damped law.
     private static func walk(
         from start: CGFloat, to target: CGFloat, animated: Bool,
+        overshoots: Bool = false,
         apply: @escaping @MainActor (CGFloat) -> Void
     ) -> Task<Void, Never>? {
         guard animated, abs(target - start) > 0.0005 else {
@@ -134,13 +170,19 @@ public final class RoomChromeModel {
                 defer { ticker.stop() }
                 for await _ in ticker.frames() {
                     if Task.isCancelled { return }
-                    if step(began: began, start: start, target: target, apply: apply) {
+                    if step(
+                        began: began, start: start, target: target,
+                        overshoots: overshoots, apply: apply)
+                    {
                         return
                     }
                 }
             #else
                 while !Task.isCancelled {
-                    if step(began: began, start: start, target: target, apply: apply) {
+                    if step(
+                        began: began, start: start, target: target,
+                        overshoots: overshoots, apply: apply)
+                    {
                         return
                     }
                     try? await Task.sleep(for: .milliseconds(8))
@@ -151,11 +193,24 @@ public final class RoomChromeModel {
 
     /// One spring application; true when the walk has arrived (which snaps the
     /// last fraction of a point so progress ends exactly at its endpoint).
+    /// The settle curve is monotonic, so arrival is its fraction reaching 1;
+    /// the overshoot curve crosses 1 mid-flight by design, so arrival is its
+    /// own envelope test, never the fraction.
     private static func step(
-        began: Date, start: CGFloat, target: CGFloat,
+        began: Date, start: CGFloat, target: CGFloat, overshoots: Bool,
         apply: @MainActor (CGFloat) -> Void
     ) -> Bool {
-        let fraction = ChromeSettleCurve.fraction(at: Date.now.timeIntervalSince(began))
+        let elapsed = Date.now.timeIntervalSince(began)
+        if overshoots {
+            if PillInflationCurve.isSettled(at: elapsed) {
+                apply(target)
+                return true
+            }
+            let fraction = PillInflationCurve.fraction(at: elapsed)
+            apply(start + (target - start) * CGFloat(fraction))
+            return false
+        }
+        let fraction = ChromeSettleCurve.fraction(at: elapsed)
         if fraction >= 1 {
             apply(target)
             return true

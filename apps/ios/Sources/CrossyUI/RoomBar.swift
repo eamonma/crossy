@@ -74,6 +74,13 @@ struct RoomBar: View {
     /// so the whole pill, glass, weather, and clock, hands off and yields.
     /// Layout and frame reporting stay; the visual goes with the morph.
     let timeHandedOff: Bool
+    /// Whether the room has an invite in hand (a share URL built from the
+    /// invite code): the share pill stands only when there is something to
+    /// share, never as a dead control.
+    let hasShare: Bool
+    /// True while the share card exists or another panel eclipses the pill
+    /// (PanelEclipse): the card is the pill reshaped, so the pill yields.
+    let shareHandedOff: Bool
     /// The way out of the room. The arrival flow wires the destination; the
     /// bar only reports the intent.
     let onBack: () -> Void
@@ -81,6 +88,9 @@ struct RoomBar: View {
     /// facts). One mechanism for both moments (redesign 2026-07-11): the tap
     /// inflates the pill into the facts card. Routing is the caller's.
     let onTapTimePill: () -> Void
+    /// The share pill's summon: the tap inflates the pill into the share
+    /// card (the facts card's grammar). Routing is the caller's.
+    let onTapShare: () -> Void
     /// The room's lifecycle, for the pill's register (TimePillRegister) and
     /// its spoken label.
     let status: RoomStatus
@@ -135,6 +145,14 @@ struct RoomBar: View {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 timePill(now: timeline.date)
             }
+            // The share pill stands between the room's facts and the room's
+            // people: the invite is the door between them. Inside the
+            // container (its panel is a custom morph, not a Menu, so the
+            // 26.1 break does not apply); the players pill keeps the corner,
+            // because the people are the bar's color and the island's lead.
+            if hasShare {
+                sharePill
+            }
         }
     }
 
@@ -159,6 +177,33 @@ struct RoomBar: View {
         // The eclipse yield includes touch, the handed-off pill rule.
         .allowsHitTesting(!backHandedOff)
         .reportChromeFrame(.backButton)
+    }
+
+    // MARK: The share pill (the room's invite, owner ask 2026-07-11)
+
+    /// A round standing pill in the back button's register: the share glyph
+    /// in ink, no color (§3). Its tap inflates it into the share card (the
+    /// facts card's one-surface grammar); while the card stands, or another
+    /// panel eclipses it, the pill hands off exactly as the time pill does.
+    private var sharePill: some View {
+        Button(action: onTapShare) {
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color(rgb: ground.tokens.ink))
+                // The glyph's arrow rides high; a hair of lift centers the
+                // boxed weight optically in the circle.
+                .offset(y: -1)
+                .frame(width: ChromeLayout.pillHeight, height: ChromeLayout.pillHeight)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+        .accessibilityLabel(Text(verbatim: "Invite someone, show the share card"))
+        .opacity(shareHandedOff ? 0 : 1)
+        // The yield includes touch (the handed-off pill rule): a tap on the
+        // ghost falls to the bar's dismiss layer, never re-summons.
+        .allowsHitTesting(!shareHandedOff)
+        .reportChromeFrame(.sharePill)
     }
 
     // MARK: The time pill (the room's vital signs, then its record)
