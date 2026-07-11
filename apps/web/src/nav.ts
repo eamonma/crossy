@@ -20,6 +20,7 @@ export type Route =
   | { readonly kind: "home" }
   | { readonly kind: "puzzles" }
   | { readonly kind: "create" }
+  | { readonly kind: "settings" }
   | { readonly kind: "game"; readonly gameId: string; readonly party?: boolean }
   | { readonly kind: "demo" };
 
@@ -51,6 +52,10 @@ export function puzzlesHref(params: URLSearchParams): string {
 
 export function createHref(params: URLSearchParams): string {
   return `/new${qs(preservedParams(params))}`;
+}
+
+export function settingsHref(params: URLSearchParams): string {
+  return `/settings${qs(preservedParams(params))}`;
 }
 
 /** A game link: overrides survive, and extras (the invite `code`) ride the query string. */
@@ -107,6 +112,7 @@ export function parseRoute(pathname: string, params: URLSearchParams): Route {
   const segments = pathname.split("/").filter((s) => s !== "");
   if (segments[0] === "puzzles") return { kind: "puzzles" };
   if (segments[0] === "new") return { kind: "create" };
+  if (segments[0] === "settings") return { kind: "settings" };
   if (segments[0] === "game" && segments[1] !== undefined) {
     return gameRoute(decodeURIComponent(segments[1]), params);
   }

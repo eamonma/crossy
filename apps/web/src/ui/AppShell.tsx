@@ -27,6 +27,7 @@ import {
   DesktopIcon,
   ExitIcon,
   FileTextIcon,
+  GearIcon,
   HamburgerMenuIcon,
   MoonIcon,
   PlusIcon,
@@ -39,6 +40,7 @@ import {
   gameHref,
   homeHref,
   puzzlesHref,
+  settingsHref,
   togglePartyHref,
 } from "../nav";
 import { Divider, Logo } from "./primitives";
@@ -305,6 +307,7 @@ function CrossySidebar({
         <UserCard
           session={session}
           onSignOut={onSignOut}
+          onSettings={() => go(settingsHref(params))}
           // Party mode is a game-only presentation, so the entry only shows on a game route;
           // it opens the projector screen (?party=1), where a plain "Leave party mode" control
           // returns here. The URL flag keeps working exactly as before.
@@ -404,15 +407,21 @@ function RecentGames({
  * hand-typed ?party in the URL. */
 function AccountMenu({
   onSignOut,
+  onSettings,
   onEnterParty,
 }: {
   onSignOut: () => void;
+  onSettings: () => void;
   onEnterParty?: (() => void) | undefined;
 }) {
   const { theme, toggle } = useTheme();
   return (
     <>
       <DropdownMenuLabel className="text-text-muted">Account</DropdownMenuLabel>
+      <DropdownMenuItem onClick={onSettings}>
+        <GearIcon />
+        Settings
+      </DropdownMenuItem>
       <DropdownMenuItem onClick={toggle}>
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
         {theme === "dark" ? "Light theme" : "Dark theme"}
@@ -440,10 +449,12 @@ function AccountMenu({
 function UserCard({
   session,
   onSignOut,
+  onSettings,
   onEnterParty,
 }: {
   session: IdentitySession | null;
   onSignOut: () => void;
+  onSettings: () => void;
   onEnterParty?: (() => void) | undefined;
 }) {
   const name = session?.displayName ?? "You";
@@ -478,7 +489,11 @@ function UserCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <AccountMenu onSignOut={onSignOut} onEnterParty={onEnterParty} />
+            <AccountMenu
+              onSignOut={onSignOut}
+              onSettings={onSettings}
+              onEnterParty={onEnterParty}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -496,7 +511,11 @@ function UserCard({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="end" className="w-52">
-            <AccountMenu onSignOut={onSignOut} onEnterParty={onEnterParty} />
+            <AccountMenu
+              onSignOut={onSignOut}
+              onSettings={onSettings}
+              onEnterParty={onEnterParty}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

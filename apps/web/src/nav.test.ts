@@ -10,6 +10,7 @@ import {
   partyHref,
   preservedParams,
   puzzlesHref,
+  settingsHref,
   togglePartyHref,
 } from "./nav";
 
@@ -20,6 +21,7 @@ describe("parseRoute (paths select the surface)", () => {
     expect(parseRoute("/", p(""))).toEqual({ kind: "home" });
     expect(parseRoute("/puzzles", p(""))).toEqual({ kind: "puzzles" });
     expect(parseRoute("/new", p(""))).toEqual({ kind: "create" });
+    expect(parseRoute("/settings", p(""))).toEqual({ kind: "settings" });
     expect(parseRoute("/game/g-1", p(""))).toEqual({
       kind: "game",
       gameId: "g-1",
@@ -85,7 +87,17 @@ describe("href builders (dev/smoke overrides survive every in-app link)", () => 
     expect(homeHref(p(""))).toBe("/");
     expect(puzzlesHref(p(""))).toBe("/puzzles");
     expect(createHref(p(""))).toBe("/new");
+    expect(settingsHref(p(""))).toBe("/settings");
     expect(gameHref("g-1", p(""))).toBe("/game/g-1");
+  });
+
+  it("carries the dev/smoke overrides on the settings link", () => {
+    const url = new URL(settingsHref(overrides), "http://x");
+    expect(url.pathname).toBe("/settings");
+    expect(url.searchParams.get("api")).toBe("http://a");
+    expect(url.searchParams.get("ws")).toBe("ws://s");
+    expect(url.searchParams.get("token")).toBe("T");
+    expect(url.searchParams.get("code")).toBeNull();
   });
 
   it("carries the overrides and any extras on a game link", () => {

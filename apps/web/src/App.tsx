@@ -34,6 +34,7 @@ import { Landing } from "./ui/Landing";
 import { Home } from "./ui/Home";
 import { AppShell } from "./ui/AppShell";
 import { CreateGame } from "./ui/CreateGame";
+import { Settings } from "./ui/Settings";
 import { useResource, useAccessToken } from "./ui/useResource";
 import { fetchGames } from "./ui/homeData";
 import type { GameSummary } from "./ui/homeData";
@@ -183,6 +184,18 @@ function Router({
       />
     );
     return signedIn ? shell(create) : create;
+  }
+
+  if (route.kind === "settings" && signedIn) {
+    return shell(
+      <Settings
+        identity={identity}
+        apiBase={apiBase}
+        token={token}
+        navigate={navigate}
+        params={params}
+      />,
+    );
   }
 
   if (!signedIn) {
