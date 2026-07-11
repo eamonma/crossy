@@ -19,22 +19,31 @@ import Foundation
 
 extension IslandContentState {
     /// One cluster member, render-ready for the island's dark ground: the ASCII-uppercased
-    /// initial (INV-1, already cased upstream), the dark-ground sRGB components, and the
-    /// live `connected` flag that drives the away register. A 1:1 pre-image of `IslandPuck`,
-    /// carried as its own type so no store or UI type crosses the package boundary.
+    /// initial (INV-1, already cased upstream), the dark-ground sRGB components, the live
+    /// `connected` flag that drives the away register, and the opaque `userId` avatar disk
+    /// key (nil when the member has no avatar). A 1:1 pre-image of `IslandPuck`, carried as
+    /// its own type so no store or UI type crosses the package boundary.
     public struct ClusterMember: Sendable, Hashable {
         public let initial: String
         public let red: Int
         public let green: Int
         public let blue: Int
         public let connected: Bool
+        /// The opaque avatar disk key (nil when the member has no avatar): the born-live
+        /// frame carries it so a pre-push island can also show the avatar puck, keyed to
+        /// `avatar-<userId>.png` in the shared container the app wrote at request time.
+        public let userId: String?
 
-        public init(initial: String, red: Int, green: Int, blue: Int, connected: Bool) {
+        public init(
+            initial: String, red: Int, green: Int, blue: Int, connected: Bool,
+            userId: String? = nil
+        ) {
             self.initial = initial
             self.red = red
             self.green = green
             self.blue = blue
             self.connected = connected
+            self.userId = userId
         }
     }
 
@@ -56,7 +65,7 @@ extension IslandContentState {
             pucks: cluster.map {
                 IslandPuck(
                     initial: $0.initial, red: $0.red, green: $0.green, blue: $0.blue,
-                    connected: $0.connected)
+                    connected: $0.connected, userId: $0.userId)
             },
             filled: filled,
             total: total,

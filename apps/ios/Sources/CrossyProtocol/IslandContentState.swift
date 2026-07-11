@@ -47,27 +47,44 @@ public enum IslandStatus: String, Sendable, Hashable, Codable {
 /// sRGB components resolved server-side; `connected` drives the away register. The
 /// cluster rides the content-state, not the immutable attributes, so a member who joins
 /// after the activity started still appears.
+///
+/// `userId` is the opaque disk key for the avatar puck: the app writes a downscaled image
+/// to the shared App Group container at `avatar-<userId>.png` at activity-request time, and
+/// the widget reads it by this key to layer the image over the colored initial (the initial
+/// stays the floor: no key, no file, no container all render the initial). The wire never
+/// carries image bytes. Absent-tolerant like `avatarUrl` on the wire participant (a missing
+/// key and an explicit null both read as nil), so a server that predates it still decodes
+/// and a puck simply stays initials.
 public struct IslandPuck: Sendable, Hashable, Codable {
     public let initial: String
     public let red: Int
     public let green: Int
     public let blue: Int
     public let connected: Bool
+    /// The opaque avatar disk key (nil when the server has none, or a pre-userId server):
+    /// the widget reads `avatar-<userId>.png` from the App Group container, falling back to
+    /// the colored initial when it is nil, absent from disk, or the container is unreachable.
+    public let userId: String?
 
-    public init(initial: String, red: Int, green: Int, blue: Int, connected: Bool) {
+    public init(
+        initial: String, red: Int, green: Int, blue: Int, connected: Bool,
+        userId: String? = nil
+    ) {
         self.initial = initial
         self.red = red
         self.green = green
         self.blue = blue
         self.connected = connected
+        self.userId = userId
     }
 
     private enum CodingKeys: String, CodingKey {
-        case initial, red, green, blue, connected
+        case initial, red, green, blue, connected, userId
     }
 
     /// Every field decodeIfPresent with a floor, so a puck missing a component still
     /// decodes (a black, disconnected, letterless puck) rather than throwing (§12a).
+    /// `userId` is absent-tolerant: a missing key and an explicit null both read as nil.
     public init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         initial = try container.decodeIfPresent(String.self, forKey: .initial) ?? ""
@@ -75,6 +92,19 @@ public struct IslandPuck: Sendable, Hashable, Codable {
         green = try container.decodeIfPresent(Int.self, forKey: .green) ?? 0
         blue = try container.decodeIfPresent(Int.self, forKey: .blue) ?? 0
         connected = try container.decodeIfPresent(Bool.self, forKey: .connected) ?? false
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+    }
+
+    /// Omit `userId` from the wire when nil (the absent-tolerant posture): a puck with no
+    /// avatar key stays off the wire as an absent key, never an explicit null.
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(initial, forKey: .initial)
+        try container.encode(red, forKey: .red)
+        try container.encode(green, forKey: .green)
+        try container.encode(blue, forKey: .blue)
+        try container.encode(connected, forKey: .connected)
+        try container.encodeIfPresent(userId, forKey: .userId)
     }
 }
 

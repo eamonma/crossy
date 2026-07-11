@@ -22,11 +22,13 @@ import SwiftUI
     import AppKit
 #endif
 
-/// One fetched-and-decoded avatar, platform-neutral for the SwiftUI `Image`.
+/// One fetched-and-decoded avatar, platform-neutral for the SwiftUI `Image`. Public so the
+/// island snapshot (a composition root outside CrossyUI) can read resolved bytes to downscale
+/// into the shared container.
 #if canImport(UIKit)
-    typealias PlatformImage = UIImage
+    public typealias PlatformImage = UIImage
 #elseif canImport(AppKit)
-    typealias PlatformImage = NSImage
+    public typealias PlatformImage = NSImage
 #endif
 
 /// A url-keyed avatar image cache (@MainActor, @Observable): a view asks for a url,
@@ -38,7 +40,7 @@ import SwiftUI
 @available(iOS 17.0, macOS 14.0, *)
 @Observable
 @MainActor
-final class AvatarImageCache {
+public final class AvatarImageCache {
     /// A resolved slot: an image, or a known miss (loaded but not an image, or
     /// failed). Absence from the dictionary means not-yet-requested.
     private enum Slot {
@@ -52,7 +54,7 @@ final class AvatarImageCache {
 
     private let session: URLSession
 
-    init(session: URLSession = .shared) {
+    public init(session: URLSession = .shared) {
         self.session = session
     }
 
@@ -66,6 +68,17 @@ final class AvatarImageCache {
         #elseif canImport(AppKit)
             return Image(nsImage: platform)
         #endif
+    }
+
+    /// The RESOLVED platform image already in the cache for a url, or nil when it is still
+    /// loading, a miss, or unrequested. Unlike `image(for:)` this hands back the decoded
+    /// bytes, not a SwiftUI `Image`, so the island writer can downscale it to the shared
+    /// container. It never triggers a fetch: the island snapshot must not go to the network
+    /// while backgrounding, so a url the cache has not already resolved simply yields nil and
+    /// that puck stays initials on the island (the floor).
+    public func resolvedPlatformImage(for urlString: String) -> PlatformImage? {
+        guard case .image(let platform) = slots[urlString] else { return nil }
+        return platform
     }
 
     /// Begin a load if this url has no slot and none in flight. Idempotent: a

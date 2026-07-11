@@ -97,13 +97,17 @@ struct SolveActivityWidget: Widget {
 
 // MARK: - The render frame (the one fold every presentation reads)
 
-/// A render-ready puck: the resolved color, the initial, and the opacity the frame
-/// decided (connected, away, terminal-full, or stale-dimmed) so the views carry no logic.
+/// A render-ready puck: the resolved color, the initial, the opacity the frame decided
+/// (connected, away, terminal-full, or stale-dimmed), and the avatar image the store held for
+/// this member (nil = the colored initial, the floor), so the views carry no logic.
 private struct RenderPuck: Identifiable {
     let id: Int
     let color: Color
     let initial: String
     let opacity: Double
+    /// The avatar image read from the shared container for this puck's userId, or nil (no
+    /// key, no file, or no container). Layered over the colored initial; nil is the initial.
+    let avatar: Image?
 }
 
 /// The folded island frame. Everything a presentation needs, decided once: which cluster
@@ -150,6 +154,11 @@ private enum IslandRender {
         // hide progress. This is the pre-push island, unchanged from before the track.
         let prePush = state.pucks.isEmpty || state.total == 0
 
+        // The shared-container avatar store: read once per fold, then each puck reads its own
+        // image by userId. No container (no entitlement yet) makes every read nil, so every
+        // puck stays initials, byte-identical to before the avatar track.
+        let avatarStore = IslandAvatarStore()
+
         let pucks: [RenderPuck]
         if prePush {
             pucks = attributes.pucks.enumerated().map { index, puck in
@@ -159,7 +168,8 @@ private enum IslandRender {
                         red: Double(puck.red) / 255, green: Double(puck.green) / 255,
                         blue: Double(puck.blue) / 255),
                     initial: puck.initial,
-                    opacity: 1)
+                    opacity: 1,
+                    avatar: avatarImage(for: puck.userId, from: avatarStore))
             }
         } else {
             pucks = state.pucks.enumerated().map { index, puck in
@@ -173,7 +183,8 @@ private enum IslandRender {
                         red: Double(puck.red) / 255, green: Double(puck.green) / 255,
                         blue: Double(puck.blue) / 255),
                     initial: puck.initial,
-                    opacity: presence * dim)
+                    opacity: presence * dim,
+                    avatar: avatarImage(for: puck.userId, from: avatarStore))
             }
         }
 
@@ -209,6 +220,15 @@ private enum IslandRender {
             // A completed room seals the meter and ring solid; an abandoned room freezes
             // its partial fill without sealing.
             sealed: completed && !abandoned)
+    }
+
+    /// The avatar image for one puck's userId, read synchronously from the shared container
+    /// (owner ask 2026-07-11). A widget render carries no network and no async load, so the
+    /// image is a decode off disk or nothing: nil when there is no key, no file, or no
+    /// container, and nil renders the colored initial, the floor.
+    private static func avatarImage(for userId: String?, from store: IslandAvatarStore) -> Image? {
+        guard let platform = store.image(for: userId) else { return nil }
+        return Image(uiImage: platform)
     }
 
     /// ISO 8601, fractional seconds tolerated (the AmbientClock.parse rule, restated here
@@ -439,8 +459,19 @@ private struct PuckCluster: View {
 }
 
 /// One puck: the member's roster color at the frame's opacity, the initial in the
-/// Observatory cell tone (the value mirrors Ground.observatory cell, 0x201F27). The ring
-/// is black: on black glass the seam between stacked pucks is the glass showing through.
+/// Observatory cell tone (the value mirrors Ground.observatory cell, 0x201F27), and, when the
+/// shared container held one, the avatar image clipped to the same circle over that ground
+/// (owner ask 2026-07-11). The initial is the floor: no image (nil key, missing file, or no
+/// container) is the colored initial, byte-identical to before the avatar track. The ring,
+/// the opacity, and the away-dim wrap the whole stack, so they apply to the image exactly as
+/// to the initial (mirroring the in-app AvatarPuckOverlay law). The ring is black: on black
+/// glass the seam between stacked pucks is the glass showing through.
+///
+/// The image renders at EVERY size, including the compact (16pt) and minimal (14-16pt) slots.
+/// It is soft at those sizes, but a photo-disc still reads as "a person's picture", and the
+/// same member keeping one identity across the compact, minimal, and expanded presentations
+/// beats flipping between a face and a letter (taste call 2026-07-11, owner may overrule to
+/// initials-only below 20pt).
 private struct PuckView: View {
     let puck: RenderPuck
     let diameter: CGFloat
@@ -452,6 +483,13 @@ private struct PuckView: View {
                 Text(verbatim: puck.initial)
                     .font(.system(size: diameter * 0.42, weight: .bold))
                     .foregroundStyle(Color(red: 0x20 / 255, green: 0x1F / 255, blue: 0x27 / 255))
+            }
+            if let avatar = puck.avatar {
+                avatar
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: diameter, height: diameter)
+                    .clipShape(Circle())
             }
         }
         .frame(width: diameter, height: diameter)
