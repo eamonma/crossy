@@ -45,6 +45,27 @@ export async function loadPuzzleSnapshot(
   return rows[0]?.puzzle_snapshot ?? null;
 }
 
+/**
+ * Read the game row the actor hydrates from: the puzzle snapshot plus the room's display name
+ * (`games.name`, nullable). `null` when the game does not exist (GAME_NOT_FOUND). The name rides
+ * here, on the one read the actor already makes at hydration, so the completion alert body needs no
+ * extra query on the hot path (PROTOCOL.md 12a: the name rides the facts snapshot). Reads only
+ * columns the session's SELECT grant on `games` already covers (INV-6: name is display content, no
+ * solution).
+ */
+export async function loadGameRow(
+  pool: Pool,
+  gameId: string,
+): Promise<{ snapshot: PuzzleSnapshot; roomName: string | null } | null> {
+  const { rows } = await pool.query<{
+    puzzle_snapshot: PuzzleSnapshot;
+    name: string | null;
+  }>("select puzzle_snapshot, name from games where game_id = $1", [gameId]);
+  const row = rows[0];
+  if (row === undefined) return null;
+  return { snapshot: row.puzzle_snapshot, roomName: row.name ?? null };
+}
+
 /** Read the `game_state` row, or `null` when no one has played the game yet. */
 export async function loadGameState(
   pool: Pool,

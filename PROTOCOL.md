@@ -324,7 +324,9 @@ One JSON object rides inside the standard APNs Live Activity envelope as `aps.co
 
 ### APNs envelope and lifecycle
 
-The payload travels inside the standard ActivityKit envelope. An update carries `aps.event: "update"`, a server `aps.timestamp`, and the content-state above under `aps.content-state`. A terminal state (completed or abandoned) ships as an `end` event: `aps.event: "end"` with the final content-state under `aps.content-state`, so the last frame the activity shows is the terminal one.
+The payload travels inside the standard ActivityKit envelope. An update carries `aps.event: "update"`, a server `aps.timestamp`, and the content-state above under `aps.content-state`.
+
+A terminal state ends the activity, but the two outcomes are not shipped the same way, because done is an event. A completed game announces itself. It ships first as an alerting update: `aps.event: "update"` carrying the final content-state and an `aps.alert` dictionary (`title`, `body`, `sound`), the shape ActivityKit uses to break through, so the system auto-expands the island and lights a dark lock screen. The `title` is a fixed line and the `body` names the room. A short beat later, once the announcement has had its moment, the `end` event follows: `aps.event: "end"` with the same final content-state and a `dismissal-date`, so the last frame is the terminal one and the island then retires. An abandoned game is quiet. It ships as a single `end` event, `aps.event: "end"` with the final content-state and a `dismissal-date`, no alert. The asymmetry is deliberate: an abandonment is not a celebration.
 
 Swift decoding MUST stay tolerant of unknown keys: the payload grows by expand/contract (an additive field bumps nothing, section 14), and the two sides deploy on different clocks. The widget ships inside the app and updates only on an App Store release, while the server deploys independently and continuously, so the server may add a field the installed widget has never seen. The widget MUST ignore any key it does not recognize rather than fail to decode, exactly as section 3 requires of the WebSocket receiver.
 

@@ -5,13 +5,19 @@
 // by policy.test.ts, named by the section it defends.
 //
 // The rules (PROTOCOL.md "Live Activity push", the brief's policy section):
-//   - Presence change (a cluster member connects or disconnects) and terminal moments (completed,
-//     abandoned): push IMMEDIATELY at priority 10. Terminal ships as an `end` event with the final
-//     content-state and a dismissal date so the island retires.
+//   - Presence change (a cluster member connects or disconnects): push IMMEDIATELY at priority 10.
+//   - Terminal moments split by outcome, because done is an EVENT (owner ruling 2026-07-11):
+//       * COMPLETED: TWO decisions. At T an alerting `update` at priority 10 carrying the final
+//         content-state plus an `aps.alert` ("Solved together", the room name), so the system
+//         auto-expands the island and lights a dark lock screen. At T + ANNOUNCE_MS the `end` event
+//         with the same final content-state and a dismissal date, scheduled through the SAME wakeAtMs
+//         timer machinery the fill debounce uses. The announcement gets its moment, then the island
+//         retires.
+//       * ABANDONED: ONE quiet `end`, no alert, no celebration. The asymmetry is deliberate.
 //   - Fill progress: DEBOUNCED LATEST-STATE. At most one update per DEBOUNCE_MS, carrying the
 //     counts at send time (never a queue of intermediate states), at priority 5.
 //   - A content-state identical to the last one sent never pushes (per-game dedupe).
-//   - A kick: the kicked member's OWN tokens get an `end` for that game; everyone else gets a
+//   - A kick: the kicked member's OWN tokens get a quiet `end` for that game; everyone else gets a
 //     normal presence update.
 //
 // The policy decides WHAT and WHEN; the emitter (emitter.ts) owns the fan-out to tokens, the host
@@ -29,13 +35,13 @@ export const DEBOUNCE_MS = 20_000;
 
 /**
  * The `stale-date` offset carried on an update: how long the widget should treat the pushed
- * content-state as fresh before rendering its stale register. Set to 3x the debounce window: a
- * healthy channel refreshes fill well inside it (every 20 s), and presence pushes reset it too, so
- * the widget only crosses into stale after a real gap of about a minute with no fill and no presence
- * change. Short enough that a genuinely quiet or dropped channel visibly goes stale rather than
- * showing a frozen count as if it were live.
+ * content-state as fresh before rendering its stale register. Thirty minutes (owner ruling
+ * 2026-07-11). Stale must detect a BROKEN channel, not a quiet room: a healthy room where nobody
+ * types for two minutes must not dim the crew. Only a real gap of half an hour with no fill and no
+ * presence change (well past any normal think-pause) crosses into stale, so a live-but-quiet island
+ * keeps showing its last true frame, and only a genuinely dropped channel visibly goes stale.
  */
-export const STALE_AFTER_MS = 3 * DEBOUNCE_MS;
+export const STALE_AFTER_MS = 30 * 60 * 1000;
 
 /** APNs priority: 10 delivers immediately (presence, terminal); 5 is throttled (fill). */
 export type PushPriority = 10 | 5;
@@ -48,6 +54,36 @@ export type PushAudience =
   | { readonly kind: "game" }
   | { readonly kind: "user"; readonly userId: string }
   | { readonly kind: "exceptUser"; readonly userId: string };
+
+/**
+ * An ActivityKit alert dictionary (Apple's documented Live Activity payload shape: `aps.alert`
+ * with `title`, `body`, and `sound` as siblings). Present only on an ALERTING update: it makes the
+ * push break through, so the system auto-expands the island and lights a dark lock screen. The
+ * emitter writes this verbatim under `aps.alert`. Carries a title and the room name as body, never
+ * board content (INV-6). The completion frame is the only alerting push; every other push is quiet.
+ */
+export interface PushAlert {
+  readonly title: string;
+  readonly body: string;
+  readonly sound: string;
+}
+
+/**
+ * The title on the completion alert. A fixed, warm, ASCII line (INV-1 casing is moot for a literal);
+ * the body carries the room name so a member sees which room finished. "Solved together" names the
+ * event the ruling insists on: done is not a quiet pixel change, it announces itself.
+ */
+export const COMPLETION_ALERT_TITLE = "Solved together";
+
+/** The completion alert body when a room carries no display name (the `games.name` column is null). */
+export const COMPLETION_ALERT_BODY_UNNAMED = "Your crossword is complete";
+
+/**
+ * The standard system sound for a Live Activity alert. Apple's documented payload places `sound`
+ * inside the `alert` dictionary; `"default"` is the standard notification sound. This is the value
+ * the completion alert carries so the announcement is heard as well as seen.
+ */
+export const COMPLETION_ALERT_SOUND = "default";
 
 /**
  * One push decision the emitter enacts: send this content-state, as this event, at this priority,
@@ -63,21 +99,45 @@ export interface PushDecision {
   readonly staleAfterMs?: number;
   /** On `end`: how long the system keeps the ended activity before auto-dismissing it. */
   readonly dismissMs?: number;
+  /**
+   * On an ALERTING update (only the completion frame): the `aps.alert` block that makes the push
+   * break through, auto-expanding the island. Absent on every quiet push.
+   */
+  readonly alert?: PushAlert;
 }
 
 /**
  * Dismissal offset for a terminal `end`: how long the completed or abandoned island lingers before
- * the system retires it. Fifteen minutes lets a player who backgrounded the app still glance at the
- * final board (the solve time, the finished fill) on their lock screen after they finish, then it
- * clears itself. Long enough to be seen, short enough not to squat the lock screen.
+ * the system retires it. Five minutes (owner ruling 2026-07-11: fifteen was too long a squat on the
+ * lock screen). Long enough for a player who backgrounded the app to glance at the final board (the
+ * solve time, the finished fill) after they finish, short enough that the island does not overstay.
  */
-export const DISMISS_AFTER_MS = 15 * 60 * 1000;
+export const DISMISS_AFTER_MS = 5 * 60 * 1000;
+
+/**
+ * The gap between a completion's alerting update and its `end` (owner ruling 2026-07-11: the end
+ * follows once the announcement has had its moment). Six seconds lets the auto-expanded island hold
+ * "Solved together" long enough to register before the activity ships its terminal frame and starts
+ * its dismissal clock. Scheduled through the fill debounce's wakeAtMs timer, never a new timer path.
+ */
+export const ANNOUNCE_MS = 6000;
+
+/**
+ * The room name rides the observation, not the content-state (INV-6 keeps the content-state to
+ * counts and render facts). The completion alert body needs it; every other observation ignores it.
+ * The emitter reads it from the game row it already loads at hydration and passes it here.
+ */
+export interface TerminalObservation {
+  readonly kind: "terminal";
+  /** The room's display name for the completion alert body; may be null when the room is unnamed. */
+  readonly roomName: string | null;
+}
 
 /** The kind of room observation the policy folds. */
 export type Observation =
   | { readonly kind: "presence" }
   | { readonly kind: "fill" }
-  | { readonly kind: "terminal" }
+  | TerminalObservation
   | { readonly kind: "kick"; readonly userId: string };
 
 /**
@@ -91,6 +151,15 @@ export interface PolicyState {
   readonly lastSentAtMs: number | null;
   readonly lastFillPushAtMs: number | null;
   readonly pendingFill: LiveActivityContentState | null;
+  /**
+   * A completion's terminal `end`, held back until T + ANNOUNCE_MS so the alerting update gets its
+   * moment first. The alerting update already went out; this is the follow-up `end` waiting for the
+   * announce window to close. Null unless a completion is mid-announcement. Flushed by flushPending
+   * through the same timer machinery as pendingFill, so no new timer path exists.
+   */
+  readonly pendingEnd: LiveActivityContentState | null;
+  /** When the held `pendingEnd` becomes due (its alerting update's send time + ANNOUNCE_MS). */
+  readonly pendingEndAtMs: number | null;
 }
 
 /** The empty memory for a game the policy has not pushed yet. */
@@ -99,6 +168,8 @@ export const INITIAL_POLICY_STATE: PolicyState = {
   lastSentAtMs: null,
   lastFillPushAtMs: null,
   pendingFill: null,
+  pendingEnd: null,
+  pendingEndAtMs: null,
 };
 
 /** The fold's output: the next memory, the decisions to enact, and any due-time to re-poll. */
@@ -156,7 +227,7 @@ export function fold(
 ): PolicyResult {
   switch (observation.kind) {
     case "terminal":
-      return terminalFold(prev, contentState, nowMs);
+      return terminalFold(prev, observation.roomName, contentState, nowMs);
     case "kick":
       return kickFold(prev, observation.userId, contentState, nowMs);
     case "presence":
@@ -167,11 +238,15 @@ export function fold(
 }
 
 /**
- * A held fill becomes due: the emitter calls this when its debounce timer fires. It flushes
- * `pendingFill` if the window has now opened and the state is still novel, else it is a no-op (the
- * pending state was already superseded by a presence or terminal push). Pure, clock as data.
+ * A held decision becomes due: the emitter calls this when its timer fires. Two things can be held:
+ * a completion's follow-up `end` (pendingEnd, waiting out the ANNOUNCE_MS window after the alerting
+ * update) or a debounced fill (pendingFill). The held end takes precedence: it is a terminal, so if
+ * both are somehow present the fill is dropped. Pure, clock as data.
  */
 export function flushPending(prev: PolicyState, nowMs: number): PolicyResult {
+  if (prev.pendingEnd !== null) {
+    return flushPendingEnd(prev, nowMs);
+  }
   if (prev.pendingFill === null) {
     return { state: prev, decisions: [], wakeAtMs: null };
   }
@@ -197,6 +272,7 @@ export function flushPending(prev: PolicyState, nowMs: number): PolicyResult {
   }
   return {
     state: {
+      ...prev,
       lastSent: pending,
       lastSentAtMs: nowMs,
       lastFillPushAtMs: nowMs,
@@ -207,9 +283,46 @@ export function flushPending(prev: PolicyState, nowMs: number): PolicyResult {
   };
 }
 
-/** Terminal: an `end` to the whole game at priority 10, with a dismissal date. Dedupe applies. */
+/**
+ * Flush a completion's held `end`: the follow-up terminal frame after the alerting update has had
+ * its ANNOUNCE_MS moment. If the window has not opened yet, keep holding and re-ask for a wake. Once
+ * open, emit the `end` with the dismissal date and clear the held state. The end is NOT deduped
+ * against lastSent: the alerting update set lastSent to this same content-state, but the end is a
+ * different envelope event (it retires the island), so it must still go out.
+ */
+function flushPendingEnd(prev: PolicyState, nowMs: number): PolicyResult {
+  const end = prev.pendingEnd!;
+  const dueAtMs = prev.pendingEndAtMs ?? nowMs;
+  if (nowMs < dueAtMs) {
+    // The announcement is still having its moment; keep holding and ask to be woken when it ends.
+    return { state: prev, decisions: [], wakeAtMs: dueAtMs };
+  }
+  return {
+    state: {
+      ...prev,
+      pendingFill: null,
+      pendingEnd: null,
+      pendingEndAtMs: null,
+    },
+    decisions: [endDecision(end, { kind: "game" })],
+    wakeAtMs: null,
+  };
+}
+
+/**
+ * Terminal: the outcome decides the shape (owner ruling 2026-07-11, done is an EVENT).
+ *   - COMPLETED: TWO decisions across time. Now, an ALERTING update at priority 10 carrying the
+ *     final content-state and the `aps.alert` ("Solved together" + room name) that auto-expands the
+ *     island. The `end` is HELD as pendingEnd until nowMs + ANNOUNCE_MS and asks for a wake, so the
+ *     announcement gets its moment before the terminal frame and the dismissal clock. The follow-up
+ *     end flushes through the same wakeAtMs machinery the fill debounce uses (flushPending).
+ *   - ABANDONED (and any non-completed terminal): ONE quiet `end` now, no alert. The asymmetry is
+ *     deliberate: an abandonment is not a celebration.
+ * A terminal supersedes any held fill either way. Dedupe still guards a re-emit of the same frame.
+ */
 function terminalFold(
   prev: PolicyState,
+  roomName: string | null,
   cs: LiveActivityContentState,
   nowMs: number,
 ): PolicyResult {
@@ -221,12 +334,44 @@ function terminalFold(
       wakeAtMs: null,
     };
   }
+  if (cs.status === "completed") {
+    // The alerting update lands now; the end is held so the announcement has its moment.
+    const endAtMs = nowMs + ANNOUNCE_MS;
+    return {
+      state: {
+        lastSent: cs,
+        lastSentAtMs: nowMs,
+        lastFillPushAtMs: prev.lastFillPushAtMs,
+        pendingFill: null, // a terminal supersedes any held fill
+        pendingEnd: cs,
+        pendingEndAtMs: endAtMs,
+      },
+      decisions: [
+        {
+          event: "update",
+          priority: 10,
+          contentState: cs,
+          audience: { kind: "game" },
+          staleAfterMs: STALE_AFTER_MS,
+          alert: {
+            title: COMPLETION_ALERT_TITLE,
+            body: roomName ?? COMPLETION_ALERT_BODY_UNNAMED,
+            sound: COMPLETION_ALERT_SOUND,
+          },
+        },
+      ],
+      wakeAtMs: endAtMs,
+    };
+  }
+  // Abandoned (or any other terminal): a single quiet end, no alert, no held follow-up.
   return {
     state: {
       lastSent: cs,
       lastSentAtMs: nowMs,
       lastFillPushAtMs: prev.lastFillPushAtMs,
       pendingFill: null, // a terminal supersedes any held fill
+      pendingEnd: null,
+      pendingEndAtMs: null,
     },
     decisions: [endDecision(cs, { kind: "game" })],
     wakeAtMs: null,
@@ -257,6 +402,7 @@ function kickFold(
     });
     return {
       state: {
+        ...prev,
         lastSent: cs,
         lastSentAtMs: nowMs,
         lastFillPushAtMs: prev.lastFillPushAtMs,
@@ -284,6 +430,7 @@ function immediateUpdateFold(
   }
   return {
     state: {
+      ...prev,
       lastSent: cs,
       lastSentAtMs: nowMs,
       lastFillPushAtMs: prev.lastFillPushAtMs,
@@ -319,6 +466,7 @@ function fillFold(
   if (windowOpen) {
     return {
       state: {
+        ...prev,
         lastSent: cs,
         lastSentAtMs: nowMs,
         lastFillPushAtMs: nowMs,

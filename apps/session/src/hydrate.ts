@@ -44,6 +44,12 @@ export interface HydratedGame {
   readonly completedAt: string | null;
   readonly abandonedAt: string | null;
   readonly recentCommandIds: readonly string[];
+  /**
+   * The room's display name (`games.name`, nullable). Carried so the completion Live Activity alert
+   * body can name the room without a second read on the hot path (PROTOCOL.md 12a). Display content
+   * only, never solution-bearing (INV-6).
+   */
+  readonly roomName: string | null;
 }
 
 /** Parse the puzzle snapshot into the engine grid and the comparator's solution map. */
@@ -73,6 +79,7 @@ function readPuzzle(snapshot: PuzzleSnapshot): {
 export function hydrateGame(
   snapshot: PuzzleSnapshot,
   state: GameStateRow | null,
+  roomName: string | null = null,
 ): HydratedGame {
   const { grid, solution } = readPuzzle(snapshot);
 
@@ -101,5 +108,6 @@ export function hydrateGame(
     completedAt: state?.completedAt ?? null,
     abandonedAt: state?.abandonedAt ?? null,
     recentCommandIds: state?.recentCommandIds ?? [],
+    roomName,
   };
 }
