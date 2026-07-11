@@ -24,6 +24,7 @@ const BOARD_FIXTURE = {
     {
       userId: "u1",
       displayName: "Ana",
+      avatarUrl: "https://cdn.discordapp.com/avatars/u1/hash.png",
       color: "#7F77DD",
       role: "host",
       connected: true,
@@ -254,6 +255,7 @@ describe("ephemeral notices (PROTOCOL.md §6)", () => {
         type: "playerConnected",
         userId: "u2",
         displayName: "Bo",
+        avatarUrl: "https://www.gravatar.com/avatar/abc?d=404",
         color: "#33AA88",
         role: "solver",
       },
@@ -285,6 +287,50 @@ describe("ephemeral notices (PROTOCOL.md §6)", () => {
     const result = decodeServerMessage({ type: "sparkle", glitter: true });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("unknown_type");
+  });
+});
+
+describe("participant avatarUrl (PROTOCOL.md §4)", () => {
+  it("decodes a null avatarUrl as a first-class value, not an error", () => {
+    const board = {
+      ...BOARD_FIXTURE,
+      participants: [{ ...BOARD_FIXTURE.participants[0], avatarUrl: null }],
+    };
+    const result = decodeBoard(board);
+    assertOk(result);
+    if (result.ok) expect(result.value.participants[0]?.avatarUrl).toBeNull();
+  });
+
+  it("preserves the avatarUrl string opaquely, no provider inference", () => {
+    const url = "https://cdn.discordapp.com/avatars/u1/hash.png";
+    const result = decodeBoard(BOARD_FIXTURE);
+    assertOk(result);
+    if (result.ok) expect(result.value.participants[0]?.avatarUrl).toBe(url);
+  });
+
+  it("rejects a non-string, non-null avatarUrl as malformed", () => {
+    const board = {
+      ...BOARD_FIXTURE,
+      participants: [{ ...BOARD_FIXTURE.participants[0], avatarUrl: 42 }],
+    };
+    const result = decodeBoard(board);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("carries avatarUrl on playerConnected too (PROTOCOL.md §6)", () => {
+    const result = decodeServerMessage({
+      type: "playerConnected",
+      userId: "u2",
+      displayName: "Bo",
+      avatarUrl: null,
+      color: "#33AA88",
+      role: "solver",
+    });
+    assertOk(result);
+    if (result.ok && result.value.type === "playerConnected") {
+      expect(result.value.avatarUrl).toBeNull();
+    }
   });
 });
 

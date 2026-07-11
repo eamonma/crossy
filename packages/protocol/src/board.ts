@@ -24,6 +24,15 @@ export interface Cell {
 export interface Participant {
   readonly userId: string;
   readonly displayName: string;
+  /**
+   * An opaque, nullable avatar URL, resolved server-side once where the display name is
+   * (DESIGN.md §8): a provider metadata avatar, else a Gravatar URL from the account email, else
+   * null. `null` is a first-class value; a client renders the image when present and falls back to
+   * its initial avatar while loading, on a load error, or when null (PROTOCOL.md §4). The value is
+   * opaque: no client learns which provider produced it, and no email or hash input ever crosses
+   * the wire (INV-6 spirit).
+   */
+  readonly avatarUrl: string | null;
   readonly color: string;
   readonly role: Role;
   readonly connected: boolean;
