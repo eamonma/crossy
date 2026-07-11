@@ -43,6 +43,13 @@
       "when": 1783659600000,
       "tag": "0005_api_reads_game_state",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783813589005,
+      "tag": "0006_session_reads_avatar",
+      "breakpoints": true
     }
   ]
 }
