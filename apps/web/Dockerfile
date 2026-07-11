@@ -36,6 +36,9 @@ ENV SUPABASE_PUBLISHABLE_KEY=""
 ENV API_BASE=""
 ENV GUESTS_ENABLED="false"
 ENV TURNSTILE_SITE_KEY=""
+# The external TestFlight join link. Empty keeps the iOS "get the app" prompt hidden; set it
+# on the deploy to turn the prompt on (no rebuild). See apps/web/src/ui/GetTheApp.tsx.
+ENV TESTFLIGHT_URL=""
 COPY apps/web/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 EXPOSE 8080
