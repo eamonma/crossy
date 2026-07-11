@@ -13,6 +13,7 @@
     "@crossy/engine": "workspace:*",
     "@crossy/protocol": "workspace:*",
     "pg": "^8.13.0",
+    "posthog-node": "^5.40.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

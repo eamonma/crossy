@@ -363,6 +363,15 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       identity.userId,
       nameResult.name,
     );
+    // room_created, at the moment the game and its host membership are committed. The
+    // creator is the acting member (full account, gated above). Ids only: roomId and
+    // puzzleId, never the snapshot, cells, or solution content (INV-6). Fire-and-forget;
+    // capture never throws into the handler.
+    deps.analytics?.capture({
+      distinctId: identity.userId,
+      event: "room_created",
+      properties: { roomId: created.gameId, puzzleId },
+    });
     return c.json(
       {
         gameId: created.gameId,
