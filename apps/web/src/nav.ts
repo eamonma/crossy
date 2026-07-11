@@ -71,6 +71,17 @@ export function partyHref(gameId: string, params: URLSearchParams): string {
   return gameHref(gameId, params, { party: "1" });
 }
 
+/** The same game link with the projector flag turned on or off, so a control can toggle party
+ * mode without hand-editing the URL. `on` adds `?party=1` (identical to `partyHref`); `off`
+ * drops it, landing back on the plain interactive game. Overrides survive either way. */
+export function togglePartyHref(
+  gameId: string,
+  params: URLSearchParams,
+  on: boolean,
+): string {
+  return on ? partyHref(gameId, params) : gameHref(gameId, params);
+}
+
 /** The game route with its projector flag read off `?party=1` (present on either the path or a
  * legacy query URL). `party` is only attached when set, so a plain game link stays `{ kind, gameId }`. */
 function gameRoute(gameId: string, params: URLSearchParams): Route {

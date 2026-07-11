@@ -46,7 +46,8 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="secondary" size="sm">
+        {/* 44px-tall hit box on the 24px Share control (hit-target-y, styles.css). */}
+        <Button variant="secondary" size="sm" className="hit-target-y">
           <Share1Icon />
           <span className="hidden sm:inline">Share</span>
         </Button>
@@ -77,7 +78,9 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
               variant="default"
               size="xs"
               onClick={() => void copy()}
-              className="min-w-[3.75rem]"
+              // 44px-tall hit box on the 20px Copy control; width stays inside the field row
+              // (hit-target-y, styles.css).
+              className="hit-target-y min-w-[3.75rem]"
             >
               {copied ? <CheckIcon /> : <CopyIcon />}
               {copied ? "Copied" : "Copy"}
@@ -111,13 +114,18 @@ export function GameToolbar({
   leading?: React.ReactNode;
 }) {
   return (
-    <header className="flex items-center gap-2 px-2 sm:px-3 py-1.5">
+    // Reserve a stable row height so late-arriving presence never jolts the chrome or the
+    // board below it: 24px controls plus the py-1.5 gutter is the resting height already, so
+    // pinning it as a floor keeps the first paint (before members load) the same height.
+    <header className="flex min-h-[calc(1.5rem+0.75rem)] items-center gap-2 px-2 sm:px-3 py-1.5">
       {leading ?? (
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={onBack}
           aria-label="Back to start"
+          // 44px-tall hit box on the 24px back control (hit-target-y, styles.css).
+          className="hit-target-y"
         >
           <ChevronLeftIcon />
         </Button>
@@ -136,10 +144,17 @@ export function GameToolbar({
         </span>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
-        {members.length > 0 && (
+      {/* gap-3 throughout: the theme toggle and Share carry 44px hit boxes (hit-target), so the
+          12px gutter keeps those targets from colliding while the controls stay compact. */}
+      <div className="flex items-center gap-3">
+        {/* The presence slot always occupies its space, right-aligned, with a stable width
+            that already fits the capped stack (5 avatars at 24px overlapped by 6px, plus the
+            +N tail). Reserving it means the theme toggle and Share never slide, and the title
+            never re-truncates, when members populate after the first paint. The stack still
+            grows into this reservation, so the width never overflows it. */}
+        <div className="flex min-w-[8rem] shrink-0 items-center justify-end">
           <AvatarStack members={members} selfId={selfId} />
-        )}
+        </div>
         <ThemeToggle />
         <SharePopover shareUrl={shareUrl} />
       </div>

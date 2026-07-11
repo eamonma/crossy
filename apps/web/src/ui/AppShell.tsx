@@ -22,6 +22,7 @@
 // is pinned to the expanded width so nothing reflows or re-truncates mid-flight.
 import { useCallback, useMemo, useState } from "react";
 import {
+  DesktopIcon,
   ExitIcon,
   FileTextIcon,
   HamburgerMenuIcon,
@@ -31,7 +32,13 @@ import {
 } from "@radix-ui/react-icons";
 import type { Identity, IdentitySession } from "../identity";
 import type { Navigate, Route } from "../nav";
-import { createHref, gameHref, homeHref, puzzlesHref } from "../nav";
+import {
+  createHref,
+  gameHref,
+  homeHref,
+  puzzlesHref,
+  togglePartyHref,
+} from "../nav";
 import { Divider, Logo } from "./primitives";
 import { useTheme } from "./useTheme";
 import type { Resource } from "./useResource";
@@ -293,7 +300,18 @@ function CrossySidebar({
 
       {/* overflow-hidden clips the pinned-width user card at the rail edge mid-flight. */}
       <SidebarFooter className="overflow-hidden p-3 group-data-[collapsible=icon]:px-1">
-        <UserCard session={session} onSignOut={onSignOut} />
+        <UserCard
+          session={session}
+          onSignOut={onSignOut}
+          // Party mode is a game-only presentation, so the entry only shows on a game route;
+          // it opens the projector screen (?party=1), where a plain "Leave party mode" control
+          // returns here. The URL flag keeps working exactly as before.
+          onEnterParty={
+            route.kind === "game"
+              ? () => go(togglePartyHref(route.gameId, params, true))
+              : undefined
+          }
+        />
       </SidebarFooter>
     </Sidebar>
   );
@@ -372,8 +390,16 @@ function RecentGames({
   );
 }
 
-/** The account menu items, shared by the full card and the rail's avatar-only trigger. */
-function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
+/** The account menu items, shared by the full card and the rail's avatar-only trigger. When a
+ * game is open, `onEnterParty` adds a plain entry into party mode so it no longer takes a
+ * hand-typed ?party in the URL. */
+function AccountMenu({
+  onSignOut,
+  onEnterParty,
+}: {
+  onSignOut: () => void;
+  onEnterParty?: (() => void) | undefined;
+}) {
   const { theme, toggle } = useTheme();
   return (
     <>
@@ -382,6 +408,12 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
         {theme === "dark" ? <SunIcon /> : <MoonIcon />}
         {theme === "dark" ? "Light theme" : "Dark theme"}
       </DropdownMenuItem>
+      {onEnterParty !== undefined && (
+        <DropdownMenuItem onClick={onEnterParty}>
+          <DesktopIcon />
+          Party mode
+        </DropdownMenuItem>
+      )}
       <DropdownMenuSeparator />
       <DropdownMenuItem onClick={onSignOut}>
         <ExitIcon />
@@ -399,9 +431,11 @@ function AccountMenu({ onSignOut }: { onSignOut: () => void }) {
 function UserCard({
   session,
   onSignOut,
+  onEnterParty,
 }: {
   session: IdentitySession | null;
   onSignOut: () => void;
+  onEnterParty?: (() => void) | undefined;
 }) {
   const name = session?.displayName ?? "You";
   const initial = (session?.displayName ?? "Y").slice(0, 1).toUpperCase();
@@ -435,7 +469,7 @@ function UserCard({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <AccountMenu onSignOut={onSignOut} />
+            <AccountMenu onSignOut={onSignOut} onEnterParty={onEnterParty} />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -453,7 +487,7 @@ function UserCard({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right" align="end" className="w-52">
-            <AccountMenu onSignOut={onSignOut} />
+            <AccountMenu onSignOut={onSignOut} onEnterParty={onEnterParty} />
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

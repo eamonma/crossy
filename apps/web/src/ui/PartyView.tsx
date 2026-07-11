@@ -83,12 +83,16 @@ export function PartyView({
   gameId,
   code,
   name,
+  onExit,
 }: {
   store: GameStore;
   puzzle: Puzzle;
   gameId: string;
   code: string | null;
   name: string | null;
+  /** Leave party mode, back to the interactive game. Undefined on a projector opened straight
+   * from a ?party link with nowhere in-app to return; the control only renders when set. */
+  onExit?: () => void;
 }) {
   // The screen is meant to stay lit for hours; hold a screen wake lock while it is mounted.
   useWakeLock(true);
@@ -238,7 +242,21 @@ export function PartyView({
         className="flex h-full w-[36%] min-w-[20rem] max-w-[38rem] shrink-0 flex-col overflow-hidden p-[4vmin]"
         style={{ fontSize: "clamp(0.9rem, 1.7vmin, 1.55rem)" }}
       >
-        <Logo size={46} />
+        <div className="flex items-center justify-between gap-[1em]">
+          <Logo size={46} />
+          {/* A plain way back to the interactive game, the exit side of the party-mode toggle.
+              Quiet and em-relative like the rest of the rail; only shown when there is an
+              in-app game to return to. */}
+          {onExit !== undefined && (
+            <button
+              type="button"
+              onClick={onExit}
+              className="shrink-0 rounded-3 px-[0.7em] py-[0.35em] text-[0.95em] text-text-muted underline decoration-dashed underline-offset-4 transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+            >
+              Leave party mode
+            </button>
+          )}
+        </div>
 
         <h1 className="mt-[0.7em] text-balance font-display text-[2.7em] font-medium leading-[1.03] tracking-[-0.01em]">
           {title}

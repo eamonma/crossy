@@ -10,6 +10,7 @@ import {
   partyHref,
   preservedParams,
   puzzlesHref,
+  togglePartyHref,
 } from "./nav";
 
 const p = (search: string): URLSearchParams => new URLSearchParams(search);
@@ -107,6 +108,33 @@ describe("href builders (dev/smoke overrides survive every in-app link)", () => 
       kind: "game",
       gameId: "g-1",
       party: true,
+    });
+  });
+
+  it("togglePartyHref adds ?party=1 when on, matching partyHref (a control enters party mode)", () => {
+    expect(togglePartyHref("g-1", overrides, true)).toBe(
+      partyHref("g-1", overrides),
+    );
+    const url = new URL(togglePartyHref("g-1", overrides, true), "http://x");
+    expect(url.searchParams.get("party")).toBe("1");
+    expect(url.searchParams.get("token")).toBe("T");
+    // The projector route, so the toggle round-trips into party mode.
+    expect(parseRoute(url.pathname, url.searchParams)).toEqual({
+      kind: "game",
+      gameId: "g-1",
+      party: true,
+    });
+  });
+
+  it("togglePartyHref drops the flag when off, landing on the plain game (the toggle leaves party mode)", () => {
+    const url = new URL(togglePartyHref("g-1", overrides, false), "http://x");
+    expect(url.pathname).toBe("/game/g-1");
+    expect(url.searchParams.get("party")).toBeNull();
+    expect(url.searchParams.get("token")).toBe("T");
+    // Back to the interactive game route, no party flag.
+    expect(parseRoute(url.pathname, url.searchParams)).toEqual({
+      kind: "game",
+      gameId: "g-1",
     });
   });
 });

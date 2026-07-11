@@ -103,7 +103,9 @@ export function SolvingNow({ roster }: { roster: Roster }) {
           onClick={toggle}
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand solving now" : "Collapse solving now"}
-          className="ml-auto text-text-subtle"
+          // 44px hit box on the 20px chevron; alone at the row end, so a full square is safe
+          // (hit-target, styles.css).
+          className="ml-auto text-text-subtle hit-target"
         >
           {collapsed ? <ChevronDownIcon /> : <ChevronUpIcon />}
         </Button>
