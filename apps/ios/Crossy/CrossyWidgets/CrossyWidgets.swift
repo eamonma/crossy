@@ -64,7 +64,9 @@ struct SolveActivityWidget: Widget {
                         .padding(.vertical, 10)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimerLabel(frame: frame, size: 32, weight: .semibold, maxWidth: 96)
+                    // 104 fits the full "59:59" reservation at 32pt with air; 96 brushed
+                    // it and truncation showed an ellipsis instead of the clock.
+                    TimerLabel(frame: frame, size: 32, weight: .semibold, maxWidth: 104)
                         .padding(.trailing, 6)
                         .padding(.vertical, 10)
                 }
@@ -260,18 +262,20 @@ private struct TimerLabel: View {
             if let frozen = frame.frozenTime {
                 Text(verbatim: frozen)
             } else {
-                // The live register coarsens with the room's age (owner ruling
-                // 2026-07-11, the ninety-hour question). Ticking rooms bound the range
-                // from render time, not the anchor: the old anchor-plus-24h end sat in
-                // the PAST for a room over ~16h old and froze the display at the range's
-                // end. Render time plus 9h outlives the island's own 8h system cap, and
-                // every push re-derives it.
+                // The live register coarsens with the room's age (owner rulings
+                // 2026-07-11). Ticking is bounded to the anchor's FIRST HOUR: the
+                // auto-updating timer reserves layout width for the widest string its
+                // range can show, so a wider range reserves H:MM:SS and the capped label
+                // renders an ellipsis instead of the time (owner device report). Bounded
+                // to the hour, the reservation is exactly "59:59" and always fits. A
+                // room crossing the hour between pushes freezes at 59:59 for a beat;
+                // the next push render flips it into the static H:MM register.
                 switch IslandPresentation.elapsedRegister(
                     ageSeconds: Int(Date().timeIntervalSince(frame.anchor)))
                 {
                 case .ticking:
                     Text(
-                        timerInterval: frame.anchor...Date().addingTimeInterval(9 * 3600),
+                        timerInterval: frame.anchor...frame.anchor.addingTimeInterval(3599),
                         countsDown: false)
                 case .coarse(let reading):
                     Text(verbatim: reading)

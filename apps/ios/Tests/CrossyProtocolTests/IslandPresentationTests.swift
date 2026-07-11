@@ -96,13 +96,21 @@ final class IslandPresentationTests: XCTestCase {
         XCTAssertEqual(IslandPresentation.frozenSolveTime(seconds: seconds), "1:30")
     }
 
-    /// The elapsed register coarsens with the room's age (owner ruling 2026-07-11, the
-    /// ninety-hour question): under a day ticks natively, a day to a week reads in days
-    /// and hours, a week or more is the infinity mark.
+    /// The elapsed register coarsens with the room's age (owner rulings 2026-07-11):
+    /// under an HOUR ticks natively (bounded so the timer's reservation stays MM:SS-wide
+    /// and can never ellipsize), an hour to a day reads static H:MM (never three
+    /// sections), a day to a week reads in days, a week or more is the infinity mark.
     func test_elapsedRegisterCoarsensWithAge() {
+        let hour = 3600
         let day = 86_400
         XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: 0), .ticking)
-        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: day - 1), .ticking)
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: hour - 1), .ticking)
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: hour), .coarse("1:00"))
+        XCTAssertEqual(
+            IslandPresentation.elapsedRegister(ageSeconds: hour + 14 * 60), .coarse("1:14"),
+            "the hour band reads H:MM, the frozen-time form")
+        XCTAssertEqual(
+            IslandPresentation.elapsedRegister(ageSeconds: day - 1), .coarse("23:59"))
         XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: day), .coarse("1 d"))
         XCTAssertEqual(
             IslandPresentation.elapsedRegister(ageSeconds: 90 * 3600), .coarse("3 d"),
