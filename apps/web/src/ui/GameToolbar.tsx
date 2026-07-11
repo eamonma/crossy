@@ -46,7 +46,8 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="secondary" size="sm">
+        {/* 44px-tall hit box on the 24px Share control (hit-target-y, styles.css). */}
+        <Button variant="secondary" size="sm" className="hit-target-y">
           <Share1Icon />
           <span className="hidden sm:inline">Share</span>
         </Button>
@@ -77,7 +78,9 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
               variant="default"
               size="xs"
               onClick={() => void copy()}
-              className="min-w-[3.75rem]"
+              // 44px-tall hit box on the 20px Copy control; width stays inside the field row
+              // (hit-target-y, styles.css).
+              className="hit-target-y min-w-[3.75rem]"
             >
               {copied ? <CheckIcon /> : <CopyIcon />}
               {copied ? "Copied" : "Copy"}
@@ -121,6 +124,8 @@ export function GameToolbar({
           size="icon-sm"
           onClick={onBack}
           aria-label="Back to start"
+          // 44px-tall hit box on the 24px back control (hit-target-y, styles.css).
+          className="hit-target-y"
         >
           <ChevronLeftIcon />
         </Button>
@@ -139,7 +144,9 @@ export function GameToolbar({
         </span>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      {/* gap-3 throughout: the theme toggle and Share carry 44px hit boxes (hit-target), so the
+          12px gutter keeps those targets from colliding while the controls stay compact. */}
+      <div className="flex items-center gap-3">
         {/* The presence slot always occupies its space, right-aligned, with a stable width
             that already fits the capped stack (5 avatars at 24px overlapped by 6px, plus the
             +N tail). Reserving it means the theme toggle and Share never slide, and the title

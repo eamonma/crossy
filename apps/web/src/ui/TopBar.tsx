@@ -20,6 +20,9 @@ export function ThemeToggle() {
         theme === "dark" ? "Switch to light theme" : "Switch to dark theme"
       }
       title="Theme"
+      // A 44px-tall hit box on the 24px toggle, visual size unchanged; height-only so it never
+      // collides with a neighbor in a packed row (hit-target-y, styles.css).
+      className="hit-target-y"
     >
       {theme === "dark" ? <SunIcon /> : <MoonIcon />}
     </Button>

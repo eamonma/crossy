@@ -276,7 +276,9 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn(className)}
+      // The 24px rail toggle keeps its compact look but carries a 44px hit box (hit-target,
+      // styles.css) so a thumb catches it without the button visibly inflating.
+      className={cn("hit-target", className)}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();

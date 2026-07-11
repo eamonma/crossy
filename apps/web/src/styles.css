@@ -608,6 +608,40 @@
 }
 
 /*
+ * Hit target: the game chrome runs small (24px icon buttons, a 20px collapse toggle) to keep
+ * the board the hero, but that is well under the 44px minimum tap target the keys already honor
+ * (--grid-touch-target). These overlay a centered, transparent hit box on a control without
+ * changing its visual size, so a thumb catches it while the chrome stays compact. The control
+ * gets position: relative so the ::after anchors to it; the overlay is inert (no paint) and only
+ * extends the button's own tap target.
+ *
+ * `hit-target` grows the box to 44px on both axes: for controls that stand alone (the rail
+ * toggle, the collapse chevron), where a full square cannot overlap a neighbor. `hit-target-y`
+ * grows only the height to 44px and never bleeds sideways: for controls packed in a row (the
+ * toolbar cluster), so their tap boxes never steal each other's taps.
+ */
+.hit-target,
+.hit-target-y {
+  position: relative;
+}
+
+.hit-target::after,
+.hit-target-y::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  min-height: var(--grid-touch-target);
+  width: 100%;
+  height: 100%;
+  transform: translate(-50%, -50%);
+}
+
+.hit-target::after {
+  min-width: var(--grid-touch-target);
+}
+
+/*
  * Conflict flash (Decision 2.1d-1; PROTOCOL section 8): the cell fills with the writer's
  * presence color at full opacity and fades to transparent over 300 ms, ease-out, leaving
  * the new letter. Gameplay's one motion exception besides completion confetti.
