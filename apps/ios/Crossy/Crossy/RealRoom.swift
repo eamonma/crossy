@@ -31,10 +31,15 @@ final class RealRoom {
     let store = GameStore()
     let chrome = RoomChromeModel()
 
-    /// The render shapes, placeholder until the REST view lands: until then the store
-    /// stays `connecting`, so nothing renders as playable truth and input is refused
-    /// (the store's own pre-welcome gate). `onReady` in `run` rebuilds the view against
-    /// the real geometry once the fetch returns.
+    /// The render shapes. `puzzle` starts as a 1x1 stand-in that exists only to give
+    /// this non-optional property a value before the REST fetch returns; ContentView's
+    /// `RealRoomView` never renders a board against it (I3f: a board painted from the
+    /// stand-in would show the wrong dimensions for one frame and then reflow the
+    /// instant `ready` flips), so the stand-in is never playable truth on screen. Once
+    /// `run()`'s `GET /games/{id}` lands, `puzzle` becomes the real `rows`/`cols`/mask
+    /// geometry (RoomMapping) and `onReady` fires; the store itself stays `connecting`
+    /// until the WebSocket `welcome`, so the first board paint is the correct empty
+    /// shape and cell contents hydrate in afterward with no dimensional change.
     private(set) var puzzle: GridPuzzle
     private(set) var clues: ClueBook
     private(set) var roomName: String
