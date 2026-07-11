@@ -72,7 +72,7 @@ Supabase project exists (a placeholder is written until then).
 | Variable                   | Secret | Supabase-gated | Value / meaning                                                                                     |
 | -------------------------- | ------ | -------------- | --------------------------------------------------------------------------------------------------- |
 | `PORT`                     | no     | no             | `8080`. nginx listen port; the web domain targets it.                                               |
-| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.party` (the Supabase custom domain). Empty selects the mock identity adapter.      |
+| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.party` (the Supabase custom domain). Empty selects the mock identity adapter.   |
 | `SUPABASE_PUBLISHABLE_KEY` | no     | yes            | `sb_publishable_...`. Public by design (INV-6). Empty selects the mock identity adapter.            |
 | `API_BASE`                 | no     | no             | `https://<api public domain>`. The default REST base; `?api=` still overrides it per link.          |
 | `GUESTS_ENABLED`           | no     | no             | `true` or `false` (emitted unquoted into config.json). Ships `false` until anonymous+captcha is on. |
@@ -253,12 +253,12 @@ The product domain moves from `crossy.me` to `crossy.party`. The code is already
 (the plist, entitlement, privacy/terms pages, and tests all read `crossy.party`); what
 remains is env, DNS, and dashboards. Target mapping:
 
-| Domain                 | Fronts               | Replaces (crossy.me)                     |
-| ---------------------- | -------------------- | ---------------------------------------- |
-| `crossy.party`         | web (Railway)        | `crossy.me`                              |
-| `session.crossy.party` | session (Railway)    | `session.crossy.me`                      |
-| `rest.crossy.party`    | api (Railway)        | `rest.crossy.me`                         |
-| `api.crossy.party`     | Supabase auth (cust) | `api.crossy.me`                          |
+| Domain                 | Fronts               | Replaces (crossy.me) |
+| ---------------------- | -------------------- | -------------------- |
+| `crossy.party`         | web (Railway)        | `crossy.me`          |
+| `session.crossy.party` | session (Railway)    | `session.crossy.me`  |
+| `rest.crossy.party`    | api (Railway)        | `rest.crossy.me`     |
+| `api.crossy.party`     | Supabase auth (cust) | `api.crossy.me`      |
 
 The Railway images carry no domains, so the web/session/api hostname moves are env + DNS
 only. The web image does bake the static pages (`privacy.html`, `terms.html`, the AASA,

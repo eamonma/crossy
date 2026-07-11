@@ -34,7 +34,9 @@ describe("buildShareUrl (share popover no longer needs ?code= in the current URL
   it("appends the name for old-link continuity, URL-encoded", () => {
     expect(
       buildShareUrl({ ...base, code: "ABCD2345", name: "Sunday themeless" }),
-    ).toBe("https://crossy.party/game/g-1?code=ABCD2345&name=Sunday%20themeless");
+    ).toBe(
+      "https://crossy.party/game/g-1?code=ABCD2345&name=Sunday%20themeless",
+    );
   });
 
   it("returns null when there is no code to share (popover shows its fallback message)", () => {
