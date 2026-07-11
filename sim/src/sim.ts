@@ -274,6 +274,8 @@ export class Sim {
     return this.clients.map((c) => ({
       userId: c.userId,
       displayName: `P${c.index}`,
+      // Simulated participants carry no avatar; convergence is over board state, not presence chrome.
+      avatarUrl: null,
       color: "#000000",
       role: c.role,
       connected: c.connected,
