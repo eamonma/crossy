@@ -8,6 +8,37 @@
 import CoreGraphics
 import CrossyDesign
 
+/// Standing chrome's cover over the full-bleed board, in viewport points (the
+/// owner's full-bleed ruling, 2026-07-10: the board runs under the floating room
+/// bar and clue bar; the camera, not the layout, keeps content readable). Two
+/// registers ride this one type:
+///
+/// - The STANDING inset (the room bar above, the one-line clue bar plus feather
+///   below) feeds the clamp: a fitting board centers between the bars, a panned
+///   board pins its edges to the window, and because the standing inset is built
+///   from constants it never moves with clue length. The board past the window
+///   edge is full bleed by design.
+/// - The KEEP-CLEAR inset (the live, possibly wrapped bar) feeds only the
+///   follow: the selected cell pans clear of the grown bar, and nothing else
+///   moves.
+public struct GridOcclusion: Equatable, Sendable {
+    public var top: CGFloat
+    public var bottom: CGFloat
+
+    public init(top: CGFloat = 0, bottom: CGFloat = 0) {
+        self.top = top
+        self.bottom = bottom
+    }
+
+    public static let none = GridOcclusion()
+
+    /// The unobstructed height of a viewport under this occlusion, floored at
+    /// zero so degenerate chrome can never invert the window.
+    public func windowHeight(of viewport: CGSize) -> CGFloat {
+        max(viewport.height - top - bottom, 0)
+    }
+}
+
 public struct GridCamera: Equatable, Sendable {
     /// Viewport points per module unit.
     public var scale: CGFloat
@@ -39,35 +70,57 @@ public struct GridCamera: Equatable, Sendable {
         CGSize(width: CGFloat(cols) * GridModule.unit, height: CGFloat(rows) * GridModule.unit)
     }
 
-    /// The scale at which the whole board fits the viewport.
-    public static func fitScale(viewport: CGSize, rows: Int, cols: Int) -> CGFloat {
+    /// The scale at which the whole board fits the viewport's unobstructed
+    /// window (full bleed: the bars float over the board, so "fits" means
+    /// visible between them, not merely inside the screen).
+    public static func fitScale(
+        viewport: CGSize, rows: Int, cols: Int, occlusion: GridOcclusion = .none
+    ) -> CGFloat {
         let board = boardSize(rows: rows, cols: cols)
         guard board.width > 0, board.height > 0 else { return legibilityFloorScale }
-        return min(viewport.width / board.width, viewport.height / board.height)
+        return min(viewport.width / board.width, occlusion.windowHeight(of: viewport) / board.height)
     }
 
     /// The zoom-out clamp: whole-board fit when that respects the legibility floor
     /// (no reason to shrink a fitting board further), else the floor itself (a 25x25
     /// on a narrow phone pans instead of blurring). Never above the zoom-in ceiling,
     /// which keeps the range non-empty for tiny boards whose fit exceeds it.
-    public static func minScale(viewport: CGSize, rows: Int, cols: Int) -> CGFloat {
-        min(maxScale, max(fitScale(viewport: viewport, rows: rows, cols: cols), legibilityFloorScale))
+    public static func minScale(
+        viewport: CGSize, rows: Int, cols: Int, occlusion: GridOcclusion = .none
+    ) -> CGFloat {
+        min(
+            maxScale,
+            max(
+                fitScale(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion),
+                legibilityFloorScale))
     }
 
-    /// The opening camera: as much board as the clamps allow, centered.
-    public static func initial(viewport: CGSize, rows: Int, cols: Int) -> GridCamera {
-        GridCamera(scale: minScale(viewport: viewport, rows: rows, cols: cols), offset: .zero)
-            .clamped(viewport: viewport, rows: rows, cols: cols)
+    /// The opening camera: as much board as the clamps allow, centered in the
+    /// unobstructed window.
+    public static func initial(
+        viewport: CGSize, rows: Int, cols: Int, occlusion: GridOcclusion = .none
+    ) -> GridCamera {
+        GridCamera(
+            scale: minScale(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion),
+            offset: .zero)
+            .clamped(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)
     }
 
     // MARK: Clamping
 
     /// Scale into bounds; each axis then centers when the board is smaller than the
-    /// viewport and otherwise pins so no gap opens between board edge and viewport
-    /// edge. The board can never fly offscreen.
-    public func clamped(viewport: CGSize, rows: Int, cols: Int) -> GridCamera {
+    /// unobstructed window and otherwise pins so no gap opens between board edge and
+    /// window edge. The board can never fly offscreen, and past the window edge it
+    /// runs under the floating bars (full bleed): a fully panned board rests its
+    /// first row just below the room bar and its last just above the clue bar's
+    /// feather, exactly the scroll-inset grammar. The occlusion here is the
+    /// STANDING inset, constant under clue growth, so the clamp never moves the
+    /// board when the bar breathes.
+    public func clamped(
+        viewport: CGSize, rows: Int, cols: Int, occlusion: GridOcclusion = .none
+    ) -> GridCamera {
         let bounded = min(
-            max(scale, Self.minScale(viewport: viewport, rows: rows, cols: cols)),
+            max(scale, Self.minScale(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)),
             Self.maxScale)
         let board = Self.boardSize(rows: rows, cols: cols)
         let content = CGSize(width: board.width * bounded, height: board.height * bounded)
@@ -75,12 +128,18 @@ public struct GridCamera: Equatable, Sendable {
             scale: bounded,
             offset: CGPoint(
                 x: Self.clampedAxis(offset.x, content: content.width, viewport: viewport.width),
-                y: Self.clampedAxis(offset.y, content: content.height, viewport: viewport.height)))
+                y: Self.clampedAxis(
+                    offset.y, content: content.height, viewport: viewport.height,
+                    insetMin: occlusion.top, insetMax: occlusion.bottom)))
     }
 
-    private static func clampedAxis(_ offset: CGFloat, content: CGFloat, viewport: CGFloat) -> CGFloat {
-        if content <= viewport { return (viewport - content) / 2 }
-        return min(0, max(viewport - content, offset))
+    private static func clampedAxis(
+        _ offset: CGFloat, content: CGFloat, viewport: CGFloat,
+        insetMin: CGFloat = 0, insetMax: CGFloat = 0
+    ) -> CGFloat {
+        let window = max(viewport - insetMin - insetMax, 0)
+        if content <= window { return insetMin + (window - content) / 2 }
+        return min(insetMin, max(insetMin + window - content, offset))
     }
 
     // MARK: Gestures
@@ -89,11 +148,12 @@ public struct GridCamera: Equatable, Sendable {
     /// them), then clamp. The centroid holds still across the zoom; `pinched`
     /// generalizes this to a centroid that also drifts.
     public func zoomed(
-        by magnification: CGFloat, anchor: CGPoint, viewport: CGSize, rows: Int, cols: Int
+        by magnification: CGFloat, anchor: CGPoint, viewport: CGSize, rows: Int, cols: Int,
+        occlusion: GridOcclusion = .none
     ) -> GridCamera {
         pinched(
             by: magnification, startCentroid: anchor, centroid: anchor,
-            viewport: viewport, rows: rows, cols: cols)
+            viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)
     }
 
     /// Pinch, the Photos/Maps rule: the board point under the pinch's START
@@ -111,13 +171,15 @@ public struct GridCamera: Equatable, Sendable {
     /// drift pans.
     public func pinched(
         by magnification: CGFloat, startCentroid: CGPoint, centroid: CGPoint,
-        viewport: CGSize, rows: Int, cols: Int
+        viewport: CGSize, rows: Int, cols: Int, occlusion: GridOcclusion = .none
     ) -> GridCamera {
         guard magnification > 0, scale > 0 else { return self }
         // Clamp the scale before placing the pin: the anchor law must hold at the
         // scale that renders, not at the raw target the clamp would then pull back.
         let target = min(
-            max(scale * magnification, Self.minScale(viewport: viewport, rows: rows, cols: cols)),
+            max(
+                scale * magnification,
+                Self.minScale(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)),
             Self.maxScale)
         // The board point under the start centroid, in module units.
         let boardPoint = CGPoint(
@@ -131,16 +193,19 @@ public struct GridCamera: Equatable, Sendable {
                 y: centroid.y - boardPoint.y * target))
         // Bounds-clamp only: the scale is already inside its range, so this pins
         // the offset without touching the pin the scale would otherwise break.
-        return moved.clamped(viewport: viewport, rows: rows, cols: cols)
+        return moved.clamped(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)
     }
 
     /// Drag: translate and clamp. Inert when the board already fits (clamping
     /// re-centers), so pan only bites when zoomed past fit.
-    public func panned(by translation: CGSize, viewport: CGSize, rows: Int, cols: Int) -> GridCamera {
+    public func panned(
+        by translation: CGSize, viewport: CGSize, rows: Int, cols: Int,
+        occlusion: GridOcclusion = .none
+    ) -> GridCamera {
         GridCamera(
             scale: scale,
             offset: CGPoint(x: offset.x + translation.width, y: offset.y + translation.height))
-            .clamped(viewport: viewport, rows: rows, cols: cols)
+            .clamped(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)
     }
 
     // MARK: Hit testing
@@ -163,17 +228,32 @@ public struct GridCamera: Equatable, Sendable {
     /// stays minimal.
     public static let followMarginPoints: CGFloat = 24
 
-    /// The minimal pan that brings `cell` fully on screen with `margin` breathing
-    /// room (I2c camera follow: a jump that lands the cursor off-screen pans the
-    /// least distance that shows it; a visible cursor moves nothing). Returns nil
-    /// when no pan is needed or possible (the clamp already centers a fitting
-    /// board), so callers animate only real movement. Scale never changes: follow
-    /// is a pan, not a zoom.
+    /// The minimal pan that brings `cell` into the unobstructed window with
+    /// `margin` breathing room (I2c camera follow: a jump that lands the cursor
+    /// off-screen pans the least distance that shows it; a visible cursor moves
+    /// nothing). Returns nil when no pan is needed or possible (the clamp already
+    /// centers a fitting board), so callers animate only real movement. Scale
+    /// never changes: follow is a pan, not a zoom.
+    ///
+    /// `occlusion` is the STANDING inset the clamp holds (constant under clue
+    /// growth); `keepClear` is the LIVE cover the cell must escape (the wrapped
+    /// bar plus feather; defaults to the standing inset). The final clamp rides
+    /// the standing inset on purpose: a grown bar may pull the cell clear only
+    /// as far as the standing pin allows, so clue length can never shove a
+    /// bottom-pinned board around, only rescue the one selected cell (the
+    /// full-bleed ruling, owner ask 2026-07-10).
     public func following(
         cell: Int, viewport: CGSize, rows: Int, cols: Int,
-        margin: CGFloat = GridCamera.followMarginPoints
+        margin: CGFloat = GridCamera.followMarginPoints,
+        occlusion: GridOcclusion = .none,
+        keepClear: GridOcclusion? = nil
     ) -> GridCamera? {
         guard cell >= 0, cell < rows * cols else { return nil }
+        // The cell's window is the larger cover per edge, so a keep-clear that
+        // lags the standing inset can never open a window the bars still cover.
+        let live = keepClear ?? occlusion
+        let clear = GridOcclusion(
+            top: max(live.top, occlusion.top), bottom: max(live.bottom, occlusion.bottom))
         let rect = GridModule.cellRect(cell, cols: cols)
         let target = GridCamera(
             scale: scale,
@@ -183,8 +263,9 @@ public struct GridCamera: Equatable, Sendable {
                     viewport: viewport.width, margin: margin),
                 y: Self.followedAxis(
                     offset.y, cellMin: rect.minY * scale, cellMax: rect.maxY * scale,
-                    viewport: viewport.height, margin: margin)))
-            .clamped(viewport: viewport, rows: rows, cols: cols)
+                    viewport: viewport.height, margin: margin,
+                    insetMin: clear.top, insetMax: clear.bottom)))
+            .clamped(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)
         return target == self ? nil : target
     }
 
@@ -202,19 +283,22 @@ public struct GridCamera: Equatable, Sendable {
 
     /// One axis of the minimal pan: shift only as far as the near edge demands.
     /// `cellMin`/`cellMax` are the cell's bounds in scaled content points; the
-    /// margin collapses when the viewport is too small to honor it.
+    /// window is the viewport less the occluding chrome, and the margin collapses
+    /// when the window is too small to honor it.
     private static func followedAxis(
         _ offset: CGFloat, cellMin: CGFloat, cellMax: CGFloat,
-        viewport: CGFloat, margin: CGFloat
+        viewport: CGFloat, margin: CGFloat,
+        insetMin: CGFloat = 0, insetMax: CGFloat = 0
     ) -> CGFloat {
-        let inset = min(margin, max(0, (viewport - (cellMax - cellMin)) / 2))
+        let window = max(viewport - insetMin - insetMax, 0)
+        let inset = min(margin, max(0, (window - (cellMax - cellMin)) / 2))
         let visibleMin = cellMin + offset
         let visibleMax = cellMax + offset
-        if visibleMin < inset {
-            return inset - cellMin
+        if visibleMin < insetMin + inset {
+            return insetMin + inset - cellMin
         }
-        if visibleMax > viewport - inset {
-            return viewport - inset - cellMax
+        if visibleMax > viewport - insetMax - inset {
+            return viewport - insetMax - inset - cellMax
         }
         return offset
     }

@@ -191,9 +191,13 @@ enum ChromeSettleCurve {
 
 #if os(iOS)
     /// CADisplayLink bridged to an AsyncStream: each yield is one real display
-    /// frame, ProMotion included, so a walk steps exactly once per frame.
+    /// frame, ProMotion included, so a walk steps exactly once per frame. Shared
+    /// by every hand-stepped walk in the room (the melt's settle here, the
+    /// camera's follow pan in CrossyGridView): a slept interval is not
+    /// frame-synced, and its jitter read as lag on the owner's device
+    /// (finding 2026-07-10).
     @MainActor
-    private final class FrameTicker: NSObject {
+    final class FrameTicker: NSObject {
         private var link: CADisplayLink?
         private var continuation: AsyncStream<Void>.Continuation?
 

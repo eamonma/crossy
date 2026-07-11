@@ -329,6 +329,174 @@ final class GridCameraTests: XCTestCase {
         XCTAssertEqual(boardPoint(pastCeiling, under: centroid).y, pinned.y, accuracy: 0.01)
     }
 
+    // MARK: Occlusion (the full-bleed ruling, owner ask 2026-07-10)
+
+    /// A room-bar-and-clue-bar-shaped cover: 110 above, 92 below.
+    private let occlusion = GridOcclusion(top: 110, bottom: 92)
+
+    func test_occlusion_windowHeightFloorsAtZero() {
+        XCTAssertEqual(occlusion.windowHeight(of: viewport), 560 - 110 - 92)
+        let monster = GridOcclusion(top: 400, bottom: 400)
+        XCTAssertEqual(monster.windowHeight(of: viewport), 0)
+    }
+
+    func test_fitScale_occlusionFitsTheWindowNotTheViewport_fullBleed() {
+        // A 9x9 is 324 units square. Height-limited fit under the cover uses
+        // the 358-point window, not the 560-point viewport.
+        let tall = CGSize(width: 500, height: 560)
+        XCTAssertEqual(
+            GridCamera.fitScale(viewport: tall, rows: 9, cols: 9, occlusion: occlusion),
+            (560.0 - 110 - 92) / 324, accuracy: 0.0001)
+        // No occlusion reproduces the old fit exactly.
+        XCTAssertEqual(
+            GridCamera.fitScale(viewport: tall, rows: 9, cols: 9),
+            500.0 / 324, accuracy: 0.0001)
+    }
+
+    func test_clamped_centersAFittingBoardInsideTheWindow_fullBleed() {
+        // Width-limited 9x9 on a tall viewport: content is 393 points square,
+        // shorter than the 598-point window. The y-center is the window's
+        // center, not the screen's, so the board rests between the bars.
+        let tall = CGSize(width: 393, height: 800)
+        let camera = GridCamera(scale: 393.0 / 324, offset: .zero)
+            .clamped(viewport: tall, rows: 9, cols: 9, occlusion: occlusion)
+        let window = 800.0 - 110 - 92
+        XCTAssertEqual(camera.offset.y, 110 + (window - 393) / 2, accuracy: 0.001)
+        XCTAssertEqual(camera.offset.x, 0, accuracy: 0.001)
+    }
+
+    func test_clamped_overflowingBoardPinsToTheWindowEdgesAndBleedsPastTheScreen() {
+        // Zoomed 25x25: panning to the board's top rests row 0 just below the
+        // room bar (offset pins at the window's top inset), and the board's
+        // bottom edge then runs past the screen edge, full bleed.
+        let scale = GridCamera.maxScale
+        let content = 25 * GridModule.unit * scale
+        let tooFar = GridCamera(scale: scale, offset: CGPoint(x: 0, y: 700))
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        XCTAssertEqual(tooFar.offset.y, 110)
+        XCTAssertGreaterThan(110 + content, viewport.height)
+        // Panning to the board's bottom rests the last row just above the clue
+        // bar's cover: no gap ever opens inside the window.
+        let tooBack = GridCamera(scale: scale, offset: CGPoint(x: 0, y: -99999))
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        XCTAssertEqual(tooBack.offset.y, (viewport.height - 92) - content, accuracy: 0.001)
+    }
+
+    func test_following_pansACellOutFromUnderTheClueBar_fullBleed() {
+        // Cell (14, 3) at scale 1: y 504..540, on screen but under the bottom
+        // cover (window bottom sits at 468). The follow pans up the minimal
+        // distance: cell bottom to the window bottom less the margin.
+        let start = GridCamera(scale: 1, offset: .zero)
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        let target = start.following(
+            cell: 14 * 25 + 3, viewport: viewport, rows: 25, cols: 25,
+            occlusion: occlusion, keepClear: occlusion)
+        XCTAssertNotNil(target)
+        XCTAssertEqual(
+            target!.offset.y,
+            viewport.height - 92 - GridCamera.followMarginPoints - 540)
+        XCTAssertEqual(target!.offset.x, 0)
+        XCTAssertEqual(target!.scale, 1, "follow is a pan, never a zoom")
+    }
+
+    func test_following_pansACellOutFromUnderTheRoomBar() {
+        // Deep in the board, cell visible at the very top of the screen but
+        // under the 110-point top cover: the pan brings it below the bar.
+        let start = GridCamera(scale: 1, offset: CGPoint(x: 0, y: -300))
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        // Cell (9, 3): y 324..360 in content, 24..60 on screen, above 110.
+        let target = start.following(
+            cell: 9 * 25 + 3, viewport: viewport, rows: 25, cols: 25,
+            occlusion: occlusion, keepClear: occlusion)
+        XCTAssertNotNil(target)
+        XCTAssertEqual(
+            target!.offset.y, 110 + GridCamera.followMarginPoints - 324)
+    }
+
+    func test_following_insideTheWindowNeedsNoPan() {
+        let start = GridCamera(scale: 1, offset: .zero)
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        // Cell (7, 3): y 252..288, well inside [110 + 24, 468 - 24].
+        XCTAssertNil(
+            start.following(
+                cell: 7 * 25 + 3, viewport: viewport, rows: 25, cols: 25,
+                occlusion: occlusion, keepClear: occlusion))
+    }
+
+    func test_following_aGrownBarRescuesTheCellThroughKeepClear() {
+        // The bar breathes to three lines: keepClear's bottom grows past the
+        // standing inset. A cell clear of the standing bar but under the grown
+        // one pans out, and only keepClear moves the goalposts, never the clamp.
+        let start = GridCamera(scale: 1, offset: .zero)
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        let grown = GridOcclusion(top: 110, bottom: 92 + 68)
+        // Cell (11, 3): y 396..432, inside the standing margin window (bottom
+        // 444), under the grown cover's margin window (bottom 376).
+        let cell = 11 * 25 + 3
+        XCTAssertNil(
+            start.following(
+                cell: cell, viewport: viewport, rows: 25, cols: 25,
+                occlusion: occlusion, keepClear: occlusion),
+            "clear of the standing bar: no pan")
+        let target = start.following(
+            cell: cell, viewport: viewport, rows: 25, cols: 25,
+            occlusion: occlusion, keepClear: grown)
+        XCTAssertNotNil(target)
+        XCTAssertEqual(
+            target!.offset.y,
+            viewport.height - (92 + 68) - GridCamera.followMarginPoints - 432)
+    }
+
+    func test_following_theGrownBarNeverShovesABottomPinnedBoard_fullBleed() {
+        // The last row, board pinned at the standing bottom edge, bar grown:
+        // the clamp holds the STANDING inset, so the rescue reaches only the
+        // standing pin and clue length can never shove the board around. The
+        // residual sits inside the feather, readable, and the board is still.
+        let scale = 1.0
+        let content = 25 * GridModule.unit * scale
+        let pinned = GridCamera(
+            scale: scale, offset: CGPoint(x: 0, y: (viewport.height - 92) - content))
+            .clamped(viewport: viewport, rows: 25, cols: 25, occlusion: occlusion)
+        let grown = GridOcclusion(top: 110, bottom: 92 + 68)
+        // A last-row cell whose column is already visible, so only the y-axis
+        // is in question.
+        let bottomCell = 24 * 25 + 3
+        XCTAssertNil(
+            pinned.following(
+                cell: bottomCell, viewport: viewport, rows: 25, cols: 25,
+                occlusion: occlusion, keepClear: grown),
+            "already at the standing pin: the grown bar moves nothing")
+    }
+
+    func test_occlusion_standingMapsChromeFramesToInsets() {
+        // The board bleeds above the room space (negative minY); the standing
+        // bottom is the constant one-line bar plus feather, never the live slot.
+        let board = CGRect(x: 0, y: -59, width: 393, height: 703)
+        let roomBar = CGRect(x: 12, y: 6, width: 369, height: 44)
+        let standing = GridOcclusion.standing(board: board, roomBar: roomBar)
+        XCTAssertEqual(standing.top, 50 - (-59))
+        XCTAssertEqual(standing.bottom, ChromeLayout.barHeight + ClueFeather.extent)
+        XCTAssertEqual(GridOcclusion.standing(board: nil, roomBar: roomBar), .none)
+    }
+
+    func test_occlusion_keepClearRidesTheLiveSlotAndNeverShrinksBelowStanding() {
+        let board = CGRect(x: 0, y: -59, width: 393, height: 703)
+        let roomBar = CGRect(x: 12, y: 6, width: 369, height: 44)
+        // A three-line slot, 86 tall, bottom pinned to the board's floor.
+        let grownSlot = CGRect(x: 12, y: 703 - 59 - 86, width: 369, height: 86)
+        let grown = GridOcclusion.keepClear(
+            board: board, roomBar: roomBar, clueSlot: grownSlot)
+        XCTAssertEqual(grown.bottom, 86 + ClueFeather.extent)
+        XCTAssertEqual(grown.top, GridOcclusion.standing(board: board, roomBar: roomBar).top)
+        // A one-line slot never reports less than the standing inset.
+        let oneLine = CGRect(
+            x: 12, y: 703 - 59 - ChromeLayout.barHeight,
+            width: 369, height: ChromeLayout.barHeight)
+        XCTAssertEqual(
+            GridOcclusion.keepClear(board: board, roomBar: roomBar, clueSlot: oneLine),
+            GridOcclusion.standing(board: board, roomBar: roomBar))
+    }
+
     func test_panned_translatesAndClamps() {
         let start = GridCamera(scale: GridCamera.maxScale, offset: .zero)
             .clamped(viewport: viewport, rows: 25, cols: 25)

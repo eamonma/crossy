@@ -25,6 +25,13 @@ public struct CrossyGridView: View {
     private let ground: GridGround
     private let selection: GridSelection?
     private let mosaicStartedAt: TimeInterval?
+    /// The standing chrome's cover over the full-bleed board (the clamp's
+    /// scroll-inset window): constant under clue growth by construction, so the
+    /// board never moves with clue length.
+    private let occlusion: GridOcclusion
+    /// The live cover the selected cell must escape (the wrapped bar plus
+    /// feather): feeds only the follow pan.
+    private let keepClear: GridOcclusion
     private let onSwipe: ((SwipeIntent) -> Void)?
     private let onPlaceCursor: (Int) -> Void
 
@@ -52,6 +59,8 @@ public struct CrossyGridView: View {
     /// inert), classified per root DESIGN.md §5; a drag that panned stays a pan.
     /// `mosaicStartedAt` is the completion celebration's trigger instant
     /// (CompletionModel); while non-nil the board plays the mosaic (DESIGN.md §8).
+    /// `occlusion`/`keepClear` are the floating chrome's cover (GridOcclusion:
+    /// standing insets clamp, the live bar only rescues the selected cell).
     public init(
         store: GameStore,
         puzzle: GridPuzzle,
@@ -59,6 +68,8 @@ public struct CrossyGridView: View {
         selection: GridSelection?,
         initialCamera: GridCamera? = nil,
         mosaicStartedAt: TimeInterval? = nil,
+        occlusion: GridOcclusion = .none,
+        keepClear: GridOcclusion? = nil,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
         onPlaceCursor: @escaping (Int) -> Void
     ) {
@@ -67,6 +78,8 @@ public struct CrossyGridView: View {
         self.ground = ground
         self.selection = selection
         self.mosaicStartedAt = mosaicStartedAt
+        self.occlusion = occlusion
+        self.keepClear = keepClear ?? occlusion
         self.onSwipe = onSwipe
         self.onPlaceCursor = onPlaceCursor
         _camera = State(initialValue: initialCamera)
@@ -76,8 +89,12 @@ public struct CrossyGridView: View {
         GeometryReader { proxy in
             let viewport = proxy.size
             let camera = (self.camera
-                ?? GridCamera.initial(viewport: viewport, rows: puzzle.rows, cols: puzzle.cols))
-                .clamped(viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
+                ?? GridCamera.initial(
+                    viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
+                    occlusion: occlusion))
+                .clamped(
+                    viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
+                    occlusion: occlusion)
             let frame = GridFrame(
                 store: store, puzzle: puzzle, selection: selection, ground: ground)
             // The mosaic snapshot (DESIGN.md §8): palette from the sequenced event
@@ -152,12 +169,14 @@ public struct CrossyGridView: View {
                             self.camera = base.pinched(
                                 by: magnify.magnification,
                                 startCentroid: start, centroid: centroid,
-                                viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
+                                viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
+                                occlusion: occlusion)
                         } else if let drag = value.second {
                             // One finger, no scale: a plain pan.
                             self.camera = base.panned(
                                 by: drag.translation,
-                                viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
+                                viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
+                                occlusion: occlusion)
                         }
                     }
                     .onEnded { value in
@@ -181,7 +200,17 @@ public struct CrossyGridView: View {
             )
             .onChange(of: viewport) { _, size in
                 self.camera = self.camera?.clamped(
-                    viewport: size, rows: puzzle.rows, cols: puzzle.cols)
+                    viewport: size, rows: puzzle.rows, cols: puzzle.cols,
+                    occlusion: occlusion)
+            }
+            // The standing insets change only with real layout (rotation, a
+            // terminal reshape): re-clamp in place, exactly like a viewport
+            // change, and never while a gesture owns the camera.
+            .onChange(of: occlusion) { _, next in
+                guard dragBase == nil else { return }
+                self.camera = self.camera?.clamped(
+                    viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
+                    occlusion: next)
             }
             // Camera follow (I2c): a jump that lands the cursor off-screen (a
             // clue-browser tap, a Tab past the viewport edge) pans the minimal
@@ -192,7 +221,23 @@ public struct CrossyGridView: View {
                 guard let next, dragBase == nil,
                     let target = camera.following(
                         cell: next.cell, viewport: viewport,
-                        rows: puzzle.rows, cols: puzzle.cols)
+                        rows: puzzle.rows, cols: puzzle.cols,
+                        occlusion: occlusion, keepClear: keepClear)
+                else { return }
+                followCamera(from: camera, to: target)
+            }
+            // The bar breathes (a wrapped clue grows keepClear): pan the one
+            // selected cell out from under it, on the chrome spring, never
+            // during a live pinch or drag (the full-bleed ruling: the board
+            // stays put; only the occluded cell is rescued). The keep-clear
+            // frame ticks through the bar's own spring, so each tick re-aims
+            // the walk and the pan rides the growth.
+            .onChange(of: keepClear) { _, _ in
+                guard let selection, dragBase == nil,
+                    let target = camera.following(
+                        cell: selection.cell, viewport: viewport,
+                        rows: puzzle.rows, cols: puzzle.cols,
+                        occlusion: occlusion, keepClear: keepClear)
                 else { return }
                 followCamera(from: camera, to: target)
             }
@@ -205,9 +250,12 @@ public struct CrossyGridView: View {
 
     /// The follow pan, interpolated by hand at display cadence: the Canvas draws
     /// through context transforms, so `withAnimation` on the camera state would
-    /// snap, not glide. Chrome grammar (DESIGN.md §7): the chrome spring's
-    /// duration, an ease-out, no overshoot. Reduce Motion cuts straight to the
-    /// target. Gestures cancel the task and take the camera back mid-flight.
+    /// snap, not glide. The curve is the chrome spring itself (ChromeSettleCurve,
+    /// DESIGN.md §7: no overshoot; a cubic ease-out stops instead of settling,
+    /// owner finding 2026-07-10), stepped once per real display frame on iOS
+    /// (FrameTicker: a slept interval jitters against ProMotion). Reduce Motion
+    /// cuts straight to the target. Gestures cancel the task and take the camera
+    /// back mid-flight.
     private func followCamera(from start: GridCamera, to target: GridCamera) {
         followTask?.cancel()
         if reduceMotion {
@@ -215,15 +263,26 @@ public struct CrossyGridView: View {
             return
         }
         followTask = Task { @MainActor in
-            let duration = Motion.Springs.chromeResponse
             let began = Date.now
-            while !Task.isCancelled {
-                let t = min(Date.now.timeIntervalSince(began) / duration, 1)
-                let eased = 1 - pow(1 - t, 3)
-                camera = start.interpolated(to: target, fraction: eased)
-                if t >= 1 { return }
-                try? await Task.sleep(for: .milliseconds(12))
-            }
+            #if os(iOS)
+                let ticker = FrameTicker()
+                defer { ticker.stop() }
+                for await _ in ticker.frames() {
+                    if Task.isCancelled { return }
+                    let fraction = ChromeSettleCurve.fraction(
+                        at: Date.now.timeIntervalSince(began))
+                    camera = start.interpolated(to: target, fraction: fraction)
+                    if fraction >= 1 { return }
+                }
+            #else
+                while !Task.isCancelled {
+                    let fraction = ChromeSettleCurve.fraction(
+                        at: Date.now.timeIntervalSince(began))
+                    camera = start.interpolated(to: target, fraction: fraction)
+                    if fraction >= 1 { return }
+                    try? await Task.sleep(for: .milliseconds(8))
+                }
+            #endif
         }
     }
 

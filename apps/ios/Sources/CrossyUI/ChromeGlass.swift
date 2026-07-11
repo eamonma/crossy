@@ -54,6 +54,48 @@ enum ChromeLayout {
     static let roomSpace = "crossy.room"
 }
 
+/// The feather (the full-bleed ruling, owner ask 2026-07-10): the clue bar
+/// floats over live board content now, so a wash of the ground's canvas fades
+/// up from beneath the glass, legibility with no hard edge. Both grounds ride
+/// the same numbers through their canvas token (ID-3).
+enum ClueFeather {
+    /// How far above the bar's top edge the wash fades to nothing.
+    static let extent: CGFloat = 40
+    /// The wash behind the glass bar itself: strong enough that ink on glass
+    /// never fights a block cell, short of opaque so the bleed stays honest.
+    static let barAlpha: Double = 0.88
+    /// The soft knee partway up the fade, so the ramp reads as a feather
+    /// rather than a linear wedge.
+    static let kneeAlpha: Double = 0.32
+    static let kneeLocation: CGFloat = 0.55
+}
+
+extension GridOcclusion {
+    /// The STANDING cover for the camera's clamp: the room bar above, the
+    /// one-line clue bar plus feather below. The bottom is built from constants
+    /// on purpose (the bar HEIGHT, never the live slot), so the clamp is a
+    /// fixed fact and clue length can never move the board.
+    static func standing(board: CGRect?, roomBar: CGRect?) -> GridOcclusion {
+        guard let board else { return .none }
+        return GridOcclusion(
+            top: max(0, (roomBar?.maxY ?? board.minY) - board.minY),
+            bottom: ChromeLayout.barHeight + ClueFeather.extent)
+    }
+
+    /// The LIVE cover the selected cell must escape: the wrapped bar's actual
+    /// slot plus feather. Feeds only the camera's follow (GridCamera.following
+    /// keepClear), so a breathing bar rescues the one occluded cell and moves
+    /// nothing else.
+    static func keepClear(board: CGRect?, roomBar: CGRect?, clueSlot: CGRect?) -> GridOcclusion {
+        guard let board else { return .none }
+        let standing = standing(board: board, roomBar: roomBar)
+        guard let clueSlot else { return standing }
+        return GridOcclusion(
+            top: standing.top,
+            bottom: max(standing.bottom, board.maxY - clueSlot.minY + ClueFeather.extent))
+    }
+}
+
 /// The chrome spring (DESIGN.md §7): small, no overshoot. The ONE animation a morph
 /// runs, on release or on a tap, never while a finger is down.
 extension Animation {
@@ -119,6 +161,11 @@ struct ChromeGlassSurface: ViewModifier {
 enum ChromePiece: Hashable {
     case roomBar
     case clueBarSlot
+    /// The full-bleed board itself: the camera's occlusion insets are the
+    /// chrome frames converted into the board's own space, so the board
+    /// reports where layout actually put it (never a hard-coded safe-area
+    /// guess).
+    case board
     /// The time pill, whole: the facts card's rest surface (the time pill is
     /// the room's facts, owner ruling 2026-07-10; at completion the card is
     /// the stats card, ID-2).
