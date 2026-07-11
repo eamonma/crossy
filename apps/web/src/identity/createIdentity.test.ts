@@ -13,7 +13,7 @@ describe("adapter selection", () => {
   it("uses Supabase only when both a URL and a key are present", () => {
     expect(shouldUseSupabase(base)).toBe(false);
     expect(
-      shouldUseSupabase({ ...base, supabaseUrl: "https://api.crossy.me" }),
+      shouldUseSupabase({ ...base, supabaseUrl: "https://api.crossy.party" }),
     ).toBe(false);
     expect(
       shouldUseSupabase({
@@ -24,7 +24,7 @@ describe("adapter selection", () => {
     expect(
       shouldUseSupabase({
         ...base,
-        supabaseUrl: "https://api.crossy.me",
+        supabaseUrl: "https://api.crossy.party",
         supabasePublishableKey: "sb_publishable_x",
       }),
     ).toBe(true);
@@ -41,7 +41,7 @@ describe("adapter selection", () => {
   it("builds a working Identity when Supabase credentials are present", () => {
     const identity = createIdentity({
       ...base,
-      supabaseUrl: "https://api.crossy.me",
+      supabaseUrl: "https://api.crossy.party",
       supabasePublishableKey: "sb_publishable_x",
     });
     expect(typeof identity.getAccessToken).toBe("function");

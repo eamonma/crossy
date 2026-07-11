@@ -33,13 +33,13 @@ struct CrossyApp: App {
             ContentView()
                 .environment(pendingInvite)
                 .environment(\.analytics, analytics)
-                // Universal Links (applinks:crossy.me): the system Camera app's QR
-                // banner and any tap on a crossy.me invite hand the app a browsing
+                // Universal Links (applinks:crossy.party): the system Camera app's QR
+                // banner and any tap on a crossy.party invite hand the app a browsing
                 // activity carrying the web URL. InviteScan digests it to a code
                 // exactly as it digests a scanned QR — the deep link and the scanner
                 // share one parser — and the arrival flow honors it (at once when
                 // signed in, held through sign-in otherwise, EXPERIENCE.md §3). A
-                // crossy.me URL that names no room digests to nil and is ignored, so
+                // crossy.party URL that names no room digests to nil and is ignored, so
                 // the app just opens.
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
                     guard let url = activity.webpageURL,

@@ -749,7 +749,7 @@ until they land.
   config (/config.json emitted from env by nginx, so one immutable image serves any
   environment) and an Identity port whose Supabase adapter is the only module allowed
   to import supabase-js (dependency-cruiser enforced). Discord OAuth is wired end to
-  end against the hosted project through the api.crossy.me custom auth domain with
+  end against the hosted project through the api.crossy.party custom auth domain with
   the new-format publishable key; anonymous guests are fully built and ship dark
   behind GUESTS_ENABLED with captchaToken already threaded, because Supabase requires
   a captcha setup for anonymous sign-ins and the owner deferred it. Email has no

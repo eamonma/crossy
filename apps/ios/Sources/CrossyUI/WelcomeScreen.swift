@@ -203,7 +203,7 @@ public struct WelcomeScreen: View {
     }
 }
 
-private let previewPrivacyURL = URL(string: "https://crossy.me/privacy")!
+private let previewPrivacyURL = URL(string: "https://crossy.party/privacy")!
 
 #Preview("Welcome, Studio") {
     WelcomeScreen(

@@ -44,7 +44,7 @@ describe("partyProgress (fill-based progress, INV-6: measured without a solution
 describe("party QR target (the QR joins as a solver, never opens another projector)", () => {
   it("encodes the plain invite link and carries no party flag", () => {
     const url = buildShareUrl({
-      origin: "https://crossy.me",
+      origin: "https://crossy.party",
       gameId: "g-1",
       code: "ABCD2345",
       name: "Sunday Stumper",

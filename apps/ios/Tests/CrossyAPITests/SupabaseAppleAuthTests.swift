@@ -11,7 +11,7 @@ import CrossyAPI
 @available(macOS 12.0, iOS 15.0, *)
 private func makeAppleClient() -> SupabaseAuthClient {
     let configuration = SupabaseAuthConfiguration(
-        supabaseURL: "https://api.crossy.me",
+        supabaseURL: "https://api.crossy.party",
         publishableKey: "sb_publishable_test",
         redirect: "crossy://auth/callback")!
     let stubbed = URLSessionConfiguration.ephemeral
@@ -58,7 +58,7 @@ final class SupabaseAppleAuthTests: XCTestCase {
 
         let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
         XCTAssertEqual(request.method, "POST")
-        XCTAssertEqual(request.url.host, "api.crossy.me")
+        XCTAssertEqual(request.url.host, "api.crossy.party")
         XCTAssertEqual(request.path, "/auth/v1/token")
         XCTAssertEqual(request.queryValue("grant_type"), "id_token")
         XCTAssertEqual(

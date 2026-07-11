@@ -33,9 +33,9 @@ server {
         return 200 '{"supabaseUrl":"${SUPABASE_URL}","supabasePublishableKey":"${SUPABASE_PUBLISHABLE_KEY}","apiBase":"${API_BASE}","guestsEnabled":${GUESTS_ENABLED},"turnstileSiteKey":"${TURNSTILE_SITE_KEY}","posthogToken":"${POSTHOG_TOKEN}","posthogHost":"${POSTHOG_HOST}"}';
     }
 
-    # Apple Universal Links: the association file lets iOS open a crossy.me invite (the
+    # Apple Universal Links: the association file lets iOS open a crossy.party invite (the
     # system Camera's QR banner, or any tapped /game or /g link) directly in the app
-    # instead of Safari. Apple fetches it to verify applinks:crossy.me, and it must be
+    # instead of Safari. Apple fetches it to verify applinks:crossy.party, and it must be
     # served as JSON over https with no redirect. It ships in public/.well-known/, so the
     # SPA try_files below would hand it back as octet-stream; this exact match pins the
     # JSON content-type, the same shape as the /config.json location. Not cached hard: the

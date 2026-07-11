@@ -18,7 +18,7 @@ final class InviteQRTests: XCTestCase {
 
     // The bare share link (byte mode: lowercase never fits alphanumeric).
     func test_shareLinkBare_matchesTheWebGeneratorModuleForModule() throws {
-        let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.me/game/g-1?code=ABCD2345"))
+        let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.party/game/g-1?code=ABCD2345"))
         XCTAssertEqual(matrix.version, 3)
         XCTAssertEqual(matrix.size, 29)
         XCTAssertEqual(matrix.mask, 2)
@@ -59,7 +59,7 @@ final class InviteQRTests: XCTestCase {
 
     // The named share link, URL-encoded exactly as buildShareUrl mints it.
     func test_shareLinkNamed_matchesTheWebGeneratorModuleForModule() throws {
-        let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.me/game/g-1?code=ABCD2345&name=Sunday%20themeless"))
+        let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.party/game/g-1?code=ABCD2345&name=Sunday%20themeless"))
         XCTAssertEqual(matrix.version, 5)
         XCTAssertEqual(matrix.size, 37)
         XCTAssertEqual(matrix.mask, 4)
@@ -108,7 +108,7 @@ final class InviteQRTests: XCTestCase {
 
     // A production-shaped link: UUID game id plus an encoded room name.
     func test_shareLinkProduction_matchesTheWebGeneratorModuleForModule() throws {
-        let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.me/game/2f6e0a1c-8b7d-4d2e-9c3a-5b1f0e7a6d94?code=TIDECOVE&name=Tuesday%20evening"))
+        let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.party/game/2f6e0a1c-8b7d-4d2e-9c3a-5b1f0e7a6d94?code=TIDECOVE&name=Tuesday%20evening"))
         XCTAssertEqual(matrix.version, 6)
         XCTAssertEqual(matrix.size, 41)
         XCTAssertEqual(matrix.mask, 4)

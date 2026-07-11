@@ -72,7 +72,7 @@ Supabase project exists (a placeholder is written until then).
 | Variable                   | Secret | Supabase-gated | Value / meaning                                                                                     |
 | -------------------------- | ------ | -------------- | --------------------------------------------------------------------------------------------------- |
 | `PORT`                     | no     | no             | `8080`. nginx listen port; the web domain targets it.                                               |
-| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.me` (the Supabase custom domain). Empty selects the mock identity adapter.      |
+| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.party` (the Supabase custom domain). Empty selects the mock identity adapter.      |
 | `SUPABASE_PUBLISHABLE_KEY` | no     | yes            | `sb_publishable_...`. Public by design (INV-6). Empty selects the mock identity adapter.            |
 | `API_BASE`                 | no     | no             | `https://<api public domain>`. The default REST base; `?api=` still overrides it per link.          |
 | `GUESTS_ENABLED`           | no     | no             | `true` or `false` (emitted unquoted into config.json). Ships `false` until anonymous+captcha is on. |
@@ -247,16 +247,16 @@ not a deploy change. This deploy does not modify `packages/db`. Verified locally
 migration and `bind-service-roles.sql` apply cleanly on stock Postgres 16, and both roles
 come back `rolcanlogin = t`, `rolbypassrls = t`.
 
-## Custom domain cutover (crossy.me)
+## Custom domain cutover (crossy.party)
 
-The owner holds `crossy.me`, and `api.crossy.me` is already the Supabase custom auth domain,
+The owner holds `crossy.party`, and `api.crossy.party` is already the Supabase custom auth domain,
 so the Railway api service must use a different name. Suggested mapping:
 
 | Domain              | Service | Replaces                                 |
 | ------------------- | ------- | ---------------------------------------- |
-| `crossy.me`         | web     | `web-production-946c3.up.railway.app`    |
-| `session.crossy.me` | session | `session-production-8b77.up.railway.app` |
-| `rest.crossy.me`    | api     | `api-production-c2d9.up.railway.app`     |
+| `crossy.party`         | web     | `web-production-946c3.up.railway.app`    |
+| `session.crossy.party` | session | `session-production-8b77.up.railway.app` |
+| `rest.crossy.party`    | api     | `api-production-c2d9.up.railway.app`     |
 
 No rebuild is needed at any step: the images carry no domains. Everything below is env and
 DNS. Owner actions, in order:
@@ -265,18 +265,18 @@ DNS. Owner actions, in order:
    the service's public port (web 8080, session 8081, api 8080). Railway shows the DNS
    target for each.
 2. Add the DNS records at the registrar. `ws.` and `rest.` are plain CNAMEs. The apex
-   `crossy.me` needs ALIAS/ANAME (or CNAME flattening) pointed at the same target; wait for
+   `crossy.party` needs ALIAS/ANAME (or CNAME flattening) pointed at the same target; wait for
    Railway to show the certificate as issued.
 3. Update the env that carries domains (Railway redeploys on variable change):
-   - api: `CORS_ORIGIN=https://crossy.me`, `SESSION_WS_BASE=wss://session.crossy.me`
-   - web: `API_BASE=https://rest.crossy.me`
+   - api: `CORS_ORIGIN=https://crossy.party`, `SESSION_WS_BASE=wss://session.crossy.party`
+   - web: `API_BASE=https://rest.crossy.party`
    - Do NOT touch `SUPABASE_ISSUER`: it stays on the ref domain regardless of custom
      domains (see the api env table).
 4. Supabase dashboard, Authentication > URL Configuration: set the Site URL to
-   `https://crossy.me` and add `https://crossy.me/**` to the redirect list. Keep the
+   `https://crossy.party` and add `https://crossy.party/**` to the redirect list. Keep the
    `up.railway.app` entries during the transition; remove them once nothing links there.
 5. Verify:
-   `node deploy/verify.mjs --api https://rest.crossy.me --web https://crossy.me --session wss://session.crossy.me`
+   `node deploy/verify.mjs --api https://rest.crossy.party --web https://crossy.party --session wss://session.crossy.party`
 
 The `up.railway.app` domains keep working alongside the custom ones; old links do not break.
 

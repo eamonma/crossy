@@ -48,7 +48,7 @@ struct ArrivalConfig {
 
     let apiBaseURL: URL
     let sessionBaseURL: URL
-    /// The marketing/web origin (today crossy.me): where the live web app and its
+    /// The marketing/web origin (today crossy.party): where the live web app and its
     /// static surfaces (the privacy policy at /privacy) are served. Falls back to
     /// the production origin when the plist slot is empty or unparsed, so a stale
     /// or partial build still opens the real policy rather than dead-ending.
@@ -62,7 +62,7 @@ struct ArrivalConfig {
 
     /// The production web origin, the fallback when no plist/launch-fact value
     /// resolves. Mirrors deploy/README.md's custom-domain cutover table.
-    static let defaultWebOrigin = URL(string: "https://crossy.me")!
+    static let defaultWebOrigin = URL(string: "https://crossy.party")!
 
     /// Resolve from the bundled plist, letting CROSSY_IT_API_URL / CROSSY_IT_WS_BASE
     /// override the bases (the harness and device walks point Rooms at the local

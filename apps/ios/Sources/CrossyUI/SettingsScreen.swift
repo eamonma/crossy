@@ -259,7 +259,7 @@ public struct SettingsScreen: View {
     }
 }
 
-private let previewPrivacyURL = URL(string: "https://crossy.me/privacy")!
+private let previewPrivacyURL = URL(string: "https://crossy.party/privacy")!
 
 #Preview("Account, Studio") {
     if #available(iOS 17.0, macOS 14.0, *) {

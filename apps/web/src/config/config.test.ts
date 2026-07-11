@@ -53,7 +53,7 @@ describe("parseConfig", () => {
 
   it("INV-6: keeps the shape closed so no stray field (e.g. a solution) survives", () => {
     const parsed = parseConfig({
-      supabaseUrl: "https://api.crossy.me",
+      supabaseUrl: "https://api.crossy.party",
       supabasePublishableKey: "sb_publishable_x",
       apiBase: "https://api.example",
       guestsEnabled: false,
@@ -76,7 +76,7 @@ describe("parseConfig", () => {
 describe("configFromEnv", () => {
   it("reads VITE_-prefixed vars", () => {
     const config = configFromEnv({
-      VITE_SUPABASE_URL: "https://api.crossy.me",
+      VITE_SUPABASE_URL: "https://api.crossy.party",
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_x",
       VITE_API_BASE: "https://api.example",
       VITE_GUESTS_ENABLED: "true",
@@ -84,7 +84,7 @@ describe("configFromEnv", () => {
       VITE_POSTHOG_HOST: "https://ph.example",
     });
     expect(config).toEqual({
-      supabaseUrl: "https://api.crossy.me",
+      supabaseUrl: "https://api.crossy.party",
       supabasePublishableKey: "sb_publishable_x",
       apiBase: "https://api.example",
       guestsEnabled: true,
@@ -105,7 +105,7 @@ describe("configFromEnv", () => {
 
 describe("loadConfig", () => {
   const raw = {
-    supabaseUrl: "https://api.crossy.me",
+    supabaseUrl: "https://api.crossy.party",
     supabasePublishableKey: "sb_publishable_x",
     apiBase: "https://api.example",
     guestsEnabled: true,

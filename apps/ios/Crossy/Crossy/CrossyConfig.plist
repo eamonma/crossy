@@ -7,13 +7,13 @@
      ride the CROSSY_IT_* launch facts (the I1e harness pattern), not this file. -->
 <dict>
 	<key>APIBase</key>
-	<string>https://rest.crossy.me</string>
+	<string>https://rest.crossy.party</string>
 	<key>SessionWSBase</key>
-	<string>wss://session.crossy.me</string>
+	<string>wss://session.crossy.party</string>
 	<key>WebOrigin</key>
-	<string>https://crossy.me</string>
+	<string>https://crossy.party</string>
 	<key>SupabaseURL</key>
-	<string>https://api.crossy.me</string>
+	<string>https://api.crossy.party</string>
 	<key>SupabasePublishableKey</key>
 	<string>sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd</string>
 	<!-- The phc_ project token is write-only (it can only ingest events), public by
