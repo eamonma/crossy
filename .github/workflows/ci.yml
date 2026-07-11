@@ -44,9 +44,24 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Cache the downloaded Chromium binary keyed on the pinned @playwright/test version
+      # (pnpm-lock.yaml) plus OS. Hit: skip the ~100MB browser download, still run
+      # `install-deps` (apt) separately below since that installs to system paths outside
+      # this cache and is fast (no download, just package installs already in apt's cache).
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       # Chromium plus its OS libraries; the harness stands up real api + session +
       # Testcontainers Postgres and drives two real pages (ubuntu-latest ships Docker).
-      - run: pnpm --filter @crossy/e2e exec playwright install --with-deps chromium
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @crossy/e2e exec playwright install --with-deps chromium
+      # Cache hit: browser binary already present, but OS deps (apt packages) aren't part
+      # of the cached path, so install those alone (fast: no download, no browser fetch).
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @crossy/e2e exec playwright install-deps chromium
       # Builds the web client, then runs the two M1 scenarios. Kept a separate job (not in
       # `pnpm test`) because it needs a browser and a build step; failing here is an M1 gate.
       - run: pnpm smoke
