@@ -43,6 +43,16 @@ jobs:
         working-directory: apps/ios
     steps:
       - uses: actions/checkout@v4
+      # SPM's build artifacts (.build) keyed on the manifest plus every Swift source file;
+      # a source-only change still gets full incremental compilation from the prior build's
+      # object files instead of a from-scratch build. No external SPM dependencies exist
+      # today (Package.swift), so this is purely a compiler-cache, not a network fetch cache.
+      - uses: actions/cache@v4
+        with:
+          path: apps/ios/.build
+          key: spm-build-${{ runner.os }}-${{ hashFiles('apps/ios/Package.swift', 'apps/ios/Sources/**/*.swift', 'apps/ios/Tests/**/*.swift') }}
+          restore-keys: |
+            spm-build-${{ runner.os }}-
       - run: swift --version
       - run: swift test
 
@@ -58,6 +68,17 @@ jobs:
         working-directory: apps/ios/Crossy
     steps:
       - uses: actions/checkout@v4
+      # DerivedData (object files + module cache) keyed on the project file plus every
+      # Swift source under apps/ios; restore-keys fall back to the most recent cache on a
+      # partial miss so incremental compilation still beats a cold build. Xcode's own
+      # incremental logic (mtimes/hashes) decides what actually recompiles; this cache
+      # only avoids paying for the whole graph from zero on every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: xcodebuild-deriveddata-${{ runner.os }}-${{ hashFiles('apps/ios/Crossy/Crossy.xcodeproj/project.pbxproj', 'apps/ios/**/*.swift') }}
+          restore-keys: |
+            xcodebuild-deriveddata-${{ runner.os }}-
       - run: xcodebuild -version
       - run: >
           xcodebuild build
