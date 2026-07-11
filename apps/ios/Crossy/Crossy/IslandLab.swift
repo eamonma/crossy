@@ -29,12 +29,16 @@
 import ActivityKit
 import CrossyProtocol
 import SwiftUI
+import UIKit
 
 struct IslandLab: View {
     @State private var activity: Activity<SolveActivityAttributes>?
     @State private var status = "Not started"
     @State private var flippedAway = false
     @State private var autoRan = false
+    /// Whether the fixture avatars landed in the shared container this session, so the status
+    /// line can say "avatars on" vs "no app group yet" (the entitlement lands after this code).
+    @State private var avatarsWritten = false
 
     var body: some View {
         ZStack {
@@ -122,6 +126,7 @@ struct IslandLab: View {
             status = "Live Activities are off in Settings"
             return
         }
+        writeFixtureAvatars()
         let attributes = SolveActivityAttributes(
             firstFillAt: Date().addingTimeInterval(-Fixtures.elapsedSeconds),
             roomName: Fixtures.roomName,
@@ -131,10 +136,37 @@ struct IslandLab: View {
                 attributes: attributes,
                 content: .init(state: IslandContentState(), staleDate: nil))
             flippedAway = false
-            status = "1 — pre-push: attributes cluster, progress hidden"
+            status = "1 — pre-push: attributes cluster, progress hidden\(avatarStatusSuffix)"
         } catch {
             status = "request failed: \(error.localizedDescription)"
         }
+    }
+
+    /// Write the two fixture avatars (E and A) into the shared container through the store, so
+    /// the island shows a real image layered over the colored initial on a real device. The
+    /// store is nil-tolerant: if the App Group entitlement has not landed yet, this is a clean
+    /// no-op and `avatarStatusSuffix` reads "no app group yet" so the rig reports the absence
+    /// instead of failing. Cheap enough (two tiny PNGs) to run on the request site.
+    private func writeFixtureAvatars() {
+        let store = IslandAvatarStore()
+        guard store.directory != nil else {
+            avatarsWritten = false
+            return
+        }
+        if let bee = Fixtures.avatarPNGForE, let image = UIImage(data: bee) {
+            store.write(image: image, for: Fixtures.avatarUserIdE)
+        }
+        if let ada = Fixtures.avatarPNGForA, let image = UIImage(data: ada) {
+            store.write(image: image, for: Fixtures.avatarUserIdA)
+        }
+        avatarsWritten = true
+    }
+
+    /// The status-line tail that reports whether the fixture avatars are readable this session:
+    /// "avatars on" when the shared container took them, "no app group yet" when the
+    /// entitlement is absent (the island then stays initials, byte-identical to before).
+    private var avatarStatusSuffix: String {
+        avatarsWritten ? " (avatars on)" : " (no app group yet)"
     }
 
     /// One update, and the status line names the state so the hand on the device always
@@ -197,6 +229,7 @@ struct IslandLab: View {
     /// anchor is an attribute, fixed at request time.
     private func stepAncient() async {
         await end()
+        writeFixtureAvatars()
         let attributes = SolveActivityAttributes(
             firstFillAt: Date().addingTimeInterval(-Fixtures.ancientSeconds),
             roomName: Fixtures.roomName,
@@ -206,7 +239,7 @@ struct IslandLab: View {
                 attributes: attributes,
                 content: .init(state: Fixtures.mixed, staleDate: nil))
             flippedAway = false
-            status = "8 — ancient room: 90 h old, the clock reads 3 d 18 h"
+            status = "8 — ancient room: 90 h old, the clock reads 3 d 18 h\(avatarStatusSuffix)"
         } catch {
             status = "request failed: \(error.localizedDescription)"
         }
@@ -254,19 +287,26 @@ private enum Fixtures {
     /// The ancient room: 90 hours, exactly 3 d 18 h in the coarse register.
     static let ancientSeconds: TimeInterval = 90 * 3600
 
+    /// The two fixture-avatar userIds (the members whose pucks carry a bundled image, written
+    /// to the shared container at lab start), so the rig judges the image layered over the
+    /// initial on a real island. E and A carry images; M stays a plain initial, the null case.
+    static let avatarUserIdE = "island-lab-E"
+    static let avatarUserIdA = "island-lab-A"
+
     /// The pre-push snapshot cluster (attributes), the frozen fallback. Same colors as the
-    /// mixed vector so the fallback and the first push read as the same people.
+    /// mixed vector so the fallback and the first push read as the same people. E and A carry
+    /// the fixture avatar userIds so even the fallback shows avatar pucks.
     static let snapshotPucks: [SolveActivityAttributes.Puck] = [
-        .init(initial: "E", red: 214, green: 178, blue: 92),
-        .init(initial: "A", red: 127, green: 119, blue: 221),
+        .init(initial: "E", red: 214, green: 178, blue: 92, userId: avatarUserIdE),
+        .init(initial: "A", red: 127, green: 119, blue: 221, userId: avatarUserIdA),
         .init(initial: "M", red: 92, green: 184, blue: 148),
     ]
 
     /// "ongoing room, mixed connected and disconnected pucks" (content-state.json).
     static let mixed = IslandContentState(
         pucks: [
-            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
-            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false),
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true, userId: avatarUserIdE),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false, userId: avatarUserIdA),
             .init(initial: "M", red: 92, green: 184, blue: 148, connected: true),
         ],
         filled: 34, total: 78, status: .ongoing, completedAt: nil)
@@ -274,8 +314,8 @@ private enum Fixtures {
     /// The mixed room with the third member flipped away too, so two pucks dim at once.
     static let oneAway = IslandContentState(
         pucks: [
-            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
-            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false),
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true, userId: avatarUserIdE),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false, userId: avatarUserIdA),
             .init(initial: "M", red: 92, green: 184, blue: 148, connected: false),
         ],
         filled: 34, total: 78, status: .ongoing, completedAt: nil)
@@ -303,10 +343,22 @@ private enum Fixtures {
     /// so the frozen solve time reads the same mm:ss the live timer had reached.
     static let completed = IslandContentState(
         pucks: [
-            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
-            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false),
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true, userId: avatarUserIdE),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false, userId: avatarUserIdA),
             .init(initial: "M", red: 92, green: 184, blue: 148, connected: true),
         ],
         filled: 78, total: 78, status: .completed,
         completedAt: ISO8601DateFormatter().string(from: Date()))
+
+    /// Two small PNGs inlined as base64 (mirroring DemoRoom's fixture avatars, no network),
+    /// written to the shared container at lab start so the island shows a real image layered
+    /// over the colored initial. Bee is a cool geometric mark; Ada a warm two-tone disc.
+    static let avatarPNGForE = Data(base64Encoded: avatarBase64Bee)
+    static let avatarPNGForA = Data(base64Encoded: avatarBase64Ada)
+
+    private static let avatarBase64Bee =
+        "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAAD4/042AAACg0lEQVRoBe1ZOUsDURCemKDEQoMHhoBBbTQaQRQRSy9QtLKwsLCw1MbO32Angq2FhYWCnSgI/gAlIigGGxUFiXgQLZRIPPIFEjYaZea93Y2BHViSze77jnnH7ry4WgZnPqmIo6SItaelOwYK3YNODxS6BzxWCTjeXsiBbh+Zzzk368QZQmZlUhWn6HvA1DlQ2RSg6lADVTT4fyS0Y3acni9j9BC9pKfzmx/XVX/QN+Ai8neHKNjfReU1vl91+BoDhCPY10kv93G62otQ7CBKpPkio2XAW+uj0OQQVdTX/So83wUYbZkYoEBvmKJru/R6F893G+s35TlQ1RykrrkJsXijKhgHBrBUQ8kACMPTo+QpK1XlzbYDBrBUTYgNYNi0Tg1TidudFaH7BVjABLY0ZAZSExZj3ozMfxcKTGBTikMSIgNYbaQTViIG2OCQhMgAlkqrQ8rBNoCH1F/rvFnGwAEubrAN4AlrV0i42AbyvR5YZUjCxTZgx/DJJETCxTbg8ZZl8C3/lHCxDViuWpGAbSD5mlCkkDeTcLEN4BXYrpBwsQ2gGLErJFxsAyim7AoJF9sAykBJ16qaBYek5GQbgCCUgVaHlENkADXs8/WtZR6Ana6TBQwiAyjAUcMmE28CCt6twAS2tMiXGUhpQQF+urpDH+/vPGWMu4AFTJXiXmwAeh7PruhkZcuUnkDmgQVMlVAykDERWVzXmhMY88BQFQ8dWvtC6PLDpQ3WxpYxu1gq/8XGVlpUamLH9qPpI2drsa3eqJniFzf/dGvRIBMPoOxDaKzHcIXoaHkz59ysE+U5YJYAXRzHgG4Gddu7nH/qdVOo2d6ZA5oJ1G7u9IB2CjUBvgCsasbF2M4EWAAAAABJRU5ErkJggg=="
+        + "loMDgAAAABJRU5ErkJggg=="
+    private static let avatarBase64Ada =
+        "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAAD4/042AAADVUlEQVRoBe1YbUsUURg9M7vjrrujub6QYGBaKlHmlygoev8QFES/NCIo8EPvFBR9MYtQSxMSDF9203HddXZmmzNZLKHeO/deXYTOp2Xuc895zt17n3nuWP78/ToOMexDnHucetqkgSAI8PHDDD5NTGNu9jvW17yYvq3dxcDgMZweG8aZs0NIpVLGZC1TW2hyYgqPHjzDynJpz+S6ujtw5951jI6N7BknO6htIAzrePzwOV48eSurGcddvXkBt+9eg21bieb9G6x9BlSSZxI0zLm60DLAbZN05RsT5lxy6EDZAA8s97wuyEEuVSgbYLURHViZpMhBLlUoG2CpNAUdLmUDrPOmoMOlbODPS8qECR0uZQMmEjfBoWyA7YEp6HApG2BvYwo6XMoG2JiZgg6XsgF2lWzMdEEOcqlC2QBbYnaVuiCHTnutdR9gS8yukj1NTy6D4x0uet0sCq0tcFscOPbv9fHDEN6Wj+LmFha9Cr6VPCyVq/Fc3bZaq50Oo6Q2pmexMjmFTD3ZzbRqWegaHUF+eBB2ZFYVSgbq0YoycS9KvO7XVLXjeZaThrttxNr+x5IQJjYQbJRRfP0e/nIxiY4w1ukuoHDpHFL5nDC2MSDRIfaLP7E8/tJ48kyICxJzRxpJIG2gtr6B1advEFaqSfgTxZKbGtSShZSBenThKL56h7C6JcurHEcNalFTBlIGvM9fUCutyfAZiaEWNWUgNBD6UamUJJMRlI2hJrVFEBqozC9ol0pREjuNszxTWwSxgYUfIo59G69IaAsNsHQ2CzUJbaGB/SybooUJJEq20IBIpNnjQgN2NtO0HFMS2kIDTuFI0wykJbSFBrJ9R5tmQEZbbKC/D2x5DxrUzEbaIggN2I6D/KmTIh7j49SktghCAyRwI7J0R7uIy9g4tagpAykDVnSBL1w+DzvTIsOpFUMNalFTBlIGSJRuy6PzxkXsZ1klNzWoJQtpAyRkSe2+dQW8/pkGOWNuidLZqJ34TszJh/pS3+ien1XKM3Mof51H4JUbh4S/U24OuRP9yA0NHPxnlZ2y81dLqC4uxZfz2rqHYLPy9x7Bmp5qzUZ72423X6a3B06n/mdJ5mHsDcWETCW10wLt9izRId6NpJnP/xto5upT+xcTfkuxPz1lPgAAAABJRU5ErkJggg=="
 }

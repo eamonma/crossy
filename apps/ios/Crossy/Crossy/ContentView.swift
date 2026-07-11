@@ -56,6 +56,9 @@ struct ContentView: View {
 /// the standalone -i2* launches have nowhere to go and keep the no-op.
 struct DemoRoomView: View {
     @State private var room = DemoRoom()
+    /// One avatar cache shared by the room's live pucks and the island snapshot, so the
+    /// island writes the very images the room already resolved (no second fetch).
+    @State private var avatarCache = AvatarImageCache()
     var onBack: () -> Void = {}
 
     var body: some View {
@@ -70,6 +73,7 @@ struct DemoRoomView: View {
             inviteCode: room.inviteCode,
             model: room.selection,
             chrome: room.chrome,
+            avatarCache: avatarCache,
             onBack: onBack,
             // The offline fixture holds the operations to a no-op: no REST, no
             // pasteboard write worth making in a demo. The rows render so the
@@ -85,7 +89,7 @@ struct DemoRoomView: View {
         // room's real progress (§12a).
         .solveActivity(
             store: room.store, chrome: room.chrome, roomName: room.roomName,
-            total: room.puzzle.playableCellCount)
+            total: room.puzzle.playableCellCount, avatarCache: avatarCache)
         .task { await room.run() }
     }
 }
@@ -106,6 +110,9 @@ struct RealRoomView: View {
     private let onBack: () -> Void
     private let onExit: () -> Void
     @State private var ready = false
+    /// One avatar cache shared by the room's live pucks and the island snapshot, so the
+    /// island writes the very images the room already resolved (no second fetch).
+    @State private var avatarCache = AvatarImageCache()
     @Environment(\.colorScheme) private var colorScheme
 
     init(
@@ -133,6 +140,7 @@ struct RealRoomView: View {
                     inviteCode: room.inviteCode,
                     model: room.selection,
                     chrome: room.chrome,
+                    avatarCache: avatarCache,
                     onBack: onBack,
                     onExit: onExit,
                     // The pasteboard write is the composition root's (CrossyUI
@@ -152,7 +160,8 @@ struct RealRoomView: View {
                 .solveActivity(
                     store: room.store, chrome: room.chrome, roomName: room.roomName,
                     total: room.puzzle.playableCellCount,
-                    registration: room.liveActivityRegistration)
+                    registration: room.liveActivityRegistration,
+                    avatarCache: avatarCache)
             }
         }
         .task {

@@ -137,6 +137,62 @@ final class IslandContentStateTests: XCTestCase {
         XCTAssertEqual(decoded.status, .ongoing)
     }
 
+    // MARK: - The puck's avatar disk key (userId), absent-tolerant like avatarUrl (§4/§12a)
+
+    /// A present userId decodes verbatim (opaque, the widget's disk key for the avatar puck).
+    /// A local probe, not vendored from the backend agent's vectors: this pins the Swift twin
+    /// of the wire's optional puck userId independently.
+    func test_puckUserIdPresentDecodesOpaqueString() throws {
+        let json = Data(
+            #"{ "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true, "userId": "u-42" }"#
+                .utf8)
+        let puck = try JSONDecoder().decode(IslandPuck.self, from: json)
+        XCTAssertEqual(puck.userId, "u-42")
+    }
+
+    /// An explicit null userId reads as nil: no avatar key, so the widget renders the initial.
+    func test_puckUserIdNullReadsAsNil() throws {
+        let json = Data(
+            #"{ "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true, "userId": null }"#
+                .utf8)
+        let puck = try JSONDecoder().decode(IslandPuck.self, from: json)
+        XCTAssertNil(puck.userId)
+    }
+
+    /// The load-bearing case: an ABSENT userId reads as nil, so a pre-userId server (or the
+    /// backend agent's push/puck-user-id not yet merged) still decodes and the puck stays
+    /// initials, the floor. This is the tolerance the parallel backend change lands against.
+    func test_puckUserIdAbsentReadsAsNil_expandContract() throws {
+        let json = Data(
+            #"{ "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true }"#.utf8)
+        let puck = try JSONDecoder().decode(IslandPuck.self, from: json)
+        XCTAssertNil(puck.userId, "a pre-userId puck must still decode, staying initials")
+    }
+
+    /// An absent userId stays OFF the wire on re-encode (the omit-when-nil posture): a puck
+    /// with no avatar key never becomes an explicit null, mirroring avatarUrl on the wire.
+    func test_puckWithoutUserIdStaysAbsentOnReencode() throws {
+        let puck = IslandPuck(initial: "E", red: 214, green: 178, blue: 92, connected: true)
+        let reencoded = try JSONEncoder().encode(puck)
+        let object = try JSONSerialization.jsonObject(with: reencoded) as? [String: Any]
+        XCTAssertNotNil(object)
+        XCTAssertFalse(
+            object?.keys.contains("userId") ?? true,
+            "an absent userId must stay off the wire, never become null")
+    }
+
+    /// A present userId survives the round trip and the state round-trips its meaning with it,
+    /// so frame one (born live) and the pushed frame key the same avatar file.
+    func test_puckUserIdSurvivesRoundTrip() throws {
+        let state = IslandContentState(
+            pucks: [IslandPuck(initial: "E", red: 214, green: 178, blue: 92, connected: true, userId: "u-7")],
+            filled: 3, total: 9, status: .ongoing, completedAt: nil)
+        let reencoded = try JSONEncoder().encode(state)
+        let redecoded = try JSONDecoder().decode(IslandContentState.self, from: reencoded)
+        XCTAssertEqual(redecoded, state)
+        XCTAssertEqual(redecoded.pucks.first?.userId, "u-7")
+    }
+
     /// INV-6: the payload carries counts only, never a letter placed on the board or a cell
     /// coordinate. The only letters it carries are puck INITIALS (a person's identity, not
     /// board content). Sweep every decoded field label and JSON key for a coordinate- or

@@ -39,15 +39,21 @@ struct SolveActivityAttributes: ActivityAttributes {
 
     /// One roster puck in the immutable snapshot, resolved at request time for the
     /// island's black glass: the member's dark-ground roster color as 8-bit sRGB
-    /// components (the CrossyDesign RGBColor shape, apps/ios/DESIGN.md §3) and the
-    /// ASCII-uppercased initial (INV-1). This is the frozen fallback cluster; the live
-    /// cluster rides the content-state (IslandPuck, born live at request time and driven
-    /// by the server after) so a member who joins after the activity started still appears.
+    /// components (the CrossyDesign RGBColor shape, apps/ios/DESIGN.md §3), the
+    /// ASCII-uppercased initial (INV-1), and the opaque avatar disk key (nil when the member
+    /// has no avatar). This is the frozen fallback cluster; the live cluster rides the
+    /// content-state (IslandPuck, born live at request time and driven by the server after)
+    /// so a member who joins after the activity started still appears. The `userId` rides the
+    /// fallback too, so the pre-push frame can also show avatar pucks off the same container.
     struct Puck: Codable, Hashable {
         let initial: String
         let red: UInt8
         let green: UInt8
         let blue: UInt8
+        /// The opaque avatar disk key for `avatar-<userId>.png` in the shared container, nil
+        /// when the member has no avatar. Default-nil in the memberwise init so existing
+        /// construction stays source-compatible.
+        var userId: String? = nil
     }
 
     /// The shared timer's origin (root DESIGN.md D15: derived from the event log,

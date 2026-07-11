@@ -53,8 +53,10 @@ public struct SolveScreen: View {
     @State private var relayTrailing: Task<Void, Never>?
     /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
     /// shared avatar fetches once and the 1 Hz clock tick never re-hits the network
-    /// (AvatarImage.swift). Injected into the environment below.
-    @State private var avatarCache = AvatarImageCache()
+    /// (AvatarImage.swift). Injected into the environment below. A composition root may
+    /// pass in the same instance it hands `.solveActivity`, so the island snapshot reads
+    /// the images the room already resolved; otherwise a fresh one is made in init.
+    @State private var avatarCache: AvatarImageCache
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -78,6 +80,7 @@ public struct SolveScreen: View {
         inviteCode: String? = nil,
         model: SelectionModel? = nil,
         chrome: RoomChromeModel? = nil,
+        avatarCache: AvatarImageCache? = nil,
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
@@ -101,6 +104,10 @@ public struct SolveScreen: View {
         self.onKick = onKick
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
         _chrome = State(initialValue: chrome ?? RoomChromeModel())
+        // A composition root that also drives the island snapshot passes the SAME cache it
+        // hands `.solveActivity`, so the island writer reads the very images the room already
+        // resolved (no second fetch). A lone caller passes nil and gets a fresh cache.
+        _avatarCache = State(initialValue: avatarCache ?? AvatarImageCache())
     }
 
     private var ground: GridGround {

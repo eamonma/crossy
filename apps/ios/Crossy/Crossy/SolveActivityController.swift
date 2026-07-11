@@ -41,6 +41,12 @@ protocol LiveActivityTokenSink {
 final class SolveActivityController {
     private var policy = SolveActivityPolicy()
 
+    /// The room's shared avatar cache (nil offline / harness): the island snapshot reads
+    /// ALREADY-RESOLVED images from it at start and never triggers a fetch (backgrounding is
+    /// no time for the network). The composition root hands the SAME instance it gives
+    /// SolveScreen, so the island writes the very images the room already fetched.
+    private var avatarCache: AvatarImageCache?
+
     /// The push-token registration for this room: the REST sink (nil offline) and the
     /// pure registrar that hex-encodes, builds the two paths, and remembers the last
     /// token so the end path knows what to delete (CrossyProtocol). Both are set once the
@@ -64,6 +70,13 @@ final class SolveActivityController {
             registrar = LiveActivityTokenRegistrar(gameId: gameId)
         }
         tokenSink = sink
+    }
+
+    /// Bind the room's shared avatar cache for the island snapshot (the same instance
+    /// SolveScreen renders from). Nil offline: the island then carries userIds but writes no
+    /// images, so every puck stays initials, the floor.
+    func bind(avatarCache: AvatarImageCache?) {
+        self.avatarCache = avatarCache
     }
 
     /// Feed one observed state. The anchor parses here so the policy never
@@ -127,10 +140,18 @@ final class SolveActivityController {
         let pucks = cluster.map { member -> SolveActivityAttributes.Puck in
             let color = member.identity.darkGround
             return SolveActivityAttributes.Puck(
-                initial: member.initial, red: color.red, green: color.green, blue: color.blue)
+                initial: member.initial, red: color.red, green: color.green, blue: color.blue,
+                userId: member.userId)
         }
         let attributes = SolveActivityAttributes(
             firstFillAt: anchor, roomName: roomName, pucks: pucks)
+        // The avatar pucks (owner ask 2026-07-11): snapshot each cluster member's
+        // ALREADY-RESOLVED avatar image from the room's cache (never a fetch, backgrounding
+        // is no time for the network) and write it to the shared App Group container keyed by
+        // userId, so the widget reads it synchronously and layers it over the colored initial.
+        // A member whose image has not resolved simply gets no file and stays initials, the
+        // floor. No container (no entitlement yet) is a clean no-op.
+        snapshotAvatars(for: cluster)
         // Born live (PROTOCOL.md §12a): the island starts carrying the room's real state
         // at the moment of backgrounding, so it renders live data at zero seconds instead
         // of an empty content-state waiting up to ~20s for the first push. The server
@@ -143,7 +164,7 @@ final class SolveActivityController {
                 let color = $0.identity.darkGround
                 return IslandContentState.ClusterMember(
                     initial: $0.initial, red: Int(color.red), green: Int(color.green),
-                    blue: Int(color.blue), connected: $0.connected)
+                    blue: Int(color.blue), connected: $0.connected, userId: $0.userId)
             },
             filled: filled,
             total: total,
@@ -163,6 +184,40 @@ final class SolveActivityController {
             pushType: .token)
         else { return }
         streamPushToken(for: activity)
+    }
+
+    /// Write each cluster member's already-resolved avatar to the shared container, keyed by
+    /// userId, and prune files for members no longer in the cluster (owner ask 2026-07-11).
+    ///
+    /// Threading: the cache is @MainActor and this runs on main. The cheap part (reading each
+    /// resolved UIImage out of the cache) happens here on main; the expensive part (downscale,
+    /// PNG encode, atomic write, directory prune) hops OFF main. `start` fires at the
+    /// `.inactive` transition, right as the app heads into suspension, so keeping the
+    /// downscale of up to four images off the main actor keeps the request path snappy. The
+    /// snapshotted UIImages are immutable value snapshots safe to draw from another thread;
+    /// the store is a plain value over a file URL, holding no actor state. A missing container
+    /// (no entitlement) makes every write and prune a clean no-op, so the island stays
+    /// initials exactly like today.
+    private func snapshotAvatars(for cluster: [RosterMember]) {
+        // Read resolved images on main (the cache is @MainActor). A member with no avatar url,
+        // or one whose image has not resolved yet, contributes nothing: that puck stays
+        // initials. No fetch is ever kicked here.
+        let resolved: [(userId: String, image: PlatformImage)] = cluster.compactMap { member in
+            guard let url = member.avatarUrl,
+                let image = avatarCache?.resolvedPlatformImage(for: url)
+            else { return nil }
+            return (member.userId, image)
+        }
+        let clusterUserIds = cluster.map(\.userId)
+        // Even with no resolved images, hop off-main to prune stale files (a member who left
+        // between two starts) so the container never keeps an avatar for someone off the crew.
+        Task.detached(priority: .utility) {
+            let store = IslandAvatarStore()
+            for entry in resolved {
+                store.write(image: entry.image, for: entry.userId)
+            }
+            store.prune(keeping: clusterUserIds)
+        }
     }
 
     /// Stream the activity's APNs update token to the server (§12a). Each token arrives as
@@ -296,6 +351,9 @@ struct SolveActivityHost: ViewModifier {
     /// The push-token registration for this room, nil offline. Bound into the controller
     /// on appear so a start knows where to POST the token.
     let registration: LiveActivityRegistration?
+    /// The room's shared avatar cache, so the island snapshot writes the images the room
+    /// already resolved (nil when a composition root drives no live pucks).
+    let avatarCache: AvatarImageCache?
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var controller = SolveActivityController()
@@ -315,6 +373,7 @@ struct SolveActivityHost: ViewModifier {
     }
 
     private func bind() {
+        controller.bind(avatarCache: avatarCache)
         guard let registration else { return }
         controller.bind(gameId: registration.gameId, sink: registration.sink)
     }
@@ -337,17 +396,20 @@ extension View {
     /// The Live Activity lifecycle for one room (roadmap I5a). `total` is the puzzle's
     /// playable-cell count, the born-live frame's denominator (§12a). `registration`
     /// carries the game id and REST sink for the push-token upload (§12a), nil for a room
-    /// with no REST.
+    /// with no REST. `avatarCache` is the room's shared image cache: pass the SAME instance
+    /// given to SolveScreen so the island snapshot writes the images the room already
+    /// resolved (nil writes no avatars, the island stays initials).
     func solveActivity(
         store: GameStore,
         chrome: RoomChromeModel,
         roomName: String,
         total: Int,
-        registration: LiveActivityRegistration? = nil
+        registration: LiveActivityRegistration? = nil,
+        avatarCache: AvatarImageCache? = nil
     ) -> some View {
         modifier(
             SolveActivityHost(
                 store: store, chrome: chrome, roomName: roomName, total: total,
-                registration: registration))
+                registration: registration, avatarCache: avatarCache))
     }
 }

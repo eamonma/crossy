@@ -12,10 +12,11 @@ import CrossyProtocol
 
 final class IslandContentStateBuilderTests: XCTestCase {
     private func member(
-        _ initial: String, _ rgb: (Int, Int, Int), connected: Bool
+        _ initial: String, _ rgb: (Int, Int, Int), connected: Bool, userId: String? = nil
     ) -> IslandContentState.ClusterMember {
         IslandContentState.ClusterMember(
-            initial: initial, red: rgb.0, green: rgb.1, blue: rgb.2, connected: connected)
+            initial: initial, red: rgb.0, green: rgb.1, blue: rgb.2, connected: connected,
+            userId: userId)
     }
 
     /// Mixed presence maps each member's live `connected` flag through verbatim: the away
@@ -103,6 +104,20 @@ final class IslandContentStateBuilderTests: XCTestCase {
         XCTAssertEqual(state, IslandContentState())
         XCTAssertTrue(state.pucks.isEmpty)
         XCTAssertNil(IslandPresentation.fraction(filled: state.filled, total: state.total))
+    }
+
+    /// The avatar disk key threads through the born-live frame per puck (owner ask
+    /// 2026-07-11), so a pre-push island can also show avatar pucks off the same container the
+    /// app wrote. A member with no avatar carries a nil key and stays initials, the floor.
+    func test_userIdThreadsThroughPerPuck() {
+        let state = IslandContentState.bornLive(
+            cluster: [
+                member("E", (214, 178, 92), connected: true, userId: "u-e"),
+                member("M", (92, 184, 148), connected: true, userId: nil),
+            ],
+            filled: 34, total: 78, status: .ongoing, completedAt: nil)
+
+        XCTAssertEqual(state.pucks.map(\.userId), ["u-e", nil])
     }
 
     /// The born-live frame is the same shape the emitter pushes: it encodes, re-decodes, and
