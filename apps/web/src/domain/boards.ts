@@ -12,14 +12,33 @@ export interface Board {
   teammates: readonly Teammate[];
 }
 
+/** Clue prose keyed by clue number, for the axis it clues. Absent for the geometry-only
+ * demo boards, present on a real solvable board so the clue bar reads the answer. */
+interface ClueText {
+  across?: ReadonlyMap<number, string>;
+  down?: ReadonlyMap<number, string>;
+}
+
 function buildPuzzle(
   cols: number,
   rows: number,
   blocks: ReadonlySet<number>,
   circles: ReadonlySet<number>,
   wrong: ReadonlySet<number>,
+  text?: ClueText,
 ): Puzzle {
   const { numbers, acrossClues, downClues } = computeLayout(cols, rows, blocks);
+  const withText = (
+    clues: typeof acrossClues,
+    prose?: ReadonlyMap<number, string>,
+  ) =>
+    prose === undefined
+      ? clues
+      : clues.map((clue) => {
+          const text = prose.get(clue.number);
+          // exactOptionalPropertyTypes: only attach `text` when the prose has it.
+          return text === undefined ? clue : { ...clue, text };
+        });
   return {
     cols,
     rows,
@@ -27,8 +46,8 @@ function buildPuzzle(
     numbers,
     circles,
     wrong,
-    acrossClues,
-    downClues,
+    acrossClues: withText(acrossClues, text?.across),
+    downClues: withText(downClues, text?.down),
   };
 }
 
@@ -44,6 +63,49 @@ const seedBoard: Board = {
     [1, "A"],
   ]),
   teammates: [{ id: "t-ada", initial: "A", cell: 8, direction: "down" }],
+};
+
+// An original, fully-solvable 5x5 mini, the preview visitor's puzzle: two symmetric
+// corner blocks, every white cell checked in both directions, and it solves to a real,
+// verified fill. This is the same puzzle the iOS demo room runs (apps/ios .../DemoRoom.swift),
+// so a visitor on either surface sees one coherent crossword. Solution (# is a block):
+//     # D A S H
+//     F O R C E
+//     A N G E L
+//     S O U N D
+//     T R E E #
+const miniBlocks = new Set([0, 24]);
+// Clue prose keyed by clue number, warm and plain. Across answers by number: 1 DASH,
+// 5 FORCE, 6 ANGEL, 7 SOUND, 8 TREE. Down: 1 DONOR, 2 ARGUE, 3 SCENE, 4 HELD, 5 FAST.
+const miniAcross = new Map<number, string>([
+  [1, "Quick run for the door"], // DASH
+  [5, "Push with everything you have"], // FORCE
+  [6, "The one who leaves the porch light on and waits up"], // ANGEL
+  [7, "What a full room makes"], // SOUND
+  [8, "It holds the swing and the shade all summer"], // TREE
+]);
+const miniDown = new Map<number, string>([
+  [1, "Giver, no strings"], // DONOR
+  [2, "Talk in circles at the dinner table"], // ARGUE
+  [3, "The part of the play you remember after"], // SCENE
+  [4, "Kept close a good while"], // HELD
+  [5, "Quick, or going without breakfast"], // FAST
+]);
+const miniBoard: Board = {
+  id: "mini",
+  label: "5x5 mini",
+  puzzle: buildPuzzle(5, 5, miniBlocks, new Set([12]), new Set(), {
+    across: miniAcross,
+    down: miniDown,
+  }),
+  // A teammate opened 7-Across (SOUND) with its first three real letters and parks
+  // her cursor on the next empty cell; the rest is the visitor's to solve.
+  initialFills: new Map([
+    [15, "S"],
+    [16, "O"],
+    [17, "U"],
+  ]),
+  teammates: [{ id: "t-bee", initial: "B", cell: 18, direction: "across" }],
 };
 
 // A realistic 15x15. Blocks are placed with 180-degree rotational symmetry (real grids
@@ -121,8 +183,11 @@ const fifteenBoard: Board = {
   ],
 };
 
-export const boards: readonly Board[] = [seedBoard, fifteenBoard];
+// The mini leads: it is the real, solvable preview puzzle, so App.tsx's boards[0]
+// default and any unknown-id fallback land a visitor on a coherent crossword. The seed
+// fixture and the 15x15 stay for the geometry and chrome cases they exercise.
+export const boards: readonly Board[] = [miniBoard, seedBoard, fifteenBoard];
 
 export function boardById(id: string): Board {
-  return boards.find((b) => b.id === id) ?? seedBoard;
+  return boards.find((b) => b.id === id) ?? miniBoard;
 }

@@ -11,7 +11,7 @@
 //  mailbox. I2c grew the chrome around this shape; I3 swaps only the transport.
 //
 //  Launch-argument scripts (the SP-i2 precedent; simctl cannot synthesize touch):
-//    -i2bScript             type SOL into 1-Across (-i2bRebus opens the field)
+//    -i2bScript             type DAS into 1-Across (-i2bRebus opens the field)
 //    -i2cScript             Bee's cursor patrols the board (presence, glints)
 //    -i2cBrowser            land the clue browser open
 //    -i2cWord 2             advance the selection two words from 1-Across (the
@@ -133,8 +133,9 @@ final class DemoRoom {
         }
 
         if arguments.contains("-i2bScript") {
-            // The cursor opens on 1-Across (first playable, across); type into it.
-            for character in "SOL" {
+            // The cursor opens on 1-Across (first playable, across); type the real
+            // opening letters of DASH so the scripted fill lands correct on the grid.
+            for character in "DAS" {
                 selection.press(.letter(character))
                 try? await Task.sleep(for: .milliseconds(120))
             }
@@ -156,7 +157,7 @@ final class DemoRoom {
                 await transport.deliver(
                     .cellSet(
                         CellSetMessage(
-                            seq: store.seq + 5, cell: 44, value: "S",
+                            seq: store.seq + 5, cell: 18, value: "N",
                             by: "bee", commandId: "demo-gap", at: DemoFixture.isoNow())))
             case "reconnecting":
                 // The transport drop path, minus the socket: the store dims the
@@ -193,10 +194,11 @@ final class DemoRoom {
         // system Menu now, and a system presentation cannot be scripted.)
 
         if arguments.contains("-i2cScript") {
-            // Bee patrols: down her column, then across the local player's opening
-            // word, so presence marks move on the board and her glint crosses the
-            // clue bar when she enters the word it shows.
-            let patrol = [41, 42, 43, 42, 41, 40, 2, 1, 2, 40, 41]
+            // Bee patrols: up her column (2-Down, ARGUE), then back down and across
+            // her own word (7-Across, SOUND: cells 15-19), so presence marks move on
+            // the board and her glint crosses the clue bar when she enters the word
+            // it shows.
+            let patrol = [17, 12, 7, 2, 7, 12, 17, 18, 19, 18, 17]
             for cell in patrol {
                 await transport.deliver(
                     .cursor(CursorMessage(userId: "bee", cell: cell, direction: .across)))
@@ -211,21 +213,21 @@ final class DemoRoom {
             // transition; the celebration derives from it, never from render).
             try? await Task.sleep(for: .milliseconds(400))
             var seq = store.seq
-            let letters = Array("SOLVEDTOGETHER")
-            var written = 0
             for cell in 0..<puzzle.cellCount
             where !puzzle.blocks.contains(cell) && store.renderValue(cell) == nil {
+                // Each empty cell fills with its real solution letter, attributed by
+                // region (you up top, Bee the middle band, Ada the foot), so the room
+                // finishes on the verified fill, not filler.
+                guard let value = DemoFixture.miniSolution[cell] else { continue }
                 let row = cell / puzzle.cols
-                let by = row < 3 ? "you" : row < 6 ? "bee" : "ada"
+                let by = row < 2 ? "you" : row < 3 ? "bee" : "ada"
                 seq += 1
                 await transport.deliver(
                     .cellSet(
                         CellSetMessage(
-                            seq: seq, cell: cell,
-                            value: String(letters[written % letters.count]),
+                            seq: seq, cell: cell, value: value,
                             by: by, commandId: "demo-i2d-\(cell)",
                             at: DemoFixture.isoNow())))
-                written += 1
             }
             try? await Task.sleep(for: .milliseconds(1600))
             seq += 1
@@ -288,15 +290,24 @@ final class DemoRoom {
 // MARK: - The fixture
 
 enum DemoFixture {
-    /// A 9x9 mini with a symmetric block lattice, one teammate mid-solve (Bee wrote
-    /// the start of the row-4 across and parks her cursor there), one away member
-    /// so the roster shows presence, and everything else open for typing. Wire
+    /// An original, fully-solvable 5x5 mini (two symmetric corner blocks), one
+    /// teammate mid-solve (Bee wrote the start of 7-Across and parks her cursor in
+    /// it), one away member so the roster shows presence, and everything else open
+    /// for typing. The grid is fully checked: every white cell sits in both an across
+    /// and a down word, and it solves to a real, verified fill (`miniSolution`). Wire
     /// colors are roster values (apps/ios/DESIGN.md §3); the wire is authoritative
     /// for slotting.
+    ///
+    /// Solution (# is a block):
+    ///     # D A S H
+    ///     F O R C E
+    ///     A N G E L
+    ///     S O U N D
+    ///     T R E E #
     static func mini9(selfRole: Role = .host, stress: Bool = false) -> (puzzle: GridPuzzle, clues: ClueBook, welcome: WelcomeMessage) {
-        let rows = 9
-        let cols = 9
-        let blocks: Set<Int> = [4, 13, 30, 50, 67, 76]  // 180-degree symmetric
+        let rows = 5
+        let cols = 5
+        let blocks: Set<Int> = [0, 24]  // 180-degree symmetric corners
 
         // Standard numbering scan: a playable cell numbers when it starts an
         // across or a down run (the ingested-clue mapping arrives with I3).
@@ -336,7 +347,7 @@ enum DemoFixture {
         let puzzle = GridPuzzle(
             rows: rows, cols: cols,
             blocks: blocks,
-            circles: [40],
+            circles: [12],  // the center cell (the G at the heart of the grid)
             numbers: GridPuzzle.numbering(from: starts))
 
         let clues = ClueBook(
@@ -347,8 +358,9 @@ enum DemoFixture {
                 ClueEntry(number: run.number, text: text, cells: run.cells, isAcross: false)
             })
 
-        // Bee's opening: the first five letters of the full row-4 across.
-        let fills: [Int: String] = [36: "C", 37: "R", 38: "O", 39: "S", 40: "S"]
+        // Bee's opening: the first three letters of 7-Across (SOUND -> S, O, U), the
+        // correct letters of the real solution. Her cursor parks on the next cell.
+        let fills: [Int: String] = [15: "S", 16: "O", 17: "U"]
         let cells: [CrossyProtocol.Cell] = (0..<(rows * cols)).map { cell in
             guard let value = fills[cell] else { return Cell(v: nil, by: nil) }
             return Cell(v: value, by: "bee")
@@ -368,7 +380,7 @@ enum DemoFixture {
                 abandonedAt: nil,
                 cells: cells,
                 participants: participants(selfRole: selfRole, stress: stress),
-                cursors: [Cursor(userId: "bee", cell: 41, direction: .across)],
+                cursors: [Cursor(userId: "bee", cell: 18, direction: .across)],
                 recentCommandIds: [],
                 stats: nil))
         return (puzzle, clues, welcome)
@@ -441,40 +453,42 @@ enum DemoFixture {
         Date(timeIntervalSinceNow: -secondsAgo).ISO8601Format()
     }
 
-    /// Fixture clue prose, warm and plain (ID-5), one per run in scan order.
+    /// The verified solution by cell (the demo's local answer key, fixture data only,
+    /// never a field on GridPuzzle or the wire ClientPuzzle, so INV-6 holds). The
+    /// completion script writes these exact letters, so the room finishes on the real
+    /// fill rather than filler.
+    ///     # D A S H
+    ///     F O R C E
+    ///     A N G E L
+    ///     S O U N D
+    ///     T R E E #
+    static let miniSolution: [Int: String] = [
+        1: "D", 2: "A", 3: "S", 4: "H", 5: "F",
+        6: "O", 7: "R", 8: "C", 9: "E", 10: "A",
+        11: "N", 12: "G", 13: "E", 14: "L", 15: "S",
+        16: "O", 17: "U", 18: "N", 19: "D", 20: "T",
+        21: "R", 22: "E", 23: "E",
+    ]
+
+    /// Fixture clue prose, warm and plain (ID-5), one per run in scan order. The
+    /// answers, across then down: DASH, FORCE, ANGEL, SOUND, TREE / DONOR, ARGUE,
+    /// SCENE, HELD, FAST. One across clue runs long on purpose (the ClueFitLab
+    /// corpus's honest lengths): the bar must still wrap it and a fixture screenshot
+    /// must land on it (-i2cWord, -i2cClueCycle).
     private static let acrossTexts = [
-        "Sunrise direction",
-        "Kettle's whisper",
-        // Two long ones on purpose (the ClueFitLab corpus's honest lengths):
-        // the bar must wrap them, three lines and two, and a fixture screenshot
-        // must be able to land on them (-i2cWord). Warm and plain still (ID-5).
-        "Pocket-sized garden a windowsill keeps through the winter, watered on Sundays, just in case",
-        "Half a laugh",
-        "Letters between friends who still trust the post",
-        "Slow river bend",
-        "It crosses words, together",
-        "Morning window light",
-        "Tea gone cold, alas",
-        "A door left ajar",
-        "Small victory sound",
-        "Corner of a quilt",
-        "Last bite saved",
-        "Rain on a tin roof",
-        "Goodnight, almost",
+        "Quick run for the door",  // DASH
+        "Push with everything you have",  // FORCE
+        "The one who leaves the porch light on and waits up",  // ANGEL
+        "What a full room makes",  // SOUND
+        "It holds the swing and the shade all summer",  // TREE
     ]
 
     private static let downTexts = [
-        "Evening call ritual",
-        "Bee's favorite letter run",
-        "Walk taken slowly",
-        "Borrowed pencil, returned",
-        "The quiet between clues",
-        "Shared umbrella weather",
-        "Postcard with no stamp",
-        "Hum of a full room",
-        "Sock drawer surprise",
-        "Lamp left on for you",
-        "One more before bed",
+        "Giver, no strings",  // DONOR
+        "Talk in circles at the dinner table",  // ARGUE
+        "The part of the play you remember after",  // SCENE
+        "Kept close a good while",  // HELD
+        "Quick, or going without breakfast",  // FAST
     ]
 }
 
