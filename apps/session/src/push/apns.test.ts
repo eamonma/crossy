@@ -144,6 +144,25 @@ describe("APNs header set (PROTOCOL.md Live Activity push)", () => {
     );
     expect(h["authorization"]).toMatch(/^bearer .+\..+\..+$/);
   });
+
+  it("a request's expirationS overrides the default offset (the clock push stays honest late)", async () => {
+    const nowMs = 1_700_000_000_000;
+    const { transport, sent } = fakeTransport(() => ({
+      status: 200,
+      body: "",
+    }));
+    const adapter = new ApnsAdapter(CREDS, transport, () => nowMs);
+    await adapter.send({
+      token: "tok",
+      environment: "production",
+      priority: 10,
+      body: "{}",
+      expirationS: 3600,
+    });
+    expect(sent[0]!.headers["apns-expiration"]).toBe(
+      String(Math.floor(nowMs / 1000) + 3600),
+    );
+  });
 });
 
 describe("APNs dead-set: 410/400 tokens are dropped before future sends (INV-7: no registry write)", () => {

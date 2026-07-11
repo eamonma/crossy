@@ -94,6 +94,7 @@ export class ActorRegistry {
       completedAt: hydrated.completedAt,
       connectedUserIds: new Set<string>(),
       roomName: gameRow.roomName,
+      firstFillAt: board.firstFillAt,
     };
   }
 

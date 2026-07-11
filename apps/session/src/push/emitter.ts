@@ -26,7 +26,13 @@ import type {
   ApnsRequest,
   Http2Transport,
 } from "./apns";
-import { INITIAL_POLICY_STATE, flushPending, fold } from "./policy";
+import {
+  INITIAL_POLICY_STATE,
+  clockWakeAtMs,
+  flushClock,
+  flushPending,
+  fold,
+} from "./policy";
 import type { Observation, PolicyState, PushDecision } from "./policy";
 import { clusterPucks } from "./roster";
 import type { RosterMember } from "./roster";
@@ -51,6 +57,13 @@ export interface BoardFacts {
    * it, and it never enters the content-state (INV-6 keeps that to counts and render facts).
    */
   readonly roomName: string | null;
+  /**
+   * The room's first fill (ISO-8601, PROTOCOL.md 4/6), null before any fill. This is the island
+   * clock's anchor: the app copies it verbatim into the activity's immutable attributes and never
+   * requests an activity without it, so the clock push (PROTOCOL.md 12a) is scheduled against the
+   * exact instant the widget's register flips on. No anchor means no activity and no clock.
+   */
+  readonly firstFillAt: string | null;
 }
 
 /** The emitter's surface. The actor and server call these; a slow APNs never blocks them. */
@@ -131,6 +144,13 @@ interface GameChannel {
   /** The tail of this game's microtask chain; every observation appends to it. */
   tail: Promise<void>;
   timer: { cancel: () => void } | null;
+  /**
+   * The island clock's anchor (facts.firstFillAt, ms since epoch), cached from the latest
+   * observation so a timer wake can ask the clock question without facts in hand. An immutable
+   * room fact once set, not policy memory: losing it on restart costs nothing that the next
+   * observation does not restore.
+   */
+  anchorMs: number | null;
 }
 
 /**
@@ -193,6 +213,7 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
         policy: INITIAL_POLICY_STATE,
         tail: Promise.resolve(),
         timer: null,
+        anchorMs: null,
       };
       this.channels.set(gameId, channel);
     }
@@ -227,15 +248,25 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
     observation: Observation,
     facts: BoardFacts,
   ): Promise<void> {
+    channel.anchorMs = parseAnchorMs(facts.firstFillAt);
     const members = await loadMembers(this.deps.pool, gameId);
     const contentState = buildContentState(members, facts);
     const nowMs = this.now();
     const result = fold(channel.policy, observation, contentState, nowMs);
     channel.policy = result.state;
     if (result.decisions.length > 0) {
-      await this.dispatch(gameId, members, result.decisions, nowMs);
+      await this.dispatch(gameId, result.decisions, nowMs);
     }
-    this.arm(gameId, channel, result.wakeAtMs);
+    // The clock entry (PROTOCOL.md 12a) rides the same single per-game timer as the debounce and
+    // the held end: arm at the earliest wake either concern wants.
+    this.arm(
+      gameId,
+      channel,
+      minWakeAtMs(
+        result.wakeAtMs,
+        clockWakeAtMs(channel.policy, channel.anchorMs),
+      ),
+    );
   }
 
   /** Arm (or re-arm) the debounce timer to flush a held fill when the window opens. */
@@ -260,16 +291,26 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
     }, delay);
   }
 
-  /** Flush a debounced fill: re-run the policy's pending flush and dispatch what it yields. */
+  /**
+   * The timer fired: give every held concern its chance, in order. The pending flush first (a held
+   * end or a debounced fill), then the clock (PROTOCOL.md 12a), which reads the state the flush
+   * left behind: a fill that just flushed IS a render past the boundary, so the clock sees its
+   * entry satisfied and stays quiet. Both calls are idempotent no-ops when not due, so this never
+   * needs to know why the timer fired; it re-arms at the earliest wake either concern still wants.
+   */
   private async flush(gameId: string, channel: GameChannel): Promise<void> {
     const nowMs = this.now();
     const result = flushPending(channel.policy, nowMs);
     channel.policy = result.state;
     if (result.decisions.length > 0) {
-      const members = await loadMembers(this.deps.pool, gameId);
-      await this.dispatch(gameId, members, result.decisions, nowMs);
+      await this.dispatch(gameId, result.decisions, nowMs);
     }
-    this.arm(gameId, channel, result.wakeAtMs);
+    const clock = flushClock(channel.policy, channel.anchorMs, nowMs);
+    channel.policy = clock.state;
+    if (clock.decisions.length > 0) {
+      await this.dispatch(gameId, clock.decisions, nowMs);
+    }
+    this.arm(gameId, channel, minWakeAtMs(result.wakeAtMs, clock.wakeAtMs));
   }
 
   /**
@@ -279,7 +320,6 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
    */
   private async dispatch(
     gameId: string,
-    members: readonly MemberRow[],
     decisions: readonly PushDecision[],
     nowMs: number,
   ): Promise<void> {
@@ -308,6 +348,9 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
       environment: token.environment,
       priority: decision.priority,
       body,
+      ...(decision.expirationS !== undefined
+        ? { expirationS: decision.expirationS }
+        : {}),
     };
     const result = await this.deps.adapter.send(req);
     if (!result.ok && result.status !== 410) {
@@ -319,6 +362,20 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
       );
     }
   }
+}
+
+/** The clock anchor from the facts' firstFillAt (ISO-8601): ms since epoch, or null. */
+function parseAnchorMs(firstFillAt: string | null): number | null {
+  if (firstFillAt === null) return null;
+  const ms = Date.parse(firstFillAt);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/** The earliest of two wake times; null means that concern wants none. */
+function minWakeAtMs(a: number | null, b: number | null): number | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.min(a, b);
 }
 
 /** The tokens a decision targets, per its audience (whole game, one user, or all but one user). */

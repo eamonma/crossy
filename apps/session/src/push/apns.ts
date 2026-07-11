@@ -54,6 +54,12 @@ export interface ApnsRequest {
   readonly priority: 10 | 5;
   /** The serialized APNs envelope (aps.event, aps.timestamp, aps.content-state, ...). */
   readonly body: string;
+  /**
+   * apns-expiration offset override (seconds). Absent means EXPIRATION_S (a progress frame that
+   * cannot land in 30 s is stale noise). The clock push (policy.ts, PROTOCOL.md 12a) sets a longer
+   * one: it is a render cause, honest whenever it lands, worth holding for an offline device.
+   */
+  readonly expirationS?: number;
 }
 
 /** The outcome of one send, so the emitter can log-and-drop and the dead set can grow. */
@@ -173,11 +179,12 @@ export class ApnsAdapter {
   /**
    * The liveactivity header set (PROTOCOL.md "Live Activity push"): the provider-token authorization,
    * the liveactivity apns-topic (`<bundleId>.push-type.liveactivity`), apns-push-type liveactivity,
-   * the priority per decision, and a short apns-expiration. Expiration is `now + EXPIRATION_S`: a
-   * Live Activity content-state is only worth delivering while it is roughly current, so a frame
-   * that cannot land within the window is worthless and should be dropped by APNs rather than
-   * queued (stale progress is noise). 30 s matches the fill debounce's neighborhood: a delayed frame
-   * is superseded by the next one anyway.
+   * the priority per decision, and a short apns-expiration. Expiration defaults to
+   * `now + EXPIRATION_S`: a Live Activity content-state is only worth delivering while it is
+   * roughly current, so a frame that cannot land within the window is worthless and should be
+   * dropped by APNs rather than queued (stale progress is noise). 30 s matches the fill debounce's
+   * neighborhood: a delayed frame is superseded by the next one anyway. A request may override the
+   * offset (the clock push, which is a render cause rather than progress and stays honest late).
    */
   private headers(req: ApnsRequest): Record<string, string> {
     const nowSec = Math.floor(this.now() / 1000);
@@ -188,7 +195,7 @@ export class ApnsAdapter {
       "apns-topic": `${this.creds.bundleId}.push-type.liveactivity`,
       "apns-push-type": "liveactivity",
       "apns-priority": String(req.priority),
-      "apns-expiration": String(nowSec + EXPIRATION_S),
+      "apns-expiration": String(nowSec + (req.expirationS ?? EXPIRATION_S)),
     };
   }
 

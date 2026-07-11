@@ -19,6 +19,11 @@
 //   - A content-state identical to the last one sent never pushes (per-game dedupe).
 //   - A kick: the kicked member's OWN tokens get a quiet `end` for that game; everyone else gets a
 //     normal presence update.
+//   - The clock push (PROTOCOL.md 12a): the island's ticking timer ends at the hour boundary
+//     (vectors/live-activity/clock-schedule.json) and the flip to the static H:MM register applies
+//     only when a render happens, so when the boundary passes with nothing pushed since, the policy
+//     re-asserts the last sent content-state to cause one. Exempt from dedupe by construction: the
+//     render is the message, not the bytes.
 //
 // The policy decides WHAT and WHEN; the emitter (emitter.ts) owns the fan-out to tokens, the host
 // selection, and the actual HTTP. The policy never sees a token or a device: it works in
@@ -42,6 +47,34 @@ export const DEBOUNCE_MS = 20_000;
  * keeps showing its last true frame, and only a genuinely dropped channel visibly goes stale.
  */
 export const STALE_AFTER_MS = 30 * 60 * 1000;
+
+/**
+ * The elapsed clock's register boundary: under this age the island's timer ticks natively (MM:SS,
+ * zero pushes); at it the register coarsens to a static H:MM the widget re-derives on each render.
+ * Pinned by vectors/live-activity/clock-schedule.json (the 3599/3600 straddle); the Swift twin is
+ * IslandPresentation.elapsedRegister. The widget flips here, so the server guarantees a render
+ * lands past here (the clock push, PROTOCOL.md 12a).
+ */
+export const CLOCK_REGISTER_BOUNDARY_MS = 3600 * 1000;
+
+/**
+ * How long past the register boundary the clock push fires. The widget flips registers against the
+ * DEVICE clock; a push rendered while the device still reads ticking would re-show the native
+ * timer, which clamps again at 59:59 with no retry. Both sides hold the same anchor value (the
+ * room's firstFillAt travels verbatim into the activity's attributes), so only wall-clock skew
+ * between the server and an NTP-synced device remains, and ten seconds absorbs it comfortably.
+ */
+export const CLOCK_PUSH_GRACE_MS = 10_000;
+
+/**
+ * apns-expiration (seconds) for a clock push, deliberately longer than the transport default
+ * (EXPIRATION_S, apns.ts): a progress frame is noise once superseded, but a clock push is a render
+ * cause that stays honest whenever it lands, because the widget re-derives the register from its
+ * own clock at render and ActivityKit's aps.timestamp ordering discards it when a newer frame
+ * already applied. Worth storing for a device that is briefly offline at the boundary; bounded to
+ * an hour so APNs stops trying for an island that is long gone.
+ */
+export const CLOCK_PUSH_EXPIRATION_S = 3600;
 
 /** APNs priority: 10 delivers immediately (presence, terminal); 5 is throttled (fill). */
 export type PushPriority = 10 | 5;
@@ -121,6 +154,12 @@ export interface PushDecision {
    * break through, auto-expanding the island. Absent on every quiet push.
    */
   readonly alert?: PushAlert;
+  /**
+   * apns-expiration override (seconds). Absent means the transport default (EXPIRATION_S, 30 s:
+   * stale progress is noise). Only the clock push sets this (CLOCK_PUSH_EXPIRATION_S): it is not
+   * progress and stays honest whenever it lands, so it is worth holding for an offline device.
+   */
+  readonly expirationS?: number;
 }
 
 /**
@@ -198,9 +237,12 @@ export interface PolicyResult {
   readonly state: PolicyState;
   readonly decisions: readonly PushDecision[];
   /**
-   * When a fill was debounced (held for the window), the ms timestamp the emitter should re-run
-   * the fold at to flush it. Null when nothing is pending. The emitter arms one timer per game off
-   * this, so the debounce is real-time without the policy holding a timer (time stays data).
+   * When something becomes due later (a debounced fill, a held end waiting out ANNOUNCE_MS, or a
+   * not-yet-due clock entry), the ms timestamp the emitter should call back at. Null when nothing
+   * is pending. The emitter arms ONE timer per game off the earliest wake it knows, so scheduling
+   * is real-time without the policy holding a timer (time stays data), and every callee at a wake
+   * is an idempotent no-op when its own concern is not due, so the emitter never needs to know why
+   * the timer fired.
    */
   readonly wakeAtMs: number | null;
 }
@@ -328,6 +370,75 @@ function flushPendingEnd(prev: PolicyState, nowMs: number): PolicyResult {
       pendingEndAtMs: null,
     },
     decisions: [endDecision(end, { kind: "game" })],
+    wakeAtMs: null,
+  };
+}
+
+/**
+ * When the clock push's one timetable entry wants a wake, or null (PROTOCOL.md 12a). The clock is
+ * a TIMETABLE derived from one immutable fact (the room's anchor) plus the memory the policy
+ * already keeps, never new state: the entry is anchor + boundary + grace, and it is satisfied the
+ * moment ANY push goes out at or past it (every send causes a render, and a render past the
+ * boundary applies the register flip). So there is no "clock push sent" flag to record or lose;
+ * `lastSentAtMs >= entry` IS the fact. Null when there is no anchor (no fill yet means no activity
+ * and no clock), nothing to re-assert (welcome guarantees every live token a first push, so a null
+ * lastSent means no live island), the room is terminal (its clock is frozen, never live), an end
+ * is already held, or the entry is satisfied.
+ */
+export function clockWakeAtMs(
+  state: PolicyState,
+  anchorMs: number | null,
+): number | null {
+  if (anchorMs === null) return null;
+  if (state.lastSent === null || state.lastSent.status !== "ongoing") {
+    return null;
+  }
+  if (state.pendingEnd !== null) return null;
+  const dueAtMs = anchorMs + CLOCK_REGISTER_BOUNDARY_MS + CLOCK_PUSH_GRACE_MS;
+  if (state.lastSentAtMs !== null && state.lastSentAtMs >= dueAtMs) return null;
+  return dueAtMs;
+}
+
+/**
+ * The clock push (PROTOCOL.md 12a): if the hour boundary has passed with nothing pushed since,
+ * re-assert the last sent content-state to cause the render that flips the widget's ticking timer
+ * (clamped at 59:59 since the boundary) into the static H:MM register. Deliberately EXEMPT from
+ * the dedupe every other fold applies: the bytes equal lastSent by construction, and the render is
+ * the message, not the bytes. The re-assertion is current truth, not a stale replay: any roster or
+ * status change pushed organically the moment it happened, so at a quiet boundary lastSent can
+ * trail reality by at most one debounce-held fill, and the flush that runs before this at the same
+ * wake settles even that when its window is open. A fresh STALE_AFTER_MS rides it for the same
+ * reason stale exists at all: stale detects a broken channel, not a quiet room (owner ruling
+ * 2026-07-11), and a delivered clock push is a live channel. `lastFillPushAtMs` is untouched (this
+ * is not a fill; it neither opens nor re-arms the debounce window); `lastSentAtMs` advances, which
+ * is what marks the entry satisfied. Priority 10: it exists to fix a frame that reads as broken,
+ * and it fires at most once per room's island. Idempotent to deliver late or twice: the widget
+ * re-derives the register from its own clock, and aps.timestamp ordering discards a superseded
+ * frame, which is also why it carries the long CLOCK_PUSH_EXPIRATION_S.
+ */
+export function flushClock(
+  prev: PolicyState,
+  anchorMs: number | null,
+  nowMs: number,
+): PolicyResult {
+  const dueAtMs = clockWakeAtMs(prev, anchorMs);
+  if (dueAtMs === null) return { state: prev, decisions: [], wakeAtMs: null };
+  if (nowMs < dueAtMs) {
+    // Not due yet; ask to be woken at the entry (the emitter arms the same per-game timer).
+    return { state: prev, decisions: [], wakeAtMs: dueAtMs };
+  }
+  return {
+    state: { ...prev, lastSentAtMs: nowMs },
+    decisions: [
+      {
+        event: "update",
+        priority: 10,
+        contentState: prev.lastSent!,
+        audience: { kind: "game" },
+        staleAfterMs: STALE_AFTER_MS,
+        expirationS: CLOCK_PUSH_EXPIRATION_S,
+      },
+    ],
     wakeAtMs: null,
   };
 }

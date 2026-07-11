@@ -3,10 +3,16 @@
 // decisions and the next memory. Time is data (nowMs), so the debounce is pinned without a real
 // timer. Test names cite the section / invariant they defend.
 
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { LiveActivityContentState } from "@crossy/protocol";
 import {
   ANNOUNCE_MS,
+  CLOCK_PUSH_EXPIRATION_S,
+  CLOCK_PUSH_GRACE_MS,
+  CLOCK_REGISTER_BOUNDARY_MS,
   COMPLETION_ALERT_BODY_UNNAMED,
   COMPLETION_ALERT_SOUND,
   COMPLETION_ALERT_TITLE,
@@ -14,10 +20,14 @@ import {
   DISMISS_AFTER_MS,
   INITIAL_POLICY_STATE,
   STALE_AFTER_MS,
+  clockWakeAtMs,
+  flushClock,
   flushPending,
   fold,
 } from "./policy";
 import type { PolicyState } from "./policy";
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 function cs(
   over: Partial<LiveActivityContentState> = {},
@@ -535,4 +545,115 @@ describe("§12a policy: the debounce window is data, not a wall clock", () => {
       fold(primed, { kind: "fill" }, cs({ filled: 12 }), DEBOUNCE_MS).decisions,
     ).toHaveLength(1);
   });
+});
+
+describe("§12a policy: the clock push (the hour boundary is guaranteed a render)", () => {
+  const anchorMs = 1_000_000;
+  const entryMs = anchorMs + CLOCK_REGISTER_BOUNDARY_MS + CLOCK_PUSH_GRACE_MS;
+  /** A live room a minute past its first fill: one push went out, nothing since. */
+  const quiet = () => st({ lastSent: cs(), lastSentAtMs: anchorMs + 60_000 });
+
+  it("clockWakeAtMs asks for the entry while it is unsatisfied", () => {
+    expect(clockWakeAtMs(quiet(), anchorMs)).toBe(entryMs);
+  });
+
+  it("clockWakeAtMs wants nothing without an anchor, without a lastSent, or once satisfied", () => {
+    expect(clockWakeAtMs(quiet(), null)).toBeNull(); // no fill yet: no activity, no clock
+    expect(clockWakeAtMs(st(), anchorMs)).toBeNull(); // nothing to re-assert (welcome guarantees a first push)
+    expect(
+      clockWakeAtMs(st({ lastSent: cs(), lastSentAtMs: entryMs }), anchorMs),
+    ).toBeNull(); // an organic push at the entry satisfied it
+  });
+
+  it("clockWakeAtMs wants nothing for a terminal room or while an end is held (the clock is frozen)", () => {
+    expect(
+      clockWakeAtMs(
+        st({ lastSent: completed(), lastSentAtMs: anchorMs + 60_000 }),
+        anchorMs,
+      ),
+    ).toBeNull();
+    expect(
+      clockWakeAtMs(
+        st({
+          lastSent: cs(),
+          lastSentAtMs: anchorMs + 60_000,
+          pendingEnd: completed(),
+          pendingEndAtMs: anchorMs + 61_000,
+        }),
+        anchorMs,
+      ),
+    ).toBeNull();
+  });
+
+  it("before the entry flushClock emits nothing and re-asks for the entry wake", () => {
+    const r = flushClock(quiet(), anchorMs, entryMs - 1);
+    expect(r.decisions).toHaveLength(0);
+    expect(r.wakeAtMs).toBe(entryMs);
+    expect(r.state).toEqual(quiet());
+  });
+
+  it("at the entry it re-asserts the LAST SENT bytes, exempt from dedupe (the render is the message)", () => {
+    const prev = quiet();
+    const r = flushClock(prev, anchorMs, entryMs);
+    expect(r.decisions).toHaveLength(1);
+    expect(r.decisions[0]).toMatchObject({
+      event: "update",
+      priority: 10,
+      audience: { kind: "game" },
+      staleAfterMs: STALE_AFTER_MS,
+      expirationS: CLOCK_PUSH_EXPIRATION_S,
+    });
+    // Byte-identical to lastSent: every other fold would suppress this as a duplicate.
+    expect(r.decisions[0]!.contentState).toEqual(prev.lastSent);
+    expect(r.wakeAtMs).toBeNull();
+  });
+
+  it("firing marks the entry satisfied through lastSentAtMs alone (no clock flag to record or lose)", () => {
+    const first = flushClock(quiet(), anchorMs, entryMs + 5_000);
+    expect(first.state.lastSentAtMs).toBe(entryMs + 5_000);
+    expect(first.state.lastFillPushAtMs).toBeNull(); // not a fill: the debounce window is untouched
+    const again = flushClock(first.state, anchorMs, entryMs + 6_000);
+    expect(again.decisions).toHaveLength(0);
+    expect(again.wakeAtMs).toBeNull();
+  });
+
+  it("an organic push past the boundary satisfies the guarantee instead (no redundant clock push)", () => {
+    const organic = fold(
+      quiet(),
+      { kind: "presence" },
+      cs({ filled: 40 }),
+      entryMs + 1,
+    );
+    expect(organic.decisions).toHaveLength(1); // the presence push itself
+    const r = flushClock(organic.state, anchorMs, entryMs + 2);
+    expect(r.decisions).toHaveLength(0);
+    expect(r.wakeAtMs).toBeNull();
+  });
+});
+
+describe("§12a clock schedule: the boundary conforms to vectors/live-activity/clock-schedule.json", () => {
+  // The server's law is the ticking/coarse straddle: a case ticks iff its age is under the
+  // boundary the clock push is scheduled against. The Swift side asserts the full register
+  // mapping (IslandClockScheduleTests); this side pins the shared constant to the same file.
+  const cases: { name: string; ageSeconds: number; register: string }[] =
+    JSON.parse(
+      readFileSync(
+        resolve(here, "../../../../vectors/live-activity/clock-schedule.json"),
+        "utf8",
+      ),
+    );
+
+  it("the vectors are not empty and straddle the boundary", () => {
+    expect(cases.length).toBeGreaterThan(0);
+    expect(cases.some((c) => c.register === "ticking")).toBe(true);
+    expect(cases.some((c) => c.register !== "ticking")).toBe(true);
+  });
+
+  for (const c of cases) {
+    it(`${c.name}: ticks iff under the boundary`, () => {
+      expect(c.ageSeconds * 1000 < CLOCK_REGISTER_BOUNDARY_MS).toBe(
+        c.register === "ticking",
+      );
+    });
+  }
 });

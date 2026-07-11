@@ -53,6 +53,18 @@ public enum IslandPresentation {
         max(0, Int(completedAt.timeIntervalSince(firstFillAt)))
     }
 
+    /// The ticking register's end, in seconds of room age. Pinned by
+    /// vectors/live-activity/clock-schedule.json (the 3599/3600 straddle); the server's
+    /// push policy schedules the clock push against the same boundary, so the flip into
+    /// the static H:MM register is always given a render (PROTOCOL.md 12a).
+    public static let tickingBoundSeconds = 3600
+
+    /// The live timer's range length: one second short of the boundary, so the widest
+    /// string the auto-updating timer can ever reserve layout width for is "59:59",
+    /// never the forbidden H:MM:SS (owner device report 2026-07-11: the wider
+    /// reservation ellipsized the clock at the compact cap).
+    public static var tickingRangeSeconds: Int { tickingBoundSeconds - 1 }
+
     /// How the live island renders elapsed time for a room of a given age (owner rulings
     /// 2026-07-11: the ninety-hour question, days only past a day, and never three
     /// sections). The clock's meaningfulness decays with age, so the register coarsens
@@ -65,6 +77,12 @@ public enum IslandPresentation {
     /// reserves the forbidden H:MM:SS form and the capped label ellipsizes instead of
     /// rendering (owner device report 2026-07-11: the time shown as an ellipsis). Bounded
     /// to the room's first hour, the reservation is exactly "59:59" and always fits.
+    ///
+    /// The register changes only when a render happens, and the widget cannot schedule
+    /// its own renders, so the hour flip carries a server guarantee: when the boundary
+    /// passes with nothing pushed since, the server sends a clock push re-asserting the
+    /// last content-state, and that render flips the clamped timer into the static H:MM
+    /// register (PROTOCOL.md 12a; owner device report 2026-07-11: stuck at 59:59).
     public enum ElapsedRegister: Equatable, Sendable {
         /// Under an hour old: the native ticking timer, MM:SS. The caller bounds the
         /// timer's range to the anchor's first hour so the reservation stays MM:SS-wide.
@@ -78,9 +96,8 @@ public enum IslandPresentation {
     }
 
     public static func elapsedRegister(ageSeconds: Int) -> ElapsedRegister {
-        let hour = 3600
         let day = 86_400
-        if ageSeconds < hour { return .ticking }
+        if ageSeconds < tickingBoundSeconds { return .ticking }
         if ageSeconds >= 7 * day { return .infinity }
         if ageSeconds >= day {
             // Days only (owner ruling 2026-07-11): past a day the hours are noise too.

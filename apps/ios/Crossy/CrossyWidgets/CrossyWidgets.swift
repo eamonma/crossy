@@ -267,15 +267,19 @@ private struct TimerLabel: View {
                 // auto-updating timer reserves layout width for the widest string its
                 // range can show, so a wider range reserves H:MM:SS and the capped label
                 // renders an ellipsis instead of the time (owner device report). Bounded
-                // to the hour, the reservation is exactly "59:59" and always fits. A
-                // room crossing the hour between pushes freezes at 59:59 for a beat;
-                // the next push render flips it into the static H:MM register.
+                // to the hour, the reservation is exactly "59:59" and always fits. At
+                // the boundary the native timer clamps, and the server's clock push
+                // (PROTOCOL.md 12a) lands just past the hour to cause the render that
+                // flips this switch into the static H:MM register, so the clamp lasts
+                // delivery time, not until the next organic push (owner device report
+                // 2026-07-11: stuck at 59:59).
                 switch IslandPresentation.elapsedRegister(
                     ageSeconds: Int(Date().timeIntervalSince(frame.anchor)))
                 {
                 case .ticking:
                     Text(
-                        timerInterval: frame.anchor...frame.anchor.addingTimeInterval(3599),
+                        timerInterval: frame.anchor...frame.anchor.addingTimeInterval(
+                            TimeInterval(IslandPresentation.tickingRangeSeconds)),
                         countsDown: false)
                 case .coarse(let reading):
                     Text(verbatim: reading)

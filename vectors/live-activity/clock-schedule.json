@@ -1,0 +1,47 @@
+[
+  {
+    "name": "a newborn room ticks natively",
+    "ageSeconds": 0,
+    "register": "ticking"
+  },
+  {
+    "name": "one second before the hour still ticks, the 59:59 reservation",
+    "ageSeconds": 3599,
+    "register": "ticking"
+  },
+  {
+    "name": "at the hour the register coarsens to static H:MM",
+    "ageSeconds": 3600,
+    "register": "coarse",
+    "reading": "1:00"
+  },
+  {
+    "name": "the hour band reads H:MM and drops seconds, never three sections",
+    "ageSeconds": 4499,
+    "register": "coarse",
+    "reading": "1:14"
+  },
+  {
+    "name": "the last minute of the hour band",
+    "ageSeconds": 86399,
+    "register": "coarse",
+    "reading": "23:59"
+  },
+  {
+    "name": "past a day the hours are noise, days only",
+    "ageSeconds": 86400,
+    "register": "coarse",
+    "reading": "1 d"
+  },
+  {
+    "name": "six days in, still counting days",
+    "ageSeconds": 604799,
+    "register": "coarse",
+    "reading": "6 d"
+  },
+  {
+    "name": "a week old is a place, not a race",
+    "ageSeconds": 604800,
+    "register": "infinity"
+  }
+]
