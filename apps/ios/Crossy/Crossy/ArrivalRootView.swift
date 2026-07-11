@@ -3,18 +3,19 @@
 //  Crossy
 //
 //  The end-to-end journey's spine (EXPERIENCE.md §2): signed out shows Welcome;
-//  signed in shows Rooms; Join with a code pushes its screen; a joined or tapped
-//  room pushes the room itself. Join success replaces the join screen in the path,
-//  so back from the room lands on Rooms, never on a stale code field. The kicked
-//  exit (SolveScreen onExit) pops home the same way.
+//  signed in shows Rooms; Join with a code opens a glass sheet that flows out of
+//  the button (arrival notes, DESIGN.md §4); a joined or tapped room pushes the
+//  room itself. Join success dismisses the sheet and makes the room the only pushed
+//  element, so back from the room lands on Rooms, never on a stale code field. The
+//  kicked exit (SolveScreen onExit) pops home the same way.
 //
 
 import CrossyUI
 import SwiftUI
 
-/// Everything the arrival flow can push.
+/// Everything the arrival flow can push. Join is a sheet now, not a push, so it is
+/// no longer a route: the room is the only thing the join lands.
 enum ArrivalRoute: Hashable {
-    case join
     case room(gameId: String)
     /// The -i3Fixture composition's room: the loopback DemoRoom, no network.
     case fixtureRoom
@@ -23,6 +24,11 @@ enum ArrivalRoute: Hashable {
 struct ArrivalRootView: View {
     @State private var model = ArrivalModel.resolve()
     @State private var path: [ArrivalRoute] = []
+    /// The join sheet's presentation state and its zoom namespace. The namespace
+    /// lives here, not in RoomsScreen, because the sheet is presented from this
+    /// hierarchy; the button downstream stamps itself as the matching source.
+    @State private var showJoin = false
+    @Namespace private var joinZoom
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -30,6 +36,9 @@ struct ArrivalRootView: View {
                 .navigationDestination(for: ArrivalRoute.self) { route in
                     destination(route)
                 }
+        }
+        .sheet(isPresented: $showJoin) {
+            joinSheet
         }
     }
 
@@ -39,7 +48,8 @@ struct ArrivalRootView: View {
             RoomsScreen(
                 loadPage: { before in await model.rooms.loadPage(before: before) },
                 onOpenRoom: { room in path.append(roomRoute(for: room.gameId)) },
-                onJoinWithCode: { path.append(.join) }
+                onJoinWithCode: { showJoin = true },
+                joinSheetSource: JoinSheetSource(namespace: joinZoom)
             )
             .toolbar(.hidden, for: .navigationBar)
         } else {
@@ -50,25 +60,34 @@ struct ArrivalRootView: View {
         }
     }
 
+    /// The join surface: a glass sheet grown from the button, sized to one field.
+    /// Success dismisses the sheet and makes the room the sole pushed element (the
+    /// old push replaced the join route on the path; the sheet replaces that step
+    /// exactly), so back from the room is Rooms, never a stale code field.
+    private var joinSheet: some View {
+        JoinCodeScreen { code in
+            switch await model.rooms.join(code: code) {
+            case .success(let gameId):
+                showJoin = false
+                path = [roomRoute(for: gameId)]
+                return nil
+            case .failure(let failure):
+                return failure
+            }
+        }
+        .presentationDetents([.fraction(JoinSheetPresentation.detentFraction)])
+        .presentationDragIndicator(.visible)
+        .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
+    }
+
     @ViewBuilder
     private func destination(_ route: ArrivalRoute) -> some View {
         switch route {
-        case .join:
-            JoinCodeScreen { code in
-                switch await model.rooms.join(code: code) {
-                case .success(let gameId):
-                    // Replace the join screen so back from the room is Rooms.
-                    path = [roomRoute(for: gameId)]
-                    return nil
-                case .failure(let failure):
-                    return failure
-                }
-            }
         case .room(let gameId):
             if let facts = model.liveRoomFacts {
                 // Back and the kicked exit pop the same way: the room is the
-                // only pushed element (join success replaced itself), so home
-                // is Rooms.
+                // only pushed element (join set the path to just the room, and
+                // an opened card appended onto an empty path), so home is Rooms.
                 RealRoomView(
                     room: RealRoom(
                         apiBaseURL: facts.apiBaseURL,

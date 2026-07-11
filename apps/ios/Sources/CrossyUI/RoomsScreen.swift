@@ -24,10 +24,29 @@ public struct RoomsPage: Equatable, Sendable {
     }
 }
 
+/// The join sheet's zoom source, handed down from the composition root so the
+/// button and the sheet share one namespace (arrival notes, DESIGN.md §4). The
+/// composition root owns the @Namespace because the sheet lives in its hierarchy,
+/// not the screen's; the screen only stamps the button as the source.
+public struct JoinSheetSource {
+    let namespace: Namespace.ID
+    /// A stable id so the button and the presented sheet match. One source per
+    /// screen, so a constant suffices.
+    static let id = "crossy.join.sheet"
+
+    public init(namespace: Namespace.ID) {
+        self.namespace = namespace
+    }
+}
+
 public struct RoomsScreen: View {
     private let loadPage: (String?) async -> Result<RoomsPage, ArrivalFailure>
     private let onOpenRoom: (RoomCardModel) -> Void
     private let onJoinWithCode: () -> Void
+    /// The zoom source for the join sheet: the button IS the surface the sheet
+    /// grows from (arrival notes, DESIGN.md §4). nil in previews and on macOS,
+    /// where the transition floor (iOS 18) is absent; the button then just taps.
+    private let joinSheetSource: JoinSheetSource?
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var rooms: [RoomCardModel] = []
@@ -40,11 +59,13 @@ public struct RoomsScreen: View {
     public init(
         loadPage: @escaping (String?) async -> Result<RoomsPage, ArrivalFailure>,
         onOpenRoom: @escaping (RoomCardModel) -> Void,
-        onJoinWithCode: @escaping () -> Void
+        onJoinWithCode: @escaping () -> Void,
+        joinSheetSource: JoinSheetSource? = nil
     ) {
         self.loadPage = loadPage
         self.onOpenRoom = onOpenRoom
         self.onJoinWithCode = onJoinWithCode
+        self.joinSheetSource = joinSheetSource
     }
 
     private var ground: GridGround {
@@ -110,6 +131,10 @@ public struct RoomsScreen: View {
 
     /// The standing action (glass): Join with a code. New game joins it in the
     /// create-flow slice; the cluster-merge-on-scroll moment rides with that pair.
+    /// The button is the join sheet's zoom source, so the glass sheet grows out of
+    /// this capsule instead of a screen sliding over it (arrival notes, DESIGN.md
+    /// §4). The zoom is iOS 18+ (the package floor on device); the macOS test host
+    /// (14) and previews skip it and just tap.
     private var joinAction: some View {
         Button(action: onJoinWithCode) {
             Text(verbatim: ArrivalCopy.joinWithCode)
@@ -122,6 +147,7 @@ public struct RoomsScreen: View {
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
+        .modifier(JoinSheetSourceMark(source: joinSheetSource))
     }
 
     // MARK: - Paging
@@ -155,5 +181,54 @@ public struct RoomsScreen: View {
             // refresh is the recovery.
             exhausted = false
         }
+    }
+}
+
+// MARK: - The zoom pairing (arrival notes, DESIGN.md §4)
+
+/// Stamps the Join button as the sheet's zoom source. Gated to iOS 18+ (the
+/// package floor on device); the macOS test host (14) and any absent source
+/// leave the button bare, the §4 one-fallback rule for the transition.
+private struct JoinSheetSourceMark: ViewModifier {
+    let source: JoinSheetSource?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *), let source {
+                content.matchedTransitionSource(
+                    id: JoinSheetSource.id, in: source.namespace)
+            } else {
+                content
+            }
+        #else
+            content
+        #endif
+    }
+}
+
+extension View {
+    /// The join sheet's destination half of the zoom: the sheet grows out of the
+    /// button that carries the matching source (arrival notes, DESIGN.md §4). The
+    /// composition root applies this to the sheet content. Below iOS 18 (and the
+    /// macOS test host) the sheet slides in plainly, no glass required (§4 floor).
+    public func joinSheetZoom(from source: JoinSheetSource?) -> some View {
+        modifier(JoinSheetZoom(source: source))
+    }
+}
+
+private struct JoinSheetZoom: ViewModifier {
+    let source: JoinSheetSource?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *), let source {
+                content.navigationTransition(
+                    .zoom(sourceID: JoinSheetSource.id, in: source.namespace))
+            } else {
+                content
+            }
+        #else
+            content
+        #endif
     }
 }

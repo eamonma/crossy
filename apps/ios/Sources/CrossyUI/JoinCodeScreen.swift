@@ -5,9 +5,31 @@
 // is honest and final: the sentence stands and the same code cannot be resubmitted.
 // Success is the parent's navigation (a full account lands in the room as a solver,
 // owner decision 2026-07-10); this screen only reports the attempt.
+//
+// The screen rides a glass sheet that flows out of the Rooms button (arrival notes,
+// DESIGN.md §4). Focus is deferred until the sheet settles: raising the keyboard in
+// onAppear raced the presentation and jolted (owner device report 2026-07-10), so
+// the field asks for focus one presentation-length later (JoinSheetPresentation).
 
 import CrossyDesign
 import SwiftUI
+
+/// The sheet the screen presents in (arrival notes, DESIGN.md §4). The values are
+/// named so the keyboard-race fix and the one-field detent are pinnable, not magic.
+public enum JoinSheetPresentation {
+    /// The detent the sheet claims: title, one field, the failure line, and the
+    /// button, with room for the keyboard, nothing more. A fraction of the height
+    /// so it reads as a card grown from the button, not a full page. The
+    /// composition root sizes the sheet with this.
+    public static let detentFraction: CGFloat = 0.42
+
+    /// How long the field waits before asking for focus. The keyboard must rise
+    /// AFTER the sheet lands, never during the presentation (the jolt, owner
+    /// device report 2026-07-10). A hair past the sheet's own spring settles the
+    /// surface first, then the keyboard rises into a still sheet. Nonzero is the
+    /// whole point: focus in onAppear is what raced the push.
+    static let focusDelay: Duration = .milliseconds(420)
+}
 
 public struct JoinCodeScreen: View {
     /// Attempt the join; nil means success (the parent navigates away).
@@ -58,7 +80,15 @@ public struct JoinCodeScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
-        .onAppear { fieldFocused = true }
+        // Focus after the sheet settles, not in onAppear: raising the keyboard
+        // mid-presentation raced the surface and jolted (owner device report
+        // 2026-07-10). The task cancels with the sheet, so a fast dismiss never
+        // fights a pending focus.
+        .task {
+            try? await Task.sleep(for: JoinSheetPresentation.focusDelay)
+            guard !Task.isCancelled else { return }
+            fieldFocused = true
+        }
     }
 
     /// The one field: a paper cell row, tabular glyphs (TypeScale: invite codes

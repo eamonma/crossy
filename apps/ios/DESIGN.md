@@ -203,6 +203,37 @@ the system's regular material in place of glass. One fallback for all chrome,
 never a second design system, and no per-piece fallback decisions. Degraded is
 accepted.
 
+**Arrival notes: the join sheet** (owner device report 2026-07-10). Join with a
+code was a full push, and it jolted: the screen focused its field in onAppear, so
+the keyboard animated up while the push was still mid-flight, the slideover racing
+the keyboard. The owner ruled for a glass sheet that flows out of the button. Two
+honest mechanisms on 26 were weighed by motion quality:
+
+- **The zoom push** (`.navigationTransition(.zoom(sourceID:in:))` with
+  `.matchedTransitionSource` on the button) keeps every navigation semantic
+  untouched, but it stays a full-screen push: the whole page zooms in, the interior
+  is still a plain canvas, and it never reads as a sheet growing out of the control.
+  It solves the source but not the surface. Rejected on feel.
+- **The glass sheet** (a system sheet presentation, one small detent for the field
+  plus the button) is the surface the owner asked for. On 26 the sheet wears the
+  material treatment; paired with the button as its zoom source, it grows out of the
+  capsule instead of sliding over the page. This is the Mail mechanism the roster
+  already rides (a system presentation flowing out of the glass control that
+  presents it, §4 amendment): the arrival sheet is that grammar reused. SP-i5
+  rejected system detent sheets for in-room panels because a detent sheet cannot
+  melt into the clue browser; arrival has no melt law, so that finding does not bind
+  here, and the owner explicitly asked for a sheet. Adopted.
+
+The keyboard race is resolved by deferring focus: the field asks for focus one
+presentation-length after it appears (`JoinSheetPresentation.focusDelay`), so the
+sheet settles first and the keyboard rises into a still surface, never during the
+grow. The task cancels with the sheet, so a fast dismiss never fights a pending
+focus. Below iOS 26 (and the macOS test host, floor 14) the sheet slides in as a
+plain material sheet and the zoom is skipped: no glass required, the §4 one-fallback
+rule. Semantics are unchanged from the push: success dismisses the sheet and sets
+the path to the room alone, so back from the room and the kicked exit both land on
+Rooms, never a stale code field.
+
 ## 5. Two grounds, one app
 
 One identity with a light ground and a dark ground, not two directions. Studio is
