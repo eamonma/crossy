@@ -24,6 +24,9 @@ import {
 import type { BoardFacts } from "./emitter";
 import {
   ANNOUNCE_MS,
+  CLOCK_PUSH_EXPIRATION_S,
+  CLOCK_PUSH_GRACE_MS,
+  CLOCK_REGISTER_BOUNDARY_MS,
   COMPLETION_ALERT_SOUND,
   COMPLETION_ALERT_TITLE,
   DISMISS_AFTER_MS,
@@ -40,6 +43,7 @@ function facts(over: Partial<BoardFacts> = {}): BoardFacts {
     completedAt: null,
     connectedUserIds: new Set<string>(),
     roomName: null,
+    firstFillAt: null,
     ...over,
   };
 }
@@ -644,5 +648,94 @@ describe("§12a emitter: fire-and-forget dispatch through the adapter", () => {
     const end = JSON.parse(sent[0]!.body);
     expect(end.aps.event).toBe("end");
     expect(end.aps.alert).toBeUndefined();
+  });
+});
+
+describe("§12a emitter: the clock push rides the same per-game timer as the debounce", () => {
+  const anchorIso = "2026-07-11T12:00:00.000Z";
+  const anchorMs = Date.parse(anchorIso);
+  const entryMs = anchorMs + CLOCK_REGISTER_BOUNDARY_MS + CLOCK_PUSH_GRACE_MS;
+
+  it("a quiet room's hour boundary fires a re-assert: same bytes, priority 10, long expiration", async () => {
+    const { adapter, sent } = fakeAdapter();
+    const pool = fakePool({
+      members: [member({ userId: "u1", displayName: "Ann" })],
+      tokens: [{ token: "t1", userId: "u1", environment: "sandbox" }],
+    });
+    let armed: (() => void) | null = null;
+    let nowMs = anchorMs + 60_000; // a minute past the first fill
+    const emitter = new LiveActivityPushEmitter({
+      pool: pool as never,
+      adapter,
+      now: () => nowMs,
+      setTimer: (fn) => {
+        armed = fn;
+        return { cancel: () => {} };
+      },
+    });
+    // The welcome primes lastSent and, with the anchor on the facts, arms the clock entry.
+    emitter.onWelcome(
+      "g1",
+      "u1",
+      facts({ firstFillAt: anchorIso, connectedUserIds: new Set(["u1"]) }),
+    );
+    await settle();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.expirationS).toBeUndefined(); // an organic update keeps the transport default
+    expect(armed).not.toBeNull();
+    // The room stays quiet across its hour boundary; the armed wake fires.
+    nowMs = entryMs;
+    armed!();
+    await settle();
+    expect(sent).toHaveLength(2);
+    const clock = JSON.parse(sent[1]!.body);
+    expect(clock.aps.event).toBe("update");
+    expect(clock.aps["content-state"]).toEqual(
+      JSON.parse(sent[0]!.body).aps["content-state"],
+    ); // byte-for-byte re-assert: dedupe deliberately does not apply
+    expect(clock.aps["stale-date"]).toBe(
+      Math.floor((nowMs + STALE_AFTER_MS) / 1000),
+    );
+    expect(sent[1]!.priority).toBe(10);
+    expect(sent[1]!.expirationS).toBe(CLOCK_PUSH_EXPIRATION_S);
+  });
+
+  it("an organic push past the boundary satisfies the guarantee; a late wake stays quiet", async () => {
+    const { adapter, sent } = fakeAdapter();
+    const pool = fakePool({
+      members: [member({ userId: "u1", displayName: "Ann" })],
+      tokens: [{ token: "t1", userId: "u1", environment: "sandbox" }],
+    });
+    let armed: (() => void) | null = null;
+    let nowMs = anchorMs + 60_000;
+    const emitter = new LiveActivityPushEmitter({
+      pool: pool as never,
+      adapter,
+      now: () => nowMs,
+      setTimer: (fn) => {
+        armed = fn;
+        return { cancel: () => {} };
+      },
+    });
+    emitter.onWelcome(
+      "g1",
+      "u1",
+      facts({ firstFillAt: anchorIso, connectedUserIds: new Set(["u1"]) }),
+    );
+    await settle();
+    expect(sent).toHaveLength(1);
+    // A presence change lands past the boundary: that render already applied the flip.
+    nowMs = entryMs + 1;
+    emitter.onPresence(
+      "g1",
+      facts({ firstFillAt: anchorIso, connectedUserIds: new Set<string>() }),
+    );
+    await settle();
+    expect(sent).toHaveLength(2);
+    // A stale armed wake firing later is an idempotent no-op: the entry is satisfied.
+    nowMs = entryMs + 2;
+    armed!();
+    await settle();
+    expect(sent).toHaveLength(2);
   });
 });

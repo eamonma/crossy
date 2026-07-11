@@ -26,12 +26,15 @@ the `v1/` enum.
 vectors/
   live-activity/
     content-state.json
+    clock-schedule.json
 ```
 
 - One JSON file per behavior cluster, kebab-case basename, `.json` extension. Each
   file is a bare JSON array of cases, UTF-8, prettier-formatted (matches `v1/`).
-- Each case is `{ name, contentState }`. `contentState` is the literal payload the
-  emitter encodes and the widget decodes.
+- `content-state.json` cases are `{ name, contentState }`. `contentState` is the
+  literal payload the emitter encodes and the widget decodes.
+- `clock-schedule.json` cases are `{ name, ageSeconds, register, reading? }` and pin
+  the elapsed-clock register schedule (below).
 
 ## The payload
 
@@ -75,3 +78,22 @@ abandoned room with a frozen partial fill and no `completedAt`; a minimal single
 room on a small grid. The `userId` field appears in all three tolerant-decode forms:
 a present opaque id, an explicit null (the ongoing room's third puck), and an absent
 field (the abandoned room's puck), so both sides stay pinned on the absent form.
+
+## The clock schedule
+
+The island's elapsed clock is computed on device from the activity's immutable
+anchor (the room's `firstFillAt`), never pushed. Its register coarsens with the
+room's age instead of growing digits (PROTOCOL.md 12a):
+
+- `ticking` (age under an hour): the native auto-updating timer, MM:SS.
+- `coarse` (an hour to a week): a static reading, H:MM under a day, whole days past
+  it. `reading` carries the exact string.
+- `infinity` (a week or older): the infinity mark.
+
+`clock-schedule.json` pins the schedule for both consumers. The Swift register law
+(`IslandPresentation.elapsedRegister`) must map each case's `ageSeconds` to its
+`register` and `reading`. The server's push policy must treat the ticking/coarse
+straddle (3599/3600) as the boundary it guarantees a render for: a register change
+applies only when the widget renders, so when no organic update has been pushed
+since the boundary passed, the server sends a clock push that re-asserts the last
+content-state and causes the flip (PROTOCOL.md 12a).

@@ -1,9 +1,13 @@
-// Vector conformance for the Live Activity content-state payload (PROTOCOL.md "Live Activity
-// push"; fixtures in vectors/live-activity/). This is the TypeScript-side pin, the same role
-// the engine's vector runner plays for the reducer: every fixture must parse against the shared
-// `LiveActivityContentState` type, and the load-bearing invariants (INV-6 counts-only, INV-1
-// initial casing) are asserted directly on the parsed cases. The Swift widget's Codable decodes
-// the same JSON in a later slice; these fixtures are the contract both sides meet.
+// Vector conformance for the Live Activity family (PROTOCOL.md "Live Activity push"; fixtures
+// in vectors/live-activity/). This is the TypeScript-side pin, the same role the engine's vector
+// runner plays for the reducer. The family is a CLOSED registry, like v1's: every .json file
+// must be a registered cluster with its own case parser, and an unregistered file throws rather
+// than sitting unvalidated. Two clusters exist: `content-state` (every fixture must parse
+// against the shared `LiveActivityContentState` type, with INV-6 counts-only and INV-1 initial
+// casing asserted on the parsed cases) and `clock-schedule` (the elapsed-clock register
+// schedule; the Swift register law and the session push policy assert their own conformance to
+// it, this side pins the shape and its internal coherence). The Swift widget's Codable decodes
+// the same JSON; these fixtures are the contract both sides meet.
 //
 // Test files are exempt from INV-9 purity, so node:fs / node:path are allowed here.
 import { readFileSync, readdirSync } from "node:fs";
@@ -114,27 +118,77 @@ function parseCase(raw: unknown, where: string): VectorCase {
   };
 }
 
+/** The clock-schedule cluster's case shape (vectors/live-activity/README.md). */
+interface ClockCase {
+  readonly name: string;
+  readonly ageSeconds: number;
+  readonly register: "ticking" | "coarse" | "infinity";
+  /** The exact static string a coarse case renders; null on ticking and infinity cases. */
+  readonly reading: string | null;
+}
+
+const REGISTERS = ["ticking", "coarse", "infinity"] as const;
+
+function parseClockCase(raw: unknown, where: string): ClockCase {
+  if (!isObject(raw)) throw new Error(`${where}: case must be an object`);
+  if (!isString(raw.name)) throw new Error(`${where}: name must be a string`);
+  if (!isNonNegInt(raw.ageSeconds))
+    throw new Error(`${where}: ageSeconds must be a non-negative integer`);
+  if (
+    !isString(raw.register) ||
+    !REGISTERS.includes(raw.register as ClockCase["register"])
+  )
+    throw new Error(`${where}: register must be ticking | coarse | infinity`);
+  const coarse = raw.register === "coarse";
+  if (coarse ? !isString(raw.reading) : raw.reading !== undefined)
+    throw new Error(`${where}: reading is present exactly on a coarse case`);
+  return {
+    name: raw.name,
+    ageSeconds: raw.ageSeconds,
+    register: raw.register as ClockCase["register"],
+    reading: coarse ? (raw.reading as string) : null,
+  };
+}
+
+/** The family's registered clusters. An unknown .json throws, the closed-registry ethos. */
+const CLUSTERS = ["content-state", "clock-schedule"] as const;
+
+function readCluster(fileName: string): unknown[] {
+  const raw: unknown = JSON.parse(
+    readFileSync(join(familyDir, fileName), "utf8"),
+  );
+  if (!Array.isArray(raw) || raw.length === 0)
+    throw new Error(
+      `vectors/live-activity/${fileName} must be a non-empty JSON array`,
+    );
+  return raw;
+}
+
 function loadFixtures(): { cluster: string; cases: VectorCase[] }[] {
   const files: { cluster: string; cases: VectorCase[] }[] = [];
   for (const entry of readdirSync(familyDir, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith(".json")) continue; // README.md and friends
-    const raw: unknown = JSON.parse(
-      readFileSync(join(familyDir, entry.name), "utf8"),
-    );
-    if (!Array.isArray(raw) || raw.length === 0)
-      throw new Error(
-        `vectors/live-activity/${entry.name} must be a non-empty JSON array`,
-      );
     const cluster = entry.name.replace(/\.json$/, "");
+    if (!CLUSTERS.includes(cluster as (typeof CLUSTERS)[number]))
+      throw new Error(
+        `vectors/live-activity/${entry.name} is not a registered cluster; ` +
+          `register it here with its own parser before adding it`,
+      );
+    if (cluster !== "content-state") continue; // clock-schedule has its own loader below
     files.push({
       cluster,
-      cases: raw.map((c, i) => parseCase(c, `${cluster}[${i}]`)),
+      cases: readCluster(entry.name).map((c, i) =>
+        parseCase(c, `${cluster}[${i}]`),
+      ),
     });
   }
   return files;
 }
 
 const fixtures = loadFixtures();
+const clockSchedule = readCluster("clock-schedule.json").map((c, i) =>
+  parseClockCase(c, `clock-schedule[${i}]`),
+);
 
 describe("Live Activity content-state vectors (PROTOCOL.md Live Activity push)", () => {
   it("discovers the content-state cluster with the required scenarios", () => {
@@ -233,6 +287,35 @@ describe("Live Activity content-state vectors (PROTOCOL.md Live Activity push)",
             expect(c.contentState.completedAt).toBeNull();
           }
         });
+      }
+    });
+  }
+});
+
+describe("clock-schedule vectors (PROTOCOL.md Live Activity push)", () => {
+  // The register LAW conformance lives with the consumers: IslandClockScheduleTests pins the
+  // Swift register mapping, the session policy tests pin the server boundary. This side pins the
+  // fixture shape (parseClockCase already ran during load) and its internal coherence.
+  it("carries the ticking/coarse straddle, the boundary the server guarantees a render for", () => {
+    const lastTicking = Math.max(
+      ...clockSchedule
+        .filter((c) => c.register === "ticking")
+        .map((c) => c.ageSeconds),
+    );
+    const firstCoarse = Math.min(
+      ...clockSchedule
+        .filter((c) => c.register === "coarse")
+        .map((c) => c.ageSeconds),
+    );
+    expect(lastTicking + 1).toBe(firstCoarse);
+  });
+
+  for (const c of clockSchedule) {
+    it(`${c.name}: the reading form is H:MM or whole days, never three sections`, () => {
+      if (c.register === "coarse") {
+        expect(c.reading).toMatch(/^\d+:[0-5]\d$|^\d+ d$/);
+      } else {
+        expect(c.reading).toBeNull();
       }
     });
   }

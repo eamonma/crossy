@@ -163,6 +163,7 @@ export class GameActor {
       completedAt: this.completedAt,
       connectedUserIds: this.connectedUserIds(),
       roomName: this.roomName,
+      firstFillAt: this.state.firstFillAt,
     };
   }
 
