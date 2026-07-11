@@ -62,11 +62,17 @@ public enum RosterList {
         }
     }
 
-    /// The cluster: the first `puckCap` in presence order, plus how many collapsed.
+    /// The cluster (owner ruling 2026-07-10): only the people who are playing,
+    /// host or solver, never a spectator. Guests always seat as spectators
+    /// (PROTOCOL.md §12), so guests leave the top bar without any wire change,
+    /// and a puck in the pill means "solving". The menu still lists everyone
+    /// (RosterMenu.rows reads `ordered`, not this): spectators keep their quiet
+    /// Watching word there, and the self-spectator Join in flow is unchanged.
+    /// The first `puckCap` in presence order show, the rest collapse to +N.
     public static func cluster(_ members: [RosterMember]) -> (pucks: [RosterMember], overflow: Int) {
-        let inOrder = ordered(members)
-        let shown = Array(inOrder.prefix(puckCap))
-        return (shown, inOrder.count - shown.count)
+        let playing = ordered(members).filter { !$0.isSpectator }
+        let shown = Array(playing.prefix(puckCap))
+        return (shown, playing.count - shown.count)
     }
 
     /// The quiet trailing word (ID-5 lexicon: plain, no metaphors), the roster

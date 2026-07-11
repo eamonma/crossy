@@ -51,6 +51,35 @@ final class RosterListTests: XCTestCase {
         XCTAssertEqual(cluster.overflow, 0)
     }
 
+    // The cluster shows only the people who are playing (owner ruling
+    // 2026-07-10): host or solver, never a spectator. Guests always seat as
+    // spectators (PROTOCOL.md §12), so a puck in the pill means "solving". The
+    // menu still lists everyone; only the cluster filters.
+    func test_cluster_showsSolversNotSpectators() {
+        let members = [
+            member("you", host: true),
+            member("bee"),
+            member("watcher", spectator: true),
+            member("guest", connected: false, spectator: true),
+        ]
+        let cluster = RosterList.cluster(members)
+        // Presence order holds within the filtered set: both connected, byte
+        // order (Bee before You), the spectators dropped entirely.
+        XCTAssertEqual(cluster.pucks.map(\.userId), ["bee", "you"])
+        XCTAssertEqual(cluster.overflow, 0)
+    }
+
+    // The overflow counts only solvers: a room dense with spectators never
+    // inflates the pill's +N with people who are not playing.
+    func test_cluster_overflowCountsOnlySolvers() {
+        let solvers = (1...6).map { member("s\($0)") }
+        let watchers = (1...4).map { member("w\($0)", spectator: true) }
+        let cluster = RosterList.cluster(solvers + watchers)
+        XCTAssertEqual(cluster.pucks.count, RosterList.puckCap)
+        // Six solvers, four shown, two collapsed; the four spectators never count.
+        XCTAssertEqual(cluster.overflow, 2)
+    }
+
     // The host gate on the roster menu's kick affordance (owner ruling
     // 2026-07-10): the local participant's own role decides what the menu
     // offers; the server enforces host-only regardless.
