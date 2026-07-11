@@ -1,8 +1,9 @@
 // Rooms, the signed-in home (EXPERIENCE.md §3): cards from GET /games, newest
 // first, cursor-paginated; the empty state is an invitation, one line and the
-// standing action. This slice ships Join with a code alone; New game rides the
-// create-flow slice (recorded slice decision, not a divergence). The standing
-// action is glass (chrome you hold); the cards are paper (content).
+// Join affordance. Join stands top-trailing as a small glass capsule (code or
+// QR, one panel; owner ruling 2026-07-10 late) — the bottom standing slot is
+// New game's when the create-flow slice lands. Glass is chrome you hold; the
+// cards are paper (content).
 //
 // The screen owns scroll, paging, and states; it reaches the network only through
 // the injected page loader (AD-2: CrossyUI sees neither CrossyAPI nor the protocol
@@ -73,14 +74,38 @@ public struct RoomsScreen: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .bottom) {
-            content
-            joinAction
-                .padding(.horizontal, 24)
-                .padding(.bottom, 12)
+        content
+            // The Join affordance stands over the top-trailing corner, aligned
+            // with the "Rooms" title: a small glass capsule, the arrival grammar
+            // (DESIGN.md §4). It never scrolls; it is chrome.
+            .overlay(alignment: .topTrailing) { joinAffordance }
+            .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+            .task { await reload() }
+    }
+
+    /// Join, top-trailing: the glyph says the camera is welcome, the word says
+    /// what happens. The capsule is the join panel's zoom source, so the glass
+    /// sheet grows out of it (arrival notes, DESIGN.md §4).
+    private var joinAffordance: some View {
+        Button(action: onJoinWithCode) {
+            HStack(spacing: 6) {
+                Image(systemName: "qrcode.viewfinder")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(verbatim: ArrivalCopy.joinAffordance)
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(Color(rgb: ground.tokens.ink))
+            .padding(.horizontal, 16)
+            .frame(height: 40)
+            // The whole capsule takes the tap (the WelcomeScreen finding).
+            .contentShape(Capsule())
         }
-        .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
-        .task { await reload() }
+        .buttonStyle(.plain)
+        .modifier(ChromeGlassSurface(cornerRadius: 20))
+        .modifier(JoinSheetSourceMark(source: joinSheetSource))
+        .padding(.trailing, 20)
+        .padding(.top, 12)
+        .accessibilityLabel(ArrivalCopy.joinTitle)
     }
 
     @ViewBuilder
@@ -114,8 +139,7 @@ public struct RoomsScreen: View {
                 }
             }
             .padding(.horizontal, 16)
-            // Air for the standing action, so the last card scrolls clear of it.
-            .padding(.bottom, ChromeLayout.barHeight + 32)
+            .padding(.bottom, 24)
         }
         .refreshable { await reload() }
     }
@@ -127,27 +151,6 @@ public struct RoomsScreen: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .multilineTextAlignment(.center)
             .padding(.top, 48)
-    }
-
-    /// The standing action (glass): Join with a code. New game joins it in the
-    /// create-flow slice; the cluster-merge-on-scroll moment rides with that pair.
-    /// The button is the join sheet's zoom source, so the glass sheet grows out of
-    /// this capsule instead of a screen sliding over it (arrival notes, DESIGN.md
-    /// §4). The zoom is iOS 18+ (the package floor on device); the macOS test host
-    /// (14) and previews skip it and just tap.
-    private var joinAction: some View {
-        Button(action: onJoinWithCode) {
-            Text(verbatim: ArrivalCopy.joinWithCode)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(rgb: ground.tokens.ink))
-                .frame(maxWidth: .infinity)
-                .frame(height: ChromeLayout.barHeight)
-                // The whole capsule takes the tap (the WelcomeScreen finding).
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
-        .modifier(JoinSheetSourceMark(source: joinSheetSource))
     }
 
     // MARK: - Paging

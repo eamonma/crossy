@@ -16,7 +16,8 @@ final class ArrivalCopyTests: XCTestCase {
             ArrivalCopy.sentence(forCode: "DENIED"),
             "The host removed you from this room.")
         XCTAssertEqual(ArrivalCopy.roomsTitle, "Rooms")
-        XCTAssertEqual(ArrivalCopy.joinWithCode, "Join with a code")
+        XCTAssertEqual(ArrivalCopy.joinAffordance, "Join")
+        XCTAssertEqual(ArrivalCopy.joinTitle, "Join a room")
         XCTAssertEqual(ArrivalCopy.continueWithDiscord, "Continue with Discord")
     }
 

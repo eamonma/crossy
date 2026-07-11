@@ -43,13 +43,22 @@ public enum ArrivalCopy {
     // MARK: - Rooms (lexicon: home is Rooms)
 
     public static let roomsTitle = "Rooms"
-    public static let joinWithCode = "Join with a code"
     /// The empty state is an invitation, not a void: one line, then the standing
     /// actions carry the rest.
     public static let roomsEmpty = "No rooms yet. Join a friend's room with a code."
 
-    // MARK: - Join with a code
+    // MARK: - Join (the top affordance and its camera-first panel)
 
+    /// The top-trailing capsule on Rooms: one word, the glyph carries the how.
+    public static let joinAffordance = "Join"
+    /// The panel title: a room is what you join, however the code arrives.
+    public static let joinTitle = "Join a room"
+    /// Under the viewport, before the field: the typed path is always standing.
+    public static let joinTypeInstead = "or type the code"
+    /// The camera refused or absent: one plain sentence in the viewport, the field
+    /// still beneath it (never a dead end).
+    public static let joinScanDenied =
+        "The camera's off for Crossy. Type the code, or turn it on in Settings."
     public static let joinAction = "Join"
 
     // MARK: - Puzzles (the library tab: what you've uploaded, browse-only until the

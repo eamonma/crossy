@@ -68,11 +68,15 @@ dead end.
 
 ### Rooms (home)
 
-The signed-in root. Room cards from `GET /games` (cursor-paginated, newest first):
-geometry fingerprint, member dots, puzzle title, optional game name. Two standing
-actions: New game, Join with a code (glass cluster, merges on scroll). Empty state
-is an invitation, not a void: one line and the same two actions. A puzzles shelf
-(`GET /puzzles`) backs game creation and is reachable here.
+The signed-in root, the home tab of the shell (system tab bar: Rooms, Puzzles,
+Settings; DESIGN.md §4). Room cards from `GET /games` (cursor-paginated, newest
+first): geometry fingerprint, member dots, puzzle title, optional game name. Join
+stands top-trailing as a glass capsule (code or QR, one panel); New game becomes
+the standing action at the bottom when the create-flow slice lands (amended
+2026-07-10 late: Join left the bottom cluster for the top corner). Empty state is
+an invitation, not a void: one line and the same actions. The puzzles library is
+its own tab (browse today, `GET /puzzles`; it backs creation when the create flow
+lands).
 
 ### Create a game
 
@@ -81,11 +85,16 @@ name, 80 chars trimmed (PROTOCOL.md section 12). Creation returns the invite cod
 the share card is the immediate next beat, share sheet one tap away. Ingestion
 failures read as named, human sentences (section 5).
 
-### Join with a code
+### Join a room (code or QR)
 
-One field, the read-aloud alphabet, autocapitalized, ambiguity-free. `POST
-/games/join` resolves the code alone; `GAME_NOT_FOUND` reads "That code doesn't
-match any room." `DENIED` (kicked) is honest and final. Success lands a full
+Camera-first panel: a viewport scans any invite QR — the projector's share link,
+the `/g/{code}` unfurl link, or a bare code (InviteScan digests all three) — and
+beneath it the one field, the read-aloud alphabet, autocapitalized,
+ambiguity-free. A scan takes the typed path exactly: it fills the field and
+submits, one attempt per scanned code. `POST /games/join` resolves the code
+alone; `GAME_NOT_FOUND` reads "That code doesn't match any room." `DENIED`
+(kicked) is honest and final, scanned or typed. A refused or absent camera gives
+way to one plain sentence over the field — never a dead end. Success lands a full
 account in the room as a solver (owner decision 2026-07-10).
 
 ### The room (solve screen)

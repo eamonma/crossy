@@ -48,7 +48,12 @@ struct ArrivalRootView: View {
     /// The join sheet's presentation state and its zoom namespace. The namespace
     /// lives here, not in RoomsScreen, because the sheet is presented from this
     /// hierarchy; the button downstream stamps itself as the matching source.
-    @State private var showJoin = false
+    /// `-i3Join` opens it at launch (fixture demos and screenshots of the panel).
+    @State private var showJoin = LaunchFacts.flag("i3Join")
+    /// The camera's standing on this device, resolved when the join sheet rises
+    /// (CameraScanAuthority; the simulator resolves denied, the panel keeps its
+    /// typed path).
+    @State private var joinScan: JoinScanState = .probing
     @State private var tab: ShellTab = .launchSelection
     @Namespace private var joinZoom
     @Environment(\.colorScheme) private var colorScheme
@@ -116,24 +121,36 @@ struct ArrivalRootView: View {
         .tint(Color(rgb: ground.tokens.ink))
     }
 
-    /// The join surface: a glass sheet grown from the button, sized to one field.
-    /// Success dismisses the sheet and makes the room the sole pushed element (the
-    /// old push replaced the join route on the path; the sheet replaces that step
-    /// exactly), so back from the room is Rooms, never a stale code field.
+    /// The join surface: a glass sheet grown from the Join capsule, camera-first
+    /// with the typed path always beneath (DESIGN.md §4). Success dismisses the
+    /// sheet and makes the room the sole pushed element (the old push replaced
+    /// the join route on the path; the sheet replaces that step exactly), so back
+    /// from the room is Rooms, never a stale code field. The camera's standing
+    /// resolves as the sheet rises; scanning works in every composition (a
+    /// payload is digested locally), the fixture just stubs where the join goes.
     private var joinSheet: some View {
-        JoinCodeScreen { code in
-            switch await model.rooms.join(code: code) {
-            case .success(let gameId):
-                showJoin = false
-                path = [roomRoute(for: gameId)]
-                return nil
-            case .failure(let failure):
-                return failure
+        JoinCodeScreen(
+            scanState: joinScan,
+            onJoin: { code in
+                switch await model.rooms.join(code: code) {
+                case .success(let gameId):
+                    showJoin = false
+                    path = [roomRoute(for: gameId)]
+                    return nil
+                case .failure(let failure):
+                    return failure
+                }
             }
+        ) { onScan in
+            CameraScanView(onScan: onScan)
         }
-        .presentationDetents([.fraction(JoinSheetPresentation.detentFraction)])
+        .presentationDetents([.fraction(JoinSheetPresentation.scanDetentFraction)])
         .presentationDragIndicator(.visible)
         .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
+        .task {
+            joinScan = .probing
+            joinScan = await CameraScanAuthority.resolve() ? .live : .denied
+        }
     }
 
     /// The Settings tab (roadmap I3, thin settings). Sign out and a confirmed delete

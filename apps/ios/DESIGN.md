@@ -307,10 +307,29 @@ only color). Only Rooms navigates: a room pushes inside that tab and hides the
 bar, because the board and deck own the whole screen (the full-bleed ruling), and
 the bar returns on pop. Settings is a tab now, so the account puck that stood
 top-trailing on Rooms is retired. New game is not a tab: an action is not a
-place, and it rides the create-flow slice beside Join (the recorded
-cluster-merge moment). Puzzles is browse-only until then: paper cards, no tap
-targets, no promise the flow can't keep. Welcome stays bar-less; there is no
-shell before there is a person.
+place, and it rides the create-flow slice, inheriting the standing bottom slot
+Join vacated (the cluster-merge moment is amended: Join stands top-trailing
+now, ruled the same night). Puzzles is browse-only until then: paper cards, no
+tap targets, no promise the flow can't keep. Welcome stays bar-less; there is
+no shell before there is a person.
+
+**Arrival notes: the join panel** (owner ruling 2026-07-10 late, "code or QR").
+Join is a small glass capsule top-trailing on Rooms — the corner the account
+puck vacated — and its sheet is camera-first: a dark viewport (a camera is a
+window, not paper) scanning for any invite QR, the typed path always standing
+beneath it. A scan is the same act as typing: the digested code (InviteScan:
+the share link, the /g/ unfurl link, or a bare code) fills the field and
+submits, so the person sees what the camera read, and DENIED's finality binds
+scans exactly as keys. One attempt per scanned code; a QR lingering in frame
+never becomes a retry loop. The keyboard law bends here, deliberately: this
+sheet does NOT autofocus (the keyboard would bury the viewport); the field
+focuses on tap, the viewport folds to nothing on the chrome spring while the
+keyboard rises, and the camera session survives the fold (mounted at zero
+height, so unfolding is instant). Camera refused or absent: one plain sentence
+in the viewport, the field untouched — never a dead end. The camera itself is
+the app target's (AVFoundation behind a scanner slot and a verdict enum,
+AD-2); CrossyUI renders chrome and digests payloads, and the digest is pure
+and pinned (InviteScanTests).
 
 ## 5. Two grounds, one app
 
