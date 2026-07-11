@@ -103,22 +103,34 @@ public struct GridCamera: Equatable, Sendable {
     /// base (self), never as two gestures compounding against separate bases.
     /// `startCentroid` and `centroid` share one stable coordinate space; the
     /// solved offset is clamped so the board never flies offscreen at rest.
+    ///
+    /// The scale clamps FIRST, so the pin solves at the scale that will render.
+    /// Pinch past the ceiling (or floor) with a still centroid and the camera is
+    /// a fixed point: scale saturates and the offset holds, no drift injected by
+    /// solving the pin for a scale the clamp then discards. Only real centroid
+    /// drift pans.
     public func pinched(
         by magnification: CGFloat, startCentroid: CGPoint, centroid: CGPoint,
         viewport: CGSize, rows: Int, cols: Int
     ) -> GridCamera {
         guard magnification > 0, scale > 0 else { return self }
-        let target = scale * magnification
+        // Clamp the scale before placing the pin: the anchor law must hold at the
+        // scale that renders, not at the raw target the clamp would then pull back.
+        let target = min(
+            max(scale * magnification, Self.minScale(viewport: viewport, rows: rows, cols: cols)),
+            Self.maxScale)
         // The board point under the start centroid, in module units.
         let boardPoint = CGPoint(
             x: (startCentroid.x - offset.x) / scale,
             y: (startCentroid.y - offset.y) / scale)
-        // Put that board point back under the live centroid at the new scale.
+        // Put that board point back under the live centroid at the clamped scale.
         let moved = GridCamera(
             scale: target,
             offset: CGPoint(
                 x: centroid.x - boardPoint.x * target,
                 y: centroid.y - boardPoint.y * target))
+        // Bounds-clamp only: the scale is already inside its range, so this pins
+        // the offset without touching the pin the scale would otherwise break.
         return moved.clamped(viewport: viewport, rows: rows, cols: cols)
     }
 

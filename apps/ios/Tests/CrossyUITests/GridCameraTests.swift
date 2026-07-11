@@ -240,6 +240,95 @@ final class GridCameraTests: XCTestCase {
         XCTAssertEqual(out, start)
     }
 
+    func test_pinched_atTheCeilingWithAStillCentroid_isAFixedPoint() {
+        // The reported bug: at max zoom, pinching harder with the fingers still
+        // must change nothing. Scale saturates at the ceiling and the offset holds,
+        // however large the magnification grows, because the pin solves at the
+        // scale that renders, not at the raw target the clamp would discard.
+        let start = GridCamera(scale: GridCamera.maxScale, offset: CGPoint(x: -400, y: -400))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let centroid = CGPoint(x: 200, y: 300)
+        for magnification in [CGFloat(1.5), 10, 1000] {
+            let saturated = start.pinched(
+                by: magnification, startCentroid: centroid, centroid: centroid,
+                viewport: viewport, rows: 25, cols: 25)
+            XCTAssertEqual(saturated.scale, GridCamera.maxScale)
+            XCTAssertEqual(saturated.offset.x, start.offset.x, accuracy: 0.0001)
+            XCTAssertEqual(saturated.offset.y, start.offset.y, accuracy: 0.0001)
+        }
+    }
+
+    func test_pinched_atTheFloorWithAStillCentroid_isAFixedPoint() {
+        // The mirror at the zoom-out floor: pinching further out with the fingers
+        // still leaves the camera untouched, no offset shove from a scale the
+        // clamp floors back up.
+        let start = GridCamera.initial(viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(start.scale, GridCamera.minScale(viewport: viewport, rows: 25, cols: 25))
+        let centroid = CGPoint(x: 180, y: 260)
+        for magnification in [CGFloat(0.5), 0.01, 0.0001] {
+            let saturated = start.pinched(
+                by: magnification, startCentroid: centroid, centroid: centroid,
+                viewport: viewport, rows: 25, cols: 25)
+            XCTAssertEqual(saturated.scale, start.scale)
+            XCTAssertEqual(saturated.offset.x, start.offset.x, accuracy: 0.0001)
+            XCTAssertEqual(saturated.offset.y, start.offset.y, accuracy: 0.0001)
+        }
+    }
+
+    func test_pinched_saturatedAtTheCeiling_stillPansByExactlyTheDrift() {
+        // Saturation kills only false zoom-driven drift, never real panning: at
+        // the ceiling, a centroid that moves pans the board by exactly its drift.
+        let start = GridCamera(scale: GridCamera.maxScale, offset: CGPoint(x: -400, y: -400))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        let startCentroid = CGPoint(x: 260, y: 340)
+        let liveCentroid = CGPoint(x: 200, y: 300)
+        let pinned = boardPoint(start, under: startCentroid)
+        let saturated = start.pinched(
+            by: 100, startCentroid: startCentroid, centroid: liveCentroid,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(saturated.scale, GridCamera.maxScale)
+        // The anchored board point rides to the live centroid, scale held.
+        let landed = boardPoint(saturated, under: liveCentroid)
+        XCTAssertEqual(landed.x, pinned.x, accuracy: 0.01)
+        XCTAssertEqual(landed.y, pinned.y, accuracy: 0.01)
+        // The offset moved by exactly the centroid's drift (-60, -40), no more.
+        XCTAssertEqual(saturated.offset.x, start.offset.x - 60, accuracy: 0.01)
+        XCTAssertEqual(saturated.offset.y, start.offset.y - 40, accuracy: 0.01)
+    }
+
+    func test_pinched_crossingTheCeilingMidGesture_pinsAtTheMomentOfSaturation() {
+        // A pinch that runs from below the ceiling to past it keeps the board point
+        // under the still centroid pinned at the instant of saturation: no jump
+        // between the frame just below the ceiling and the frames at it. Both axes
+        // overflow throughout, so only the scale clamp is in play.
+        let base = GridCamera(scale: GridCamera.maxScale * 0.8, offset: CGPoint(x: -400, y: -400))
+            .clamped(viewport: viewport, rows: 25, cols: 25)
+        XCTAssertLessThan(base.scale, GridCamera.maxScale)
+        let centroid = CGPoint(x: 200, y: 300)
+        let pinned = boardPoint(base, under: centroid)
+        // Just below the ceiling (magnification 1.2 keeps 0.96 * maxScale).
+        let below = base.pinched(
+            by: 1.2, startCentroid: centroid, centroid: centroid,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertLessThan(below.scale, GridCamera.maxScale)
+        XCTAssertEqual(boardPoint(below, under: centroid).x, pinned.x, accuracy: 0.01)
+        XCTAssertEqual(boardPoint(below, under: centroid).y, pinned.y, accuracy: 0.01)
+        // Exactly at the ceiling, then past it: scale saturates and the same board
+        // point stays under the centroid, so the crossing is seamless.
+        let atCeiling = base.pinched(
+            by: GridCamera.maxScale / base.scale, startCentroid: centroid, centroid: centroid,
+            viewport: viewport, rows: 25, cols: 25)
+        let pastCeiling = base.pinched(
+            by: 5, startCentroid: centroid, centroid: centroid,
+            viewport: viewport, rows: 25, cols: 25)
+        XCTAssertEqual(atCeiling.scale, GridCamera.maxScale, accuracy: 0.0001)
+        XCTAssertEqual(pastCeiling.scale, GridCamera.maxScale)
+        XCTAssertEqual(atCeiling.offset.x, pastCeiling.offset.x, accuracy: 0.0001)
+        XCTAssertEqual(atCeiling.offset.y, pastCeiling.offset.y, accuracy: 0.0001)
+        XCTAssertEqual(boardPoint(pastCeiling, under: centroid).x, pinned.x, accuracy: 0.01)
+        XCTAssertEqual(boardPoint(pastCeiling, under: centroid).y, pinned.y, accuracy: 0.01)
+    }
+
     func test_panned_translatesAndClamps() {
         let start = GridCamera(scale: GridCamera.maxScale, offset: .zero)
             .clamped(viewport: viewport, rows: 25, cols: 25)
