@@ -3,12 +3,12 @@
 //  Crossy
 //
 //  The system share sheet for the room invite. CrossyUI reports the intent
-//  (the share card's "Share…" row, SharePanel's onShare) as a plain closure
+//  (the share menu's "Share…" row, ShareMenuPill's onShare) as a plain closure
 //  and stays free of UIKit (AD-2: CrossyUI depends only on
 //  CrossyStore/CrossyDesign); the app target owns UIActivityViewController,
-//  exactly as it already owns the pasteboard writes for the copy rows. The
-//  shared payload is ShareInvite.url, the same link the card's QR encodes and
-//  its copy row carries.
+//  exactly as it already owns the pasteboard write for Copy link. The shared
+//  payload is ShareInvite.url, the same link the menu's QR sheet encodes and
+//  its Copy link row carries.
 //
 
 import SwiftUI

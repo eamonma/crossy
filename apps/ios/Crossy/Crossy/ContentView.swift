@@ -22,25 +22,19 @@ import UIKit
 
 struct ContentView: View {
     init() {
-        // The pill-inflation prototype's switch (PillInflation, owner ask
-        // 2026-07-11): -gooOvershoot walks the pill panels' open on the
-        // underdamped inflation curve; -gooMetaball (iOS 26) hands the swap
-        // to the system's materialize inside a GlassEffectContainer. Neither
-        // flag means the shipped law. Composes with -demoRoom for live taps
-        // and with -i2fShare for a scripted open.
+        // The facts card's morph character (PillInflation). The shipping
+        // default is metaball on iOS 26+ (owner ruling 2026-07-11: the
+        // system's materialize swap inside a GlassEffectContainer, falling
+        // back to the clean frame-interpolation walk below 26). -gooClean and
+        // -gooOvershoot override it for reference/regression; -gooMetaball is
+        // the default and stays reachable as an explicit no-op.
         let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-gooMetaball") {
-            PillInflation.character = .metaball
+        if arguments.contains("-gooClean") {
+            PillInflation.character = .clean
         } else if arguments.contains("-gooOvershoot") {
             PillInflation.character = .overshoot
-        }
-        // The share surface's third candidate (ShareSurface, owner comparison
-        // 2026-07-11): -shareMenu presents the share pill as a system Menu
-        // (the RosterMenu mechanism), so the open rides the native menu melt
-        // instead of inflating the morph card. Composes with -demoRoom for
-        // live taps; no flag means the card, the shipped law.
-        if arguments.contains("-shareMenu") {
-            ShareSurface.mechanism = .menu
+        } else if arguments.contains("-gooMetaball") {
+            PillInflation.character = .metaball
         }
     }
 
@@ -95,22 +89,26 @@ struct DemoRoomView: View {
             puzzleAuthor: room.puzzleAuthor,
             puzzleDate: room.puzzleDate,
             inviteCode: room.inviteCode,
-            // The fixture's shareable link: the share pill, its QR, and the
-            // copy row all render offline over the same URL a live room
-            // would build (ShareInvite.url), so the whole card is judgeable
-            // with no network.
+            // The fixture's shareable link: the share pill, its menu, and its
+            // QR sheet all render offline over the same URL a live room would
+            // build (ShareInvite.url), so the whole surface is judgeable with
+            // no network.
             shareUrl: ShareInvite.url(
                 gameId: room.gameId, code: room.inviteCode, name: room.roomName),
             model: room.selection,
             chrome: room.chrome,
             avatarCache: avatarCache,
             onBack: onBack,
-            // The offline fixture holds the REST operations to a no-op: no
-            // pasteboard write worth making in a demo. The rows render so the
-            // cards' composition and the roster's kick submenu are visible;
-            // the mutations do nothing.
-            onCopyInviteCode: {},
-            onCopyShareLink: {},
+            // Copy link is real even offline (it writes only to the local
+            // pasteboard; no network, no REST): the share menu's primary row
+            // is device-judgeable over the fixture URL.
+            onCopyShareLink: {
+                if let url = ShareInvite.url(
+                    gameId: room.gameId, code: room.inviteCode, name: room.roomName)
+                {
+                    UIPasteboard.general.string = url.absoluteString
+                }
+            },
             // The share sheet itself is real (it writes nothing; PROTOCOL.md
             // has no bearing on it), so the demo presents it exactly as a
             // live room would, over the fixture URL: the tertiary channel is
@@ -180,8 +178,9 @@ struct RealRoomView: View {
                     roomName: room.roomName,
                     inviteCode: room.inviteCode,
                     // The composition root owns the game id, so it builds the
-                    // link (ShareInvite.url): the same URL the card's QR
-                    // encodes, the copy row writes, and the sheet sends.
+                    // link (ShareInvite.url): the same URL the share menu's QR
+                    // sheet encodes, the Copy link row writes, and the sheet
+                    // sends.
                     shareUrl: ShareInvite.url(
                         gameId: room.gameId, code: room.inviteCode,
                         name: room.roomName),
@@ -190,12 +189,11 @@ struct RealRoomView: View {
                     avatarCache: avatarCache,
                     onBack: onBack,
                     onExit: onExit,
-                    // The pasteboard writes are the composition root's
-                    // (CrossyUI stays UIKit-free); abandon rides the REST
-                    // client through RealRoom (PROTOCOL.md §12).
-                    onCopyInviteCode: {
-                        if let code = room.inviteCode { UIPasteboard.general.string = code }
-                    },
+                    // The pasteboard write is the composition root's (CrossyUI
+                    // stays UIKit-free); abandon rides the REST client through
+                    // RealRoom (PROTOCOL.md §12). Copy link now owns invite
+                    // copying (owner ruling 2026-07-11: the facts card's
+                    // copy-code row retired for the share menu).
                     onCopyShareLink: {
                         if let url = ShareInvite.url(
                             gameId: room.gameId, code: room.inviteCode,

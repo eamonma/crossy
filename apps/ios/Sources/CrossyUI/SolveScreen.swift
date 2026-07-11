@@ -27,23 +27,21 @@ public struct SolveScreen: View {
     private let puzzleAuthor: String?
     private let puzzleDate: String?
     /// The room's invite code, held client-side (PROTOCOL.md §12: `GET
-    /// /games/{id}` returns it to any member). The facts card offers a copy
-    /// row when it is present; nil leaves the row out (a room that has no code
-    /// in hand yet).
+    /// /games/{id}` returns it to any member). Feeds the share menu's titled
+    /// read-aloud header and gates the share pill (with the link); nil while a
+    /// room has no code in hand yet.
     private let inviteCode: String?
     /// The room's shareable link (ShareInvite.url, built by the composition
-    /// root, which owns the game id). The share pill and its card stand only
-    /// when this and the code exist: never a dead control (owner ask
-    /// 2026-07-11, the dedicated share surface).
+    /// root, which owns the game id). The share pill stands only when this and
+    /// the code exist: never a dead control (the share surface).
     private let shareUrl: URL?
     private let onBack: () -> Void
     private let onJoinIn: () -> Void
     private let onExit: () -> Void
-    /// Copy the invite code to the clipboard (the composition root owns the
-    /// platform pasteboard; CrossyUI reports the intent only).
-    private let onCopyInviteCode: () -> Void
-    /// Copy the share LINK to the clipboard (the share card's primary row;
-    /// same seam, same reasoning).
+    /// Copy the share LINK to the clipboard (the share menu's Copy link row;
+    /// the composition root owns the platform pasteboard, CrossyUI reports the
+    /// intent only). This is where invite copying lives now (owner ruling
+    /// 2026-07-11: the facts card's copy-code row retired).
     private let onCopyShareLink: () -> Void
     /// Hand the link to the system share surface (UIActivityViewController
     /// lives in the app target, AD-2; the card only reports the intent).
@@ -96,7 +94,6 @@ public struct SolveScreen: View {
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
-        onCopyInviteCode: @escaping () -> Void = {},
         onCopyShareLink: @escaping () -> Void = {},
         onShareInvite: @escaping () -> Void = {},
         onEndGame: @escaping () -> Void = {},
@@ -114,7 +111,6 @@ public struct SolveScreen: View {
         self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
-        self.onCopyInviteCode = onCopyInviteCode
         self.onCopyShareLink = onCopyShareLink
         self.onShareInvite = onShareInvite
         self.onEndGame = onEndGame
@@ -220,17 +216,17 @@ public struct SolveScreen: View {
                     backHandedOff: pillEclipsed(.backButton),
                     timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
                     hasShare: shareable != nil,
-                    shareHandedOff: chrome.isShareOpen || pillEclipsed(.sharePill),
                     onBack: onBack,
                     // One mechanism for both moments (redesign 2026-07-11,
                     // retiring the mid-solve popover): the tap inflates the
                     // pill into the facts card, mid-solve with the §12
                     // operations, at completion the stats card (ID-2).
                     onTapTimePill: { openFacts() },
-                    onTapShare: { openShare() },
-                    // The menu variant's payload and intents (-shareMenu,
-                    // ShareSurface): the same code, link, and closures the
-                    // card carries, so the two mechanisms share one truth.
+                    // The share surface ships as the native menu (owner
+                    // ruling 2026-07-11): the share pill is a Menu label, so
+                    // the bar carries its payload and intents (the code for
+                    // the titled section, the link the QR row and copy row
+                    // carry, and the app-target seams).
                     shareCode: shareable?.code,
                     shareUrlString: shareable?.url.absoluteString,
                     onCopyShareLink: onCopyShareLink,
@@ -287,10 +283,13 @@ public struct SolveScreen: View {
 
             // The room-facts card (owner ruling 2026-07-10: the time pill is
             // the room's facts): the time pill, inflated. Mid-solve it carries
-            // the crossword's facts and the §12 operations (redesign
-            // 2026-07-11, one mechanism for both moments); at completion it is
-            // the stats card (ID-2; DESIGN.md §4 morph grammar). Any outside
-            // touch pours it back and lands, no scrim, one glass layer.
+            // the crossword's facts and the host's end-game (redesign
+            // 2026-07-11, one mechanism for both moments; copy invite code
+            // moved to the share menu); at completion it is the stats card
+            // (ID-2; DESIGN.md §4 morph grammar). On iOS 26+ the tap open
+            // rides the system metaball materialize (owner ruling 2026-07-11);
+            // below 26 the clean frame-interpolation melt. Any outside touch
+            // pours it back and lands, no scrim, one glass layer.
             if chrome.isFactsOpen, let morph = factsMorph {
                 RoomFactsPanel(
                     ground: ground,
@@ -301,35 +300,19 @@ public struct SolveScreen: View {
                     firstFillAt: store.firstFillAt,
                     completedAt: store.completedAt ?? store.abandonedAt,
                     chrome: chrome,
-                    // An operation closes the card it acted from: the copy is
-                    // done, and the end-game's terminal transition pours the
-                    // room's transients back anyway.
-                    onCopyInviteCode: {
-                        onCopyInviteCode()
-                        chrome.settleFacts(open: false, animated: !reduceMotion)
-                    },
+                    // The end-game's terminal transition pours the room's
+                    // transients back anyway; the card closes as it acts.
                     onEndGame: {
                         onEndGame()
                         chrome.settleFacts(open: false, animated: !reduceMotion)
                     })
             }
 
-            // The share card (owner ask 2026-07-11): the share pill,
-            // inflated, the facts card's sibling on the same one-surface
-            // grammar. Copy link is the primary act, the QR the in-person
-            // body, Share… the system's catch-all (the hierarchy is argued in
-            // docs/design/share-surface.md). Any outside touch pours it back
-            // and lands, no scrim, one glass layer.
-            if chrome.isShareOpen, let morph = shareMorph, let shareable {
-                SharePanel(
-                    ground: ground,
-                    morph: morph,
-                    content: ShareCardContent.make(code: shareable.code),
-                    shareUrlString: shareable.url.absoluteString,
-                    chrome: chrome,
-                    onCopyLink: onCopyShareLink,
-                    onShare: onShareInvite)
-            }
+            // The share surface is a system Menu now (owner ruling
+            // 2026-07-11), presented out of the share pill in the bar
+            // (ShareMenuPill), so no custom panel stands here: the system
+            // owns its stage, its dismissal, and its stacking, exactly as
+            // the roster menu does.
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
         .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
@@ -476,48 +459,28 @@ public struct SolveScreen: View {
             participantCount: store.stats?.participantCount)
     }
 
-    /// The facts card's operations (FactsOperations pins the rule): only what
-    /// §12 already supports, and only while the room runs. The copy row rides
-    /// the invite code the room view carries; the destructive end-game renders
-    /// only for the host (the server enforces host-only anyway; the client
-    /// simply does not offer it to a non-host). A terminal card carries none:
-    /// it is the record, not a control surface (ending an already-ended game
-    /// is a no-op, INV-4).
+    /// The facts card's operations (FactsOperations pins the rule): only the
+    /// host's end-game now (copying the invite code moved to the share menu,
+    /// owner ruling 2026-07-11), and only while the room runs. The destructive
+    /// end-game renders only for the host (the server enforces host-only
+    /// anyway; the client simply does not offer it to a non-host). A terminal
+    /// card carries none: it is the record, not a control surface (ending an
+    /// already-ended game is a no-op, INV-4).
     private var factsPanelOperations: FactsOperations {
         guard roomStatus == .ongoing else { return .none }
         let selfIsHost =
             rosterMembers.first { $0.userId == store.selfUserId }?.isHost ?? false
-        return FactsOperations.make(inviteCode: inviteCode, isHost: selfIsHost)
+        return FactsOperations.make(isHost: selfIsHost)
     }
 
     /// The invite in hand, or nil when there is nothing to share yet: the
-    /// share pill and its card require both the link (every channel's
-    /// payload) and the code (the card's spoken headline). The composition
+    /// share menu requires both the link (the QR row and copy row's payload)
+    /// and the code (the menu's titled read-aloud header). The composition
     /// root builds the link FROM the code (ShareInvite.url), so in practice
     /// they arrive together.
     private var shareable: (url: URL, code: String)? {
         guard let shareUrl, let inviteCode, !inviteCode.isEmpty else { return nil }
         return (shareUrl, inviteCode)
-    }
-
-    /// The share morph: rest is the SHARE PILL's reported frame, open grows
-    /// leftward with top and trailing edges shared (the Mail-button rule,
-    /// held strictly: the trailing edge never slides past the pill, so the
-    /// players pill beside it stays unburied on narrow layouts; the width
-    /// gives way instead). Height is ShareCardLayout's constant arithmetic.
-    private var shareMorph: GlassMorph? {
-        guard let pill = frames[.sharePill], let roomBar = frames[.roomBar]
-        else { return nil }
-        let width = ShareCardLayout.panelWidth(
-            barMinX: roomBar.minX, pillMaxX: pill.maxX)
-        guard width > 0 else { return nil }
-        return GlassMorph(
-            rest: pill,
-            open: CGRect(
-                x: pill.maxX - width, y: pill.minY,
-                width: width, height: ShareCardLayout.panelHeight()),
-            restCornerRadius: pill.height / 2,
-            openCornerRadius: ChromeLayout.panelCornerRadius)
     }
 
     /// The facts morph: rest is the TIME PILL's reported frame (the card is
@@ -563,10 +526,8 @@ public struct SolveScreen: View {
             // fresh geometry (the celebration's rider below); an abandonment
             // leaves the room quiet.
             chrome.settleFacts(open: false, animated: !reduceMotion)
-            // An open share card pours back too: the celebration (or the
-            // quiet abandonment) owns the stage, and panels are mutually
-            // exclusive with the stats card it may summon.
-            chrome.settleShare(open: false, animated: !reduceMotion)
+            // The share menu is the system's now: it dismisses on any touch,
+            // Mail's own behavior, so there is nothing here to pour back.
         }
         completion.observe(
             status: roomStatus,
@@ -673,13 +634,12 @@ public struct SolveScreen: View {
 
     // MARK: - Intents
 
-    /// The open custom panels' frames (the facts card, the share card), for
-    /// the eclipse test. The roster, a system presentation, never stands
-    /// glass of ours over the bar.
+    /// The open custom panels' frames (the facts card), for the eclipse test.
+    /// The roster and the share menu are system presentations: they never
+    /// stand glass of ours over the bar.
     private var openPanelFrames: [CGRect] {
         var panels: [CGRect] = []
         if chrome.isFactsOpen, let morph = factsMorph { panels.append(morph.open) }
-        if chrome.isShareOpen, let morph = shareMorph { panels.append(morph.open) }
         return panels
     }
 
@@ -701,9 +661,6 @@ public struct SolveScreen: View {
         if chrome.isFactsOpen {
             chrome.settleFacts(open: false, animated: !reduceMotion)
         }
-        if chrome.isShareOpen {
-            chrome.settleShare(open: false, animated: !reduceMotion)
-        }
     }
 
     /// The facts card's summon, one mechanism for both moments (redesign
@@ -711,20 +668,10 @@ public struct SolveScreen: View {
     /// The pill's tap and the celebration's auto-summon both land here; a
     /// tap-opened morph animates on the chrome spring's walk, and no animation
     /// ever writes the drag-scrubbed melt (SP-i1), which pours back first so
-    /// the two surfaces never stand together. Panels are mutually exclusive
-    /// (DESIGN.md §4): an open share card pours back.
+    /// the two surfaces never stand together.
     private func openFacts() {
         chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-        chrome.settleShare(open: false, animated: !reduceMotion)
         chrome.settleFacts(open: true, animated: !reduceMotion)
-    }
-
-    /// The share card's summon (the openFacts pattern): the melt pours back,
-    /// an open facts card pours back, the share pill inflates on the walk.
-    private func openShare() {
-        chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-        chrome.settleFacts(open: false, animated: !reduceMotion)
-        chrome.settleShare(open: true, animated: !reduceMotion)
     }
 
     /// The cursor relay (deferred from I2b): every selection change goes to the

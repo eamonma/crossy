@@ -40,13 +40,6 @@ public final class RoomChromeModel {
     /// the headline, so the headline comes FROM the timer).
     public var factsProgress: CGFloat = 0
 
-    /// The share morph (the dedicated share pill, owner ask 2026-07-11): 0 is
-    /// the round pill in the room bar's cluster, 1 the open share card (copy
-    /// link, the QR, the system share). The same tap-opened grammar as the
-    /// facts card: the pill reshaped, walked on the chrome spring, never a
-    /// system presentation.
-    public var shareProgress: CGFloat = 0
-
     /// When the reconnect adapter will dial next, for the quiet countdown
     /// (DESIGN.md §8). Set by the composition root; nil renders the bare word.
     public var reconnectRetryAt: Date?
@@ -60,13 +53,11 @@ public final class RoomChromeModel {
 
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
     @ObservationIgnored private var factsSettleTask: Task<Void, Never>?
-    @ObservationIgnored private var shareSettleTask: Task<Void, Never>?
 
     public init() {}
 
     public var isBrowserOpen: Bool { meltProgress > 0 }
     public var isFactsOpen: Bool { factsProgress > 0 }
-    public var isShareOpen: Bool { shareProgress > 0 }
 
     // MARK: Settling (the one animation, on release)
 
@@ -109,16 +100,6 @@ public final class RoomChromeModel {
         }
     }
 
-    public func settleShare(open: Bool, animated: Bool = true) {
-        shareSettleTask?.cancel()
-        shareSettleTask = Self.walk(
-            from: shareProgress, to: open ? 1 : 0, animated: animated,
-            overshoots: open && PillInflation.walksWithOvershoot
-        ) { [weak self] value in
-            self?.shareProgress = value
-        }
-    }
-
     /// Scripted entry point (screenshots, deep links): land the browser with
     /// no gesture and no walk. (The roster has no scripted entry: a system
     /// menu cannot be presented programmatically, and its evidence is the
@@ -133,13 +114,6 @@ public final class RoomChromeModel {
     public func presentFacts() {
         factsSettleTask?.cancel()
         factsProgress = 1
-    }
-
-    /// Scripted entry for the share card (the presentFacts pattern): land the
-    /// card open with no walk, so simctl can capture it without a tap.
-    public func presentShare() {
-        shareSettleTask?.cancel()
-        shareProgress = 1
     }
 
     /// The settle walk: the chrome spring's own curve (ChromeSettleCurve), one

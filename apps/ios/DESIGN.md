@@ -109,7 +109,7 @@ The standing pieces:
 | ------------ | -------- | ---------------------------------------------------------------- |
 | room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable; sealed with a quiet check at completion, the bare frozen clock after an abandonment), players (pucks, overflow count) |
 | clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict); floats over the full-bleed board on a feather, a wash of the ground's canvas fading up from beneath the glass so live cells never meet a hard edge (both grounds by token, ID-3) |
-| sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
+| sheets       | frosted  | clue browser; a custom overlay panel (SP-i1), a morph target below. The roster and the share pill ride system menus instead; the facts card rides the system metaball on 26+ |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
@@ -190,9 +190,10 @@ its arrow read as a balloon pointing at the pill, not the pill reshaped, which
 breaks the morph grammar's one promise. The facts card is ONE morph for both
 moments now: a tap on the time pill, mid-solve or terminal, inflates the pill
 into the card on the chrome spring's walk (RoomChromeModel's settle; no drag
-scrubs this surface, and nothing implicit animates it, SP-i1 untouched).
-Mid-solve the card carries the §12 operations under a one-point hairline (copy
-the invite code; the host's end-game, one confirm); a terminal card carries
+scrubs this surface, and nothing implicit animates it, SP-i1 untouched; the
+walk is the below-26 path, the 26+ metaball ruling below). Mid-solve the card
+carries the host's end-game under a one-point hairline, one confirm (copying
+the invite code moved to the share menu, 2026-07-11); a terminal card carries
 none: it is the record, not a control surface. The clock-rider retires with
 the popover (the glyphs flying and rescaling from the pill to the headline
 read as theater): the pill hands off whole, the surface grows clean, and the
@@ -205,6 +206,26 @@ seals the pill with a quiet achromatic check beside the frozen clock, and an
 abandoned room keeps the bare frozen clock. The swap is a crossfade on the
 chrome spring, the pill's width settling with it, no overshoot (§7); Reduce
 Motion cuts it.
+
+Amended 2026-07-11 (two owner rulings on the chrome morphs, judged on device).
+First, share ships as the native menu. The dedicated share pill's own morph
+card was explored and dropped: the frame study's verdict held on the pill too,
+the native menu's goo is Apple's shader blending the departing pill into the
+arriving surface, unreachable by tweening one crisp surface. So the share pill
+is a Menu label like the players pill (standing outside the cluster container,
+the 26.1 rule), and the system owns its melt. The card's invite-code copy moved
+onto the share surface with it: the menu's titled section carries the code, and
+its Copy link row carries the URL, so the mid-solve facts card no longer copies
+the code (a host mid-solve keeps only the end-game there). Second, the tap-open
+exception to the single-surface grammar is ratified for the facts card: on iOS
+26+ the tap-opened facts card uses the system's metaball materialize (the same
+Menu-melt mechanism, a GlassEffectContainer swapping the pill glass for the open
+panel, Mail's timing), because a tap has no scrub and the frame study proved the
+goo unreachable by hand. This is scoped tightly: the drag-scrubbed melt keeps
+frame interpolation (SP-i1 unchanged, a finger owns progress raw and a two-view
+swap snaps under it), and below iOS 26 the facts card falls back to the same
+frame-interpolation walk. Only the tap-opened facts card, only on 26+, rides the
+system swap.
 
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
@@ -239,14 +260,20 @@ clean instead. The morph targets:
   destructive Remove from room with one confirm).
 - Tap the time pill: the room's facts arrive (owner ruling 2026-07-10: the time
   pill is the room's facts), by one mechanism in every moment (the 2026-07-11
-  redesign): the pill inflates into the facts card on the chrome spring.
-  Mid-solve the card carries the room's name and the crossword's facts with the
-  live clock as the headline, then a hairline and the §12 operations. At
-  completion the same tap summons the same surface as the stats card (ID-2: the
-  timer becomes the headline, frozen), operations gone. Content fades in late
-  as one block (the browser-list rule); an outside touch pours the card back
-  and the pill, sealed or ticking, summons it again.
-- The invite capsule is the share card, condensed.
+  redesign): the pill inflates into the facts card. On iOS 26+ the inflation is
+  the system's metaball materialize (ruled 2026-07-11); below 26 it is the
+  chrome spring's frame-interpolation walk. Mid-solve the card carries the
+  room's name and the crossword's facts with the live clock as the headline,
+  then a hairline and, for the host, the end-game (copying the invite code moved
+  to the share menu, 2026-07-11). At completion the same tap summons the same
+  surface as the stats card (ID-2: the timer becomes the headline, frozen),
+  operations gone. Content fades in late as one block (the browser-list rule);
+  an outside touch pours the card back and the pill, sealed or ticking, summons
+  it again.
+- Tap the share pill: the share menu flows out of it, the system's morph (the
+  RosterMenu mechanism, ruled 2026-07-11). Copy link, Share…, and Show QR code
+  (a small system sheet, since a menu cannot render a scannable code inline);
+  the titled section carries the invite code, the read-aloud channel.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.
 - On the home screen, New game and Join ride as a cluster and merge to one pill on

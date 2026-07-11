@@ -78,9 +78,6 @@ struct RoomBar: View {
     /// invite code): the share pill stands only when there is something to
     /// share, never as a dead control.
     let hasShare: Bool
-    /// True while the share card exists or another panel eclipses the pill
-    /// (PanelEclipse): the card is the pill reshaped, so the pill yields.
-    let shareHandedOff: Bool
     /// The way out of the room. The arrival flow wires the destination; the
     /// bar only reports the intent.
     let onBack: () -> Void
@@ -88,18 +85,13 @@ struct RoomBar: View {
     /// facts). One mechanism for both moments (redesign 2026-07-11): the tap
     /// inflates the pill into the facts card. Routing is the caller's.
     let onTapTimePill: () -> Void
-    /// The share pill's summon: the tap inflates the pill into the share
-    /// card (the facts card's grammar). Routing is the caller's. The menu
-    /// variant never calls it: a Menu label presents itself.
-    let onTapShare: () -> Void
-    /// The menu variant's payload (-shareMenu, ShareSurface): the read-aloud
-    /// code for the titled section and the link the QR row carries. The card
-    /// mechanism ignores both.
+    /// The share menu's payload (owner ruling 2026-07-11, ships as the native
+    /// menu): the read-aloud code for the titled section and the link the QR
+    /// row and copy row carry.
     let shareCode: String?
     let shareUrlString: String?
-    /// The menu variant's intents, the card's unchanged (AD-2 seams: the
-    /// pasteboard write and UIActivityViewController ride the app target;
-    /// the rows only report).
+    /// The share menu's intents (AD-2 seams: the pasteboard write and
+    /// UIActivityViewController ride the app target; the rows only report).
     let onCopyShareLink: () -> Void
     let onShareInvite: () -> Void
     /// The room's lifecycle, for the pill's register (TimePillRegister) and
@@ -137,14 +129,13 @@ struct RoomBar: View {
             #else
                 timedPills
             #endif
-            // The menu variant (-shareMenu, ShareSurface): the share pill as
-            // a Menu label, standing OUTSIDE the container exactly like the
-            // players pill (a Menu inside a GlassEffectContainer breaks its
-            // morph on 26.1, the RosterMenu discipline). The card variant's
-            // pill stays in the cluster; the two never stand together.
-            if hasShare, ShareSurface.mechanism == .menu,
-                let shareCode, let shareUrlString
-            {
+            // The share surface ships as the native menu (owner ruling
+            // 2026-07-11): the share pill is a Menu label, standing OUTSIDE
+            // the container exactly like the players pill (a Menu inside a
+            // GlassEffectContainer breaks its morph on 26.1, the RosterMenu
+            // discipline). It stands between the room's facts and its people:
+            // the invite is the door between them.
+            if hasShare, let shareCode, let shareUrlString {
                 ShareMenuPill(
                     ground: ground, code: shareCode, urlString: shareUrlString,
                     onCopyLink: onCopyShareLink, onShare: onShareInvite)
@@ -168,16 +159,9 @@ struct RoomBar: View {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 timePill(now: timeline.date)
             }
-            // The share pill stands between the room's facts and the room's
-            // people: the invite is the door between them. Inside the
-            // container (its panel is a custom morph, not a Menu, so the
-            // 26.1 break does not apply); the players pill keeps the corner,
-            // because the people are the bar's color and the island's lead.
-            // The menu variant's pill renders in the outer HStack instead
-            // (same slot, outside the container).
-            if hasShare, ShareSurface.mechanism == .card {
-                sharePill
-            }
+            // The share menu's pill renders in the outer HStack (outside this
+            // container), because a Menu inside a GlassEffectContainer breaks
+            // its morph on 26.1 (the RosterMenu discipline).
         }
     }
 
@@ -202,33 +186,6 @@ struct RoomBar: View {
         // The eclipse yield includes touch, the handed-off pill rule.
         .allowsHitTesting(!backHandedOff)
         .reportChromeFrame(.backButton)
-    }
-
-    // MARK: The share pill (the room's invite, owner ask 2026-07-11)
-
-    /// A round standing pill in the back button's register: the share glyph
-    /// in ink, no color (§3). Its tap inflates it into the share card (the
-    /// facts card's one-surface grammar); while the card stands, or another
-    /// panel eclipses it, the pill hands off exactly as the time pill does.
-    private var sharePill: some View {
-        Button(action: onTapShare) {
-            Image(systemName: "square.and.arrow.up")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color(rgb: ground.tokens.ink))
-                // The glyph's arrow rides high; a hair of lift centers the
-                // boxed weight optically in the circle.
-                .offset(y: -1)
-                .frame(width: ChromeLayout.pillHeight, height: ChromeLayout.pillHeight)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
-        .accessibilityLabel(Text(verbatim: "Invite someone, show the share card"))
-        .opacity(shareHandedOff ? 0 : 1)
-        // The yield includes touch (the handed-off pill rule): a tap on the
-        // ghost falls to the bar's dismiss layer, never re-summons.
-        .allowsHitTesting(!shareHandedOff)
-        .reportChromeFrame(.sharePill)
     }
 
     // MARK: The time pill (the room's vital signs, then its record)

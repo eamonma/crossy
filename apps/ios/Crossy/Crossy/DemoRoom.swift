@@ -25,20 +25,17 @@
 //                           pattern). Mid-solve the card carries the §12
 //                           operations (redesign 2026-07-11, the popover
 //                           retired); -i2cSpectator drops the host's end-game
-//    -i2fShare              land the share card open (the share pill,
-//                           inflated: the code headline, the QR, copy link,
-//                           Share…; the presentFacts pattern)
-//    -shareMenu             the share pill presents a system Menu instead of
-//                           inflating the card (ShareSurface, the RosterMenu
-//                           mechanism: the native menu melt; the QR row
-//                           stages a small sheet); composes with -demoRoom
-//    -gooOvershoot          the pill-inflation prototype (PillInflation): the
-//                           facts and share cards open on the underdamped
-//                           inflation curve, a hair past the frame and back
-//    -gooMetaball           iOS 26: the same opens ride the system's
-//                           materialize swap in a GlassEffectContainer (the
-//                           MorphLab variant-A goo); both compose with any
-//                           -i2*/-demoRoom launch for live taps on device
+//    (share ships as the native menu, owner ruling 2026-07-11: the share pill
+//     presents a system Menu, so it cannot be scripted open; tap it on device)
+//    -gooMetaball           the facts card's SHIPPING DEFAULT on iOS 26 (the
+//                           system's materialize swap in a GlassEffectContainer,
+//                           the MorphLab variant-A goo); reachable as an
+//                           explicit no-op. Below 26 the clean melt renders
+//    -gooClean              override the default: the facts card opens on the
+//                           clean frame-interpolation walk (the below-26 law)
+//    -gooOvershoot          override the default: the facts card opens on the
+//                           underdamped inflation curve, a hair past the frame
+//                           and back; all compose with any -i2*/-demoRoom launch
 //    -i2eSealedPill         complete the room, then pour the stats card back
 //                           so the sealed terminal pill stands alone (the
 //                           redesign's terminal register; simctl cannot tap)
@@ -181,12 +178,9 @@ final class DemoRoom {
             // flag retired with the popover it raised.
             chrome.presentFacts()
         }
-        if arguments.contains("-i2fShare") {
-            // The share card (owner ask 2026-07-11): land it open with no
-            // walk, so simctl can capture the panel, the QR, and both action
-            // rows without a tap (the presentFacts pattern).
-            chrome.presentShare()
-        }
+        // (-i2fShare retired with the share morph card: share is a system
+        // Menu now, and a system presentation cannot be scripted open, the
+        // same reasoning that retired -i2cRoster.)
         if let index = arguments.firstIndex(of: "-i2cMelt"),
             arguments.indices.contains(index + 1),
             let progress = Double(arguments[index + 1])

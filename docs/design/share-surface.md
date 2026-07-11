@@ -1,31 +1,43 @@
 # The share surface
 
-Status: built, awaiting owner rulings (device feel). Date: 2026-07-11.
-Scope: the dedicated share pill and its card on iOS, the mirrored web share
-popover, and the gooey-morph prototype for the tap-opened pill panels (share
-and facts). Supersedes PR #92's placement (a Share row inside the facts card);
-lifts its ShareInvite port, vectors, and ShareSheet wrapper unchanged.
+Status: SHIPPED as the native menu (owner ruling 2026-07-11). Date: 2026-07-11.
+Scope: the dedicated share pill on iOS, presenting a system Menu, and the
+mirrored web share popover. Supersedes PR #92's placement (a Share row inside
+the facts card); lifts its ShareInvite port, vectors, and ShareSheet wrapper
+unchanged.
 
-## What it is
+The custom morph card for share was explored and dropped: the native menu goo
+won. Apple's iOS 26 menu melt is the shader blending the departing pill into
+the arriving surface, the exact effect the frame study proved unreachable by
+tweening one crisp surface, and the owner ruled it the best feel on the bar
+(the same verdict the players pill's roster menu earned). The morph card, its
+PillInflation goo prototypes for share, and its `-i2fShare` fixture are gone.
+The information-hierarchy exploration below is kept for rationale (why the
+menu's tradeoffs are acceptable), marked as the SUPERSEDED card design.
+
+## What it is (shipped)
 
 A round share pill stands in the room bar's cluster, between the time pill and
-the players pill. Tapping it inflates the pill into the share card on the same
-one-surface melt the facts card rides (the Mail-button rule: the panel is the
-pill reshaped, top and trailing edges shared, growing leftward over its own
-footprint). Not a sheet, not a popover, not a Menu. The card offers copy link,
-the QR, and the system share; the web share popover mirrors the same hierarchy
-with the same generator.
+the players pill, standing OUTSIDE the GlassEffectContainer like the players
+pill (a Menu inside a container breaks its morph on 26.1). Tapping it presents
+a system Menu, so the open rides Apple's native menu melt. The menu's rows:
+Copy link (primary; the pasteboard), Share… (the system share sheet), and Show
+QR code (a small system sheet carrying the QR tile, since a menu cannot render
+a scannable code inline). The menu's titled section carries the invite code:
+the read-aloud channel, and where copying the bare invite code lives now (it
+moved off the facts card). Row order is Copy link / Share… / Show QR for now, a
+one-line change in `ShareMenuList.rows` if the owner later swaps QR to second.
+
+The web share popover keeps its own hierarchy (the web's grammar is a popover,
+not a menu; that surface is unchanged).
 
 Placement reasoning: the bar reads left to right as the way out (back), the
 room's vitals (time), and the room's people (players). The invite is the door
-between the facts and the people, so the pill stands between them, inside the
-GlassEffectContainer (its panel is a custom morph, not a Menu, so the 26.1
-container break does not apply). The players pill keeps the trailing corner:
-the pucks are the bar's color and the island's lead, and an achromatic control
-should not push them inward. The pill stands only when the room holds an
-invite code; there is never a dead share control.
+between the facts and the people, so the pill stands between them. The pill
+stands only when the room holds an invite code; there is never a dead share
+control.
 
-## Information hierarchy (the decision)
+## SUPERSEDED: the morph card's information hierarchy (kept for rationale)
 
 Three channels, ranked by what a person is actually doing when they open the
 card:
@@ -80,106 +92,59 @@ grounds decode back to the exact share URL via CIDetector (verified in this
 build). ShareInvite.url stays byte-matched to the web's buildShareUrl (the
 five PR #92 vectors, lifted unchanged).
 
-## The gooey prototype (owner rulings needed)
+## The rulings (2026-07-11)
 
-The ask: make the tap-opened pill morphs (share pill, and the timer pill's
-facts card) feel gooier, without touching the law. Everything ships behind ONE
-switch, `PillInflation.character`, default `.clean` (the shipped law), flipped
-by launch argument so candidates compare on device without rebuilds:
+The owner judged the candidates on device and ruled:
 
-- `-gooOvershoot`: the same single-surface walk on a separate underdamped
-  curve (damping 0.72, ~3.8% peak, same response as the chrome spring), open
-  only; every pour-back stays critically damped. Geometry rides an unclamped
-  blend where anchored edges are exact fixed points, so the panel never
-  detaches from the pill's shared edges; only the traveling edges breathe
-  past and settle. ChromeSettleCurve, the melt, and the camera pan are
-  untouched (the shared-curve constraint honored: this is a NEW curve used
-  only by the two pill panels' open walk).
-- `-gooMetaball` (iOS 26 only): the system's materialize swap inside a
-  GlassEffectContainer, the MorphLab variant-A recipe exactly (unique
-  glassEffectIDs, spacing 40, Mail's 0.35/0.18 timing). This is the only
-  mechanism that can produce Mail's actual goo, the shader blending two
-  shapes' fields; one crisp surface tweened by hand cannot (the §4 frame
-  study). SP-i1's rejection of the ID swap was for scrubbed morphs (it snaps
-  under a finger); a tap has no scrub, so the question is legitimately open
-  again. Below 26 it falls back to `.clean`.
+1. **Share ships as the native menu.** The custom morph card and its goo
+   prototypes for share are dropped. The native menu's melt (Apple's shader
+   blending the departing pill into the arriving surface, WWDC25 session 323)
+   is the best feel on the bar, the same verdict the players pill's roster
+   menu earned. Copying the bare invite code moves onto the share surface (the
+   menu's titled section carries the code; Copy link carries the URL).
+2. **The facts card adopts the metaball morph as its shipping default** on iOS
+   26+ (the system's materialize swap inside a GlassEffectContainer, the
+   `-gooMetaball` recipe: unique glassEffectIDs, spacing 40, Mail's timing).
+   Below 26 it falls back to the clean frame-interpolation walk. `-gooClean`
+   and `-gooOvershoot` stay reachable as launch-argument overrides for
+   reference and regression. The tap-open exception to the single-surface
+   grammar is ratified in DESIGN.md §4 (drag-scrubbed morphs keep frame
+   interpolation regardless, SP-i1 unchanged).
 
-Both apply to the share card AND the facts card as one treatment, so the owner
-judges the two pills together and accepts or rejects wholesale. The facts
-card's content and open geometry are untouched; only the glass's travel
-changes.
+The metaball close-deflate gap that the first run flagged (an empty
+pill-shaped glass standing for ~0.25 s after the system's 0.18 s deflate
+finished but before the walk's clock ran out) is addressed in code: the pill
+stub is now the OPEN's materialize source only, and the close collapses toward
+nothing instead of back to the stub, so no empty glass lingers. A device pass
+should confirm the close reads clean.
 
-**What only a device can judge** (the simulator renders the glass blend
-linearly and lies about goo, the MorphLab caveat):
+**What still needs a device pass:**
 
-- Whether the metaball swap reads as Mail's pour or as a cheap crossfade.
-  The simulator run already shows the right ingredients mid-flight (the
-  panel materializing with content resolving through blur, edges soft), but
-  the sim renders the blend slowly and linearly, so tempo and goo are the
-  device's verdict. Known honest costs to weigh: the pill stub is empty
-  glass during flight (Mail's egg drops its content too), and on the close
-  the system's 0.18 s deflate ends before the walk's lifecycle clock,
-  leaving a still, empty pill-shaped glass for roughly a quarter second
-  before the real pill returns. If it cannot be made to feel right, the
-  recommendation is to keep the frame interpolation: it is the law, and it
-  already reads as one object reshaping.
-- Whether ~4% overshoot on the open earns its keep or reads as wobble on
-  glass. It deliberately borrows from §7's reserved register (overshoot
-  belongs to people and celebration); adopting it means amending that line
-  for tap-opened pill inflations specifically.
-
-## The system-Menu candidate (-shareMenu)
-
-A third variant beside the card and the goo prototypes, behind its own switch
-(`ShareSurface.mechanism`, default the card, flipped by the `-shareMenu`
-launch argument; composes with `-demoRoom`). The share pill becomes a system
-`Menu` label on the RosterMenu mechanism, so the open inherits the
-presentation system's own melt, the one Mail actually has and the owner
-already blessed on the players pill. The pill stands OUTSIDE the cluster's
-GlassEffectContainer (the 26.1 container break), between the time pill and
-the players pill as before.
-
-The menu trades the card's hierarchy for the system's feel: Copy link stays
-primary (no inline "Link copied"; a menu cannot restyle a row live), Share…
-hands to the system sheet, and Show QR code stages the card's exact tile
-(ink on paper, quiet zone intact) in a small SwiftUI sheet, because a menu
-cannot render a scannable code inline. The titled section carries the invite
-code, so the read-aloud channel survives the form. The honest costs to judge
-on device: the QR is no longer zero-tap (the card's strongest argument for
-itself), and the code as a section header reads quieter than the card's
-headline. Row set, words, and the sheet's arithmetic are pinned in
-`ShareMenuTests`.
-
-**Owner rulings requested:**
-
-1. Morph character for the two pill panels: clean (law), overshoot, or
-   metaball. One ruling for both pills.
-2. If overshoot: bless the §7 amendment (a hair of overshoot for pill
-   inflations only, pour-backs stay critically damped).
-3. If metaball: bless the tap-open exception to the §4 single-surface grammar
-   (drag-scrubbed morphs keep the law regardless).
-4. The share pill's standing placement (between time and players, in the
-   container) and the card's hierarchy above, on device.
-5. QR quiet zone: the tile pads 12 pt (~2.5 modules; the spec's ideal is 4).
-   Simulator decode passes on both grounds; confirm a real camera scan off
-   the device screen at arm's length, and widen the pad if it hesitates.
+- Whether the metaball swap reads as Mail's pour on the owner's device (the
+  simulator renders the blend linearly and lies about goo).
+- The close-deflate fix: confirm no empty-glass flash on the facts card close.
+- QR quiet zone: the tile pads 12 pt (~2.5 modules; the spec's ideal is 4).
+  Simulator decode passes on both grounds; confirm a real camera scan off the
+  device screen at arm's length off the QR sheet, and widen the pad if it
+  hesitates.
 
 ## Placement of truth
 
-- iOS morph grammar and geometry: `apps/ios/Sources/CrossyUI/ShareCard.swift`,
-  `GlassMorph.swift` (unclamped blend), `PillInflation.swift` (the switch, the
-  curve, the metaball surface), `RoomChromeModel.swift` (share walk).
-- Fixture: `-i2fShare` lands the card open (the presentFacts pattern);
-  `-gooOvershoot` / `-gooMetaball` compose with `-demoRoom` for live taps;
-  `-shareMenu` swaps the pill for the system-Menu variant
-  (`apps/ios/Sources/CrossyUI/ShareMenu.swift`), also composing with
-  `-demoRoom`.
-- Vectors: `InviteQRTests` (uqr parity), `ShareInviteTests` (buildShareUrl
-  parity), `ShareCardTests` (slot arithmetic, lexicon words, the strict
-  Mail-button width rule).
+- iOS share surface: `apps/ios/Sources/CrossyUI/ShareMenu.swift` (the Menu
+  label, the rows, the QR tile and QR sheet), `RoomBar.swift` (the pill's
+  placement outside the cluster container).
+- iOS facts-card morph: `PillInflation.swift` (the metaball surface, the
+  default character, the close-deflate fix), `RoomFactsCard.swift`,
+  `RoomChromeModel.swift` (the facts walk), `GlassMorph.swift`.
+- Fixture: `-demoRoom` for live taps on the share menu and the facts card;
+  `-gooClean` / `-gooOvershoot` override the facts card's default metaball
+  (share is a system Menu now, so it cannot be scripted open).
+- Tests: `ShareMenuTests` (row set, words, QR sheet arithmetic, tile
+  geometry), `InviteQRTests` (uqr parity), `ShareInviteTests` (buildShareUrl
+  parity), `PillInflationTests` (the overshoot curve).
 - Web: `apps/web/src/ui/GameToolbar.tsx` (SharePopover: link, code, QR,
-  native share, end game).
+  native share, end game) — unchanged by these rulings.
 
-If the rulings adopt this surface, DESIGN.md §4's morph-target list should
-gain the share pill line and the §7/§4 amendments above; this note is the
-proposal, DESIGN.md stays normative.
+DESIGN.md §4 carries the ratified amendments (share = native menu, facts card
+= metaball on 26+); this note is history and pointers, DESIGN.md stays
+normative.

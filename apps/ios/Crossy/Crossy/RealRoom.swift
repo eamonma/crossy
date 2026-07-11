@@ -54,7 +54,7 @@ final class RealRoom {
     private(set) var fatal: String?
 
     /// The room's id (PROTOCOL.md §12). Exposed so the composition root can
-    /// build the shareable invite URL (ShareInvite.url) for the share card,
+    /// build the shareable invite URL (ShareInvite.url) for the share menu,
     /// the pasteboard, and the system sheet, all from one derivation.
     let gameId: String
     private let sessionBaseURL: URL
