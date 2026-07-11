@@ -125,6 +125,10 @@ public struct WelcomeScreen: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: ChromeLayout.barHeight)
+            // The whole capsule is the button (owner device finding 2026-07-10:
+            // a plain-style label's transparent expanse does not hit-test, so
+            // without this only the text took the tap).
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))

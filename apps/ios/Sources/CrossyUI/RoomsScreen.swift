@@ -117,6 +117,8 @@ public struct RoomsScreen: View {
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
                 .frame(maxWidth: .infinity)
                 .frame(height: ChromeLayout.barHeight)
+                // The whole capsule takes the tap (the WelcomeScreen finding).
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
