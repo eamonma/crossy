@@ -133,24 +133,35 @@ export function AvatarStack({
   );
 }
 
-/** The product's real monogram: a "C" whose descender sweeps into a "y". Never redrawn. */
-function Monogram() {
+/**
+ * The Crossy mark: the 3x3 heart of the app icon's CROSSY crossword, blocks stepping
+ * down the anti-diagonal to the one gold cell, the Y. Ink is currentColor so it follows
+ * the theme (App.tsx toggles data-theme); open cells stay transparent so the page plays
+ * the paper. Grid lines run to the frame so the puzzle reads as continuing past the
+ * crop, the same move the app icon makes. Gold is the token, never a baked hex.
+ */
+function CrosswordMark() {
   return (
     <svg
       aria-hidden
-      viewBox="0 0 1080 1080"
+      viewBox="0 0 24 24"
       fill="none"
       className="w-full h-full block"
     >
+      <rect x="16" width="8" height="8" fill="currentColor" />
+      <rect x="8" y="8" width="8" height="8" fill="currentColor" />
+      <rect y="16" width="8" height="8" fill="currentColor" />
+      <rect x="16" y="16" width="8" height="8" fill="var(--color-gold-9)" />
       <path
-        fill="currentColor"
-        d="M714.413 679.414L737.363 720.724C654.743 770.296 576.713 807.016 493.175 807.016C334.361 807.016 194.825 696.856 194.825 494.896C194.825 274.576 356.393 153.4 527.141 153.4C591.401 153.4 656.579 170.842 714.413 205.726V352.606L670.349 361.786L636.383 265.396C588.647 228.676 540.911 209.398 493.175 209.398C390.359 209.398 332.525 292.018 332.525 454.504C332.525 631.678 419.735 733.576 543.665 733.576C596.909 733.576 640.973 713.38 714.413 679.414ZM595.266 941.044L649.428 796L470.418 424.21C466.746 415.948 462.156 410.44 453.894 407.686L411.666 394.834L420.846 350.77H654.936L649.428 393.916L587.922 405.85L700.836 666.562L782.538 436.144C785.292 428.8 787.128 421.456 787.128 417.784C787.128 411.358 784.375 407.686 777.949 405.85L726.54 393.916L733.884 350.77H908.304L901.879 394.834L858.733 405.85L676.05 878.62C644.838 959.404 591.594 992.452 528.252 992.452C475.926 992.452 430.944 966.748 430.944 925.438C430.944 891.472 452.976 865.768 491.532 865.768H532.842V938.29C542.94 944.716 553.956 948.388 564.054 948.388C574.152 948.388 584.25 945.634 595.266 941.044Z"
+        d="M8 0v24M16 0v24M0 8h24M0 16h24"
+        stroke="currentColor"
+        strokeWidth="1.25"
       />
     </svg>
   );
 }
 
-/** The brand lockup exactly as v2 ships it: the monogram in a gold disc, serif wordmark. */
+/** The brand lockup: the crossword mark, gap, serif wordmark. Mark holds still, wordmark tucks. */
 export function Logo({
   size = 24,
   withName = true,
@@ -161,12 +172,12 @@ export function Logo({
   return (
     <span className="inline-flex items-center gap-1.5 text-text">
       <span
-        className="inline-flex items-center justify-center rounded-full bg-gold-9 text-white p-[2px] shrink-0"
+        className="inline-flex items-center justify-center shrink-0"
         style={{ width: size, height: size }}
         role="img"
         aria-label="Crossy"
       >
-        <Monogram />
+        <CrosswordMark />
       </span>
       {withName && (
         <span
