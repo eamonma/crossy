@@ -93,12 +93,15 @@ struct ArrivalRootView: View {
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: ArrivalRoute.self) { route in
                         destination(route)
-                            // The room owns the whole screen: board to the top edge,
-                            // deck at the bottom (the full-bleed ruling). The tab bar
-                            // returns when the room pops.
-                            .toolbar(.hidden, for: .tabBar)
                     }
                 }
+                // The room owns the whole screen (the full-bleed ruling), so the bar
+                // hides while anything is pushed. Keyed off the path, NOT attached to
+                // the pushed room: a destination's preference flips only when the pop
+                // transaction completes, materializing the bar in one frame (owner
+                // device report 2026-07-10); the path empties at the start of the
+                // pop, so the bar rides the same animation the room leaves by.
+                .toolbar(path.isEmpty ? .visible : .hidden, for: .tabBar)
             }
             Tab(ArrivalCopy.puzzlesTitle, systemImage: "squareshape.split.3x3", value: ShellTab.puzzles) {
                 PuzzlesScreen(
