@@ -323,13 +323,22 @@ submits, so the person sees what the camera read, and DENIED's finality binds
 scans exactly as keys. One attempt per scanned code; a QR lingering in frame
 never becomes a retry loop. The keyboard law bends here, deliberately: this
 sheet does NOT autofocus (the keyboard would bury the viewport); the field
-focuses on tap, the viewport folds to nothing on the chrome spring while the
-keyboard rises, and the camera session survives the fold (mounted at zero
-height, so unfolding is instant). Camera refused or absent: one plain sentence
-in the viewport, the field untouched — never a dead end. The camera itself is
-the app target's (AVFoundation behind a scanner slot and a verdict enum,
-AD-2); CrossyUI renders chrome and digests payloads, and the digest is pure
-and pinned (InviteScanTests).
+focuses on tap. The camera then stays LIVE under the keyboard (owner ruling
+2026-07-11, superseding the earlier "viewport folds on focus"): a person can
+type a code and keep scanning at once, so the viewport does not fold to
+nothing, it shrinks to a compact live strip (~130 pt) riding above the keyboard
+while the resting window is ~300 pt, and the sheet raises its detent from the
+resting camera-first fraction to a taller focused fraction so the strip and the
+field both clear the keys. The change rides the chrome spring, both heights at
+once, and the camera session never tears down (the strip only resizes, so a
+scan still fills and submits mid-type). The screen owns the detent, because it
+owns the field's focus; the sheet keeps swipe-down dismissal and its drag
+indicator. Camera refused or absent (the simulator has none): one plain
+sentence in the viewport, which shrinks the same way on focus so the focused
+layout never collapses in the denied state either; the field is untouched —
+never a dead end. The camera itself is the app target's (AVFoundation behind a
+scanner slot and a verdict enum, AD-2); CrossyUI renders chrome and digests
+payloads, and the digest is pure and pinned (InviteScanTests).
 
 ## 5. Two grounds, one app
 

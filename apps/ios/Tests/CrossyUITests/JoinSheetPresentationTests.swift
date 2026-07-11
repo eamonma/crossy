@@ -19,4 +19,31 @@ final class JoinSheetPresentationTests: XCTestCase {
             JoinSheetPresentation.detentFraction, 0.6,
             "a one-field sheet is a card, not a full page (arrival notes)")
     }
+
+    func test_theFocusedViewportIsALiveStripNotAFold() {
+        // The camera stays live under the keyboard (owner ruling): the field-focused
+        // viewport shrinks to a compact strip, never to zero. A legible strip is
+        // well clear of a hairline, and it is shorter than the resting window so the
+        // shrink is real.
+        XCTAssertGreaterThan(
+            JoinSheetPresentation.viewportCompactHeight, 80,
+            "the focused viewport is a legible live strip, not a fold to nothing")
+        XCTAssertLessThan(
+            JoinSheetPresentation.viewportCompactHeight,
+            JoinSheetPresentation.viewportHeight,
+            "the strip is a shrink of the resting viewport, not the same height")
+    }
+
+    func test_focusRaisesTheSheetToClearTheKeyboard() {
+        // Focusing the field raises the sheet so the compact strip and the field
+        // both clear the keyboard: the focused detent stands taller than the
+        // resting camera-first detent, and still fits under the full page.
+        XCTAssertGreaterThan(
+            JoinSheetPresentation.scanFocusedDetentFraction,
+            JoinSheetPresentation.scanDetentFraction,
+            "focus lifts the sheet above the keyboard, above the resting detent")
+        XCTAssertLessThanOrEqual(
+            JoinSheetPresentation.scanFocusedDetentFraction, 1.0,
+            "the focused sheet is still a sheet, not past a full page")
+    }
 }

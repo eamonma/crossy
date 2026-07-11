@@ -16,11 +16,14 @@
 // The screen rides a glass sheet that flows out of the Join capsule (arrival
 // notes, DESIGN.md §4). Camera-first amends the keyboard law's application: the
 // field no longer autofocuses on appear (the keyboard would bury the viewport);
-// it focuses on tap, and the viewport folds away on the chrome spring while the
-// keyboard rises, unfolding when focus leaves. The scanner stays mounted through
-// the fold (height zero, clipped), so the camera session never tears down and
-// refocusing is instant. In the .none composition (macOS host, previews) the
-// screen is the one-field card exactly as before, autofocus included.
+// it focuses on tap. The camera then stays LIVE under the keyboard (owner ruling:
+// type a code AND keep scanning at once): the viewport does not fold to nothing,
+// it shrinks to a compact live strip that rides above the keyboard, and the sheet
+// raises its detent so the strip and the field both clear the keys. The scanner
+// stays mounted throughout (it only resizes), so the session never tears down and
+// a scan can still fill and submit the field mid-type. In the .none composition
+// (macOS host, previews) the screen is the one-field card exactly as before,
+// autofocus included.
 
 import CrossyDesign
 import SwiftUI
@@ -31,11 +34,21 @@ public enum JoinSheetPresentation {
     /// The one-field card (the .none composition): title, field, failure line,
     /// button, with room for the keyboard, nothing more.
     public static let detentFraction: CGFloat = 0.42
-    /// The camera-first panel: viewport plus the typed path beneath.
+    /// The camera-first panel at rest: the full viewport plus the typed path
+    /// beneath, no keyboard.
     public static let scanDetentFraction: CGFloat = 0.72
-    /// The viewport's standing height; it folds to zero while the field is
-    /// focused so the keyboard never buries a live camera.
+    /// The camera-first panel with the field focused: the sheet rises so the
+    /// compact strip and the field both clear the keyboard. The keyboard now
+    /// shares the sheet with a still-live camera (owner ruling: type a code AND
+    /// keep scanning), so the panel is taller at focus than at rest.
+    public static let scanFocusedDetentFraction: CGFloat = 0.92
+    /// The viewport's standing height, seen with the field at rest.
     public static let viewportHeight: CGFloat = 300
+    /// The viewport's height while the field is focused: a compact LIVE strip
+    /// riding above the keyboard, not a fold to zero. The camera keeps scanning
+    /// while a code is typed (owner ruling: type AND scan at once), so this is a
+    /// legible strip, never a hairline.
+    public static let viewportCompactHeight: CGFloat = 130
 }
 
 /// How scanning stands on this composition (AD-2: the camera and its permission
@@ -68,6 +81,11 @@ public struct JoinCodeScreen<Scanner: View>: View {
     /// The last code a scan attempted: one attempt per scanned code, so a QR
     /// lingering in front of the lens never hammers the API with a retry loop.
     @State private var scannedAttempt: String?
+    /// The sheet's live detent. Focus raises it to the focused height so the
+    /// compact strip and the field clear the keyboard; a drag can still resettle
+    /// it, and swipe-down still dismisses the sheet. Seeded per composition in the
+    /// initializer, because the resting height differs (card vs. camera-first).
+    @State private var detent: PresentationDetent
     @FocusState private var fieldFocused: Bool
 
     public init(
@@ -80,6 +98,13 @@ public struct JoinCodeScreen<Scanner: View>: View {
         _code = State(initialValue: initialCode)
         self.onJoin = onJoin
         self.scanner = scanner
+        // Rest at the composition's own height: the card for .none/prefilled, the
+        // full camera-first panel otherwise. Focus raises it from here.
+        _detent = State(
+            initialValue: .fraction(
+                scanState == .none
+                    ? JoinSheetPresentation.detentFraction
+                    : JoinSheetPresentation.scanDetentFraction))
     }
 
     private var ground: GridGround {
@@ -90,9 +115,42 @@ public struct JoinCodeScreen<Scanner: View>: View {
         InviteCodeEntry.isComplete(code) && !submitting && code != deadCode
     }
 
-    /// The viewport folds while typing; it renders at all only when this
-    /// composition scans.
-    private var viewportFolded: Bool { fieldFocused }
+    /// The sheet's detents for this composition. The scanning panel carries two,
+    /// the resting camera-first height and the taller focused height that lifts
+    /// the compact strip and the field clear of the keyboard; the card
+    /// composition (.none, or a prefilled failure) carries its single card
+    /// height, no camera to keep alive. The set is a Set, so the values fold to
+    /// one when they happen to coincide; the selection below always names a
+    /// member.
+    private var sheetDetents: Set<PresentationDetent> {
+        scanState == .none
+            ? [.fraction(JoinSheetPresentation.detentFraction)]
+            : [
+                .fraction(JoinSheetPresentation.scanDetentFraction),
+                .fraction(JoinSheetPresentation.scanFocusedDetentFraction),
+            ]
+    }
+
+    /// The height this composition rests at with the field unfocused.
+    private var restingDetent: PresentationDetent {
+        .fraction(
+            scanState == .none
+                ? JoinSheetPresentation.detentFraction
+                : JoinSheetPresentation.scanDetentFraction)
+    }
+
+    /// The viewport shrinks to a compact live strip while the field is focused
+    /// (never to zero: the camera stays live under the keyboard). It renders at
+    /// all only when this composition scans.
+    private var viewportCompact: Bool { fieldFocused }
+
+    /// The viewport's height for the current focus: the compact live strip while
+    /// typing, the full window at rest.
+    private var viewportHeight: CGFloat {
+        viewportCompact
+            ? JoinSheetPresentation.viewportCompactHeight
+            : JoinSheetPresentation.viewportHeight
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -106,13 +164,15 @@ public struct JoinCodeScreen<Scanner: View>: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 20)
 
+                // The invitation to type retires while the field is focused: the
+                // keyboard is already up and the compact strip needs the room.
                 Text(verbatim: ArrivalCopy.joinTypeInstead)
                     .font(.system(size: 14))
                     .foregroundStyle(Color(rgb: ground.tokens.number))
-                    .frame(height: viewportFolded ? 0 : 20)
-                    .opacity(viewportFolded ? 0 : 1)
+                    .frame(height: viewportCompact ? 0 : 20)
+                    .opacity(viewportCompact ? 0 : 1)
                     .clipped()
-                    .padding(.top, viewportFolded ? 0 : 16)
+                    .padding(.top, viewportCompact ? 0 : 16)
             }
 
             field
@@ -134,9 +194,26 @@ public struct JoinCodeScreen<Scanner: View>: View {
 
             Spacer(minLength: 0)
         }
-        .animation(.crossyChrome, value: viewportFolded)
+        .animation(.crossyChrome, value: viewportCompact)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+        // The sheet owns its detents, because the screen owns the focus that
+        // raises them. Swipe-down still dismisses (the isPresented binding lives
+        // in the root); the drag indicator and zoom source are the root's too.
+        .presentationDetents(sheetDetents, selection: $detent)
+        // Focusing the field on the camera-first panel raises the sheet so the
+        // compact strip and the field clear the keyboard; leaving focus settles it
+        // back. On the chrome spring, matching the viewport's own resize. The card
+        // composition has one detent, so this is a no-op there.
+        .onChange(of: fieldFocused) { _, focused in
+            guard scanState != .none else { return }
+            withAnimation(.crossyChrome) {
+                detent =
+                    focused
+                    ? .fraction(JoinSheetPresentation.scanFocusedDetentFraction)
+                    : restingDetent
+            }
+        }
         // A scan lock is felt before it is seen: the code lands in the field and
         // the join fires in the same beat.
         .sensoryFeedback(.impact(weight: .medium), trigger: scannedAttempt)
@@ -153,8 +230,11 @@ public struct JoinCodeScreen<Scanner: View>: View {
 
     /// The camera window: a dark pane on either ground (a viewport reads as a
     /// window, not paper), the live scanner filling it edge to edge, or the one
-    /// quiet denied sentence. Folds to zero height while the field is focused —
-    /// mounted throughout, so the session survives the fold.
+    /// quiet denied sentence. Shrinks to a compact strip while the field is
+    /// focused (never to zero, the camera stays live under the keyboard) —
+    /// mounted throughout, so the session survives the resize and a scan still
+    /// fills and submits the field mid-type. The denied and probing states shrink
+    /// the same way, so the focused layout never collapses without a camera.
     private var viewport: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -174,7 +254,7 @@ public struct JoinCodeScreen<Scanner: View>: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: viewportFolded ? 0 : JoinSheetPresentation.viewportHeight)
+        .frame(height: viewportHeight)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)

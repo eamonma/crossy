@@ -91,11 +91,15 @@ Camera-first panel: a viewport scans any invite QR — the projector's share lin
 the `/g/{code}` unfurl link, or a bare code (InviteScan digests all three) — and
 beneath it the one field, the read-aloud alphabet, autocapitalized,
 ambiguity-free. A scan takes the typed path exactly: it fills the field and
-submits, one attempt per scanned code. `POST /games/join` resolves the code
-alone; `GAME_NOT_FOUND` reads "That code doesn't match any room." `DENIED`
-(kicked) is honest and final, scanned or typed. A refused or absent camera gives
-way to one plain sentence over the field — never a dead end. Success lands a full
-account in the room as a solver (owner decision 2026-07-10).
+submits, one attempt per scanned code. The camera stays live while a code is
+typed (owner ruling 2026-07-11): focusing the field shrinks the viewport to a
+compact strip above the keyboard and raises the sheet to clear it, rather than
+folding the camera away, so a person can scan and type at once. `POST
+/games/join` resolves the code alone; `GAME_NOT_FOUND` reads "That code doesn't
+match any room." `DENIED` (kicked) is honest and final, scanned or typed. A
+refused or absent camera gives way to one plain sentence over the field — never a
+dead end. Success lands a full account in the room as a solver (owner decision
+2026-07-10).
 
 ### The room (solve screen)
 

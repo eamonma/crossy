@@ -60,7 +60,8 @@ struct CameraScanView: UIViewRepresentable {
     }
 
     /// The preview layer IS the view's backing layer, so it tracks bounds through
-    /// the viewport's fold without a layout observer.
+    /// the viewport's resize (full window to compact strip) without a layout
+    /// observer, and the session stays live the whole way.
     final class PreviewView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer {

@@ -190,12 +190,11 @@ struct ArrivalRootView: View {
         ) { onScan in
             CameraScanView(onScan: onScan)
         }
-        .presentationDetents([
-            .fraction(
-                prefilled
-                    ? JoinSheetPresentation.detentFraction
-                    : JoinSheetPresentation.scanDetentFraction)
-        ])
+        // The screen owns its detents now, because it owns the focus that raises
+        // them: focusing the field lifts the camera-first panel so the compact
+        // live strip and the field clear the keyboard (camera stays live under the
+        // keyboard, owner ruling). The drag indicator and the zoom source stay
+        // here, where the sheet is presented.
         .presentationDragIndicator(.visible)
         .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
         .task {
