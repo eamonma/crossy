@@ -1,30 +1,65 @@
 // The room bar (apps/ios/DESIGN.md §4): a cluster of glass pills, not one bar
 // (owner ruling 2026-07-10). A back button leads, circular standing glass in the
-// compact-toolbar register; the time pill carries the room's vital signs (the
-// weather dot, the reconnect countdown, the ambient clock) and is always
-// tappable, because the time pill is the room's facts (owner ruling 2026-07-10:
-// mid-solve it opens the room-facts card, at completion the same surface is the
-// stats card, ID-2 unchanged); the players pill presents the roster as a system
-// Menu (RosterMenu, the Mail mechanism). The leading pill retired with the same
-// ruling: the room name lives in the facts card now. On iOS 26+ the back button
-// and the time pill share one GlassEffectContainer at a spacing below the
-// metaball fuse (SP-i1, DESIGN.md §10) while the menu-bearing pill stands
-// outside it (a Menu inside a container breaks its morph on 26.1); below 26 the
-// same layout renders as separate blur-material capsules through
+// compact-toolbar register; the time pill carries the room's vital signs while
+// the room runs (the weather dot, the reconnect countdown, the ambient clock)
+// and turns into its record at a terminal status (TimePillRegister, redesign
+// 2026-07-11: a quiet check seals the frozen clock at completion; an abandoned
+// room keeps the bare frozen clock). The pill is always tappable, because the
+// time pill is the room's facts (owner ruling 2026-07-10): one tap, one
+// mechanism, the pill inflated into the facts card (mid-solve with the §12
+// operations, at completion the stats card, ID-2). The players pill presents
+// the roster as a system Menu (RosterMenu, the Mail mechanism). On iOS 26+ the
+// back button and the time pill share one GlassEffectContainer at a spacing
+// below the metaball fuse (SP-i1, DESIGN.md §10) while the menu-bearing pill
+// stands outside it (a Menu inside a container breaks its morph on 26.1);
+// below 26 the same layout renders as separate blur-material capsules through
 // ChromeGlassSurface, the §4 one-fallback rule.
 //
 // The clock is ID-2's: small, tabular, quiet, 0:00 before the first fill, frozen
 // at completion, ticking natively from `firstFillAt` with no store updates (root
-// DESIGN.md D15). Pills keep the capsule register the island shares (DESIGN.md
-// §8; I5 condenses the room into it, this shape must not preclude that). Chrome
-// carries no color of its own (§3); the pucks are the people.
+// DESIGN.md D15). The ongoing-to-terminal swap rides the chrome spring as a
+// crossfade, no overshoot (§7); Reduce Motion cuts it. Pills keep the capsule
+// register the island shares (DESIGN.md §8; I5 condenses the room into it, this
+// shape must not preclude that). Chrome carries no color of its own (§3); the
+// pucks are the people.
 
 import CrossyDesign
 import SwiftUI
 
+/// The time pill's register, derived from the room's status (pure, pinned).
+/// Mid-solve the pill is the room's vital signs: the weather beside the live
+/// clock. A completed room seals the pill: a quiet check beside the frozen
+/// clock, the record of the solve. An abandoned room retires the weather and
+/// keeps the frozen clock alone, terminal and quiet (EXPERIENCE.md). Either
+/// way the clock freezes at the terminal instant (ID-2) and the tap still
+/// summons the facts card.
+public enum TimePillRegister: Equatable, Sendable {
+    case vital
+    case sealed
+    case quiet
+
+    public static func from(status: RoomStatus) -> TimePillRegister {
+        switch status {
+        case .ongoing: return .vital
+        case .completed: return .sealed
+        case .abandoned: return .quiet
+        }
+    }
+
+    /// The pill's spoken line (the visual is one surface throughout). The
+    /// weather's words render only while the weather does.
+    public func accessibilityLabel(weather: String) -> String {
+        switch self {
+        case .vital: return "Shared time, \(weather), show room facts"
+        case .sealed: return "Solved together, show stats"
+        case .quiet: return "Final time, show room facts"
+        }
+    }
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
-struct RoomBar<FactsPopover: View>: View {
+struct RoomBar: View {
     let ground: GridGround
     let weather: RoomWeather
     let reconnectRetryAt: Date?
@@ -43,12 +78,12 @@ struct RoomBar<FactsPopover: View>: View {
     /// bar only reports the intent.
     let onBack: () -> Void
     /// The time pill's summon (always live: the time pill is the room's
-    /// facts). Mid-solve it raises the facts popover; at completion the frozen
-    /// clock summons the stats card morph back (ID-2). Routing is the caller's.
+    /// facts). One mechanism for both moments (redesign 2026-07-11): the tap
+    /// inflates the pill into the facts card. Routing is the caller's.
     let onTapTimePill: () -> Void
-    /// True once the room completes, for the pill's spoken label (the visual
-    /// is one surface either way).
-    let completed: Bool
+    /// The room's lifecycle, for the pill's register (TimePillRegister) and
+    /// its spoken label.
+    let status: RoomStatus
     /// The roster menu's needs: who the local user is (the spectator edge and
     /// the host's kick gate) and the Join in intent (ID-5), passed through to
     /// RosterMenu, plus the host's kick (owner ruling 2026-07-10) and the
@@ -58,12 +93,8 @@ struct RoomBar<FactsPopover: View>: View {
     let onKick: (String) -> Void
     /// Jump the camera to a member's live cursor (RosterMenu's Go to action).
     let onGoTo: (RosterMember) -> Void
-    /// The mid-solve facts popover flowing out of the time pill (owner ruling
-    /// 2026-07-10, MorphLab variant C). A binding the pill's `.popover` reads,
-    /// so the system owns placement, stacking, and dismissal; the content is
-    /// the caller's (the facts and the §12 operations).
-    @Binding var factsPopoverPresented: Bool
-    @ViewBuilder let factsPopover: () -> FactsPopover
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: ChromeLayout.pillGap) {
@@ -130,20 +161,30 @@ struct RoomBar<FactsPopover: View>: View {
         .reportChromeFrame(.backButton)
     }
 
-    // MARK: The time pill (the room's vital signs, and its facts)
+    // MARK: The time pill (the room's vital signs, then its record)
 
-    /// The weather and the ambient clock in one pill: the status dot, during a
-    /// reconnect the quiet countdown next to it (DESIGN.md §8: never a modal,
-    /// never a spinner over the grid), and the clock (ID-2). Always tappable:
-    /// the time pill is the room's facts (owner ruling 2026-07-10), so a tap
-    /// opens the facts card mid-solve and the stats card once the room
-    /// completes. The clock reports its own frame: it is the card's rider, and
-    /// the rider launches from the glyphs it left, not from the pill's center
-    /// (the weather sits beside the clock now).
+    /// While the room runs: the weather and the ambient clock in one pill, the
+    /// status dot, during a reconnect the quiet countdown next to it
+    /// (DESIGN.md §8: never a modal, never a spinner over the grid), and the
+    /// clock (ID-2). At a terminal status the vital signs stand down: a
+    /// completed room seals the pill with a quiet check beside the frozen
+    /// clock, an abandoned room keeps the frozen clock alone. The swap is a
+    /// crossfade on the chrome spring, the pill's width settling with it, no
+    /// overshoot (§7); Reduce Motion cuts. Always tappable: the time pill is
+    /// the room's facts (owner ruling 2026-07-10), so a tap inflates it into
+    /// the facts card in every state.
     private func timePill(now: Date) -> some View {
-        Button(action: onTapTimePill) {
+        let register = TimePillRegister.from(status: status)
+        return Button(action: onTapTimePill) {
             HStack(spacing: 8) {
-                weatherCluster(now: now)
+                switch register {
+                case .vital:
+                    weatherCluster(now: now)
+                case .sealed:
+                    sealMark
+                case .quiet:
+                    EmptyView()
+                }
                 Text(
                     verbatim: AmbientClock.display(
                         firstFillAt: firstFillAt, completedAt: completedAt, now: now)
@@ -151,8 +192,11 @@ struct RoomBar<FactsPopover: View>: View {
                 .font(.system(size: 13, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(Color(rgb: ground.tokens.number))
-                .reportChromeFrame(.timePillClock)
             }
+            // The one implicit animation here, keyed on the register alone
+            // (never a tick, never drag geometry, SP-i1 untouched): the
+            // ongoing-to-terminal swap crossfades on the chrome spring.
+            .animation(reduceMotion ? nil : .crossyChrome, value: register)
             .padding(.horizontal, 12)
             .frame(height: ChromeLayout.pillHeight)
             .contentShape(
@@ -161,28 +205,24 @@ struct RoomBar<FactsPopover: View>: View {
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
-        .accessibilityLabel(Text(verbatim: timePillAccessibilityLabel))
+        .accessibilityLabel(
+            Text(verbatim: register.accessibilityLabel(weather: weatherAccessibilityLabel))
+        )
         .opacity(timeHandedOff ? 0 : 1)
         // The yield includes touch (DESIGN.md §4: transient panels yield to
         // intent): a tap on the handed-off pill's ghost is a touch outside the
         // panel, so it falls to the bar's dismiss layer instead of the button.
         .allowsHitTesting(!timeHandedOff)
         .reportChromeFrame(.timePill)
-        // The mid-solve facts popover flows out of this pill (owner ruling
-        // 2026-07-10). MorphLab variant D proved a popover from a pill inside
-        // the cluster's GlassEffectContainer presents cleanly, so the pill
-        // stays inside the container and the popover attaches here. The system
-        // owns placement and dismissal; the completion path never sets this
-        // (it keeps the clock-rider morph, ID-2).
-        .popover(isPresented: $factsPopoverPresented) { factsPopover() }
     }
 
-    /// ID-2's grammar at completion, the facts card's summon otherwise. The
-    /// weather's spoken words are RoomWeather's own, unchanged.
-    private var timePillAccessibilityLabel: String {
-        completed
-            ? "Solved together, show stats"
-            : "Shared time, \(weatherAccessibilityLabel), show room facts"
+    /// The solved seal (redesign 2026-07-11): a quiet check in the weather's
+    /// tone, the record that the room finished. Achromatic like all chrome
+    /// (§3); the celebration's color belongs to the mosaic, never the pill.
+    private var sealMark: some View {
+        Image(systemName: "checkmark")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color(rgb: ground.tokens.number))
     }
 
     @ViewBuilder

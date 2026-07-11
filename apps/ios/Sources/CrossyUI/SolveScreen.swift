@@ -27,7 +27,7 @@ public struct SolveScreen: View {
     private let puzzleAuthor: String?
     private let puzzleDate: String?
     /// The room's invite code, held client-side (PROTOCOL.md §12: `GET
-    /// /games/{id}` returns it to any member). The facts popover offers a copy
+    /// /games/{id}` returns it to any member). The facts card offers a copy
     /// row when it is present; nil leaves the row out (a room that has no code
     /// in hand yet).
     private let inviteCode: String?
@@ -38,7 +38,7 @@ public struct SolveScreen: View {
     /// platform pasteboard; CrossyUI reports the intent only).
     private let onCopyInviteCode: () -> Void
     /// End the game, host abandon (`POST /games/{id}/abandon`, PROTOCOL.md §12).
-    /// Confirmed in the popover, then reported here.
+    /// Confirmed in the facts card, then reported here.
     private let onEndGame: () -> Void
     /// Kick a member, host only (`DELETE /games/{id}/members/{userId}`,
     /// PROTOCOL.md §12). Confirmed in the roster menu, then reported here.
@@ -187,12 +187,12 @@ public struct SolveScreen: View {
                     backHandedOff: pillEclipsed(.backButton),
                     timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
                     onBack: onBack,
-                    // Mid-solve the tap raises the facts popover (owner ruling
-                    // 2026-07-10); at completion it keeps the clock-rider morph
-                    // stats card (ID-2, byte-identical). The routing lives here
-                    // so the pill stays a plain reporter of intent.
-                    onTapTimePill: { tapTimePill(status: status) },
-                    completed: status == .completed,
+                    // One mechanism for both moments (redesign 2026-07-11,
+                    // retiring the mid-solve popover): the tap inflates the
+                    // pill into the facts card, mid-solve with the §12
+                    // operations, at completion the stats card (ID-2).
+                    onTapTimePill: { openFacts() },
+                    status: status,
                     selfUserId: store.selfUserId,
                     onJoinIn: onJoinIn,
                     onKick: onKick,
@@ -201,23 +201,6 @@ public struct SolveScreen: View {
                         dismissTransients()
                         model.jump(
                             to: GridSelection(cell: cursor.cell, isAcross: cursor.isAcross))
-                    },
-                    factsPopoverPresented: $chrome.factsPopoverPresented,
-                    factsPopover: {
-                        RoomFactsPopover(
-                            ground: ground,
-                            content: factsContent,
-                            operations: factsOperations,
-                            firstFillAt: store.firstFillAt,
-                            completedAt: store.completedAt ?? store.abandonedAt,
-                            onCopyInviteCode: {
-                                onCopyInviteCode()
-                                chrome.factsPopoverPresented = false
-                            },
-                            onEndGame: {
-                                onEndGame()
-                                chrome.factsPopoverPresented = false
-                            })
                     }
                 )
                 .reportChromeFrame(.roomBar)
@@ -261,19 +244,31 @@ public struct SolveScreen: View {
 
             // The room-facts card (owner ruling 2026-07-10: the time pill is
             // the room's facts): the time pill, inflated. Mid-solve it carries
-            // the crossword's facts; at completion it is the stats card (ID-2;
-            // DESIGN.md §4 morph grammar). Any outside touch pours it back and
-            // lands, no scrim, one glass layer.
+            // the crossword's facts and the §12 operations (redesign
+            // 2026-07-11, one mechanism for both moments); at completion it is
+            // the stats card (ID-2; DESIGN.md §4 morph grammar). Any outside
+            // touch pours it back and lands, no scrim, one glass layer.
             if chrome.isFactsOpen, let morph = factsMorph {
                 RoomFactsPanel(
                     ground: ground,
                     morph: morph,
-                    restTimeCenter: restTimeCenter(morph: morph),
                     content: factsContent,
+                    operations: factsPanelOperations,
                     solveTimeSeconds: store.stats?.solveTimeSeconds,
                     firstFillAt: store.firstFillAt,
                     completedAt: store.completedAt ?? store.abandonedAt,
-                    chrome: chrome)
+                    chrome: chrome,
+                    // An operation closes the card it acted from: the copy is
+                    // done, and the end-game's terminal transition pours the
+                    // room's transients back anyway.
+                    onCopyInviteCode: {
+                        onCopyInviteCode()
+                        chrome.settleFacts(open: false, animated: !reduceMotion)
+                    },
+                    onEndGame: {
+                        onEndGame()
+                        chrome.settleFacts(open: false, animated: !reduceMotion)
+                    })
             }
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
@@ -421,12 +416,15 @@ public struct SolveScreen: View {
             participantCount: store.stats?.participantCount)
     }
 
-    /// The mid-solve facts popover's operations (FactsOperations pins the rule):
-    /// only what §12 already supports. The copy row rides the invite code the
-    /// room view carries; the destructive end-game renders only for the host
-    /// (the local participant's own row in the roster). The server enforces
-    /// host-only anyway; the client simply does not offer it to a non-host.
-    private var factsOperations: FactsOperations {
+    /// The facts card's operations (FactsOperations pins the rule): only what
+    /// §12 already supports, and only while the room runs. The copy row rides
+    /// the invite code the room view carries; the destructive end-game renders
+    /// only for the host (the server enforces host-only anyway; the client
+    /// simply does not offer it to a non-host). A terminal card carries none:
+    /// it is the record, not a control surface (ending an already-ended game
+    /// is a no-op, INV-4).
+    private var factsPanelOperations: FactsOperations {
+        guard roomStatus == .ongoing else { return .none }
         let selfIsHost =
             rosterMembers.first { $0.userId == store.selfUserId }?.isHost ?? false
         return FactsOperations.make(inviteCode: inviteCode, isHost: selfIsHost)
@@ -436,14 +434,17 @@ public struct SolveScreen: View {
     /// the pill, inflated; DESIGN.md §4). Open grows leftward over the pill's
     /// own footprint, top and trailing edges shared (the Mail-button rule,
     /// owner ruling 2026-07-10: a panel covers the pill it grew from, never
-    /// hangs beside it), sized by FactsRideLayout's fixed slots and clamped
-    /// inside the bar's span; on narrow layouts it can reach the back button,
-    /// which then hands off (PanelEclipse).
+    /// hangs beside it), sized by FactsCardLayout's fixed slots (the operation
+    /// rows included, mid-solve) and clamped inside the bar's span; on narrow
+    /// layouts it can reach the back button, which then hands off
+    /// (PanelEclipse).
     private var factsMorph: GlassMorph? {
         guard let pill = frames[.timePill], let roomBar = frames[.roomBar]
         else { return nil }
-        let width = min(roomBar.width, FactsRideLayout.panelMaxWidth)
-        let height = FactsRideLayout.panelHeight(hasDetail: factsContent.detail != nil)
+        let width = min(roomBar.width, FactsCardLayout.panelMaxWidth)
+        let height = FactsCardLayout.panelHeight(
+            hasDetail: factsContent.detail != nil,
+            operationRows: factsPanelOperations.rowCount)
         return GlassMorph(
             rest: pill,
             open: CGRect(
@@ -452,17 +453,6 @@ public struct SolveScreen: View {
                 width: width, height: height),
             restCornerRadius: pill.height / 2,
             openCornerRadius: ChromeLayout.panelCornerRadius)
-    }
-
-    /// The rider's launch point: the pill clock's own reported center (the
-    /// weather sits beside the clock now, so the pill's middle is not the
-    /// clock's; the hand-off stays exact by construction). The pill's center
-    /// is the honest fallback before the first preference pass lands.
-    private func restTimeCenter(morph: GlassMorph) -> CGPoint {
-        guard let clock = frames[.timePillClock] else {
-            return CGPoint(x: morph.rest.midX, y: morph.rest.midY)
-        }
-        return CGPoint(x: clock.midX, y: clock.midY)
     }
 
     private func observeRoomState() {
@@ -477,10 +467,12 @@ public struct SolveScreen: View {
             // progress): a melt mid-drag when the room turns terminal stays
             // with the finger, and the release settles it as usual.
             chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-            // The mid-solve facts popover is the running room's surface only;
-            // the stats card owns completion (ID-2). A room that completes with
-            // the popover open dismisses it, so the two never stack.
-            chrome.factsPopoverPresented = false
+            // An open mid-solve facts card pours back with the melt: its
+            // operations just died with the room, and its open height is about
+            // to change. Completion re-summons the card as the stats card from
+            // fresh geometry (the celebration's rider below); an abandonment
+            // leaves the room quiet.
+            chrome.settleFacts(open: false, animated: !reduceMotion)
         }
         completion.observe(
             status: roomStatus,
@@ -595,28 +587,12 @@ public struct SolveScreen: View {
         }
     }
 
-    /// The time pill's tap, routed by status (owner ruling 2026-07-10). While
-    /// the room runs, the tap raises the facts popover (a system presentation
-    /// flowing out of the pill, MorphLab variant C); it carries the §12
-    /// operations the morph never could. At a terminal status the tap keeps the
-    /// clock-rider morph exactly as it was (ID-2, the completion stats card;
-    /// the abandoned room keeps its own morph too), so the completion path is
-    /// byte-identical. The two surfaces are mutually exclusive with the melt,
-    /// which pours back either way.
-    private func tapTimePill(status: RoomStatus) {
-        chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-        if status == .ongoing {
-            chrome.factsPopoverPresented = true
-        } else {
-            openFacts()
-        }
-    }
-
-    /// The completion stats card's summon (ID-2: the frozen clock inflates to
-    /// the headline), the clock-rider morph unchanged. Kept for the terminal
-    /// tap above and the celebration's auto-summon; a tap-opened morph animates
-    /// on the chrome spring's walk, and no animation ever writes the
-    /// drag-scrubbed melt (SP-i1).
+    /// The facts card's summon, one mechanism for both moments (redesign
+    /// 2026-07-11: the pill inflates into the card, mid-solve or terminal).
+    /// The pill's tap and the celebration's auto-summon both land here; a
+    /// tap-opened morph animates on the chrome spring's walk, and no animation
+    /// ever writes the drag-scrubbed melt (SP-i1), which pours back first so
+    /// the two surfaces never stand together.
     private func openFacts() {
         chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
         chrome.settleFacts(open: true, animated: !reduceMotion)

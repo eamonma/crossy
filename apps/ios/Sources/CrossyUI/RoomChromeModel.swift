@@ -33,19 +33,12 @@ public final class RoomChromeModel {
     public var isMeltDragging = false
 
     /// The facts morph (the time pill is the room's facts, owner ruling
-    /// 2026-07-10; at completion ID-2 holds: the timer becomes the headline,
-    /// so the headline comes FROM the timer): 0 is the room bar's time pill,
-    /// 1 the open facts card. The morph is the COMPLETION path's alone now (the
-    /// clock-rider stats card, ID-2); mid-solve rides `factsPopoverPresented`.
+    /// 2026-07-10; one mechanism for both moments since the 2026-07-11
+    /// redesign, which retired the mid-solve popover): 0 is the room bar's
+    /// time pill, 1 the open facts card. Mid-solve the card carries the §12
+    /// operations; at completion it is the stats card (ID-2: the timer becomes
+    /// the headline, so the headline comes FROM the timer).
     public var factsProgress: CGFloat = 0
-
-    /// The mid-solve facts card as a system popover flowing out of the time
-    /// pill (owner ruling 2026-07-10, MorphLab variant C: a popover flows out
-    /// of a glass control the way Mail's menu does). The completion path keeps
-    /// the clock-rider morph above; a tap mid-solve raises this instead. A
-    /// binding the pill's `.popover` reads, so the system owns the placement,
-    /// stacking, and dismissal, exactly as the roster menu does.
-    public var factsPopoverPresented = false
 
     /// When the reconnect adapter will dial next, for the quiet countdown
     /// (DESIGN.md §8). Set by the composition root; nil renders the bare word.

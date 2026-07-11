@@ -107,7 +107,7 @@ The standing pieces:
 
 | piece        | register | notes                                                            |
 | ------------ | -------- | ---------------------------------------------------------------- |
-| room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable), players (pucks, overflow count) |
+| room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable; sealed with a quiet check at completion, the bare frozen clock after an abandonment), players (pucks, overflow count) |
 | clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict); floats over the full-bleed board on a feather, a wash of the ground's canvas fading up from beneath the glass so live cells never meet a hard edge (both grounds by token, ID-3) |
 | sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
@@ -184,11 +184,36 @@ the presenting cluster stays whole. The time pill therefore stays inside the
 cluster's container (the roster's Menu still stands outside, because a Menu
 does break there).
 
-Content rides the morph (owner device finding, 2026-07-10). A morphing surface
-is never empty glass: the elements alive at both ends, the clue bar's pinned
-row, the stats card's clock, travel with the surface and hand off from the
-chrome they left, so nothing inflates hollow and nobody renders twice. Only
-content new at the open end (lists, names) fades in late. The morph targets:
+Amended 2026-07-11 (the timer-pill redesign; the owner disliked the popover's
+callout and the terminal treatment on device). The mid-solve popover retires:
+its arrow read as a balloon pointing at the pill, not the pill reshaped, which
+breaks the morph grammar's one promise. The facts card is ONE morph for both
+moments now: a tap on the time pill, mid-solve or terminal, inflates the pill
+into the card on the chrome spring's walk (RoomChromeModel's settle; no drag
+scrubs this surface, and nothing implicit animates it, SP-i1 untouched).
+Mid-solve the card carries the §12 operations under a one-point hairline (copy
+the invite code; the host's end-game, one confirm); a terminal card carries
+none: it is the record, not a control surface. The clock-rider retires with
+the popover (the glyphs flying and rescaling from the pill to the headline
+read as theater): the pill hands off whole, the surface grows clean, and the
+card's content fades in late as one block, the browser-list rule, out early on
+the pour-back. The `timeHandedOff` yield applies to every open card again. The
+MorphLab popover findings stay recorded above for history; no surface rides
+them now. The pill itself changes register at a terminal status: the weather
+stands down (a finished room's connection is not a vital sign), completion
+seals the pill with a quiet achromatic check beside the frozen clock, and an
+abandoned room keeps the bare frozen clock. The swap is a crossfade on the
+chrome spring, the pill's width settling with it, no overshoot (§7); Reduce
+Motion cuts it.
+
+Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
+A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
+with the surface and hands off from the chrome it left, so the melt never
+inflates hollow under a finger and nobody renders twice. Content new at the
+open end (lists, names) fades in late. The facts card, tap-opened and fast on
+the chrome spring, takes the fade-in-late rule for ALL its content since the
+timer-pill redesign: its clock-rider read as theater, so the surface grows
+clean instead. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
   it pours back. With the browser open, a downward drag scrubs the melt back under
@@ -213,15 +238,14 @@ content new at the open end (lists, names) fades in late. The morph targets:
   Join in is a real menu action, and a host's row for anyone else nests a
   destructive Remove from room with one confirm).
 - Tap the time pill: the room's facts arrive (owner ruling 2026-07-10: the time
-  pill is the room's facts), by one of two mechanisms depending on the moment.
-  Mid-solve a popover flows out of the pill (the system's presentation), carrying
-  the room's name and the crossword's facts with the live clock as the headline,
-  then a divider and the §12 operations. At completion the same tap keeps the
-  custom morph: the frozen clock inflates into the stats card (ID-2: the timer
-  becomes the headline, so the headline comes from the timer, and the clock
-  rides the surface from the pill). The mid-solve popover dismisses the system's
-  way (the outside touch swallowed, Mail's manners); the completion morph pours
-  back on a touch and the frozen pill summons it again.
+  pill is the room's facts), by one mechanism in every moment (the 2026-07-11
+  redesign): the pill inflates into the facts card on the chrome spring.
+  Mid-solve the card carries the room's name and the crossword's facts with the
+  live clock as the headline, then a hairline and the §12 operations. At
+  completion the same tap summons the same surface as the stats card (ID-2: the
+  timer becomes the headline, frozen), operations gone. Content fades in late
+  as one block (the browser-list rule); an outside touch pours the card back
+  and the pill, sealed or ticking, summons it again.
 - The invite capsule is the share card, condensed.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.
@@ -230,15 +254,15 @@ content new at the open end (lists, names) fades in late. The morph targets:
 - On a panning 25x25, standing bars thin while you travel and return at rest.
 
 **Transient panels yield to intent** (owner ruling 2026-07-10). A touch outside
-an open custom panel (the completion stats card, the clue browser) dismisses it
-and still lands where it fell: no dead tap-catchers, the room never eats a
-touch. Panels are mutually exclusive, opening any one pours back the others, and
-a status transition to completed or abandoned pours back the melt (the stats
-card then owns the completion stage) and the mid-solve facts popover (that
-surface is the running room's only). The one exception is a live finger: a melt
-being scrubbed is never force-closed, because the finger owns progress (SP-i1).
-The system transients, the roster menu and the mid-solve facts popover, keep the
-system's own manners: the outside touch that dismisses them is swallowed,
+an open custom panel (the facts card, the clue browser) dismisses it and still
+lands where it fell: no dead tap-catchers, the room never eats a touch. Panels
+are mutually exclusive, opening any one pours back the others, and a status
+transition to completed or abandoned pours back the melt and an open mid-solve
+facts card (its operations just died with the room; completion re-summons the
+card as the stats card from fresh geometry). The one exception is a live
+finger: a melt being scrubbed is never force-closed, because the finger owns
+progress (SP-i1). The one system transient, the roster menu, keeps the
+system's own manners: the outside touch that dismisses it is swallowed,
 exactly as Mail's is.
 
 **Presence glints.** Chrome stays achromatic until a person passes beneath it: a
@@ -419,6 +443,10 @@ reduced-motion equivalent that crossfades instead of moving.
   the room with a quiet countdown. Never a modal, never a spinner over the grid.
   The weather lives in the time pill (owner ruling 2026-07-10): the dot and the
   countdown sit beside the ambient clock, one pill for the room's vital signs.
+  At a terminal status the weather stands down (a finished room's connection is
+  not a vital sign): completion seals the pill with a quiet check beside the
+  frozen clock; an abandoned room keeps the bare frozen clock. The swap rides
+  the chrome spring; Reduce Motion cuts it.
 - **The island.** The room condensed: pucks leading, the derived timer trailing,
   black glass. The room bar and the island share capsule geometry so backgrounding
   reads as the same object changing state. The timer ticks natively from

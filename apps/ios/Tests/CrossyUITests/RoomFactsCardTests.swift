@@ -5,70 +5,43 @@ import XCTest
 @testable import CrossyUI
 
 // The room-facts card (owner ruling 2026-07-10: the time pill is the room's
-// facts; at completion the card is the stats card, ID-2 unchanged). Pinned like
-// every morph: the geometry is pure math, the words derive once as plain
-// strings, and the headline clock is one rule shared with the bar's own
-// arithmetic, so the hand-off on both ends is exact by construction.
+// facts; redesigned 2026-07-11: one morph for both moments, the popover and
+// the clock-rider retired). Pinned like every morph: the geometry is pure
+// math (fixed-height slots, the operations block included), the words derive
+// once as plain strings, and the headline clock is one rule shared with the
+// bar's own arithmetic, so the frozen pill and the card always agree.
 
-final class FactsRideLayoutTests: XCTestCase {
-    /// A facts-shaped morph: rest is the time pill's frame; open is the card
-    /// hanging under the room bar, at the no-detail height.
-    private let morph = GlassMorph(
-        rest: CGRect(x: 230, y: 10, width: 66, height: 44),
-        open: CGRect(x: 26, y: 62, width: 340, height: 112),
-        restCornerRadius: 22,
-        openCornerRadius: 24)
-
-    /// The clock's center inside the rest pill: right of the pill's middle,
-    /// because the weather sits beside the clock (owner ruling 2026-07-10).
-    private let clockCenter = CGPoint(x: 275, y: 32)
-
+final class FactsCardLayoutTests: XCTestCase {
+    // The open frame is arithmetic, never font metrics (DESIGN.md §4: the
+    // morph's endpoints are layout facts): slots plus padding, the detail and
+    // the operation rows adding their exact heights.
     func test_panelHeight_isSlotArithmetic() {
-        XCTAssertEqual(FactsRideLayout.panelHeight(hasDetail: false), 112)
-        XCTAssertEqual(FactsRideLayout.panelHeight(hasDetail: true), 134)
+        XCTAssertEqual(
+            FactsCardLayout.panelHeight(hasDetail: false, operationRows: 0), 102)
+        XCTAssertEqual(
+            FactsCardLayout.panelHeight(hasDetail: true, operationRows: 0), 124)
     }
 
-    // The rider launches from the glyphs it left (DESIGN.md §4: content rides
-    // the morph and hands off from the chrome it left): the rest point is the
-    // pill clock's own reported center, not the pill's middle, now that the
-    // weather shares the pill.
-    func test_rider_atRest_sitsExactlyOnThePillsClock_ID2() {
-        let center = FactsRideLayout.timeCenter(
-            morph: morph, restCenter: clockCenter, progress: 0)
-        XCTAssertEqual(center.x, clockCenter.x - morph.rest.minX, accuracy: 0.0001)
-        XCTAssertEqual(center.y, clockCenter.y - morph.rest.minY, accuracy: 0.0001)
-    }
-
-    func test_rider_atOpen_landsExactlyInTheHeadlineSlot_ID2() {
-        let center = FactsRideLayout.timeCenter(
-            morph: morph, restCenter: clockCenter, progress: 1)
-        XCTAssertEqual(center.x, morph.open.width / 2, accuracy: 0.0001)
-        XCTAssertEqual(center.y, FactsRideLayout.timeCenterY(), accuracy: 0.0001)
-        XCTAssertEqual(FactsRideLayout.timeCenterY(), 66)
-    }
-
-    func test_fontSize_walksPillClockToHeadline() {
-        XCTAssertEqual(FactsRideLayout.fontSize(at: 0), 13)
-        XCTAssertEqual(FactsRideLayout.fontSize(at: 1), 40)
-        XCTAssertEqual(FactsRideLayout.fontSize(at: 0.5), 26.5)
-    }
-
-    func test_rider_midMorph_staysInsideTheInterpolatedSurface() {
-        for progress in stride(from: CGFloat(0), through: 1, by: 0.1) {
-            let frame = morph.frame(at: progress)
-            let center = FactsRideLayout.timeCenter(
-                morph: morph, restCenter: clockCenter, progress: progress)
-            XCTAssertTrue(center.x >= 0 && center.x <= frame.width)
-            XCTAssertTrue(center.y >= 0 && center.y <= frame.height)
-        }
+    // Mid-solve the card carries the §12 operations under a one-point
+    // hairline (redesign 2026-07-11): each row adds its fixed height, and the
+    // hairline block appears exactly once, only when rows exist.
+    func test_panelHeight_operationRowsAddExactly_section12() {
+        let bare = FactsCardLayout.panelHeight(hasDetail: true, operationRows: 0)
+        let one = FactsCardLayout.panelHeight(hasDetail: true, operationRows: 1)
+        let two = FactsCardLayout.panelHeight(hasDetail: true, operationRows: 2)
+        let block =
+            FactsCardLayout.operationsAirAbove + FactsCardLayout.dividerHeight
+            + FactsCardLayout.operationsAirBelow
+        XCTAssertEqual(one, bare + block + FactsCardLayout.operationRowHeight)
+        XCTAssertEqual(two, one + FactsCardLayout.operationRowHeight)
     }
 
     // Row text takes the open card's CONSTANT content width, so truncation is
     // computed once and a mid-morph width never re-truncates a line (owner
     // device finding 2026-07-10, the stats pour-back).
     func test_contentWidth_isConstantAgainstTheOpenCard_section4() {
-        XCTAssertEqual(FactsRideLayout.contentWidth(openWidth: 340), 300)
-        XCTAssertEqual(FactsRideLayout.contentWidth(openWidth: 10), 0)
+        XCTAssertEqual(FactsCardLayout.contentWidth(openWidth: 340), 300)
+        XCTAssertEqual(FactsCardLayout.contentWidth(openWidth: 10), 0)
     }
 }
 
@@ -196,11 +169,12 @@ final class RoomFactsContentTests: XCTestCase {
     }
 }
 
-// The mid-solve facts popover's operations (owner ruling 2026-07-10): only what
-// the API already supports (PROTOCOL.md §12). Copy the invite code (a member
-// holds it), and for the host, end the game (host abandon, a FORBIDDEN for a
-// non-host). Kick is not here; it lives on the roster menu. The derivation is
-// pure, so the popover renders no policy.
+// The facts card's operations (owner ruling 2026-07-10; the card carries them
+// since the 2026-07-11 redesign): only what the API already supports
+// (PROTOCOL.md §12). Copy the invite code (a member holds it), and for the
+// host, end the game (host abandon, a FORBIDDEN for a non-host). Kick is not
+// here; it lives on the roster menu. The derivation is pure, so the card
+// renders no policy, and rowCount feeds the panel-height arithmetic.
 
 final class FactsOperationsTests: XCTestCase {
     func test_host_seesCopyAndEndGame() {
@@ -208,16 +182,28 @@ final class FactsOperationsTests: XCTestCase {
         XCTAssertEqual(ops.inviteCode, "TIDECOVE")
         XCTAssertTrue(ops.canEndGame)
         XCTAssertTrue(ops.hasAny)
+        XCTAssertEqual(ops.rowCount, 2)
+    }
+
+    // The terminal card is the record, not a control surface (INV-4 makes an
+    // end-game no-op anyway): the empty set renders no hairline, no rows, and
+    // adds nothing to the panel height.
+    func test_none_isTheTerminalCardsEmptySet_INV4() {
+        XCTAssertEqual(FactsOperations.none.rowCount, 0)
+        XCTAssertFalse(FactsOperations.none.hasAny)
+        XCTAssertNil(FactsOperations.none.inviteCode)
+        XCTAssertFalse(FactsOperations.none.canEndGame)
     }
 
     // A non-host still copies the code (every member holds it, §12) but is never
     // offered the destructive end-game; the server refuses a non-host abandon,
-    // and the popover simply does not show it.
+    // and the card simply does not show it.
     func test_nonHost_copiesButNeverEndsGame() {
         let ops = FactsOperations.make(inviteCode: "TIDECOVE", isHost: false)
         XCTAssertEqual(ops.inviteCode, "TIDECOVE")
         XCTAssertFalse(ops.canEndGame)
         XCTAssertTrue(ops.hasAny)
+        XCTAssertEqual(ops.rowCount, 1)
     }
 
     // The copy row drops when the client holds no code: a blank or absent code
@@ -229,7 +215,7 @@ final class FactsOperationsTests: XCTestCase {
         XCTAssertNil(FactsOperations.make(inviteCode: "   ", isHost: false).inviteCode)
     }
 
-    // A non-host with no code in hand has no operations at all: the popover
+    // A non-host with no code in hand has no operations at all: the card
     // then shows facts alone, which the ruling accepts.
     func test_nonHostNoCode_hasNoOperations() {
         let ops = FactsOperations.make(inviteCode: nil, isHost: false)

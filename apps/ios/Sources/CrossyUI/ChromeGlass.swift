@@ -168,12 +168,9 @@ enum ChromePiece: Hashable {
     case board
     /// The time pill, whole: the facts card's rest surface (the time pill is
     /// the room's facts, owner ruling 2026-07-10; at completion the card is
-    /// the stats card, ID-2).
+    /// the stats card, ID-2). The clock-glyph sub-frame it once reported went
+    /// with the retired rider (redesign 2026-07-11).
     case timePill
-    /// The clock's own glyphs inside the time pill: the card's rider launches
-    /// from the clock it left (the weather sits beside it, so the pill's
-    /// center is not the clock's).
-    case timePillClock
     /// The back button (owner ruling 2026-07-10, replacing the retired
     /// leading pill): no morph rests on it, but a panel that eclipses it must
     /// know its frame (PanelEclipse).

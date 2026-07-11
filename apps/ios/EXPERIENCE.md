@@ -134,9 +134,11 @@ States, each honest and distinct:
   silently: the overlay and reconciliation rules of PROTOCOL.md section 8 govern.
 - **Completed.** The mosaic plays and the stats arrive with it (owner ruling
   2026-07-10): the frozen time, entries, solvers (`gameCompleted.stats`). The
-  connection stays open; the room becomes a finished object you can revisit
-  from Rooms.
-- **Abandoned.** Terminal and quiet: the board freezes with a one-line notice.
+  time pill seals, a quiet check beside the frozen clock, and its tap summons
+  the stats card back (the pill inflated, DESIGN.md section 4). The connection
+  stays open; the room becomes a finished object you can revisit from Rooms.
+- **Abandoned.** Terminal and quiet: the board freezes with a one-line notice,
+  and the pill keeps the frozen clock alone.
 - **Kicked.** `kicked` notice then close: the room exits with one honest sentence;
   the code is dead for this account thereafter (denylist).
 

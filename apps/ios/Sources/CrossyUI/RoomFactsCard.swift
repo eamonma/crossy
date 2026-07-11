@@ -1,71 +1,65 @@
 // The room-facts card (owner ruling 2026-07-10: the time pill is the room's
-// facts). One surface, two moments: mid-solve a tap on the time pill inflates it
-// into the card of the crossword's facts (the room's name, the puzzle's title
-// and byline, the live clock as the headline); at completion the same surface is
+// facts; redesigned 2026-07-11). One surface, ONE mechanism, two moments: a tap
+// on the time pill inflates it into the card, mid-solve or terminal. Mid-solve
+// the card carries the room's name, the live clock as the headline, the
+// puzzle's facts, and the §12 operations under a hairline (copy the invite
+// code; the host's end-game, one confirm). At completion the same surface is
 // the stats card (ID-2: the timer becomes the headline only at completion, so
-// the headline comes FROM the timer, frozen). The card is a morph, not a
-// presentation (DESIGN.md §4 morph grammar; a tap-opened morph may animate on
-// the chrome spring, and nothing here ever writes a drag-scrubbed morph's
-// progress, SP-i1). The time rides the surface from the pill's clock to the
-// headline slot (§4: content rides the morph); label and detail fade in late as
-// the card's new content. Dismissal pours the time back into the bar; the pill,
-// frozen or ticking, summons the card again. Copy derivations are pure and
-// pinned (the StatsCardContent pattern this generalizes).
+// the headline comes FROM the timer, frozen) and carries no operations: the
+// terminal card is the record, not a control surface. The system popover the
+// mid-solve path briefly rode retired with the redesign: its callout arrow
+// pointed at the pill instead of BEING the pill, breaking the morph grammar's
+// one promise (a panel is the pill reshaped, DESIGN.md §4).
+//
+// The card is a morph, not a presentation (DESIGN.md §4; a tap-opened morph
+// animates on the chrome spring's walk, and nothing here ever writes a
+// drag-scrubbed morph's progress, SP-i1). The clock-rider retired with the
+// redesign too (owner dislike 2026-07-11: glyphs flying and rescaling from the
+// pill to the headline read as theater): the pill hands off whole, the surface
+// grows clean, and the card's content fades in late as one block, the
+// browser-list rule (GlassMorphContent.listOpacity), out early on the pour
+// back. Dismissal shrinks the surface back into the pill, which stands again,
+// sealed or ticking. Copy derivations are pure and pinned.
 
 import CrossyDesign
 import SwiftUI
 
-/// The facts morph's pure geometry, pinned in tests: the card's rows are
-/// fixed-height slots so the rider's landing point is arithmetic, not font
-/// metrics, and the rider at progress 1 sits exactly in the headline slot.
-enum FactsRideLayout {
+/// The facts card's pure geometry, pinned in tests: fixed-height slots so the
+/// morph's open frame is arithmetic, never font metrics. Row text takes the
+/// open card's CONSTANT content width (a rigid frame against morph.open, never
+/// the interpolating surface), so truncation is computed once and a mid-morph
+/// width never re-truncates a line to an ellipsis (owner device finding
+/// 2026-07-10).
+enum FactsCardLayout {
     static let panelMaxWidth: CGFloat = 340
-    static let verticalPadding: CGFloat = 22
-    static let labelHeight: CGFloat = 14
+    static let verticalPadding: CGFloat = 20
+    static let labelHeight: CGFloat = 16
     static let rowGap: CGFloat = 6
-    static let timeHeight: CGFloat = 48
+    /// The headline: the timer as the card's largest fact (ID-2), in the
+    /// register the retired popover proved on device.
+    static let headlineFontSize: CGFloat = 34
+    static let timeHeight: CGFloat = 40
     static let detailHeight: CGFloat = 16
-    /// The clock's size in the time pill and the headline's size in the card.
-    static let restFontSize: CGFloat = 13
-    static let openFontSize: CGFloat = 40
-    /// The rows' inset from the open card's edge. Row text takes this CONSTANT
-    /// width (a rigid frame against morph.open, never the interpolating
-    /// surface), so truncation is computed once and a mid-morph width never
-    /// re-truncates a line to an ellipsis (owner device finding 2026-07-10).
+    /// The rows' inset from the open card's edge.
     static let contentInset: CGFloat = 20
+    /// The operations block (§12, mid-solve only): air, a one-point hairline,
+    /// air, then fixed-height rows.
+    static let operationsAirAbove: CGFloat = 12
+    static let dividerHeight: CGFloat = 1
+    static let operationsAirBelow: CGFloat = 4
+    static let operationRowHeight: CGFloat = 40
 
-    static func panelHeight(hasDetail: Bool) -> CGFloat {
+    static func panelHeight(hasDetail: Bool, operationRows: Int) -> CGFloat {
         verticalPadding * 2 + labelHeight + rowGap + timeHeight
             + (hasDetail ? rowGap + detailHeight : 0)
+            + (operationRows > 0
+                ? operationsAirAbove + dividerHeight + operationsAirBelow
+                    + operationRowHeight * CGFloat(operationRows)
+                : 0)
     }
 
     static func contentWidth(openWidth: CGFloat) -> CGFloat {
         max(0, openWidth - contentInset * 2)
-    }
-
-    /// The headline slot's center in panel-local coordinates.
-    static func timeCenterY() -> CGFloat {
-        verticalPadding + labelHeight + rowGap + timeHeight / 2
-    }
-
-    static func fontSize(at progress: CGFloat) -> CGFloat {
-        GlassMorph.lerp(restFontSize, openFontSize, progress)
-    }
-
-    /// The rider's center at a progress, in the CURRENT frame's local space: a
-    /// straight room-space line from `restCenter` (the pill clock's own
-    /// reported center; the weather sits beside the clock, so the pill's
-    /// middle is not the clock's) to the headline slot, re-expressed against
-    /// the interpolating surface.
-    static func timeCenter(
-        morph: GlassMorph, restCenter: CGPoint, progress: CGFloat
-    ) -> CGPoint {
-        let openRoom = CGPoint(
-            x: morph.open.midX, y: morph.open.minY + timeCenterY())
-        let frame = morph.frame(at: progress)
-        return CGPoint(
-            x: GlassMorph.lerp(restCenter.x, openRoom.x, progress) - frame.minX,
-            y: GlassMorph.lerp(restCenter.y, openRoom.y, progress) - frame.minY)
     }
 }
 
@@ -133,15 +127,15 @@ public struct RoomFactsContent: Equatable, Sendable {
     }
 }
 
-/// The mid-solve facts popover's operations, derived once so the view renders no
-/// policy (the RoomFactsContent pattern). Operations are ONLY what the API
-/// already supports (PROTOCOL.md §12): a member may copy the room's invite code
+/// The facts card's operations, derived once so the view renders no policy
+/// (the RoomFactsContent pattern). Operations are ONLY what the API already
+/// supports (PROTOCOL.md §12): a member may copy the room's invite code
 /// (`GET /games/{id}` returns `inviteCode` to any member); the host may end the
 /// game (`POST /games/{id}/abandon`, host only, a `FORBIDDEN` for a non-host).
 /// Kick is not here: it lives on the roster menu, per the owner ruling. A
 /// destructive operation (end game) renders only for the host and takes a
 /// confirm step in the view. When nothing is available (a non-host with no
-/// invite code in hand), the operations are empty and the popover shows facts
+/// invite code in hand), the operations are empty and the card shows facts
 /// alone, which is fine.
 public struct FactsOperations: Equatable, Sendable {
     /// The invite code to copy, nil when the client does not hold it (the row
@@ -159,9 +153,9 @@ public struct FactsOperations: Equatable, Sendable {
 
     /// The operations for the local participant. `isHost` gates the destructive
     /// end-game; a blank or absent code drops the copy row. A terminal room
-    /// offers no operations: the popover is the mid-solve surface only (the
-    /// stats card owns completion), and ending an already-ended game is a
-    /// no-op (INV-4), so the whole popover path is gated on `ongoing` upstream.
+    /// offers no operations: the terminal card is the record (ending an
+    /// already-ended game is a no-op, INV-4), so the caller passes `.none`
+    /// there instead of deriving.
     public static func make(inviteCode: String?, isHost: Bool) -> FactsOperations {
         let trimmed = inviteCode?.trimmingCharacters(in: .whitespaces)
         return FactsOperations(
@@ -169,29 +163,49 @@ public struct FactsOperations: Equatable, Sendable {
             canEndGame: isHost)
     }
 
-    /// Whether the popover renders a divider and any operation rows at all.
-    public var hasAny: Bool { inviteCode != nil || canEndGame }
+    /// The empty set, the terminal card's operations.
+    public static let none = FactsOperations(inviteCode: nil, canEndGame: false)
+
+    /// How many operation rows render, the panel-height arithmetic's input.
+    public var rowCount: Int {
+        (inviteCode != nil ? 1 : 0) + (canEndGame ? 1 : 0)
+    }
+
+    /// Whether the card renders a hairline and any operation rows at all.
+    public var hasAny: Bool { rowCount > 0 }
 }
 
-/// The card as one morphing glass surface. The time is the rider and the
-/// headline; chrome stays achromatic (DESIGN.md §3), so the card carries no
-/// color, only weight. The 1 Hz timeline keeps a mid-solve headline honest
-/// (the room's clock never stops for a card); a terminal room's inputs freeze
-/// the same arithmetic, so the timeline ticks a constant.
+/// The card as one morphing glass surface: the pill reshaped, never a balloon
+/// beside it (DESIGN.md §4, the Mail-button rule). Chrome stays achromatic
+/// (§3), so the card carries no color, only weight. The 1 Hz timeline keeps a
+/// mid-solve headline honest (the room's clock never stops for a card); a
+/// terminal room's inputs freeze the same arithmetic, so the timeline ticks a
+/// constant. All content fades on the browser-list rule against the walked
+/// progress; nothing here animates implicitly.
 @available(iOS 18.0, macOS 14.0, *)
 @MainActor
 struct RoomFactsPanel: View {
     let ground: GridGround
     let morph: GlassMorph
-    /// The pill clock's reported center in room space: the rider's launch
-    /// point (§4: content rides the morph, and hands off from the chrome it
-    /// left).
-    let restTimeCenter: CGPoint
     let content: RoomFactsContent
+    /// Already gated by the caller: mid-solve the §12 operations, `.none` for
+    /// a terminal room (the record, not a control surface).
+    let operations: FactsOperations
     let solveTimeSeconds: Int?
     let firstFillAt: String?
     let completedAt: String?
     let chrome: RoomChromeModel
+    /// Copy the invite code to the pasteboard (the composition root owns the
+    /// platform clipboard, so CrossyUI stays free of UIKit; the row only
+    /// reports the intent).
+    let onCopyInviteCode: () -> Void
+    /// End the game (host abandon). Confirmed here first, then reported.
+    let onEndGame: () -> Void
+
+    @State private var confirmingEnd = false
+
+    private var ink: Color { Color(rgb: ground.tokens.ink) }
+    private var quiet: Color { Color(rgb: ground.tokens.number) }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
@@ -208,64 +222,131 @@ struct RoomFactsPanel: View {
             solveTimeSeconds: solveTimeSeconds,
             firstFillAt: firstFillAt, completedAt: completedAt, now: now)
 
-        return ZStack(alignment: .topLeading) {
-            rows
-                .opacity(GlassMorphContent.listOpacity(at: progress))
-                .frame(width: frame.width, height: frame.height, alignment: .top)
-            // The rider: the time, one object from bar clock to headline.
+        // The card's content, one block: rigid rows against the OPEN width
+        // (truncation computed once), clipped under the surface mid-flight
+        // while listOpacity fades them, in late and out early.
+        return rows(time: time)
+            .opacity(GlassMorphContent.listOpacity(at: progress))
+            .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+            .clipShape(shape)
+            .modifier(ChromeGlassSurface(cornerRadius: radius))
+            .contentShape(shape)
+            // An inside tap stays the card's: only touches OUTSIDE a transient
+            // dismiss it (DESIGN.md §4), the panel's own inner blocker rule.
+            .onTapGesture {}
+            .position(x: frame.midX, y: frame.midY)
+            .confirmationDialog(
+                "End this game for everyone?",
+                isPresented: $confirmingEnd,
+                titleVisibility: .visible
+            ) {
+                // The one destructive confirm (EXPERIENCE.md: abandon, one
+                // confirm, plainly worded). The system dialog owns the red;
+                // the card body stays achromatic (DESIGN.md §3).
+                Button("End game", role: .destructive, action: onEndGame)
+                Button("Keep playing", role: .cancel) {}
+            } message: {
+                Text(verbatim: "This ends the game for everyone in the room.")
+            }
+    }
+
+    private func rows(time: String) -> some View {
+        let width = FactsCardLayout.contentWidth(openWidth: morph.open.width)
+        return VStack(alignment: .leading, spacing: 0) {
+            facts(time: time, width: width)
+            if operations.hasAny {
+                operationBlock(width: width)
+            }
+        }
+        .padding(.vertical, FactsCardLayout.verticalPadding)
+        .padding(.horizontal, FactsCardLayout.contentInset)
+    }
+
+    // MARK: Facts (the label, the headline time, the quiet detail)
+
+    private func facts(time: String, width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Natural casing: the uppercased small-caps register read wrong
+            // on device (owner ruling 2026-07-10).
+            Text(verbatim: content.label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(quiet)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(
+                    width: width, height: FactsCardLayout.labelHeight,
+                    alignment: .leading)
+            Color.clear.frame(height: FactsCardLayout.rowGap)
             Text(verbatim: time)
                 .font(.system(
-                    size: FactsRideLayout.fontSize(at: progress), weight: .semibold))
+                    size: FactsCardLayout.headlineFontSize, weight: .semibold))
                 .monospacedDigit()
-                .foregroundStyle(Color(rgb: ground.tokens.ink))
-                .position(
-                    FactsRideLayout.timeCenter(
-                        morph: morph, restCenter: restTimeCenter, progress: progress))
-                .allowsHitTesting(false)
+                .foregroundStyle(ink)
+                .frame(
+                    width: width, height: FactsCardLayout.timeHeight,
+                    alignment: .leading)
+            if let detail = content.detail {
+                Color.clear.frame(height: FactsCardLayout.rowGap)
+                Text(verbatim: detail)
+                    .font(.system(size: 13, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(quiet)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(
+                        width: width, height: FactsCardLayout.detailHeight,
+                        alignment: .leading)
+            }
         }
-        .frame(width: frame.width, height: frame.height)
-        .clipShape(shape)
-        .modifier(ChromeGlassSurface(cornerRadius: radius))
-        .contentShape(shape)
-        // An inside tap stays the card's: only touches OUTSIDE a transient
-        // dismiss it (DESIGN.md §4), the panel's own inner blocker rule.
-        .onTapGesture {}
-        .position(x: frame.midX, y: frame.midY)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: accessibilityLine(time: time)))
     }
 
-    /// The card's new content: fixed-height slots (the rider lands by
-    /// arithmetic), the headline slot left clear for it. Each line takes the
-    /// open card's CONSTANT content width with one-line truncation, so a
-    /// mid-morph width never re-truncates it (owner device finding 2026-07-10,
-    /// the stats pour-back); mid-flight the rigid rows clip under the
-    /// surface's clipShape while listOpacity fades them.
-    private var rows: some View {
-        let width = FactsRideLayout.contentWidth(openWidth: morph.open.width)
-        return VStack(spacing: FactsRideLayout.rowGap) {
-            // Natural casing: the uppercased small-caps register read wrong
-            // on device (owner ruling 2026-07-10).
-            Text(verbatim: content.label)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color(rgb: ground.tokens.number))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(width: width, height: FactsRideLayout.labelHeight)
-            Color.clear
-                .frame(height: FactsRideLayout.timeHeight)
-            if let detail = content.detail {
-                Text(verbatim: detail)
-                    .font(.system(size: 13, weight: .medium))
-                    .monospacedDigit()
-                    .foregroundStyle(Color(rgb: ground.tokens.number))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(width: width, height: FactsRideLayout.detailHeight)
+    // MARK: Operations (only what the API already supports, §12)
+
+    private func operationBlock(width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: FactsCardLayout.operationsAirAbove)
+            // A deterministic one-point hairline, not a system Divider: the
+            // panel's open height is pinned arithmetic (FactsCardLayout), and
+            // a hairline's scale-dependent height would unpin it.
+            Rectangle()
+                .fill(quiet.opacity(0.28))
+                .frame(width: width, height: FactsCardLayout.dividerHeight)
+            Color.clear.frame(height: FactsCardLayout.operationsAirBelow)
+            if operations.inviteCode != nil {
+                operationRow(
+                    "Copy invite code", systemImage: "doc.on.doc",
+                    width: width, action: onCopyInviteCode)
+            }
+            if operations.canEndGame {
+                operationRow(
+                    "End game", systemImage: "xmark.circle",
+                    width: width, action: { confirmingEnd = true })
             }
         }
-        .padding(.vertical, FactsRideLayout.verticalPadding)
-        .frame(maxWidth: .infinity)
+    }
+
+    private func operationRow(
+        _ title: String, systemImage: String, width: CGFloat,
+        action: @escaping () -> Void
+    ) -> some View {
+        // Achromatic like all chrome (DESIGN.md §3): the destructive row reads
+        // in ink too, and the red lives in the system confirm dialog.
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 15))
+                    .frame(width: 22)
+                Text(verbatim: title)
+                    .font(.system(size: 15, weight: .medium))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(ink)
+            .frame(width: width, height: FactsCardLayout.operationRowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func accessibilityLine(time: String) -> String {

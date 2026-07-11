@@ -73,8 +73,8 @@ struct DemoRoomView: View {
             onBack: onBack,
             // The offline fixture holds the operations to a no-op: no REST, no
             // pasteboard write worth making in a demo. The rows render so the
-            // popover's composition and the roster's kick submenu are visible;
-            // the actions do nothing.
+            // facts card's composition and the roster's kick submenu are
+            // visible; the actions do nothing.
             onCopyInviteCode: {},
             onEndGame: {},
             onKick: { _ in }
