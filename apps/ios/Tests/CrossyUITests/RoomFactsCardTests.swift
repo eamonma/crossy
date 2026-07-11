@@ -170,19 +170,19 @@ final class RoomFactsContentTests: XCTestCase {
 }
 
 // The facts card's operations (owner ruling 2026-07-10; the card carries them
-// since the 2026-07-11 redesign): only what the API already supports
-// (PROTOCOL.md §12). Copy the invite code (a member holds it), and for the
-// host, end the game (host abandon, a FORBIDDEN for a non-host). Kick is not
-// here; it lives on the roster menu. The derivation is pure, so the card
-// renders no policy, and rowCount feeds the panel-height arithmetic.
+// since the 2026-07-11 redesign). Copy invite code retired 2026-07-11 (the
+// share surface, now a native menu, owns invite copying: its Section header
+// carries the code, Copy link the URL). So the only operation left is the
+// host's end-game (host abandon, a FORBIDDEN for a non-host, PROTOCOL.md §12).
+// Kick is not here; it lives on the roster menu. The derivation is pure, so
+// the card renders no policy, and rowCount feeds the panel-height arithmetic.
 
 final class FactsOperationsTests: XCTestCase {
-    func test_host_seesCopyAndEndGame() {
-        let ops = FactsOperations.make(inviteCode: "TIDECOVE", isHost: true)
-        XCTAssertEqual(ops.inviteCode, "TIDECOVE")
+    func test_host_seesEndGame() {
+        let ops = FactsOperations.make(isHost: true)
         XCTAssertTrue(ops.canEndGame)
         XCTAssertTrue(ops.hasAny)
-        XCTAssertEqual(ops.rowCount, 2)
+        XCTAssertEqual(ops.rowCount, 1)
     }
 
     // The terminal card is the record, not a control surface (INV-4 makes an
@@ -191,44 +191,17 @@ final class FactsOperationsTests: XCTestCase {
     func test_none_isTheTerminalCardsEmptySet_INV4() {
         XCTAssertEqual(FactsOperations.none.rowCount, 0)
         XCTAssertFalse(FactsOperations.none.hasAny)
-        XCTAssertNil(FactsOperations.none.inviteCode)
         XCTAssertFalse(FactsOperations.none.canEndGame)
     }
 
-    // A non-host still copies the code (every member holds it, §12) but is never
-    // offered the destructive end-game; the server refuses a non-host abandon,
-    // and the card simply does not show it.
-    func test_nonHost_copiesButNeverEndsGame() {
-        let ops = FactsOperations.make(inviteCode: "TIDECOVE", isHost: false)
-        XCTAssertEqual(ops.inviteCode, "TIDECOVE")
+    // A non-host is never offered the destructive end-game; the server refuses
+    // a non-host abandon, and the card simply does not show it. With copy-code
+    // retired, a non-host mid-solve has no operations at all: the card shows
+    // facts alone, which the ruling accepts.
+    func test_nonHost_hasNoOperations() {
+        let ops = FactsOperations.make(isHost: false)
         XCTAssertFalse(ops.canEndGame)
-        XCTAssertTrue(ops.hasAny)
-        XCTAssertEqual(ops.rowCount, 1)
-    }
-
-    // The copy row drops when the client holds no code: a blank or absent code
-    // leaves the row out (the ruling accepts facts-alone when nothing is
-    // available).
-    func test_missingCode_dropsTheCopyRow() {
-        XCTAssertNil(FactsOperations.make(inviteCode: nil, isHost: false).inviteCode)
-        XCTAssertNil(FactsOperations.make(inviteCode: "", isHost: false).inviteCode)
-        XCTAssertNil(FactsOperations.make(inviteCode: "   ", isHost: false).inviteCode)
-    }
-
-    // A non-host with no code in hand has no operations at all: the card
-    // then shows facts alone, which the ruling accepts.
-    func test_nonHostNoCode_hasNoOperations() {
-        let ops = FactsOperations.make(inviteCode: nil, isHost: false)
         XCTAssertFalse(ops.hasAny)
-        XCTAssertNil(ops.inviteCode)
-        XCTAssertFalse(ops.canEndGame)
-    }
-
-    // A whitespace-padded code is trimmed to its usable value (the room view
-    // carries a clean code, but the derivation is defensive).
-    func test_code_isTrimmed() {
-        XCTAssertEqual(
-            FactsOperations.make(inviteCode: " TIDECOVE ", isHost: false).inviteCode,
-            "TIDECOVE")
+        XCTAssertEqual(ops.rowCount, 0)
     }
 }

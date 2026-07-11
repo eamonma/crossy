@@ -21,6 +21,23 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
+    init() {
+        // The facts card's morph character (PillInflation). The shipping
+        // default is metaball on iOS 26+ (owner ruling 2026-07-11: the
+        // system's materialize swap inside a GlassEffectContainer, falling
+        // back to the clean frame-interpolation walk below 26). -gooClean and
+        // -gooOvershoot override it for reference/regression; -gooMetaball is
+        // the default and stays reachable as an explicit no-op.
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-gooClean") {
+            PillInflation.character = .clean
+        } else if arguments.contains("-gooOvershoot") {
+            PillInflation.character = .overshoot
+        } else if arguments.contains("-gooMetaball") {
+            PillInflation.character = .metaball
+        }
+    }
+
     var body: some View {
         // The glassEffectID recheck rig (MorphLab.swift): evidence only.
         if ProcessInfo.processInfo.arguments.contains("-morphLab") {
@@ -59,6 +76,7 @@ struct DemoRoomView: View {
     /// One avatar cache shared by the room's live pucks and the island snapshot, so the
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
+    @State private var shareURL: URL?
     var onBack: () -> Void = {}
 
     var body: some View {
@@ -71,15 +89,34 @@ struct DemoRoomView: View {
             puzzleAuthor: room.puzzleAuthor,
             puzzleDate: room.puzzleDate,
             inviteCode: room.inviteCode,
+            // The fixture's shareable link: the share pill, its menu, and its
+            // QR sheet all render offline over the same URL a live room would
+            // build (ShareInvite.url), so the whole surface is judgeable with
+            // no network.
+            shareUrl: ShareInvite.url(
+                gameId: room.gameId, code: room.inviteCode, name: room.roomName),
             model: room.selection,
             chrome: room.chrome,
             avatarCache: avatarCache,
             onBack: onBack,
-            // The offline fixture holds the operations to a no-op: no REST, no
-            // pasteboard write worth making in a demo. The rows render so the
-            // facts card's composition and the roster's kick submenu are
-            // visible; the actions do nothing.
-            onCopyInviteCode: {},
+            // Copy link is real even offline (it writes only to the local
+            // pasteboard; no network, no REST): the share menu's primary row
+            // is device-judgeable over the fixture URL.
+            onCopyShareLink: {
+                if let url = ShareInvite.url(
+                    gameId: room.gameId, code: room.inviteCode, name: room.roomName)
+                {
+                    UIPasteboard.general.string = url.absoluteString
+                }
+            },
+            // The share sheet itself is real (it writes nothing; PROTOCOL.md
+            // has no bearing on it), so the demo presents it exactly as a
+            // live room would, over the fixture URL: the tertiary channel is
+            // device-judgeable offline.
+            onShareInvite: {
+                shareURL = ShareInvite.url(
+                    gameId: room.gameId, code: room.inviteCode, name: room.roomName)
+            },
             onEndGame: {},
             onKick: { _ in }
         )
@@ -90,6 +127,7 @@ struct DemoRoomView: View {
         .solveActivity(
             store: room.store, chrome: room.chrome, roomName: room.roomName,
             total: room.puzzle.playableCellCount, avatarCache: avatarCache)
+        .shareInviteSheet(url: $shareURL)
         .task { await room.run() }
     }
 }
@@ -110,6 +148,7 @@ struct RealRoomView: View {
     private let onBack: () -> Void
     private let onExit: () -> Void
     @State private var ready = false
+    @State private var shareURL: URL?
     /// One avatar cache shared by the room's live pucks and the island snapshot, so the
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
@@ -138,6 +177,13 @@ struct RealRoomView: View {
                     clues: room.clues,
                     roomName: room.roomName,
                     inviteCode: room.inviteCode,
+                    // The composition root owns the game id, so it builds the
+                    // link (ShareInvite.url): the same URL the share menu's QR
+                    // sheet encodes, the Copy link row writes, and the sheet
+                    // sends.
+                    shareUrl: ShareInvite.url(
+                        gameId: room.gameId, code: room.inviteCode,
+                        name: room.roomName),
                     model: room.selection,
                     chrome: room.chrome,
                     avatarCache: avatarCache,
@@ -145,9 +191,25 @@ struct RealRoomView: View {
                     onExit: onExit,
                     // The pasteboard write is the composition root's (CrossyUI
                     // stays UIKit-free); abandon rides the REST client through
-                    // RealRoom (PROTOCOL.md §12).
-                    onCopyInviteCode: {
-                        if let code = room.inviteCode { UIPasteboard.general.string = code }
+                    // RealRoom (PROTOCOL.md §12). Copy link now owns invite
+                    // copying (owner ruling 2026-07-11: the facts card's
+                    // copy-code row retired for the share menu).
+                    onCopyShareLink: {
+                        if let url = ShareInvite.url(
+                            gameId: room.gameId, code: room.inviteCode,
+                            name: room.roomName)
+                        {
+                            UIPasteboard.general.string = url.absoluteString
+                        }
+                    },
+                    // Same seam, same reasoning: the composition root owns
+                    // UIActivityViewController (ShareSheet.swift) so CrossyUI
+                    // stays UIKit-free. The URL is the same one the QR
+                    // encodes, never re-derived differently.
+                    onShareInvite: {
+                        shareURL = ShareInvite.url(
+                            gameId: room.gameId, code: room.inviteCode,
+                            name: room.roomName)
                     },
                     onEndGame: { room.endGame() },
                     onKick: { userId in room.kick(userId: userId) }
@@ -162,6 +224,7 @@ struct RealRoomView: View {
                     total: room.puzzle.playableCellCount,
                     registration: room.liveActivityRegistration,
                     avatarCache: avatarCache)
+                .shareInviteSheet(url: $shareURL)
             }
         }
         .task {

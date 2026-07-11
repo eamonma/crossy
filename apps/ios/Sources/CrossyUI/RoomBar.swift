@@ -74,6 +74,10 @@ struct RoomBar: View {
     /// so the whole pill, glass, weather, and clock, hands off and yields.
     /// Layout and frame reporting stay; the visual goes with the morph.
     let timeHandedOff: Bool
+    /// Whether the room has an invite in hand (a share URL built from the
+    /// invite code): the share pill stands only when there is something to
+    /// share, never as a dead control.
+    let hasShare: Bool
     /// The way out of the room. The arrival flow wires the destination; the
     /// bar only reports the intent.
     let onBack: () -> Void
@@ -81,6 +85,15 @@ struct RoomBar: View {
     /// facts). One mechanism for both moments (redesign 2026-07-11): the tap
     /// inflates the pill into the facts card. Routing is the caller's.
     let onTapTimePill: () -> Void
+    /// The share menu's payload (owner ruling 2026-07-11, ships as the native
+    /// menu): the read-aloud code for the titled section and the link the QR
+    /// row and copy row carry.
+    let shareCode: String?
+    let shareUrlString: String?
+    /// The share menu's intents (AD-2 seams: the pasteboard write and
+    /// UIActivityViewController ride the app target; the rows only report).
+    let onCopyShareLink: () -> Void
+    let onShareInvite: () -> Void
     /// The room's lifecycle, for the pill's register (TimePillRegister) and
     /// its spoken label.
     let status: RoomStatus
@@ -116,6 +129,17 @@ struct RoomBar: View {
             #else
                 timedPills
             #endif
+            // The share surface ships as the native menu (owner ruling
+            // 2026-07-11): the share pill is a Menu label, standing OUTSIDE
+            // the container exactly like the players pill (a Menu inside a
+            // GlassEffectContainer breaks its morph on 26.1, the RosterMenu
+            // discipline). It stands between the room's facts and its people:
+            // the invite is the door between them.
+            if hasShare, let shareCode, let shareUrlString {
+                ShareMenuPill(
+                    ground: ground, code: shareCode, urlString: shareUrlString,
+                    onCopyLink: onCopyShareLink, onShare: onShareInvite)
+            }
             RosterMenu(
                 ground: ground, members: members,
                 selfUserId: selfUserId, onJoinIn: onJoinIn, onKick: onKick,
@@ -135,6 +159,9 @@ struct RoomBar: View {
             TimelineView(.periodic(from: .now, by: 1)) { timeline in
                 timePill(now: timeline.date)
             }
+            // The share menu's pill renders in the outer HStack (outside this
+            // container), because a Menu inside a GlassEffectContainer breaks
+            // its morph on 26.1 (the RosterMenu discipline).
         }
     }
 

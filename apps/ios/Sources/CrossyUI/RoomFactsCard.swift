@@ -2,8 +2,9 @@
 // facts; redesigned 2026-07-11). One surface, ONE mechanism, two moments: a tap
 // on the time pill inflates it into the card, mid-solve or terminal. Mid-solve
 // the card carries the room's name, the live clock as the headline, the
-// puzzle's facts, and the §12 operations under a hairline (copy the invite
-// code; the host's end-game, one confirm). At completion the same surface is
+// puzzle's facts, and (for the host) the end-game under a hairline, one
+// confirm. Copying the invite code moved to the share menu (owner ruling
+// 2026-07-11: the share surface owns invite copying). At completion the same surface is
 // the stats card (ID-2: the timer becomes the headline only at completion, so
 // the headline comes FROM the timer, frozen) and carries no operations: the
 // terminal card is the record, not a control surface. The system popover the
@@ -128,47 +129,36 @@ public struct RoomFactsContent: Equatable, Sendable {
 }
 
 /// The facts card's operations, derived once so the view renders no policy
-/// (the RoomFactsContent pattern). Operations are ONLY what the API already
-/// supports (PROTOCOL.md §12): a member may copy the room's invite code
-/// (`GET /games/{id}` returns `inviteCode` to any member); the host may end the
-/// game (`POST /games/{id}/abandon`, host only, a `FORBIDDEN` for a non-host).
-/// Kick is not here: it lives on the roster menu, per the owner ruling. A
-/// destructive operation (end game) renders only for the host and takes a
-/// confirm step in the view. When nothing is available (a non-host with no
-/// invite code in hand), the operations are empty and the card shows facts
-/// alone, which is fine.
+/// (the RoomFactsContent pattern). Copy invite code retired with the share
+/// morph card (owner ruling 2026-07-11: the share surface owns invite copying
+/// now, its Section header carries the code and Copy link the URL). So the
+/// only operation left is the host's end-game (`POST /games/{id}/abandon`,
+/// host only, a `FORBIDDEN` for a non-host, PROTOCOL.md §12), a destructive
+/// action that takes a confirm step in the view. A non-host mid-solve sees no
+/// operations, and the card shows facts alone, which is fine.
 public struct FactsOperations: Equatable, Sendable {
-    /// The invite code to copy, nil when the client does not hold it (the row
-    /// is then absent). The room view carries it (PROTOCOL.md §12), so a live
-    /// room always has it; the demo has one too.
-    public let inviteCode: String?
     /// The host's destructive end-game, offered only to the host (the server
     /// refuses a non-host abandon anyway; the client simply does not show it).
     public let canEndGame: Bool
 
-    public init(inviteCode: String?, canEndGame: Bool) {
-        self.inviteCode = inviteCode
+    public init(canEndGame: Bool) {
         self.canEndGame = canEndGame
     }
 
     /// The operations for the local participant. `isHost` gates the destructive
-    /// end-game; a blank or absent code drops the copy row. A terminal room
-    /// offers no operations: the terminal card is the record (ending an
-    /// already-ended game is a no-op, INV-4), so the caller passes `.none`
-    /// there instead of deriving.
-    public static func make(inviteCode: String?, isHost: Bool) -> FactsOperations {
-        let trimmed = inviteCode?.trimmingCharacters(in: .whitespaces)
-        return FactsOperations(
-            inviteCode: (trimmed?.isEmpty == false) ? trimmed : nil,
-            canEndGame: isHost)
+    /// end-game. A terminal room offers no operations: the terminal card is
+    /// the record (ending an already-ended game is a no-op, INV-4), so the
+    /// caller passes `.none` there instead of deriving.
+    public static func make(isHost: Bool) -> FactsOperations {
+        FactsOperations(canEndGame: isHost)
     }
 
     /// The empty set, the terminal card's operations.
-    public static let none = FactsOperations(inviteCode: nil, canEndGame: false)
+    public static let none = FactsOperations(canEndGame: false)
 
     /// How many operation rows render, the panel-height arithmetic's input.
     public var rowCount: Int {
-        (inviteCode != nil ? 1 : 0) + (canEndGame ? 1 : 0)
+        canEndGame ? 1 : 0
     }
 
     /// Whether the card renders a hairline and any operation rows at all.
@@ -188,21 +178,18 @@ struct RoomFactsPanel: View {
     let ground: GridGround
     let morph: GlassMorph
     let content: RoomFactsContent
-    /// Already gated by the caller: mid-solve the §12 operations, `.none` for
-    /// a terminal room (the record, not a control surface).
+    /// Already gated by the caller: mid-solve the host's end-game, `.none`
+    /// for a terminal room (the record, not a control surface).
     let operations: FactsOperations
     let solveTimeSeconds: Int?
     let firstFillAt: String?
     let completedAt: String?
     let chrome: RoomChromeModel
-    /// Copy the invite code to the pasteboard (the composition root owns the
-    /// platform clipboard, so CrossyUI stays free of UIKit; the row only
-    /// reports the intent).
-    let onCopyInviteCode: () -> Void
     /// End the game (host abandon). Confirmed here first, then reported.
     let onEndGame: () -> Void
 
     @State private var confirmingEnd = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var ink: Color { Color(rgb: ground.tokens.ink) }
     private var quiet: Color { Color(rgb: ground.tokens.number) }
@@ -214,13 +201,55 @@ struct RoomFactsPanel: View {
     }
 
     private func card(now: Date) -> some View {
-        let progress = chrome.factsProgress
-        let frame = morph.frame(at: progress)
-        let radius = morph.cornerRadius(at: progress)
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         let time = RoomFactsClock.headline(
             solveTimeSeconds: solveTimeSeconds,
             firstFillAt: firstFillAt, completedAt: completedAt, now: now)
+        return surface(time: time)
+            .confirmationDialog(
+                "End this game for everyone?",
+                isPresented: $confirmingEnd,
+                titleVisibility: .visible
+            ) {
+                // The one destructive confirm (EXPERIENCE.md: abandon, one
+                // confirm, plainly worded). The system dialog owns the red;
+                // the card body stays achromatic (DESIGN.md §3).
+                Button("End game", role: .destructive, action: onEndGame)
+                Button("Keep playing", role: .cancel) {}
+            } message: {
+                Text(verbatim: "This ends the game for everyone in the room.")
+            }
+    }
+
+    /// The surface's character (PillInflation, the owner-gated prototype):
+    /// the card's CONTENT and open geometry never change here, only how the
+    /// glass travels. The default is the shipped law.
+    @ViewBuilder
+    private func surface(time: String) -> some View {
+        #if os(iOS)
+            if #available(iOS 26.0, *), PillInflation.character == .metaball {
+                MetaballPanelSurface(
+                    morph: morph, progress: chrome.factsProgress,
+                    reduceMotion: reduceMotion
+                ) {
+                    rows(time: time)
+                }
+            } else {
+                walkedSurface(time: time)
+            }
+        #else
+            walkedSurface(time: time)
+        #endif
+    }
+
+    private func walkedSurface(time: String) -> some View {
+        let progress = chrome.factsProgress
+        let overshoots = PillInflation.walksWithOvershoot
+        let frame =
+            overshoots ? morph.frameUnclamped(at: progress) : morph.frame(at: progress)
+        let radius =
+            overshoots
+            ? morph.cornerRadiusUnclamped(at: progress) : morph.cornerRadius(at: progress)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
         // The card's content, one block: rigid rows against the OPEN width
         // (truncation computed once), clipped under the surface mid-flight
@@ -235,19 +264,6 @@ struct RoomFactsPanel: View {
             // dismiss it (DESIGN.md §4), the panel's own inner blocker rule.
             .onTapGesture {}
             .position(x: frame.midX, y: frame.midY)
-            .confirmationDialog(
-                "End this game for everyone?",
-                isPresented: $confirmingEnd,
-                titleVisibility: .visible
-            ) {
-                // The one destructive confirm (EXPERIENCE.md: abandon, one
-                // confirm, plainly worded). The system dialog owns the red;
-                // the card body stays achromatic (DESIGN.md §3).
-                Button("End game", role: .destructive, action: onEndGame)
-                Button("Keep playing", role: .cancel) {}
-            } message: {
-                Text(verbatim: "This ends the game for everyone in the room.")
-            }
     }
 
     private func rows(time: String) -> some View {
@@ -314,11 +330,6 @@ struct RoomFactsPanel: View {
                 .fill(quiet.opacity(0.28))
                 .frame(width: width, height: FactsCardLayout.dividerHeight)
             Color.clear.frame(height: FactsCardLayout.operationsAirBelow)
-            if operations.inviteCode != nil {
-                operationRow(
-                    "Copy invite code", systemImage: "doc.on.doc",
-                    width: width, action: onCopyInviteCode)
-            }
             if operations.canEndGame {
                 operationRow(
                     "End game", systemImage: "xmark.circle",

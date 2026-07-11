@@ -25,6 +25,17 @@
 //                           pattern). Mid-solve the card carries the §12
 //                           operations (redesign 2026-07-11, the popover
 //                           retired); -i2cSpectator drops the host's end-game
+//    (share ships as the native menu, owner ruling 2026-07-11: the share pill
+//     presents a system Menu, so it cannot be scripted open; tap it on device)
+//    -gooMetaball           the facts card's SHIPPING DEFAULT on iOS 26 (the
+//                           system's materialize swap in a GlassEffectContainer,
+//                           the MorphLab variant-A goo); reachable as an
+//                           explicit no-op. Below 26 the clean melt renders
+//    -gooClean              override the default: the facts card opens on the
+//                           clean frame-interpolation walk (the below-26 law)
+//    -gooOvershoot          override the default: the facts card opens on the
+//                           underdamped inflation curve, a hair past the frame
+//                           and back; all compose with any -i2*/-demoRoom launch
 //    -i2eSealedPill         complete the room, then pour the stats card back
 //                           so the sealed terminal pill stands alone (the
 //                           redesign's terminal register; simctl cannot tap)
@@ -64,6 +75,10 @@ final class DemoRoom {
     // §12: the room view carries it to any member). The fixture supplies a
     // read-aloud eight-character code so the row renders offline.
     let inviteCode = "TIDECOVE"
+    // A fixture id so the share card (ShareInvite.url) also renders offline;
+    // the demo transport never dials a real backend, so this id names nothing
+    // real, exactly as the fixture's invite code does.
+    let gameId = "demo-room"
     let selection: SelectionModel
     let chrome = RoomChromeModel()
     private let transport: LoopbackTransport
@@ -163,6 +178,9 @@ final class DemoRoom {
             // flag retired with the popover it raised.
             chrome.presentFacts()
         }
+        // (-i2fShare retired with the share morph card: share is a system
+        // Menu now, and a system presentation cannot be scripted open, the
+        // same reasoning that retired -i2cRoster.)
         if let index = arguments.firstIndex(of: "-i2cMelt"),
             arguments.indices.contains(index + 1),
             let progress = Double(arguments[index + 1])

@@ -91,7 +91,10 @@ public final class RoomChromeModel {
     public func settleFacts(open: Bool, animated: Bool = true) {
         factsSettleTask?.cancel()
         factsSettleTask = Self.walk(
-            from: factsProgress, to: open ? 1 : 0, animated: animated
+            from: factsProgress, to: open ? 1 : 0, animated: animated,
+            // The inflation prototype (PillInflation, owner-gated): the OPEN
+            // walk may ride the underdamped curve; the pour-back never does.
+            overshoots: open && PillInflation.walksWithOvershoot
         ) { [weak self] value in
             self?.factsProgress = value
         }
@@ -119,8 +122,15 @@ public final class RoomChromeModel {
     /// against the display read as lag on the owner's device (finding
     /// 2026-07-10). The macOS test build keeps the fine-sleep loop, which only
     /// tests ever see. Returns nil when the change was a cut.
+    ///
+    /// `overshoots` is the inflation prototype's lever (PillInflation,
+    /// owner-gated): the walk steps the underdamped PillInflationCurve
+    /// instead, whose fraction breathes a hair past 1 before settling. Only
+    /// the pill panels' OPEN walks ever pass true; the melt and every
+    /// pour-back stay on the critically damped law.
     private static func walk(
         from start: CGFloat, to target: CGFloat, animated: Bool,
+        overshoots: Bool = false,
         apply: @escaping @MainActor (CGFloat) -> Void
     ) -> Task<Void, Never>? {
         guard animated, abs(target - start) > 0.0005 else {
@@ -134,13 +144,19 @@ public final class RoomChromeModel {
                 defer { ticker.stop() }
                 for await _ in ticker.frames() {
                     if Task.isCancelled { return }
-                    if step(began: began, start: start, target: target, apply: apply) {
+                    if step(
+                        began: began, start: start, target: target,
+                        overshoots: overshoots, apply: apply)
+                    {
                         return
                     }
                 }
             #else
                 while !Task.isCancelled {
-                    if step(began: began, start: start, target: target, apply: apply) {
+                    if step(
+                        began: began, start: start, target: target,
+                        overshoots: overshoots, apply: apply)
+                    {
                         return
                     }
                     try? await Task.sleep(for: .milliseconds(8))
@@ -151,11 +167,24 @@ public final class RoomChromeModel {
 
     /// One spring application; true when the walk has arrived (which snaps the
     /// last fraction of a point so progress ends exactly at its endpoint).
+    /// The settle curve is monotonic, so arrival is its fraction reaching 1;
+    /// the overshoot curve crosses 1 mid-flight by design, so arrival is its
+    /// own envelope test, never the fraction.
     private static func step(
-        began: Date, start: CGFloat, target: CGFloat,
+        began: Date, start: CGFloat, target: CGFloat, overshoots: Bool,
         apply: @MainActor (CGFloat) -> Void
     ) -> Bool {
-        let fraction = ChromeSettleCurve.fraction(at: Date.now.timeIntervalSince(began))
+        let elapsed = Date.now.timeIntervalSince(began)
+        if overshoots {
+            if PillInflationCurve.isSettled(at: elapsed) {
+                apply(target)
+                return true
+            }
+            let fraction = PillInflationCurve.fraction(at: elapsed)
+            apply(start + (target - start) * CGFloat(fraction))
+            return false
+        }
+        let fraction = ChromeSettleCurve.fraction(at: elapsed)
         if fraction >= 1 {
             apply(target)
             return true

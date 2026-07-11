@@ -175,6 +175,9 @@ enum ChromePiece: Hashable {
     /// leading pill): no morph rests on it, but a panel that eclipses it must
     /// know its frame (PanelEclipse).
     case backButton
+    // The share pill's frame retired with the share morph card (owner ruling
+    // 2026-07-11: share ships as the native menu). A Menu label presents
+    // itself, so it needs no morph geometry and reports no frame.
 }
 
 /// DESIGN.md §4, the Mail-button rule's corollary: a panel covers its own pill
