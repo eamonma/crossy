@@ -12,4 +12,9 @@ public enum AttributionSwitches {
     /// ID-1: the completion mosaic (apps/ios/DESIGN.md §8). `true` keeps it on;
     /// flip to `false` to mute after the on-device look.
     public static let completionMosaicEnabled = true
+
+    /// The completion confetti (owner ask 2026-07-11, amending §8's no-confetti
+    /// line: a restrained roster-colored drift joins the mosaic). Same deal as
+    /// the mosaic: one constant, cheap to mute after the on-device look.
+    public static let completionConfettiEnabled = true
 }

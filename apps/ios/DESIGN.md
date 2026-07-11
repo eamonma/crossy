@@ -435,7 +435,11 @@ reduced-motion equivalent that crossfades instead of moving.
 - **The mosaic.** On `gameCompleted`, every letter tints to its writer's color: the
   solve's fingerprint, who carried the theme, who cleaned the corners. It holds for
   a breath, then settles back to ink. Derived entirely from the event log. This is
-  the celebration; there is no confetti.
+  the celebration's centerpiece. A restrained confetti drift rides the same instant
+  (owner ask 2026-07-11, amending this section's original no-confetti rule):
+  roster-colored flecks between paper and glass, deliberately quieter than the
+  web's, skipped whole under Reduce Motion, muteable by one constant (the ID-1
+  pattern, `AttributionSwitches.completionConfettiEnabled`).
 - **The clarity beat.** During the mosaic, all standing glass momentarily clears,
   then refrosts as the stats arrive.
 - **Honest weather.** Three connection states, three registers (PROTOCOL.md
