@@ -60,7 +60,7 @@ public struct JoinCodeScreen<Scanner: View>: View {
     private let scanner: (@escaping (String) -> Void) -> Scanner
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var code = ""
+    @State private var code: String
     @State private var submitting = false
     @State private var failure: ArrivalFailure?
     /// The code a final failure judged; resubmitting it is refusing to hear.
@@ -72,10 +72,12 @@ public struct JoinCodeScreen<Scanner: View>: View {
 
     public init(
         scanState: JoinScanState,
+        initialCode: String = "",
         onJoin: @escaping (String) async -> ArrivalFailure?,
         @ViewBuilder scanner: @escaping (@escaping (String) -> Void) -> Scanner
     ) {
         self.scanState = scanState
+        _code = State(initialValue: initialCode)
         self.onJoin = onJoin
         self.scanner = scanner
     }

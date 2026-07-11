@@ -54,9 +54,15 @@ struct ArrivalRootView: View {
     /// (CameraScanAuthority; the simulator resolves denied, the panel keeps its
     /// typed path).
     @State private var joinScan: JoinScanState = .probing
+    /// A Universal Link's code, when a direct join failed: the join sheet opens
+    /// pre-filled with it (code-only, no camera probe) so the reason is one tap
+    /// away. Empty for a hand-tapped Join, which gets the camera-first panel.
+    @State private var deepLinkPrefill = ""
     @State private var tab: ShellTab = .launchSelection
     @Namespace private var joinZoom
     @Environment(\.colorScheme) private var colorScheme
+    /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
+    @Environment(PendingInvite.self) private var pendingInvite
 
     var body: some View {
         Group {
@@ -73,12 +79,47 @@ struct ArrivalRootView: View {
         .sheet(isPresented: $showJoin) {
             joinSheet
         }
+        // A cold launch straight from an invite link, already signed in: the code
+        // is set before this view's observers register, so honor it once on appear.
+        .task { honorPendingInvite() }
+        // A link arriving while the app runs.
+        .onChange(of: pendingInvite.code) { honorPendingInvite() }
         .onChange(of: model.isSignedIn) { _, signedIn in
-            // Sign-out or deletion drops the shell; a stale pushed room or a live
-            // join sheet must not greet the next sign-in.
-            if !signedIn {
+            if signedIn {
+                // Sign-in completed: honor an invite that was held while signed out
+                // (the held-invite promise, EXPERIENCE.md §3).
+                honorPendingInvite()
+            } else {
+                // Sign-out or deletion drops the shell; a stale pushed room or a
+                // live join sheet must not greet the next sign-in.
                 path.removeAll()
                 showJoin = false
+            }
+        }
+        // The pre-fill is a one-shot for a failed deep link; a later hand-tapped
+        // Join must open the camera-first panel, never a stale code.
+        .onChange(of: showJoin) { _, open in
+            if !open { deepLinkPrefill = "" }
+        }
+    }
+
+    /// Honor a Universal Link's invite code. Signed in: join at once and push the
+    /// room — the QR's whole point, scan the projector and land in the room. A rare
+    /// failure (the room ended, or the host removed you) opens the join panel
+    /// pre-filled with the code, so the reason is one tap away and never silent.
+    /// Signed out: the code stays pending until sign-in flips (this runs again on
+    /// that edge). Cleared on consumption, so it fires exactly once.
+    private func honorPendingInvite() {
+        guard model.isSignedIn, let code = pendingInvite.code else { return }
+        pendingInvite.code = nil
+        Task {
+            switch await model.rooms.join(code: code) {
+            case .success(let gameId):
+                showJoin = false
+                path = [roomRoute(for: gameId)]
+            case .failure:
+                deepLinkPrefill = code
+                showJoin = true
             }
         }
     }
@@ -129,8 +170,13 @@ struct ArrivalRootView: View {
     /// resolves as the sheet rises; scanning works in every composition (a
     /// payload is digested locally), the fixture just stubs where the join goes.
     private var joinSheet: some View {
-        JoinCodeScreen(
-            scanState: joinScan,
+        // A failed deep link opens this pre-filled and code-only (scanState .none):
+        // a tapped invite must never trigger a camera prompt. A hand-tapped Join is
+        // the camera-first panel.
+        let prefilled = !deepLinkPrefill.isEmpty
+        return JoinCodeScreen(
+            scanState: prefilled ? .none : joinScan,
+            initialCode: deepLinkPrefill,
             onJoin: { code in
                 switch await model.rooms.join(code: code) {
                 case .success(let gameId):
@@ -144,10 +190,18 @@ struct ArrivalRootView: View {
         ) { onScan in
             CameraScanView(onScan: onScan)
         }
-        .presentationDetents([.fraction(JoinSheetPresentation.scanDetentFraction)])
+        .presentationDetents([
+            .fraction(
+                prefilled
+                    ? JoinSheetPresentation.detentFraction
+                    : JoinSheetPresentation.scanDetentFraction)
+        ])
         .presentationDragIndicator(.visible)
         .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
         .task {
+            // The pre-filled failure card scans nothing, so it never probes the
+            // camera (no permission prompt on a tapped link).
+            guard !prefilled else { return }
             joinScan = .probing
             joinScan = await CameraScanAuthority.resolve() ? .live : .denied
         }
