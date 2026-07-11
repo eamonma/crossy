@@ -50,6 +50,13 @@
       "when": 1783813589005,
       "tag": "0006_session_reads_avatar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0007_live_activity_tokens",
+      "breakpoints": true
     }
   ]
 }

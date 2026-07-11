@@ -370,6 +370,73 @@ describe("session read-coupling contract (INV-7; DESIGN.md §9)", () => {
   });
 });
 
+describe("live_activity_tokens registry: API single writer, session reader (0007; INV-7; DESIGN.md §9)", () => {
+  it("gives the table its key columns and the two-value environment CHECK", async () => {
+    const { rows } = await pool.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_schema='public' and table_name='live_activity_tokens'",
+    );
+    expect(rows.map((r) => r.column_name).sort()).toEqual(
+      ["apns_environment", "created_at", "game_id", "token", "user_id"].sort(),
+    );
+    // The CHECK is defense in depth: only 'sandbox' or 'production' (a Debug build mints sandbox,
+    // so the emitter targets the matching APNs host).
+    await expect(
+      pool.query(
+        "insert into live_activity_tokens (token, user_id, game_id, apns_environment) values ('t-bad', $1, $2, 'staging')",
+        [seed.userId, seed.gameId],
+      ),
+    ).rejects.toThrow(/live_activity_tokens_environment/);
+  });
+
+  it("cascades on game delete but never on user delete, so a tombstoned user's registry row still keyed the id (INV-7, §8)", async () => {
+    const fkDeleteType = async (column: string): Promise<string> => {
+      const { rows } = await pool.query<{ confdeltype: string }>(
+        `select c.confdeltype
+           from pg_constraint c
+           join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+          where c.contype = 'f' and c.conrelid = 'live_activity_tokens'::regclass and a.attname = $1`,
+        [column],
+      );
+      return rows[0]?.confdeltype ?? "";
+    };
+    // 'c' cascade on game_id (the token belongs to the game aggregate), 'a' no action on user_id
+    // (users are tombstoned, never hard-deleted, §8).
+    expect(await fkDeleteType("game_id")).toBe("c");
+    expect(await fkDeleteType("user_id")).toBe("a");
+  });
+
+  it("lets the api role write the registry (single writer) and the session role only read it (INV-7)", async () => {
+    // API is the single writer: an insert under the api role succeeds.
+    await asRole("crossy_api", (c) =>
+      c.query(
+        "insert into live_activity_tokens (token, user_id, game_id, apns_environment) values ('t-api', $1, $2, 'sandbox') on conflict (token) do nothing",
+        [seed.userId, seed.gameId],
+      ),
+    );
+    // Session reads the registry (the emitter's "all tokens for this game" read) but cannot write.
+    const { rows } = await asRole("crossy_session", (c) =>
+      c.query<{ n: string }>(
+        "select count(*)::text as n from live_activity_tokens where game_id = $1",
+        [seed.gameId],
+      ),
+    );
+    expect(Number(rows[0]?.n)).toBeGreaterThanOrEqual(1);
+    await expect(
+      asRole("crossy_session", (c) =>
+        c.query(
+          "insert into live_activity_tokens (token, user_id, game_id, apns_environment) values ('t-sess', $1, $2, 'sandbox')",
+          [seed.userId, seed.gameId],
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_session", (c) =>
+        c.query("delete from live_activity_tokens"),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+  });
+});
+
 describe("deny-all RLS tripwire (DESIGN.md §7)", () => {
   it("enables row-level security with zero policies on every table (§7)", async () => {
     const { rows } = await pool.query<{

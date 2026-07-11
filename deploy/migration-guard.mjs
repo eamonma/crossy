@@ -108,6 +108,18 @@ export const ALLOWLIST = new Map([
       "file is already applied to production and cannot be edited (Drizzle hashes applied " +
       "migrations). Grandfathered by review 2026-07-09.",
   ],
+  [
+    "0007_live_activity_tokens.sql",
+    "Expand-only, but the guard's `UPDATE` rule matches the token `UPDATE` in the API's full-DML " +
+      "grant (`GRANT SELECT, INSERT, UPDATE, DELETE ON live_activity_tokens TO crossy_api`), " +
+      "which it cannot tell apart from a bulk DML UPDATE. This is the guard's known conservative " +
+      "false positive on a GRANT privilege (the same shape 0001 carries for the original five " +
+      "API-owned tables, green there only because 0001 is allowlisted). The file adds a table, " +
+      "two FKs, an index, a CHECK, and read/write grants; it drops, renames, retypes, and " +
+      "backfills nothing, so it is a genuine expand migration. The API needs the UPDATE " +
+      "privilege for its ON CONFLICT DO UPDATE upsert on the token registry. Reviewed as " +
+      "expand-only 2026-07-11.",
+  ],
 ]);
 
 /**

@@ -319,3 +319,54 @@ export const cellEvents = pgTable(
     ),
   ],
 );
+
+/**
+ * `live_activity_tokens` (writer: API). The ActivityKit per-activity update tokens the emitter
+ * pushes ContentState to (PROTOCOL.md "Live Activity push"). API-owned: the iOS client registers
+ * and unregisters tokens through bearer-authed REST, so the single writer is `crossy_api` (INV-7).
+ * The session's emitter (a later slice) reads them under a SELECT grant, the same read-coupling
+ * shape §9 already blesses for the completion read (0005) and the avatar read (0006).
+ *
+ * The token is the natural key (one row per live activity), so re-registration after an app
+ * restart is an upsert on the primary key. `apns_environment` records which APNs host minted the
+ * token: a Debug build mints a sandbox token, so the emitter must hit `api.sandbox.push.apple.com`
+ * for it and `api.push.apple.com` for a production token, never the wrong host.
+ *
+ * TTL posture (PROTOCOL.md "Live Activity push"): a lock-screen Live Activity caps at 12h, so a
+ * token older than that is dead. Rows are short-lived by nature; the reader filters by a
+ * `created_at` window rather than trusting the table to be swept, so no sweeper job is required
+ * for correctness. The `game_id` index serves the emitter's read, "all live tokens for this game".
+ */
+export const liveActivityTokens = pgTable(
+  "live_activity_tokens",
+  {
+    // The ActivityKit per-activity update token (hex). Natural key: one row per live activity,
+    // so re-registration is an upsert on conflict (DESIGN.md §9 upsert idiom).
+    token: text("token").primaryKey(),
+    // The registering user. ON DELETE NO ACTION for the same tombstone reason as the other
+    // user_id FKs (§8): users are tombstoned, never hard-deleted.
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "no action" }),
+    // The game whose activity this token updates. ON DELETE CASCADE: the token belongs to the
+    // game aggregate, so it dies with the game (matching cell_events / memberships game_id).
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.gameId, { onDelete: "cascade" }),
+    // Which APNs host minted the token, so the emitter targets the matching host. The CHECK
+    // pins the two-value domain as defense in depth; the API validates the request body too.
+    apnsEnvironment: text("apns_environment").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      "live_activity_tokens_environment",
+      sql`${t.apnsEnvironment} IN ('sandbox', 'production')`,
+    ),
+    // The emitter's read is "all tokens for this game" (`WHERE game_id = $1`), filtered by the
+    // created_at TTL window; this index makes it a direct scan.
+    index("live_activity_tokens_game_id_idx").on(t.gameId),
+  ],
+);

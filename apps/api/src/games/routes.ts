@@ -754,5 +754,92 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     return c.json({ gameId, status: "abandoned" });
   });
 
+  // POST /games/{gameId}/live-activity-tokens: register an ActivityKit per-activity update token
+  // for the Live Activity push channel (PROTOCOL.md "Live Activity push"). Bearer auth; the caller
+  // MUST be a member of the game, the same gate as the other member endpoints (a non-member is
+  // NOT_PARTICIPANT). The API is the single writer of live_activity_tokens (INV-7); the session's
+  // emitter reads them under a SELECT grant (migration 0007). Upsert on token conflict, so a
+  // re-registration after an app restart refreshes the row (user, game, environment, created_at)
+  // rather than erroring. Rows are short-lived: a lock-screen Live Activity caps at 12h, so the
+  // emitter filters by created_at rather than trusting a sweeper (none is required). 204 on success.
+  app.post("/:id/live-activity-tokens", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    if (!UUID.test(gameId)) return fail(c, "GAME_NOT_FOUND", "no such game");
+
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return fail(c, "VALIDATION", "request body must be JSON");
+    }
+    const token = (body as { token?: unknown }).token;
+    if (typeof token !== "string" || token.length === 0) {
+      return fail(c, "VALIDATION", "token is required");
+    }
+    const environment = (body as { environment?: unknown }).environment;
+    if (environment !== "sandbox" && environment !== "production") {
+      return fail(
+        c,
+        "VALIDATION",
+        "environment must be 'sandbox' or 'production'",
+      );
+    }
+
+    // Membership gate, the same one the member endpoints use: a non-member is NOT_PARTICIPANT,
+    // an unknown game GAME_NOT_FOUND. Any role qualifies, since any member can hold a live
+    // activity for the room they backgrounded.
+    const access = await loadGameAccess(deps.db, gameId, identity.userId);
+    if (access === null) return fail(c, "GAME_NOT_FOUND", "no such game");
+    if (access.role === null) {
+      return fail(c, "NOT_PARTICIPANT", "not a member of this game");
+    }
+
+    // Upsert on the token primary key: a re-registration updates the owning user, game, and
+    // environment, and refreshes created_at so the TTL window restarts from the latest register.
+    await deps.db
+      .insert(schema.liveActivityTokens)
+      .values({
+        token,
+        userId: identity.userId,
+        gameId,
+        apnsEnvironment: environment,
+      })
+      .onConflictDoUpdate({
+        target: schema.liveActivityTokens.token,
+        set: {
+          userId: identity.userId,
+          gameId,
+          apnsEnvironment: environment,
+          createdAt: sql`now()`,
+        },
+      });
+    return c.body(null, 204);
+  });
+
+  // DELETE /games/{gameId}/live-activity-tokens/{token}: unregister a token (the app stopped its
+  // Live Activity). Bearer auth; idempotent (204 even when the row is already gone). A caller may
+  // delete only rows whose user_id is their own, so the delete is scoped by both token and
+  // user_id: another user's token is never touched, and a missing row is a silent no-op. The gameId
+  // in the path is not re-validated against the row: the token is globally unique (its primary key),
+  // and the user_id scope is the authorization, so a well-formed idempotent delete never leaks
+  // whether the token existed. 204 always (on a match, a miss, or another user's token).
+  app.delete("/:id/live-activity-tokens/:token", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    const token = c.req.param("token");
+    if (!UUID.test(gameId)) return fail(c, "GAME_NOT_FOUND", "no such game");
+
+    await deps.db
+      .delete(schema.liveActivityTokens)
+      .where(
+        and(
+          eq(schema.liveActivityTokens.token, token),
+          eq(schema.liveActivityTokens.userId, identity.userId),
+        ),
+      );
+    return c.body(null, 204);
+  });
+
   return app;
 }
