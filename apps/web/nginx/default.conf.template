@@ -22,14 +22,16 @@ server {
     # Runtime config for the SPA. One immutable image serves any environment: these ${VARS}
     # are filled at container start by the same envsubst entrypoint that fills ${PORT}, from
     # the service env (SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, API_BASE, GUESTS_ENABLED,
-    # TURNSTILE_SITE_KEY; all default to safe empties in the Dockerfile so the JSON is always
-    # well formed). GUESTS_ENABLED is emitted unquoted, so it must be true or false. The
-    # publishable key is public by design and no solution ever rides in a client payload
-    # (INV-6). Never cached: config can change per deploy.
+    # TURNSTILE_SITE_KEY, TESTFLIGHT_URL; all default to safe empties in the Dockerfile so the
+    # JSON is always well formed). GUESTS_ENABLED is emitted unquoted, so it must be true or
+    # false. TESTFLIGHT_URL is the external TestFlight join link; empty keeps the iOS "get the
+    # app" prompt hidden, so the deploy owns whether it exists. The publishable key is public by
+    # design and no solution ever rides in a client payload (INV-6). Never cached: config can
+    # change per deploy.
     location = /config.json {
         default_type application/json;
         add_header Cache-Control "no-store";
-        return 200 '{"supabaseUrl":"${SUPABASE_URL}","supabasePublishableKey":"${SUPABASE_PUBLISHABLE_KEY}","apiBase":"${API_BASE}","guestsEnabled":${GUESTS_ENABLED},"turnstileSiteKey":"${TURNSTILE_SITE_KEY}"}';
+        return 200 '{"supabaseUrl":"${SUPABASE_URL}","supabasePublishableKey":"${SUPABASE_PUBLISHABLE_KEY}","apiBase":"${API_BASE}","guestsEnabled":${GUESTS_ENABLED},"turnstileSiteKey":"${TURNSTILE_SITE_KEY}","testflightUrl":"${TESTFLIGHT_URL}"}';
     }
 
     # Apple Universal Links: the association file lets iOS open a crossy.me invite (the

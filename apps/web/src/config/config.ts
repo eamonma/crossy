@@ -15,6 +15,9 @@ export interface AppConfig {
   apiBase: string;
   guestsEnabled: boolean;
   turnstileSiteKey?: string;
+  /** The external TestFlight join link. When set, the iOS "get the app" prompt shows;
+   * empty (the default) keeps it hidden, so the deploy owns whether the prompt exists. */
+  testflightUrl?: string;
 }
 
 const CONFIG_URL = "/config.json";
@@ -41,6 +44,7 @@ export function parseConfig(raw: unknown): AppConfig | null {
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
   const turnstile = toStr(r["turnstileSiteKey"]);
+  const testflight = toStr(r["testflightUrl"]);
   const config: AppConfig = {
     supabaseUrl: toStr(r["supabaseUrl"]),
     supabasePublishableKey: toStr(r["supabasePublishableKey"]),
@@ -48,6 +52,9 @@ export function parseConfig(raw: unknown): AppConfig | null {
     guestsEnabled: toBool(r["guestsEnabled"]),
   };
   if (turnstile !== "") config.turnstileSiteKey = turnstile;
+  // Absent when empty, so an unset deploy carries no prompt (and the shape stays
+  // closed: only known fields survive parseConfig, INV-6 posture).
+  if (testflight !== "") config.testflightUrl = testflight;
   return config;
 }
 
@@ -62,6 +69,7 @@ export function configFromEnv(
     apiBase: env["VITE_API_BASE"],
     guestsEnabled: env["VITE_GUESTS_ENABLED"],
     turnstileSiteKey: env["VITE_TURNSTILE_SITE_KEY"],
+    testflightUrl: env["VITE_TESTFLIGHT_URL"],
   }) as AppConfig;
 }
 

@@ -35,6 +35,7 @@ import { Home } from "./ui/Home";
 import { AppShell } from "./ui/AppShell";
 import { CreateGame } from "./ui/CreateGame";
 import { Settings } from "./ui/Settings";
+import { GetTheApp } from "./ui/GetTheApp";
 import { useResource, useAccessToken } from "./ui/useResource";
 import { fetchGames } from "./ui/homeData";
 import type { GameSummary } from "./ui/homeData";
@@ -142,16 +143,21 @@ function Router({
   }
 
   const shell = (children: React.ReactNode): React.ReactNode => (
-    <AppShell
-      route={route}
-      params={params}
-      navigate={navigate}
-      identity={identity}
-      games={games}
-      reloadGames={reloadGames}
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        route={route}
+        params={params}
+        navigate={navigate}
+        identity={identity}
+        games={games}
+        reloadGames={reloadGames}
+      >
+        {children}
+      </AppShell>
+      {/* The iOS "get the app" prompt rides the browsing surfaces, never the live board:
+          a bottom bar over the grid would fight the keyboard and the projector. */}
+      {route.kind !== "game" && <GetTheApp config={config} />}
+    </>
   );
 
   if (route.kind === "game") {
@@ -200,11 +206,14 @@ function Router({
 
   if (!signedIn) {
     return (
-      <Landing
-        identity={identity}
-        config={config}
-        onCreate={() => navigate(createHref(params))}
-      />
+      <>
+        <Landing
+          identity={identity}
+          config={config}
+          onCreate={() => navigate(createHref(params))}
+        />
+        <GetTheApp config={config} />
+      </>
     );
   }
 
