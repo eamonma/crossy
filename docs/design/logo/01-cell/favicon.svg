@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Direction 01 favicon. Self-backed cell so it survives dark tab bars; the clue
+       number is dropped below icon scale. Scheme-aware via prefers-color-scheme. -->
+  <style>
+    .cell { fill: #FFFFFF; stroke: #1D1B18; }
+    .ink { fill: #1D1B18; }
+    @media (prefers-color-scheme: dark) {
+      .cell { fill: #201F27; stroke: #EDEAE2; }
+      .ink { fill: #EDEAE2; }
+    }
+  </style>
+  <rect class="cell" x="2" y="2" width="28" height="28" rx="6" stroke-width="2.5"/>
+  <text class="ink" x="16" y="22" text-anchor="middle"
+        font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="17" font-weight="700">C</text>
+</svg>

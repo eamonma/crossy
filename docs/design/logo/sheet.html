@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crossy logo exploration</title>
+    <style>
+      :root {
+        --canvas: #f2f1ec;
+        --cell: #ffffff;
+        --ink: #1d1b18;
+        --line: #d9d6cd;
+        --muted: #8b877d;
+        --night: #121118;
+      }
+      /* Favicon and wordmark SVGs flip ink with the OS scheme, so the sheet's panels
+     flip with them: light OS judges Studio, dark OS judges Observatory. */
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --canvas: #121118;
+          --cell: #201f27;
+          --ink: #edeae2;
+          --line: #2c2b34;
+          --muted: #77747f;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 48px 56px 96px;
+        background: var(--canvas);
+        color: var(--ink);
+        font:
+          15px/1.5 -apple-system,
+          "Helvetica Neue",
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      h1 {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+      .lede {
+        color: var(--muted);
+        max-width: 62ch;
+        margin: 0 0 40px;
+      }
+      section {
+        margin: 0 0 44px;
+      }
+      h2 {
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 2px;
+      }
+      .idea {
+        color: var(--muted);
+        margin: 0 0 14px;
+        max-width: 70ch;
+      }
+      .row {
+        display: flex;
+        align-items: flex-end;
+        gap: 28px;
+        flex-wrap: wrap;
+      }
+      .spec {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        align-items: center;
+      }
+      .spec .label {
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.02em;
+      }
+      .dark-pad {
+        background: var(--night);
+        border-radius: 18px;
+        padding: 10px;
+        line-height: 0;
+      }
+      .light-pad {
+        background: transparent;
+        padding: 10px;
+        line-height: 0;
+      }
+      .tab {
+        background: var(--cell);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        line-height: 0;
+      }
+      .panel {
+        background: var(--cell);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 18px;
+        line-height: 0;
+      }
+      img {
+        display: block;
+      }
+      .foot {
+        color: var(--muted);
+        font-size: 13px;
+        max-width: 70ch;
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 36px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Crossy logo exploration</h1>
+    <p class="lede">
+      Five directions, each at the three scales that matter. Squint at the 16px
+      column first; anything that dies there is out. Favicon and wordmark SVGs
+      flip ink with the OS color scheme, so toggle appearance to judge dark
+      tabs. Squircles are stand-ins for the system mask.
+    </p>
+
+    <section>
+      <h2>01 &middot; The Cell</h2>
+      <p class="idea">
+        One square of the grid: cell, clue number, letter. The shipped app icon
+        restaged as the whole identity. Below icon scale the number retires.
+      </p>
+      <div class="row">
+        <div class="spec">
+          <span class="light-pad"
+            ><img src="01-cell/icon-light.svg" width="116" height="116" /></span
+          ><span class="label">icon 116</span>
+        </div>
+        <div class="spec">
+          <span class="dark-pad"
+            ><img src="01-cell/icon-dark.svg" width="116" height="116" /></span
+          ><span class="label">icon dark</span>
+        </div>
+        <div class="spec">
+          <span class="light-pad"
+            ><img src="01-cell/icon-light.svg" width="58" height="58" /></span
+          ><span class="label">58</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="01-cell/favicon.svg" width="32" height="32" /></span
+          ><span class="label">favicon 32</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="01-cell/favicon.svg" width="16" height="16" /></span
+          ><span class="label">16</span>
+        </div>
+        <div class="spec">
+          <span class="panel"
+            ><img src="01-cell/wordmark.svg" width="92" height="32" /></span
+          ><span class="label">sidebar</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>02 &middot; The Crossing</h2>
+      <p class="idea">
+        A four-cell across and a three-cell down sharing one square; the shared
+        square is the one gold accent. The product itself: two solvers' words
+        meeting in a cell.
+      </p>
+      <div class="row">
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="02-crossing/icon-light.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon 116</span>
+        </div>
+        <div class="spec">
+          <span class="dark-pad"
+            ><img
+              src="02-crossing/icon-dark.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon dark</span>
+        </div>
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="02-crossing/icon-light.svg"
+              width="58"
+              height="58" /></span
+          ><span class="label">58</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="02-crossing/favicon.svg" width="32" height="32" /></span
+          ><span class="label">favicon 32</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="02-crossing/favicon.svg" width="16" height="16" /></span
+          ><span class="label">16</span>
+        </div>
+        <div class="spec">
+          <span class="panel"
+            ><img src="02-crossing/wordmark.svg" width="92" height="32" /></span
+          ><span class="label">sidebar</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>03 &middot; The Checker</h2>
+      <p class="idea">
+        The smallest true crossword fragment: a 2x2 tile, two cells open, two
+        ink blocks on the diagonal. One flat object, no type at all.
+      </p>
+      <div class="row">
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="03-checker/icon-light.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon 116</span>
+        </div>
+        <div class="spec">
+          <span class="dark-pad"
+            ><img
+              src="03-checker/icon-dark.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon dark</span>
+        </div>
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="03-checker/icon-light.svg"
+              width="58"
+              height="58" /></span
+          ><span class="label">58</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="03-checker/favicon.svg" width="32" height="32" /></span
+          ><span class="label">favicon 32</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="03-checker/favicon.svg" width="16" height="16" /></span
+          ><span class="label">16</span>
+        </div>
+        <div class="spec">
+          <span class="panel"
+            ><img src="03-checker/wordmark.svg" width="92" height="32" /></span
+          ><span class="label">sidebar</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>04 &middot; The Open C</h2>
+      <p class="idea">
+        A round-capped C stroke with the cell docked in its aperture, completing
+        the implied circle. The letter carrying its square.
+      </p>
+      <div class="row">
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="04-open-c/icon-light.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon 116</span>
+        </div>
+        <div class="spec">
+          <span class="dark-pad"
+            ><img
+              src="04-open-c/icon-dark.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon dark</span>
+        </div>
+        <div class="spec">
+          <span class="light-pad"
+            ><img src="04-open-c/icon-light.svg" width="58" height="58" /></span
+          ><span class="label">58</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="04-open-c/favicon.svg" width="32" height="32" /></span
+          ><span class="label">favicon 32</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="04-open-c/favicon.svg" width="16" height="16" /></span
+          ><span class="label">16</span>
+        </div>
+        <div class="spec">
+          <span class="panel"
+            ><img src="04-open-c/wordmark.svg" width="92" height="32" /></span
+          ><span class="label">sidebar</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>05 &middot; The Ligature</h2>
+      <p class="idea">
+        The web's drawn Cy monogram, out of its gold disc, run bare as the mark
+        everywhere. The favicon column is its honest stress test.
+      </p>
+      <div class="row">
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="05-ligature/icon-light.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon 116</span>
+        </div>
+        <div class="spec">
+          <span class="dark-pad"
+            ><img
+              src="05-ligature/icon-dark.svg"
+              width="116"
+              height="116" /></span
+          ><span class="label">icon dark</span>
+        </div>
+        <div class="spec">
+          <span class="light-pad"
+            ><img
+              src="05-ligature/icon-light.svg"
+              width="58"
+              height="58" /></span
+          ><span class="label">58</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="05-ligature/favicon.svg" width="32" height="32" /></span
+          ><span class="label">favicon 32</span>
+        </div>
+        <div class="spec">
+          <span class="tab"
+            ><img src="05-ligature/favicon.svg" width="16" height="16" /></span
+          ><span class="label">16</span>
+        </div>
+        <div class="spec">
+          <span class="panel"
+            ><img src="05-ligature/wordmark.svg" width="92" height="32" /></span
+          ><span class="label">sidebar</span>
+        </div>
+      </div>
+    </section>
+
+    <hr />
+    <p class="foot">
+      Colors are the real tokens: Grounds.swift (Studio and Observatory) and web
+      gold-9 #978365. Wordmark type is the sidebar recipe (display serif
+      semibold 18); without Harfang Pro installed it falls back to Georgia,
+      judge the relationship, not the letterforms. The survivor gets rebuilt
+      properly on tokens: ImageRenderer app icon, scheme-aware SVG favicon, Logo
+      swap in primitives.tsx.
+    </p>
+  </body>
+</html>
