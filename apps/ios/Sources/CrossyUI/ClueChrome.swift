@@ -39,6 +39,19 @@ struct ClueChrome: View {
 
     @State private var dragBase: CGFloat = 0
     @State private var isDragActive = false
+    /// The swipe-down dismissal (sheet grammar): true while a downward drag on
+    /// the open panel owns the melt. The list freezes for the takeover's life
+    /// so surface and scroll never fight over one finger.
+    @State private var dismissTakeover = false
+    @State private var dismissBase: CGFloat = 0
+    /// The drag's translation at takeover, subtracted out so the scrub starts
+    /// at the finger with no jump (the decision distance never moves glass).
+    @State private var dismissBaseTranslation: CGFloat = 0
+    /// Whether the clue list rests at its top (ScrollGeometry, iOS 18+): the
+    /// system-sheet arbitration fact. Opens true because the list opens at its
+    /// top; on the macOS test host (no scroll geometry below 15) it simply
+    /// stays true, and no gesture runs headlessly anyway.
+    @State private var listAtTop = true
     @State private var glint: GlintEvent?
     @State private var glintKey = 0
     @State private var glintSeen: Set<String> = []
@@ -79,6 +92,13 @@ struct ClueChrome: View {
         // all keep firing while an open roster or stats card yields (DESIGN.md
         // §4: the touch dismisses AND lands, never one or the other).
         .simultaneousGesture(TapGesture().onEnded { onDismissTransients() })
+        // The swipe-down dismissal (owner ask 2026-07-10): simultaneous, so
+        // the list's scroll and the rows' taps stay live until the takeover
+        // rule fires; PanelDismiss then arbitrates exactly as system sheets
+        // do (drag anywhere while the list rests at its top; otherwise the
+        // list scrolls, and a pull that runs the list into its top hands the
+        // surface over mid-gesture).
+        .simultaneousGesture(dismissDrag)
         .position(x: frame.midX, y: frame.midY)
         .onChange(of: glintMarks.map(\.userId)) { _, ids in
             glintChanged(ids)
@@ -141,6 +161,10 @@ struct ClueChrome: View {
             .padding(.bottom, 14)
         }
         .scrollIndicators(.hidden)
+        // The takeover freezes the list (isScrollEnabled off cancels a live
+        // pan), so once the surface owns the finger the scroll never fights it.
+        .scrollDisabled(dismissTakeover)
+        .modifier(ListTopReporter(listAtTop: $listAtTop))
     }
 
     @ViewBuilder
@@ -234,6 +258,63 @@ struct ClueChrome: View {
             }
     }
 
+    /// The swipe-down dismissal's drag (owner ask 2026-07-10, the sheet
+    /// grammar). Same disciplines as the melt drag above: the room's named
+    /// space, never .local (this drag resizes the very surface it rides, and a
+    /// local-space still finger would read the moving frame as translation and
+    /// spasm; the named ancestor never resizes, and it is the space the chrome
+    /// frames are reported in, so the start location classifies against the
+    /// pinned row directly); raw writes in a nil-animation transaction while
+    /// the finger is down (SP-i1); the one animation on release. The takeover
+    /// rule itself is pure (PanelDismiss): only a fully open panel, only below
+    /// the pinned row (the row keeps its own bidirectional drag), only while
+    /// the list rests at its top, only pulling down. Until it fires the drag
+    /// is a bystander, so the list scrolls exactly as before, and a pull that
+    /// runs the list into its top takes the surface mid-gesture, which is how
+    /// system sheets hand off.
+    private var dismissDrag: some Gesture {
+        DragGesture(
+            minimumDistance: PanelDismiss.takeoverDistance,
+            coordinateSpace: .named(ChromeLayout.roomSpace)
+        )
+        .onChanged { value in
+            if !dismissTakeover {
+                guard
+                    PanelDismiss.takes(
+                        progress: chrome.meltProgress,
+                        startY: value.startLocation.y,
+                        headerMaxY: morph.open.minY + morph.rest.height,
+                        listAtTop: listAtTop,
+                        translation: value.translation)
+                else { return }
+                dismissTakeover = true
+                chrome.meltTouched()
+                chrome.isMeltDragging = true
+                dismissBase = chrome.meltProgress
+                dismissBaseTranslation = value.translation.height
+                // The takeover is intent (DESIGN.md §4): any open card pours
+                // back as the finger takes the surface.
+                onDismissTransients()
+            }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                chrome.meltProgress = morph.progress(
+                    draggedBy: value.translation.height - dismissBaseTranslation,
+                    from: dismissBase)
+            }
+        }
+        .onEnded { value in
+            guard dismissTakeover else { return }
+            dismissTakeover = false
+            chrome.isMeltDragging = false
+            settle(
+                open: GlassSettle.settlesOpen(
+                    progress: chrome.meltProgress,
+                    upwardVelocity: -value.velocity.height))
+        }
+    }
+
     /// The one animation, on release or tap: settle up or pour back, the model's
     /// hand-stepped walk so progress stays the single geometry truth (no SwiftUI
     /// animation ever touches it). Reduce Motion takes the crossfade-not-movement
@@ -259,6 +340,30 @@ struct ClueChrome: View {
         else { return }
         glintKey += 1
         glint = GlintEvent(key: glintKey, color: mark.color)
+    }
+}
+
+// MARK: - The list's resting fact
+
+/// Reports whether the clue list rests at its top, the swipe-down arbitration
+/// fact (PanelDismiss). ScrollGeometry arrived with iOS 18/macOS 15; below
+/// that floor the fact holds its initial value, which only the macOS 14 test
+/// host ever sees (SolveScreen itself is iOS 18+), and no gesture runs
+/// headlessly there.
+@available(iOS 17.0, macOS 14.0, *)
+private struct ListTopReporter: ViewModifier {
+    @Binding var listAtTop: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y <= geometry.contentInsets.top + 1
+            } action: { _, atTop in
+                listAtTop = atTop
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -302,11 +407,13 @@ struct ClueBarLabel: View {
 }
 
 /// The clue bar's layout twin: the same words at the same insets, invisible
-/// and inert, standing in the room's layout where the bar rests. The slot
-/// takes exactly the height the pinned row will render at, the deck below
-/// moves honestly, and the melting surface still only borrows the geometry
-/// (SolveScreen's slot comment). Hidden, so it draws nothing and reads to no
-/// one; the real words live on the glass.
+/// and inert, floating where the bar rests (the full-bleed ruling: the slot
+/// no longer sits in the room's layout, it rides the board's bottom edge, so
+/// a wrapping clue grows the slot upward and the board never moves). The slot
+/// takes exactly the height the pinned row will render at, and the melting
+/// surface still only borrows the geometry (SolveScreen's slot comment).
+/// Hidden, so it draws nothing and reads to no one; the real words live on
+/// the glass.
 @available(iOS 17.0, macOS 14.0, *)
 struct ClueBarSizer: View {
     let ground: GridGround

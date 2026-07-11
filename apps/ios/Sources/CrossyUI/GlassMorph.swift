@@ -86,6 +86,39 @@ public enum GlassSettle {
     }
 }
 
+/// The open browser's swipe-down dismissal (owner ask 2026-07-10): sheet grammar
+/// on the melt. With the panel fully open a downward drag anywhere scrubs the
+/// melt back under the finger (SP-i1: the finger owns progress), resolved
+/// against the scrolling clue list the way system sheets resolve it: the drag
+/// takes the surface only when the list rests at its top; otherwise the list
+/// scrolls. The pinned row keeps its own bidirectional drag, so this rule
+/// stands down there. Pure, so the arbitration is pinned headlessly; the
+/// gesture site carries no judgment of its own.
+public enum PanelDismiss {
+    /// A drag must commit this far down before the surface takes it, so a
+    /// wobbling touch on a row still reads as a tap or a scroll.
+    public static let takeoverDistance: CGFloat = 12
+
+    /// Whether a drag beginning on the open browser takes the melt.
+    /// `progress` is the melt's progress at touch (only a fully open panel
+    /// dismisses this way; mid-settle surfaces belong to the row's drag),
+    /// `startY`/`headerMaxY` locate the touch against the pinned row (the row
+    /// owns its own drag, this rule yields to it), `listAtTop` is the clue
+    /// list's resting fact, and `translation` the drag so far.
+    public static func takes(
+        progress: CGFloat, startY: CGFloat, headerMaxY: CGFloat,
+        listAtTop: Bool, translation: CGSize
+    ) -> Bool {
+        guard progress >= 1 else { return false }
+        guard startY > headerMaxY else { return false }
+        guard listAtTop else { return false }
+        // Downward and vertical-dominant, past the commit distance: anything
+        // else is the list's scroll or a row's tap.
+        guard translation.height >= takeoverDistance else { return false }
+        return translation.height > abs(translation.width)
+    }
+}
+
 /// Content opacity inside a morphing surface. The clue bar's row rides the surface
 /// (it IS the pinned row, so it never fades); the browser list below it fades in
 /// late so mid-drag the surface reads as clean glass, and fades out early on the

@@ -82,4 +82,69 @@ final class GlassMorphTests: XCTestCase {
         let mid = GlassMorphContent.listOpacity(at: (GlassMorphContent.listFadeStart + 1) / 2)
         XCTAssertEqual(mid, 0.5, accuracy: 0.0001)
     }
+
+    // MARK: Swipe-down dismissal (owner ask 2026-07-10, the sheet grammar)
+
+    /// The open panel's header ends here (open.minY 100 plus the 52 rest row).
+    private let headerMaxY: CGFloat = 152
+
+    func test_panelDismiss_takesADownwardDragOnTheListAtItsTop() {
+        XCTAssertTrue(
+            PanelDismiss.takes(
+                progress: 1, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: true, translation: CGSize(width: 2, height: 20)))
+    }
+
+    func test_panelDismiss_yieldsToTheScrollingList() {
+        // The list away from its top owns the drag: sheets scroll before they
+        // dismiss.
+        XCTAssertFalse(
+            PanelDismiss.takes(
+                progress: 1, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: false, translation: CGSize(width: 0, height: 40)))
+    }
+
+    func test_panelDismiss_yieldsToThePinnedRowsOwnDrag() {
+        // A touch on the header belongs to the row's bidirectional drag; the
+        // takeover rule stands down there.
+        XCTAssertFalse(
+            PanelDismiss.takes(
+                progress: 1, startY: 140, headerMaxY: headerMaxY,
+                listAtTop: true, translation: CGSize(width: 0, height: 40)))
+    }
+
+    func test_panelDismiss_onlyAFullyOpenPanelDismissesThisWay() {
+        // Mid-settle the surface belongs to the row's drag (SP-i1: a finger
+        // catching a settle owns progress from the row).
+        XCTAssertFalse(
+            PanelDismiss.takes(
+                progress: 0.8, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: true, translation: CGSize(width: 0, height: 40)))
+    }
+
+    func test_panelDismiss_upwardOrSidewaysNeverTakes() {
+        XCTAssertFalse(
+            PanelDismiss.takes(
+                progress: 1, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: true, translation: CGSize(width: 0, height: -40)),
+            "an upward drag scrolls the list, never over-opens")
+        XCTAssertFalse(
+            PanelDismiss.takes(
+                progress: 1, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: true, translation: CGSize(width: 50, height: 20)),
+            "a sideways drag is not a dismissal")
+    }
+
+    func test_panelDismiss_needsTheCommitDistance() {
+        XCTAssertFalse(
+            PanelDismiss.takes(
+                progress: 1, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: true,
+                translation: CGSize(width: 0, height: PanelDismiss.takeoverDistance - 1)))
+        XCTAssertTrue(
+            PanelDismiss.takes(
+                progress: 1, startY: 300, headerMaxY: headerMaxY,
+                listAtTop: true,
+                translation: CGSize(width: 0, height: PanelDismiss.takeoverDistance)))
+    }
 }
