@@ -196,6 +196,12 @@ public struct SolveScreen: View {
                     selfUserId: store.selfUserId,
                     onJoinIn: onJoinIn,
                     onKick: onKick,
+                    onGoTo: { member in
+                        guard let cursor = member.cursor else { return }
+                        dismissTransients()
+                        model.jump(
+                            to: GridSelection(cell: cursor.cell, isAcross: cursor.isAcross))
+                    },
                     factsPopoverPresented: $chrome.factsPopoverPresented,
                     factsPopover: {
                         RoomFactsPopover(
@@ -496,7 +502,10 @@ public struct SolveScreen: View {
     }
 
     /// The store's participants as chrome-shaped data (the GridPresence pattern:
-    /// the view maps, the types stay in their rings).
+    /// the view maps, the types stay in their rings). Each member's live cursor
+    /// (PROTOCOL.md §4, §9) rides along for the roster's Go to action; a
+    /// spectator is never in `store.cursors` (client-side suppression, DESIGN.md
+    /// §15), so `RosterList.canJump` needs no extra role check.
     private var rosterMembers: [RosterMember] {
         store.participants.map {
             RosterMember(
@@ -506,7 +515,10 @@ public struct SolveScreen: View {
                 avatarUrl: $0.avatarUrl,
                 isHost: $0.role == .host,
                 isSpectator: $0.role == .spectator,
-                connected: $0.connected)
+                connected: $0.connected,
+                cursor: store.cursors[$0.userId].map {
+                    RosterCursor(cell: $0.cell, isAcross: $0.direction == .across)
+                })
         }
     }
 

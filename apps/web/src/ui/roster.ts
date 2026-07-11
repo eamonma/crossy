@@ -22,6 +22,14 @@ export interface SolverEntry {
   color: string;
   self: boolean;
   clue: Clue | null;
+  /**
+   * The raw cursor position (cell plus direction, PROTOCOL.md §4, §9), or null when this
+   * person has no live cursor right now. Distinct from `clue`: a cursor on an axis with no
+   * word still has a jump target (`at` non-null) even though `clue` reads null. Never set
+   * for self (`self: true` always carries `at: null`): the roster's "Go to" action is a
+   * teammate-only jump, the same rule RosterList.canJump pins on iOS.
+   */
+  at: { cell: number; direction: Direction } | null;
 }
 
 export interface ClueGroup {
@@ -84,6 +92,10 @@ export function buildRoster(opts: {
       color: p.color,
       self,
       clue: at === null ? null : clueAt(across, down, at.direction, at.cell),
+      // Self never carries a jump target: the roster's Go to is a teammate-only
+      // action (RosterList.canJump's iOS twin never offers a self row either).
+      at:
+        self || at === null ? null : { cell: at.cell, direction: at.direction },
     };
     if (self) solvers.unshift(entry);
     else solvers.push(entry);
@@ -104,6 +116,16 @@ export function buildRoster(opts: {
   );
 
   return { solvers, watching, groups };
+}
+
+/**
+ * Whether the roster's "Go to" action is live for this entry: only when they hold a live
+ * cursor right now (PROTOCOL.md §4, §9). No cursor (including self, who never carries `at`)
+ * yields no jump target, so the action is absent or disabled rather than jumping nowhere.
+ * The iOS twin is `RosterList.canJump`.
+ */
+export function canJump(entry: SolverEntry): boolean {
+  return entry.at !== null;
 }
 
 /** Teammates on a clue, keyed `${direction}-${number}` so a clue row looks itself up in O(1). */

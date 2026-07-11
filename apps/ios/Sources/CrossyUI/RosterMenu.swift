@@ -37,6 +37,12 @@ struct RosterMenu: View {
     /// (`DELETE /games/{id}/members/{userId}`); the fixture no-ops. The menu
     /// offers it only to a host, and never on the host's own row.
     let onKick: (String) -> Void
+    /// Move the camera to a member's live cursor (owner ruling: for the host it
+    /// sits next to Kick; for a non-host it takes the slot Kick would occupy).
+    /// Wired to `SelectionModel.jump(to:)`, the same target GridCamera's follow
+    /// already rides for a clue-browser jump. Offered only when
+    /// `RosterList.canJump` holds; the fixture no-ops.
+    let onGoTo: (RosterMember) -> Void
 
     /// The member a host is confirming a kick for. A Menu action cannot present
     /// its own dialog (the menu dismisses on tap), so the tap stages the target
@@ -209,15 +215,30 @@ struct RosterMenu: View {
     }
 
     /// One person's row. For a host looking at anyone else, the row is a nested
-    /// Menu (Menu supports nesting) holding the destructive remove action, which
-    /// stages the kick confirmation; otherwise the row is a plain non-action
-    /// button that dismisses like Mail's do (a person is not an action).
+    /// Menu (Menu supports nesting) holding Go to (when the member has a live
+    /// cursor, PROTOCOL.md §4, §9) next to the destructive remove action, which
+    /// stages the kick confirmation. For a non-host looking at anyone else, Go to
+    /// takes the slot Kick would occupy: the same nested Menu, minus the remove
+    /// action neither the menu nor the server would honor. A row with neither
+    /// action (no cursor to jump to, and no kick to offer) is the plain
+    /// non-action button that dismisses like Mail's do (a person is not an
+    /// action); self's own row is always this plain row, since you never jump to
+    /// or kick yourself.
     @ViewBuilder
     private func personRow(_ member: RosterMember, hosting: Bool) -> some View {
-        if hosting, RosterList.canKick(member, selfUserId: selfUserId) {
+        let jumpable = RosterList.canJump(member)
+        let kickable = hosting && RosterList.canKick(member, selfUserId: selfUserId)
+        if jumpable || kickable {
             Menu {
-                Button(role: .destructive) { kickTarget = member } label: {
-                    Label("Remove from room", systemImage: "person.badge.minus")
+                if jumpable {
+                    Button { onGoTo(member) } label: {
+                        Label("Go to", systemImage: "scope")
+                    }
+                }
+                if kickable {
+                    Button(role: .destructive) { kickTarget = member } label: {
+                        Label("Remove from room", systemImage: "person.badge.minus")
+                    }
                 }
             } label: {
                 personLabel(member)

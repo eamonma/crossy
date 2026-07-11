@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Cursor, Participant } from "@crossy/protocol";
 import type { Clue } from "../domain/types";
-import { buildRoster, cluePresence } from "./roster";
+import { buildRoster, canJump, cluePresence } from "./roster";
 
 // A 3x3 open grid: across words on each row, down words on each column.
 const across: Clue[] = [
@@ -155,6 +155,70 @@ describe("buildRoster", () => {
     });
     expect(roster.solvers.map((s) => s.name)).toEqual(["mia"]);
     expect(roster.watching).toEqual([]);
+  });
+
+  // The roster's "Go to" jump target (PROTOCOL.md §4, §9): a teammate's raw cursor position.
+  // Self never carries one, whatever their local selection, so the action is never offered on
+  // your own row (self jumping to self makes no sense, and iOS's RosterList.canJump agrees).
+  it("carries a teammate's cursor as the jump target, never self's", () => {
+    const roster = buildRoster({
+      participants: [person("me", "host"), person("mia", "solver")],
+      cursors: cursorMap([["mia", 4, "across"]]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "down" },
+      across,
+      down,
+    });
+    const mia = roster.solvers.find((s) => s.userId === "mia");
+    const me = roster.solvers.find((s) => s.userId === "me");
+    expect(mia?.at).toEqual({ cell: 4, direction: "across" });
+    expect(me?.at).toBeNull();
+  });
+
+  // A member with no cursor yields no jump target: the enable/disable rule (`canJump`) keys on
+  // `at`, and a cursorless solver (browsing, not yet moved) must resolve to no target.
+  it("carries no jump target for a solver with no cursor", () => {
+    const roster = buildRoster({
+      participants: [person("me", "host"), person("browsing", "solver")],
+      cursors: cursorMap([]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    const browsing = roster.solvers.find((s) => s.userId === "browsing");
+    expect(browsing?.at).toBeNull();
+  });
+});
+
+describe("canJump", () => {
+  it("is true only when the entry carries a jump target", () => {
+    const roster = buildRoster({
+      participants: [person("me", "host"), person("mia", "solver")],
+      cursors: cursorMap([["mia", 4, "across"]]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    const mia = roster.solvers.find((s) => s.userId === "mia")!;
+    const me = roster.solvers.find((s) => s.userId === "me")!;
+    expect(canJump(mia)).toBe(true);
+    // Self never jumps to self, whatever the local selection.
+    expect(canJump(me)).toBe(false);
+  });
+
+  it("is false for a member with no cursor", () => {
+    const roster = buildRoster({
+      participants: [person("me", "host"), person("browsing", "solver")],
+      cursors: cursorMap([]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "across" },
+      across,
+      down,
+    });
+    const browsing = roster.solvers.find((s) => s.userId === "browsing")!;
+    expect(canJump(browsing)).toBe(false);
   });
 });
 

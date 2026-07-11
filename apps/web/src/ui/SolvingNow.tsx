@@ -8,7 +8,7 @@ import { useState } from "react";
 import { ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons";
 import type { Clue } from "../domain/types";
 import type { Roster, SolverEntry } from "./roster";
-import { GROUP_CAP, GROUP_PAST } from "./roster";
+import { GROUP_CAP, GROUP_PAST, canJump } from "./roster";
 import { CapsLabel, cx } from "./primitives";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -31,12 +31,27 @@ function writeCollapsed(next: boolean): void {
   }
 }
 
-function Dot({ entry, ring = false }: { entry: SolverEntry; ring?: boolean }) {
+/**
+ * One person's avatar dot. When they hold a live cursor (`canJump`, PROTOCOL.md §4, §9) and
+ * the caller wired `onGoTo`, the dot becomes the roster's "Go to" action: a tap moves the
+ * camera to their cursor (the same `setSelection` a clue-browser jump already drives, so the
+ * grid follows through the ordinary selection-change path). No cursor, or no `onGoTo` wired
+ * (PartyView's read-only rail), and the dot stays a plain decorative avatar.
+ */
+function Dot({
+  entry,
+  ring = false,
+  onGoTo,
+}: {
+  entry: SolverEntry;
+  ring?: boolean;
+  onGoTo?: ((entry: SolverEntry) => void) | undefined;
+}) {
   // Render the avatar when present; null, loading, and load errors fall back to the colored initial
   // (PROTOCOL.md §4). The color-backed fallback keeps the existing look when there is no image.
-  return (
+  const avatar = (
     <Avatar
-      aria-hidden
+      aria-hidden={onGoTo === undefined}
       className={cx("h-5 w-5 shrink-0", ring && "ring-2 ring-panel")}
     >
       {entry.avatarUrl !== null && <AvatarImage src={entry.avatarUrl} alt="" />}
@@ -47,6 +62,17 @@ function Dot({ entry, ring = false }: { entry: SolverEntry; ring?: boolean }) {
         {entry.initial}
       </AvatarFallback>
     </Avatar>
+  );
+  if (onGoTo === undefined || !canJump(entry)) return avatar;
+  return (
+    <button
+      type="button"
+      onClick={() => onGoTo(entry)}
+      className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+      aria-label={`Go to ${entry.name}'s cursor`}
+    >
+      {avatar}
+    </button>
   );
 }
 
@@ -70,7 +96,15 @@ function WatchingLine({ watching }: { watching: readonly string[] }) {
   );
 }
 
-export function SolvingNow({ roster }: { roster: Roster }) {
+export function SolvingNow({
+  roster,
+  onGoTo,
+}: {
+  roster: Roster;
+  /** Move the camera to a teammate's live cursor (owner's jump-to-friend-cell). Optional: a
+   * caller with no camera to move (there is none today) simply leaves every dot decorative. */
+  onGoTo?: (entry: SolverEntry) => void;
+}) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const { solvers, watching, groups } = roster;
 
@@ -121,7 +155,7 @@ export function SolvingNow({ roster }: { roster: Roster }) {
           {solvers.length <= GROUP_PAST ? (
             solvers.map((s) => (
               <div key={s.userId} className="flex items-center gap-2 min-w-0">
-                <Dot entry={s} />
+                <Dot entry={s} onGoTo={onGoTo} />
                 <span className="shrink-0 text-2 font-semibold text-text">
                   {s.name}
                 </span>
@@ -144,7 +178,7 @@ export function SolvingNow({ roster }: { roster: Roster }) {
                 >
                   <span className="flex shrink-0 -space-x-1.5">
                     {g.people.slice(0, 2).map((s) => (
-                      <Dot key={s.userId} entry={s} ring />
+                      <Dot key={s.userId} entry={s} ring onGoTo={onGoTo} />
                     ))}
                   </span>
                   {g.people.length > 2 && (

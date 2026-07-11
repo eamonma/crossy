@@ -51,10 +51,13 @@ struct RoomBar<FactsPopover: View>: View {
     let completed: Bool
     /// The roster menu's needs: who the local user is (the spectator edge and
     /// the host's kick gate) and the Join in intent (ID-5), passed through to
-    /// RosterMenu, plus the host's kick (owner ruling 2026-07-10).
+    /// RosterMenu, plus the host's kick (owner ruling 2026-07-10) and the
+    /// per-member camera jump (Go to, gated on a live cursor).
     let selfUserId: String?
     let onJoinIn: () -> Void
     let onKick: (String) -> Void
+    /// Jump the camera to a member's live cursor (RosterMenu's Go to action).
+    let onGoTo: (RosterMember) -> Void
     /// The mid-solve facts popover flowing out of the time pill (owner ruling
     /// 2026-07-10, MorphLab variant C). A binding the pill's `.popover` reads,
     /// so the system owns placement, stacking, and dismissal; the content is
@@ -84,7 +87,8 @@ struct RoomBar<FactsPopover: View>: View {
             #endif
             RosterMenu(
                 ground: ground, members: members,
-                selfUserId: selfUserId, onJoinIn: onJoinIn, onKick: onKick)
+                selfUserId: selfUserId, onJoinIn: onJoinIn, onKick: onKick,
+                onGoTo: onGoTo)
         }
     }
 

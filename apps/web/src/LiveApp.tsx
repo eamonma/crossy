@@ -50,6 +50,7 @@ import {
 } from "./ui/Clues";
 import { SolvingNow } from "./ui/SolvingNow";
 import { buildRoster, cluePresence } from "./ui/roster";
+import type { SolverEntry } from "./ui/roster";
 import { parseClueRefs } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
@@ -809,6 +810,16 @@ function LiveGame({
     gridRef.current?.focus();
   }
 
+  // The roster's "Go to" action (jump-to-friend-cell): move the camera to a teammate's live
+  // cursor, the same `setSelection` a clue-browser jump already drives (PROTOCOL.md §4, §9).
+  // SolvingNow only calls this when `canJump` held at render time, but `entry.at` is re-checked
+  // here too so a stale closure can never jump to a cursor that has since cleared.
+  function goToTeammate(entry: SolverEntry): void {
+    if (entry.at === null) return;
+    setSelection({ cell: entry.at.cell, direction: entry.at.direction });
+    gridRef.current?.focus();
+  }
+
   async function upgrade(): Promise<void> {
     const token = await identity.getAccessToken();
     if (token === null) return;
@@ -1005,7 +1016,7 @@ function LiveGame({
             filled={filled}
             presence={presenceByClue}
             referenced={referenced}
-            solvingNow={<SolvingNow roster={roster} />}
+            solvingNow={<SolvingNow roster={roster} onGoTo={goToTeammate} />}
             onJump={jumpToClue}
           />
 
@@ -1018,7 +1029,7 @@ function LiveGame({
             filled={filled}
             presence={presenceByClue}
             referenced={referenced}
-            solvingNow={<SolvingNow roster={roster} />}
+            solvingNow={<SolvingNow roster={roster} onGoTo={goToTeammate} />}
             onJump={jumpToClue}
           />
         </div>
