@@ -25,6 +25,11 @@ import {
 
 const DIR_ABBR: Record<Direction, string> = { across: "A", down: "D" };
 
+/** Clues the active clue cross-references, keyed `${direction}-${number}` (LiveApp filters to
+ * entries this puzzle actually has). A row in this set gets a quiet amber wash so "See 42-Down"
+ * and its friends read at a glance, always weaker than the active row's own amber. */
+export type ReferencedClues = ReadonlySet<string>;
+
 /** The clue containing the cursor on a given axis, if any. */
 export function clueOn(
   clues: readonly Clue[],
@@ -155,7 +160,9 @@ function PresenceDots({ people }: { people: readonly SolverEntry[] }) {
 
 /** One direction's list, v2's rows: a right-aligned number gutter, then the prose. The
  * active row is amber-5 on your axis and amber-3 on the crossing one, the same language
- * as the board's active word and cross-reference tints. A solved row (every cell filled)
+ * as the board's active word and cross-reference tints. A clue the active clue references
+ * gets a quiet amber-3/40 wash, a step below the crossing row's solid amber-3, so it reads
+ * as "look here" without competing with the selection. A solved row (every cell filled)
  * sits back like a crossed-off newsprint entry and recovers on hover; the active and
  * crossing rows never dim. Teammate presence dots ride the row's right edge (see
  * PresenceDots) and outlast the dimming. */
@@ -166,6 +173,7 @@ function ClueList({
   isCurrentAxis,
   filled,
   presence,
+  referenced,
   onJump,
 }: {
   title: string;
@@ -174,6 +182,7 @@ function ClueList({
   isCurrentAxis: boolean;
   filled?: ReadonlySet<number> | undefined;
   presence?: CluePresence | undefined;
+  referenced?: ReferencedClues | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -198,6 +207,8 @@ function ClueList({
         )}
         {clues.map((c) => {
           const active = c.number === activeNumber;
+          const isRef =
+            !active && referenced?.has(`${c.direction}-${c.number}`);
           const solved =
             !active &&
             filled !== undefined &&
@@ -218,7 +229,9 @@ function ClueList({
                     ? isCurrentAxis
                       ? "bg-amber-5"
                       : "bg-amber-3"
-                    : "hover:bg-amber-3",
+                    : isRef
+                      ? "bg-amber-3/40 hover:bg-amber-3"
+                      : "hover:bg-amber-3",
                 )}
               >
                 <span
@@ -258,6 +271,7 @@ export function ClueRail({
   currentDirection,
   filled,
   presence,
+  referenced,
   solvingNow,
   onJump,
 }: {
@@ -268,6 +282,7 @@ export function ClueRail({
   currentDirection: Direction;
   filled?: ReadonlySet<number> | undefined;
   presence?: CluePresence | undefined;
+  referenced?: ReferencedClues | undefined;
   solvingNow?: React.ReactNode;
   onJump: (clue: Clue) => void;
 }) {
@@ -283,6 +298,7 @@ export function ClueRail({
             isCurrentAxis={currentDirection === "across"}
             filled={filled}
             presence={presence}
+            referenced={referenced}
             onJump={onJump}
           />
         </div>
@@ -294,6 +310,7 @@ export function ClueRail({
             isCurrentAxis={currentDirection === "down"}
             filled={filled}
             presence={presence}
+            referenced={referenced}
             onJump={onJump}
           />
         </div>
@@ -321,6 +338,7 @@ function DockAxis({
   isCurrentAxis,
   filled,
   presence,
+  referenced,
   onJump,
   className,
 }: {
@@ -330,6 +348,7 @@ function DockAxis({
   isCurrentAxis: boolean;
   filled?: ReadonlySet<number> | undefined;
   presence?: CluePresence | undefined;
+  referenced?: ReferencedClues | undefined;
   onJump: (clue: Clue) => void;
   className?: string;
 }) {
@@ -355,6 +374,8 @@ function DockAxis({
         )}
         {clues.map((c) => {
           const active = c.number === activeNumber;
+          const isRef =
+            !active && referenced?.has(`${c.direction}-${c.number}`);
           const solved =
             !active &&
             filled !== undefined &&
@@ -378,7 +399,9 @@ function DockAxis({
                     ? isCurrentAxis
                       ? "bg-amber-5"
                       : "bg-amber-3"
-                    : "hover:bg-amber-3",
+                    : isRef
+                      ? "bg-amber-3/40 hover:bg-amber-3"
+                      : "hover:bg-amber-3",
                 )}
               >
                 <span
@@ -417,6 +440,7 @@ export function ClueDock({
   currentDirection,
   filled,
   presence,
+  referenced,
   solvingNow,
   onJump,
 }: {
@@ -427,6 +451,7 @@ export function ClueDock({
   currentDirection: Direction;
   filled?: ReadonlySet<number> | undefined;
   presence?: CluePresence | undefined;
+  referenced?: ReferencedClues | undefined;
   solvingNow?: React.ReactNode;
   onJump: (clue: Clue) => void;
 }) {
@@ -442,6 +467,7 @@ export function ClueDock({
         isCurrentAxis={currentDirection === "across"}
         filled={filled}
         presence={presence}
+        referenced={referenced}
         onJump={onJump}
         className="border-r border-dashed border-border-dashed"
       />
@@ -452,6 +478,7 @@ export function ClueDock({
         isCurrentAxis={currentDirection === "down"}
         filled={filled}
         presence={presence}
+        referenced={referenced}
         onJump={onJump}
       />
     </div>
@@ -469,6 +496,7 @@ export function ClueSheet({
   currentDirection,
   filled,
   presence,
+  referenced,
   onJump,
 }: {
   open: boolean;
@@ -480,6 +508,7 @@ export function ClueSheet({
   currentDirection: Direction;
   filled?: ReadonlySet<number> | undefined;
   presence?: CluePresence | undefined;
+  referenced?: ReferencedClues | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const jumpAndClose = (clue: Clue): void => {
@@ -531,6 +560,7 @@ export function ClueSheet({
               isCurrentAxis={currentDirection === "across"}
               filled={filled}
               presence={presence}
+              referenced={referenced}
               onJump={jumpAndClose}
             />
           </div>
@@ -542,6 +572,7 @@ export function ClueSheet({
               isCurrentAxis={currentDirection === "down"}
               filled={filled}
               presence={presence}
+              referenced={referenced}
               onJump={jumpAndClose}
             />
           </div>
