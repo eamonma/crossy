@@ -156,6 +156,7 @@ function DeleteBlock({
 
   async function confirmDelete(): Promise<void> {
     if (token == null) {
+      setOpen(false);
       setError("Your session expired. Sign in again to delete your account.");
       return;
     }
@@ -166,6 +167,9 @@ function DeleteBlock({
       await onDeleted();
     } catch {
       setBusy(false);
+      // Close the dialog so the inline error is actually visible: the alert lives in the
+      // danger card, and an open modal overlay would hide it.
+      setOpen(false);
       setError(
         "We couldn't delete your account. Nothing changed. Give it another try.",
       );
