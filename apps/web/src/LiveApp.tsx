@@ -1075,8 +1075,11 @@ function LiveGame({
 
       {completed && (
         <CompletionOverlay
-          seconds={store.stats?.solveTimeSeconds ?? elapsed}
-          participantCount={store.stats?.participantCount ?? null}
+          stats={store.stats}
+          fallbackSeconds={elapsed}
+          title={title}
+          members={members}
+          selfId={ready.selfId}
           shareUrl={shareUrl}
           onDismiss={() => setDismissedCompletion(true)}
           onHome={goHome}

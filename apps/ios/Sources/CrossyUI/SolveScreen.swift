@@ -167,6 +167,15 @@ public struct SolveScreen: View {
             // Motion cuts.
             .animation(reduceMotion ? nil : .crossyChrome, value: status)
 
+            // The completion confetti (owner ask 2026-07-11): a restrained
+            // roster-colored drift riding the celebration's instant, between
+            // paper and glass (§1: people between) so the chrome above stays
+            // legible. The model owns its clock: never set under Reduce Motion,
+            // nilled when the drift ends, so this layer simply unmounts.
+            if let confettiStart = completion.confettiStartedAt {
+                ConfettiOverlay(field: confettiField, startedAt: confettiStart)
+            }
+
             // The room bar floats over the board, its own glass layer (the
             // full-bleed ruling): layout above never moves the board below.
             VStack(spacing: 0) {
@@ -518,6 +527,21 @@ public struct SolveScreen: View {
     /// de-emphasis rule.
     private var filledCells: Set<Int> {
         Set((0..<puzzle.cellCount).filter { store.renderValue($0) != nil })
+    }
+
+    /// The confetti's palette: the room's writers in their roster colors (the
+    /// people are the only color, DESIGN.md §1), spectators lending none, mapped
+    /// through the ground so both grounds drift in their own registers.
+    /// Deterministically seeded, so the field is stable across the few renders
+    /// it lives through.
+    private var confettiField: ConfettiField {
+        let colors = store.participants
+            .filter { $0.role != .spectator }
+            .map {
+                ground.rosterColor(
+                    GridPresence.rosterColor(wireColor: $0.color, userId: $0.userId))
+            }
+        return ConfettiField.make(colors: colors)
     }
 
     /// Teammates whose cursors sit under the bar's clue: presence marks (already

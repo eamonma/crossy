@@ -130,6 +130,128 @@ public enum GridMosaic {
     }
 }
 
+/// The completion confetti (owner ask 2026-07-11, amending §8's no-confetti
+/// line): a restrained drift over the board in the room's roster colors, riding
+/// the celebration's one instant beside the mosaic. It lives between paper and
+/// glass (the §1 law: people between), never blocks a touch, and is skipped
+/// entirely under Reduce Motion (the summary still lands; there is no reduced
+/// equivalent because a static confetto is just litter). The field is pure math,
+/// deterministically seeded, so the whole drift pins headlessly: the view only
+/// evaluates poses against elapsed time. Deliberately quieter than the web's
+/// drift; the mosaic stays the iOS headline.
+public struct ConfettiFleck: Equatable, Sendable {
+    /// Spawn x in unit stage width.
+    public let unitX: Double
+    /// Seconds after the trigger before this fleck enters.
+    public let delay: TimeInterval
+    /// Seconds this fleck takes to cross the stage.
+    public let fall: TimeInterval
+    /// Sway amplitude in unit stage width.
+    public let sway: Double
+    /// Sway angular rate, radians per second.
+    public let swayRate: Double
+    /// Sway phase offset, radians.
+    public let phase: Double
+    /// Spin rate, radians per second (signed).
+    public let spin: Double
+    /// Long edge, points.
+    public let size: Double
+    /// Index into the field's palette.
+    public let colorIndex: Int
+}
+
+/// One fleck's render state at an instant, in unit stage coordinates.
+public struct ConfettiPose: Equatable, Sendable {
+    public let unitX: Double
+    public let unitY: Double
+    public let rotation: Double
+    public let alpha: Double
+}
+
+/// The drift's constants and per-fleck kinematics. Analytic over elapsed time
+/// (no per-frame integration), the MosaicEnvelope discipline: a dropped frame
+/// costs smoothness, never trajectory.
+public enum ConfettiEnvelope {
+    public static let fleckCount = 90
+    /// Spawn stagger window.
+    public static let maxDelay: TimeInterval = 0.5
+    public static let fallMin: TimeInterval = 1.7
+    public static let fallMax: TimeInterval = 2.4
+    /// The whole drift is over by here; the overlay unmounts on this clock.
+    public static var duration: TimeInterval { maxDelay + fallMax }
+
+    /// Pose `elapsed` seconds after the trigger, nil while the fleck has not
+    /// entered or after it has finished. Enters just above the stage (unitY < 0),
+    /// exits just below (unitY > 1), fades in fast and out over its last fifth.
+    public static func pose(_ fleck: ConfettiFleck, elapsed: TimeInterval) -> ConfettiPose? {
+        let t = elapsed - fleck.delay
+        // The end check tolerates one ulp of float noise (a caller reconstructing
+        // delay + fall lands a hair past fall); p clamps so the exit pose is exact.
+        guard t >= 0, t <= fleck.fall + 1e-9 else { return nil }
+        let p = min(1, t / fleck.fall)
+        // Ease-in fall: gathering speed reads as gravity without integration.
+        let unitY = -0.06 + 1.14 * (0.55 * p + 0.45 * p * p)
+        let unitX = fleck.unitX + fleck.sway * sin(fleck.swayRate * t + fleck.phase)
+        let alpha = min(1, t / 0.2) * max(0, min(1, (1 - p) / 0.2))
+        return ConfettiPose(
+            unitX: unitX, unitY: unitY,
+            rotation: fleck.phase + fleck.spin * t,
+            alpha: alpha)
+    }
+}
+
+/// The confetti field: flecks plus their palette, built once per celebration.
+/// Colors come from the room's roster (the people are the only color, §1); the
+/// caller maps participants through the ground's roster table. An empty palette
+/// yields an empty field, so a room with no one to color simply does not drift.
+public struct ConfettiField: Equatable, Sendable {
+    public let flecks: [ConfettiFleck]
+    public let colors: [RGBColor]
+
+    public init(flecks: [ConfettiFleck], colors: [RGBColor]) {
+        self.flecks = flecks
+        self.colors = colors
+    }
+
+    /// SplitMix64: tiny, deterministic, and pure (no Foundation randomness), so
+    /// the same seed always builds the same drift and tests pin real values.
+    private struct SplitMix64 {
+        var state: UInt64
+        mutating func next() -> UInt64 {
+            state &+= 0x9E37_79B9_7F4A_7C15
+            var z = state
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            return z ^ (z >> 31)
+        }
+        /// Uniform in [0, 1).
+        mutating func unit() -> Double {
+            Double(next() >> 11) * (1.0 / 9_007_199_254_740_992.0)
+        }
+        mutating func range(_ lo: Double, _ hi: Double) -> Double {
+            lo + unit() * (hi - lo)
+        }
+    }
+
+    public static func make(colors: [RGBColor], seed: UInt64 = 0xC0FE_1D0) -> ConfettiField {
+        guard !colors.isEmpty else { return ConfettiField(flecks: [], colors: []) }
+        var rng = SplitMix64(state: seed)
+        let flecks = (0..<ConfettiEnvelope.fleckCount).map { i in
+            ConfettiFleck(
+                unitX: rng.range(-0.02, 1.02),
+                delay: rng.range(0, ConfettiEnvelope.maxDelay),
+                fall: rng.range(ConfettiEnvelope.fallMin, ConfettiEnvelope.fallMax),
+                sway: rng.range(0.008, 0.035),
+                swayRate: rng.range(1.6, 3.4),
+                phase: rng.range(0, 2 * Double.pi),
+                spin: rng.range(-3, 3),
+                size: rng.range(5, 9),
+                colorIndex: i % colors.count)
+        }
+        return ConfettiField(flecks: flecks, colors: colors)
+    }
+}
+
 /// One mosaic in flight: the palette and the trigger instant, snapshotted in the
 /// view body (the GridFrame pattern) and consumed by the Canvas draw pass against
 /// the render clock.
@@ -167,8 +289,16 @@ public final class CompletionModel {
     /// observe this, never the muteable mosaic clock (ID-1).
     public private(set) var celebrationFiredAt: TimeInterval?
 
+    /// Non-nil while the confetti drifts (owner ask 2026-07-11); the overlay
+    /// mounts against it and its Canvas runs on this instant. A rider on the
+    /// gate's one firing like the haptic, so it plays with the mosaic muted
+    /// (ID-1's switch governs attribution tint, not the party) but never under
+    /// Reduce Motion, where the drift is skipped whole.
+    public private(set) var confettiStartedAt: TimeInterval?
+
     @ObservationIgnored private var gate = CelebrationGate()
     @ObservationIgnored private var celebrationTask: Task<Void, Never>?
+    @ObservationIgnored private var confettiTask: Task<Void, Never>?
 
     public init() {}
 
@@ -182,6 +312,7 @@ public final class CompletionModel {
         live: Bool,
         reduceMotion: Bool = false,
         mosaicEnabled: Bool = AttributionSwitches.completionMosaicEnabled,
+        confettiEnabled: Bool = AttributionSwitches.completionConfettiEnabled,
         now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
     ) {
         guard gate.observe(status: status, live: live) else { return }
@@ -191,6 +322,18 @@ public final class CompletionModel {
         // instant by the solve screen. A muted mosaic (ID-1) reduces the
         // celebration to the card alone.
         celebrationFiredAt = now
+        // The confetti rides the same instant (owner ask 2026-07-11), skipped
+        // whole under Reduce Motion; the timed nil unmounts the overlay so the
+        // finished room settles back to paper and glass.
+        if confettiEnabled && !reduceMotion {
+            confettiStartedAt = now
+            confettiTask?.cancel()
+            confettiTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(ConfettiEnvelope.duration))
+                guard !Task.isCancelled else { return }
+                self?.confettiStartedAt = nil
+            }
+        }
         guard mosaicEnabled else { return }
         mosaicStartedAt = now
         isClarityBeat = !reduceMotion
