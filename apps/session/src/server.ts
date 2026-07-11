@@ -65,6 +65,13 @@ import { loadMembers } from "./repo";
 
 const GAME_PATH = /^\/games\/([^/]+)\/ws$/;
 const INTERNAL_PATH = /^\/internal\/games\/([^/]+)\/membership-changed$/;
+/**
+ * The Live Activity welcome notice (PROTOCOL.md 12a): the API POSTs here after a token registers,
+ * so the emitter hands the fresh island the current authoritative frame at once. Same internal
+ * listener, same bearer, same private-port routing as membership-changed.
+ */
+const INTERNAL_LA_REGISTERED_PATH =
+  /^\/internal\/games\/([^/]+)\/live-activity-registered$/;
 
 /** Cap on the internal request body; a membership-changed hint is a handful of bytes. */
 const MAX_INTERNAL_BODY_BYTES = 4096;
@@ -177,6 +184,20 @@ export function createSessionServer(
           registry,
           pool: config.pool,
           internalBearer: config.internalBearer,
+        }).catch(() => sendJson(res, 500, { error: "INTERNAL" }));
+        return;
+      }
+      const registeredMatch =
+        req.method === "POST" ? INTERNAL_LA_REGISTERED_PATH.exec(path) : null;
+      if (registeredMatch !== null) {
+        if (!serveInternal) {
+          sendJson(res, 404, { error: "NOT_FOUND" });
+          return;
+        }
+        void handleLiveActivityRegistered(req, res, registeredMatch[1]!, {
+          registry,
+          internalBearer: config.internalBearer,
+          pushEmitter: config.pushEmitter,
         }).catch(() => sendJson(res, 500, { error: "INTERNAL" }));
         return;
       }
@@ -640,6 +661,92 @@ async function handleInternalRequest(
     gameId,
     body,
   );
+  sendJson(res, 200, { ok: true });
+}
+
+interface LiveActivityRegisteredDeps {
+  readonly registry: ActorRegistry;
+  /** Explicitly nullable (not optional) so the composition root may pass an unset value. */
+  readonly internalBearer: string | undefined;
+  /** Absent when the push channel is inert (no APNs env); then the welcome is a no-op. */
+  readonly pushEmitter: ActivityPushEmitter | undefined;
+}
+
+/** Parse the welcome notice body: `{ userId }`, the registering member. Null if malformed. */
+function parseLiveActivityRegisteredBody(
+  raw: unknown,
+): { userId: string } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const userId = (raw as { userId?: unknown }).userId;
+  if (typeof userId !== "string" || userId === "") return null;
+  return { userId };
+}
+
+/**
+ * Serve `POST /internal/games/{id}/live-activity-registered` (PROTOCOL.md 12a). Same bearer,
+ * listener, and private-port routing as membership-changed. The API fires this after a successful
+ * token upsert; the session hands the fresh island the current authoritative frame via the emitter's
+ * onWelcome. Failure posture is log-and-drop from the API side, so this endpoint stays honest but
+ * lenient: it acknowledges once authorized, then does the fire-and-forget welcome, so a slow APNs
+ * or a since-deleted game never turns into a failed notice the API must retry.
+ *
+ * No-actor case (member backgrounded, everyone else offline, actor evicted): the registry reads the
+ * current facts with a cheap SELECT-only hydration read (boardFactsFor) rather than resurrecting an
+ * actor. A game that no longer exists yields null facts and the welcome is dropped. The emitter is
+ * fed the same content-state it would send to the whole game, aimed at only this user's tokens.
+ */
+async function handleLiveActivityRegistered(
+  req: IncomingMessage,
+  res: ServerResponse,
+  gameId: string,
+  deps: LiveActivityRegisteredDeps,
+): Promise<void> {
+  if (deps.internalBearer === undefined || deps.internalBearer === "") {
+    sendJson(res, 503, { error: "INTERNAL_ENDPOINT_DISABLED" });
+    return;
+  }
+  const header = req.headers["authorization"];
+  if (header === undefined) {
+    sendJson(res, 401, { error: "UNAUTHORIZED" });
+    return;
+  }
+  if (!bearerOk(header, deps.internalBearer)) {
+    sendJson(res, 403, { error: "FORBIDDEN" });
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readInternalBody(req));
+  } catch {
+    sendJson(res, 400, { error: "VALIDATION" });
+    return;
+  }
+  const body = parseLiveActivityRegisteredBody(parsed);
+  if (body === null) {
+    sendJson(res, 400, { error: "VALIDATION" });
+    return;
+  }
+
+  // Enqueue the welcome, then acknowledge. onWelcome is fire-and-forget by construction (it appends
+  // to the emitter's own queue and returns at once), so the endpoint never waits on APNs, yet it
+  // resolves the cheap facts read first so the ack honestly reflects that the welcome was handed off.
+  // The API treats the whole notice as fire-and-forget anyway (log-and-drop), so a slow facts read
+  // never blocks the 204. A since-deleted game yields null facts: drop the welcome, the cheapest
+  // honest behavior. The read is guarded so a fault is logged and still acknowledged (the
+  // registration stands and the debounce world works without the welcome).
+  if (deps.pushEmitter !== undefined) {
+    try {
+      const facts = await deps.registry.boardFactsFor(gameId);
+      if (facts !== null)
+        deps.pushEmitter.onWelcome(gameId, body.userId, facts);
+    } catch (error) {
+      console.error(
+        `live-activity welcome fault for game ${gameId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
   sendJson(res, 200, { ok: true });
 }
 

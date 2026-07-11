@@ -150,6 +150,7 @@ describe("§12a emitter: the disabled path is a strict no-op (dev / CI inert)", 
       inert.onFill("g", facts());
       inert.onTerminal("g", facts());
       inert.onKick("g", "u", facts());
+      inert.onWelcome("g", "u", facts());
       inert.stop();
     }).not.toThrow();
   });
@@ -435,6 +436,62 @@ describe("§12a emitter: fire-and-forget dispatch through the adapter", () => {
     await settle();
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  it("welcome sends an update to only the registering user's tokens (priority 10)", async () => {
+    const { adapter, sent } = fakeAdapter();
+    const pool = fakePool({
+      members: [
+        member({ userId: "u1", displayName: "Ann" }),
+        member({ userId: "u2", displayName: "Bea" }),
+      ],
+      tokens: [
+        { token: "u1-tok", userId: "u1", environment: "sandbox" },
+        { token: "u2-tok-a", userId: "u2", environment: "sandbox" },
+        { token: "u2-tok-b", userId: "u2", environment: "production" },
+      ],
+    });
+    const emitter = new LiveActivityPushEmitter({
+      pool: pool as never,
+      adapter,
+      now: () => 1000,
+    });
+    emitter.onWelcome(
+      "g1",
+      "u2",
+      facts({ filled: 30, connectedUserIds: new Set(["u1"]) }),
+    );
+    await settle();
+    // Only u2's two tokens receive it, and it is an immediate priority-10 update.
+    expect(sent.map((r) => r.token).sort()).toEqual(["u2-tok-a", "u2-tok-b"]);
+    expect(sent.every((r) => r.priority === 10)).toBe(true);
+    expect(sent.every((r) => JSON.parse(r.body).aps.event === "update")).toBe(
+      true,
+    );
+    expect(JSON.parse(sent[0]!.body).aps["content-state"].filled).toBe(30);
+  });
+
+  it("welcome bypasses the game-level dedupe: it fires even after presence sent the same frame", async () => {
+    const { adapter, sent } = fakeAdapter();
+    const pool = fakePool({
+      members: [member({ userId: "u1", displayName: "Ann" })],
+      tokens: [{ token: "u1-tok", userId: "u1", environment: "sandbox" }],
+    });
+    const emitter = new LiveActivityPushEmitter({
+      pool: pool as never,
+      adapter,
+      now: () => 1000,
+    });
+    const same = facts({ filled: 10, connectedUserIds: new Set(["u1"]) });
+    // A presence push sets the game-level lastSent to this exact frame.
+    emitter.onPresence("g1", same);
+    await settle();
+    expect(sent).toHaveLength(1);
+    // The just-registered token has received nothing, so the welcome must still deliver the frame.
+    emitter.onWelcome("g1", "u1", same);
+    await settle();
+    expect(sent).toHaveLength(2);
+    expect(JSON.parse(sent[1]!.body).aps.event).toBe("update");
   });
 
   it("debounces fill: the first pushes, a second inside the window is held and later flushed", async () => {

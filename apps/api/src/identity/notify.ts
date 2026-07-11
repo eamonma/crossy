@@ -33,3 +33,26 @@ export async function notifyMembership(
     return false;
   }
 }
+
+/**
+ * Signal that a Live Activity token just registered (PROTOCOL.md 12a), so the session hands the
+ * fresh island the current authoritative frame. Fire-and-forget by design and never required: the
+ * token upsert already committed, so a missing notifier or a failed call is logged and dropped, and
+ * the TTL/debounce world keeps the activity current without the welcome. Returns nothing, since no
+ * caller treats the outcome as a fault (unlike abandon).
+ */
+export async function notifyLiveActivityRegistered(
+  deps: AppDeps,
+  gameId: string,
+  userId: string,
+): Promise<void> {
+  if (deps.membershipNotifier === undefined) return;
+  try {
+    await deps.membershipNotifier.liveActivityRegistered(gameId, userId);
+  } catch (err) {
+    console.error(
+      `live-activity-registered notify failed for game ${gameId}:`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}

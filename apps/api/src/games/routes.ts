@@ -19,7 +19,10 @@ import { parseBefore, parseLimit } from "../http/pagination";
 import { authMiddleware } from "../auth/middleware";
 import { generateInviteCode } from "./invite-code";
 import { findGameByInviteCode } from "./lookup";
-import { notifyMembership } from "../identity/notify";
+import {
+  notifyLiveActivityRegistered,
+  notifyMembership,
+} from "../identity/notify";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -814,6 +817,13 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
           createdAt: sql`now()`,
         },
       });
+
+    // Welcome push (PROTOCOL.md 12a): now that the token row stands, signal the session over the
+    // same internal channel the kick flow uses, so the emitter hands this member's fresh island the
+    // current authoritative frame at once. Fire-and-forget and log-and-drop: the registration has
+    // already succeeded and the response is 204 regardless, so a failed or absent notice degrades
+    // only to the pre-existing TTL/debounce behavior, never to a failed registration.
+    await notifyLiveActivityRegistered(deps, gameId, identity.userId);
     return c.body(null, 204);
   });
 

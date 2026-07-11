@@ -9,7 +9,7 @@ import type { Pool } from "pg";
 import { GameActor } from "./actor";
 import type { ActorOptions } from "./actor";
 import { hydrateGame } from "./hydrate";
-import type { ActivityPushEmitter } from "./push/emitter";
+import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
 import { loadGameRow, loadGameState } from "./repo";
 import { createPgPersistence } from "./writer";
 import type { GamePersistence } from "./writer";
@@ -58,6 +58,36 @@ export class ActorRegistry {
     const existing = this.actors.get(gameId);
     if (existing === undefined) return null;
     return existing.catch(() => null);
+  }
+
+  /**
+   * The current board facts for a game, for the Live Activity welcome push (PROTOCOL.md 12a). When
+   * an actor is already live it is the single source of truth, so we read its snapshot directly.
+   * When no actor is live (the member backgrounded, everyone else is offline, or the actor was
+   * evicted) we do a cheap SELECT-only hydration read and compute the same facts, so a fresh token
+   * still gets the server's authoritative frame WITHOUT resurrecting an actor: this never caches an
+   * actor and never writes anything (INV-7 SELECT-only). A game that does not exist resolves to
+   * `null`, and the caller drops the welcome. The connected set is empty for a passivated game
+   * (nobody holds a socket), which is the honest away-dimmed truth for the frame.
+   */
+  async boardFactsFor(gameId: string): Promise<BoardFacts | null> {
+    const live = await this.getIfLive(gameId);
+    if (live !== null) return live.boardFacts();
+
+    const gameRow = await loadGameRow(this.pool, gameId);
+    if (gameRow === null) return null;
+    const state = await loadGameState(this.pool, gameId);
+    const hydrated = hydrateGame(gameRow.snapshot, state, gameRow.roomName);
+    const board = hydrated.boardState;
+    const total = board.grid.cols * board.grid.rows - board.grid.blocks.size;
+    return {
+      filled: board.filledCount,
+      total,
+      status: board.status,
+      completedAt: hydrated.completedAt,
+      connectedUserIds: new Set<string>(),
+      roomName: gameRow.roomName,
+    };
   }
 
   /** Every already-hydrated actor, for the SIGTERM drain (DESIGN.md §6). */

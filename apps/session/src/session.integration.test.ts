@@ -31,6 +31,8 @@ import {
 import type { CellSet } from "@crossy/engine";
 import { createSessionServer } from "./server";
 import type { SessionServer } from "./server";
+import { createInertEmitter } from "./push/emitter";
+import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
 import { flushToPostgres, SnapshotRegressionError } from "./writer";
 import type { StateSnapshot } from "./writer";
 import { hydrateGame } from "./hydrate";
@@ -1560,6 +1562,140 @@ describe("membership-changed internal endpoint auth (DESIGN.md §6)", () => {
     } finally {
       await bare.close();
     }
+  });
+});
+
+// The live-activity welcome internal endpoint (PROTOCOL.md 12a). A recording fake emitter proves
+// the notice routes through the same shared internal listener and bearer as membership-changed, and
+// that the emitter's onWelcome is fed the game's current facts even for a passivated game (no live
+// actor), via the registry's SELECT-only hydration read. No APNs, no socket to APNs.
+interface WelcomeCall {
+  gameId: string;
+  userId: string;
+  facts: BoardFacts;
+}
+
+/** A recording emitter: onWelcome records its call; every other hook is inert. */
+function recordingEmitter(): {
+  emitter: ActivityPushEmitter;
+  welcomes: WelcomeCall[];
+} {
+  const welcomes: WelcomeCall[] = [];
+  const emitter: ActivityPushEmitter = {
+    ...createInertEmitter(),
+    onWelcome(gameId, userId, facts) {
+      welcomes.push({ gameId, userId, facts });
+    },
+  };
+  return { emitter, welcomes };
+}
+
+async function postLiveActivityRegistered(
+  base: string,
+  gameId: string,
+  body: unknown,
+  bearer: string | null = INTERNAL_BEARER,
+): Promise<Response> {
+  return fetch(`${base}/internal/games/${gameId}/live-activity-registered`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(bearer !== null ? { authorization: `Bearer ${bearer}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+describe("live-activity welcome internal endpoint (PROTOCOL.md 12a; INV-7)", () => {
+  it("feeds onWelcome the game's current facts for a passivated game, no actor resurrection", async () => {
+    const { emitter, welcomes } = recordingEmitter();
+    const wServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      internalBearer: INTERNAL_BEARER,
+      pushEmitter: emitter,
+    });
+    try {
+      const memberId = randomUUID();
+      // A 2x2 all-playable grid with two filled cells; no live actor is ever hydrated here.
+      const gameId = await seedGame({
+        snapshot: puzzle(2, 2, [], ["A", "B", "C", "D"]),
+        members: [{ userId: memberId, role: "solver" }],
+        gameState: {
+          board: [
+            { v: "A", by: memberId },
+            { v: "B", by: memberId },
+            { v: null, by: null },
+            { v: null, by: null },
+          ],
+          lastSeq: 2,
+          firstFillAt: "2026-07-11T00:00:00Z",
+          status: "ongoing",
+        },
+      });
+
+      const base = wServer.url.replace(/^ws:/, "http:");
+      const res = await postLiveActivityRegistered(base, gameId, {
+        userId: memberId,
+      });
+      expect(res.status).toBe(200);
+      // The emitter received the welcome with the game's current facts, read without a live actor.
+      expect(welcomes).toHaveLength(1);
+      expect(welcomes[0]!.gameId).toBe(gameId);
+      expect(welcomes[0]!.userId).toBe(memberId);
+      expect(welcomes[0]!.facts.filled).toBe(2);
+      expect(welcomes[0]!.facts.total).toBe(4);
+      expect(welcomes[0]!.facts.status).toBe("ongoing");
+      // Passivated: nobody holds a socket, so the connected set is empty (honest away-dimming).
+      expect(welcomes[0]!.facts.connectedUserIds.size).toBe(0);
+    } finally {
+      await wServer.close();
+    }
+  });
+
+  it("drops the welcome for a game that does not exist (cheapest honest behavior)", async () => {
+    const { emitter, welcomes } = recordingEmitter();
+    const wServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      internalBearer: INTERNAL_BEARER,
+      pushEmitter: emitter,
+    });
+    try {
+      const base = wServer.url.replace(/^ws:/, "http:");
+      const res = await postLiveActivityRegistered(base, randomUUID(), {
+        userId: randomUUID(),
+      });
+      // The endpoint acknowledges (the API notice is fire-and-forget), but no welcome is emitted.
+      expect(res.status).toBe(200);
+      expect(welcomes).toHaveLength(0);
+    } finally {
+      await wServer.close();
+    }
+  });
+
+  it("refuses no bearer (401) and a wrong bearer (403), same auth as membership-changed", async () => {
+    const noBearer = await postLiveActivityRegistered(
+      HTTP_BASE(),
+      randomUUID(),
+      { userId: randomUUID() },
+      null,
+    );
+    expect(noBearer.status).toBe(401);
+    const wrongBearer = await postLiveActivityRegistered(
+      HTTP_BASE(),
+      randomUUID(),
+      { userId: randomUUID() },
+      "not-the-secret",
+    );
+    expect(wrongBearer.status).toBe(403);
+  });
+
+  it("rejects a malformed body (400) with a valid bearer", async () => {
+    const res = await postLiveActivityRegistered(HTTP_BASE(), randomUUID(), {
+      notUserId: "x",
+    });
+    expect(res.status).toBe(400);
   });
 });
 

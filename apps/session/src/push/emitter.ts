@@ -66,6 +66,14 @@ export interface ActivityPushEmitter {
   onTerminal(gameId: string, facts: BoardFacts): void;
   /** A member was kicked: end their own tokens, presence-update everyone else. */
   onKick(gameId: string, userId: string, facts: BoardFacts): void;
+  /**
+   * A live-activity token just registered for this user (PROTOCOL.md 12a). Hand the fresh island
+   * the server's current authoritative frame at once: an immediate priority-10 update to exactly
+   * this user's tokens, bypassing the game-level dedupe. This is what kills the up-to-20s wait
+   * before a just-backgrounded island shows live data, and it closes the disconnect-before-token
+   * race (the welcome re-delivers current truth once the token exists).
+   */
+  onWelcome(gameId: string, userId: string, facts: BoardFacts): void;
   /** Stop the debounce timers on drain, so nothing keeps the process alive after SIGTERM. */
   stop(): void;
 }
@@ -77,6 +85,7 @@ export function createInertEmitter(): ActivityPushEmitter {
     onFill: () => {},
     onTerminal: () => {},
     onKick: () => {},
+    onWelcome: () => {},
     stop: () => {},
   };
 }
@@ -162,6 +171,12 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
   }
   onKick(gameId: string, userId: string, facts: BoardFacts): void {
     this.enqueue(gameId, { kind: "kick", userId }, facts);
+  }
+  onWelcome(gameId: string, userId: string, facts: BoardFacts): void {
+    // The registering user's own tokens get the current authoritative frame at once (PROTOCOL.md
+    // 12a). Same fire-and-forget chain as every other observation: a slow APNs never blocks the
+    // internal notice's response.
+    this.enqueue(gameId, { kind: "welcome", userId }, facts);
   }
 
   stop(): void {
