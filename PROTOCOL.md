@@ -314,7 +314,14 @@ One JSON object rides inside the standard APNs Live Activity envelope as `aps.co
 ```json
 {
   "pucks": [
-    { "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true }
+    {
+      "initial": "E",
+      "red": 214,
+      "green": 178,
+      "blue": 92,
+      "connected": true,
+      "userId": "a1b2c3d4-0001-4a1a-8b2b-000000000001"
+    }
   ],
   "filled": 34,
   "total": 78,
@@ -324,6 +331,7 @@ One JSON object rides inside the standard APNs Live Activity envelope as `aps.co
 ```
 
 - `pucks`: the live roster cluster, at most 4, in presence order. Each puck is render-ready for the island's dark ground: `initial` is a single ASCII-uppercased letter (INV-1), `red`/`green`/`blue` are 8-bit sRGB components (0 to 255) resolved server-side, and `connected` drives away-dimming. The cluster rides the content-state, not the activity's immutable attributes, so a member who joins after the activity started still appears.
+- `userId`: optional. The member's opaque user id, the same value the section 4 participant payload carries. The client keys its locally cached avatar art off it. It is null or absent when unknown, and reveals nothing toward the solution (INV-6).
 - `filled` / `total`: fill progress as counts. Counts only: no letters, no cell coordinates, nothing derivable toward the solution (INV-6). The lock-screen surface shows how full the grid is, never what fills it.
 - `status`: `ongoing`, `completed`, or `abandoned`, mirroring section 4.
 - `completedAt`: an ISO 8601 UTC timestamp, set exactly when `status` is `completed`, and null otherwise. An abandoned game never completed, so it carries null.

@@ -201,4 +201,14 @@ describe("roster port: cluster rule (RosterList.cluster / .ordered, ruling 2026-
     ]);
     expect(pucks.map((p) => p.connected)).toEqual([true, false]);
   });
+
+  it("INV-6 carries each member's opaque userId (the avatar-art key, never board content)", () => {
+    // The opaque id passes straight through, the same value the §4 participant payload carries; it
+    // is the widget's local avatar-cache key and reveals nothing toward the solution.
+    const pucks = clusterPucks([
+      member({ userId: "AA", displayName: "Ann" }),
+      member({ userId: "BB", displayName: "Bea" }),
+    ]);
+    expect(pucks.map((p) => p.userId)).toEqual(["AA", "BB"]);
+  });
 });

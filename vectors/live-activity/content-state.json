@@ -8,21 +8,24 @@
           "red": 214,
           "green": 178,
           "blue": 92,
-          "connected": true
+          "connected": true,
+          "userId": "a1b2c3d4-0001-4a1a-8b2b-000000000001"
         },
         {
           "initial": "A",
           "red": 127,
           "green": 119,
           "blue": 221,
-          "connected": false
+          "connected": false,
+          "userId": "a1b2c3d4-0002-4a1a-8b2b-000000000002"
         },
         {
           "initial": "M",
           "red": 92,
           "green": 184,
           "blue": 148,
-          "connected": true
+          "connected": true,
+          "userId": null
         }
       ],
       "filled": 34,
@@ -40,28 +43,32 @@
           "red": 214,
           "green": 178,
           "blue": 92,
-          "connected": true
+          "connected": true,
+          "userId": "b7e4d100-0011-4c3c-9d4d-000000000011"
         },
         {
           "initial": "B",
           "red": 127,
           "green": 119,
           "blue": 221,
-          "connected": true
+          "connected": true,
+          "userId": "b7e4d100-0012-4c3c-9d4d-000000000012"
         },
         {
           "initial": "R",
           "red": 92,
           "green": 184,
           "blue": 148,
-          "connected": false
+          "connected": false,
+          "userId": "b7e4d100-0013-4c3c-9d4d-000000000013"
         },
         {
           "initial": "J",
           "red": 224,
           "green": 122,
           "blue": 95,
-          "connected": true
+          "connected": true,
+          "userId": "b7e4d100-0014-4c3c-9d4d-000000000014"
         }
       ],
       "filled": 61,
@@ -79,14 +86,16 @@
           "red": 214,
           "green": 178,
           "blue": 92,
-          "connected": true
+          "connected": true,
+          "userId": "c2f9a500-0021-4e5e-af6f-000000000021"
         },
         {
           "initial": "A",
           "red": 127,
           "green": 119,
           "blue": 221,
-          "connected": true
+          "connected": true,
+          "userId": "c2f9a500-0022-4e5e-af6f-000000000022"
         }
       ],
       "filled": 78,
@@ -122,7 +131,8 @@
           "red": 224,
           "green": 122,
           "blue": 95,
-          "connected": true
+          "connected": true,
+          "userId": "d3a1b600-0031-4f7f-b080-000000000031"
         }
       ],
       "filled": 5,
