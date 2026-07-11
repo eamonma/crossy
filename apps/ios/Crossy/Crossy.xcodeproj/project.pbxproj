@@ -154,8 +154,8 @@
 				FB15AC0D3000D30A004CA5C7 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				FB3E59DD3000D30A004CA5C7 /* Crossy */,
 				FB15AC083000D30A004CA5C7 /* Shared */,
+				FB3E59DD3000D30A004CA5C7 /* Crossy */,
 			);
 			name = Crossy;
 			packageProductDependencies = (
@@ -433,6 +433,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Crossy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = MTF6T25BP8;
@@ -466,6 +467,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Crossy.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = MTF6T25BP8;
@@ -497,6 +499,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		FB15AC093000D30A004CA5C7 /* Build configuration list for PBXNativeTarget "CrossyWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FB15AC0A3000D30A004CA5C7 /* Debug */,
+				FB15AC0B3000D30A004CA5C7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FB3E59D63000D30A004CA5C7 /* Build configuration list for PBXProject "Crossy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -511,15 +522,6 @@
 			buildConfigurations = (
 				FB3E59E73000D30D004CA5C7 /* Debug */,
 				FB3E59E83000D30D004CA5C7 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		FB15AC093000D30A004CA5C7 /* Build configuration list for PBXNativeTarget "CrossyWidgets" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				FB15AC0A3000D30A004CA5C7 /* Debug */,
-				FB15AC0B3000D30A004CA5C7 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
