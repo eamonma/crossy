@@ -232,6 +232,12 @@ export const gameDenylist = pgTable(
  * `recent_command_ids` is the bounded ring of the last K applied `commandId`s that
  * makes dedup survive passivation and crash (§6, §9); modeled as a jsonb array so the
  * actor manages the ring in application code.
+ *
+ * Read-coupling (DESIGN.md §9): the API holds a SELECT-only grant on this table
+ * (migration 0005) so `GET /games` can report a game's completion (`completed_at`) on the
+ * signed-in home. That is the planned read expand §9 records; it grants read only, so the
+ * session stays the single writer (INV-7 governs writes, not reads). The API reads
+ * `completed_at`, never the board or the rest of the row.
  */
 export const gameState = pgTable("game_state", {
   gameId: uuid("game_id")

@@ -1,8 +1,11 @@
 // Games module routes (PROTOCOL.md §12, DESIGN.md §7, §8). Create (full accounts only),
 // join by invite code (any authenticated user, guests included), and the game view. The API
-// is the single writer on games, memberships, and game_denylist (INV-7); it never touches the
-// session-owned game_state or cell_events, so the live board is not part of this view (it
-// arrives on the WebSocket `welcome`, PROTOCOL.md §2).
+// is the single writer on games, memberships, and game_denylist (INV-7); it never WRITES the
+// session-owned game_state or cell_events. It does hold a SELECT-only read grant on game_state
+// (migration 0005), used by `GET /games` to report a game's completion (`completed_at`), a read
+// of durable session-owned state that leaves single-writer intact (INV-7 governs writes). The
+// live board is still not part of any view here: it arrives on the WebSocket `welcome`
+// (PROTOCOL.md §2), and this module never selects the board column.
 import { Hono } from "hono";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
@@ -167,19 +170,24 @@ interface GameView {
 /**
  * One row of `GET /games`: a game the caller is a member of, for the signed-in home list.
  *
- * Deliberately NO `status` field. A game's lifecycle status (ongoing, completed, abandoned)
- * lives in `game_state`, which is session-owned; the API holds no read grant on it (DESIGN.md
- * §7, §9), so it cannot honestly report completion from its own tables. Inventing an "ongoing"
- * status here would be a lie for every completed or abandoned game. When the Archive module's
- * planned read grant on `game_state` lands (DESIGN.md §9), a `status` field can be added
- * additively. For the same reason ordering is by `createdAt`, not true last-move activity,
- * which also lives in `game_state`.
+ * `completedAt` reports completion, and only completion. It is the `game_state.completed_at`
+ * timestamp, null while the game is ongoing (and null for an abandoned game, which never
+ * completed). `game_state` is session-owned, but the API now holds a SELECT-only read grant on it
+ * (migration 0005, the planned read expand DESIGN.md §9 records), so it reads this one fact
+ * without ever writing the table: the session stays the single writer (INV-7 governs writes, not
+ * reads). This is a read of the durable terminal timestamp, not a lifecycle claim the API owns:
+ * a full `status` enum (ongoing/completed/abandoned) is a later additive extension, but the one
+ * fact the home needs today is "is this game done", which `completed_at` answers directly. A
+ * game with no `game_state` row yet (created but never connected, so the actor has not
+ * materialized it) reads as ongoing, `completedAt` null, via the left join. Ordering stays by
+ * `createdAt`, not last-move activity, which also lives in `game_state`.
  *
  * `puzzle` carries only INV-6-safe geometry (rows, cols) projected out of `puzzle_snapshot` in
  * SQL; the snapshot jsonb, which holds the solution, is never selected whole. `puzzle.title` is
  * the puzzle's display title, read from the `puzzles` row (joined on `puzzle_id`, never from the
  * solution-bearing snapshot), null when the puzzle has none; it is display content, not a
- * solution (INV-6 untouched).
+ * solution (INV-6 untouched). No solution ever rides `completed_at`, a bare timestamp, so INV-6
+ * is untouched here too.
  */
 interface GameSummary {
   readonly gameId: string;
@@ -191,6 +199,12 @@ interface GameSummary {
   readonly createdBy: string;
   /** Total members (all roles), for the list card. */
   readonly memberCount: number;
+  /**
+   * When the game completed (the derived-timer end anchor, DESIGN.md §2), null while ongoing and
+   * null for an abandoned game. Read from the session-owned `game_state` under the API's SELECT
+   * grant (migration 0005); never written by the API (INV-7).
+   */
+  readonly completedAt: string | null;
   readonly puzzle: {
     readonly puzzleId: string;
     readonly rows: number;
@@ -323,9 +337,13 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     // so the solution-bearing jsonb never enters the process. The puzzle `title` is read from the
     // joined `puzzles` row (a single named column, never the solution-bearing `data`); the join
     // is on `games.puzzle_id`, which is NOT NULL and ON DELETE RESTRICT, so the inner join drops
-    // no game. `memberCount` is a correlated count, not a select-all of memberships. Order and
-    // cursor are both `createdAt`, with `gameId` as a deterministic tiebreaker for rows sharing a
-    // timestamp.
+    // no game. `memberCount` is a correlated count, not a select-all of memberships.
+    // `completedAt` is the session-owned `game_state.completed_at`, read under the API's SELECT
+    // grant (migration 0005); it is a LEFT join, so a game whose actor never materialized its
+    // `game_state` row (created but never connected) still lists, reading ongoing (completedAt
+    // null). Only the one terminal timestamp is selected, never the board or the rest of the row.
+    // Order and cursor are both `createdAt`, with `gameId` as a deterministic tiebreaker for rows
+    // sharing a timestamp.
     const rows = await deps.db
       .select({
         gameId: schema.games.gameId,
@@ -337,6 +355,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         puzzleRows: sql<number>`(${schema.games.puzzleSnapshot} ->> 'rows')::int`,
         puzzleCols: sql<number>`(${schema.games.puzzleSnapshot} ->> 'cols')::int`,
         puzzleTitle: schema.puzzles.title,
+        completedAt: schema.gameState.completedAt,
         memberCount: sql<number>`(select count(*)::int from "memberships" mc where mc."game_id" = ${schema.games.gameId})`,
       })
       .from(schema.memberships)
@@ -347,6 +366,10 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       .innerJoin(
         schema.puzzles,
         eq(schema.puzzles.puzzleId, schema.games.puzzleId),
+      )
+      .leftJoin(
+        schema.gameState,
+        eq(schema.gameState.gameId, schema.games.gameId),
       )
       .where(
         and(
@@ -364,6 +387,9 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       createdAt: r.createdAt.toISOString(),
       createdBy: r.createdBy,
       memberCount: r.memberCount,
+      // `completed_at` is null while ongoing, and null when no game_state row exists yet (the
+      // left join): both read as "not done" on the home. Present only for a completed game.
+      completedAt: r.completedAt === null ? null : r.completedAt.toISOString(),
       puzzle: {
         puzzleId: r.puzzleId,
         rows: r.puzzleRows,

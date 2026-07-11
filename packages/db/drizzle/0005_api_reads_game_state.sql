@@ -1,0 +1,12 @@
+-- Expand-only, read-grant (DESIGN.md §9 single writer: session owns game_state; §11
+-- expand/contract). The core API needs to report a game's completion on the signed-in home
+-- (`GET /games`), but completion lives in the session-owned `game_state` (§9), which the API
+-- held no grant on. This is the planned read expand §9 records ("a planned expand migration to
+-- add read-only ... it leaves single-writer (INV-7) intact since it grants read only"), brought
+-- forward for the completion surface ahead of the full Archive module.
+--
+-- The grant is SELECT only: the session service stays the single writer of game_state (INV-7
+-- governs writes, not reads). The API projects one column, `completed_at`, into the games list;
+-- the board jsonb and the rest of the row are never selected. This is the same read-coupling
+-- shape §9 already blesses for the session reading API-owned tables, in the other direction.
+GRANT SELECT ON "game_state" TO "crossy_api";
