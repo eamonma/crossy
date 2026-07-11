@@ -241,6 +241,57 @@ final class EndpointTests: XCTestCase {
         XCTAssertTrue(response.vendorDeleted)
     }
 
+    // MARK: - Live Activity push tokens (PROTOCOL.md section 12a)
+
+    func test_registerLiveActivityToken_postsTheBodyAndAcceptsA204() async throws {
+        // Section 12a: the register route answers 204 (no body). A 204 with no payload
+        // must not surface as a decode failure, so the client accepts the empty success.
+        StubURLProtocol.install { _ in (204, Data()) }
+        let path = ["games", gameId, "live-activity-tokens"]
+        let body = LiveActivityTokenRegistration(token: "deadbeef", environment: .sandbox)
+        try await makeStubbedClient().registerLiveActivityToken(path: path, body)
+
+        let request = try onlyRequest()
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.path, "/games/\(gameId)/live-activity-tokens")
+        XCTAssertEqual(request.headers["Authorization"], "Bearer test-token")
+        XCTAssertEqual(request.headers["Content-Type"], "application/json")
+        XCTAssertEqual(
+            try jsonObject(XCTUnwrap(request.body)) as? [String: String],
+            ["token": "deadbeef", "environment": "sandbox"])
+    }
+
+    func test_unregisterLiveActivityToken_deletesTheTokenPathAndAcceptsA204() async throws {
+        // Section 12a: the delete carries the token in the path and answers 204 whether or
+        // not the row existed (idempotent). No body is sent and none is decoded.
+        StubURLProtocol.install { _ in (204, Data()) }
+        let path = ["games", gameId, "live-activity-tokens", "deadbeef"]
+        try await makeStubbedClient().unregisterLiveActivityToken(path: path)
+
+        let request = try onlyRequest()
+        XCTAssertEqual(request.method, "DELETE")
+        XCTAssertEqual(request.path, "/games/\(gameId)/live-activity-tokens/deadbeef")
+        XCTAssertEqual(request.headers["Authorization"], "Bearer test-token")
+        XCTAssertNil(request.body, "the delete carries no body")
+    }
+
+    func test_registerLiveActivityToken_surfacesTheTypedEnvelopeOnANon2xx() async throws {
+        // A non-member is NOT_PARTICIPANT (403), a missing token or bad environment
+        // VALIDATION (400): the no-content path still splits on status and throws the
+        // typed section 12 envelope, exactly like the body-carrying routes.
+        let envelope = Data(#"{"error":"NOT_PARTICIPANT","message":"not a member"}"#.utf8)
+        StubURLProtocol.install { _ in (403, envelope) }
+        let path = ["games", gameId, "live-activity-tokens"]
+        let body = LiveActivityTokenRegistration(token: "deadbeef", environment: .production)
+        do {
+            try await makeStubbedClient().registerLiveActivityToken(path: path, body)
+            XCTFail("a 403 must throw")
+        } catch let CrossyAPIError.api(status, envelope) {
+            XCTAssertEqual(status, 403)
+            XCTAssertEqual(envelope.error, "NOT_PARTICIPANT")
+        }
+    }
+
     // MARK: - Auth sweep
 
     func test_everySection12MethodAttachesTheBearerHeader() async throws {

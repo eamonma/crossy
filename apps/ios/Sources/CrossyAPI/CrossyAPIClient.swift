@@ -148,6 +148,28 @@ public struct CrossyAPIClient: Sendable {
         try await send(Endpoint(method: "POST", path: ["games", gameId, "abandon"]))
     }
 
+    // MARK: - Live Activity push (PROTOCOL.md section 12a)
+
+    /// `POST /games/{gameId}/live-activity-tokens`: register the per-activity APNs update
+    /// token so the push emitter can drive the island (section 12a). Member-gated,
+    /// upsert on the token, `204` (no body). The `path` and `{token, environment}` body
+    /// come from `LiveActivityTokenRegistrar` (CrossyProtocol), so this method stays a
+    /// route description and the encoding and environment pick stay headlessly tested.
+    public func registerLiveActivityToken(
+        path: [String], _ body: LiveActivityTokenRegistration
+    ) async throws {
+        try await sendNoContent(
+            Endpoint(method: "POST", path: path, body: try encode(body)))
+    }
+
+    /// `DELETE /games/{gameId}/live-activity-tokens/{token}`: unregister a token when the
+    /// activity ends (section 12a). Idempotent server-side (`204` even when the row is
+    /// gone) and scoped to the caller's own rows, so a best-effort delete never has to
+    /// check first. The `path` (token included) comes from `LiveActivityTokenRegistrar`.
+    public func unregisterLiveActivityToken(path: [String]) async throws {
+        try await sendNoContent(Endpoint(method: "DELETE", path: path))
+    }
+
     // MARK: - Account (section 12: DELETE /account)
 
     /// `DELETE /account`: tombstone the caller's own account, with host succession or
@@ -201,6 +223,26 @@ public struct CrossyAPIClient: Sendable {
     /// One round trip: token, request, status split, decode. The section 12 contract
     /// in one place so every method above stays a route description.
     private func send<Response: Decodable>(_ endpoint: Endpoint) async throws -> Response {
+        let (data, status) = try await perform(endpoint)
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            throw CrossyAPIError.decodingFailed(status: status, underlying: error)
+        }
+    }
+
+    /// A round trip whose success carries no body: the `204` register and unregister
+    /// routes (section 12a). The status split still applies (a non-2xx is the same typed
+    /// envelope), but a 2xx body is discarded rather than decoded, so an empty `204`
+    /// never surfaces as a spurious decode failure.
+    private func sendNoContent(_ endpoint: Endpoint) async throws {
+        _ = try await perform(endpoint)
+    }
+
+    /// The shared trip both `send` variants ride: resolve the token, build and issue the
+    /// request, and split on status, returning the raw 2xx body and its status code. A
+    /// non-2xx throws the typed section 12 envelope here, so neither caller repeats it.
+    private func perform(_ endpoint: Endpoint) async throws -> (data: Data, status: Int) {
         let token: String
         do {
             token = try await tokenProvider.currentToken()
@@ -239,10 +281,6 @@ public struct CrossyAPIClient: Sendable {
             throw CrossyAPIError.api(status: http.statusCode, envelope: envelope)
         }
 
-        do {
-            return try JSONDecoder().decode(Response.self, from: data)
-        } catch {
-            throw CrossyAPIError.decodingFailed(status: http.statusCode, underlying: error)
-        }
+        return (data, http.statusCode)
     }
 }
