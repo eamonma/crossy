@@ -28,6 +28,9 @@ struct ArrivalRootView: View {
     /// lives here, not in RoomsScreen, because the sheet is presented from this
     /// hierarchy; the button downstream stamps itself as the matching source.
     @State private var showJoin = false
+    /// The Account sheet's presentation (roadmap I3, thin settings). A tap-opened
+    /// system sheet (the Mail-mechanism grammar, DESIGN.md §4).
+    @State private var showSettings = false
     @Namespace private var joinZoom
 
     var body: some View {
@@ -40,6 +43,9 @@ struct ArrivalRootView: View {
         .sheet(isPresented: $showJoin) {
             joinSheet
         }
+        .sheet(isPresented: $showSettings) {
+            settingsSheet
+        }
     }
 
     @ViewBuilder
@@ -49,7 +55,9 @@ struct ArrivalRootView: View {
                 loadPage: { before in await model.rooms.loadPage(before: before) },
                 onOpenRoom: { room in path.append(roomRoute(for: room.gameId)) },
                 onJoinWithCode: { showJoin = true },
-                joinSheetSource: JoinSheetSource(namespace: joinZoom)
+                joinSheetSource: JoinSheetSource(namespace: joinZoom),
+                selfIdentity: model.selfIdentity,
+                onOpenSettings: { showSettings = true }
             )
             .toolbar(.hidden, for: .navigationBar)
         } else {
@@ -80,6 +88,28 @@ struct ArrivalRootView: View {
         .presentationDetents([.fraction(JoinSheetPresentation.detentFraction)])
         .presentationDragIndicator(.visible)
         .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
+    }
+
+    /// The Account surface (roadmap I3, thin settings): a tap-opened system sheet. Sign
+    /// out and a confirmed delete both flip the session phase to signed out, so
+    /// dismissing the sheet lands on Welcome (the root re-reads isSignedIn). A delete
+    /// failure renders inline on the sheet and the sheet stays; only success dismisses.
+    @ViewBuilder
+    private var settingsSheet: some View {
+        if let identity = model.selfIdentity {
+            SettingsScreen(
+                identity: identity,
+                versionLabel: model.versionLabel,
+                onSignOut: {
+                    showSettings = false
+                    Task { await model.session.signOut() }
+                },
+                onDeleteAccount: {
+                    let failure = await model.session.deleteAccount()
+                    if failure == nil { showSettings = false }
+                    return failure
+                })
+        }
     }
 
     @ViewBuilder

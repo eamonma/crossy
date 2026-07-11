@@ -47,6 +47,13 @@ public struct RoomsScreen: View {
     /// grows from (arrival notes, DESIGN.md §4). nil in previews and on macOS,
     /// where the transition floor (iOS 18) is absent; the button then just taps.
     private let joinSheetSource: JoinSheetSource?
+    /// The signed-in person, for the account affordance top-trailing. nil in the
+    /// harness and previews (no identity to show), which leaves the corner bare.
+    private let selfIdentity: AccountIdentity?
+    /// Open the Account screen. The affordance is the person's own puck (the room
+    /// bar's players-pill vocabulary reused: your puck IS you), a small glass
+    /// control consistent with the arrival grammar. Taste call flagged for the owner.
+    private let onOpenSettings: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var rooms: [RoomCardModel] = []
@@ -60,12 +67,16 @@ public struct RoomsScreen: View {
         loadPage: @escaping (String?) async -> Result<RoomsPage, ArrivalFailure>,
         onOpenRoom: @escaping (RoomCardModel) -> Void,
         onJoinWithCode: @escaping () -> Void,
-        joinSheetSource: JoinSheetSource? = nil
+        joinSheetSource: JoinSheetSource? = nil,
+        selfIdentity: AccountIdentity? = nil,
+        onOpenSettings: @escaping () -> Void = {}
     ) {
         self.loadPage = loadPage
         self.onOpenRoom = onOpenRoom
         self.onJoinWithCode = onJoinWithCode
         self.joinSheetSource = joinSheetSource
+        self.selfIdentity = selfIdentity
+        self.onOpenSettings = onOpenSettings
     }
 
     private var ground: GridGround {
@@ -79,8 +90,31 @@ public struct RoomsScreen: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
         }
+        // The account affordance stands over the top-trailing corner, aligned with
+        // the "Rooms" title: your own puck as a small glass control, the players-pill
+        // vocabulary reused (DESIGN.md §4). It never scrolls; it is chrome.
+        .overlay(alignment: .topTrailing) { accountAffordance }
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
         .task { await reload() }
+    }
+
+    /// Your puck, on glass, top-trailing. Renders only when the composition root
+    /// supplies an identity (the real and injected sessions do; the harness does not).
+    @ViewBuilder
+    private var accountAffordance: some View {
+        if let selfIdentity {
+            Button(action: onOpenSettings) {
+                RosterPuckView(
+                    member: selfIdentity.rosterMember, ground: ground, diameter: 34)
+                    .padding(5)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .modifier(ChromeGlassSurface(cornerRadius: 22))
+            .padding(.trailing, 20)
+            .padding(.top, 12)
+            .accessibilityLabel(ArrivalCopy.settingsTitle)
+        }
     }
 
     @ViewBuilder

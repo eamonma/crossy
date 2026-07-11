@@ -52,6 +52,45 @@ public enum ArrivalCopy {
 
     public static let joinAction = "Join"
 
+    // MARK: - Settings (roadmap I3: thin v1, three things and a quiet footer)
+
+    /// The screen title (ID-5: plain, no metaphor).
+    public static let settingsTitle = "Account"
+    /// The name shown when auth state holds none (display name is not persisted yet;
+    /// the puck and provider still identify the person).
+    public static let settingsNoName = "Signed in"
+    public static let signOutAction = "Sign out"
+    public static let deleteAccountAction = "Delete account"
+    /// The provider line beneath the name, or the fallback when none is remembered.
+    public static let providerDiscord = "Discord"
+    public static let providerApple = "Apple"
+    public static let providerUnknown = "Signed in"
+
+    /// The two-beat confirmation body (roadmap I3): the consequence stated plainly, so
+    /// the destructive action is never a surprise. Identity removed; hosted games handed
+    /// on or ended; past contributions remain as an anonymous former participant.
+    public static let deleteAccountConfirmTitle = "Delete your account?"
+    public static let deleteAccountConfirmBody =
+        "Your account is removed. Games you host pass to another solver, or end if you "
+        + "are the last one. Your past answers stay in those rooms, credited to a former "
+        + "participant with no name."
+    /// The destructive button in the dialog.
+    public static let deleteAccountConfirmAction = "Delete account"
+    public static let deleteAccountCancelAction = "Keep my account"
+
+    /// The inline delete-failure sentence, keyed on the stable §12 code (same voice as
+    /// the arrival errors: say what happened, offer the retry, no apology).
+    public static func deleteFailure(forCode code: String?) -> String {
+        switch code {
+        case nil:
+            return "Couldn't reach Crossy to delete your account. Try again."
+        case "UNAUTHORIZED":
+            return "Your sign-in expired. Sign in again, then delete your account."
+        default:
+            return "Couldn't delete your account. Try again."
+        }
+    }
+
     // MARK: - Errors, keyed on stable codes only (PROTOCOL.md §12)
 
     /// One human sentence per §12 code. An unknown code (the vocabulary grows, §12
