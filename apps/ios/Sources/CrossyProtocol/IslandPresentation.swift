@@ -1,0 +1,59 @@
+// The island's presentation math (push track, phase 2a): the pure arithmetic behind the
+// Live Activity's progress ring, ticked meter, and frozen solve time. Nothing here
+// touches ActivityKit, SwiftUI, or a clock; counts and a frozen interval go in,
+// render-ready numbers come out, and CrossyProtocolTests pins every rule headlessly on
+// macOS (the SolveActivityPolicy discipline).
+//
+// It lives here rather than in CrossyUI, where similar pure UI math (AmbientClock)
+// lives, because the widget extension is its one real consumer and CrossyProtocol is
+// the one package product the widget links: the math sits beside the payload it
+// interprets, defined once, visible to the widget and to the headless tests alike.
+
+import Foundation
+
+public enum IslandPresentation {
+    /// The progress fraction, clamped to `0...1`. `total <= 0` means no progress to
+    /// show (the pre-push empty state, or a payload without a grid): the caller reads
+    /// `nil` and hides the meter and ring entirely, rather than drawing a zero arc that
+    /// would read as "empty grid" instead of "no data". A `filled` past `total` (a race
+    /// between a completion and the count) clamps to full.
+    public static func fraction(filled: Int, total: Int) -> Double? {
+        guard total > 0 else { return nil }
+        let raw = Double(filled) / Double(total)
+        return min(1, max(0, raw))
+    }
+
+    /// The nine interior tick fractions of the meter, at the tenths (0.1 ... 0.9). The
+    /// detents the quantized advances land against; the ends carry no tick because the
+    /// track's own edges mark 0 and 1.
+    public static let tickFractions: [Double] = (1...9).map { Double($0) / 10 }
+
+    /// The frozen solve time, formatted (owner ruling 2026-07-11): MM:SS under an hour,
+    /// H:MM at or past it. Never three sections — H:MM:SS is forbidden, so a long solve
+    /// drops its seconds rather than growing a third field. A negative interval (clock
+    /// skew between the completion stamp and the anchor) floors at zero. This renders
+    /// STATICALLY: the terminal island shows a frozen string, never a live timer.
+    public static func frozenSolveTime(seconds: Int) -> String {
+        let clamped = max(0, seconds)
+        let hours = clamped / 3600
+        if hours > 0 {
+            let minutes = (clamped % 3600) / 60
+            return "\(hours):\(pad(minutes))"
+        }
+        let minutes = clamped / 60
+        let secs = clamped % 60
+        return "\(minutes):\(pad(secs))"
+    }
+
+    /// The frozen interval in whole seconds between two instants, floored at zero. The
+    /// terminal flip computes `completedAt - firstFillAt` here and formats it with
+    /// `frozenSolveTime`; a nil completion (an abandoned room never completed) has no
+    /// frozen time and the caller keeps the live-computed elapsed instead.
+    public static func frozenSeconds(from firstFillAt: Date, to completedAt: Date) -> Int {
+        max(0, Int(completedAt.timeIntervalSince(firstFillAt)))
+    }
+
+    private static func pad(_ value: Int) -> String {
+        value < 10 ? "0\(value)" : "\(value)"
+    }
+}
