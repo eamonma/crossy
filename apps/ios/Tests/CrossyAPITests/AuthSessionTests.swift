@@ -306,6 +306,75 @@ final class AuthSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .signedIn)
     }
 
+    func test_aRateLimitedRefreshIsWeatherNotARefusal() async throws {
+        // GoTrue's rate limiter answers 429 without ever judging the grant; the
+        // refresh token behind it is still good, so the session must stand exactly
+        // as it does for network weather (a real 4xx refusal stays terminal).
+        let keychain = InMemoryKeychain()
+        let stored = SupabaseSession(
+            accessToken: "stale-access", refreshToken: "stored-refresh",
+            expiresAt: 999_000, userId: "u1")
+        try keychain.write(
+            try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
+        StubURLProtocol.install { _ in
+            (429, Data(#"{"error":"over_request_rate_limit"}"#.utf8))
+        }
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        session.restore()
+
+        let token = try await session.currentToken()
+
+        XCTAssertEqual(token, "stale-access")
+        XCTAssertEqual(session.phase, .signedIn)
+        XCTAssertNotNil(
+            try keychain.read(account: AuthSession.keychainAccount),
+            "a rate limit clears nothing")
+    }
+
+    func test_aSignOutDuringAnInFlightRefreshDoesNotResurrectTheSession() async throws {
+        // The refresh grant is gated on a semaphore so the purge reliably lands while
+        // it is in flight. However the race resolves inside (the cancelled task's
+        // throw, or a completed value whose continuation runs after the purge), the
+        // purge is the standing truth: no Keychain write-back, SignedOutError to the
+        // caller — otherwise the next launch's restore() resurrects the account.
+        let keychain = InMemoryKeychain()
+        let stored = SupabaseSession(
+            accessToken: "stale-access", refreshToken: "stored-refresh",
+            expiresAt: 999_000, userId: "u1")
+        try keychain.write(
+            try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
+        let gate = DispatchSemaphore(value: 0)
+        StubURLProtocol.install { request in
+            if request.queryValue("grant_type") == "refresh_token" {
+                gate.wait()
+                return (200, grantBody)
+            }
+            return (204, Data())  // the sign-out's best-effort revoke
+        }
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        session.restore()
+
+        let inFlight = Task { try await session.currentToken() }
+        let deadline = Date().addingTimeInterval(5)
+        while StubURLProtocol.recordedRequests.isEmpty, Date() < deadline {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertFalse(StubURLProtocol.recordedRequests.isEmpty, "the refresh dialed")
+        session.purgeForAccountDeletion()
+        gate.signal()
+
+        do {
+            _ = try await inFlight.value
+            XCTFail("a signed-out session cannot produce a bearer")
+        } catch is SignedOutError {
+            // the honest outcome
+        }
+        XCTAssertEqual(session.phase, .signedOut)
+        XCTAssertNil(
+            try keychain.read(account: AuthSession.keychainAccount),
+            "the in-flight refresh must not write the session back")
+    }
+
     func test_signOutClearsTheKeychainAndTheTokenPathThrows() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
         let (session, _, _, keychain) = makeSession()

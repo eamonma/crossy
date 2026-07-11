@@ -79,6 +79,8 @@ public enum SupabaseAuthError: Error {
     case transport(underlying: any Error)
     /// The server answered 4xx: the grant is refused and retrying the same request
     /// cannot help. For a refresh this is the terminal case (the session is over).
+    /// 408 and 429 are carved out: the limiter answered, not the grant evaluator,
+    /// so they ride the transient lane below.
     case refused(status: Int)
     /// A 5xx or an undecodable body: the server faltered; the session stands and a
     /// later retry may succeed (the transient refresh case).
@@ -233,7 +235,12 @@ public struct SupabaseAuthClient: Sendable {
             throw SupabaseAuthError.invalidResponse(status: nil)
         }
         guard (200..<300).contains(http.statusCode) else {
-            if (400..<500).contains(http.statusCode) {
+            // 408/429 are congestion, not judgment: the refresh token behind a
+            // rate-limited grant is still good, so ending the session over one
+            // would sign the user out for nothing.
+            if (400..<500).contains(http.statusCode), http.statusCode != 408,
+                http.statusCode != 429
+            {
                 throw SupabaseAuthError.refused(status: http.statusCode)
             }
             throw SupabaseAuthError.invalidResponse(status: http.statusCode)

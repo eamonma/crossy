@@ -227,15 +227,25 @@ public final class AuthSession {
 
         do {
             let refreshed = try await task.value
+            // A sign-out (or account deletion) may have landed while the refresh
+            // was in flight; its purge is the standing truth. Persisting here would
+            // write the fresh session back into the Keychain and resurrect the
+            // account at the next launch's restore().
+            guard stored != nil else { throw SignedOutError() }
             persist(refreshed)
             machine.apply(.refreshSucceeded)
             return refreshed.accessToken
+        } catch let signedOut as SignedOutError {
+            throw signedOut
         } catch SupabaseAuthError.refused {
             stored = nil
             try? keychain.remove(account: Self.keychainAccount)
             machine.apply(.refreshFailedTerminal)
             throw SignedOutError()
         } catch {
+            // The same mid-flight purge surfaces here as the cancelled task's throw;
+            // signed out is the honest answer, never the pre-purge token.
+            guard stored != nil else { throw SignedOutError() }
             machine.apply(.refreshFailedTransient)
             return session.accessToken
         }
