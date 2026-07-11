@@ -138,9 +138,12 @@ struct RealRoomView: View {
                 // SolveScreen's own @State (selection, chrome) reinitializes against the
                 // real puzzle rather than the placeholder.
                 .id(ready)
-                // The island (I5a), same wiring as DemoRoom: the composition
-                // stays, only the transport behind the store differs.
-                .solveActivity(store: room.store, chrome: room.chrome, roomName: room.roomName)
+                // The island (I5a), same wiring as DemoRoom, plus the push-token
+                // registration (§12a): the live room threads its game id and REST sink so
+                // the server can drive the island. The offline fixture passes none.
+                .solveActivity(
+                    store: room.store, chrome: room.chrome, roomName: room.roomName,
+                    registration: room.liveActivityRegistration)
             }
         }
         .task {

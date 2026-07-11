@@ -184,6 +184,13 @@ final class RealRoom {
         }
     }
 
+    /// The push-token registration the island binds to (§12a): this room's game id and
+    /// itself as the REST sink. The island threads it through `.solveActivity`, so the
+    /// controller reaches the two token endpoints without a singleton or an ambient URL.
+    var liveActivityRegistration: LiveActivityRegistration {
+        LiveActivityRegistration(gameId: gameId, sink: self)
+    }
+
     /// The room has no surfaced REST error path yet (a reported gap for this
     /// slice; EXPERIENCE.md §4 wants one sentence per code). Until it lands, a
     /// failed operation logs and no-ops rather than papering the board.
@@ -196,6 +203,22 @@ final class RealRoom {
             return code
         }
         return "\(error)"
+    }
+}
+
+/// The live push-token sink (§12a): RealRoom forwards the island's register and
+/// unregister to the same bearer-authed REST client kick and abandon ride. The registrar
+/// (CrossyProtocol) owns the paths and body; this is the thin binding to the real client.
+@available(iOS 18.0, *)
+extension RealRoom: LiveActivityTokenSink {
+    func registerLiveActivityToken(
+        path: [String], _ body: LiveActivityTokenRegistration
+    ) async throws {
+        try await api.registerLiveActivityToken(path: path, body)
+    }
+
+    func unregisterLiveActivityToken(path: [String]) async throws {
+        try await api.unregisterLiveActivityToken(path: path)
     }
 }
 
