@@ -3,11 +3,13 @@
 //  Crossy
 //
 //  What the arrival flow (Welcome, Rooms, Join; roadmap I3) needs to dial: the two
-//  service bases and the Supabase auth facts, all from the committed CrossyConfig.plist
-//  (config as code, I0c), with the CROSSY_IT_* launch/env facts overriding the bases so
-//  the same journey walks against the local stack (the I1e harness pattern RoomConfig
-//  already speaks). The auth slot resolves nil when the plist values are empty; the
-//  Welcome screen states that honestly (EXPERIENCE.md §3), never a crash.
+//  service bases, the web origin (the privacy policy link), and the Supabase auth
+//  facts, all from the committed CrossyConfig.plist (config as code, I0c), with the
+//  CROSSY_IT_* launch/env facts overriding the bases so the same journey walks
+//  against the local stack (the I1e harness pattern RoomConfig already speaks). The
+//  auth slot resolves nil when the plist values are empty; the Welcome screen states
+//  that honestly (EXPERIENCE.md §3), never a crash. The web origin never resolves
+//  nil: an empty or unparsed slot falls back to the production origin.
 //
 
 import CrossyAPI
@@ -46,8 +48,17 @@ struct ArrivalConfig {
 
     let apiBaseURL: URL
     let sessionBaseURL: URL
+    /// The marketing/web origin (today crossy.me): where the live web app and its
+    /// static surfaces (the privacy policy at /privacy) are served. Falls back to
+    /// the production origin when the plist slot is empty or unparsed, so a stale
+    /// or partial build still opens the real policy rather than dead-ending.
+    let webOrigin: URL
     /// nil when the plist auth slots are empty: the honest unconfigured state.
     let auth: SupabaseAuthConfiguration?
+
+    /// The production web origin, the fallback when no plist/launch-fact value
+    /// resolves. Mirrors deploy/README.md's custom-domain cutover table.
+    static let defaultWebOrigin = URL(string: "https://crossy.me")!
 
     /// Resolve from the bundled plist, letting CROSSY_IT_API_URL / CROSSY_IT_WS_BASE
     /// override the bases (the harness and device walks point Rooms at the local
@@ -63,9 +74,13 @@ struct ArrivalConfig {
             let sessionBaseURL = URL(string: wsRaw), sessionBaseURL.host != nil
         else { return nil }
 
+        let webRaw = LaunchFacts.value("CROSSY_IT_WEB_URL") ?? plist["WebOrigin"]
+        let webOrigin = webRaw.flatMap { URL(string: $0) } ?? defaultWebOrigin
+
         return ArrivalConfig(
             apiBaseURL: apiBaseURL,
             sessionBaseURL: sessionBaseURL,
+            webOrigin: webOrigin,
             auth: SupabaseAuthConfiguration(
                 supabaseURL: plist["SupabaseURL"],
                 publishableKey: plist["SupabasePublishableKey"],

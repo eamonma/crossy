@@ -10,6 +10,8 @@
 	<string>https://rest.crossy.me</string>
 	<key>SessionWSBase</key>
 	<string>wss://session.crossy.me</string>
+	<key>WebOrigin</key>
+	<string>https://crossy.me</string>
 	<key>SupabaseURL</key>
 	<string>https://api.crossy.me</string>
 	<key>SupabasePublishableKey</key>

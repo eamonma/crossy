@@ -358,19 +358,25 @@ final class ArrivalModel {
     /// nil in the fixture composition: cards open the loopback room, not RealRoom.
     let liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?
     let authConfigured: Bool
+    /// Where Welcome and Settings open the Privacy Policy row/link. Always a real
+    /// URL, even in the fixture and unconfigured compositions (ArrivalConfig.defaultWebOrigin),
+    /// so the legal affordance never depends on the auth/session seam being live.
+    let privacyURL: URL
 
     private init(
         session: any ArrivalSessioning,
         rooms: any RoomsProviding,
         puzzles: any PuzzlesProviding,
         liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?,
-        authConfigured: Bool
+        authConfigured: Bool,
+        privacyURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "privacy")
     ) {
         self.session = session
         self.rooms = rooms
         self.puzzles = puzzles
         self.liveRoomFacts = liveRoomFacts
         self.authConfigured = authConfigured
+        self.privacyURL = privacyURL
     }
 
     /// The launch-time resolution described in the header comment.
@@ -430,7 +436,8 @@ final class ArrivalModel {
             rooms: RealRooms(api: api),
             puzzles: RealPuzzles(api: api),
             liveRoomFacts: (config.apiBaseURL, config.sessionBaseURL),
-            authConfigured: configured)
+            authConfigured: configured,
+            privacyURL: config.webOrigin.appending(path: "privacy"))
     }
 
     /// The Welcome screen's state, mapped from the session phase and the config.

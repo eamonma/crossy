@@ -39,6 +39,9 @@ public enum ArrivalCopy {
     public static let signInFailed = "Sign-in didn't finish. Try again."
     /// The honest unconfigured state: the plist slots are empty in this build.
     public static let signInUnconfigured = "This build isn't set up for sign-in yet."
+    /// The quiet legal link shown before sign-in and again inside Settings; opens the
+    /// live policy at /privacy in the system browser.
+    public static let privacyPolicy = "Privacy Policy"
 
     // MARK: - Rooms (lexicon: home is Rooms)
 

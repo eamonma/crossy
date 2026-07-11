@@ -50,6 +50,12 @@ export function TopBar({
           <Logo />
         </button>
         <div className="flex items-center gap-3">
+          <a
+            href="/privacy"
+            className="text-1 text-text-subtle hover:text-text-muted hidden sm:inline"
+          >
+            Privacy Policy
+          </a>
           <ThemeToggle />
           <AuthBar identity={identity} config={config} />
         </div>

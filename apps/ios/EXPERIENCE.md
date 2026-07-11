@@ -64,7 +64,9 @@ production.
 Cold open for the signed-out. One screen: wordmark, one line, Continue with Discord.
 When launched from an invite link while signed out, the join context is held and
 honored after auth completes. Auth failure returns here with a plain retry, never a
-dead end.
+dead end. A quiet Privacy Policy link stands beneath the provider buttons (opens the
+live `/privacy` page in the system browser via `Link`, ArrivalConfig's web origin),
+so the policy is reachable before anyone signs in.
 
 ### Rooms (home)
 
@@ -155,8 +157,9 @@ navigates).
 
 Minimal: identity as Discord presents it, your roster color, sign out, and account
 deletion (`DELETE /account`, root DESIGN.md section 8 tombstone semantics, worded
-plainly with its consequences). Display-name editing has no API surface today; see
-section 7.
+plainly with its consequences). A Privacy Policy row sits below the two actions,
+opening the same live `/privacy` page. Display-name editing has no API surface
+today; see section 7.
 
 ## 4. System behaviors
 

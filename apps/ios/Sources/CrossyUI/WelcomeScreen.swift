@@ -31,6 +31,7 @@ public struct WelcomeScreen: View {
     }
 
     private let state: WelcomeState
+    private let privacyURL: URL
     private let onContinueApple: () -> Void
     private let onContinueDiscord: () -> Void
 
@@ -42,10 +43,12 @@ public struct WelcomeScreen: View {
 
     public init(
         state: WelcomeState,
+        privacyURL: URL,
         onContinueApple: @escaping () -> Void,
         onContinueDiscord: @escaping () -> Void
     ) {
         self.state = state
+        self.privacyURL = privacyURL
         self.onContinueApple = onContinueApple
         self.onContinueDiscord = onContinueDiscord
     }
@@ -135,10 +138,23 @@ public struct WelcomeScreen: View {
                     label: ArrivalCopy.continueWithDiscord,
                     action: onContinueDiscord)
             }
+            privacyLink
         }
         .onChange(of: state) { _, newState in
             if newState != .authenticating { pending = nil }
         }
+    }
+
+    /// A quiet legal affordance, visible before any sign-in intent: opens the live
+    /// policy in the system browser (Link, not a sheet — a person leaving to read it
+    /// should keep Safari's own back button, not a dead-end presentation).
+    private var privacyLink: some View {
+        Link(destination: privacyURL) {
+            Text(verbatim: ArrivalCopy.privacyPolicy)
+                .font(.system(size: 12))
+                .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.7))
+        }
+        .padding(.top, 2)
     }
 
     /// One glass capsule per provider. The spinner shows only on the button that fired;
@@ -187,15 +203,24 @@ public struct WelcomeScreen: View {
     }
 }
 
+private let previewPrivacyURL = URL(string: "https://crossy.me/privacy")!
+
 #Preview("Welcome, Studio") {
-    WelcomeScreen(state: .ready, onContinueApple: {}, onContinueDiscord: {})
+    WelcomeScreen(
+        state: .ready, privacyURL: previewPrivacyURL, onContinueApple: {},
+        onContinueDiscord: {})
 }
 
 #Preview("Welcome, authenticating, Studio") {
-    WelcomeScreen(state: .authenticating, onContinueApple: {}, onContinueDiscord: {})
+    WelcomeScreen(
+        state: .authenticating, privacyURL: previewPrivacyURL, onContinueApple: {},
+        onContinueDiscord: {})
 }
 
 #Preview("Welcome, failed, Observatory") {
-    WelcomeScreen(state: .failed, onContinueApple: {}, onContinueDiscord: {})
-        .preferredColorScheme(.dark)
+    WelcomeScreen(
+        state: .failed, privacyURL: previewPrivacyURL, onContinueApple: {},
+        onContinueDiscord: {}
+    )
+    .preferredColorScheme(.dark)
 }
