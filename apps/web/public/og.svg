@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
+  <!-- Crossy social preview (Open Graph), 1200x630 design in the top band of a 1200x1200 square canvas (qlmanage renders squares 1:1; the render script crops the top 1200x630). CROSSY crossword mark (crop-medium, gold Y) left, serif wordmark + tagline right, on the bone ground. Regenerate: python3 og.py && ./og.render.sh -->
+  <rect width="1200" height="1200" fill="#F2F1EC"/>
+  <defs><clipPath id="panel"><rect x="0" y="0" width="630" height="630"/></clipPath></defs>
+  <g clip-path="url(#panel)">
+    <rect x="393.75" y="393.75" width="157.5" height="157.5" fill="#978365"/>
+    <rect x="-78.75" y="78.75" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="78.75" y="-78.75" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="78.75" y="393.75" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="78.75" y="551.25" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="236.25" y="236.25" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="393.75" y="-78.75" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="393.75" y="78.75" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="393.75" y="551.25" width="157.5" height="157.5" fill="#1D1B18"/>
+    <rect x="551.25" y="393.75" width="157.5" height="157.5" fill="#1D1B18"/>
+    <line x1="-78.75" y1="-236.25" x2="-78.75" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="-236.25" y1="-78.75" x2="708.75" y2="-78.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="78.75" y1="-236.25" x2="78.75" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="-236.25" y1="78.75" x2="708.75" y2="78.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="236.25" y1="-236.25" x2="236.25" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="-236.25" y1="236.25" x2="708.75" y2="236.25" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="393.75" y1="-236.25" x2="393.75" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="-236.25" y1="393.75" x2="708.75" y2="393.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="551.25" y1="-236.25" x2="551.25" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="-236.25" y1="551.25" x2="708.75" y2="551.25" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="708.75" y1="-236.25" x2="708.75" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <line x1="-236.25" y1="708.75" x2="708.75" y2="708.75" stroke="#1D1B18" stroke-width="7.09"/>
+    <path d="M 26.39 -22.15 A 34.45 34.45 0 1 0 26.39 22.15" transform="translate(157.5 157.5)" fill="none" stroke="#1D1B18" stroke-width="16.16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M -22.54 34.45 L -22.54 -34.45 L 5.32 -34.45 A 17.22 17.22 0 0 1 5.32 0 L -22.54 0 M 5.32 0 L 22.54 34.45" transform="translate(315 157.5)" fill="none" stroke="#1D1B18" stroke-width="16.16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M -34.45 0 A 34.45 34.45 0 1 0 34.45 0 A 34.45 34.45 0 1 0 -34.45 0" transform="translate(157.5 315)" fill="none" stroke="#1D1B18" stroke-width="16.16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 20.13 -25.83 A 23.25 17.22 0 1 0 0 0 A 23.25 17.22 0 1 1 -20.13 25.83" transform="translate(472.5 315)" fill="none" stroke="#1D1B18" stroke-width="16.16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 20.13 -25.83 A 23.25 17.22 0 1 0 0 0 A 23.25 17.22 0 1 1 -20.13 25.83" transform="translate(315 472.5)" fill="none" stroke="#1D1B18" stroke-width="16.16" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M -23.81 -34.45 L 0 0 L 23.81 -34.45 M 0 0 L 0 34.45" transform="translate(472.5 472.5)" fill="none" stroke="#1D1B18" stroke-width="16.16" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <line x1="630" y1="0" x2="630" y2="630" stroke="#1D1B18" stroke-opacity="0.08" stroke-width="1"/>
+  <text x="706" y="320" font-family="Newsreader, Georgia, 'Times New Roman', 'Times', serif" font-size="130" font-weight="500" fill="#1D1B18" letter-spacing="-2">Crossy</text>
+  <text x="709" y="384" font-family="Newsreader, Georgia, 'Times New Roman', 'Times', serif" font-size="30" font-weight="400" fill="#1D1B18" fill-opacity="0.7" letter-spacing="0.2">Solve the crossword together, live.</text>
+</svg>
