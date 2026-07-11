@@ -226,8 +226,11 @@ export function createSessionServer(
     for (const actor of actors) {
       try {
         await actor.drain();
-      } catch {
-        // One actor's flush fault must not abort draining the rest.
+      } catch (error) {
+        // One actor's flush fault must not abort draining the rest. Logged because the
+        // drain window is where a second writer (deploy overlap) surfaces as a
+        // SnapshotRegressionError; a silent catch here would hide the tripwire.
+        console.error(`drain flush fault for game ${actor.gameId}:`, error);
       }
     }
     for (const client of wss.clients) client.close(1001, "server shutdown");
