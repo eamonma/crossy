@@ -169,10 +169,11 @@ export function clusterPucks(
 
 /**
  * One render-ready puck from a member: the ASCII initial, the dark-ground roster color (wire color
- * first, user-id hash fallback via slot), and the connected flag for away-dimming. The color
- * authority chain mirrors `GridPresence.rosterColor`. The user-id fallback reuses the session's own
- * color derivation indirectly: colorForUser produces the same `#RRGGBB` the wire carries, so an
- * absent or malformed wire color still resolves to a stable slot per user.
+ * first, user-id hash fallback via slot), the connected flag for away-dimming, and the opaque
+ * userId (the avatar-art key). The color authority chain mirrors `GridPresence.rosterColor`. The
+ * user-id fallback reuses the session's own color derivation indirectly: colorForUser produces the
+ * same `#RRGGBB` the wire carries, so an absent or malformed wire color still resolves to a stable
+ * slot per user.
  */
 export function puckFromMember(member: RosterMember): LiveActivityPuck {
   const color =
@@ -184,6 +185,9 @@ export function puckFromMember(member: RosterMember): LiveActivityPuck {
     green: color.green,
     blue: color.blue,
     connected: member.connected,
+    // The opaque member id, carried through so the widget can key locally-cached avatar art off it.
+    // The same id the §4 participant payload already puts on the wire; nothing solution-bearing.
+    userId: member.userId,
   };
 }
 

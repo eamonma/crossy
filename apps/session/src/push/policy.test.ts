@@ -23,7 +23,16 @@ function cs(
   over: Partial<LiveActivityContentState> = {},
 ): LiveActivityContentState {
   return {
-    pucks: [{ initial: "A", red: 1, green: 2, blue: 3, connected: true }],
+    pucks: [
+      {
+        initial: "A",
+        red: 1,
+        green: 2,
+        blue: 3,
+        connected: true,
+        userId: "u1",
+      },
+    ],
     filled: 10,
     total: 78,
     status: "ongoing",
@@ -459,7 +468,16 @@ describe("§12a policy: a duplicate content-state never pushes (dedupe)", () => 
   it("a puck presence-order or connected change is NOT a duplicate", () => {
     const first = fold(INITIAL_POLICY_STATE, { kind: "presence" }, cs(), 1000);
     const changed = cs({
-      pucks: [{ initial: "A", red: 1, green: 2, blue: 3, connected: false }],
+      pucks: [
+        {
+          initial: "A",
+          red: 1,
+          green: 2,
+          blue: 3,
+          connected: false,
+          userId: "u1",
+        },
+      ],
     });
     const r = fold(first.state, { kind: "presence" }, changed, 2000);
     expect(r.decisions).toHaveLength(1);

@@ -381,6 +381,7 @@ function contentStateJson(
       green: p.green,
       blue: p.blue,
       connected: p.connected,
+      userId: p.userId,
     })),
     filled: cs.filled,
     total: cs.total,

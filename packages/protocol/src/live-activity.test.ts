@@ -75,12 +75,18 @@ function parseCase(raw: unknown, where: string): VectorCase {
     if (!isByte(p.blue)) throw new Error(`${at}: blue must be a 0-255 integer`);
     if (typeof p.connected !== "boolean")
       throw new Error(`${at}: connected must be a boolean`);
+    // userId is additive and optional: a present opaque string, an explicit null, or absent.
+    // Tolerant decode normalizes an absent field to null, the same shape a null carries, so both
+    // sides stay pinned on the absent form (PROTOCOL.md 12a).
+    if (p.userId !== undefined && p.userId !== null && !isString(p.userId))
+      throw new Error(`${at}: userId must be a string, null, or absent`);
     return {
       initial: p.initial,
       red: p.red,
       green: p.green,
       blue: p.blue,
       connected: p.connected,
+      userId: p.userId === undefined ? null : (p.userId as string | null),
     };
   });
 
@@ -143,6 +149,26 @@ describe("Live Activity content-state vectors (PROTOCOL.md Live Activity push)",
     expect(names.some((n) => /minimal|single-puck/i.test(n))).toBe(true);
   });
 
+  it("pins the puck userId in all three tolerant-decode forms (present, null, absent)", () => {
+    // The Swift decoder is tolerant of an absent field (PROTOCOL.md 12a), so the fixtures must keep
+    // one puck of each form on the wire: a present opaque id, an explicit null, and a field left
+    // absent. Read the raw JSON so we can tell absent from null (parseCase collapses both to null).
+    const raw: unknown = JSON.parse(
+      readFileSync(join(familyDir, "content-state.json"), "utf8"),
+    );
+    const pucks: JsonObject[] = [];
+    for (const c of raw as JsonObject[]) {
+      const cs = c.contentState as JsonObject;
+      for (const p of cs.pucks as JsonObject[]) pucks.push(p);
+    }
+    const present = pucks.some((p) => typeof p.userId === "string");
+    const explicitNull = pucks.some((p) => "userId" in p && p.userId === null);
+    const absent = pucks.some((p) => !("userId" in p));
+    expect(present).toBe(true);
+    expect(explicitNull).toBe(true);
+    expect(absent).toBe(true);
+  });
+
   for (const file of fixtures) {
     describe(file.cluster, () => {
       for (const c of file.cases) {
@@ -183,6 +209,17 @@ describe("Live Activity content-state vectors (PROTOCOL.md Live Activity push)",
           expect(c.contentState.pucks.length).toBeLessThanOrEqual(
             LIVE_ACTIVITY_MAX_PUCKS,
           );
+        });
+
+        it(`${c.name}: INV-6 each puck userId is an opaque string or null, never board content`, () => {
+          for (const puck of c.contentState.pucks) {
+            // The parser normalizes an absent field to null, so every puck carries string | null.
+            expect(
+              typeof puck.userId === "string" || puck.userId === null,
+            ).toBe(true);
+            // An opaque id is not a solution cell: no coordinate, no letter value keyed to a slot.
+            // It is exactly the §4 participant id, render metadata for the avatar-art lookup only.
+          }
         });
 
         it(`${c.name}: completedAt is set iff status is completed`, () => {

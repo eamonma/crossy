@@ -30,6 +30,12 @@ export interface LiveActivityPuck {
   readonly blue: number;
   /** False dims the puck for an away member; the puck stays in the cluster (PROTOCOL.md). */
   readonly connected: boolean;
+  /**
+   * The member's opaque user id, the same value every §4 participant payload carries. The widget
+   * keys locally-cached avatar art off it; the key reveals nothing about the solution (INV-6). Null
+   * when unknown. Tolerant decoders treat an absent field the same as null (PROTOCOL.md 12a).
+   */
+  readonly userId: string | null;
 }
 
 /** The three lifecycle states a Live Activity content-state reports (PROTOCOL.md §4 mirror). */

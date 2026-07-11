@@ -38,7 +38,14 @@ vectors/
 ```json
 {
   "pucks": [
-    { "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true }
+    {
+      "initial": "E",
+      "red": 214,
+      "green": 178,
+      "blue": 92,
+      "connected": true,
+      "userId": "a1b2c3d4-0001-4a1a-8b2b-000000000001"
+    }
   ],
   "filled": 34,
   "total": 78,
@@ -50,8 +57,11 @@ vectors/
 - `pucks`: the live roster cluster, at most 4, in presence order. Each puck is
   render-ready: `initial` is a single ASCII-uppercased letter (INV-1), `red`/`green`/
   `blue` are 8-bit sRGB components (0-255) resolved server-side for the island's dark
-  ground, and `connected` drives away-dimming. The cluster rides content-state, not
-  attributes, so a member who joins after the activity started still appears.
+  ground, and `connected` drives away-dimming. `userId` is the member's opaque user id
+  (the same value the section 4 participant payload carries), which the widget keys
+  locally-cached avatar art off; it is null or absent when unknown, and reveals nothing
+  toward the solution (INV-6). The cluster rides content-state, not attributes, so a
+  member who joins after the activity started still appears.
 - `filled` / `total`: fill progress as counts. COUNTS ONLY: no letters, no cell
   coordinates, nothing that leaks toward the solution (INV-6).
 - `status`: `"ongoing"` | `"completed"` | `"abandoned"`.
@@ -62,4 +72,6 @@ vectors/
 `content-state.json` covers: an ongoing room with mixed connected and disconnected
 pucks; a four-puck at-cap cluster; a completed room carrying `completedAt`; an
 abandoned room with a frozen partial fill and no `completedAt`; a minimal single-puck
-room on a small grid.
+room on a small grid. The `userId` field appears in all three tolerant-decode forms:
+a present opaque id, an explicit null (the ongoing room's third puck), and an absent
+field (the abandoned room's puck), so both sides stay pinned on the absent form.

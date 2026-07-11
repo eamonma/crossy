@@ -199,6 +199,32 @@ describe("§12a emitter: content-state build (pucks + counts, INV-6)", () => {
     );
   });
 
+  it("carries each member's opaque userId onto its puck (INV-6 avatar-art key)", () => {
+    // The build threads the member's opaque id onto the puck; contentStateJson serializes it. It is
+    // the §4 participant id, the widget's local avatar-cache key, never solution-bearing.
+    const userId = "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb";
+    const cs = buildContentState(
+      [member({ userId, displayName: "Ann", role: "host" })],
+      facts({ connectedUserIds: new Set([userId]) }),
+    );
+    expect(cs.pucks).toHaveLength(1);
+    expect(cs.pucks[0]!.userId).toBe(userId);
+    // It survives the emitter's own serialization onto the wire.
+    const encoded = JSON.parse(
+      buildEnvelope(
+        {
+          event: "update",
+          priority: 5,
+          contentState: cs,
+          audience: { kind: "game" },
+          staleAfterMs: STALE_AFTER_MS,
+        },
+        1_000_000,
+      ),
+    );
+    expect(encoded.aps["content-state"].pucks[0].userId).toBe(userId);
+  });
+
   it("caps the cluster at four (LIVE_ACTIVITY_MAX_PUCKS)", () => {
     const members = ["Ann", "Bea", "Cal", "Dan", "Eve"].map((n, i) =>
       member({ userId: `u${i}`, displayName: n }),
@@ -211,7 +237,16 @@ describe("§12a emitter: content-state build (pucks + counts, INV-6)", () => {
 
 describe("§12a emitter: envelope (aps.event / timestamp / stale-date / dismissal-date)", () => {
   const cs: LiveActivityContentState = {
-    pucks: [{ initial: "E", red: 214, green: 178, blue: 92, connected: true }],
+    pucks: [
+      {
+        initial: "E",
+        red: 214,
+        green: 178,
+        blue: 92,
+        connected: true,
+        userId: "a1b2c3d4-0001-4a1a-8b2b-000000000001",
+      },
+    ],
     filled: 34,
     total: 78,
     status: "ongoing",
