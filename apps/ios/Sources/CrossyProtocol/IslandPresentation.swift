@@ -53,29 +53,41 @@ public enum IslandPresentation {
         max(0, Int(completedAt.timeIntervalSince(firstFillAt)))
     }
 
-    /// How the live island renders elapsed time for a room of a given age (owner ruling
-    /// 2026-07-11, the ninety-hour question: someone joins a room that has been open for
-    /// days and backgrounds it). The clock's meaningfulness decays with age, so the
-    /// register coarsens instead of growing digits: a fresh room ticks natively, a room
-    /// older than a day reads in days and hours (minutes stop mattering, and the string
-    /// re-derives on every push render), and past a week the room is a place, not a
-    /// race: the infinity mark.
+    /// How the live island renders elapsed time for a room of a given age (owner rulings
+    /// 2026-07-11: the ninety-hour question, days only past a day, and never three
+    /// sections). The clock's meaningfulness decays with age, so the register coarsens
+    /// instead of growing digits: under an hour the native timer ticks; an hour to a day
+    /// reads H:MM statically, re-derived on every push render; a day to a week reads in
+    /// days; past a week the room is a place, not a race: the infinity mark.
+    ///
+    /// Ticking stops at the hour deliberately. The auto-updating timer reserves layout
+    /// width for the WIDEST string its range can show, so a range crossing an hour
+    /// reserves the forbidden H:MM:SS form and the capped label ellipsizes instead of
+    /// rendering (owner device report 2026-07-11: the time shown as an ellipsis). Bounded
+    /// to the room's first hour, the reservation is exactly "59:59" and always fits.
     public enum ElapsedRegister: Equatable, Sendable {
-        /// Under a day old: the native ticking timer. MM:SS, then H:MM:SS past the
-        /// hour (the three-section form is the recorded 2b gap, accepted for v1).
+        /// Under an hour old: the native ticking timer, MM:SS. The caller bounds the
+        /// timer's range to the anchor's first hour so the reservation stays MM:SS-wide.
         case ticking
-        /// A day to a week old: a static coarse reading such as "3 d 18 h".
+        /// An hour to a week old: a static coarse reading, "1:14" (H:MM) under a day,
+        /// "3 d" past it. Re-derived on every push render; between pushes it stands,
+        /// which at these scales is honest (and stale weather covers real gaps).
         case coarse(String)
         /// A week or older: the infinity mark.
         case infinity
     }
 
     public static func elapsedRegister(ageSeconds: Int) -> ElapsedRegister {
+        let hour = 3600
         let day = 86_400
-        if ageSeconds < day { return .ticking }
+        if ageSeconds < hour { return .ticking }
         if ageSeconds >= 7 * day { return .infinity }
-        // Days only (owner ruling 2026-07-11): past a day the hours are noise too.
-        return .coarse("\(ageSeconds / day) d")
+        if ageSeconds >= day {
+            // Days only (owner ruling 2026-07-11): past a day the hours are noise too.
+            return .coarse("\(ageSeconds / day) d")
+        }
+        // H:MM, the frozen-time form (never three sections): the hour band's static read.
+        return .coarse(frozenSolveTime(seconds: ageSeconds))
     }
 
     private static func pad(_ value: Int) -> String {
