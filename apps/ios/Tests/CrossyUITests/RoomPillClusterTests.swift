@@ -71,3 +71,42 @@ final class RoomPillClusterTests: XCTestCase {
         XCTAssertFalse(PanelEclipse.eclipses(panel: clampedCard, pill: backButton))
     }
 }
+
+// The time pill's register (redesign 2026-07-11): the room's vital signs
+// while it runs, its record at a terminal status. The mapping is pure so the
+// pill renders no policy, and the spoken line follows the register (ID-2: the
+// clock freezes at the terminal instant either way; DESIGN.md §8: the weather
+// stands down when the room ends).
+
+final class TimePillRegisterTests: XCTestCase {
+    func test_ongoingCarriesTheWeather_section8() {
+        XCTAssertEqual(TimePillRegister.from(status: .ongoing), .vital)
+    }
+
+    // Completion seals the pill: the check beside the frozen clock is the
+    // record of the solve, and the tap still summons the stats card (ID-2).
+    func test_completionSealsThePill_ID2() {
+        XCTAssertEqual(TimePillRegister.from(status: .completed), .sealed)
+    }
+
+    // An abandoned room is terminal and quiet (EXPERIENCE.md): no seal, no
+    // weather, the frozen clock alone.
+    func test_abandonmentLeavesTheQuietClock_ID2() {
+        XCTAssertEqual(TimePillRegister.from(status: .abandoned), .quiet)
+    }
+
+    // The spoken line follows the register; the weather's words render only
+    // while the weather does (ID-5: plain words, controls that say what
+    // happens).
+    func test_spokenLabels_followTheRegister_ID5() {
+        XCTAssertEqual(
+            TimePillRegister.vital.accessibilityLabel(weather: "Connected"),
+            "Shared time, Connected, show room facts")
+        XCTAssertEqual(
+            TimePillRegister.sealed.accessibilityLabel(weather: "Connected"),
+            "Solved together, show stats")
+        XCTAssertEqual(
+            TimePillRegister.quiet.accessibilityLabel(weather: "Connected"),
+            "Final time, show room facts")
+    }
+}

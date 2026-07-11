@@ -45,7 +45,7 @@ final class RealRoom {
     private(set) var roomName: String
     private(set) var selection: SelectionModel
     /// The room's invite code, held from the game view (PROTOCOL.md §12: `GET
-    /// /games/{id}` returns it to any member). The facts popover's copy row
+    /// /games/{id}` returns it to any member). The facts card's copy row
     /// reads it; nil until the fetch lands.
     private(set) var inviteCode: String?
 
@@ -155,7 +155,7 @@ final class RealRoom {
     /// The server settles the terminal state via the session service and the
     /// `gameAbandoned` event reaches the store over the live socket, so the room
     /// freezes through the same path a peer's abandon would. Host-only is the
-    /// server's to enforce; the facts popover only offers this to the host. A
+    /// server's to enforce; the facts card only offers this to the host. A
     /// failure is swallowed with a log: the room has no REST error surface yet
     /// (a reported gap for this slice), and the board state is unchanged.
     func endGame() {

@@ -22,10 +22,12 @@
 //    -i2cMelt 0.5           hold the melt at a progress (intermediate evidence)
 //    -i2cFacts              land the room-facts card open (the time pill,
 //                           inflated; simctl cannot tap, the presentBrowser
-//                           pattern)
-//    -i2eFactsPopover       raise the mid-solve facts popover (the §12
-//                           operations; owner ruling 2026-07-10). -i2cSpectator
-//                           drops the host's end-game; the host build shows it
+//                           pattern). Mid-solve the card carries the §12
+//                           operations (redesign 2026-07-11, the popover
+//                           retired); -i2cSpectator drops the host's end-game
+//    -i2eSealedPill         complete the room, then pour the stats card back
+//                           so the sealed terminal pill stands alone (the
+//                           redesign's terminal register; simctl cannot tap)
 //    -i2cRoster             land the roster panel open
 //    -i2cWeather resyncing  force the breathing-dot state (a gapped event)
 //    -i2cWeather reconnecting  force the dimmed room with the quiet countdown
@@ -58,7 +60,7 @@ final class DemoRoom {
     let puzzleTitle: String
     let puzzleAuthor: String
     let puzzleDate: String
-    // The facts popover's copy row needs an invite code in hand (PROTOCOL.md
+    // The facts card's copy row needs an invite code in hand (PROTOCOL.md
     // §12: the room view carries it to any member). The fixture supplies a
     // read-aloud eight-character code so the row renders offline.
     let inviteCode = "TIDECOVE"
@@ -156,14 +158,10 @@ final class DemoRoom {
             chrome.presentBrowser()
         }
         if arguments.contains("-i2cFacts") {
+            // The one facts surface (redesign 2026-07-11): mid-solve the card
+            // lands open with the §12 operation rows; the -i2eFactsPopover
+            // flag retired with the popover it raised.
             chrome.presentFacts()
-        }
-        if arguments.contains("-i2eFactsPopover") {
-            // The mid-solve facts card as a system popover (owner ruling
-            // 2026-07-10): the binding raises it directly, so simctl can
-            // capture the popover the tap would summon (the presentFacts
-            // pattern for a system presentation instead of the morph).
-            chrome.factsPopoverPresented = true
         }
         if let index = arguments.firstIndex(of: "-i2cMelt"),
             arguments.indices.contains(index + 1),
@@ -188,7 +186,7 @@ final class DemoRoom {
             }
         }
 
-        if arguments.contains("-i2dComplete") {
+        if arguments.contains("-i2dComplete") || arguments.contains("-i2eSealedPill") {
             // The room finishes the puzzle: every empty playable cell fills as a
             // sequenced cellSet attributed by region (you, Bee, Ada), then the
             // server notices completion (INV-3: the event drives the store's one
@@ -226,6 +224,14 @@ final class DemoRoom {
                             solveTimeSeconds: max(0, Int(Date().timeIntervalSince(origin))),
                             totalEvents: arguments.contains("-stress") ? 1284 : 143,
                             participantCount: store.participants.count))))
+            if arguments.contains("-i2eSealedPill") {
+                // The terminal pill at rest (redesign 2026-07-11): let the
+                // mosaic and the auto-summoned stats card play out, then pour
+                // the card back without a walk so the sealed pill stands for
+                // a screenshot (simctl cannot tap the card away).
+                try? await Task.sleep(for: .milliseconds(3400))
+                chrome.settleFacts(open: false, animated: false)
+            }
         }
 
         if arguments.contains("-i2dAbandoned") {
