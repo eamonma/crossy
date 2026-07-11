@@ -9,8 +9,8 @@
 import { Hono } from "hono";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
-import { toClientPuzzle } from "@crossy/protocol";
-import type { ClientPuzzle, ServerPuzzle } from "@crossy/protocol";
+import { deriveMask, toClientPuzzle } from "@crossy/protocol";
+import type { ClientPuzzle, Mask, ServerPuzzle } from "@crossy/protocol";
 import type { Role } from "@crossy/protocol";
 import type { AppDeps, ApiEnv } from "../context";
 import type { Db } from "../db/client";
@@ -186,8 +186,10 @@ interface GameView {
  * SQL; the snapshot jsonb, which holds the solution, is never selected whole. `puzzle.title` is
  * the puzzle's display title, read from the `puzzles` row (joined on `puzzle_id`, never from the
  * solution-bearing snapshot), null when the puzzle has none; it is display content, not a
- * solution (INV-6 untouched). No solution ever rides `completed_at`, a bare timestamp, so INV-6
- * is untouched here too.
+ * solution (INV-6 untouched). `puzzle.mask` is the black-square silhouette (PROTOCOL.md §12),
+ * derived from the block indices projected out of the snapshot (`-> 'blocks'`, a jsonb array of
+ * integers); it carries the pattern only, no letters or numbering, so INV-6 stays intact. No
+ * solution ever rides `completed_at`, a bare timestamp, so INV-6 is untouched there too.
  */
 interface GameSummary {
   readonly gameId: string;
@@ -211,6 +213,8 @@ interface GameSummary {
     readonly cols: number;
     /** The puzzle's display title, null when it carried none. Display content, not a solution. */
     readonly title: string | null;
+    /** The black-square silhouette, pattern only (PROTOCOL.md §12). No solution content. */
+    readonly mask: Mask;
   };
 }
 
@@ -334,10 +338,13 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     const before = beforeResult.before;
 
     // INV-6: geometry is projected out of `puzzle_snapshot` in SQL (`->> 'rows'`/`'cols'`),
-    // so the solution-bearing jsonb never enters the process. The puzzle `title` is read from the
-    // joined `puzzles` row (a single named column, never the solution-bearing `data`); the join
-    // is on `games.puzzle_id`, which is NOT NULL and ON DELETE RESTRICT, so the inner join drops
-    // no game. `memberCount` is a correlated count, not a select-all of memberships.
+    // so the solution-bearing jsonb never enters the process. `blocks` is the other pattern-only
+    // field, projected the same way (`-> 'blocks'`, a jsonb array of integer cell indices) to feed
+    // the mask; the mask is derived below (deriveMask), never the solution. The puzzle `title` is
+    // read from the joined `puzzles` row (a single named column, never the solution-bearing
+    // `data`); the join is on `games.puzzle_id`, which is NOT NULL and ON DELETE RESTRICT, so the
+    // inner join drops no game. `memberCount` is a correlated count, not a select-all of
+    // memberships.
     // `completedAt` is the session-owned `game_state.completed_at`, read under the API's SELECT
     // grant (migration 0005); it is a LEFT join, so a game whose actor never materialized its
     // `game_state` row (created but never connected) still lists, reading ongoing (completedAt
@@ -354,6 +361,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         role: schema.memberships.role,
         puzzleRows: sql<number>`(${schema.games.puzzleSnapshot} ->> 'rows')::int`,
         puzzleCols: sql<number>`(${schema.games.puzzleSnapshot} ->> 'cols')::int`,
+        puzzleBlocks: sql<number[]>`${schema.games.puzzleSnapshot} -> 'blocks'`,
         puzzleTitle: schema.puzzles.title,
         completedAt: schema.gameState.completedAt,
         memberCount: sql<number>`(select count(*)::int from "memberships" mc where mc."game_id" = ${schema.games.gameId})`,
@@ -395,6 +403,12 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         rows: r.puzzleRows,
         cols: r.puzzleCols,
         title: r.puzzleTitle,
+        // The pattern-only silhouette, derived from geometry and block indices (PROTOCOL.md §12).
+        mask: deriveMask({
+          rows: r.puzzleRows,
+          cols: r.puzzleCols,
+          blocks: r.puzzleBlocks ?? [],
+        }),
       },
     }));
     return c.json({ games });

@@ -1451,6 +1451,7 @@ interface GamesList {
       rows: number;
       cols: number;
       title: string | null;
+      mask: string[];
     };
   }[];
 }
@@ -1463,7 +1464,30 @@ interface PuzzlesList {
     features: unknown;
     title: string | null;
     author: string | null;
+    mask: string[];
   }[];
+}
+
+/**
+ * Assert a mask is a well-formed black-square silhouette (PROTOCOL.md §12): `rows` strings, each
+ * exactly `cols` characters, every glyph either `#` (block) or `.` (playable), and the marked
+ * cells exactly the given block indices (row-major, cell i = r*cols + c). This pins the mask to
+ * the puzzle geometry and to black squares only, with no letters, numbering, or solution content.
+ */
+function expectMask(
+  mask: string[],
+  rows: number,
+  cols: number,
+  blocks: readonly number[],
+): void {
+  expect(mask).toHaveLength(rows);
+  expect(mask.every((row) => row.length === cols)).toBe(true);
+  const flat = mask.join("");
+  expect(flat).toMatch(/^[#.]*$/); // pattern only: no letters, digits, or numbering ever
+  const blocked = new Set(blocks);
+  for (let i = 0; i < rows * cols; i += 1) {
+    expect(flat[i]).toBe(blocked.has(i) ? "#" : ".");
+  }
 }
 
 describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => {
@@ -1552,6 +1576,9 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     const g = body.games.find((x) => x.gameId === gameId)!;
     expect(g.puzzle.rows).toBe(2);
     expect(g.puzzle.cols).toBe(2);
+    // The mask is the black-square silhouette, pattern only (PROTOCOL.md §12). markerDoc is a
+    // 2x2 all-playable grid, so every cell reads playable and no glyph is anything but `#`/`.`.
+    expectMask(g.puzzle.mask, 2, 2, []);
     // No solution content, and no whole snapshot, anywhere in the response (INV-6, structural).
     expect(hasKeyDeep(body, "solution")).toBe(false);
     expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
@@ -1561,6 +1588,33 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     expect(hasKeyDeep(body, "status")).toBe(false);
     // A fresh game has no game_state row yet (left join), so it reads ongoing: completedAt null.
     expect(g.completedAt).toBeNull();
+  });
+
+  it("carries the puzzle mask matching the block geometry, pattern only, no solution leak (PROTOCOL.md §12; INV-6)", async () => {
+    // A 3x3 grid with a real black square at cell 4 (the center) and a planted solution marker.
+    // The mask must place the block exactly and never carry a letter, number, or the marker.
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const blockDoc = {
+      size: { rows: 3, cols: 3 },
+      grid: [LIST_MARKER, "B", "C", "D", ".", "E", "F", "G", "H"],
+      clues: { across: ["1. top", "3. bottom"], down: ["1. left", "2. right"] },
+    };
+    const { puzzleId } = (await postJson("/puzzles", caller, blockDoc).then(
+      (r) => r.json(),
+    )) as { puzzleId: string };
+    const { gameId } = await createGame(caller, puzzleId);
+
+    const res = await get("/games", caller);
+    const text = await res.text();
+    const body = JSON.parse(text) as GamesList;
+    const g = body.games.find((x) => x.gameId === gameId)!;
+    // Block at the center cell (index 4); the silhouette reflects the stored geometry exactly.
+    expectMask(g.puzzle.mask, 3, 3, [4]);
+    expect(g.puzzle.mask).toEqual(["...", ".#.", "..."]);
+    // INV-6: the mask is derived from block indices, never the solution, so no marker leaks.
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
+    expect(text).not.toContain(LIST_MARKER);
   });
 
   it("reports completedAt from the session-owned game_state, null while ongoing (read expand; INV-7)", async () => {
@@ -1739,7 +1793,34 @@ describe("GET /puzzles list (PROTOCOL.md §12; DESIGN.md §7, §8; INV-6)", () =
       circles: false,
       shadedCircles: false,
     });
+    // The black-square silhouette, pattern only (PROTOCOL.md §12): markerDoc is all-playable.
+    expectMask(p.mask, 2, 2, []);
     // Built from an explicit column list, never a select-all: no solution, no raw `data` (INV-6).
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "data")).toBe(false);
+    expect(text).not.toContain(LIST_MARKER);
+  });
+
+  it("carries the puzzle mask matching the block geometry, pattern only, no solution leak (PROTOCOL.md §12; INV-6)", async () => {
+    // A 2x3 grid with a black square at cell 2 and a planted solution marker; the mask must place
+    // the block exactly and never carry a letter, digit, or the marker.
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const blockDoc = {
+      size: { rows: 2, cols: 3 },
+      grid: [LIST_MARKER, "I", ".", "O", "N", "E"],
+      clues: { across: ["1. row one", "3. row two"], down: ["1. a", "2. b"] },
+    };
+    const { puzzleId } = (await postJson("/puzzles", caller, blockDoc).then(
+      (r) => r.json(),
+    )) as { puzzleId: string };
+
+    const res = await get("/puzzles", caller);
+    const text = await res.text();
+    const body = JSON.parse(text) as PuzzlesList;
+    const p = body.puzzles.find((x) => x.puzzleId === puzzleId)!;
+    expectMask(p.mask, 2, 3, [2]);
+    expect(p.mask).toEqual(["..#", "..."]);
+    // INV-6: the mask is derived from block indices, never the solution; no marker or data leaks.
     expect(hasKeyDeep(body, "solution")).toBe(false);
     expect(hasKeyDeep(body, "data")).toBe(false);
     expect(text).not.toContain(LIST_MARKER);
