@@ -163,6 +163,56 @@ final class GridFrameTests: XCTestCase {
         XCTAssertEqual(glyphOrigin(unselected, cell: 6), glyphOrigin(selected, cell: 6))
     }
 
+    // I3f (grid prehydration): the puzzle geometry the room paints before any
+    // snapshot lands (a fresh store, still `connecting`, PROTOCOL.md §12's `GET
+    // /games/{id}` puzzle.rows/cols/mask already in hand) must be the exact shape the
+    // room paints once the WebSocket `welcome` hydrates cell contents. The frame is
+    // constructed from one GridPuzzle instance both times, exactly as RealRoom does
+    // (RoomMapping maps the REST view's geometry once and never remaps it), so this
+    // pins that the two frames disagree only on `values`, never on `puzzle`, `rows`,
+    // `cols`, or `cellCount`: no reflow between the empty paint and the hydrated one.
+    func test_preSnapshotFrameGeometryMatchesPostSnapshotFrameGeometry() {
+        let store = GameStore()
+        let beforeSnapshot = GridFrame(
+            store: store, puzzle: mini, selection: nil, ground: .studio)
+        XCTAssertEqual(store.sync, .connecting)
+        for cell in 0..<mini.cellCount {
+            XCTAssertNil(beforeSnapshot.values[cell], "cell \(cell) empty before welcome")
+        }
+
+        store.receive(
+            .welcome(
+                WelcomeMessage(
+                    protocolVersion: 1,
+                    selfIdentity: .init(userId: "ana", role: .solver),
+                    board: Board(
+                        seq: 1, status: .ongoing,
+                        firstFillAt: nil, completedAt: nil, abandonedAt: nil,
+                        cells: {
+                            var cells = Array(repeating: Cell(v: nil, by: nil), count: 25)
+                            cells[0] = Cell(v: "S", by: "ana")
+                            return cells
+                        }(),
+                        participants: [
+                            Participant(
+                                userId: "ana", displayName: "Ana", color: "#7F77DD",
+                                role: .host, connected: true)
+                        ],
+                        cursors: [], recentCommandIds: [], stats: nil))))
+        let afterSnapshot = GridFrame(
+            store: store, puzzle: mini, selection: nil, ground: .studio)
+
+        // Same instance in this test, exactly as the composition root threads one
+        // mapped GridPuzzle through both the pre- and post-welcome paints.
+        XCTAssertEqual(beforeSnapshot.puzzle, afterSnapshot.puzzle)
+        XCTAssertEqual(beforeSnapshot.puzzle.rows, afterSnapshot.puzzle.rows)
+        XCTAssertEqual(beforeSnapshot.puzzle.cols, afterSnapshot.puzzle.cols)
+        XCTAssertEqual(beforeSnapshot.puzzle.cellCount, afterSnapshot.puzzle.cellCount)
+        // Only the cell contents differ: the shape never moved.
+        XCTAssertEqual(afterSnapshot.values[0], "S")
+        XCTAssertNil(beforeSnapshot.values[0])
+    }
+
     // INV-6: nothing solution-shaped can ride the frame into the renderer.
     func test_frameCarriesNoSolutionShapedMember_INV6() {
         let frame = GridFrame(

@@ -86,12 +86,16 @@ struct DemoRoomView: View {
     }
 }
 
-/// The live-stack room (RealRoom): REST fetch then the real socket. The view rebuilds
-/// once the REST view lands (`ready` flips), so the placeholder geometry never renders
-/// as playable truth (the store holds `connecting` until the welcome anyway). A fatal
-/// wiring failure reads plainly instead of a blank room. `onBack` is the bar's
-/// back button and `onExit` the kicked terminal's way home (both pop to Rooms);
-/// the harness composition has nowhere to pop to and keeps the default no-ops.
+/// The live-stack room (RealRoom): REST fetch then the real socket. Before the REST
+/// view lands, `room.puzzle` is a 1x1 stand-in that carries no true geometry (RealRoom
+/// initializer), so this view withholds `SolveScreen` entirely rather than paint it: a
+/// board built from the stand-in would show the wrong dimensions for one frame and
+/// then reflow the instant `ready` flips, which is the bug I3f closes. `RoomOpening`
+/// fills the same screen with no board at all until then (mirrors the web loading
+/// shell, apps/web/src/LiveApp.tsx's `LoadingGameShell`: nothing renders at the wrong
+/// size, ever). A fatal wiring failure reads plainly instead of a blank room. `onBack`
+/// is the bar's back button and `onExit` the kicked terminal's way home (both pop to
+/// Rooms); the harness composition has nowhere to pop to and keeps the default no-ops.
 @available(iOS 18.0, *)
 struct RealRoomView: View {
     @State private var room: RealRoom
@@ -114,6 +118,8 @@ struct RealRoomView: View {
         Group {
             if let fatal = room.fatal {
                 RoomOpenFailure(message: fatal, dark: colorScheme == .dark)
+            } else if !ready {
+                RoomOpening(dark: colorScheme == .dark)
             } else {
                 SolveScreen(
                     store: room.store,
@@ -134,10 +140,6 @@ struct RealRoomView: View {
                     onEndGame: { room.endGame() },
                     onKick: { userId in room.kick(userId: userId) }
                 )
-                // The mapped geometry changes identity once the REST view lands, so the
-                // SolveScreen's own @State (selection, chrome) reinitializes against the
-                // real puzzle rather than the placeholder.
-                .id(ready)
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so
                 // the server can drive the island. The offline fixture passes none.
@@ -149,6 +151,21 @@ struct RealRoomView: View {
         .task {
             await room.run(onReady: { ready = true })
         }
+    }
+}
+
+/// The pre-REST instant (I3f): no board, because no true geometry exists yet. A quiet
+/// canvas rather than a spinner, in the same two grounds every other terminal surface
+/// uses (`RoomOpenFailure` next door); it holds the screen for at most one REST round
+/// trip, so it never needs to say anything.
+private struct RoomOpening: View {
+    let dark: Bool
+
+    var body: some View {
+        (dark
+            ? Color(red: 0.07, green: 0.067, blue: 0.094)
+            : Color(red: 0.949, green: 0.945, blue: 0.925))
+            .ignoresSafeArea()
     }
 }
 
