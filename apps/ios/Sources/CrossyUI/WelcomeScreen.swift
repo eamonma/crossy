@@ -23,15 +23,31 @@ public enum WelcomeState: Equatable, Sendable {
 }
 
 public struct WelcomeScreen: View {
+    /// Which provider button the person tapped, so the spinner shows on that one alone
+    /// while both disable (the other button was not the one that started the sheet).
+    private enum Provider {
+        case apple
+        case discord
+    }
+
     private let state: WelcomeState
-    private let onContinue: () -> Void
+    private let onContinueApple: () -> Void
+    private let onContinueDiscord: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var typedCells = 0
+    /// The button that fired; reset when the phase leaves authenticating (a canceled or
+    /// failed leg returns here, and the spinner must not linger on the wrong button).
+    @State private var pending: Provider?
 
-    public init(state: WelcomeState, onContinue: @escaping () -> Void) {
+    public init(
+        state: WelcomeState,
+        onContinueApple: @escaping () -> Void,
+        onContinueDiscord: @escaping () -> Void
+    ) {
         self.state = state
-        self.onContinue = onContinue
+        self.onContinueApple = onContinueApple
+        self.onContinueDiscord = onContinueDiscord
     }
 
     private var ground: GridGround {
@@ -106,19 +122,50 @@ public struct WelcomeScreen: View {
                     .foregroundStyle(Color(rgb: ground.tokens.number))
                     .multilineTextAlignment(.center)
             } else {
-                continueButton
+                // Apple sits above Discord (App Store guideline 4.8: when third-party
+                // sign-in is offered, Sign in with Apple stands at least as prominent).
+                providerButton(
+                    .apple,
+                    systemImage: "apple.logo",
+                    label: ArrivalCopy.continueWithApple,
+                    action: onContinueApple)
+                providerButton(
+                    .discord,
+                    systemImage: nil,
+                    label: ArrivalCopy.continueWithDiscord,
+                    action: onContinueDiscord)
             }
+        }
+        .onChange(of: state) { _, newState in
+            if newState != .authenticating { pending = nil }
         }
     }
 
-    private var continueButton: some View {
-        Button(action: onContinue) {
+    /// One glass capsule per provider. The spinner shows only on the button that fired;
+    /// both disable while the sheet is up. The optional glyph precedes the copy (Apple
+    /// carries its mark; Discord is text alone, matching the prior single-button form).
+    private func providerButton(
+        _ provider: Provider,
+        systemImage: String?,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            pending = provider
+            action()
+        } label: {
             ZStack {
-                Text(verbatim: ArrivalCopy.continueWithDiscord)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(rgb: ground.tokens.ink))
-                    .opacity(state == .authenticating ? 0 : 1)
-                if state == .authenticating {
+                HStack(spacing: 8) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    Text(verbatim: label)
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .foregroundStyle(Color(rgb: ground.tokens.ink))
+                .opacity(showsSpinner(for: provider) ? 0 : 1)
+                if showsSpinner(for: provider) {
                     ProgressView()
                         .tint(Color(rgb: ground.tokens.ink))
                 }
@@ -127,20 +174,28 @@ public struct WelcomeScreen: View {
             .frame(height: ChromeLayout.barHeight)
             // The whole capsule is the button (owner device finding 2026-07-10:
             // a plain-style label's transparent expanse does not hit-test, so
-            // without this only the text took the tap).
+            // without this only the label took the tap).
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
         .disabled(state == .authenticating)
     }
+
+    private func showsSpinner(for provider: Provider) -> Bool {
+        state == .authenticating && pending == provider
+    }
 }
 
 #Preview("Welcome, Studio") {
-    WelcomeScreen(state: .ready, onContinue: {})
+    WelcomeScreen(state: .ready, onContinueApple: {}, onContinueDiscord: {})
+}
+
+#Preview("Welcome, authenticating, Studio") {
+    WelcomeScreen(state: .authenticating, onContinueApple: {}, onContinueDiscord: {})
 }
 
 #Preview("Welcome, failed, Observatory") {
-    WelcomeScreen(state: .failed, onContinue: {})
+    WelcomeScreen(state: .failed, onContinueApple: {}, onContinueDiscord: {})
         .preferredColorScheme(.dark)
 }

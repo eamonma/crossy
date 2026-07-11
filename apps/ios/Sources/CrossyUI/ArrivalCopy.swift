@@ -33,6 +33,7 @@ public enum ArrivalCopy {
 
     /// The one line that says what this is.
     public static let welcomeLine = "Crosswords you solve together."
+    public static let continueWithApple = "Continue with Apple"
     public static let continueWithDiscord = "Continue with Discord"
     /// Auth failure returns here with a plain retry, never a dead end.
     public static let signInFailed = "Sign-in didn't finish. Try again."
