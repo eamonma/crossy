@@ -1418,6 +1418,25 @@ async function setPuzzleCreatedAt(
   );
 }
 
+/**
+ * Materialize a `game_state` row through the superuser fixture, standing in for the session
+ * service (the real single writer of game_state, DESIGN.md §9). A non-null `completedAt` seeds a
+ * completed game; null (the default) leaves it ongoing. The API reads this row under its
+ * SELECT-only grant (migration 0005), never writes it, so this fixture is the only way a test can
+ * put a game into a terminal state without a live actor.
+ */
+async function seedGameState(
+  gameId: string,
+  completedAt: string | null,
+): Promise<void> {
+  await adminPool.query(
+    `insert into game_state (game_id, status, completed_at)
+       values ($1, $2, $3)
+     on conflict (game_id) do update set status = excluded.status, completed_at = excluded.completed_at`,
+    [gameId, completedAt === null ? "ongoing" : "completed", completedAt],
+  );
+}
+
 interface GamesList {
   games: {
     gameId: string;
@@ -1426,6 +1445,7 @@ interface GamesList {
     createdAt: string;
     createdBy: string;
     memberCount: number;
+    completedAt: string | null;
     puzzle: {
       puzzleId: string;
       rows: number;
@@ -1536,8 +1556,65 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     expect(hasKeyDeep(body, "solution")).toBe(false);
     expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
     expect(text).not.toContain(LIST_MARKER);
-    // The documented gap: no lifecycle status is fabricated (game_state is unreadable here).
+    // Completion surfaces as `completedAt` only, never a full `status` enum the API cannot own
+    // (§9): the API reads the terminal timestamp under its grant, not a lifecycle claim.
     expect(hasKeyDeep(body, "status")).toBe(false);
+    // A fresh game has no game_state row yet (left join), so it reads ongoing: completedAt null.
+    expect(g.completedAt).toBeNull();
+  });
+
+  it("reports completedAt from the session-owned game_state, null while ongoing (read expand; INV-7)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: ongoing } = await createGame(caller, puzzleId);
+    const { gameId: done } = await createGame(caller, puzzleId);
+    const { gameId: never } = await createGame(caller, puzzleId);
+
+    // The session (here the superuser fixture) materializes game_state: `done` is completed,
+    // `ongoing` has a row but no completed_at; `never` has no row at all (never connected).
+    const completedIso = "2026-06-01T12:00:00.000Z";
+    await seedGameState(done, completedIso);
+    await seedGameState(ongoing, null);
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    const byId = new Map(games.map((g) => [g.gameId, g]));
+    // A completed game reports its terminal timestamp, so the home can mark it done.
+    expect(byId.get(done)!.completedAt).toBe(completedIso);
+    // An ongoing game (game_state row, no completed_at) reads null.
+    expect(byId.get(ongoing)!.completedAt).toBeNull();
+    // A game with no game_state row still lists (left join) and reads ongoing.
+    expect(byId.get(never)!.completedAt).toBeNull();
+  });
+
+  it("reads game_state under a SELECT-only grant and never writes it (INV-7 single writer)", async () => {
+    // The completion read must not weaken single-writer: the API role can SELECT game_state now,
+    // but still cannot INSERT/UPDATE/DELETE it. Both halves are asserted through the real
+    // crossy_api-role pool the app uses.
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId } = await createGame(caller, puzzleId);
+    await seedGameState(gameId, "2026-06-02T09:30:00.000Z");
+
+    // Positive: the api role can now read game_state (migration 0005 grant).
+    const read = await apiPool.query<{ completed_at: Date | null }>(
+      "select completed_at from game_state where game_id = $1",
+      [gameId],
+    );
+    expect(read.rows[0]?.completed_at).not.toBeNull();
+    // Negative: the read grant does not become a write grant. game_state stays session-owned.
+    await expect(
+      apiPool.query(
+        "update game_state set completed_at = now() where game_id = $1",
+        [gameId],
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      apiPool.query(
+        "insert into game_state (game_id) values (gen_random_uuid())",
+      ),
+    ).rejects.toThrow(/permission denied/i);
   });
 
   it("carries the puzzle title in the summary, null when the puzzle has none (display content; INV-6-safe)", async () => {

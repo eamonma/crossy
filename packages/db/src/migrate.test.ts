@@ -301,6 +301,34 @@ describe("single writer per table via least-privilege roles (INV-7; DESIGN.md §
       asRole("crossy_session", (c) => c.query("delete from cell_events")),
     ).rejects.toThrow(/permission denied/i);
   });
+
+  it("grants the api role SELECT on game_state for the completion read, but never a write (INV-7)", async () => {
+    // Read expand (migration 0005, DESIGN.md §9): the API reports a game's completion on the
+    // signed-in home from the session-owned game_state.completed_at. The grant is read only, so
+    // the session stays the single writer (INV-7 governs writes, not reads).
+    await asRole("crossy_api", async (c) => {
+      const { rows } = await c.query<{ n: string }>(
+        "select count(*)::text as n from game_state",
+      );
+      expect(Number(rows[0]?.n)).toBeGreaterThanOrEqual(0);
+      // The one column the home needs is readable; the read touches no other table.
+      await c.query("select completed_at from game_state");
+    });
+    // The read grant is not a write grant: game_state stays session-owned (INV-7).
+    await expect(
+      asRole("crossy_api", (c) =>
+        c.query("insert into game_state (game_id) values (gen_random_uuid())"),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_api", (c) =>
+        c.query("update game_state set completed_at = now()"),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_api", (c) => c.query("delete from game_state")),
+    ).rejects.toThrow(/permission denied/i);
+  });
 });
 
 describe("session read-coupling contract (INV-7; DESIGN.md §9)", () => {

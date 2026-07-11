@@ -36,6 +36,13 @@
       "when": 1783640789005,
       "tag": "0004_puzzle_title_author",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783659600000,
+      "tag": "0005_api_reads_game_state",
+      "breakpoints": true
     }
   ]
 }

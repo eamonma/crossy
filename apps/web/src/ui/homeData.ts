@@ -3,14 +3,14 @@
 // Kept apart from the view so the pure formatters (relative time, the geometry+date name
 // fallback, feature labels) stay trivially testable and the fetch shapes live in one place.
 //
-// There is deliberately no game status field: lifecycle lives in session-owned state, out of the
-// API's reach (see apps/api games/routes.ts). So the home shows one "Your games" list, newest
-// first, and never claims a game is ongoing or done.
+// The home shows one "Your games" list, newest first. It reports completion (completedAt) but no
+// full lifecycle status enum: the API reads the session-owned completed_at under a read grant
+// (see apps/api games/routes.ts), and "done" is the one lifecycle fact the sidebar needs.
 
 /** The caller's role in a game (PROTOCOL roles). */
 export type Role = "host" | "solver" | "spectator";
 
-/** One row of GET /games. No status by design; ordering and time are createdAt. */
+/** One row of GET /games. Ordering and time are createdAt; completedAt marks a finished game. */
 export interface GameSummary {
   gameId: string;
   name: string | null;
@@ -18,6 +18,11 @@ export interface GameSummary {
   createdAt: string;
   createdBy: string;
   memberCount: number;
+  /**
+   * When the game completed (ISO), or null while ongoing (also null for an abandoned game, which
+   * never completed). Read from the session-owned game_state, never a solution (INV-6-safe).
+   */
+  completedAt: string | null;
   /** `title` is the puzzle's display title (never solution content), null when it has none. */
   puzzle: {
     puzzleId: string;
@@ -25,6 +30,11 @@ export interface GameSummary {
     cols: number;
     title: string | null;
   };
+}
+
+/** True when a game has finished (a non-null completion timestamp); the sidebar marks these. */
+export function isCompleted(g: GameSummary): boolean {
+  return g.completedAt !== null;
 }
 
 /** Detected puzzle features, the flags GET /puzzles returns (no solution content). */

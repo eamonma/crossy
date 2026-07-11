@@ -7,6 +7,7 @@ import {
   featureLabels,
   gameTitle,
   geometry,
+  isCompleted,
   puzzleTitle,
   relativeTime,
   shortDate,
@@ -33,6 +34,7 @@ function game(over: Partial<GameSummary> = {}): GameSummary {
     createdAt: "2026-07-09T12:00:00",
     createdBy: "u1",
     memberCount: 1,
+    completedAt: null,
     puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: null },
     ...over,
   };
@@ -90,6 +92,17 @@ describe("gameTitle", () => {
   });
   it("treats an empty name as unnamed", () => {
     expect(gameTitle(game({ name: "   " }), NOW)).toBe("15 × 15 · Jul 9");
+  });
+});
+
+describe("isCompleted", () => {
+  it("is false while ongoing (completedAt null)", () => {
+    expect(isCompleted(game({ completedAt: null }))).toBe(false);
+  });
+  it("is true once a completion timestamp is present", () => {
+    expect(isCompleted(game({ completedAt: "2026-07-08T10:00:00Z" }))).toBe(
+      true,
+    );
   });
 });
 
