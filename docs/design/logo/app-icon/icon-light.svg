@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- 06-crossword tile-crop / crop-medium. Anti-diagonal CROSSY core, frame slices the outer ring mid-cell; 5x5, cell 256px, block density 0.28, 180-symmetric=True. -->
+  <!-- Crossy app icon (crop-medium). Anti-diagonal CROSSY core, frame slices the outer ring mid-cell; 5x5, cell 256px, block density 0.28, 180-symmetric=True. Full square; iOS masks the corners. -->
   <defs><clipPath id="mask"><rect width="1024" height="1024" rx="0"/></clipPath></defs>
   <rect width="1024" height="1024" rx="0" fill="#F2F1EC"/>
   <g clip-path="url(#mask)">
