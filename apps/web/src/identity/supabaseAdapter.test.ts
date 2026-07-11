@@ -74,7 +74,7 @@ function makeDeps(
   const createClient = vi.fn(() => ({ auth }));
 
   const deps: SupabaseIdentityDeps = {
-    supabaseUrl: "https://api.crossy.me",
+    supabaseUrl: "https://api.crossy.party",
     publishableKey: "sb_publishable_test",
     guestsEnabled: true,
     createClientFn: createClient as unknown as NonNullable<
@@ -101,7 +101,7 @@ describe("supabase identity adapter", () => {
     createSupabaseIdentity(deps);
     expect(calls.createClient).toHaveBeenCalledTimes(1);
     const args = calls.createClient.mock.calls[0]!;
-    expect(args[0]).toBe("https://api.crossy.me");
+    expect(args[0]).toBe("https://api.crossy.party");
     expect(args[1]).toBe("sb_publishable_test");
   });
 

@@ -10,14 +10,14 @@ final class ShareInviteTests: XCTestCase {
     func test_buildsAJoinablePathFormLink() {
         XCTAssertEqual(
             ShareInvite.url(gameId: "g-1", code: "ABCD2345", name: nil)?.absoluteString,
-            "https://crossy.me/game/g-1?code=ABCD2345")
+            "https://crossy.party/game/g-1?code=ABCD2345")
     }
 
     func test_appendsTheNameURLEncoded() {
         XCTAssertEqual(
             ShareInvite.url(gameId: "g-1", code: "ABCD2345", name: "Sunday themeless")?
                 .absoluteString,
-            "https://crossy.me/game/g-1?code=ABCD2345&name=Sunday%20themeless")
+            "https://crossy.party/game/g-1?code=ABCD2345&name=Sunday%20themeless")
     }
 
     func test_noCodeMeansNoLink() {
@@ -30,7 +30,7 @@ final class ShareInviteTests: XCTestCase {
     func test_blankNameIsTreatedAsAbsent() {
         XCTAssertEqual(
             ShareInvite.url(gameId: "g-1", code: "ABCD2345", name: "")?.absoluteString,
-            "https://crossy.me/game/g-1?code=ABCD2345")
+            "https://crossy.party/game/g-1?code=ABCD2345")
     }
 
     // An empty code, same rule as the copy row: nothing to share.

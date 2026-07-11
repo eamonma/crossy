@@ -119,7 +119,7 @@ private func makeSession(
     keychain: any KeychainStoring
 ) {
     let configuration = SupabaseAuthConfiguration(
-        supabaseURL: "https://api.crossy.me",
+        supabaseURL: "https://api.crossy.party",
         publishableKey: "sb_publishable_test",
         redirect: "crossy://auth/callback")!
     let stubbed = URLSessionConfiguration.ephemeral
@@ -155,7 +155,7 @@ final class AuthSessionTests: XCTestCase {
         // (deploy/README.md issuer trap: the custom domain fronts auth while tokens
         // keep the ref-domain iss; nothing here derives or rewrites an origin).
         let authorize = try XCTUnwrap(opened.all.first)
-        XCTAssertEqual(authorize.host, "api.crossy.me")
+        XCTAssertEqual(authorize.host, "api.crossy.party")
         XCTAssertEqual(authorize.path, "/auth/v1/authorize")
         let query = URLComponents(url: authorize, resolvingAgainstBaseURL: false)?.queryItems
         XCTAssertEqual(query?.first { $0.name == "provider" }?.value, "discord")
@@ -169,7 +169,7 @@ final class AuthSessionTests: XCTestCase {
         // challenge the sheet saw.
         let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
         XCTAssertEqual(request.method, "POST")
-        XCTAssertEqual(request.url.host, "api.crossy.me")
+        XCTAssertEqual(request.url.host, "api.crossy.party")
         XCTAssertEqual(request.path, "/auth/v1/token")
         XCTAssertEqual(request.queryValue("grant_type"), "pkce")
         XCTAssertEqual(request.headers["Apikey"] ?? request.headers["apikey"], "sb_publishable_test")
@@ -532,14 +532,14 @@ final class AuthSessionTests: XCTestCase {
                 redirect: "crossy://auth/callback"))
         XCTAssertNil(
             SupabaseAuthConfiguration(
-                supabaseURL: "https://api.crossy.me", publishableKey: "",
+                supabaseURL: "https://api.crossy.party", publishableKey: "",
                 redirect: "crossy://auth/callback"))
         XCTAssertNil(
             SupabaseAuthConfiguration(
                 supabaseURL: nil, publishableKey: nil, redirect: "crossy://auth/callback"))
         XCTAssertNotNil(
             SupabaseAuthConfiguration(
-                supabaseURL: "https://api.crossy.me", publishableKey: "sb_publishable_x",
+                supabaseURL: "https://api.crossy.party", publishableKey: "sb_publishable_x",
                 redirect: "crossy://auth/callback"))
     }
 

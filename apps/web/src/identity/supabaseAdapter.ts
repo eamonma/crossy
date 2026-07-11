@@ -2,7 +2,7 @@
 // (dependency-cruiser enforces the containment). The rest of the app depends on the Identity
 // port (types.ts), so the vendor stays swappable (DESIGN.md section 8).
 //
-// Auth runs against the custom domain (config.supabaseUrl, e.g. https://api.crossy.me) with
+// Auth runs against the custom domain (config.supabaseUrl, e.g. https://api.crossy.party) with
 // the new-format publishable key (sb_publishable_...) passed as the key param; it is public by
 // design. Discord and Apple OAuth and anonymous guests are the providers; email gets no surface.
 import { createClient } from "@supabase/supabase-js";

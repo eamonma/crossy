@@ -10,9 +10,9 @@
 import Foundation
 
 public enum ShareInvite {
-    /// crossy.me is the app's associated domain (Crossy.entitlements
-    /// `applinks:crossy.me`), the same host Universal Links resolve against.
-    public static let origin = "https://crossy.me"
+    /// crossy.party is the app's associated domain (Crossy.entitlements
+    /// `applinks:crossy.party`), the same host Universal Links resolve against.
+    public static let origin = "https://crossy.party"
 
     /// The shareable URL for a room, or nil when there is no code to share yet
     /// (a room the local client has not yet received `inviteCode` for).

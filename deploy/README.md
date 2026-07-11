@@ -72,7 +72,7 @@ Supabase project exists (a placeholder is written until then).
 | Variable                   | Secret | Supabase-gated | Value / meaning                                                                                     |
 | -------------------------- | ------ | -------------- | --------------------------------------------------------------------------------------------------- |
 | `PORT`                     | no     | no             | `8080`. nginx listen port; the web domain targets it.                                               |
-| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.me` (the Supabase custom domain). Empty selects the mock identity adapter.      |
+| `SUPABASE_URL`             | no     | yes            | `https://api.crossy.party` (the Supabase custom domain). Empty selects the mock identity adapter.   |
 | `SUPABASE_PUBLISHABLE_KEY` | no     | yes            | `sb_publishable_...`. Public by design (INV-6). Empty selects the mock identity adapter.            |
 | `API_BASE`                 | no     | no             | `https://<api public domain>`. The default REST base; `?api=` still overrides it per link.          |
 | `GUESTS_ENABLED`           | no     | no             | `true` or `false` (emitted unquoted into config.json). Ships `false` until anonymous+captcha is on. |
@@ -247,38 +247,60 @@ not a deploy change. This deploy does not modify `packages/db`. Verified locally
 migration and `bind-service-roles.sql` apply cleanly on stock Postgres 16, and both roles
 come back `rolcanlogin = t`, `rolbypassrls = t`.
 
-## Custom domain cutover (crossy.me)
+## Custom domain cutover: crossy.me to crossy.party
 
-The owner holds `crossy.me`, and `api.crossy.me` is already the Supabase custom auth domain,
-so the Railway api service must use a different name. Suggested mapping:
+The product domain moves from `crossy.me` to `crossy.party`. The code is already renamed
+(the plist, entitlement, privacy/terms pages, and tests all read `crossy.party`); what
+remains is env, DNS, and dashboards. Target mapping:
 
-| Domain              | Service | Replaces                                 |
-| ------------------- | ------- | ---------------------------------------- |
-| `crossy.me`         | web     | `web-production-946c3.up.railway.app`    |
-| `session.crossy.me` | session | `session-production-8b77.up.railway.app` |
-| `rest.crossy.me`    | api     | `api-production-c2d9.up.railway.app`     |
+| Domain                 | Fronts               | Replaces (crossy.me) |
+| ---------------------- | -------------------- | -------------------- |
+| `crossy.party`         | web (Railway)        | `crossy.me`          |
+| `session.crossy.party` | session (Railway)    | `session.crossy.me`  |
+| `rest.crossy.party`    | api (Railway)        | `rest.crossy.me`     |
+| `api.crossy.party`     | Supabase auth (cust) | `api.crossy.me`      |
 
-No rebuild is needed at any step: the images carry no domains. Everything below is env and
-DNS. Owner actions, in order:
+The Railway images carry no domains, so the web/session/api hostname moves are env + DNS
+only. The web image does bake the static pages (`privacy.html`, `terms.html`, the AASA,
+`og.png`), so those refresh when the rename PR merges and the pipeline rebuilds web. Owner
+actions, in order:
 
-1. Railway dashboard, per service: Settings > Networking > Custom Domain. Add the domain to
-   the service's public port (web 8080, session 8081, api 8080). Railway shows the DNS
-   target for each.
-2. Add the DNS records at the registrar. `ws.` and `rest.` are plain CNAMEs. The apex
-   `crossy.me` needs ALIAS/ANAME (or CNAME flattening) pointed at the same target; wait for
-   Railway to show the certificate as issued.
-3. Update the env that carries domains (Railway redeploys on variable change):
-   - api: `CORS_ORIGIN=https://crossy.me`, `SESSION_WS_BASE=wss://session.crossy.me`
-   - web: `API_BASE=https://rest.crossy.me`
-   - Do NOT touch `SUPABASE_ISSUER`: it stays on the ref domain regardless of custom
-     domains (see the api env table).
-4. Supabase dashboard, Authentication > URL Configuration: set the Site URL to
-   `https://crossy.me` and add `https://crossy.me/**` to the redirect list. Keep the
-   `up.railway.app` entries during the transition; remove them once nothing links there.
-5. Verify:
-   `node deploy/verify.mjs --api https://rest.crossy.me --web https://crossy.me --session wss://session.crossy.me`
-
-The `up.railway.app` domains keep working alongside the custom ones; old links do not break.
+1. **Supabase custom domain.** A project has ONE custom domain, so you re-point it, not add
+   a second. Dashboard > Custom Domains: set `api.crossy.party`, add the CNAME + TXT it
+   generates, activate. Supabase reissues the cert; `api.crossy.me` stops fronting the API
+   at cutover. Requires the Custom Domain add-on.
+   - Do NOT touch `SUPABASE_ISSUER`. The `iss` claim stays on the ref domain
+     (`https://<ref>.supabase.co/auth/v1`) regardless of the custom domain; the custom
+     domain only fronts the API. Setting the issuer to the custom domain breaks every
+     verify with `wrong-issuer` (see the api env table). This is why auth survives the swap.
+2. **Supabase Auth > URL Configuration:** Site URL `https://crossy.party`; add
+   `https://crossy.party/**` to the redirect list. Keep old entries until nothing links there.
+3. **OAuth providers.** Discord app OAuth2 redirects and the Apple Sign in with Apple
+   Service ID return URLs must cover the callback host Supabase uses
+   (`https://api.crossy.party/auth/v1/callback`). Native iOS Apple sign-in uses the bundle
+   id, not a web return URL, so only the web redirect path needs this.
+4. **DNS at the registrar.** `rest.` and `session.` are plain CNAMEs to their Railway
+   targets. The apex `crossy.party` needs ALIAS/ANAME (or CNAME flattening) to the web
+   target. `api.crossy.party` uses the CNAME + TXT from step 1. Add MX/forwarding so
+   `privacy@crossy.party` and `legal@crossy.party` receive mail. Wait for every cert issued.
+5. **Railway custom domains.** Per service, Settings > Networking > Custom Domain, on the
+   public port (web 8080, session 8081, api 8080). Keep the `up.railway.app` domains during
+   the transition; old links do not break.
+6. **Railway env** (redeploys on change, no rebuild; web values feed `/config.json` at start):
+   - api: `CORS_ORIGIN=https://crossy.party`, `SESSION_WS_BASE=wss://session.crossy.party`,
+     `SUPABASE_URL=https://api.crossy.party`
+   - web: `SUPABASE_URL=https://api.crossy.party`, `API_BASE=https://rest.crossy.party`
+   - session: unchanged (only `SUPABASE_ISSUER`, which stays on the ref domain)
+7. **iOS build.** Cut a fresh signed build after the rename merges: only a new build carries
+   `applinks:crossy.party` and the party URLs. Universal Links resolve once crossy.party
+   serves the AASA (content is appID-only, unchanged) and the new build is installed. Old
+   `crossy.me` invite links stop deep-linking on the new build (`applinks:crossy.me` is gone).
+8. **App Store Connect metadata:** privacy policy URL `https://crossy.party/privacy`;
+   support/marketing URLs if they point at crossy.me.
+9. **Verify:**
+   `node deploy/verify.mjs --api https://rest.crossy.party --web https://crossy.party --session wss://session.crossy.party`,
+   `curl https://crossy.party/.well-known/apple-app-site-association` (appID + `application/json`),
+   then sign in end to end with both Discord and Apple.
 
 ## What happens on a push to main
 
