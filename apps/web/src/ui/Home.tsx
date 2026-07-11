@@ -36,6 +36,7 @@ import {
   startGameFromPuzzle,
   type GameSummary,
   type PuzzleSummary,
+  type TokenSource,
 } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +47,7 @@ export type HomeSurface = "games" | "puzzles";
 export function Home({
   surface,
   apiBase,
-  token,
+  getToken,
   session,
   games,
   reloadGames,
@@ -56,7 +57,7 @@ export function Home({
 }: {
   surface: HomeSurface;
   apiBase: string;
-  token: string | null | undefined;
+  getToken: TokenSource;
   session: IdentitySession | null;
   /** The games read is shared with the sidebar (one GET /games, owned by the Router). */
   games: Resource<GameSummary[]>;
@@ -86,7 +87,7 @@ export function Home({
           ) : (
             <PuzzlesPanel
               apiBase={apiBase}
-              token={token}
+              getToken={getToken}
               onNewGame={onStartGame}
               onCreate={onCreate}
             />
@@ -347,28 +348,27 @@ function GamesList({
 
 function PuzzlesPanel({
   apiBase,
-  token,
+  getToken,
   onNewGame,
   onCreate,
 }: {
   apiBase: string;
-  token: string | null | undefined;
+  getToken: TokenSource;
   onNewGame: (gameId: string, code: string) => void;
   onCreate: () => void;
 }) {
   const [starting, setStarting] = useState<string | null>(null);
   const [state, reload] = useResource<PuzzleSummary[]>(
-    token != null ? () => fetchPuzzles(apiBase, token) : null,
-    [apiBase, token],
+    () => fetchPuzzles(apiBase, getToken),
+    [apiBase, getToken],
   );
 
   async function start(p: PuzzleSummary): Promise<void> {
-    if (token == null) return;
     setStarting(p.puzzleId);
     try {
       const { gameId, inviteCode } = await startGameFromPuzzle(
         apiBase,
-        token,
+        getToken,
         p.puzzleId,
       );
       onNewGame(gameId, inviteCode);

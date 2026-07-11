@@ -1,10 +1,11 @@
-// The home's pure formatters. These are display helpers, not invariant guards, so the names
-// describe behavior rather than citing an INV-n. The `now` parameter is what makes them
-// deterministic to pin.
-import { describe, expect, it } from "vitest";
+// The home's pure formatters, plus the fetchers' bearer resolution. These are display
+// helpers, not invariant guards, so the names describe behavior rather than citing an
+// INV-n. The `now` parameter is what makes the formatters deterministic to pin.
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   compactTime,
   featureLabels,
+  fetchGames,
   gameTitle,
   geometry,
   isCompleted,
@@ -170,5 +171,42 @@ describe("compactTime (sidebar rows)", () => {
     const future = new Date(NOW.getTime() + 3_600_000).toISOString();
     expect(compactTime(future, NOW)).toBe("now");
     expect(compactTime("not-a-date", NOW)).toBe("");
+  });
+});
+
+describe("bearer resolution (fetchers take a token source, not a string)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("resolves the bearer through the source on every call, so a long-lived tab never rides a frozen token", async () => {
+    const sent: (string | undefined)[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        sent.push((init?.headers as Record<string, string>)["authorization"]);
+        return new Response(JSON.stringify({ games: [] }));
+      }),
+    );
+    const tokens = ["token-at-noon", "token-an-hour-later"];
+    const getToken = () => Promise.resolve(tokens.shift() ?? null);
+
+    await fetchGames("https://api", getToken);
+    await fetchGames("https://api", getToken);
+
+    expect(sent).toEqual([
+      "Bearer token-at-noon",
+      "Bearer token-an-hour-later",
+    ]);
+  });
+
+  it("refuses to dial signed out: a null token throws before any fetch", async () => {
+    const dialed = vi.fn();
+    vi.stubGlobal("fetch", dialed);
+
+    await expect(
+      fetchGames("https://api", () => Promise.resolve(null)),
+    ).rejects.toThrow();
+    expect(dialed).not.toHaveBeenCalled();
   });
 });

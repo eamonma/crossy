@@ -1,9 +1,10 @@
 // Small data hooks shared by the shell and the home surfaces: a stale-while-revalidate
-// resource with retry, and the access-token resolution (the `?token=` dogfood override wins,
+// resource with retry, and the bearer-token source (the `?token=` dogfood override wins,
 // otherwise the identity port). Extracted from Home so the sidebar's recent-games list and
 // the panels read through one mechanism instead of two hand-rolled copies.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Identity } from "../identity";
+import type { TokenSource } from "./homeData";
 
 export type Resource<T> =
   { phase: "loading" } | { phase: "error" } | { phase: "ready"; data: T };
@@ -50,28 +51,22 @@ export function useResource<T>(
 }
 
 /**
- * The bearer token for REST reads: undefined while unresolved, then the `?token=` override
- * (dogfood and the dev stack) or the identity session's access token (null when signed out).
+ * The bearer source for REST reads: the `?token=` override (dogfood and the dev stack)
+ * wins, otherwise the identity port, which refreshes near expiry. A source, not a resolved
+ * string, and the same shape the WebSocket hello already rides (LiveApp's getToken): the
+ * string form froze the token in state at mount, so a tab open past the token's TTL kept
+ * sending an expired bearer, and a sign-in with no redirect (a guest) never got one at all.
+ * Callers resolve at fetch time instead.
  */
-export function useAccessToken(
+export function useTokenSource(
   identity: Identity,
   urlToken: string | null,
-): string | null | undefined {
-  const [token, setToken] = useState<string | null | undefined>(
-    urlToken !== null ? urlToken : undefined,
+): TokenSource {
+  return useMemo(
+    () =>
+      urlToken !== null
+        ? () => Promise.resolve(urlToken)
+        : () => identity.getAccessToken(),
+    [identity, urlToken],
   );
-  useEffect(() => {
-    if (urlToken !== null) {
-      setToken(urlToken);
-      return;
-    }
-    let live = true;
-    void identity.getAccessToken().then((t) => {
-      if (live) setToken(t);
-    });
-    return () => {
-      live = false;
-    };
-  }, [identity, urlToken]);
-  return token;
 }

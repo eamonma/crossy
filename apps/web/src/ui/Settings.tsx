@@ -18,7 +18,7 @@ import type { Identity, IdentitySession } from "../identity";
 import type { Navigate } from "../nav";
 import { homeHref } from "../nav";
 import { CapsLabel, Divider } from "./primitives";
-import { deleteAccount } from "./homeData";
+import { deleteAccount, type TokenSource } from "./homeData";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,14 +40,14 @@ function accountTypeLabel(session: IdentitySession): string {
 export function Settings({
   identity,
   apiBase,
-  token,
+  getToken,
   navigate,
   params,
 }: {
   identity: Identity;
   apiBase: string;
-  /** The bearer for DELETE /account: the session token (or the ?token= dogfood override). */
-  token: string | null | undefined;
+  /** The bearer source for DELETE /account, resolved fresh at the confirm click. */
+  getToken: TokenSource;
   navigate: Navigate;
   params: URLSearchParams;
 }) {
@@ -79,7 +79,7 @@ export function Settings({
                 <SignOutBlock onSignOut={() => void identity.signOut()} />
                 <DeleteBlock
                   apiBase={apiBase}
-                  token={token}
+                  getToken={getToken}
                   onDeleted={async () => {
                     await identity.signOut();
                     navigate(homeHref(params));
@@ -143,11 +143,11 @@ function SignOutBlock({ onSignOut }: { onSignOut: () => void }) {
  */
 function DeleteBlock({
   apiBase,
-  token,
+  getToken,
   onDeleted,
 }: {
   apiBase: string;
-  token: string | null | undefined;
+  getToken: TokenSource;
   onDeleted: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -155,7 +155,9 @@ function DeleteBlock({
   const [error, setError] = useState<string | null>(null);
 
   async function confirmDelete(): Promise<void> {
-    if (token == null) {
+    // Resolved at the click, not at mount: a null here means genuinely signed out
+    // (this tab raced a sign-out elsewhere), named plainly rather than as a failure.
+    if ((await getToken()) === null) {
       setOpen(false);
       setError("Your session expired. Sign in again to delete your account.");
       return;
@@ -163,7 +165,7 @@ function DeleteBlock({
     setBusy(true);
     setError(null);
     try {
-      await deleteAccount(apiBase, token);
+      await deleteAccount(apiBase, getToken);
       await onDeleted();
     } catch {
       setBusy(false);

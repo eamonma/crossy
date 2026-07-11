@@ -35,7 +35,7 @@ import { Home } from "./ui/Home";
 import { AppShell } from "./ui/AppShell";
 import { CreateGame } from "./ui/CreateGame";
 import { Settings } from "./ui/Settings";
-import { useResource, useAccessToken } from "./ui/useResource";
+import { useResource, useTokenSource } from "./ui/useResource";
 import { fetchGames } from "./ui/homeData";
 import type { GameSummary } from "./ui/homeData";
 import { Button } from "@/components/ui/button";
@@ -129,12 +129,12 @@ function Router({
   // here and is fetched once. It re-reads on every surface change (routeEpoch) so a game
   // created or joined a moment ago shows up without a manual refresh; one first-page read.
   const apiBase = params.get("api") ?? config.apiBase;
-  const token = useAccessToken(identity, params.get("token"));
+  const getToken = useTokenSource(identity, params.get("token"));
   const routeEpoch =
     route.kind === "game" ? `game:${route.gameId}` : route.kind;
   const [games, reloadGames] = useResource<GameSummary[]>(
-    signedIn && token != null ? () => fetchGames(apiBase, token) : null,
-    [apiBase, token, routeEpoch, signedIn],
+    signedIn ? () => fetchGames(apiBase, getToken) : null,
+    [apiBase, getToken, routeEpoch, signedIn],
   );
 
   if (route.kind === "demo") {
@@ -191,7 +191,7 @@ function Router({
       <Settings
         identity={identity}
         apiBase={apiBase}
-        token={token}
+        getToken={getToken}
         navigate={navigate}
         params={params}
       />,
@@ -212,7 +212,7 @@ function Router({
     <Home
       surface={route.kind === "puzzles" ? "puzzles" : "games"}
       apiBase={apiBase}
-      token={token}
+      getToken={getToken}
       session={identity.getSession()}
       games={games}
       reloadGames={reloadGames}
