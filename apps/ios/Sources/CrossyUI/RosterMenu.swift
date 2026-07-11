@@ -34,6 +34,18 @@ struct RosterMenu: View {
     let onJoinIn: () -> Void
 
     var body: some View {
+        if members.isEmpty {
+            // The welcome has not landed: an empty cluster squishes the glass
+            // capsule into a blob (owner device finding 2026-07-10). A hollow
+            // puck holds the pill's register until the room arrives; it is not
+            // a control yet, so touches pass through and VoiceOver skips it.
+            placeholderPill
+        } else {
+            presentedPill
+        }
+    }
+
+    private var presentedPill: some View {
         Group {
             #if os(iOS)
                 if #available(iOS 26.0, *) {
@@ -50,6 +62,44 @@ struct RosterMenu: View {
             #endif
         }
         .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
+    }
+
+    /// The loading register: one hollow puck in the same geometry the loaded
+    /// pill starts with (self is always a member once the room lands), so the
+    /// roster's arrival fills a circle that was already standing instead of
+    /// materializing new chrome.
+    private var placeholderPill: some View {
+        Group {
+            #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    Button {} label: {
+                        placeholderPuck
+                            .frame(height: ChromeLayout.pillHeight - 14)
+                    }
+                    .buttonStyle(.glass)
+                } else {
+                    placeholderFallback
+                }
+            #else
+                placeholderFallback
+            #endif
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var placeholderFallback: some View {
+        placeholderPuck
+            .padding(.horizontal, 10)
+            .frame(height: ChromeLayout.pillHeight)
+            .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+    }
+
+    /// A hollow circle at the away member's strength: someone will be here.
+    private var placeholderPuck: some View {
+        Circle()
+            .stroke(Color(rgb: ground.tokens.number).opacity(0.35), lineWidth: 1.5)
+            .frame(width: 24, height: 24)
     }
 
     /// Below 26 (and the macOS test build) the same Menu presents the system's
