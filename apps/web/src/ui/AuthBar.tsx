@@ -54,9 +54,10 @@ function AppleMark({ className }: { className?: string }) {
 }
 
 /**
- * The prominent sign-in control, for the landing gate and invite gates. Discord and Apple are
- * always shown; the guest path (Turnstile-gated) appears only when the flag and site key are both
- * set, and a refusal renders as one calm sentence, never a thrown error or an error code.
+ * The prominent sign-in control, for the landing gate and invite gates. Apple leads and Discord
+ * follows, mirroring the iOS Welcome screen's precedent; the guest path (Turnstile-gated)
+ * appears only when the flag and site key are both set, and a refusal renders as one calm
+ * sentence, never a thrown error or an error code.
  *
  * `allowGuest` lets a caller suppress the guest path even when it is otherwise ready. The
  * invite gate uses it when no code is present: a guest without an invite would sign in
@@ -97,6 +98,10 @@ export function SignInButtons({
 
   return (
     <div className="flex flex-col gap-2.5">
+      <Button variant="default" size="lg" onClick={onApple} className="w-full">
+        <AppleMark />
+        {appleLabel}
+      </Button>
       <Button
         variant="default"
         size="lg"
@@ -105,10 +110,6 @@ export function SignInButtons({
       >
         <DiscordMark />
         {discordLabel}
-      </Button>
-      <Button variant="default" size="lg" onClick={onApple} className="w-full">
-        <AppleMark />
-        {appleLabel}
       </Button>
       {guestReady && turnstileSiteKey !== undefined && (
         <>

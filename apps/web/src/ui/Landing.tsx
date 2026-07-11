@@ -1,12 +1,16 @@
 // Landing (/): v2's hero, the one confident gesture per screen. The oversized serif lockup
 // sits on the gold-cream feature panel, each line left-padded 10vw and closed by a dashed
-// rule, then one gold CTA. Everything else stays out of its way; sign-in state lives in the
-// slim top bar. The display clamp keeps "crosswords" clear of a 375px viewport.
+// rule, then one gold CTA. A quiet second action opens the front door explicitly: "Sign in"
+// reveals the same Discord/Apple/guest providers the top bar's compact chip and the other
+// gates use (SignInButtons, AuthBar.tsx), so a visitor never has to discover the chip to find
+// an account. The display clamp keeps "crosswords" clear of a 375px viewport.
+import { useState } from "react";
 import { ArrowRightIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
 import { TopBar } from "./TopBar";
 import { Divider } from "./primitives";
+import { SignInButtons } from "./AuthBar";
 import { Button } from "@/components/ui/button";
 
 function Line({
@@ -35,6 +39,8 @@ export function Landing({
   config: AppConfig;
   onCreate: () => void;
 }) {
+  const [showSignIn, setShowSignIn] = useState(false);
+
   return (
     <div className="min-h-dvh flex flex-col">
       <TopBar identity={identity} config={config} />
@@ -50,12 +56,29 @@ export function Landing({
             <p className="text-3 text-text-muted pr-6">
               Upload a puzzle, share one link, and solve it with your friends.
             </p>
-            <div>
+            <div className="flex items-center gap-3 flex-wrap">
               <Button variant="default" onClick={onCreate}>
                 Create a game
                 <ArrowRightIcon />
               </Button>
+              <Button
+                variant="secondary"
+                aria-expanded={showSignIn}
+                onClick={() => setShowSignIn((open) => !open)}
+              >
+                Sign in
+              </Button>
             </div>
+            {showSignIn && (
+              <div className="max-w-[18rem]">
+                <SignInButtons
+                  identity={identity}
+                  config={config}
+                  discordLabel="Sign in with Discord"
+                  appleLabel="Sign in with Apple"
+                />
+              </div>
+            )}
           </div>
         </section>
       </main>
