@@ -60,6 +60,8 @@ export function createFakeSession(board: Board): FakeSession {
     {
       userId: SELF_USER_ID,
       displayName: "You",
+      // Demo boards carry geometry and initials only; the initial-avatar path is the render.
+      avatarUrl: null,
       color: SELF_COLOR,
       role: "solver",
       connected: true,
@@ -67,6 +69,7 @@ export function createFakeSession(board: Board): FakeSession {
     ...board.teammates.map((teammate, index) => ({
       userId: teammate.id,
       displayName: teammate.initial,
+      avatarUrl: null,
       color: TEAMMATE_COLORS[index % TEAMMATE_COLORS.length] ?? SELF_COLOR,
       role: "solver" as const,
       connected: true,

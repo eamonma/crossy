@@ -17,10 +17,18 @@ import type { Db } from "../db/client";
  * `coalesce(excluded.display_name, users.display_name)`, so a token that omits metadata never
  * clobbers a name we already know, while a changed provider name propagates on the next request.
  *
- * The soft-delete tombstone (see identity/deletion.ts) nulls `display_name`; in practice it
- * stays null because a deleted user stops authenticating, so nothing re-runs this upsert for
- * them. If a tombstoned user ever re-authenticates, re-mirroring their name here is the
- * deliberate reactivation of that account, not a leak.
+ * `avatar` mirrors the avatar the auth port already resolved (DESIGN.md §8): the provider metadata
+ * avatar, else a Gravatar URL derived server-side from the email, else null. Resolution is the
+ * port's, so this is the same single-writer mirror as the name and never sees the email (the port
+ * hashed it and never returned it, INV-6 spirit). It uses the same `coalesce` on conflict, so a
+ * token that momentarily omits the avatar (a lagging refresh) never clobbers one we already know,
+ * while a changed avatar propagates on the next request. The value the session reads from
+ * `users.avatar` is exactly what surfaces on the participant payload (PROTOCOL.md §4).
+ *
+ * The soft-delete tombstone (see identity/deletion.ts) nulls `display_name` and `avatar`; in
+ * practice they stay null because a deleted user stops authenticating, so nothing re-runs this
+ * upsert for them. If a tombstoned user ever re-authenticates, re-mirroring here is the deliberate
+ * reactivation of that account, not a leak.
  */
 export async function jitUpsertUser(db: Db, identity: Identity): Promise<void> {
   const displayName =
@@ -31,12 +39,14 @@ export async function jitUpsertUser(db: Db, identity: Identity): Promise<void> {
       userId: identity.userId,
       isAnonymous: identity.isAnonymous,
       displayName,
+      avatar: identity.avatarUrl,
     })
     .onConflictDoUpdate({
       target: schema.users.userId,
       set: {
         isAnonymous: sql`${schema.users.isAnonymous} and excluded.is_anonymous`,
         displayName: sql`coalesce(excluded.display_name, ${schema.users.displayName})`,
+        avatar: sql`coalesce(excluded.avatar, ${schema.users.avatar})`,
       },
     });
 }

@@ -1,0 +1,11 @@
+-- Expand-only (DESIGN.md §9 single writer: API; §11 expand/contract). The session service
+-- puts an avatar_url on every participant payload (PROTOCOL.md §4), resolved once by the API
+-- into users.avatar. The session already reads users.display_name for that same payload; widen
+-- its column grant to include avatar so it can read the resolved value it renders.
+--
+-- This grants READ only, so single-writer (INV-7) is untouched: the API stays the sole writer of
+-- users. It is the published cross-service read contract widening by one column (DESIGN.md §9),
+-- the exact expand the design anticipates, not a breaking change. The email is never a column
+-- here: the Gravatar hash is computed API-side and only the resolved avatar URL is stored, so
+-- reading avatar exposes no email (INV-6 spirit). is_anonymous stays out of the grant.
+GRANT SELECT ("avatar") ON "users" TO "crossy_session";

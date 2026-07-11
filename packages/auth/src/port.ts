@@ -25,6 +25,15 @@ export interface Identity {
   readonly userId: string;
   readonly isAnonymous: boolean;
   readonly displayName: string | null;
+  /**
+   * The resolved avatar URL, lifted at the same boundary as the display name so identity lifts
+   * all its display attributes in one place (DESIGN.md §8): a provider metadata avatar, else a
+   * Gravatar URL from the account email, else `null`. The API mirrors it into `users.avatar`. The
+   * email seeding the Gravatar URL is hashed inside this port and never returned on `Identity`, so
+   * no email crosses a service boundary or the wire (INV-6 spirit). `null` is a first-class value
+   * the clients render as the initial avatar.
+   */
+  readonly avatarUrl: string | null;
 }
 
 /**
@@ -107,6 +116,30 @@ export const DEFAULT_NAME_KEYS: readonly string[] = [
   "user_name",
   "preferred_username",
 ];
+
+/**
+ * The candidate keys, in priority order, for a provider avatar inside the metadata claim. GoTrue's
+ * Discord mapping populates `avatar_url`; `picture` is the OIDC-standard fallback other providers
+ * (Apple, Google) use. The first key whose value is a non-empty string is taken verbatim as the
+ * avatar URL; non-string or empty values are skipped and an exhausted list falls through to the
+ * Gravatar derivation (DESIGN.md §8). Overridable so a different issuer can name it otherwise.
+ */
+export const DEFAULT_AVATAR_KEYS: readonly string[] = ["avatar_url", "picture"];
+
+/**
+ * The claim name carrying the account email, read only to derive a Gravatar URL when the provider
+ * supplies no avatar. GoTrue puts `email` as a top-level claim. The email is hashed inside the port
+ * and never returned on `Identity`, so it never leaves the server (INV-6 spirit). Overridable so a
+ * different issuer can name it otherwise.
+ */
+export const DEFAULT_EMAIL_CLAIM = "email";
+
+/**
+ * The Gravatar avatar base URL. A resolved URL is `${base}/${md5(lowercased-trimmed-email)}?d=404`,
+ * per Gravatar's spec: `d=404` makes an absent Gravatar return a 404 the client treats as absent
+ * (it falls back to the initial avatar, PROTOCOL.md §4), rather than a generic placeholder image.
+ */
+export const GRAVATAR_BASE_URL = "https://www.gravatar.com/avatar";
 
 /**
  * The asymmetric algorithm allowlist (SP2). ES256 is Supabase's default; RS256 and

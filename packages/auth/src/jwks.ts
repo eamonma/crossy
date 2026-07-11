@@ -13,7 +13,9 @@ import {
   DEFAULT_ALGORITHMS,
   DEFAULT_ANONYMOUS_CLAIM,
   DEFAULT_AUDIENCE,
+  DEFAULT_AVATAR_KEYS,
   DEFAULT_CLOCK_TOLERANCE_SEC,
+  DEFAULT_EMAIL_CLAIM,
   DEFAULT_METADATA_CLAIM,
   DEFAULT_NAME_KEYS,
   DEFAULT_REFRESH_INTERVAL_MS,
@@ -71,6 +73,16 @@ export interface JwksAuthConfig {
    * to `full_name`, `name`, `user_name`, `preferred_username`.
    */
   readonly nameKeys?: readonly string[];
+  /**
+   * Candidate keys for a provider avatar inside the metadata claim, in priority order. Defaults to
+   * `avatar_url`, `picture`.
+   */
+  readonly avatarKeys?: readonly string[];
+  /**
+   * The top-level claim carrying the account email, read only to derive a Gravatar URL when no
+   * provider avatar is present. Defaults to `email`.
+   */
+  readonly emailClaim?: string;
   /** Asymmetric algorithm allowlist. Defaults to ES256/RS256/EdDSA (HS256 refused). */
   readonly algorithms?: readonly string[];
   /** Clock-skew tolerance in seconds. Defaults to 10. */
@@ -113,6 +125,8 @@ export async function createJwksAuthPort(
   const anonymousClaim = config.anonymousClaim ?? DEFAULT_ANONYMOUS_CLAIM;
   const metadataClaim = config.metadataClaim ?? DEFAULT_METADATA_CLAIM;
   const nameKeys = config.nameKeys ?? DEFAULT_NAME_KEYS;
+  const avatarKeys = config.avatarKeys ?? DEFAULT_AVATAR_KEYS;
+  const emailClaim = config.emailClaim ?? DEFAULT_EMAIL_CLAIM;
   const algorithms = config.algorithms ?? DEFAULT_ALGORITHMS;
   const clockToleranceSec =
     config.clockToleranceSec ?? DEFAULT_CLOCK_TOLERANCE_SEC;
@@ -133,6 +147,8 @@ export async function createJwksAuthPort(
     anonymousClaim,
     metadataClaim,
     nameKeys,
+    avatarKeys,
+    emailClaim,
   };
 
   // The in-memory resolver. `verify` reads this binding at call time, so a refresh swap

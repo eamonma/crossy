@@ -11,7 +11,9 @@ import {
   DEFAULT_ALGORITHMS,
   DEFAULT_ANONYMOUS_CLAIM,
   DEFAULT_AUDIENCE,
+  DEFAULT_AVATAR_KEYS,
   DEFAULT_CLOCK_TOLERANCE_SEC,
+  DEFAULT_EMAIL_CLAIM,
   DEFAULT_METADATA_CLAIM,
   DEFAULT_NAME_KEYS,
 } from "./port";
@@ -41,6 +43,11 @@ export interface MintOptions {
    * resolves to `null`.
    */
   readonly userMetadata?: Record<string, unknown>;
+  /**
+   * The account email, written as a top-level `email` claim. Omitted by default. Used only to
+   * exercise the Gravatar-derivation path; the port hashes it and never returns it.
+   */
+  readonly email?: string;
   /** Override the issuer (to exercise the wrong-issuer path). Defaults to the provider's issuer. */
   readonly issuer?: string;
   /** Override the audience (to exercise the wrong-audience path). Defaults to `authenticated`. */
@@ -75,6 +82,16 @@ export interface FakeAuthConfig {
    * Defaults to `full_name`, `name`, `user_name`, `preferred_username`.
    */
   readonly nameKeys?: readonly string[];
+  /**
+   * The candidate keys, in priority order, the verify path reads a provider avatar from.
+   * Defaults to `avatar_url`, `picture`.
+   */
+  readonly avatarKeys?: readonly string[];
+  /**
+   * The top-level claim the verify path reads the account email from (for Gravatar derivation).
+   * Defaults to `email`.
+   */
+  readonly emailClaim?: string;
 }
 
 /**
@@ -151,6 +168,8 @@ export async function createFakeAuthProvider(
   const anonymousClaim = config.anonymousClaim ?? DEFAULT_ANONYMOUS_CLAIM;
   const metadataClaim = config.metadataClaim ?? DEFAULT_METADATA_CLAIM;
   const nameKeys = config.nameKeys ?? DEFAULT_NAME_KEYS;
+  const avatarKeys = config.avatarKeys ?? DEFAULT_AVATAR_KEYS;
+  const emailClaim = config.emailClaim ?? DEFAULT_EMAIL_CLAIM;
 
   const coreConfig = {
     issuer,
@@ -161,6 +180,8 @@ export async function createFakeAuthProvider(
     anonymousClaim,
     metadataClaim,
     nameKeys,
+    avatarKeys,
+    emailClaim,
   };
 
   let keys: SigningKey[] = [await generateSigningKey()];
@@ -186,6 +207,9 @@ export async function createFakeAuthProvider(
     }
     if (opts.userMetadata !== undefined) {
       payload[metadataClaim] = opts.userMetadata;
+    }
+    if (opts.email !== undefined) {
+      payload[emailClaim] = opts.email;
     }
     const jwt = new SignJWT(payload)
       .setProtectedHeader({ alg: "ES256", kid })

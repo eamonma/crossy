@@ -1,10 +1,12 @@
 // Postgres read adapter (DESIGN.md §4 adapters, §9 read-coupling). The session service
 // owns writes to game_state and cell_events, but this slice only reads: the puzzle
 // snapshot and game_state for hydration, and memberships, the denylist, and
-// users.display_name for the handshake and the participant payload (INV-8: it verifies
-// membership, never mutates it). Writes are the write-behind flush in Wave 2.2. Reads go
-// through the least-privilege crossy_session role in production (the migration's column
-// grant limits users to display_name); the queries here stay within that grant.
+// users.display_name plus users.avatar for the handshake and the participant payload
+// (INV-8: it verifies membership, never mutates it). Writes are the write-behind flush in
+// Wave 2.2. Reads go through the least-privilege crossy_session role in production (the
+// migration's column grant limits users to display_name and avatar); the queries here stay
+// within that grant. users.avatar holds a resolved URL, never an email (the API's auth port
+// hashed it), so reading it exposes no email to the session (INV-6 spirit).
 
 import type { Pool } from "pg";
 import type { Role } from "@crossy/protocol";
@@ -14,6 +16,8 @@ import type { GameStateRow, PuzzleSnapshot } from "./hydrate";
 export interface MemberRow {
   readonly userId: string;
   readonly displayName: string | null;
+  /** The resolved avatar URL, or null (PROTOCOL.md §4). Opaque; never an email (INV-6 spirit). */
+  readonly avatarUrl: string | null;
   readonly role: Role;
 }
 
@@ -102,9 +106,10 @@ export async function loadMembers(
   const { rows } = await pool.query<{
     user_id: string;
     display_name: string | null;
+    avatar: string | null;
     role: Role;
   }>(
-    `select m.user_id, m.role, u.display_name
+    `select m.user_id, m.role, u.display_name, u.avatar
        from memberships m
        join users u on u.user_id = m.user_id
       where m.game_id = $1
@@ -114,6 +119,7 @@ export async function loadMembers(
   return rows.map((r) => ({
     userId: r.user_id,
     displayName: r.display_name,
+    avatarUrl: r.avatar,
     role: r.role,
   }));
 }

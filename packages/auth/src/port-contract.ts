@@ -48,6 +48,7 @@ export function runAuthPortContract(
           userId: "11111111-1111-4111-8111-111111111111",
           isAnonymous: false,
           displayName: null,
+          avatarUrl: null,
         },
       });
     });
@@ -69,6 +70,63 @@ export function runAuthPortContract(
         ok: true,
         identity: expect.objectContaining({ displayName: null }),
       });
+    });
+
+    it("resolves avatarUrl from the provider metadata avatar when present (auth port DESIGN §8)", async () => {
+      // The Discord avatar in metadata wins over any Gravatar derivation.
+      const result = await h.port.verify(
+        await h.mint({
+          email: "ada@example.com",
+          userMetadata: {
+            avatar_url: "https://cdn.discordapp.com/avatars/u/hash.png",
+          },
+        }),
+      );
+      expect(result).toEqual({
+        ok: true,
+        identity: expect.objectContaining({
+          avatarUrl: "https://cdn.discordapp.com/avatars/u/hash.png",
+        }),
+      });
+    });
+
+    it("derives a Gravatar avatarUrl from the email when the provider gives no avatar (auth port DESIGN §8)", async () => {
+      // Casing and surrounding space are normalized before hashing (Gravatar spec, INV-1 ASCII).
+      const result = await h.port.verify(
+        await h.mint({ email: "  Ada@Example.com  " }),
+      );
+      expect(result).toEqual({
+        ok: true,
+        identity: expect.objectContaining({
+          avatarUrl:
+            "https://www.gravatar.com/avatar/3e3417d7ef77d5932a6734b916515ed5?d=404",
+        }),
+      });
+    });
+
+    it("resolves avatarUrl to null with no provider avatar and no email (auth port DESIGN §8)", async () => {
+      const result = await h.port.verify(await h.mint());
+      expect(result).toEqual({
+        ok: true,
+        identity: expect.objectContaining({ avatarUrl: null }),
+      });
+    });
+
+    it("never exposes the email on the identity, only the derived avatarUrl (INV-6 spirit)", async () => {
+      const result = await h.port.verify(
+        await h.mint({ email: "secret@example.com" }),
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // The identity carries the resolved URL and the email appears in no field of it.
+        expect(JSON.stringify(result.identity)).not.toContain(
+          "secret@example.com",
+        );
+        expect(result.identity.avatarUrl).toMatch(
+          /^https:\/\/www\.gravatar\.com\/avatar\/[0-9a-f]{32}\?d=404$/,
+        );
+        expect("email" in result.identity).toBe(false);
+      }
     });
 
     it("passes is_anonymous: true through unchanged (SP2, SP1)", async () => {

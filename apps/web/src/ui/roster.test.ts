@@ -24,10 +24,12 @@ function person(
   userId: string,
   role: Participant["role"],
   connected = true,
+  avatarUrl: string | null = null,
 ): Participant {
   return {
     userId,
     displayName: userId,
+    avatarUrl,
     color: "#3e63dd",
     role,
     connected,
@@ -59,6 +61,24 @@ describe("buildRoster", () => {
     expect(roster.solvers[0]?.clue?.number).toBe(1);
     expect(roster.solvers[0]?.clue?.direction).toBe("down");
     expect(roster.solvers[1]?.clue?.text).toBe("Row two");
+  });
+
+  it("carries each solver's avatarUrl through, null a first-class value (PROTOCOL.md §4)", () => {
+    const roster = buildRoster({
+      participants: [
+        person("me", "host", true, "https://cdn.example/me.png"),
+        person("mia", "solver", true, null),
+      ],
+      cursors: cursorMap([["mia", 4, "across"]]),
+      selfUserId: "me",
+      selfSelection: { cell: 0, direction: "down" },
+      across,
+      down,
+    });
+    const byId = new Map(roster.solvers.map((s) => [s.userId, s.avatarUrl]));
+    expect(byId.get("me")).toBe("https://cdn.example/me.png");
+    // A teammate with no avatar renders their initial: avatarUrl stays null, never undefined.
+    expect(byId.get("mia")).toBeNull();
   });
 
   it("counts connected spectators as watching, never as solvers", () => {

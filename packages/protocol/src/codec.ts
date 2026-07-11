@@ -145,6 +145,7 @@ function decodeParticipant(x: unknown, what: string): Participant {
   return {
     userId: asString(o.userId, `${what}.userId`),
     displayName: asString(o.displayName, `${what}.displayName`),
+    avatarUrl: asNullableString(o.avatarUrl, `${what}.avatarUrl`),
     color: asString(o.color, `${what}.color`),
     role: asRole(o.role, `${what}.role`),
     connected: asBoolean(o.connected, `${what}.connected`),
@@ -355,6 +356,7 @@ function decodePlayerConnected(
     type: "playerConnected",
     userId: asString(o.userId, "userId"),
     displayName: asString(o.displayName, "displayName"),
+    avatarUrl: asNullableString(o.avatarUrl, "avatarUrl"),
     color: asString(o.color, "color"),
     role: asRole(o.role, "role"),
   };

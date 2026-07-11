@@ -10,6 +10,7 @@ import type { Clue } from "../domain/types";
 import type { Roster, SolverEntry } from "./roster";
 import { GROUP_CAP, GROUP_PAST } from "./roster";
 import { CapsLabel, cx } from "./primitives";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 
 const COLLAPSE_KEY = "crossy:solving-now:collapsed";
@@ -31,17 +32,21 @@ function writeCollapsed(next: boolean): void {
 }
 
 function Dot({ entry, ring = false }: { entry: SolverEntry; ring?: boolean }) {
+  // Render the avatar when present; null, loading, and load errors fall back to the colored initial
+  // (PROTOCOL.md §4). The color-backed fallback keeps the existing look when there is no image.
   return (
-    <span
+    <Avatar
       aria-hidden
-      className={cx(
-        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white",
-        ring && "ring-2 ring-panel",
-      )}
-      style={{ background: entry.color }}
+      className={cx("h-5 w-5 shrink-0", ring && "ring-2 ring-panel")}
     >
-      {entry.initial}
-    </span>
+      {entry.avatarUrl !== null && <AvatarImage src={entry.avatarUrl} alt="" />}
+      <AvatarFallback
+        className="text-[10px] font-bold text-white"
+        style={{ background: entry.color }}
+      >
+        {entry.initial}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 

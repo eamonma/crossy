@@ -348,18 +348,17 @@ describe("session read-coupling contract (INV-7; DESIGN.md §9)", () => {
     expect(Number(rows[0]?.n)).toBeGreaterThanOrEqual(1);
   });
 
-  it("limits the session role to users.display_name only, never avatar or is_anonymous (§9, INV-6-adjacent)", async () => {
-    // Allowed: the display-name projection (user_id is the join key, not PII).
+  it("limits the session role to users.display_name and avatar, never is_anonymous (§9, INV-6-adjacent)", async () => {
+    // Allowed: the participant-payload projection (user_id is the join key, not PII). avatar is
+    // the resolved avatar URL the session renders (PROTOCOL.md §4), granted by 0006; it is never
+    // an email, so this grant exposes no email to the session (INV-6 spirit).
     const { rows } = await asRole("crossy_session", (c) =>
-      c.query<{ display_name: string | null }>(
-        "select user_id, display_name from users",
+      c.query<{ display_name: string | null; avatar: string | null }>(
+        "select user_id, display_name, avatar from users",
       ),
     );
     expect(rows.length).toBeGreaterThanOrEqual(1);
     // Denied: any column outside the grant, and the whole-row projection.
-    await expect(
-      asRole("crossy_session", (c) => c.query("select avatar from users")),
-    ).rejects.toThrow(/permission denied/i);
     await expect(
       asRole("crossy_session", (c) =>
         c.query("select is_anonymous from users"),

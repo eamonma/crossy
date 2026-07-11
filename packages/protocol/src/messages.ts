@@ -126,6 +126,8 @@ export interface PlayerConnectedMessage {
   readonly type: "playerConnected";
   readonly userId: string;
   readonly displayName: string;
+  /** The same opaque nullable avatar URL the participant carries (PROTOCOL.md §4). */
+  readonly avatarUrl: string | null;
   readonly color: string;
   readonly role: Role;
 }

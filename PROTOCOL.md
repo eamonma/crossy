@@ -70,7 +70,7 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
   "completedAt": null,
   "abandonedAt": null,
   "cells": [ {"v":"A","by":"<userId>"}, {"v":null,"by":null}, ... ],
-  "participants": [ {"userId":"...","displayName":"Ana","color":"#7F77DD","role":"host","connected":true} ],
+  "participants": [ {"userId":"...","displayName":"Ana","avatarUrl":"https://...","color":"#7F77DD","role":"host","connected":true} ],
   "cursors": [ {"userId":"...","cell":17,"direction":"across"} ],
   "recentCommandIds": ["<uuid>", "..."],
   "stats": null
@@ -80,6 +80,7 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 - `cells` has length `rows * cols`. Black squares are present, always `{"v":null,"by":null}`, and immutable. A cleared or no-op'd playable cell keeps a non-null `by` (the writer or clearer), so `{"v":null,"by":null}` is reserved for black squares and never-written cells, while `{"v":null,"by":"<userId>"}` is a cell a writer set or cleared to null. This matches section 6 (a `cellSet` for a clear updates `by`) and the reducer vectors (section 13), which list such cells explicitly in `then.state.cells`.
 - `status` is one of `ongoing`, `completed`, `abandoned`. `stats` is non-null only when completed: `solveTimeSeconds` = `completedAt` − `firstFillAt`; `totalEvents` = the terminal event's `seq` − 1 (the count of sequenced events before it); `participantCount` = distinct users who sent at least one accepted mutation (not mere joiners, not spectators), computed as `DISTINCT user_id` over `cell_events` on the completion path, since it is not derivable from the board snapshot (last writer per cell only) nor from actor memory (lost on passivation).
 - `recentCommandIds` is the last K applied `commandId`s, letting a client confirm and clear overlay entries whose echo fell inside a gap (section 8; DESIGN.md section 6).
+- Each participant carries `avatarUrl`, an opaque nullable string. It is resolved server-side, once, where the display name is (DESIGN.md section 8), and is the same field on every participant-carrying payload: the `welcome` and `sync` participants, `playerConnected` (section 6), and the `GET /games/{id}` member listing (section 12). A client renders the image when it is present and falls back to its existing initial avatar when it is `null`, while loading, or on a load error; `null` is a first-class value, not an error. The value is opaque by contract: a client MUST NOT infer which provider produced it or reconstruct any input to it. The server never puts an email or any hash input on the wire (DESIGN.md INV-6 spirit).
 - Solutions are never present in any message on this protocol (DESIGN.md INV-6).
 
 ## 5. Client to server messages
@@ -170,7 +171,7 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 **Ephemeral notices.** No `seq`.
 
 - `welcome`, `sync` (`{"type":"sync","board":{...}}`)
-- `playerConnected {userId, displayName, color, role}` and `playerDisconnected {userId}`
+- `playerConnected {userId, displayName, avatarUrl, color, role}` and `playerDisconnected {userId}`. `avatarUrl` is the same opaque nullable field as the participant carries (section 4).
 - `cursor {userId, cell, direction}`
 - `checkResult {commandId, wrongCells:[int]}`: unicast to the requester. Lists filled cells whose value fails the comparator; empty cells are never listed.
 - `kicked {reason}`, followed by close `1008`.
@@ -250,7 +251,7 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 | `DELETE /games/{id}/members/{userId}` | host                                    | kick: removes membership, writes the denylist, disconnects live sockets; the host MUST NOT target themselves (`403`) |
 | `POST /games/{id}/abandon`            | host                                    | terminal state, executed via the session service                                                                               |
 | `DELETE /account`                     | authenticated (self)                    | tombstone the caller's own account: scrub PII, keep the id, run host succession or auto-abandon per hosted game (DESIGN.md section 8) |
-| `GET /games/{id}`                     | member                                  | the game view: solution-stripped puzzle, membership, session endpoint, the optional `name`, and the `inviteCode` (members only, any role: every member joined via it) |
+| `GET /games/{id}`                     | member                                  | the game view: solution-stripped puzzle, membership (each member `{userId, role, joinedAt, avatarUrl}`, `avatarUrl` the same opaque nullable field as section 4), session endpoint, the optional `name`, and the `inviteCode` (members only, any role: every member joined via it) |
 | `GET /g/{code}`                       | public                                  | HTML shell with OpenGraph tags for link unfurlers                                                                              |
 
 Puzzle views are typed `ClientPuzzle`, a type with no solution field, including none embedded in clue structures, so stripping is structural, not runtime (DESIGN.md INV-6).
@@ -264,6 +265,8 @@ The game `name` is optional user content shown back verbatim. It is never normal
 `POST /games/join` joins by the invite code alone, for a caller who holds only the code (a hand-typed or read-aloud code, no `gameId`; web invite links carry both). It resolves the game by its unique invite code and then seats the caller with the exact semantics of `POST /games/{id}/join`: denylist checked first (a kicked user is refused `DENIED`), then an idempotent, non-demoting seat that lands a new full account as `solver` and a guest as `spectator` (owner decision 2026-07-10), guests allowed. The lookup is normalized ASCII-only (INV-1): the invite alphabet is all uppercase ASCII, so a lowercase code resolves iff uppercased, with no locale folding. A code matching no game is `GAME_NOT_FOUND` (the code is the lookup key, so there is no game existence to protect, unlike the id-based join where a wrong code is `DENIED`). The response repeats `/{id}/join`'s `{gameId, role, userId}`; `gameId` is the one value the caller lacked.
 
 The puzzle `title` and `author` are display metadata parsed from the uploaded document at ingestion. They are shown back verbatim and are never normalized or compared, so INV-1 casing does not apply, and they are not solutions, so INV-6 is untouched; ingestion entity-decodes, trims, and caps each at 200 characters, and absent, null, empty, or non-string all read as null. They live on the `puzzles` row (not on `ClientPuzzle`/`ServerPuzzle`, which the solve screen does not need), so they surface only on the two list rows above: `title` and `author` on `GET /puzzles`, and `title` in the `puzzle` summary on `GET /games`.
+
+The member `avatarUrl` is resolved server-side, exactly once, at the same place the display name is (the identity mirror, DESIGN.md section 8): the OAuth identity's avatar from provider metadata when present, else a Gravatar URL derived from the account email, else `null`. It snapshots onto the same API-owned `users` row under the same single writer (INV-7), so the WebSocket participant payload (section 4) and this REST listing read one resolved value and cannot drift. The email is used only to compute the Gravatar hash server-side and never leaves the server, in this listing or any payload (INV-6 spirit); no client sees or can derive it. `avatarUrl` is opaque and nullable, rendered per section 4's fallback rule.
 
 Unlike every WebSocket message in this document, the puzzle payload carries no literal example here, by design: it is a REST payload owned by ingestion (DESIGN.md section 7), and its full schema (image clues, cross-references, per-cell numbering) is ingestion's to pin. A literal `ClientPuzzle`/`ServerPuzzle` example and its serialization golden land with the ingestion slice (DESIGN.md section 7), not in this document; the load-bearing fact here is only the solution split (INV-6).
 

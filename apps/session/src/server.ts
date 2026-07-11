@@ -448,6 +448,8 @@ async function buildBoardPayload(
   const participants: Participant[] = members.map((member) => ({
     userId: member.userId,
     displayName: member.displayName ?? FORMER_PARTICIPANT,
+    // Opaque, nullable, resolved API-side (PROTOCOL.md §4); the session only relays it.
+    avatarUrl: member.avatarUrl,
     color: colorForUser(member.userId),
     role: member.role,
     connected: connected.has(member.userId),
@@ -457,10 +459,11 @@ async function buildBoardPayload(
 
 /**
  * Build a `playerConnected` notice (PROTOCOL.md §6). Reuses the same `loadMembers`/`colorForUser`
- * machinery as `buildBoardPayload`, so the display name (INV-8: the read grant is display_name
- * only), color, and role match the participant list. The "former participant" fallback applies to
- * a tombstoned user's null display name (DESIGN.md §8). If the member row is somehow absent, fall
- * back to the connection's handshake-verified role so the notice is still well-formed.
+ * machinery as `buildBoardPayload`, so the display name and avatar (the read grant is display_name
+ * and avatar), color, and role match the participant list. The "former participant" fallback
+ * applies to a tombstoned user's null display name (DESIGN.md §8). If the member row is somehow
+ * absent, fall back to the connection's handshake-verified role and a null avatar so the notice is
+ * still well-formed.
  */
 async function buildPlayerConnected(
   pool: Pool,
@@ -473,6 +476,9 @@ async function buildPlayerConnected(
     type: "playerConnected",
     userId: conn.userId,
     displayName: member?.displayName ?? FORMER_PARTICIPANT,
+    // Same opaque nullable field the participant carries (PROTOCOL.md §4, §6); null when the member
+    // row is absent, which matches the initial-avatar fallback clients already render.
+    avatarUrl: member?.avatarUrl ?? null,
     color: colorForUser(conn.userId),
     role: member?.role ?? conn.role,
   };

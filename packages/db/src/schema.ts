@@ -58,6 +58,11 @@ export const users = pgTable("users", {
   userId: uuid("user_id").primaryKey(),
   // PII, scrubbed to null on tombstone (§8).
   displayName: text("display_name"),
+  // The resolved avatar URL (DESIGN.md §8): a provider metadata avatar, else a Gravatar URL from
+  // the account email, else null. Written by the API's identity mirror (single writer, INV-7),
+  // read by the session for the participant payload (PROTOCOL.md §4) under the expanded column
+  // grant. It is a resolved URL, never an email: the Gravatar hash is computed API-side, so this
+  // column exposes no email to any reader (INV-6 spirit). Scrubbed to null on tombstone (§8).
   avatar: text("avatar"),
   // Auth method is an attribute of identity (§8); guests are `true`.
   isAnonymous: boolean("is_anonymous").notNull().default(false),

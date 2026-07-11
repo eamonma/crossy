@@ -96,16 +96,25 @@ function puzzle(
   };
 }
 
-async function insertUser(userId: string, displayName: string): Promise<void> {
+async function insertUser(
+  userId: string,
+  displayName: string,
+  avatar: string | null = null,
+): Promise<void> {
   await adminPool.query(
-    "insert into users (user_id, display_name) values ($1, $2)",
-    [userId, displayName],
+    "insert into users (user_id, display_name, avatar) values ($1, $2, $3)",
+    [userId, displayName, avatar],
   );
 }
 
 interface GameSpec {
   readonly snapshot: PuzzleSnapshot;
-  readonly members: ReadonlyArray<{ userId: string; role: Role }>;
+  readonly members: ReadonlyArray<{
+    userId: string;
+    role: Role;
+    /** Optional resolved avatar URL to seed on the member's users row (PROTOCOL.md §4). */
+    avatar?: string | null;
+  }>;
   readonly denylist?: readonly string[];
   readonly gameState?: {
     board: RawCell[];
@@ -131,7 +140,11 @@ async function seedGame(spec: GameSpec): Promise<string> {
     [gameId, puzzleId, JSON.stringify(spec.snapshot), nextInviteCode(), hostId],
   );
   for (const member of spec.members) {
-    await insertUser(member.userId, `Player-${member.userId.slice(0, 4)}`);
+    await insertUser(
+      member.userId,
+      `Player-${member.userId.slice(0, 4)}`,
+      member.avatar ?? null,
+    );
     await adminPool.query(
       "insert into memberships (game_id, user_id, role) values ($1, $2, $3)",
       [gameId, member.userId, member.role],
@@ -1377,30 +1390,63 @@ describe("abandon via membership-changed (INV-4; DESIGN.md §6, §7)", () => {
 // socket, cursor relay with a 10/s cap, and the 45 s idle reap (exercised with a small injected
 // livenessTimeoutMs, never a real sleep).
 describe("presence and liveness (PROTOCOL.md §6, §9)", () => {
+  it("carries each participant's resolved avatarUrl on the welcome, null a first-class value (§4)", async () => {
+    const withAvatarId = randomUUID();
+    const noAvatarId = randomUUID();
+    const avatar = "https://www.gravatar.com/avatar/deadbeef?d=404";
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: withAvatarId, role: "host", avatar },
+        { userId: noAvatarId, role: "solver", avatar: null },
+      ],
+    });
+    const conn = await connectAndHello(gameId, withAvatarId);
+    const welcome = conn.welcome as unknown as {
+      board: {
+        participants: {
+          userId: string;
+          avatarUrl: string | null;
+        }[];
+      };
+    };
+    const byId = new Map(
+      welcome.board.participants.map((p) => [p.userId, p.avatarUrl]),
+    );
+    expect(byId.get(withAvatarId)).toBe(avatar);
+    // A member with no avatar surfaces null, not a missing field: the clients render their initial.
+    expect(byId.get(noAvatarId)).toBeNull();
+    conn.client.close();
+  });
+
   it("broadcasts playerConnected to the other connections, not to the joiner (§6, §9)", async () => {
     const hostId = randomUUID();
     const joinerId = randomUUID();
+    const joinerAvatar = "https://cdn.discordapp.com/avatars/joiner.png";
     const gameId = await seedGame({
       snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
       members: [
         { userId: hostId, role: "host" },
-        { userId: joinerId, role: "solver" },
+        { userId: joinerId, role: "solver", avatar: joinerAvatar },
       ],
     });
     const host = await connectAndHello(gameId, hostId);
     const joiner = await connectAndHello(gameId, joinerId);
 
-    // The already-connected host learns the joiner arrived, with the display-name-only grant
-    // (INV-8), the deterministic color, and the joiner's role.
+    // The already-connected host learns the joiner arrived, with the display-name-and-avatar grant,
+    // the deterministic color, and the joiner's role. avatarUrl is the resolved URL the API mirrored
+    // into users.avatar; the session relays it opaquely (PROTOCOL.md §4, §6).
     const connected = (await host.client.waitForType("playerConnected")) as {
       userId: string;
       displayName: string;
+      avatarUrl: string | null;
       color: string;
       role: string;
     };
     expect(connected.userId).toBe(joinerId);
     expect(connected.role).toBe("solver");
     expect(typeof connected.displayName).toBe("string");
+    expect(connected.avatarUrl).toBe(joinerAvatar);
     expect(connected.color).toMatch(/^#[0-9A-F]{6}$/);
 
     // The joiner is never told about itself: its participant list came in its own welcome. A
