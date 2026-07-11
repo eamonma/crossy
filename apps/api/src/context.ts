@@ -93,6 +93,12 @@ export interface AppDeps {
    * The composition root sets it from APPLE_APP_ID.
    */
   readonly appleAppId?: string;
+  /**
+   * Seed a solo starter game the first time a full account is seen (auth/middleware), so a
+   * fresh signed-in home is never empty (owner decision 2026-07-11). Off unless the composition
+   * root opts in, so tests keep a clean slate and the side effect stays a deliberate switch.
+   */
+  readonly starterSeedEnabled?: boolean;
 }
 
 /** Hono environment: the request-scoped variables the auth middleware populates. */

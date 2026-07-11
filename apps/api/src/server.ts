@@ -119,6 +119,8 @@ async function main(): Promise<void> {
     db,
     authPort,
     sessionWsBase: required("SESSION_WS_BASE"),
+    // Every new full account gets a solo starter game on first sight (owner decision).
+    starterSeedEnabled: true,
     analytics,
     ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
     ...(appleAppId !== undefined && appleAppId !== "" ? { appleAppId } : {}),

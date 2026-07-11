@@ -23,6 +23,11 @@ import type { FakeAuthProvider } from "@crossy/auth";
 import type { Hono } from "hono";
 import { buildApp } from "./app";
 import { createDb } from "./db/client";
+import {
+  STARTER_GAME_NAME,
+  STARTER_PUZZLE_ID,
+  STARTER_PUZZLE_TITLE,
+} from "./starter/starter-puzzle";
 import type {
   ApiEnv,
   MembershipChange,
@@ -2494,5 +2499,89 @@ describe("Live Activity token registry (PROTOCOL.md Live Activity push; DESIGN.m
     expect(res.status).toBe(403);
     // The membership gate refused before the upsert, so no welcome was signalled for the stranger.
     expect(welcomeCalls).toHaveLength(0);
+  });
+});
+
+describe("signup starter seed (DESIGN.md §8; INV-6 no-solution-leak; INV-7 users/games single writer)", () => {
+  // A dedicated app with seeding ON. The suite's shared `app` keeps it OFF, so every other
+  // GET /games assertion runs against a clean slate (the seed is a composition-root switch).
+  let seedApp: Hono<ApiEnv>;
+  beforeAll(() => {
+    seedApp = buildApp({
+      db: createDb(apiPool),
+      authPort: auth,
+      sessionWsBase: SESSION_WS_BASE,
+      starterSeedEnabled: true,
+      membershipNotifier,
+      vendorIdentity,
+    });
+  });
+
+  /** Every game a user belongs to, joined to its membership role, read as admin. */
+  async function gamesOf(
+    sub: string,
+  ): Promise<
+    { game_id: string; name: string; puzzle_id: string; role: string }[]
+  > {
+    const { rows } = await adminPool.query(
+      `select g.game_id, g.name, g.puzzle_id, m.role
+         from games g join memberships m on m.game_id = g.game_id
+        where m.user_id = $1`,
+      [sub],
+    );
+    return rows;
+  }
+
+  it("seeds one solo starter game the first time a full account is seen (INV-7)", async () => {
+    const sub = randomUUID();
+    const res = await seedApp.request("/games", {
+      headers: { authorization: `Bearer ${await auth.mintUpgraded({ sub })}` },
+    });
+    expect(res.status).toBe(200);
+    const rows = await gamesOf(sub);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.name).toBe(STARTER_GAME_NAME);
+    expect(rows[0]!.puzzle_id).toBe(STARTER_PUZZLE_ID);
+    expect(rows[0]!.role).toBe("host");
+    // The shared starter puzzle is provisioned once, by its fixed id.
+    const p = await adminPool.query(
+      "select title from puzzles where puzzle_id = $1",
+      [STARTER_PUZZLE_ID],
+    );
+    expect(p.rows).toHaveLength(1);
+    expect(p.rows[0].title).toBe(STARTER_PUZZLE_TITLE);
+  });
+
+  it("never seeds a guest: a guest cannot hold host (DESIGN.md §8)", async () => {
+    const sub = randomUUID();
+    await seedApp.request("/games", {
+      headers: { authorization: `Bearer ${await auth.mintAnonymous({ sub })}` },
+    });
+    expect(await gamesOf(sub)).toHaveLength(0);
+  });
+
+  it("seeds once, not on every request (idempotent on the users insert)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    for (let i = 0; i < 3; i += 1) {
+      await seedApp.request("/games", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+    }
+    expect(await gamesOf(sub)).toHaveLength(1);
+  });
+
+  it("exposes no solution on the seeded game view (INV-6)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    await seedApp.request("/games", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const game = (await gamesOf(sub))[0]!;
+    const res = await seedApp.request(`/games/${game.game_id}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(hasKeyDeep(await res.json(), "solution")).toBe(false);
   });
 });
