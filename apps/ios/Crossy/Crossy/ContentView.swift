@@ -18,6 +18,7 @@
 import CrossyStore
 import CrossyUI
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     var body: some View {
@@ -62,9 +63,17 @@ struct DemoRoomView: View {
             puzzleTitle: room.puzzleTitle,
             puzzleAuthor: room.puzzleAuthor,
             puzzleDate: room.puzzleDate,
+            inviteCode: room.inviteCode,
             model: room.selection,
             chrome: room.chrome,
-            onBack: onBack
+            onBack: onBack,
+            // The offline fixture holds the operations to a no-op: no REST, no
+            // pasteboard write worth making in a demo. The rows render so the
+            // popover's composition and the roster's kick submenu are visible;
+            // the actions do nothing.
+            onCopyInviteCode: {},
+            onEndGame: {},
+            onKick: { _ in }
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController).
@@ -107,10 +116,19 @@ struct RealRoomView: View {
                     puzzle: room.puzzle,
                     clues: room.clues,
                     roomName: room.roomName,
+                    inviteCode: room.inviteCode,
                     model: room.selection,
                     chrome: room.chrome,
                     onBack: onBack,
-                    onExit: onExit
+                    onExit: onExit,
+                    // The pasteboard write is the composition root's (CrossyUI
+                    // stays UIKit-free); abandon rides the REST client through
+                    // RealRoom (PROTOCOL.md §12).
+                    onCopyInviteCode: {
+                        if let code = room.inviteCode { UIPasteboard.general.string = code }
+                    },
+                    onEndGame: { room.endGame() },
+                    onKick: { userId in room.kick(userId: userId) }
                 )
                 // The mapped geometry changes identity once the REST view lands, so the
                 // SolveScreen's own @State (selection, chrome) reinitializes against the

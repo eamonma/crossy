@@ -195,3 +195,54 @@ final class RoomFactsContentTests: XCTestCase {
         XCTAssertNil(content.detail)
     }
 }
+
+// The mid-solve facts popover's operations (owner ruling 2026-07-10): only what
+// the API already supports (PROTOCOL.md §12). Copy the invite code (a member
+// holds it), and for the host, end the game (host abandon, a FORBIDDEN for a
+// non-host). Kick is not here; it lives on the roster menu. The derivation is
+// pure, so the popover renders no policy.
+
+final class FactsOperationsTests: XCTestCase {
+    func test_host_seesCopyAndEndGame() {
+        let ops = FactsOperations.make(inviteCode: "TIDECOVE", isHost: true)
+        XCTAssertEqual(ops.inviteCode, "TIDECOVE")
+        XCTAssertTrue(ops.canEndGame)
+        XCTAssertTrue(ops.hasAny)
+    }
+
+    // A non-host still copies the code (every member holds it, §12) but is never
+    // offered the destructive end-game; the server refuses a non-host abandon,
+    // and the popover simply does not show it.
+    func test_nonHost_copiesButNeverEndsGame() {
+        let ops = FactsOperations.make(inviteCode: "TIDECOVE", isHost: false)
+        XCTAssertEqual(ops.inviteCode, "TIDECOVE")
+        XCTAssertFalse(ops.canEndGame)
+        XCTAssertTrue(ops.hasAny)
+    }
+
+    // The copy row drops when the client holds no code: a blank or absent code
+    // leaves the row out (the ruling accepts facts-alone when nothing is
+    // available).
+    func test_missingCode_dropsTheCopyRow() {
+        XCTAssertNil(FactsOperations.make(inviteCode: nil, isHost: false).inviteCode)
+        XCTAssertNil(FactsOperations.make(inviteCode: "", isHost: false).inviteCode)
+        XCTAssertNil(FactsOperations.make(inviteCode: "   ", isHost: false).inviteCode)
+    }
+
+    // A non-host with no code in hand has no operations at all: the popover
+    // then shows facts alone, which the ruling accepts.
+    func test_nonHostNoCode_hasNoOperations() {
+        let ops = FactsOperations.make(inviteCode: nil, isHost: false)
+        XCTAssertFalse(ops.hasAny)
+        XCTAssertNil(ops.inviteCode)
+        XCTAssertFalse(ops.canEndGame)
+    }
+
+    // A whitespace-padded code is trimmed to its usable value (the room view
+    // carries a clean code, but the derivation is defensive).
+    func test_code_isTrimmed() {
+        XCTAssertEqual(
+            FactsOperations.make(inviteCode: " TIDECOVE ", isHost: false).inviteCode,
+            "TIDECOVE")
+    }
+}

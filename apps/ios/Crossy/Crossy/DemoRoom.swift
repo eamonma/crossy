@@ -18,6 +18,9 @@
 //    -i2cFacts              land the room-facts card open (the time pill,
 //                           inflated; simctl cannot tap, the presentBrowser
 //                           pattern)
+//    -i2eFactsPopover       raise the mid-solve facts popover (the §12
+//                           operations; owner ruling 2026-07-10). -i2cSpectator
+//                           drops the host's end-game; the host build shows it
 //    -i2cRoster             land the roster panel open
 //    -i2cWeather resyncing  force the breathing-dot state (a gapped event)
 //    -i2cWeather reconnecting  force the dimmed room with the quiet countdown
@@ -50,6 +53,10 @@ final class DemoRoom {
     let puzzleTitle: String
     let puzzleAuthor: String
     let puzzleDate: String
+    // The facts popover's copy row needs an invite code in hand (PROTOCOL.md
+    // §12: the room view carries it to any member). The fixture supplies a
+    // read-aloud eight-character code so the row renders offline.
+    let inviteCode = "TIDECOVE"
     let selection: SelectionModel
     let chrome = RoomChromeModel()
     private let transport: LoopbackTransport
@@ -133,6 +140,13 @@ final class DemoRoom {
         }
         if arguments.contains("-i2cFacts") {
             chrome.presentFacts()
+        }
+        if arguments.contains("-i2eFactsPopover") {
+            // The mid-solve facts card as a system popover (owner ruling
+            // 2026-07-10): the binding raises it directly, so simctl can
+            // capture the popover the tap would summon (the presentFacts
+            // pattern for a system presentation instead of the morph).
+            chrome.factsPopoverPresented = true
         }
         if let index = arguments.firstIndex(of: "-i2cMelt"),
             arguments.indices.contains(index + 1),

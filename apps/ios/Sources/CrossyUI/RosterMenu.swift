@@ -32,6 +32,11 @@ struct RosterMenu: View {
     let members: [RosterMember]
     let selfUserId: String?
     let onJoinIn: () -> Void
+    /// Kick a member (owner ruling 2026-07-10: the host can remove from the
+    /// participants panel). The composition root wires this to the REST call
+    /// (`DELETE /games/{id}/members/{userId}`); the fixture no-ops. Threaded
+    /// here now; the host-gated submenu that calls it lands with the kick UI.
+    let onKick: (String) -> Void
 
     var body: some View {
         if members.isEmpty {

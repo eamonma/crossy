@@ -29,8 +29,15 @@
 //  C. A popover presentation from a glass pill, hosting custom panel content
 //     via presentationCompactAdaptation(.popover) — the shape the roster
 //     panel could actually take, since popovers host arbitrary views.
+//  D. The variant C popover, but its glass pill INSIDE a GlassEffectContainer.
+//     The room's time pill lives inside the cluster's container, so before the
+//     mid-solve facts card becomes a popover (owner ruling 2026-07-10) we must
+//     know whether the Menu-in-container break on 26.1 also hits popovers. If
+//     D presents and dismisses cleanly against C's out-of-container reference,
+//     the time pill stays inside the cluster; if it misbehaves, it moves out
+//     the way the players pill does.
 //
-//  All three are TAP-driven: the pill panels open on tap, so the SP-i1 melt
+//  All four are TAP-driven: the pill panels open on tap, so the SP-i1 melt
 //  law (finger writes raw progress; no animation on scrubbed morphs) does not
 //  govern them. Verdicts come from the device only; the simulator renders the
 //  glass blend linearly and lies about goo.
@@ -43,11 +50,22 @@ import SwiftUI
 struct MorphLab: View {
     @State private var openSwap = false
     @State private var openPopover = false
+    @State private var openContainedPopover = false
     @Namespace private var glass
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color(red: 0.96, green: 0.95, blue: 0.93).ignoresSafeArea()
+                // simctl cannot tap (no assistive access): a launch arg
+                // auto-opens a popover so its presentation and its effect on
+                // the presenting glass can be captured. -morphLabPopover opens
+                // C (out of container); -morphLabContained opens D (the pill
+                // inside a GlassEffectContainer, the room's time-pill case).
+                .onAppear {
+                    let args = ProcessInfo.processInfo.arguments
+                    if args.contains("-morphLabPopover") { openPopover = true }
+                    if args.contains("-morphLabContained") { openContainedPopover = true }
+                }
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(0..<20, id: \.self) { row in
                     Text(verbatim: "Across \(row + 1) — the quiet between clues")
@@ -61,6 +79,7 @@ struct MorphLab: View {
                 labeled("A — glassEffectID swap (tap)") { variantSwap }
                 labeled("B — system Menu, Mail's mechanism (tap)") { variantMenu }
                 labeled("C — popover, custom content (tap)") { variantPopover }
+                labeled("D — popover from a contained pill (tap)") { variantContainedPopover }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 14)
@@ -166,6 +185,40 @@ struct MorphLab: View {
                     .frame(width: 240)
                     .padding(.vertical, 6)
                     .presentationCompactAdaptation(.popover)
+            }
+        } else {
+            Text(verbatim: "needs iOS 26 glass")
+        }
+    }
+
+    // MARK: - D: popover from a pill INSIDE a GlassEffectContainer
+
+    // The time pill sits inside the cluster's container. A Menu inside one
+    // breaks its morph on 26.1 (variant B's caveat); this proves whether a
+    // popover does too. A second contained pill sits beside the presenter so
+    // the container actually blends two shapes, exactly the room's cluster.
+    @ViewBuilder
+    private var variantContainedPopover: some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 6) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(.clear)
+                        .frame(width: 40, height: 40)
+                        .glassEffect(.regular, in: .circle)
+                    Button {
+                        openContainedPopover = true
+                    } label: {
+                        LabPill()
+                    }
+                    .buttonStyle(.glass)
+                    .popover(isPresented: $openContainedPopover) {
+                        LabPanel(rows: 4)
+                            .frame(width: 240)
+                            .padding(.vertical, 6)
+                            .presentationCompactAdaptation(.popover)
+                    }
+                }
             }
         } else {
             Text(verbatim: "needs iOS 26 glass")

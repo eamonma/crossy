@@ -24,7 +24,7 @@ import SwiftUI
 
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
-struct RoomBar: View {
+struct RoomBar<FactsPopover: View>: View {
     let ground: GridGround
     let weather: RoomWeather
     let reconnectRetryAt: Date?
@@ -43,16 +43,24 @@ struct RoomBar: View {
     /// bar only reports the intent.
     let onBack: () -> Void
     /// The time pill's summon (always live: the time pill is the room's
-    /// facts). Mid-solve it opens the facts card; at completion the frozen
-    /// clock summons the stats card back (ID-2).
+    /// facts). Mid-solve it raises the facts popover; at completion the frozen
+    /// clock summons the stats card morph back (ID-2). Routing is the caller's.
     let onTapTimePill: () -> Void
     /// True once the room completes, for the pill's spoken label (the visual
     /// is one surface either way).
     let completed: Bool
-    /// The roster menu's needs: who the local user is (the spectator edge) and
-    /// the Join in intent (ID-5), passed through to RosterMenu.
+    /// The roster menu's needs: who the local user is (the spectator edge and
+    /// the host's kick gate) and the Join in intent (ID-5), passed through to
+    /// RosterMenu, plus the host's kick (owner ruling 2026-07-10).
     let selfUserId: String?
     let onJoinIn: () -> Void
+    let onKick: (String) -> Void
+    /// The mid-solve facts popover flowing out of the time pill (owner ruling
+    /// 2026-07-10, MorphLab variant C). A binding the pill's `.popover` reads,
+    /// so the system owns placement, stacking, and dismissal; the content is
+    /// the caller's (the facts and the §12 operations).
+    @Binding var factsPopoverPresented: Bool
+    @ViewBuilder let factsPopover: () -> FactsPopover
 
     var body: some View {
         HStack(spacing: ChromeLayout.pillGap) {
@@ -76,7 +84,7 @@ struct RoomBar: View {
             #endif
             RosterMenu(
                 ground: ground, members: members,
-                selfUserId: selfUserId, onJoinIn: onJoinIn)
+                selfUserId: selfUserId, onJoinIn: onJoinIn, onKick: onKick)
         }
     }
 
@@ -156,6 +164,13 @@ struct RoomBar: View {
         // panel, so it falls to the bar's dismiss layer instead of the button.
         .allowsHitTesting(!timeHandedOff)
         .reportChromeFrame(.timePill)
+        // The mid-solve facts popover flows out of this pill (owner ruling
+        // 2026-07-10). MorphLab variant D proved a popover from a pill inside
+        // the cluster's GlassEffectContainer presents cleanly, so the pill
+        // stays inside the container and the popover attaches here. The system
+        // owns placement and dismissal; the completion path never sets this
+        // (it keeps the clock-rider morph, ID-2).
+        .popover(isPresented: $factsPopoverPresented) { factsPopover() }
     }
 
     /// ID-2's grammar at completion, the facts card's summon otherwise. The

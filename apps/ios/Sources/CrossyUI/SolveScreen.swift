@@ -26,9 +26,23 @@ public struct SolveScreen: View {
     private let puzzleTitle: String?
     private let puzzleAuthor: String?
     private let puzzleDate: String?
+    /// The room's invite code, held client-side (PROTOCOL.md §12: `GET
+    /// /games/{id}` returns it to any member). The facts popover offers a copy
+    /// row when it is present; nil leaves the row out (a room that has no code
+    /// in hand yet).
+    private let inviteCode: String?
     private let onBack: () -> Void
     private let onJoinIn: () -> Void
     private let onExit: () -> Void
+    /// Copy the invite code to the clipboard (the composition root owns the
+    /// platform pasteboard; CrossyUI reports the intent only).
+    private let onCopyInviteCode: () -> Void
+    /// End the game, host abandon (`POST /games/{id}/abandon`, PROTOCOL.md §12).
+    /// Confirmed in the popover, then reported here.
+    private let onEndGame: () -> Void
+    /// Kick a member, host only (`DELETE /games/{id}/members/{userId}`,
+    /// PROTOCOL.md §12). Confirmed in the roster menu, then reported here.
+    private let onKick: (String) -> Void
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
@@ -57,11 +71,15 @@ public struct SolveScreen: View {
         puzzleTitle: String? = nil,
         puzzleAuthor: String? = nil,
         puzzleDate: String? = nil,
+        inviteCode: String? = nil,
         model: SelectionModel? = nil,
         chrome: RoomChromeModel? = nil,
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
-        onExit: @escaping () -> Void = {}
+        onExit: @escaping () -> Void = {},
+        onCopyInviteCode: @escaping () -> Void = {},
+        onEndGame: @escaping () -> Void = {},
+        onKick: @escaping (String) -> Void = { _ in }
     ) {
         self.store = store
         self.puzzle = puzzle
@@ -70,9 +88,13 @@ public struct SolveScreen: View {
         self.puzzleTitle = puzzleTitle
         self.puzzleAuthor = puzzleAuthor
         self.puzzleDate = puzzleDate
+        self.inviteCode = inviteCode
         self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
+        self.onCopyInviteCode = onCopyInviteCode
+        self.onEndGame = onEndGame
+        self.onKick = onKick
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
         _chrome = State(initialValue: chrome ?? RoomChromeModel())
     }
@@ -116,10 +138,32 @@ public struct SolveScreen: View {
                     backHandedOff: pillEclipsed(.backButton),
                     timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
                     onBack: onBack,
-                    onTapTimePill: { openFacts() },
+                    // Mid-solve the tap raises the facts popover (owner ruling
+                    // 2026-07-10); at completion it keeps the clock-rider morph
+                    // stats card (ID-2, byte-identical). The routing lives here
+                    // so the pill stays a plain reporter of intent.
+                    onTapTimePill: { tapTimePill(status: status) },
                     completed: status == .completed,
                     selfUserId: store.selfUserId,
-                    onJoinIn: onJoinIn
+                    onJoinIn: onJoinIn,
+                    onKick: onKick,
+                    factsPopoverPresented: $chrome.factsPopoverPresented,
+                    factsPopover: {
+                        RoomFactsPopover(
+                            ground: ground,
+                            content: factsContent,
+                            operations: factsOperations,
+                            firstFillAt: store.firstFillAt,
+                            completedAt: store.completedAt ?? store.abandonedAt,
+                            onCopyInviteCode: {
+                                onCopyInviteCode()
+                                chrome.factsPopoverPresented = false
+                            },
+                            onEndGame: {
+                                onEndGame()
+                                chrome.factsPopoverPresented = false
+                            })
+                    }
                 )
                 .reportChromeFrame(.roomBar)
                 // Transient panels yield to intent (DESIGN.md §4): a touch on
@@ -315,6 +359,17 @@ public struct SolveScreen: View {
             participantCount: store.stats?.participantCount)
     }
 
+    /// The mid-solve facts popover's operations (FactsOperations pins the rule):
+    /// only what §12 already supports. The copy row rides the invite code the
+    /// room view carries; the destructive end-game renders only for the host
+    /// (the local participant's own row in the roster). The server enforces
+    /// host-only anyway; the client simply does not offer it to a non-host.
+    private var factsOperations: FactsOperations {
+        let selfIsHost =
+            rosterMembers.first { $0.userId == store.selfUserId }?.isHost ?? false
+        return FactsOperations.make(inviteCode: inviteCode, isHost: selfIsHost)
+    }
+
     /// The facts morph: rest is the TIME PILL's reported frame (the card is
     /// the pill, inflated; DESIGN.md §4). Open grows leftward over the pill's
     /// own footprint, top and trailing edges shared (the Mail-button rule,
@@ -360,6 +415,10 @@ public struct SolveScreen: View {
             // progress): a melt mid-drag when the room turns terminal stays
             // with the finger, and the release settles it as usual.
             chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
+            // The mid-solve facts popover is the running room's surface only;
+            // the stats card owns completion (ID-2). A room that completes with
+            // the popover open dismisses it, so the two never stack.
+            chrome.factsPopoverPresented = false
         }
         completion.observe(
             status: roomStatus,
@@ -465,11 +524,28 @@ public struct SolveScreen: View {
         }
     }
 
-    /// The time pill's summon (the time pill is the room's facts, owner ruling
-    /// 2026-07-10; at completion the frozen clock summons the stats, ID-2),
-    /// mutually exclusive like every panel (DESIGN.md §4): the card's arrival
-    /// pours back a still melt. A tap-opened morph animates on the chrome
-    /// spring's walk; no animation ever writes the drag-scrubbed melt (SP-i1).
+    /// The time pill's tap, routed by status (owner ruling 2026-07-10). While
+    /// the room runs, the tap raises the facts popover (a system presentation
+    /// flowing out of the pill, MorphLab variant C); it carries the §12
+    /// operations the morph never could. At a terminal status the tap keeps the
+    /// clock-rider morph exactly as it was (ID-2, the completion stats card;
+    /// the abandoned room keeps its own morph too), so the completion path is
+    /// byte-identical. The two surfaces are mutually exclusive with the melt,
+    /// which pours back either way.
+    private func tapTimePill(status: RoomStatus) {
+        chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
+        if status == .ongoing {
+            chrome.factsPopoverPresented = true
+        } else {
+            openFacts()
+        }
+    }
+
+    /// The completion stats card's summon (ID-2: the frozen clock inflates to
+    /// the headline), the clock-rider morph unchanged. Kept for the terminal
+    /// tap above and the celebration's auto-summon; a tap-opened morph animates
+    /// on the chrome spring's walk, and no animation ever writes the
+    /// drag-scrubbed melt (SP-i1).
     private func openFacts() {
         chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
         chrome.settleFacts(open: true, animated: !reduceMotion)

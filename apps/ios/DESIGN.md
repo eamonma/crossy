@@ -146,6 +146,25 @@ is a Menu flowing out of the players pill, ruled on device against the Mail
 reference, and the system owns its placement, stacking, and dismissal. SP-i5's
 finding stands for sheets: a detent sheet still cannot melt.
 
+Amended again 2026-07-10 (owner ruling): the MID-SOLVE facts card is a system
+popover too, not a custom morph. A tap on the time pill while the room runs
+presents a popover flowing out of the pill (the MorphLab variant C mechanism,
+`.presentationCompactAdaptation(.popover)`), which hosts arbitrary content: the
+facts, then a divider, then operations the API already supports (copy the
+invite code, and the host's end-game, one confirm). The COMPLETION path does
+not change: at completion the tap still summons the clock-rider morph stats
+card (ID-2, the frozen clock inflating to the headline, content riding the
+surface); the popover is the running room's surface only. The morph machinery
+stays for that one surface, and the `timeHandedOff` yield now applies only on
+the completion path. Container finding, proven on the Air sim before wiring
+(MorphLab variant D): unlike a Menu, a `.popover` does NOT break inside a
+GlassEffectContainer on 26.1. A popover presents on its own system layer above
+the hierarchy and never morphs its glass through the presenter's container, so
+its presentation is indistinguishable from an out-of-container reference and
+the presenting cluster stays whole. The time pill therefore stays inside the
+cluster's container (the roster's Menu still stands outside, because a Menu
+does break there).
+
 Content rides the morph (owner device finding, 2026-07-10). A morphing surface
 is never empty glass: the elements alive at both ends, the clue bar's pinned
 row, the stats card's clock, travel with the surface and hand off from the
@@ -157,12 +176,16 @@ content new at the open end (lists, names) fades in late. The morph targets:
 - Tap the players pill: the roster menu flows out of it, the system's morph
   (rows carry rendered pucks, names, and the quiet state word; the spectator's
   Join in is a real menu action).
-- Tap the time pill: it inflates into the room-facts card (owner ruling
-  2026-07-10: the time pill is the room's facts). Mid-solve the card carries
-  the room's name and the crossword's facts with the live clock as the
-  headline; at completion the same surface is the stats card (ID-2: the timer
-  becomes the headline, so the headline comes from the timer). Dismissal pours
-  it back, and the pill, ticking or frozen, summons it again.
+- Tap the time pill: the room's facts arrive (owner ruling 2026-07-10: the time
+  pill is the room's facts), by one of two mechanisms depending on the moment.
+  Mid-solve a popover flows out of the pill (the system's presentation), carrying
+  the room's name and the crossword's facts with the live clock as the headline,
+  then a divider and the §12 operations. At completion the same tap keeps the
+  custom morph: the frozen clock inflates into the stats card (ID-2: the timer
+  becomes the headline, so the headline comes from the timer, and the clock
+  rides the surface from the pill). The mid-solve popover dismisses the system's
+  way (the outside touch swallowed, Mail's manners); the completion morph pours
+  back on a touch and the frozen pill summons it again.
 - The invite capsule is the share card, condensed.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.
@@ -171,14 +194,16 @@ content new at the open end (lists, names) fades in late. The morph targets:
 - On a panning 25x25, standing bars thin while you travel and return at rest.
 
 **Transient panels yield to intent** (owner ruling 2026-07-10). A touch outside
-an open panel (the facts card) dismisses it and still lands where it fell: no
-dead tap-catchers, the room never eats a touch. Panels are mutually exclusive,
-opening any one pours back the others, and a status transition to completed or
-abandoned pours back the melt (the stats card then owns the completion stage).
-The one exception is a live finger: a melt being scrubbed is never
-force-closed, because the finger owns progress (SP-i1). The roster menu is the
-system's transient and keeps the system's own manners: the outside touch that
-dismisses it is swallowed, exactly as Mail's is.
+an open custom panel (the completion stats card, the clue browser) dismisses it
+and still lands where it fell: no dead tap-catchers, the room never eats a
+touch. Panels are mutually exclusive, opening any one pours back the others, and
+a status transition to completed or abandoned pours back the melt (the stats
+card then owns the completion stage) and the mid-solve facts popover (that
+surface is the running room's only). The one exception is a live finger: a melt
+being scrubbed is never force-closed, because the finger owns progress (SP-i1).
+The system transients, the roster menu and the mid-solve facts popover, keep the
+system's own manners: the outside touch that dismisses them is swallowed,
+exactly as Mail's is.
 
 **Presence glints.** Chrome stays achromatic until a person passes beneath it: a
 cursor sliding under the clue bar throws a brief specular in that player's color

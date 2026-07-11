@@ -39,6 +39,10 @@ final class RealRoom {
     private(set) var clues: ClueBook
     private(set) var roomName: String
     private(set) var selection: SelectionModel
+    /// The room's invite code, held from the game view (PROTOCOL.md §12: `GET
+    /// /games/{id}` returns it to any member). The facts popover's copy row
+    /// reads it; nil until the fetch lands.
+    private(set) var inviteCode: String?
 
     /// A fatal wiring failure (no room, the view fetch refused, an unusable endpoint),
     /// surfaced plainly rather than papered over. Nil on the happy path.
@@ -104,6 +108,7 @@ final class RealRoom {
         puzzle = mapped.puzzle
         clues = mapped.clues
         roomName = view.name ?? ""
+        inviteCode = view.inviteCode
         selection = SelectionModel(store: store, puzzle: mapped.puzzle)
         onReady()
 
@@ -139,6 +144,45 @@ final class RealRoom {
         // screen the task is cancelled, driver.run() returns, and the live socket
         // closes with 1000 (SessionDriver teardown; PROTOCOL.md §2).
         await driver.run()
+    }
+
+    /// End the game (host abandon, `POST /games/{id}/abandon`; PROTOCOL.md §12).
+    /// The server settles the terminal state via the session service and the
+    /// `gameAbandoned` event reaches the store over the live socket, so the room
+    /// freezes through the same path a peer's abandon would. Host-only is the
+    /// server's to enforce; the facts popover only offers this to the host. A
+    /// failure is swallowed with a log: the room has no REST error surface yet
+    /// (a reported gap for this slice), and the board state is unchanged.
+    func endGame() {
+        Task { @MainActor in
+            do {
+                _ = try await api.abandonGame(gameId: gameId)
+            } catch {
+                logRESTGap("abandon", error)
+            }
+        }
+    }
+
+    /// Kick a member (host, `DELETE /games/{id}/members/{userId}`; PROTOCOL.md
+    /// §12). The server removes membership, writes the denylist, and disconnects
+    /// the kicked user's live sockets; host-only and self-target refusal are the
+    /// server's (the roster menu offers this only on other people's rows for a
+    /// host). Failure is swallowed with a log, the same reported gap as abandon.
+    func kick(userId: String) {
+        Task { @MainActor in
+            do {
+                _ = try await api.kickMember(gameId: gameId, userId: userId)
+            } catch {
+                logRESTGap("kick", error)
+            }
+        }
+    }
+
+    /// The room has no surfaced REST error path yet (a reported gap for this
+    /// slice; EXPERIENCE.md §4 wants one sentence per code). Until it lands, a
+    /// failed operation logs and no-ops rather than papering the board.
+    private func logRESTGap(_ operation: String, _ error: any Error) {
+        print("[RealRoom] \(operation) failed: \(describe(error))")
     }
 
     private func describe(_ error: any Error) -> String {

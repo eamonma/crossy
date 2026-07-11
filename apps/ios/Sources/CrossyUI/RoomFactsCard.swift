@@ -133,6 +133,46 @@ public struct RoomFactsContent: Equatable, Sendable {
     }
 }
 
+/// The mid-solve facts popover's operations, derived once so the view renders no
+/// policy (the RoomFactsContent pattern). Operations are ONLY what the API
+/// already supports (PROTOCOL.md §12): a member may copy the room's invite code
+/// (`GET /games/{id}` returns `inviteCode` to any member); the host may end the
+/// game (`POST /games/{id}/abandon`, host only, a `FORBIDDEN` for a non-host).
+/// Kick is not here: it lives on the roster menu, per the owner ruling. A
+/// destructive operation (end game) renders only for the host and takes a
+/// confirm step in the view. When nothing is available (a non-host with no
+/// invite code in hand), the operations are empty and the popover shows facts
+/// alone, which is fine.
+public struct FactsOperations: Equatable, Sendable {
+    /// The invite code to copy, nil when the client does not hold it (the row
+    /// is then absent). The room view carries it (PROTOCOL.md §12), so a live
+    /// room always has it; the demo has one too.
+    public let inviteCode: String?
+    /// The host's destructive end-game, offered only to the host (the server
+    /// refuses a non-host abandon anyway; the client simply does not show it).
+    public let canEndGame: Bool
+
+    public init(inviteCode: String?, canEndGame: Bool) {
+        self.inviteCode = inviteCode
+        self.canEndGame = canEndGame
+    }
+
+    /// The operations for the local participant. `isHost` gates the destructive
+    /// end-game; a blank or absent code drops the copy row. A terminal room
+    /// offers no operations: the popover is the mid-solve surface only (the
+    /// stats card owns completion), and ending an already-ended game is a
+    /// no-op (INV-4), so the whole popover path is gated on `ongoing` upstream.
+    public static func make(inviteCode: String?, isHost: Bool) -> FactsOperations {
+        let trimmed = inviteCode?.trimmingCharacters(in: .whitespaces)
+        return FactsOperations(
+            inviteCode: (trimmed?.isEmpty == false) ? trimmed : nil,
+            canEndGame: isHost)
+    }
+
+    /// Whether the popover renders a divider and any operation rows at all.
+    public var hasAny: Bool { inviteCode != nil || canEndGame }
+}
+
 /// The card as one morphing glass surface. The time is the rider and the
 /// headline; chrome stays achromatic (DESIGN.md §3), so the card carries no
 /// color, only weight. The 1 Hz timeline keeps a mid-solve headline honest
