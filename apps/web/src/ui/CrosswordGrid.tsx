@@ -234,8 +234,11 @@ export function CrosswordGrid({
   }
 
   return (
+    // ph-no-capture is the INV-6 belt: board letters converge on the solution, so nothing
+    // under this node may ride an analytics event. PostHog autocapture skips the subtree
+    // (session replay is disabled outright at init; see ANALYTICS.md).
     <svg
-      className="board"
+      className="board ph-no-capture"
       viewBox={`0 0 ${cols * CELL} ${rows * CELL}`}
       role="img"
       aria-label={`${cols} by ${rows} crossword grid`}

@@ -7,6 +7,8 @@ allowBuilds:
   # testcontainers -> dockerode -> ssh2 optional native deps. We reach Docker over
   # the local socket, so the pure-JS paths suffice; declining keeps installs from
   # compiling native modules and keeps a fresh clone deterministic (DESIGN.md §9).
+  # core-js rides in via posthog-js; its postinstall only prints a banner, so decline.
+  core-js: false
   cpu-features: false
   esbuild: true
   protobufjs: false

@@ -43,7 +43,7 @@ function makeDeps(
     signInWithOAuth: ReturnType<typeof vi.fn>;
     refreshSession: ReturnType<typeof vi.fn>;
   };
-  fireAuthChange: (session: unknown) => void;
+  fireAuthChange: (session: unknown, event?: string) => void;
 } {
   let authCb: AuthChangeCb = () => undefined;
 
@@ -90,7 +90,8 @@ function makeDeps(
   return {
     deps,
     calls: { createClient, signInAnonymously, signInWithOAuth, refreshSession },
-    fireAuthChange: (session: unknown) => authCb("SIGNED_IN", session),
+    fireAuthChange: (session: unknown, event = "SIGNED_IN") =>
+      authCb(event, session),
   };
 }
 
@@ -262,11 +263,14 @@ describe("supabase identity adapter", () => {
       access_token: "b",
       user: fakeUser({ id: "u9", is_anonymous: true }),
     });
-    expect(seen).toHaveBeenCalledWith({
-      userId: "u9",
-      displayName: "Guest",
-      isAnonymous: true,
-    });
+    expect(seen).toHaveBeenCalledWith(
+      {
+        userId: "u9",
+        displayName: "Guest",
+        isAnonymous: true,
+      },
+      "signed_in",
+    );
   });
 
   it("displayName falls through to 'Player' for an Apple private-relay email with no name metadata", async () => {
@@ -327,11 +331,42 @@ describe("supabase identity adapter", () => {
     identity.onChange(seen);
     fireAuthChange(session({ id: "u1" }));
     expect(seen).toHaveBeenCalledTimes(1);
-    expect(seen).toHaveBeenCalledWith({
-      userId: "u1",
-      displayName: "Ada Lovelace",
-      isAnonymous: false,
-    });
+    expect(seen).toHaveBeenCalledWith(
+      {
+        userId: "u1",
+        displayName: "Ada Lovelace",
+        isAnonymous: false,
+      },
+      "signed_in",
+    );
+  });
+
+  it("INITIAL_SESSION maps to 'restored': a persisted session restoring is not an interactive sign-in (ANALYTICS.md signed_in gate)", () => {
+    const { deps, fireAuthChange } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    const seen = vi.fn();
+    identity.onChange(seen);
+    fireAuthChange(session({ id: "u1" }), "INITIAL_SESSION");
+    expect(seen).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveBeenCalledWith(
+      {
+        userId: "u1",
+        displayName: "Ada Lovelace",
+        isAnonymous: false,
+      },
+      "restored",
+    );
+  });
+
+  it("TOKEN_REFRESHED maps to 'refreshed', never to 'signed_in'", () => {
+    const { deps, fireAuthChange } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    const seen = vi.fn();
+    identity.onChange(seen);
+    // A refresh normally carries the same identity and is suppressed outright; firing it
+    // from the signed-out state surfaces the mapping so the union stays pinned.
+    fireAuthChange(session({ id: "u1" }), "TOKEN_REFRESHED");
+    expect(seen).toHaveBeenCalledWith(expect.anything(), "refreshed");
   });
 
   it("onChange suppresses a same-user re-emission (token refresh, tab refocus): the game must not churn", () => {
@@ -350,9 +385,9 @@ describe("supabase identity adapter", () => {
     fireAuthChange(session({ id: "u1" }));
     const seen = vi.fn();
     identity.onChange(seen);
-    fireAuthChange(null);
+    fireAuthChange(null, "SIGNED_OUT");
     expect(seen).toHaveBeenCalledTimes(1);
-    expect(seen).toHaveBeenCalledWith(null);
+    expect(seen).toHaveBeenCalledWith(null, "signed_out");
   });
 
   it("onChange notifies when the user changes (account switch)", () => {
@@ -363,10 +398,13 @@ describe("supabase identity adapter", () => {
     identity.onChange(seen);
     fireAuthChange(session({ id: "u2" }));
     expect(seen).toHaveBeenCalledTimes(1);
-    expect(seen).toHaveBeenCalledWith({
-      userId: "u2",
-      displayName: "Ada Lovelace",
-      isAnonymous: false,
-    });
+    expect(seen).toHaveBeenCalledWith(
+      {
+        userId: "u2",
+        displayName: "Ada Lovelace",
+        isAnonymous: false,
+      },
+      "signed_in",
+    );
   });
 });
