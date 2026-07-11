@@ -1,6 +1,6 @@
 // The mock Identity adapter: an in-memory identity for tests and local dev with no Supabase
 // project. It runs the same port the app consumes, so the demo path and the unit suite never
-// touch supabase-js or the network. Sign-in is synchronous here: signInWithDiscord seeds a
+// touch supabase-js or the network. Sign-in is synchronous here: signInWithProvider seeds a
 // fake account session rather than navigating away, so the app shell is exercisable offline.
 import type { GuestSignInResult, Identity, IdentitySession } from "./types";
 
@@ -19,8 +19,8 @@ const GUEST_SESSION: IdentitySession = {
   isAnonymous: true,
 };
 
-const DISCORD_SESSION: IdentitySession = {
-  userId: "mock-discord",
+const ACCOUNT_SESSION: IdentitySession = {
+  userId: "mock-account",
   displayName: "Mock Player",
   isAnonymous: false,
 };
@@ -48,8 +48,11 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
     getAccessToken(): Promise<string | null> {
       return Promise.resolve(session === null ? null : tokenFor(session));
     },
-    signInWithDiscord(): Promise<void> {
-      session = DISCORD_SESSION;
+    signInWithProvider(): Promise<void> {
+      // The provider argument is unused: every provider lands the same fake account here, since
+      // the mock never leaves for a vendor. Omitting it mirrors signInGuest, which drops its
+      // options for the same reason. Structural typing keeps this assignable to the port.
+      session = ACCOUNT_SESSION;
       emit();
       return Promise.resolve();
     },

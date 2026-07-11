@@ -210,20 +210,30 @@ describe("supabase identity adapter", () => {
     expect(await identity.getAccessToken()).toBeNull();
   });
 
-  it("signInWithDiscord starts OAuth with a redirectTo built from the current location", async () => {
+  it("signInWithProvider('discord') starts OAuth with a redirectTo built from the current location", async () => {
     const { deps, calls } = makeDeps({});
     const identity = createSupabaseIdentity(deps);
-    await identity.signInWithDiscord();
+    await identity.signInWithProvider("discord");
     expect(calls.signInWithOAuth).toHaveBeenCalledWith({
       provider: "discord",
       options: { redirectTo: "https://app.test/game/g1?code=ABCD2345" },
     });
   });
 
-  it("signInWithDiscord honors an explicit redirect path", async () => {
+  it("signInWithProvider('apple') passes the apple provider string through to the vendor", async () => {
     const { deps, calls } = makeDeps({});
     const identity = createSupabaseIdentity(deps);
-    await identity.signInWithDiscord("/lobby");
+    await identity.signInWithProvider("apple");
+    expect(calls.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "apple",
+      options: { redirectTo: "https://app.test/game/g1?code=ABCD2345" },
+    });
+  });
+
+  it("signInWithProvider honors an explicit redirect path", async () => {
+    const { deps, calls } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    await identity.signInWithProvider("discord", "/lobby");
     expect(calls.signInWithOAuth).toHaveBeenCalledWith({
       provider: "discord",
       options: { redirectTo: "https://app.test/lobby" },
@@ -257,6 +267,52 @@ describe("supabase identity adapter", () => {
       displayName: "Guest",
       isAnonymous: true,
     });
+  });
+
+  it("displayName falls through to 'Player' for an Apple private-relay email with no name metadata", async () => {
+    const { deps } = makeDeps({
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "a",
+              user: fakeUser({
+                id: "u-apple",
+                user_metadata: {},
+                email: "abc123xyz@privaterelay.appleid.com",
+              }),
+            },
+          },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    const loaded = await identity.load();
+    expect(loaded).toEqual({
+      userId: "u-apple",
+      displayName: "Player",
+      isAnonymous: false,
+    });
+  });
+
+  it("displayName still uses the local part for a normal email lacking name metadata", async () => {
+    const { deps } = makeDeps({
+      getSession: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "a",
+              user: fakeUser({
+                id: "u-email",
+                user_metadata: {},
+                email: "ada@example.com",
+              }),
+            },
+          },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    const loaded = await identity.load();
+    expect(loaded?.displayName).toBe("ada");
   });
 
   const session = (over: Record<string, unknown> = {}): unknown => ({

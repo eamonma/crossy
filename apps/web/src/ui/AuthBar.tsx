@@ -1,4 +1,4 @@
-// Auth surface (Track B). Discord OAuth is the live path tonight; anonymous guests exist
+// Auth surface (Track B). Discord and Apple OAuth are the live paths; anonymous guests exist
 // behind config.guestsEnabled (gated by Turnstile) and light up with the flag without ever
 // blocking on it. Email gets no surface, ever (product decision). The supabase vendor stays
 // behind the Identity port; this file only consumes it.
@@ -37,9 +37,25 @@ function DiscordMark({ className }: { className?: string }) {
   );
 }
 
+/** The Apple glyph, self-hosted (no icon CDN); tinted to the current text color. */
+function AppleMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path d="M17.05 12.536c-.03-2.943 2.404-4.353 2.514-4.42-1.371-2.005-3.504-2.279-4.26-2.309-1.813-.183-3.54 1.068-4.458 1.068-.918 0-2.336-1.041-3.842-1.013-1.977.029-3.8 1.15-4.816 2.921-2.053 3.562-.525 8.83 1.474 11.72.977 1.414 2.141 3.001 3.667 2.944 1.472-.058 2.028-.953 3.807-.953 1.779 0 2.28.953 3.837.925 1.583-.029 2.585-1.442 3.552-2.861 1.119-1.643 1.579-3.234 1.606-3.317-.035-.016-3.083-1.184-3.114-4.695zM14.13 3.995c.812-.983 1.359-2.351 1.21-3.712-1.169.047-2.586.779-3.425 1.761-.752.871-1.411 2.263-1.234 3.598 1.303.101 2.636-.663 3.449-1.647z" />
+    </svg>
+  );
+}
+
 /**
- * The prominent sign-in control, for the landing gate and invite gates. Discord is always
- * shown; the guest path (Turnstile-gated) appears only when the flag and site key are both
+ * The prominent sign-in control, for the landing gate and invite gates. Discord and Apple are
+ * always shown; the guest path (Turnstile-gated) appears only when the flag and site key are both
  * set, and a refusal renders as one calm sentence, never a thrown error or an error code.
  *
  * `allowGuest` lets a caller suppress the guest path even when it is otherwise ready. The
@@ -50,19 +66,28 @@ export function SignInButtons({
   identity,
   config,
   discordLabel = "Continue with Discord",
+  appleLabel = "Continue with Apple",
   allowGuest = true,
 }: {
   identity: Identity;
   config: AppConfig;
   discordLabel?: string;
+  appleLabel?: string;
   allowGuest?: boolean;
 }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   function onDiscord(): void {
     setNotice(null);
-    void identity.signInWithDiscord().catch(() => {
+    void identity.signInWithProvider("discord").catch(() => {
       setNotice("Discord sign-in didn't go through. Give it another try.");
+    });
+  }
+
+  function onApple(): void {
+    setNotice(null);
+    void identity.signInWithProvider("apple").catch(() => {
+      setNotice("Apple sign-in didn't go through. Give it another try.");
     });
   }
 
@@ -80,6 +105,10 @@ export function SignInButtons({
       >
         <DiscordMark />
         {discordLabel}
+      </Button>
+      <Button variant="default" size="lg" onClick={onApple} className="w-full">
+        <AppleMark />
+        {appleLabel}
       </Button>
       {guestReady && turnstileSiteKey !== undefined && (
         <>
@@ -125,7 +154,14 @@ export function AuthBar({
 
   function onDiscord(): void {
     setNotice(null);
-    void identity.signInWithDiscord().catch(() => {
+    void identity.signInWithProvider("discord").catch(() => {
+      setNotice("Sign-in didn't go through.");
+    });
+  }
+
+  function onApple(): void {
+    setNotice(null);
+    void identity.signInWithProvider("apple").catch(() => {
       setNotice("Sign-in didn't go through.");
     });
   }
@@ -136,6 +172,10 @@ export function AuthBar({
         <Button variant="secondary" size="sm" onClick={onDiscord}>
           <DiscordMark />
           Sign in
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onApple}>
+          <AppleMark />
+          Apple
         </Button>
         {notice !== null && (
           <span className="text-1 text-danger-text">{notice}</span>

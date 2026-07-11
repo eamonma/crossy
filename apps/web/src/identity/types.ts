@@ -31,6 +31,14 @@ export interface GuestSignInOptions {
   captchaToken?: string;
 }
 
+/**
+ * The OAuth providers the product offers. Product vocabulary the port owns: the union names the
+ * choices the UI presents, and each adapter maps these to whatever the vendor calls them (DESIGN.md
+ * section 8). Apple rides alongside Discord because the App Store mandates it once any third-party
+ * login exists.
+ */
+export type SignInProvider = "discord" | "apple";
+
 export interface Identity {
   /**
    * Resolve any pending OAuth redirect and load the persisted session. Called once at boot.
@@ -48,11 +56,14 @@ export interface Identity {
   getAccessToken(): Promise<string | null>;
 
   /**
-   * Begin Discord OAuth. Navigates the browser to the provider and returns to redirectPath
-   * (defaults to the current location). Resolves before the redirect; it does not return a
-   * session.
+   * Begin OAuth with the named provider. Navigates the browser to the provider and returns to
+   * redirectPath (defaults to the current location). Resolves before the redirect; it does not
+   * return a session.
    */
-  signInWithDiscord(redirectPath?: string): Promise<void>;
+  signInWithProvider(
+    provider: SignInProvider,
+    redirectPath?: string,
+  ): Promise<void>;
 
   /** Anonymous guest sign-in. Fails cleanly when guests are disabled or the provider refuses. */
   signInGuest(options?: GuestSignInOptions): Promise<GuestSignInResult>;

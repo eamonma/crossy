@@ -29,10 +29,14 @@ describe("mock identity adapter", () => {
     expect(await identity.getAccessToken()).toContain("mock-token");
   });
 
-  it("signInWithDiscord seeds a full (non-anonymous) account session", async () => {
-    const identity = createMockIdentity();
-    await identity.signInWithDiscord();
-    expect(identity.getSession()?.isAnonymous).toBe(false);
+  it("signInWithProvider seeds a full (non-anonymous) account session for each provider", async () => {
+    const discord = createMockIdentity();
+    await discord.signInWithProvider("discord");
+    expect(discord.getSession()?.isAnonymous).toBe(false);
+
+    const apple = createMockIdentity();
+    await apple.signInWithProvider("apple");
+    expect(apple.getSession()?.isAnonymous).toBe(false);
   });
 
   it("onChange fires on sign-in and sign-out and unsubscribes cleanly", async () => {
@@ -44,7 +48,7 @@ describe("mock identity adapter", () => {
     expect(seen).toHaveBeenCalledTimes(2);
     expect(seen).toHaveBeenLastCalledWith(null);
     off();
-    await identity.signInWithDiscord();
+    await identity.signInWithProvider("discord");
     expect(seen).toHaveBeenCalledTimes(2);
   });
 });
