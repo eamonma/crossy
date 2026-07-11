@@ -11,6 +11,8 @@
 		FB3E59F43000D30A004CA5C7 /* CrossyUI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F13000D30A004CA5C7 /* CrossyUI */; };
 		FB3E59F53000D30A004CA5C7 /* CrossyAPI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F23000D30A004CA5C7 /* CrossyAPI */; };
 		FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F33000D30A004CA5C7 /* CrossySession */; };
+		FB3E59F73000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F83000D30A004CA5C7 /* CrossyProtocol */; };
+		FB15AC113000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB15AC123000D30A004CA5C7 /* CrossyProtocol */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +80,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FB15AC113000D30A004CA5C7 /* CrossyProtocol in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -88,6 +91,7 @@
 				FB3E59F43000D30A004CA5C7 /* CrossyUI in Frameworks */,
 				FB3E59F53000D30A004CA5C7 /* CrossyAPI in Frameworks */,
 				FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */,
+				FB3E59F73000D30A004CA5C7 /* CrossyProtocol in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -134,6 +138,7 @@
 			);
 			name = CrossyWidgets;
 			packageProductDependencies = (
+				FB15AC123000D30A004CA5C7 /* CrossyProtocol */,
 			);
 			productName = CrossyWidgets;
 			productReference = FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */;
@@ -162,6 +167,7 @@
 				FB3E59F13000D30A004CA5C7 /* CrossyUI */,
 				FB3E59F23000D30A004CA5C7 /* CrossyAPI */,
 				FB3E59F33000D30A004CA5C7 /* CrossySession */,
+				FB3E59F83000D30A004CA5C7 /* CrossyProtocol */,
 			);
 			productName = Crossy;
 			productReference = FB3E59DB3000D30A004CA5C7 /* Crossy.app */;
@@ -549,6 +555,14 @@
 		FB3E59F33000D30A004CA5C7 /* CrossySession */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CrossySession;
+		};
+		FB3E59F83000D30A004CA5C7 /* CrossyProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CrossyProtocol;
+		};
+		FB15AC123000D30A004CA5C7 /* CrossyProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CrossyProtocol;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
