@@ -3,8 +3,10 @@
 // and testable (the Identity port pattern, DESIGN.md section 8). Two adapters implement it:
 // the PostHog adapter (posthogAdapter.ts) and the no-op (noopAdapter.ts).
 //
-// INV-6 rides here structurally: properties are flat scalars (counts, ids, flags, status),
-// so a board, a cell list, or a solution does not fit through the port (ANALYTICS.md).
+// INV-6 rides here two ways. Structurally: properties are flat scalars, so a board, a cell
+// list, or any structured content is a compile error. By norm: a solution is a plain string
+// and no type can bar it, so "never solutions" is ANALYTICS.md law, held by review and the
+// INV-6 tests, not by the compiler.
 
 /**
  * The events the web client emits: the client rows of the vocabulary in ANALYTICS.md.
@@ -14,8 +16,9 @@
 export type AnalyticsEvent = "app_opened" | "signed_in";
 
 /**
- * Flat scalar properties only: counts, ids, flags. Never letters, cells, coordinates, or
- * solutions (INV-6, ANALYTICS.md).
+ * Flat scalar properties only: counts, ids, flags. The type bars structured payloads (a
+ * grid, a cell list); the "never letters, coordinates, or solutions" rule is ANALYTICS.md
+ * law over the strings that remain (INV-6).
  */
 export type AnalyticsProperties = Readonly<
   Record<string, string | number | boolean>
