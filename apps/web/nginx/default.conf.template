@@ -32,6 +32,20 @@ server {
         return 200 '{"supabaseUrl":"${SUPABASE_URL}","supabasePublishableKey":"${SUPABASE_PUBLISHABLE_KEY}","apiBase":"${API_BASE}","guestsEnabled":${GUESTS_ENABLED},"turnstileSiteKey":"${TURNSTILE_SITE_KEY}"}';
     }
 
+    # Apple Universal Links: the association file lets iOS open a crossy.me invite (the
+    # system Camera's QR banner, or any tapped /game or /g link) directly in the app
+    # instead of Safari. Apple fetches it to verify applinks:crossy.me, and it must be
+    # served as JSON over https with no redirect. It ships in public/.well-known/, so the
+    # SPA try_files below would hand it back as octet-stream; this exact match pins the
+    # JSON content-type, the same shape as the /config.json location. Not cached hard: the
+    # app-to-domain association can change. Uninstalled devices never fetch this and just
+    # open the web app, the built-in fallback.
+    location = /.well-known/apple-app-site-association {
+        default_type application/json;
+        try_files /.well-known/apple-app-site-association =404;
+        add_header Cache-Control "no-cache";
+    }
+
     # SPA shell. The client routes by path (/game/<id>, /puzzles, /new; legacy ?game= links
     # redirect client-side), so deep links MUST fall back to the single index.html here; a
     # 404 on /game/<id> would break every invite link. Optional ?api=/?token= overrides ride

@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["MTF6T25BP8.com.eamonma.Crossy"],
+        "components": [
+          {
+            "/": "/game/*",
+            "comment": "Invite links open the game directly in the iOS app"
+          },
+          {
+            "/": "/g/*",
+            "comment": "Short unfurl links open the iOS app"
+          }
+        ]
+      }
+    ]
+  }
+}

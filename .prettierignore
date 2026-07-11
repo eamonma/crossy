@@ -18,3 +18,7 @@ reports/
 # Playwright run artifacts (e2e). Generated, not source.
 e2e/test-results/
 e2e/playwright-report/
+
+# Apple's Universal Links association file. Its name is fixed and extensionless, so
+# prettier can infer no parser; pin it out so `format:check` stays deterministic.
+apps/web/public/.well-known/apple-app-site-association
