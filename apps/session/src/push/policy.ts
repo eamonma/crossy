@@ -116,11 +116,14 @@ export const DISMISS_AFTER_MS = 5 * 60 * 1000;
 
 /**
  * The gap between a completion's alerting update and its `end` (owner ruling 2026-07-11: the end
- * follows once the announcement has had its moment). Six seconds lets the auto-expanded island hold
- * "Solved together" long enough to register before the activity ships its terminal frame and starts
- * its dismissal clock. Scheduled through the fill debounce's wakeAtMs timer, never a new timer path.
+ * follows once the announcement has had its moment). This is the terminal frame's whole life ON THE
+ * ISLAND: the system removes an ended activity from the Dynamic Island immediately, and the final
+ * frame survives only on the lock screen (under DISMISS_AFTER_MS), so the end must wait as long as
+ * the solved frame deserves to be glanceable. Six seconds proved to be a blink (owner device report
+ * 2026-07-11 late: the island "just disappeared"); sixty gives the frozen clock and the full-bright
+ * crew a real dwell. Scheduled through the fill debounce's wakeAtMs timer, never a new timer path.
  */
-export const ANNOUNCE_MS = 6000;
+export const ANNOUNCE_MS = 60_000;
 
 /**
  * The room name rides the observation, not the content-state (INV-6 keeps the content-state to
