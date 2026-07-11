@@ -203,6 +203,7 @@ struct RoomFactsPanel: View {
     let onEndGame: () -> Void
 
     @State private var confirmingEnd = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var ink: Color { Color(rgb: ground.tokens.ink) }
     private var quiet: Color { Color(rgb: ground.tokens.number) }
@@ -214,13 +215,55 @@ struct RoomFactsPanel: View {
     }
 
     private func card(now: Date) -> some View {
-        let progress = chrome.factsProgress
-        let frame = morph.frame(at: progress)
-        let radius = morph.cornerRadius(at: progress)
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
         let time = RoomFactsClock.headline(
             solveTimeSeconds: solveTimeSeconds,
             firstFillAt: firstFillAt, completedAt: completedAt, now: now)
+        return surface(time: time)
+            .confirmationDialog(
+                "End this game for everyone?",
+                isPresented: $confirmingEnd,
+                titleVisibility: .visible
+            ) {
+                // The one destructive confirm (EXPERIENCE.md: abandon, one
+                // confirm, plainly worded). The system dialog owns the red;
+                // the card body stays achromatic (DESIGN.md §3).
+                Button("End game", role: .destructive, action: onEndGame)
+                Button("Keep playing", role: .cancel) {}
+            } message: {
+                Text(verbatim: "This ends the game for everyone in the room.")
+            }
+    }
+
+    /// The surface's character (PillInflation, the owner-gated prototype):
+    /// the card's CONTENT and open geometry never change here, only how the
+    /// glass travels. The default is the shipped law.
+    @ViewBuilder
+    private func surface(time: String) -> some View {
+        #if os(iOS)
+            if #available(iOS 26.0, *), PillInflation.character == .metaball {
+                MetaballPanelSurface(
+                    morph: morph, progress: chrome.factsProgress,
+                    reduceMotion: reduceMotion
+                ) {
+                    rows(time: time)
+                }
+            } else {
+                walkedSurface(time: time)
+            }
+        #else
+            walkedSurface(time: time)
+        #endif
+    }
+
+    private func walkedSurface(time: String) -> some View {
+        let progress = chrome.factsProgress
+        let overshoots = PillInflation.walksWithOvershoot
+        let frame =
+            overshoots ? morph.frameUnclamped(at: progress) : morph.frame(at: progress)
+        let radius =
+            overshoots
+            ? morph.cornerRadiusUnclamped(at: progress) : morph.cornerRadius(at: progress)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
         // The card's content, one block: rigid rows against the OPEN width
         // (truncation computed once), clipped under the surface mid-flight
@@ -235,19 +278,6 @@ struct RoomFactsPanel: View {
             // dismiss it (DESIGN.md §4), the panel's own inner blocker rule.
             .onTapGesture {}
             .position(x: frame.midX, y: frame.midY)
-            .confirmationDialog(
-                "End this game for everyone?",
-                isPresented: $confirmingEnd,
-                titleVisibility: .visible
-            ) {
-                // The one destructive confirm (EXPERIENCE.md: abandon, one
-                // confirm, plainly worded). The system dialog owns the red;
-                // the card body stays achromatic (DESIGN.md §3).
-                Button("End game", role: .destructive, action: onEndGame)
-                Button("Keep playing", role: .cancel) {}
-            } message: {
-                Text(verbatim: "This ends the game for everyone in the room.")
-            }
     }
 
     private func rows(time: String) -> some View {
