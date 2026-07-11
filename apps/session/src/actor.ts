@@ -87,6 +87,8 @@ export class GameActor {
   private readonly solution: EngineSolution;
   private completedAt: string | null;
   private abandonedAt: string | null;
+  /** The room's display name (`games.name`), for the completion Live Activity alert body. */
+  private readonly roomName: string | null;
   private stats: Stats | null;
   private recentCommandIds: string[];
   private readonly connections = new Set<Connection>();
@@ -125,6 +127,7 @@ export class GameActor {
     this.solution = hydrated.solution;
     this.completedAt = hydrated.completedAt;
     this.abandonedAt = hydrated.abandonedAt;
+    this.roomName = hydrated.roomName;
     this.recentCommandIds = [...hydrated.recentCommandIds];
     this.stats = null;
     this.flushEventThreshold =
@@ -148,6 +151,7 @@ export class GameActor {
       status: this.state.status,
       completedAt: this.completedAt,
       connectedUserIds: this.connectedUserIds(),
+      roomName: this.roomName,
     };
   }
 

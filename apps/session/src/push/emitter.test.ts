@@ -22,7 +22,13 @@ import {
   readApnsCredentials,
 } from "./emitter";
 import type { BoardFacts } from "./emitter";
-import { DISMISS_AFTER_MS, STALE_AFTER_MS } from "./policy";
+import {
+  ANNOUNCE_MS,
+  COMPLETION_ALERT_SOUND,
+  COMPLETION_ALERT_TITLE,
+  DISMISS_AFTER_MS,
+  STALE_AFTER_MS,
+} from "./policy";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +39,7 @@ function facts(over: Partial<BoardFacts> = {}): BoardFacts {
     status: "ongoing",
     completedAt: null,
     connectedUserIds: new Set<string>(),
+    roomName: null,
     ...over,
   };
 }
@@ -263,6 +270,52 @@ describe("§12a emitter: envelope (aps.event / timestamp / stale-date / dismissa
     expect(body.aps["stale-date"]).toBeUndefined();
     expect(body.aps["content-state"].status).toBe("completed");
   });
+
+  it("an alerting update carries aps.alert with title, body, and sound (Apple's Live Activity payload shape)", () => {
+    const nowMs = 1_700_000_000_000;
+    const body = JSON.parse(
+      buildEnvelope(
+        {
+          event: "update",
+          priority: 10,
+          contentState: { ...cs, status: "completed", filled: 78 },
+          audience: { kind: "game" },
+          staleAfterMs: STALE_AFTER_MS,
+          alert: {
+            title: COMPLETION_ALERT_TITLE,
+            body: "Sunday Crew",
+            sound: COMPLETION_ALERT_SOUND,
+          },
+        },
+        nowMs,
+      ),
+    );
+    // Apple's documented shape: alert is a dict under aps, with title/body/sound as siblings.
+    expect(body.aps.event).toBe("update");
+    expect(body.aps.alert).toEqual({
+      title: COMPLETION_ALERT_TITLE,
+      body: "Sunday Crew",
+      sound: COMPLETION_ALERT_SOUND,
+    });
+    // sound lives inside the alert dict, not as an aps sibling.
+    expect(body.aps.sound).toBeUndefined();
+  });
+
+  it("a quiet push carries no aps.alert", () => {
+    const body = JSON.parse(
+      buildEnvelope(
+        {
+          event: "update",
+          priority: 5,
+          contentState: cs,
+          audience: { kind: "game" },
+          staleAfterMs: STALE_AFTER_MS,
+        },
+        1_700_000_000_000,
+      ),
+    );
+    expect(body.aps.alert).toBeUndefined();
+  });
 });
 
 describe("§12a emitter: encode-side conformance against the vector fixtures", () => {
@@ -421,5 +474,83 @@ describe("§12a emitter: fire-and-forget dispatch through the adapter", () => {
     await settle();
     expect(sent).toHaveLength(2); // the held latest state flushed
     expect(JSON.parse(sent[1]!.body).aps["content-state"].filled).toBe(11);
+  });
+
+  it("completed dispatches an alerting update (named by the room) then an end after ANNOUNCE_MS", async () => {
+    const { adapter, sent } = fakeAdapter();
+    const pool = fakePool({
+      members: [member({ userId: "u1", displayName: "Ann" })],
+      tokens: [{ token: "t1", userId: "u1", environment: "sandbox" }],
+    });
+    let armed: (() => void) | null = null;
+    let nowMs = 1000;
+    const emitter = new LiveActivityPushEmitter({
+      pool: pool as never,
+      adapter,
+      now: () => nowMs,
+      setTimer: (fn) => {
+        armed = fn;
+        return { cancel: () => {} };
+      },
+    });
+    emitter.onTerminal(
+      "g1",
+      facts({
+        status: "completed",
+        completedAt: "2026-07-11T19:40:03Z",
+        filled: 78,
+        connectedUserIds: new Set(["u1"]),
+        roomName: "Sunday Crew",
+      }),
+    );
+    await settle();
+    // At T: exactly the alerting update, with aps.alert naming the room. The end is held.
+    expect(sent).toHaveLength(1);
+    const update = JSON.parse(sent[0]!.body);
+    expect(update.aps.event).toBe("update");
+    expect(update.aps.alert).toEqual({
+      title: COMPLETION_ALERT_TITLE,
+      body: "Sunday Crew",
+      sound: COMPLETION_ALERT_SOUND,
+    });
+    expect(armed).not.toBeNull();
+    // ANNOUNCE_MS passes; fire the armed timer. The end ships now, no alert.
+    nowMs += ANNOUNCE_MS;
+    armed!();
+    await settle();
+    expect(sent).toHaveLength(2);
+    const end = JSON.parse(sent[1]!.body);
+    expect(end.aps.event).toBe("end");
+    expect(end.aps.alert).toBeUndefined();
+    expect(end.aps["dismissal-date"]).toBe(
+      Math.floor((nowMs + DISMISS_AFTER_MS) / 1000),
+    );
+  });
+
+  it("abandoned dispatches a single quiet end, no alert (the asymmetry is deliberate)", async () => {
+    const { adapter, sent } = fakeAdapter();
+    const pool = fakePool({
+      members: [member({ userId: "u1", displayName: "Ann" })],
+      tokens: [{ token: "t1", userId: "u1", environment: "sandbox" }],
+    });
+    const emitter = new LiveActivityPushEmitter({
+      pool: pool as never,
+      adapter,
+      now: () => 1000,
+    });
+    emitter.onTerminal(
+      "g1",
+      facts({
+        status: "abandoned",
+        filled: 12,
+        connectedUserIds: new Set(["u1"]),
+        roomName: "Sunday Crew",
+      }),
+    );
+    await settle();
+    expect(sent).toHaveLength(1);
+    const end = JSON.parse(sent[0]!.body);
+    expect(end.aps.event).toBe("end");
+    expect(end.aps.alert).toBeUndefined();
   });
 });

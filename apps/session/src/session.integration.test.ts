@@ -34,7 +34,7 @@ import type { SessionServer } from "./server";
 import { flushToPostgres, SnapshotRegressionError } from "./writer";
 import type { StateSnapshot } from "./writer";
 import { hydrateGame } from "./hydrate";
-import { loadGameState, loadPuzzleSnapshot } from "./repo";
+import { loadGameRow, loadGameState } from "./repo";
 import { loadLiveTokens } from "./push/tokens";
 
 const POSTGRES_IMAGE = "postgres:16-alpine";
@@ -861,9 +861,13 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
     await flushToPostgres(sessionPool, gameId, events, snap);
 
     // Rehydrate via the same read path the actor uses on first connect.
-    const loadedPuzzle = await loadPuzzleSnapshot(adminPool, gameId);
+    const loadedRow = await loadGameRow(adminPool, gameId);
     const loadedState = await loadGameState(adminPool, gameId);
-    const hydrated = hydrateGame(loadedPuzzle!, loadedState);
+    const hydrated = hydrateGame(
+      loadedRow!.snapshot,
+      loadedState,
+      loadedRow!.roomName,
+    );
     expect(hydrated.boardState.seq).toBe(2);
     expect(hydrated.boardState.filledCount).toBe(2);
     expect(hydrated.boardState.cells.get(0)).toEqual({ v: "A", by: userId });
@@ -902,9 +906,11 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
       );
       expect(ev.rows.map((r) => Number(r.seq))).toEqual([1, 2, 3, 4, 5]);
 
+      const loadedRow = await loadGameRow(adminPool, gameId);
       const hydrated = hydrateGame(
-        (await loadPuzzleSnapshot(adminPool, gameId))!,
+        loadedRow!.snapshot,
         await loadGameState(adminPool, gameId),
+        loadedRow!.roomName,
       );
       expect(hydrated.boardState.filledCount).toBe(5);
       for (let i = 0; i < 5; i++) {

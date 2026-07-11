@@ -10,7 +10,7 @@ import { GameActor } from "./actor";
 import type { ActorOptions } from "./actor";
 import { hydrateGame } from "./hydrate";
 import type { ActivityPushEmitter } from "./push/emitter";
-import { loadGameState, loadPuzzleSnapshot } from "./repo";
+import { loadGameRow, loadGameState } from "./repo";
 import { createPgPersistence } from "./writer";
 import type { GamePersistence } from "./writer";
 
@@ -69,12 +69,12 @@ export class ActorRegistry {
   }
 
   private async hydrate(gameId: string): Promise<GameActor | null> {
-    const snapshot = await loadPuzzleSnapshot(this.pool, gameId);
-    if (snapshot === null) return null;
+    const gameRow = await loadGameRow(this.pool, gameId);
+    if (gameRow === null) return null;
     const state = await loadGameState(this.pool, gameId);
     return new GameActor(
       gameId,
-      hydrateGame(snapshot, state),
+      hydrateGame(gameRow.snapshot, state, gameRow.roomName),
       this.persistence,
       this.now,
       this.actorOptions,

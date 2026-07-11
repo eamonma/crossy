@@ -6,6 +6,10 @@
 import { describe, expect, it } from "vitest";
 import type { LiveActivityContentState } from "@crossy/protocol";
 import {
+  ANNOUNCE_MS,
+  COMPLETION_ALERT_BODY_UNNAMED,
+  COMPLETION_ALERT_SOUND,
+  COMPLETION_ALERT_TITLE,
   DEBOUNCE_MS,
   DISMISS_AFTER_MS,
   INITIAL_POLICY_STATE,
@@ -28,6 +32,31 @@ function cs(
   };
 }
 
+/** A PolicyState with the new terminal-announce fields defaulted, so tests set only what they pin. */
+function st(over: Partial<PolicyState> = {}): PolicyState {
+  return {
+    lastSent: null,
+    lastSentAtMs: null,
+    lastFillPushAtMs: null,
+    pendingFill: null,
+    pendingEnd: null,
+    pendingEndAtMs: null,
+    ...over,
+  };
+}
+
+/** A completed content-state, the terminal frame the completion path pushes. */
+function completed(
+  over: Partial<LiveActivityContentState> = {},
+): LiveActivityContentState {
+  return cs({
+    status: "completed",
+    completedAt: "2026-07-11T19:40:03Z",
+    filled: 78,
+    ...over,
+  });
+}
+
 describe("§12a policy: presence pushes immediately at priority 10", () => {
   it("emits one update, priority 10, to the whole game", () => {
     const r = fold(INITIAL_POLICY_STATE, { kind: "presence" }, cs(), 1000);
@@ -42,16 +71,94 @@ describe("§12a policy: presence pushes immediately at priority 10", () => {
   });
 });
 
-describe("§12a policy: terminal ships an end with a dismissal date", () => {
-  it("completed emits event end, priority 10, dismissMs set", () => {
+describe("§12a policy: completed announces itself (owner ruling: done is an EVENT)", () => {
+  it("completed emits an ALERTING update first (priority 10, aps.alert), not a quiet end", () => {
     const r = fold(
       INITIAL_POLICY_STATE,
-      { kind: "terminal" },
-      cs({
-        status: "completed",
-        completedAt: "2026-07-11T19:40:03Z",
-        filled: 78,
-      }),
+      { kind: "terminal", roomName: "Sunday Crew" },
+      completed(),
+      2000,
+    );
+    // At T: exactly one decision, an alerting update. The end is held, not emitted here.
+    expect(r.decisions).toHaveLength(1);
+    expect(r.decisions[0]).toMatchObject({
+      event: "update",
+      priority: 10,
+      audience: { kind: "game" },
+      staleAfterMs: STALE_AFTER_MS,
+    });
+    expect(r.decisions[0]!.alert).toEqual({
+      title: COMPLETION_ALERT_TITLE,
+      body: "Sunday Crew",
+      sound: COMPLETION_ALERT_SOUND,
+    });
+  });
+
+  it("the alert body falls back to a fixed line when the room is unnamed", () => {
+    const r = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "terminal", roomName: null },
+      completed(),
+      2000,
+    );
+    expect(r.decisions[0]!.alert!.body).toBe(COMPLETION_ALERT_BODY_UNNAMED);
+  });
+
+  it("the end is HELD as pendingEnd and asks for a wake at T + ANNOUNCE_MS", () => {
+    const r = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "terminal", roomName: "R" },
+      completed(),
+      2000,
+    );
+    expect(r.state.pendingEnd).toEqual(completed());
+    expect(r.state.pendingEndAtMs).toBe(2000 + ANNOUNCE_MS);
+    expect(r.wakeAtMs).toBe(2000 + ANNOUNCE_MS);
+    // No end in the immediate decisions: the announcement gets its moment first.
+    expect(r.decisions.some((d) => d.event === "end")).toBe(false);
+  });
+
+  it("the held end flushes as an end with a dismissal date once ANNOUNCE_MS passes", () => {
+    const after = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "terminal", roomName: "R" },
+      completed(),
+      2000,
+    ).state;
+    const flushed = flushPending(after, 2000 + ANNOUNCE_MS);
+    expect(flushed.decisions).toHaveLength(1);
+    expect(flushed.decisions[0]).toMatchObject({
+      event: "end",
+      priority: 10,
+      audience: { kind: "game" },
+      dismissMs: DISMISS_AFTER_MS,
+    });
+    // No alert on the end, and the held state is cleared.
+    expect(flushed.decisions[0]!.alert).toBeUndefined();
+    expect(flushed.state.pendingEnd).toBeNull();
+    expect(flushed.state.pendingEndAtMs).toBeNull();
+  });
+
+  it("flushing the held end before ANNOUNCE_MS re-asks for a wake, holding the end", () => {
+    const after = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "terminal", roomName: "R" },
+      completed(),
+      2000,
+    ).state;
+    const early = flushPending(after, 2000 + ANNOUNCE_MS - 1);
+    expect(early.decisions).toHaveLength(0);
+    expect(early.wakeAtMs).toBe(2000 + ANNOUNCE_MS);
+    expect(early.state.pendingEnd).toEqual(completed());
+  });
+});
+
+describe("§12a policy: abandoned is a single quiet end (the asymmetry is deliberate)", () => {
+  it("abandoned emits one end, priority 10, dismissMs set, and NO alert", () => {
+    const r = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "terminal", roomName: "R" },
+      cs({ status: "abandoned", filled: 12 }),
       2000,
     );
     expect(r.decisions).toHaveLength(1);
@@ -61,34 +168,43 @@ describe("§12a policy: terminal ships an end with a dismissal date", () => {
       audience: { kind: "game" },
       dismissMs: DISMISS_AFTER_MS,
     });
+    expect(r.decisions[0]!.alert).toBeUndefined();
+    // No announcement is scheduled: an abandonment is not a celebration.
+    expect(r.state.pendingEnd).toBeNull();
+    expect(r.wakeAtMs).toBeNull();
   });
 
-  it("abandoned emits an end too", () => {
-    const r = fold(
-      INITIAL_POLICY_STATE,
-      { kind: "terminal" },
-      cs({ status: "abandoned", filled: 12 }),
-      2000,
-    );
-    expect(r.decisions[0]!.event).toBe("end");
-  });
-
-  it("a terminal supersedes a held fill (pendingFill cleared)", () => {
-    // Prime a held fill, then a terminal arrives before the window opens.
-    const held: PolicyState = {
+  it("a completed terminal supersedes a held fill (pendingFill cleared)", () => {
+    // Prime a held fill, then a completion arrives before the fill window opens.
+    const held = st({
       lastSent: cs({ filled: 5 }),
       lastSentAtMs: 0,
       lastFillPushAtMs: 0,
       pendingFill: cs({ filled: 6 }),
-    };
+    });
     const r = fold(
       held,
-      { kind: "terminal" },
-      cs({
-        status: "completed",
-        completedAt: "2026-07-11T00:00:00Z",
-        filled: 78,
-      }),
+      { kind: "terminal", roomName: "R" },
+      completed(),
+      1000,
+    );
+    expect(r.state.pendingFill).toBeNull();
+    // The completion's own decision is the alerting update; the held fill is gone.
+    expect(r.decisions[0]!.event).toBe("update");
+    expect(r.decisions[0]!.alert).toBeDefined();
+  });
+
+  it("an abandoned terminal supersedes a held fill (pendingFill cleared)", () => {
+    const held = st({
+      lastSent: cs({ filled: 5 }),
+      lastSentAtMs: 0,
+      lastFillPushAtMs: 0,
+      pendingFill: cs({ filled: 6 }),
+    });
+    const r = fold(
+      held,
+      { kind: "terminal", roomName: "R" },
+      cs({ status: "abandoned", filled: 6 }),
       1000,
     );
     expect(r.state.pendingFill).toBeNull();
@@ -110,12 +226,11 @@ describe("§12a policy: fill is debounced latest-state at priority 5", () => {
   });
 
   it("a fill inside the window is held, not pushed, and asks for a wake", () => {
-    const primed: PolicyState = {
+    const primed = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 1000,
       lastFillPushAtMs: 1000,
-      pendingFill: null,
-    };
+    });
     const r = fold(primed, { kind: "fill" }, cs({ filled: 12 }), 1000 + 5000);
     expect(r.decisions).toHaveLength(0);
     expect(r.state.pendingFill).toEqual(cs({ filled: 12 }));
@@ -123,12 +238,11 @@ describe("§12a policy: fill is debounced latest-state at priority 5", () => {
   });
 
   it("only the latest held state survives, never a queue of intermediates", () => {
-    let state: PolicyState = {
+    let state: PolicyState = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 1000,
       lastFillPushAtMs: 1000,
-      pendingFill: null,
-    };
+    });
     state = fold(state, { kind: "fill" }, cs({ filled: 12 }), 2000).state;
     state = fold(state, { kind: "fill" }, cs({ filled: 13 }), 3000).state;
     state = fold(state, { kind: "fill" }, cs({ filled: 14 }), 4000).state;
@@ -137,12 +251,12 @@ describe("§12a policy: fill is debounced latest-state at priority 5", () => {
   });
 
   it("a held fill flushes once the window opens (flushPending)", () => {
-    const held: PolicyState = {
+    const held = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 1000,
       lastFillPushAtMs: 1000,
       pendingFill: cs({ filled: 14 }),
-    };
+    });
     const r = flushPending(held, 1000 + DEBOUNCE_MS);
     expect(r.decisions).toHaveLength(1);
     expect(r.decisions[0]).toMatchObject({ event: "update", priority: 5 });
@@ -151,24 +265,23 @@ describe("§12a policy: fill is debounced latest-state at priority 5", () => {
   });
 
   it("flushPending before the window re-asks for a wake, holding the state", () => {
-    const held: PolicyState = {
+    const held = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 1000,
       lastFillPushAtMs: 1000,
       pendingFill: cs({ filled: 14 }),
-    };
+    });
     const r = flushPending(held, 1500);
     expect(r.decisions).toHaveLength(0);
     expect(r.wakeAtMs).toBe(1000 + DEBOUNCE_MS);
   });
 
   it("a fill past the window pushes immediately again", () => {
-    const primed: PolicyState = {
+    const primed = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 1000,
       lastFillPushAtMs: 1000,
-      pendingFill: null,
-    };
+    });
     const r = fold(
       primed,
       { kind: "fill" },
@@ -188,12 +301,11 @@ describe("§12a policy: a duplicate content-state never pushes (dedupe)", () => 
   });
 
   it("a fill equal to the last sent is suppressed even past the window", () => {
-    const primed: PolicyState = {
+    const primed = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 1000,
       lastFillPushAtMs: 1000,
-      pendingFill: null,
-    };
+    });
     const r = fold(
       primed,
       { kind: "fill" },
@@ -250,12 +362,11 @@ describe("§12a policy: a kicked member's own tokens get an end (INV: island ret
 
 describe("§12a policy: the debounce window is data, not a wall clock", () => {
   it("the same fold with a later clock crosses the window deterministically", () => {
-    const primed: PolicyState = {
+    const primed = st({
       lastSent: cs({ filled: 11 }),
       lastSentAtMs: 0,
       lastFillPushAtMs: 0,
-      pendingFill: null,
-    };
+    });
     // Just inside: held. Exactly at the boundary: pushed. No timer, only the nowMs argument.
     expect(
       fold(primed, { kind: "fill" }, cs({ filled: 12 }), DEBOUNCE_MS - 1)

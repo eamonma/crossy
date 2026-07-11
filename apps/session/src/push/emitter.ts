@@ -44,6 +44,13 @@ export interface BoardFacts {
   readonly status: "ongoing" | "completed" | "abandoned";
   readonly completedAt: string | null;
   readonly connectedUserIds: ReadonlySet<string>;
+  /**
+   * The room's display name (`games.name`, nullable), for the completion alert body (PROTOCOL.md
+   * 12a). It rides the facts snapshot rather than a second read on the hot path: the actor already
+   * holds it from hydration. Only the terminal-completed decision reads it; every other push ignores
+   * it, and it never enters the content-state (INV-6 keeps that to counts and render facts).
+   */
+  readonly roomName: string | null;
 }
 
 /** The emitter's surface. The actor and server call these; a slow APNs never blocks them. */
@@ -52,7 +59,10 @@ export interface ActivityPushEmitter {
   onPresence(gameId: string, facts: BoardFacts): void;
   /** A fill changed the counts: debounced latest-state (priority 5). */
   onFill(gameId: string, facts: BoardFacts): void;
-  /** The game reached a terminal state: end the activity (priority 10, dismissal date). */
+  /**
+   * The game reached a terminal state. Completed announces itself: an alerting update, then an end
+   * after ANNOUNCE_MS (policy.ts). Abandoned is a single quiet end. Both retire the island.
+   */
   onTerminal(gameId: string, facts: BoardFacts): void;
   /** A member was kicked: end their own tokens, presence-update everyone else. */
   onKick(gameId: string, userId: string, facts: BoardFacts): void;
@@ -146,7 +156,9 @@ export class LiveActivityPushEmitter implements ActivityPushEmitter {
     this.enqueue(gameId, { kind: "fill" }, facts);
   }
   onTerminal(gameId: string, facts: BoardFacts): void {
-    this.enqueue(gameId, { kind: "terminal" }, facts);
+    // The room name rides the facts snapshot to the policy, so the completion alert body can name
+    // the room without a hot-path read. Only the completed branch uses it (policy.ts).
+    this.enqueue(gameId, { kind: "terminal", roomName: facts.roomName }, facts);
   }
   onKick(gameId: string, userId: string, facts: BoardFacts): void {
     this.enqueue(gameId, { kind: "kick", userId }, facts);
@@ -314,6 +326,8 @@ function audienceTokens(
  * `aps.event: "update"`, a server `aps.timestamp` (seconds), the content-state, and a `stale-date`
  * so the widget renders its stale register when the channel goes quiet. A terminal ships
  * `aps.event: "end"` with the final content-state and a `dismissal-date` so the island retires.
+ * The completion's alerting update also carries an `aps.alert` dictionary (title, body, sound), the
+ * shape Apple's documented Live Activity payload uses to break through and auto-expand the island.
  * Times are seconds since the epoch, the ActivityKit convention.
  */
 export function buildEnvelope(decision: PushDecision, nowMs: number): string {
@@ -328,6 +342,15 @@ export function buildEnvelope(decision: PushDecision, nowMs: number): string {
   }
   if (decision.event === "end" && decision.dismissMs !== undefined) {
     aps["dismissal-date"] = Math.floor((nowMs + decision.dismissMs) / 1000);
+  }
+  if (decision.alert !== undefined) {
+    // Apple's Live Activity payload: `alert` is a dict under `aps` with title, body, and sound as
+    // siblings. The presence of `alert` makes ActivityKit deliver this update as an alerting one.
+    aps["alert"] = {
+      title: decision.alert.title,
+      body: decision.alert.body,
+      sound: decision.alert.sound,
+    };
   }
   return JSON.stringify({ aps });
 }
