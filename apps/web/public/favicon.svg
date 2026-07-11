@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The tightest crop of the CROSSY crossword (the app icon) that survives 16px:
+       the 2x2 window around the gold Y cell. One block, two open cells, the gold
+       cell; grid lines run to the frame so the puzzle reads as continuing past it.
+       Light mirrors icon-light (ink on bone); dark mirrors icon-dark (bone plates
+       on Observatory, the ground showing through as the grid line). The favicon
+       cannot see the app's data-theme, so it keys on prefers-color-scheme. -->
+  <style>
+    .ground { fill: #F2F1EC; }
+    .open { fill: #F2F1EC; }
+    .block { fill: #1D1B18; }
+    .line { stroke: #1D1B18; }
+    @media (prefers-color-scheme: dark) {
+      .ground { fill: #121118; }
+      .open { fill: #EDEAE2; }
+      .block { fill: #121118; }
+      .line { stroke: #121118; }
+    }
+  </style>
+  <rect class="ground" width="32" height="32"/>
+  <rect class="open" x="16" width="16" height="16"/>
+  <rect class="open" y="16" width="16" height="16"/>
+  <rect class="block" width="16" height="16"/>
+  <rect x="16" y="16" width="16" height="16" fill="#978365"/>
+  <path class="line" d="M16 0v32M0 16h32" stroke-width="2" fill="none"/>
+</svg>
