@@ -40,6 +40,8 @@ import {
 import { errorFrame } from "./frames";
 import type { EngineSolution, HydratedGame } from "./hydrate";
 import { Mailbox } from "./mailbox";
+import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
+import { createInertEmitter } from "./push/emitter";
 import type { GamePersistence, StateSnapshot } from "./writer";
 
 /** The last K applied commandIds kept for idempotency and the board payload (DESIGN.md §6). */
@@ -103,12 +105,21 @@ export class GameActor {
   private readonly flushEventThreshold: number;
   private readonly flushIntervalMs: number;
 
+  /**
+   * The Live Activity push emitter (PROTOCOL.md "Live Activity push"). Fire-and-forget: the actor
+   * calls it after a broadcast and never awaits it, so a slow or down APNs cannot back-pressure the
+   * hot path. Defaults to the inert no-op emitter, so an actor built without one (every existing
+   * test) behaves exactly as before.
+   */
+  private readonly pushEmitter: ActivityPushEmitter;
+
   constructor(
     readonly gameId: string,
     hydrated: HydratedGame,
     private readonly persistence: GamePersistence,
     private readonly now: () => Date,
     options: ActorOptions = {},
+    pushEmitter?: ActivityPushEmitter,
   ) {
     this.state = hydrated.boardState;
     this.solution = hydrated.solution;
@@ -119,6 +130,25 @@ export class GameActor {
     this.flushEventThreshold =
       options.flushEventThreshold ?? FLUSH_EVENT_THRESHOLD;
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
+    this.pushEmitter = pushEmitter ?? createInertEmitter();
+  }
+
+  /**
+   * The board facts a Live Activity push carries (PROTOCOL.md "Live Activity push"): filled is the
+   * count of filled playable cells, total the fillable-cell count, plus the lifecycle status,
+   * completedAt, and the live-socket set that drives puck away-dimming. COUNTS ONLY (INV-6): no
+   * letters, no coordinates. Cheap and synchronous, so the hot path never awaits to produce it.
+   */
+  boardFacts(): BoardFacts {
+    const total =
+      this.state.grid.cols * this.state.grid.rows - this.state.grid.blocks.size;
+    return {
+      filled: this.state.filledCount,
+      total,
+      status: this.state.status,
+      completedAt: this.completedAt,
+      connectedUserIds: this.connectedUserIds(),
+    };
   }
 
   /**
@@ -177,14 +207,22 @@ export class GameActor {
    * It never mutates membership; that is the API's job (INV-7).
    */
   disconnectUser(userId: string, reason: string): void {
+    let held = false;
     for (const conn of [...this.connections]) {
       if (conn.userId !== userId) continue;
+      held = true;
       conn.send({ type: "kicked", reason });
       conn.close?.(1008, "kicked");
       this.connections.delete(conn);
     }
     // A kicked user leaves no presence behind (§9): drop their cursor so no snapshot carries it.
     this.cursors.delete(userId);
+    // Live Activity (PROTOCOL.md "Live Activity push"): the kicked member's own tokens get an
+    // `end` (their island must not keep ticking a room they were removed from), everyone else a
+    // presence update. Fire-and-forget. Emitted once, only when the user actually held a socket
+    // here, so a no-op disconnect (already gone) does not push. The facts already exclude them,
+    // since their sockets are removed above.
+    if (held) this.pushEmitter.onKick(this.gameId, userId, this.boardFacts());
   }
 
   /** Update the cached role for a user's live sockets after a re-verified role change (INV-8). */
@@ -321,6 +359,10 @@ export class GameActor {
       await this.completeGame(completion, at);
       return;
     }
+    // A non-terminal fill changed the counts: feed the debounced fill push (fire-and-forget). The
+    // policy dedupes a no-op fill (same counts) and holds intermediate states, so calling per
+    // accepted mutation is safe. Emitted after the broadcast so the WS path is never delayed.
+    this.pushEmitter.onFill(this.gameId, this.boardFacts());
     await this.afterMutationFlush();
   }
 
@@ -349,6 +391,9 @@ export class GameActor {
       at,
       stats: this.stats,
     });
+    // Terminal moment (PROTOCOL.md "Live Activity push"): end the island with the final
+    // content-state and a dismissal date. Fire-and-forget, after the WS broadcast.
+    this.pushEmitter.onTerminal(this.gameId, this.boardFacts());
   }
 
   /**
@@ -369,6 +414,9 @@ export class GameActor {
     this.pending = [];
     this.cancelFlushTimer();
     this.broadcast({ type: "gameAbandoned", seq, at, by });
+    // Terminal moment (PROTOCOL.md "Live Activity push"): end the island with the frozen partial
+    // fill and a dismissal date. Fire-and-forget, after the WS broadcast.
+    this.pushEmitter.onTerminal(this.gameId, this.boardFacts());
   }
 
   /**

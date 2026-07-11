@@ -9,6 +9,7 @@ import type { Pool } from "pg";
 import { GameActor } from "./actor";
 import type { ActorOptions } from "./actor";
 import { hydrateGame } from "./hydrate";
+import type { ActivityPushEmitter } from "./push/emitter";
 import { loadGameState, loadPuzzleSnapshot } from "./repo";
 import { createPgPersistence } from "./writer";
 import type { GamePersistence } from "./writer";
@@ -21,6 +22,12 @@ export class ActorRegistry {
     private readonly pool: Pool,
     private readonly now: () => Date,
     private readonly actorOptions: ActorOptions = {},
+    /**
+     * The Live Activity push emitter (PROTOCOL.md "Live Activity push"), passed to every actor it
+     * hydrates. Optional: omitted (or the inert emitter) in tests and when the APNs env is absent,
+     * so the whole push channel is a no-op and the session behaves identically.
+     */
+    private readonly pushEmitter?: ActivityPushEmitter,
   ) {
     this.persistence = createPgPersistence(pool);
   }
@@ -71,6 +78,7 @@ export class ActorRegistry {
       this.persistence,
       this.now,
       this.actorOptions,
+      this.pushEmitter,
     );
   }
 }

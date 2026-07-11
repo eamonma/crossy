@@ -59,6 +59,7 @@ import { errorFrame } from "./frames";
 import { performHandshake } from "./handshake";
 import { applyMembershipChange, parseMembershipChangedBody } from "./internal";
 import { Mailbox } from "./mailbox";
+import type { ActivityPushEmitter } from "./push/emitter";
 import { ActorRegistry } from "./registry";
 import { loadMembers } from "./repo";
 
@@ -119,6 +120,13 @@ export interface SessionServerConfig {
    * inject a small value to exercise the reap without a real 45 s sleep.
    */
   readonly livenessTimeoutMs?: number;
+  /**
+   * The Live Activity push emitter (PROTOCOL.md "Live Activity push"). When present it is passed to
+   * every actor and fed at the presence sites; when omitted the whole channel is inert and the
+   * session behaves exactly as before (the composition root supplies it only when the APNs env is
+   * complete). Fire-and-forget throughout: no server path ever awaits it.
+   */
+  readonly pushEmitter?: ActivityPushEmitter;
 }
 
 export interface SessionServer {
@@ -140,7 +148,12 @@ export function createSessionServer(
 ): Promise<SessionServer> {
   const now = config.now ?? (() => new Date());
   const host = config.host ?? "127.0.0.1";
-  const registry = new ActorRegistry(config.pool, now, config.actorOptions);
+  const registry = new ActorRegistry(
+    config.pool,
+    now,
+    config.actorOptions,
+    config.pushEmitter,
+  );
   let draining = false;
 
   // The internal endpoint is served on the public `port` only when no separate
@@ -212,6 +225,9 @@ export function createSessionServer(
           pool: config.pool,
           registry,
           livenessTimeoutMs: config.livenessTimeoutMs ?? LIVENESS_TIMEOUT_MS,
+          ...(config.pushEmitter !== undefined
+            ? { pushEmitter: config.pushEmitter }
+            : {}),
         });
       });
     },
@@ -268,6 +284,8 @@ interface ConnectionDeps {
   readonly pool: Pool;
   readonly registry: ActorRegistry;
   readonly livenessTimeoutMs: number;
+  /** Fed at the presence sites (connect/disconnect) when configured; absent means inert. */
+  readonly pushEmitter?: ActivityPushEmitter;
 }
 
 function handleConnection(
@@ -347,6 +365,10 @@ function handleConnection(
           type: "playerDisconnected",
           userId: connection.userId,
         });
+        // A cluster member went away: refresh the island's away-dimming (PROTOCOL.md "Live
+        // Activity push"). Fire-and-forget, after the WS broadcast; the policy dedupes a
+        // non-cluster (spectator) change, so this is safe on every last-socket transition.
+        deps.pushEmitter?.onPresence(gameId, actor.boardFacts());
       }
     }
   });
@@ -377,6 +399,10 @@ function handleConnection(
     if (firstForUser) {
       const notice = await buildPlayerConnected(deps.pool, gameId, conn);
       result.actor.broadcastExcept(conn, notice);
+      // A cluster member arrived: refresh the island (a member who joined after the activity
+      // started still appears; PROTOCOL.md "Live Activity push"). Fire-and-forget, after the WS
+      // broadcast. The policy dedupes a spectator (non-cluster) connect.
+      deps.pushEmitter?.onPresence(gameId, result.actor.boardFacts());
     }
   }
 
