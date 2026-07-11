@@ -1507,6 +1507,29 @@ async function seedGameState(
   );
 }
 
+/**
+ * Append a board event through the superuser fixture, standing in for the session service (the
+ * real single writer of the append-only cell_events log, DESIGN.md §9). The event's `at` is the
+ * server timestamp `GET /games` aggregates to `MAX(at) = lastActivityAt` for activity ordering
+ * (PROTOCOL.md §12). `seq` must be unique per game; the caller supplies it. The value here is a
+ * throwaway `A`: the API only ever reads `MAX(at)`, never the value (INV-6), so the letter is
+ * immaterial to what the list surfaces. The API cannot write this table under its grant (the
+ * negative half of the read-only assertion below), so the superuser pool is the only way a test
+ * can plant activity without a live actor.
+ */
+async function seedCellEvent(
+  gameId: string,
+  userId: string,
+  seq: number,
+  at: string,
+): Promise<void> {
+  await adminPool.query(
+    `insert into cell_events (game_id, seq, cell, user_id, value, at)
+       values ($1, $2, 0, $3, 'A', $4)`,
+    [gameId, seq, userId, at],
+  );
+}
+
 interface GamesList {
   games: {
     gameId: string;
@@ -1516,6 +1539,7 @@ interface GamesList {
     createdBy: string;
     memberCount: number;
     completedAt: string | null;
+    lastActivityAt: string | null;
     puzzle: {
       puzzleId: string;
       rows: number;
@@ -1524,6 +1548,8 @@ interface GamesList {
       mask: string[];
     };
   }[];
+  /** Server-computed next cursor (page-minimum createdAt), null when the list is exhausted. */
+  nextBefore: string | null;
 }
 interface PuzzlesList {
   puzzles: {
@@ -1618,7 +1644,9 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     expect(byId.get(joined)!.memberCount).toBe(2); // host plus the caller who joined
   });
 
-  it("orders games newest-createdAt first", async () => {
+  it("orders unplayed games newest-createdAt first (no activity yet; PROTOCOL.md §12)", async () => {
+    // With no board events, every game's lastActivityAt is null, so activity ordering falls back
+    // to createdAt DESC among the unplayed games: the newest-created reads first.
     const caller = await auth.mintUpgraded({ sub: randomUUID() });
     const puzzleId = await ingestFixture(caller);
     const { gameId: g1 } = await createGame(caller, puzzleId);
@@ -1632,6 +1660,108 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
       r.json(),
     )) as GamesList;
     expect(games.map((g) => g.gameId)).toEqual([g3, g2, g1]);
+    // Unplayed games carry a null lastActivityAt.
+    expect(games.every((g) => g.lastActivityAt === null)).toBe(true);
+  });
+
+  it("orders the page by most recent activity, not creation time (read expand; PROTOCOL.md §12)", async () => {
+    // Three games created oldest-to-newest (g1 < g2 < g3), then played in the OPPOSITE order so
+    // activity inverts creation: g1 last-active, g3 first-active. The page must read by activity.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: g1 } = await createGame(caller, puzzleId);
+    const { gameId: g2 } = await createGame(caller, puzzleId);
+    const { gameId: g3 } = await createGame(caller, puzzleId);
+    await setGameCreatedAt(g1, "2026-03-01T00:00:00.000Z");
+    await setGameCreatedAt(g2, "2026-03-02T00:00:00.000Z");
+    await setGameCreatedAt(g3, "2026-03-03T00:00:00.000Z");
+    // Activity inverts creation order: g1 is the most recently touched.
+    await seedCellEvent(g3, sub, 1, "2026-05-01T10:00:00.000Z");
+    await seedCellEvent(g2, sub, 1, "2026-05-02T10:00:00.000Z");
+    await seedCellEvent(g1, sub, 1, "2026-05-03T10:00:00.000Z");
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    // By activity, newest touch first: g1, g2, g3 (the reverse of createdAt order).
+    expect(games.map((g) => g.gameId)).toEqual([g1, g2, g3]);
+    expect(games.find((g) => g.gameId === g1)!.lastActivityAt).toBe(
+      "2026-05-03T10:00:00.000Z",
+    );
+  });
+
+  it("reports lastActivityAt as MAX(cell_events.at), advancing as the game is played", async () => {
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId } = await createGame(caller, puzzleId);
+    // Two events; the later `at` is the game's last activity, regardless of insert/seq order.
+    await seedCellEvent(gameId, sub, 1, "2026-05-10T08:00:00.000Z");
+    await seedCellEvent(gameId, sub, 2, "2026-05-10T09:30:00.000Z");
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(games.find((g) => g.gameId === gameId)!.lastActivityAt).toBe(
+      "2026-05-10T09:30:00.000Z",
+    );
+  });
+
+  it("sorts played games ahead of unplayed ones within a page (PROTOCOL.md §12)", async () => {
+    // A played game outranks every unplayed game in its page even when the unplayed game was
+    // created later: activity beats creation, and null activity sorts last.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: unplayedNew } = await createGame(caller, puzzleId);
+    const { gameId: playedOld } = await createGame(caller, puzzleId);
+    await setGameCreatedAt(playedOld, "2026-02-01T00:00:00.000Z");
+    await setGameCreatedAt(unplayedNew, "2026-02-09T00:00:00.000Z");
+    // The old game has recent activity; the newer game has none.
+    await seedCellEvent(playedOld, sub, 1, "2026-06-01T12:00:00.000Z");
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(games.map((g) => g.gameId)).toEqual([playedOld, unplayedNew]);
+    expect(
+      games.find((g) => g.gameId === unplayedNew)!.lastActivityAt,
+    ).toBeNull();
+  });
+
+  it("reads cell_events under a SELECT-only grant and never writes it (INV-7 single writer)", async () => {
+    // Activity ordering reads the session-owned event log; that read must not become a write. The
+    // api role can SELECT MAX(at) now, but still cannot INSERT/UPDATE/DELETE cell_events (the log
+    // stays append-only for the session too). Asserted through the real crossy_api-role pool.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId } = await createGame(caller, puzzleId);
+    await seedCellEvent(gameId, sub, 1, "2026-06-03T09:30:00.000Z");
+
+    // Positive: the api role can now read cell_events (migration 0008 grant), the MAX(at) the
+    // list needs. It reads only the timestamp, never a value (INV-6).
+    const read = await apiPool.query<{ last: Date | null }>(
+      "select max(at) as last from cell_events where game_id = $1",
+      [gameId],
+    );
+    expect(read.rows[0]?.last).not.toBeNull();
+    // Negative: the read grant is not a write grant. cell_events stays session-owned (INV-7).
+    await expect(
+      apiPool.query(
+        "insert into cell_events (game_id, seq, cell, user_id, value) values ($1, 2, 0, $2, 'B')",
+        [gameId, sub],
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      apiPool.query("update cell_events set value = 'Z' where game_id = $1", [
+        gameId,
+      ]),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      apiPool.query("delete from cell_events where game_id = $1", [gameId]),
+    ).rejects.toThrow(/permission denied/i);
   });
 
   it("carries INV-6-safe geometry and leaks no solution anywhere in the serialized JSON (INV-6)", async () => {
@@ -1765,7 +1895,10 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     expect(text).not.toContain(LIST_MARKER);
   });
 
-  it("paginates by limit and the createdAt before cursor, never an offset", async () => {
+  it("paginates by limit and the server-computed nextBefore cursor, never an offset", async () => {
+    // Unplayed games, so activity order equals createdAt order; the cursor is the page-minimum
+    // createdAt the server returns as nextBefore (not the visual last row, which activity ordering
+    // can reshuffle). A full page yields a non-null nextBefore; the final partial page yields null.
     const caller = await auth.mintUpgraded({ sub: randomUUID() });
     const puzzleId = await ingestFixture(caller);
     const { gameId: g1 } = await createGame(caller, puzzleId);
@@ -1779,13 +1912,51 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
       r.json(),
     )) as GamesList;
     expect(first.games.map((g) => g.gameId)).toEqual([g3, g2]);
+    // A full page (2 of 3) carries a next cursor: the page-minimum createdAt (g2's).
+    expect(first.nextBefore).toBe("2026-04-02T00:00:00.000Z");
 
-    // Page by the last row's createdAt, the client-facing cursor contract.
-    const cursor = encodeURIComponent(first.games.at(-1)!.createdAt);
+    const cursor = encodeURIComponent(first.nextBefore!);
     const second = (await get(`/games?limit=2&before=${cursor}`, caller).then(
       (r) => r.json(),
     )) as GamesList;
     expect(second.games.map((g) => g.gameId)).toEqual([g1]);
+    // The last, partial page (1 row < limit 2) is the end of the list: no next cursor.
+    expect(second.nextBefore).toBeNull();
+  });
+
+  it("selects the page by createdAt even as activity reorders it, so nextBefore stays page-minimum createdAt (PROTOCOL.md §12)", async () => {
+    // The subtle case the design turns on: the page is SELECTED by createdAt (stable under moving
+    // activity) but SHOWN by activity. So the visual last row is not the page's oldest createdAt,
+    // and the cursor must be the server-computed page-minimum createdAt, never the reordered tail.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: g1 } = await createGame(caller, puzzleId); // oldest created
+    const { gameId: g2 } = await createGame(caller, puzzleId);
+    const { gameId: g3 } = await createGame(caller, puzzleId); // newest created
+    await setGameCreatedAt(g1, "2026-07-01T00:00:00.000Z");
+    await setGameCreatedAt(g2, "2026-07-02T00:00:00.000Z");
+    await setGameCreatedAt(g3, "2026-07-03T00:00:00.000Z");
+    // Page 1 selects the two newest-created (g3, g2). Within it, activity puts g2 above g3.
+    await seedCellEvent(g2, sub, 1, "2026-08-02T00:00:00.000Z");
+    await seedCellEvent(g3, sub, 1, "2026-08-01T00:00:00.000Z");
+
+    const first = (await get("/games?limit=2", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    // Shown by activity: g2 (later touch) then g3, even though g3 was created later.
+    expect(first.games.map((g) => g.gameId)).toEqual([g2, g3]);
+    // The visual last row is g3 (created 07-03), but the page's OLDEST createdAt is g2's (07-02).
+    // The cursor is that page-minimum, so page 2 correctly resumes below it and returns g1.
+    expect(first.nextBefore).toBe("2026-07-02T00:00:00.000Z");
+    expect(first.games.at(-1)!.createdAt).not.toBe(first.nextBefore);
+
+    const cursor = encodeURIComponent(first.nextBefore!);
+    const second = (await get(`/games?limit=2&before=${cursor}`, caller).then(
+      (r) => r.json(),
+    )) as GamesList;
+    expect(second.games.map((g) => g.gameId)).toEqual([g1]);
+    expect(second.nextBefore).toBeNull();
   });
 
   it("clamps limit and rejects an unparseable before cursor (VALIDATION)", async () => {

@@ -1,0 +1,18 @@
+-- Expand-only, read-grant (DESIGN.md §9 single writer: session owns cell_events; §11
+-- expand/contract). The core API orders the signed-in home's rooms by most recent ACTIVITY,
+-- not creation time (PROTOCOL.md §12): a room's last activity is the newest server timestamp
+-- in its event log, `MAX(cell_events.at)`. That log is session-owned (§9), which the API held
+-- no grant on. This is the next step of the planned read expand §9 records (the Archive module
+-- "will extend the read coupling to cell_events"), brought forward for the activity ordering
+-- ahead of the full Archive module, exactly as 0005 brought forward the game_state read for the
+-- completion surface.
+--
+-- The grant is SELECT only: the session service stays the single writer of cell_events, and the
+-- log stays append-only for it too (INSERT + SELECT, never UPDATE/DELETE, migration 0001). INV-7
+-- governs writes, not reads, so a read grant leaves single-writer intact. The API reads only the
+-- `at` timestamp, aggregated to `MAX(at)` per game; it never reads `value` (which is
+-- solution-adjacent) and never the board. A bare max-timestamp carries no cell content, so INV-6
+-- is untouched (the same shape as the `completed_at` read the API already does under 0005). This
+-- is the same read-coupling shape §9 already blesses for the completion read (0005), the avatar
+-- read (0006), and the live-activity registry read (0007).
+GRANT SELECT ON "cell_events" TO "crossy_api";

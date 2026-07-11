@@ -85,14 +85,23 @@ public struct CrossyAPIClient: Sendable {
         try await send(Endpoint(method: "POST", path: ["games"], body: try encode(body)))
     }
 
-    /// `GET /games`: the caller's games (membership join), newest first. Same cursor
-    /// contract as `listPuzzles`.
+    /// `GET /games`: the caller's games (membership join), most-recently-active first
+    /// within the page (§12). The page is selected by createdAt but shown by activity, so
+    /// the cursor is the server-computed `nextBefore` (the page-minimum createdAt), not the
+    /// reordered last row. Prefer that field; fall back to the last row's `createdAt` only
+    /// for an older server that omits it (before activity ordering shipped), where the two
+    /// coincide. A null `nextBefore` on a full response means the list is exhausted.
     public func listGames(
         limit: Int? = nil, before: String? = nil
     ) async throws -> APIPage<GameSummary> {
         let response: GamesListResponse = try await send(
             Endpoint(method: "GET", path: ["games"], query: pageQuery(limit, before)))
-        return APIPage(rows: response.games, nextBefore: response.games.last?.createdAt)
+        // A server that sent the cursor key (current server) is authoritative: its value, or null
+        // to mean the list is exhausted. Only fall back to the last row's createdAt for an older
+        // server that omitted the key entirely (before activity ordering, where the two coincide).
+        let nextBefore =
+            response.hasCursor ? response.nextBefore : response.games.last?.createdAt
+        return APIPage(rows: response.games, nextBefore: nextBefore)
     }
 
     /// `POST /games/join`: join by invite code alone; the code is the lookup key and

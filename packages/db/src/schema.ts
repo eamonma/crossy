@@ -285,6 +285,16 @@ export const gameState = pgTable("game_state", {
  * from 1 (INV-2) is an actor invariant; the schema enforces uniqueness and the `>= 1`
  * floor, not contiguity (a gap-free sequence is not expressible as a simple
  * constraint — noted in the report).
+ *
+ * Read-coupling (DESIGN.md §9): the API holds a SELECT-only grant on this table
+ * (migration 0008) so `GET /games` can order the signed-in home's rooms by most recent
+ * activity, `MAX(at)` per game (PROTOCOL.md §12). That is the next step of the planned read
+ * expand §9 records (the Archive module extending the read coupling to cell_events), brought
+ * forward for the activity ordering; it grants read only, so the session stays the single
+ * writer (INV-7 governs writes, not reads). The API reads `MAX(at)` (a bare timestamp), never
+ * `value`, so no cell content leaves the server (INV-6). The composite primary key
+ * `(game_id, seq)` covers the per-game `MAX(at)` scan; the report notes a `(game_id, at)`
+ * index if the aggregate ever needs it, unnecessary at friends scale.
  */
 export const cellEvents = pgTable(
   "cell_events",

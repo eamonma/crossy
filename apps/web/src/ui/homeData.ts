@@ -13,7 +13,10 @@ import type { Mask } from "@crossy/protocol";
 /** The caller's role in a game (PROTOCOL roles). */
 export type Role = "host" | "solver" | "spectator";
 
-/** One row of GET /games. Ordering and time are createdAt; completedAt marks a finished game. */
+/**
+ * One row of GET /games. The list arrives most-recently-active first within the page; completedAt
+ * marks a finished game, lastActivityAt is the newest board event (null when no one has played).
+ */
 export interface GameSummary {
   gameId: string;
   name: string | null;
@@ -26,6 +29,12 @@ export interface GameSummary {
    * never completed). Read from the session-owned game_state, never a solution (INV-6-safe).
    */
   completedAt: string | null;
+  /**
+   * The game's last activity: the newest board event's timestamp (ISO), or null when no one has
+   * played yet. `MAX(cell_events.at)` read server-side under a SELECT-only grant, never a cell
+   * value or a solution (INV-6-safe). The list is ordered by this field, most recent first.
+   */
+  lastActivityAt: string | null;
   /** `title` is the puzzle's display title (never solution content), null when it has none. */
   puzzle: {
     puzzleId: string;
@@ -40,6 +49,40 @@ export interface GameSummary {
 /** True when a game has finished (a non-null completion timestamp); the sidebar marks these. */
 export function isCompleted(g: GameSummary): boolean {
   return g.completedAt !== null;
+}
+
+/**
+ * The timestamp a game row is "about": its last activity when someone has played, else its
+ * creation time. This is the time the row shows ("active X ago" vs "started X ago") and the key it
+ * sorts on, so a played game reads by when it was last touched and an unplayed one by when it was
+ * made.
+ */
+export function lastTouched(g: GameSummary): string {
+  return g.lastActivityAt ?? g.createdAt;
+}
+
+/**
+ * Order rooms most-recently-active first, matching the server's within-page order (PROTOCOL
+ * section 12): a played game (non-null lastActivityAt) outranks an unplayed one, ties and unplayed
+ * games fall back to createdAt, then gameId, so the order is total and stable. The server already
+ * sends the page in this order; sorting again on the client keeps rendering correct even if pages
+ * are ever merged, and it never fights the server since the rule is the same. Pure and
+ * non-mutating (returns a new array).
+ */
+export function sortByActivity(games: readonly GameSummary[]): GameSummary[] {
+  return [...games].sort((a, b) => {
+    const activeA = a.lastActivityAt;
+    const activeB = b.lastActivityAt;
+    if (activeA !== activeB) {
+      if (activeA === null) return 1; // unplayed sorts after played
+      if (activeB === null) return -1;
+      const d = Date.parse(activeB) - Date.parse(activeA);
+      if (d !== 0) return d; // more recent first
+    }
+    const createdDelta = Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    if (createdDelta !== 0) return createdDelta;
+    return a.gameId < b.gameId ? 1 : a.gameId > b.gameId ? -1 : 0;
+  });
 }
 
 /** Detected puzzle features, the flags GET /puzzles returns (no solution content). */

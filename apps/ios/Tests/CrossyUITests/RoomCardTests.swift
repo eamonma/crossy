@@ -8,11 +8,47 @@ import XCTest
 
 final class RoomCardTests: XCTestCase {
     private func model(
-        name: String? = nil, title: String? = nil, members: Int = 2
+        name: String? = nil, title: String? = nil, members: Int = 2,
+        gameId: String = "g1", createdAt: String = "2026-07-01T00:00:00.000Z",
+        lastActivityAt: String? = nil
     ) -> RoomCardModel {
         RoomCardModel(
-            gameId: "g1", name: name, puzzleTitle: title,
-            rows: 15, cols: 15, memberCount: members, createdBy: "u1")
+            gameId: gameId, name: name, puzzleTitle: title,
+            rows: 15, cols: 15, memberCount: members, createdBy: "u1",
+            createdAt: createdAt, lastActivityAt: lastActivityAt)
+    }
+
+    func test_orderedByActivity_matchesTheServersWithinPageOrder_PROTOCOL12() {
+        // Most recently active first; a played room outranks an unplayed one; unplayed rooms fall
+        // back to createdAt (newest first). The rule mirrors the server's page order (§12).
+        let played1 = model(
+            gameId: "a", createdAt: "2026-01-01T00:00:00.000Z",
+            lastActivityAt: "2026-06-01T00:00:00.000Z")
+        let played2 = model(
+            gameId: "b", createdAt: "2026-02-01T00:00:00.000Z",
+            lastActivityAt: "2026-06-05T00:00:00.000Z")
+        let unplayedOld = model(
+            gameId: "c", createdAt: "2026-03-01T00:00:00.000Z", lastActivityAt: nil)
+        let unplayedNew = model(
+            gameId: "d", createdAt: "2026-05-01T00:00:00.000Z", lastActivityAt: nil)
+
+        let ordered = RoomCardModel.orderedByActivity([
+            unplayedOld, played1, unplayedNew, played2,
+        ])
+        // Played by activity (b then a), then unplayed by createdAt (d then c).
+        XCTAssertEqual(ordered.map(\.gameId), ["b", "a", "d", "c"])
+    }
+
+    func test_orderedByActivity_isStableAndTotalOnTies() {
+        // Same activity: fall back to createdAt, then gameId, so the order is total and stable.
+        let x = model(
+            gameId: "x", createdAt: "2026-04-02T00:00:00.000Z",
+            lastActivityAt: "2026-06-01T00:00:00.000Z")
+        let y = model(
+            gameId: "y", createdAt: "2026-04-01T00:00:00.000Z",
+            lastActivityAt: "2026-06-01T00:00:00.000Z")
+        // Equal activity, x created later, so x leads.
+        XCTAssertEqual(RoomCardModel.orderedByActivity([y, x]).map(\.gameId), ["x", "y"])
     }
 
     func test_headlinePrefersTheGameNameThenTheTitleThenGeometry() {

@@ -9,9 +9,11 @@ import {
   gameTitle,
   geometry,
   isCompleted,
+  lastTouched,
   puzzleTitle,
   relativeTime,
   shortDate,
+  sortByActivity,
   type GameSummary,
   type PuzzleSummary,
 } from "./homeData";
@@ -40,6 +42,7 @@ function game(over: Partial<GameSummary> = {}): GameSummary {
     createdBy: "u1",
     memberCount: 1,
     completedAt: null,
+    lastActivityAt: null,
     puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: null, mask: PLAIN_15 },
     ...over,
   };
@@ -115,6 +118,80 @@ describe("isCompleted", () => {
     expect(isCompleted(game({ completedAt: "2026-07-08T10:00:00Z" }))).toBe(
       true,
     );
+  });
+});
+
+describe("lastTouched", () => {
+  it("is the activity time when the game has been played", () => {
+    expect(
+      lastTouched(
+        game({
+          createdAt: "2026-07-01T12:00:00Z",
+          lastActivityAt: "2026-07-08T09:00:00Z",
+        }),
+      ),
+    ).toBe("2026-07-08T09:00:00Z");
+  });
+  it("falls back to createdAt for an unplayed game", () => {
+    expect(
+      lastTouched(
+        game({ createdAt: "2026-07-01T12:00:00Z", lastActivityAt: null }),
+      ),
+    ).toBe("2026-07-01T12:00:00Z");
+  });
+});
+
+describe("sortByActivity (matches the server's within-page order, PROTOCOL section 12)", () => {
+  it("puts the most recently active game first", () => {
+    const a = game({ gameId: "a", lastActivityAt: "2026-07-01T00:00:00Z" });
+    const b = game({ gameId: "b", lastActivityAt: "2026-07-03T00:00:00Z" });
+    const c = game({ gameId: "c", lastActivityAt: "2026-07-02T00:00:00Z" });
+    expect(sortByActivity([a, b, c]).map((g) => g.gameId)).toEqual([
+      "b",
+      "c",
+      "a",
+    ]);
+  });
+  it("sorts a played game ahead of an unplayed one, whatever the createdAt", () => {
+    const played = game({
+      gameId: "played",
+      createdAt: "2026-01-01T00:00:00Z",
+      lastActivityAt: "2026-06-01T00:00:00Z",
+    });
+    const unplayed = game({
+      gameId: "unplayed",
+      createdAt: "2026-05-01T00:00:00Z",
+      lastActivityAt: null,
+    });
+    expect(sortByActivity([unplayed, played]).map((g) => g.gameId)).toEqual([
+      "played",
+      "unplayed",
+    ]);
+  });
+  it("orders unplayed games by createdAt, newest first", () => {
+    const older = game({
+      gameId: "older",
+      createdAt: "2026-05-01T00:00:00Z",
+      lastActivityAt: null,
+    });
+    const newer = game({
+      gameId: "newer",
+      createdAt: "2026-05-09T00:00:00Z",
+      lastActivityAt: null,
+    });
+    expect(sortByActivity([older, newer]).map((g) => g.gameId)).toEqual([
+      "newer",
+      "older",
+    ]);
+  });
+  it("does not mutate its input", () => {
+    const input = [
+      game({ gameId: "a", lastActivityAt: "2026-07-01T00:00:00Z" }),
+      game({ gameId: "b", lastActivityAt: "2026-07-03T00:00:00Z" }),
+    ];
+    const before = input.map((g) => g.gameId);
+    sortByActivity(input);
+    expect(input.map((g) => g.gameId)).toEqual(before);
   });
 });
 

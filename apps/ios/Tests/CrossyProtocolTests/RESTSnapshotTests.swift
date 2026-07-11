@@ -114,6 +114,43 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertFalse(allJSONKeys(in: reencoded).contains("status"))
     }
 
+    func test_gamesListCarriesLastActivityAndTheServerCursor() throws {
+        // §12 activity ordering: a played game carries its last-activity time, an unplayed one
+        // carries null; the response carries the server-computed nextBefore (the page cursor).
+        let list = try assertLosslessRoundTrip(GamesListResponse.self, .rest, "games-list")
+        XCTAssertEqual(list.games[0].lastActivityAt, "2026-07-09T18:24:03.000Z")
+        XCTAssertNil(list.games[1].lastActivityAt, "an unplayed game has null activity")
+        // The server sent the cursor key, so hasCursor is true and nextBefore is the page cursor.
+        XCTAssertTrue(list.hasCursor)
+        XCTAssertEqual(list.nextBefore, "2026-07-07T09:30:00.000Z")
+    }
+
+    func test_gamesListPresentNullCursorMeansExhaustedNotAbsent() throws {
+        // A present-null nextBefore (list exhausted) must be distinguishable from an absent key
+        // (older server): the client stops on the former and falls back on the latter (§12, §14).
+        let present = Data(#"{"games":[],"nextBefore":null}"#.utf8)
+        let decodedPresent = try JSONDecoder().decode(GamesListResponse.self, from: present)
+        XCTAssertTrue(decodedPresent.hasCursor, "the key is present, even as null")
+        XCTAssertNil(decodedPresent.nextBefore)
+
+        let absent = Data(#"{"games":[]}"#.utf8)
+        let decodedAbsent = try JSONDecoder().decode(GamesListResponse.self, from: absent)
+        XCTAssertFalse(decodedAbsent.hasCursor, "an older server omits the key entirely")
+        XCTAssertNil(decodedAbsent.nextBefore)
+    }
+
+    func test_gamesListDecodesAnOlderServerThatOmitsActivityAndCursor() throws {
+        // §14 additive: a server predating activity ordering sends neither lastActivityAt nor
+        // nextBefore; the twin still decodes, reading unplayed activity and no server cursor.
+        let legacy = Data(
+            #"""
+            {"games":[{"gameId":"g","name":null,"role":"solver","createdAt":"2026-07-01T00:00:00.000Z","createdBy":"u","memberCount":2,"puzzle":{"puzzleId":"p","rows":15,"cols":15,"title":null}}]}
+            """#.utf8)
+        let decoded = try JSONDecoder().decode(GamesListResponse.self, from: legacy)
+        XCTAssertNil(decoded.games[0].lastActivityAt)
+        XCTAssertFalse(decoded.hasCursor)
+    }
+
     func test_joinRequestRoundTrips() throws {
         let request = try assertLosslessRoundTrip(JoinGameRequest.self, .rest, "join-request")
         XCTAssertEqual(request.code, "BQ7XKM2A")

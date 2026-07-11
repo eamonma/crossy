@@ -31,8 +31,10 @@ import {
   gameTitle,
   geometry,
   isCompleted,
+  lastTouched,
   puzzleTitle,
   relativeTime,
+  sortByActivity,
   startGameFromPuzzle,
   type GameSummary,
   type PuzzleSummary,
@@ -284,7 +286,14 @@ function RoomCard({
             <span className="text-text-subtle">
               {players(game.memberCount)} · Solved
             </span>
+          ) : game.lastActivityAt !== null ? (
+            // A played game reads by when it was last touched, the activity the list orders on.
+            <>
+              {players(game.memberCount)} · active{" "}
+              {relativeTime(lastTouched(game), now)}
+            </>
           ) : (
+            // Never played: fall back to when the room was created.
             <>
               {players(game.memberCount)} · started{" "}
               {relativeTime(game.createdAt, now)}
@@ -317,9 +326,10 @@ function RoomGrid({
 
 /**
  * The shelf: live rooms first as silhouette cards, then a trailing "Solved" section that gathers
- * the finished rooms so the shelf reads calm and current at the top. Ordering inside each group
- * stays newest-first (the API's order is preserved). When nothing is solved, the trailing section
- * simply does not render, so an all-live shelf carries no empty header.
+ * the finished rooms so the shelf reads calm and current at the top. Ordering inside each group is
+ * most-recently-active first (sortByActivity), the same order the API sends, so the room you last
+ * touched leads. When nothing is solved, the trailing section simply does not render, so an
+ * all-live shelf carries no empty header.
  */
 function GamesList({
   games,
@@ -329,8 +339,9 @@ function GamesList({
   onOpen: (gameId: string) => void;
 }) {
   const now = new Date();
-  const live = games.filter((g) => !isCompleted(g));
-  const solved = games.filter((g) => isCompleted(g));
+  const ordered = sortByActivity(games);
+  const live = ordered.filter((g) => !isCompleted(g));
+  const solved = ordered.filter((g) => isCompleted(g));
   return (
     <div className="flex flex-col gap-8 px-4 pt-4">
       {live.length > 0 && <RoomGrid games={live} now={now} onOpen={onOpen} />}
