@@ -40,6 +40,8 @@ import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import type { StackMember } from "./ui/primitives";
 import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
+import type { ParticipantRow } from "./ui/Participants";
+import { kickMember } from "./net/rest";
 import {
   ClueBar,
   ClueDock,
@@ -739,6 +741,47 @@ function LiveGame({
     }));
   }, [store, version]);
 
+  // The full participants list behind the presence popover: everyone kept, spectators marked, in
+  // store order. Self is flagged for the (you) tag and to keep the kick affordance off its row.
+  const participants: ParticipantRow[] = useMemo(() => {
+    void version;
+    return store.participants.map((p) => ({
+      userId: p.userId,
+      displayName: p.displayName,
+      color: p.color,
+      role: p.role,
+      connected: p.connected,
+      self: p.userId === store.selfUserId,
+    }));
+  }, [store, version]);
+
+  // Host is the only role that can kick (PROTOCOL.md section 12). The seat can shift live via role
+  // succession, so read it off the store's own view of self, not the join-time `ready.role`.
+  const isHost = useMemo(() => {
+    void version;
+    return (
+      store.participants.find((p) => p.userId === store.selfUserId)?.role ===
+      "host"
+    );
+  }, [store, version]);
+
+  // Kick a member: DELETE via the net layer, with a fresh token like every other write. The kicked
+  // client reacts to its own `kicked` frame; this only fires the request and hands the confirm
+  // dialog a plain result. A signed-out caller (no token) reads as a generic failure, never a code.
+  const onKick = useCallback(
+    async (userId: string) => {
+      const token = await identity.getAccessToken();
+      if (token === null) {
+        return {
+          ok: false as const,
+          message: "We couldn't remove them. Give it another try.",
+        };
+      }
+      return kickMember({ apiBase, gameId, userId, token });
+    },
+    [identity, apiBase, gameId],
+  );
+
   // The solving-now roster: teammates read from the store's best-effort cursors, self
   // from the local selection (fresher than the store's echo). Spectating self has no
   // cursor, so it contributes no row.
@@ -902,6 +945,9 @@ function LiveGame({
           timer={formatDuration(elapsed)}
           done={store.status === "completed"}
           members={members}
+          participants={participants}
+          isHost={isHost}
+          onKick={onKick}
           selfId={ready.selfId}
           shareUrl={shareUrl}
           onBack={goHome}

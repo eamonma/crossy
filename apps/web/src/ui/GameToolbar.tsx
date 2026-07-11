@@ -12,6 +12,9 @@ import {
 } from "@radix-ui/react-icons";
 import { AvatarStack } from "./primitives";
 import type { StackMember } from "./primitives";
+import { ParticipantsList } from "./Participants";
+import type { ParticipantRow } from "./Participants";
+import type { RestResult } from "../net/rest";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -92,11 +95,60 @@ function SharePopover({ shareUrl }: { shareUrl: string | null }) {
   );
 }
 
+/**
+ * The presence cluster: the playing-only avatar stack, now a button into the full participants
+ * list (owner ruling 2026-07-10 keeps that list whole). The stack still reserves its slot so late
+ * joins never reflow; the popover carries everyone, spectators marked, and the host's kick
+ * affordance. With no one in the stack the trigger holds its width but shows nothing to open.
+ */
+function PresencePopover({
+  members,
+  selfId,
+  participants,
+  isHost,
+  onKick,
+}: {
+  members: readonly StackMember[];
+  selfId: string | null;
+  participants: readonly ParticipantRow[];
+  isHost: boolean;
+  onKick: (userId: string) => Promise<RestResult>;
+}) {
+  const stack = <AvatarStack members={members} selfId={selfId} />;
+  if (members.length === 0) return stack;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="People in this game"
+          className="flex items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          {stack}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[17rem]">
+        <PopoverHeader>
+          <PopoverTitle>In this game</PopoverTitle>
+        </PopoverHeader>
+        <ParticipantsList
+          participants={participants}
+          isHost={isHost}
+          onKick={onKick}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function GameToolbar({
   title,
   timer,
   done = false,
   members,
+  participants,
+  isHost = false,
+  onKick,
   selfId = null,
   shareUrl,
   onBack,
@@ -106,6 +158,12 @@ export function GameToolbar({
   timer: string;
   done?: boolean;
   members: readonly StackMember[];
+  /** The full room, everyone kept, spectators marked; backs the presence popover. */
+  participants: readonly ParticipantRow[];
+  /** True when the local user is host: gates the kick affordance in the participants list. */
+  isHost?: boolean;
+  /** Runs a kick; resolves ok, or a plain message the confirm dialog surfaces. */
+  onKick: (userId: string) => Promise<RestResult>;
   selfId?: string | null;
   shareUrl: string | null;
   onBack: () => void;
@@ -153,7 +211,13 @@ export function GameToolbar({
             never re-truncates, when members populate after the first paint. The stack still
             grows into this reservation, so the width never overflows it. */}
         <div className="flex min-w-[8rem] shrink-0 items-center justify-end">
-          <AvatarStack members={members} selfId={selfId} />
+          <PresencePopover
+            members={members}
+            selfId={selfId}
+            participants={participants}
+            isHost={isHost}
+            onKick={onKick}
+          />
         </div>
         <ThemeToggle />
         <SharePopover shareUrl={shareUrl} />
