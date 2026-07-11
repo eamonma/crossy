@@ -326,15 +326,23 @@ enum DemoFixture {
     /// the pills' overflow count, the panel's height clamp, and every name slot
     /// get exercised before real rooms do it in production.
     private static func participants(selfRole: Role, stress: Bool) -> [Participant] {
+        // Two members carry a fixture avatar (a bundled data URL, no network), so the
+        // loopback room proves the layering offline: Bee is connected, so her image
+        // draws over the initial at full strength, and Ada is away, so hers draws
+        // under the same 0.35 dim the puck applies (PROTOCOL.md §4: the image inherits
+        // the ring and the away dim). You keeps a null avatar, so its puck stays the
+        // initial, the null-first-class case beside the two images.
         let core = [
             Participant(
-                userId: "you", displayName: "You", color: "#6F66D4",
+                userId: "you", displayName: "You", avatarUrl: nil, color: "#6F66D4",
                 role: selfRole, connected: true),
             Participant(
-                userId: "bee", displayName: "Bee", color: "#17917F",
+                userId: "bee", displayName: "Bee", avatarUrl: fixtureAvatarBee,
+                color: "#17917F",
                 role: selfRole == .host ? .solver : .host, connected: true),
             Participant(
-                userId: "ada", displayName: "Ada", color: "#DE5722",
+                userId: "ada", displayName: "Ada", avatarUrl: fixtureAvatarAda,
+                color: "#DE5722",
                 role: .solver, connected: false),
         ]
         guard stress else { return core }
@@ -355,6 +363,21 @@ enum DemoFixture {
                     role: .solver, connected: $0.3)
             }
     }
+
+    // MARK: Fixture avatars (bundled data URLs, not network fetches)
+
+    /// Two small PNGs inlined as `data:` URLs, so the loopback room renders real
+    /// avatar images with no server and no network (the same opaque-url path a
+    /// production https url takes through URLSession, PROTOCOL.md §4). Distinct from
+    /// the plain-color initial pucks on purpose, so a device screenshot proves the
+    /// image layered over the initial rather than the initial alone. Bee is a cool
+    /// geometric mark; Ada a warm two-tone disc.
+    private static let fixtureAvatarBee =
+        "data:image/png;base64,"
+        + "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAAD4/042AAACg0lEQVRoBe1ZOUsDURCemKDEQoMHhoBBbTQaQRQRSy9QtLKwsLCw1MbO32Angq2FhYWCnSgI/gAlIigGGxUFiXgQLZRIPPIFEjYaZea93Y2BHViSze77jnnH7ry4WgZnPqmIo6SItaelOwYK3YNODxS6BzxWCTjeXsiBbh+Zzzk368QZQmZlUhWn6HvA1DlQ2RSg6lADVTT4fyS0Y3acni9j9BC9pKfzmx/XVX/QN+Ai8neHKNjfReU1vl91+BoDhCPY10kv93G62otQ7CBKpPkio2XAW+uj0OQQVdTX/So83wUYbZkYoEBvmKJru/R6F893G+s35TlQ1RykrrkJsXijKhgHBrBUQ8kACMPTo+QpK1XlzbYDBrBUTYgNYNi0Tg1TidudFaH7BVjABLY0ZAZSExZj3ozMfxcKTGBTikMSIgNYbaQTViIG2OCQhMgAlkqrQ8rBNoCH1F/rvFnGwAEubrAN4AlrV0i42AbyvR5YZUjCxTZgx/DJJETCxTbg8ZZl8C3/lHCxDViuWpGAbSD5mlCkkDeTcLEN4BXYrpBwsQ2gGLErJFxsAyim7AoJF9sAykBJ16qaBYek5GQbgCCUgVaHlENkADXs8/WtZR6Ana6TBQwiAyjAUcMmE28CCt6twAS2tMiXGUhpQQF+urpDH+/vPGWMu4AFTJXiXmwAeh7PruhkZcuUnkDmgQVMlVAykDERWVzXmhMY88BQFQ8dWvtC6PLDpQ3WxpYxu1gq/8XGVlpUamLH9qPpI2drsa3eqJniFzf/dGvRIBMPoOxDaKzHcIXoaHkz59ysE+U5YJYAXRzHgG4Gddu7nH/qdVOo2d6ZA5oJ1G7u9IB2CjUBvgCsasbF2M4EWAAAAABJRU5ErkJggg=="
+    private static let fixtureAvatarAda =
+        "data:image/png;base64,"
+        + "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAAXNSR0IArs4c6QAAADhlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAAqACAAQAAAABAAAAMKADAAQAAAABAAAAMAAAAAD4/042AAADVUlEQVRoBe1YbUsUURg9M7vjrrujub6QYGBaKlHmlygoev8QFES/NCIo8EPvFBR9MYtQSxMSDF9203HddXZmmzNZLKHeO/deXYTOp2Xuc895zt17n3nuWP78/ToOMexDnHucetqkgSAI8PHDDD5NTGNu9jvW17yYvq3dxcDgMZweG8aZs0NIpVLGZC1TW2hyYgqPHjzDynJpz+S6ujtw5951jI6N7BknO6htIAzrePzwOV48eSurGcddvXkBt+9eg21bieb9G6x9BlSSZxI0zLm60DLAbZN05RsT5lxy6EDZAA8s97wuyEEuVSgbYLURHViZpMhBLlUoG2CpNAUdLmUDrPOmoMOlbODPS8qECR0uZQMmEjfBoWyA7YEp6HApG2BvYwo6XMoG2JiZgg6XsgF2lWzMdEEOcqlC2QBbYnaVuiCHTnutdR9gS8yukj1NTy6D4x0uet0sCq0tcFscOPbv9fHDEN6Wj+LmFha9Cr6VPCyVq/Fc3bZaq50Oo6Q2pmexMjmFTD3ZzbRqWegaHUF+eBB2ZFYVSgbq0YoycS9KvO7XVLXjeZaThrttxNr+x5IQJjYQbJRRfP0e/nIxiY4w1ukuoHDpHFL5nDC2MSDRIfaLP7E8/tJ48kyICxJzRxpJIG2gtr6B1advEFaqSfgTxZKbGtSShZSBenThKL56h7C6JcurHEcNalFTBlIGvM9fUCutyfAZiaEWNWUgNBD6UamUJJMRlI2hJrVFEBqozC9ol0pREjuNszxTWwSxgYUfIo59G69IaAsNsHQ2CzUJbaGB/SybooUJJEq20IBIpNnjQgN2NtO0HFMS2kIDTuFI0wykJbSFBrJ9R5tmQEZbbKC/D2x5DxrUzEbaIggN2I6D/KmTIh7j49SktghCAyRwI7J0R7uIy9g4tagpAykDVnSBL1w+DzvTIsOpFUMNalFTBlIGSJRuy6PzxkXsZ1klNzWoJQtpAyRkSe2+dQW8/pkGOWNuidLZqJ34TszJh/pS3+ien1XKM3Mof51H4JUbh4S/U24OuRP9yA0NHPxnlZ2y81dLqC4uxZfz2rqHYLPy9x7Bmp5qzUZ72423X6a3B06n/mdJ5mHsDcWETCW10wLt9izRId6NpJnP/xto5upT+xcTfkuxPz1lPgAAAABJRU5ErkJggg=="
 
     static func isoNow() -> String {
         Date().ISO8601Format()
