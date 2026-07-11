@@ -15,6 +15,10 @@ export interface AppConfig {
   apiBase: string;
   guestsEnabled: boolean;
   turnstileSiteKey?: string;
+  /** PostHog project token; absent or empty selects the no-op analytics adapter. */
+  posthogToken?: string;
+  /** PostHog ingestion host; absent lets the adapter use the vendor default. */
+  posthogHost?: string;
 }
 
 const CONFIG_URL = "/config.json";
@@ -35,12 +39,14 @@ function toStr(value: unknown): string {
 
 /**
  * Validate and narrow an untyped payload to AppConfig, or null if it is not an object.
- * The result carries only the five known fields, so nothing extra crosses the boundary.
+ * The result carries only the known fields, so nothing extra crosses the boundary.
  */
 export function parseConfig(raw: unknown): AppConfig | null {
   if (typeof raw !== "object" || raw === null) return null;
   const r = raw as Record<string, unknown>;
   const turnstile = toStr(r["turnstileSiteKey"]);
+  const posthogToken = toStr(r["posthogToken"]);
+  const posthogHost = toStr(r["posthogHost"]);
   const config: AppConfig = {
     supabaseUrl: toStr(r["supabaseUrl"]),
     supabasePublishableKey: toStr(r["supabasePublishableKey"]),
@@ -48,6 +54,8 @@ export function parseConfig(raw: unknown): AppConfig | null {
     guestsEnabled: toBool(r["guestsEnabled"]),
   };
   if (turnstile !== "") config.turnstileSiteKey = turnstile;
+  if (posthogToken !== "") config.posthogToken = posthogToken;
+  if (posthogHost !== "") config.posthogHost = posthogHost;
   return config;
 }
 
@@ -62,6 +70,8 @@ export function configFromEnv(
     apiBase: env["VITE_API_BASE"],
     guestsEnabled: env["VITE_GUESTS_ENABLED"],
     turnstileSiteKey: env["VITE_TURNSTILE_SITE_KEY"],
+    posthogToken: env["VITE_POSTHOG_TOKEN"],
+    posthogHost: env["VITE_POSTHOG_HOST"],
   }) as AppConfig;
 }
 

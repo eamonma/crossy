@@ -39,6 +39,17 @@ export interface GuestSignInOptions {
  */
 export type SignInProvider = "discord" | "apple";
 
+/**
+ * Why a session change fired. Product vocabulary the port owns: it distinguishes an
+ * interactive sign-in completing ("signed_in": an OAuth return, a guest sign-in) from a
+ * persisted session restoring at boot ("restored"), so consumers that must tell the two
+ * apart (a welcome moment, the analytics bridge and its signed_in event, ANALYTICS.md)
+ * never inspect vendor events. Adapters map whatever the vendor emits onto this closed
+ * union; "refreshed" covers same-user re-emissions (token refresh, profile update).
+ */
+export type SessionChangeCause =
+  "restored" | "signed_in" | "signed_out" | "refreshed";
+
 export interface Identity {
   /**
    * Resolve any pending OAuth redirect and load the persisted session. Called once at boot.
@@ -70,6 +81,12 @@ export interface Identity {
 
   signOut(): Promise<void>;
 
-  /** Subscribe to session changes. Returns an unsubscribe function. */
-  onChange(cb: (session: IdentitySession | null) => void): () => void;
+  /**
+   * Subscribe to session changes. Returns an unsubscribe function. The cause says why the
+   * change fired (SessionChangeCause above); callbacks that only care about the resulting
+   * session ignore it.
+   */
+  onChange(
+    cb: (session: IdentitySession | null, cause: SessionChangeCause) => void,
+  ): () => void;
 }

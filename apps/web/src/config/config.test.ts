@@ -40,6 +40,17 @@ describe("parseConfig", () => {
     );
   });
 
+  it("keeps posthogToken and posthogHost only when non-empty (empty selects the no-op adapter)", () => {
+    expect(parseConfig({})?.posthogToken).toBeUndefined();
+    expect(parseConfig({})?.posthogHost).toBeUndefined();
+    expect(parseConfig({ posthogToken: "" })?.posthogToken).toBeUndefined();
+    expect(parseConfig({ posthogHost: "" })?.posthogHost).toBeUndefined();
+    expect(parseConfig({ posthogToken: "phc_x" })?.posthogToken).toBe("phc_x");
+    expect(
+      parseConfig({ posthogHost: "https://ph.example" })?.posthogHost,
+    ).toBe("https://ph.example");
+  });
+
   it("INV-6: keeps the shape closed so no stray field (e.g. a solution) survives", () => {
     const parsed = parseConfig({
       supabaseUrl: "https://api.crossy.me",
@@ -69,12 +80,16 @@ describe("configFromEnv", () => {
       VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_x",
       VITE_API_BASE: "https://api.example",
       VITE_GUESTS_ENABLED: "true",
+      VITE_POSTHOG_TOKEN: "phc_x",
+      VITE_POSTHOG_HOST: "https://ph.example",
     });
     expect(config).toEqual({
       supabaseUrl: "https://api.crossy.me",
       supabasePublishableKey: "sb_publishable_x",
       apiBase: "https://api.example",
       guestsEnabled: true,
+      posthogToken: "phc_x",
+      posthogHost: "https://ph.example",
     });
   });
 

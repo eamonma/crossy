@@ -5,6 +5,7 @@ export type {
   IdentitySession,
   GuestSignInOptions,
   GuestSignInResult,
+  SessionChangeCause,
   SignInProvider,
 } from "./types";
 export { createIdentity, shouldUseSupabase } from "./createIdentity";

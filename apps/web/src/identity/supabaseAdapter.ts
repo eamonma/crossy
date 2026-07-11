@@ -17,6 +17,7 @@ import type {
   GuestSignInResult,
   Identity,
   IdentitySession,
+  SessionChangeCause,
   SignInProvider,
 } from "./types";
 
@@ -99,6 +100,35 @@ function identityChanged(
   return prev.userId !== next.userId || prev.isAnonymous !== next.isAnonymous;
 }
 
+/**
+ * Vendor auth event to the port's change cause. INITIAL_SESSION is the persisted session
+ * loading at client construction, so it maps to "restored", never "signed_in": only an
+ * interactive sign-in completing (SIGNED_IN covers the OAuth return under
+ * detectSessionInUrl and the anonymous sign-in) earns "signed_in". Known vendor quirk,
+ * mapped honestly rather than papered over: supabase-js can re-fire SIGNED_IN on tab
+ * refocus with an already-standing session. The adapter's same-identity suppression
+ * swallows most of those, and consumers that act on "signed_in" (the analytics bridge)
+ * also gate on the null-to-session edge. Unrecognized events (USER_UPDATED and friends)
+ * fall back by session shape, so the union stays closed.
+ */
+function causeOf(
+  event: string,
+  next: IdentitySession | null,
+): SessionChangeCause {
+  switch (event) {
+    case "INITIAL_SESSION":
+      return next === null ? "signed_out" : "restored";
+    case "SIGNED_IN":
+      return "signed_in";
+    case "SIGNED_OUT":
+      return "signed_out";
+    case "TOKEN_REFRESHED":
+      return "refreshed";
+    default:
+      return next === null ? "signed_out" : "refreshed";
+  }
+}
+
 export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
   const create = deps.createClientFn ?? createClient;
   const currentUrl = deps.currentUrl ?? defaultCurrentUrl;
@@ -118,9 +148,11 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
   );
 
   let current: IdentitySession | null = null;
-  const listeners = new Set<(s: IdentitySession | null) => void>();
+  const listeners = new Set<
+    (s: IdentitySession | null, cause: SessionChangeCause) => void
+  >();
 
-  supabase.auth.onAuthStateChange((_event, session) => {
+  supabase.auth.onAuthStateChange((event, session) => {
     const next = toSession(session);
     const changed = identityChanged(current, next);
     // Always keep `current` fresh so getSession reads the latest mapped session, but
@@ -128,7 +160,7 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
     // tab refocus would churn the game (close the socket, refetch, reopen) for nothing.
     current = next;
     if (!changed) return;
-    for (const cb of listeners) cb(current);
+    for (const cb of listeners) cb(current, causeOf(event, next));
   });
 
   async function freshSession(): Promise<Session | null> {
@@ -211,7 +243,9 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
     async signOut(): Promise<void> {
       await supabase.auth.signOut();
     },
-    onChange(cb: (s: IdentitySession | null) => void): () => void {
+    onChange(
+      cb: (s: IdentitySession | null, cause: SessionChangeCause) => void,
+    ): () => void {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },

@@ -2,7 +2,12 @@
 // project. It runs the same port the app consumes, so the demo path and the unit suite never
 // touch supabase-js or the network. Sign-in is synchronous here: signInWithProvider seeds a
 // fake account session rather than navigating away, so the app shell is exercisable offline.
-import type { GuestSignInResult, Identity, IdentitySession } from "./types";
+import type {
+  GuestSignInResult,
+  Identity,
+  IdentitySession,
+  SessionChangeCause,
+} from "./types";
 
 export interface MockIdentityOptions {
   /** Mirrors config.guestsEnabled: when false, signInGuest returns "guests_disabled". */
@@ -28,10 +33,15 @@ const ACCOUNT_SESSION: IdentitySession = {
 export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
   const guestsEnabled = opts.guestsEnabled ?? false;
   let session: IdentitySession | null = opts.initialSession ?? null;
-  const listeners = new Set<(s: IdentitySession | null) => void>();
+  const listeners = new Set<
+    (s: IdentitySession | null, cause: SessionChangeCause) => void
+  >();
 
-  function emit(): void {
-    for (const cb of listeners) cb(session);
+  // Both mock sign-in paths are interactive by construction (a click in the UI), so they
+  // emit "signed_in"; the initialSession option models an already-restored session and is
+  // in place before anyone can subscribe, so load() never emits "restored" here.
+  function emit(cause: SessionChangeCause): void {
+    for (const cb of listeners) cb(session, cause);
   }
 
   function tokenFor(s: IdentitySession): string {
@@ -53,7 +63,7 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
       // the mock never leaves for a vendor. Omitting it mirrors signInGuest, which drops its
       // options for the same reason. Structural typing keeps this assignable to the port.
       session = ACCOUNT_SESSION;
-      emit();
+      emit("signed_in");
       return Promise.resolve();
     },
     signInGuest(): Promise<GuestSignInResult> {
@@ -67,15 +77,17 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
         });
       }
       session = GUEST_SESSION;
-      emit();
+      emit("signed_in");
       return Promise.resolve({ ok: true, session });
     },
     signOut(): Promise<void> {
       session = null;
-      emit();
+      emit("signed_out");
       return Promise.resolve();
     },
-    onChange(cb: (s: IdentitySession | null) => void): () => void {
+    onChange(
+      cb: (s: IdentitySession | null, cause: SessionChangeCause) => void,
+    ): () => void {
       listeners.add(cb);
       return () => listeners.delete(cb);
     },

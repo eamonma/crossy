@@ -46,9 +46,26 @@ describe("mock identity adapter", () => {
     await identity.signInGuest();
     await identity.signOut();
     expect(seen).toHaveBeenCalledTimes(2);
-    expect(seen).toHaveBeenLastCalledWith(null);
+    expect(seen).toHaveBeenLastCalledWith(null, "signed_out");
     off();
     await identity.signInWithProvider("discord");
     expect(seen).toHaveBeenCalledTimes(2);
+  });
+
+  it("interactive sign-ins carry the 'signed_in' cause (the mock never restores through onChange)", async () => {
+    const identity = createMockIdentity({ guestsEnabled: true });
+    const seen = vi.fn();
+    identity.onChange(seen);
+    await identity.signInGuest();
+    expect(seen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isAnonymous: true }),
+      "signed_in",
+    );
+    await identity.signOut();
+    await identity.signInWithProvider("discord");
+    expect(seen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isAnonymous: false }),
+      "signed_in",
+    );
   });
 });
