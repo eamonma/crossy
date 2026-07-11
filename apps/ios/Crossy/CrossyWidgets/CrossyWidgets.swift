@@ -64,7 +64,7 @@ struct SolveActivityWidget: Widget {
                         .padding(.vertical, 10)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimerLabel(frame: frame, size: 32, weight: .semibold, maxWidth: 140)
+                    TimerLabel(frame: frame, size: 32, weight: .semibold, maxWidth: 96)
                         .padding(.trailing, 6)
                         .padding(.vertical, 10)
                 }
@@ -72,12 +72,16 @@ struct SolveActivityWidget: Widget {
                     ExpandedBottom(frame: frame)
                 }
             } compactLeading: {
-                PuckCluster(pucks: Array(frame.pucks.prefix(3)), diameter: 14, overlap: -5)
+                // 16pt pucks balance the trailing clock-plus-ring so the pill reads
+                // symmetrical around the sensor (owner device report 2026-07-11).
+                PuckCluster(pucks: Array(frame.pucks.prefix(3)), diameter: 16, overlap: -6)
             } compactTrailing: {
                 // Timer, then a small progress ring between it and the island's trailing
-                // edge. The ring only appears once progress exists (post-push).
+                // edge. The ring only appears once progress exists (post-push). The cap
+                // hugs the ruled MM:SS form (never three sections); past the hour the
+                // live format is the recorded 2b gap, not this frame's problem.
                 HStack(spacing: 4) {
-                    TimerLabel(frame: frame, size: 13, weight: .semibold, maxWidth: 52)
+                    TimerLabel(frame: frame, size: 13, weight: .semibold, maxWidth: 40)
                     if let fraction = frame.fraction {
                         ProgressRing(fraction: fraction, diameter: 12, stroke: 2, dim: frame.dim)
                     }
@@ -244,6 +248,12 @@ private struct TimerLabel: View {
         .font(.system(size: size, weight: weight))
         .monospacedDigit()
         .foregroundStyle(.white)
+        // The auto-updating timer reserves its widest possible width and CENTERS the
+        // digits inside it, so the visible time floats left of its own box and dead air
+        // opens between the clock and whatever trails it (owner device report
+        // 2026-07-11). Trailing text alignment pins the digits to the box's right edge;
+        // the frame cap then only bounds the reservation, never pads the glyphs.
+        .multilineTextAlignment(.trailing)
         .frame(maxWidth: maxWidth, alignment: .trailing)
     }
 }
