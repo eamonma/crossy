@@ -297,6 +297,21 @@ rule. Semantics are unchanged from the push: success dismisses the sheet and set
 the path to the room alone, so back from the room and the kicked exit both land on
 Rooms, never a stale code field.
 
+**Arrival notes: the tab bar** (owner ruling 2026-07-10 late). The signed-in
+shell is the system tab bar carrying the three stable places, mirroring the web's
+destinations: Rooms, Puzzles, Settings. The bar is adopted, never imitated: on 26
+it is the system's Liquid Glass; on 18 through 25 it is the plain material tab
+bar, the same one-fallback rule as all chrome. The selected tab wears ink, not
+the system blue (chrome stays achromatic; people and the destructive tone are the
+only color). Only Rooms navigates: a room pushes inside that tab and hides the
+bar, because the board and deck own the whole screen (the full-bleed ruling), and
+the bar returns on pop. Settings is a tab now, so the account puck that stood
+top-trailing on Rooms is retired. New game is not a tab: an action is not a
+place, and it rides the create-flow slice beside Join (the recorded
+cluster-merge moment). Puzzles is browse-only until then: paper cards, no tap
+targets, no promise the flow can't keep. Welcome stays bar-less; there is no
+shell before there is a person.
+
 ## 5. Two grounds, one app
 
 One identity with a light ground and a dark ground, not two directions. Studio is

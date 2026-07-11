@@ -60,6 +60,13 @@ protocol RoomsProviding {
     func join(code: String) async -> Result<String, ArrivalFailure>
 }
 
+/// The puzzles side: one page of the caller's uploads (browse-only; starting a game
+/// from a puzzle rides the create-flow slice).
+@MainActor
+protocol PuzzlesProviding {
+    func loadPage(before: String?) async -> Result<PuzzlesPage, ArrivalFailure>
+}
+
 // MARK: - Real backend
 
 /// The production session: AuthSession behind the protocol. Phase and identity reads
@@ -160,6 +167,32 @@ struct RealRooms: RoomsProviding {
     }
 }
 
+/// Real puzzles over the section 12 client, the RealRooms shape exactly: mapping and
+/// error digestion only.
+@MainActor
+struct RealPuzzles: PuzzlesProviding {
+    let api: CrossyAPIClient
+
+    func loadPage(before: String?) async -> Result<PuzzlesPage, ArrivalFailure> {
+        do {
+            let page = try await api.listPuzzles(before: before)
+            return .success(
+                PuzzlesPage(
+                    puzzles: page.rows.map { summary in
+                        PuzzleCardModel(
+                            puzzleId: summary.puzzleId,
+                            title: summary.title,
+                            author: summary.author,
+                            rows: summary.rows,
+                            cols: summary.cols)
+                    },
+                    nextBefore: page.nextBefore))
+        } catch {
+            return .failure(ArrivalFailure(digesting: error))
+        }
+    }
+}
+
 extension ArrivalFailure {
     /// CrossyAPIError to the screens' shape: the stable code when the server spoke
     /// (§12), nil for network weather, and the closest honest code otherwise. A
@@ -200,6 +233,16 @@ final class FixtureArrivalSession: ArrivalSessioning {
     private(set) var phase: AuthPhase = .signedOut
     private(set) var userId: String?
     private(set) var authProvider: AuthProvider?
+
+    /// `signedIn` starts the walk inside the shell (-i3SignedIn beside -i3Fixture):
+    /// screenshots and demos of the tabs without a hand on Welcome first.
+    init(signedIn: Bool = false) {
+        if signedIn {
+            phase = .signedIn
+            userId = Self.fixtureUserId
+            authProvider = .discord
+        }
+    }
 
     var tokenProvider: any BearerTokenProviding { FixedBearerToken(token: "fixture-token") }
 
@@ -275,6 +318,34 @@ struct FixtureRooms: RoomsProviding {
     }
 }
 
+/// Canned puzzles for the fixture walk: the rooms' own titles plus one untitled
+/// upload, so the geometry-fallback headline is walkable on device.
+@MainActor
+struct FixturePuzzles: PuzzlesProviding {
+    func loadPage(before: String?) async -> Result<PuzzlesPage, ArrivalFailure> {
+        guard before == nil else {
+            return .success(PuzzlesPage(puzzles: [], nextBefore: nil))
+        }
+        return .success(
+            PuzzlesPage(
+                puzzles: [
+                    PuzzleCardModel(
+                        puzzleId: "fixture-ajar", title: "A door left ajar",
+                        author: "June Park", rows: 9, cols: 9),
+                    PuzzleCardModel(
+                        puzzleId: "fixture-themeless", title: "Themeless Saturday",
+                        author: "R. Osei", rows: 15, cols: 15),
+                    PuzzleCardModel(
+                        puzzleId: "fixture-stumper", title: "The Stumper",
+                        author: nil, rows: 21, cols: 21),
+                    PuzzleCardModel(
+                        puzzleId: "fixture-untitled", title: nil,
+                        author: nil, rows: 5, cols: 5),
+                ],
+                nextBefore: nil))
+    }
+}
+
 // MARK: - The model
 
 /// One resolved arrival composition. Routing state (the navigation path) stays in
@@ -283,6 +354,7 @@ struct FixtureRooms: RoomsProviding {
 final class ArrivalModel {
     let session: any ArrivalSessioning
     let rooms: any RoomsProviding
+    let puzzles: any PuzzlesProviding
     /// nil in the fixture composition: cards open the loopback room, not RealRoom.
     let liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?
     let authConfigured: Bool
@@ -290,11 +362,13 @@ final class ArrivalModel {
     private init(
         session: any ArrivalSessioning,
         rooms: any RoomsProviding,
+        puzzles: any PuzzlesProviding,
         liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?,
         authConfigured: Bool
     ) {
         self.session = session
         self.rooms = rooms
+        self.puzzles = puzzles
         self.liveRoomFacts = liveRoomFacts
         self.authConfigured = authConfigured
     }
@@ -303,8 +377,9 @@ final class ArrivalModel {
     static func resolve() -> ArrivalModel {
         if LaunchFacts.flag("i3Fixture") {
             return ArrivalModel(
-                session: FixtureArrivalSession(),
+                session: FixtureArrivalSession(signedIn: LaunchFacts.flag("i3SignedIn")),
                 rooms: FixtureRooms(),
+                puzzles: FixturePuzzles(),
                 liveRoomFacts: nil,
                 authConfigured: true)
         }
@@ -316,6 +391,7 @@ final class ArrivalModel {
             return ArrivalModel(
                 session: FixtureArrivalSession(),
                 rooms: FixtureRooms(),
+                puzzles: FixturePuzzles(),
                 liveRoomFacts: nil,
                 authConfigured: false)
         }
@@ -345,11 +421,14 @@ final class ArrivalModel {
             configured = false
         }
 
+        // One client (a value) behind both list seams; the session's own client for
+        // deletion was built above and rides the auth branch.
+        let api = CrossyAPIClient(
+            baseURL: config.apiBaseURL, tokenProvider: session.tokenProvider)
         return ArrivalModel(
             session: session,
-            rooms: RealRooms(
-                api: CrossyAPIClient(
-                    baseURL: config.apiBaseURL, tokenProvider: session.tokenProvider)),
+            rooms: RealRooms(api: api),
+            puzzles: RealPuzzles(api: api),
             liveRoomFacts: (config.apiBaseURL, config.sessionBaseURL),
             authConfigured: configured)
     }
@@ -376,11 +455,11 @@ final class ArrivalModel {
         }
     }
 
-    /// The signed-in person for the Account screen and the Rooms affordance, mapped
-    /// from what the session already holds. nil when there is no user id to show (the
-    /// harness path, or before sign-in), which leaves the affordance hidden. Display
-    /// name is not persisted yet (auth state carries only the id and the provider), so
-    /// it is nil here and the puck falls back to its colored initial.
+    /// The signed-in person for the Settings tab, mapped from what the session
+    /// already holds. nil when there is no user id to show (the harness path, or
+    /// before sign-in), which leaves the tab a quiet canvas. Display name is not
+    /// persisted yet (auth state carries only the id and the provider), so it is nil
+    /// here and the puck falls back to its colored initial.
     var selfIdentity: AccountIdentity? {
         guard let userId = session.userId else { return nil }
         return AccountIdentity(

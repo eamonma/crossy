@@ -3,13 +3,19 @@
 //  Crossy
 //
 //  The end-to-end journey's spine (EXPERIENCE.md §2): signed out shows Welcome;
-//  signed in shows Rooms; Join with a code opens a glass sheet that flows out of
-//  the button (arrival notes, DESIGN.md §4); a joined or tapped room pushes the
-//  room itself. Join success dismisses the sheet and makes the room the only pushed
-//  element, so back from the room lands on Rooms, never on a stale code field. The
-//  kicked exit (SolveScreen onExit) pops home the same way.
+//  signed in shows the shell — the system tab bar carrying the three stable places
+//  (Rooms, Puzzles, Settings), mirroring the web's destinations. The bar is the
+//  system's: Liquid Glass on iOS 26+ by adoption, the plain material bar on the 18
+//  floor, never a hand-built imitation (DESIGN.md §4). Join with a code opens a
+//  glass sheet that flows out of the button (arrival notes, DESIGN.md §4); a joined
+//  or tapped room pushes inside the Rooms tab and hides the bar — the board and
+//  deck own the whole screen (the full-bleed ruling). Join success dismisses the
+//  sheet and makes the room the only pushed element, so back from the room lands on
+//  Rooms, never on a stale code field. The kicked exit (SolveScreen onExit) pops
+//  home the same way.
 //
 
+import CrossyDesign
 import CrossyUI
 import SwiftUI
 
@@ -21,6 +27,21 @@ enum ArrivalRoute: Hashable {
     case fixtureRoom
 }
 
+/// The signed-in shell's three places. `-i3Tab puzzles|settings` selects the
+/// starting tab (fixture demos and screenshots of a specific place; absent or
+/// unrecognized lands on Rooms, the home).
+enum ShellTab: Hashable {
+    case rooms, puzzles, settings
+
+    static var launchSelection: ShellTab {
+        switch LaunchFacts.value("i3Tab") {
+        case "puzzles": return .puzzles
+        case "settings": return .settings
+        default: return .rooms
+        }
+    }
+}
+
 struct ArrivalRootView: View {
     @State private var model = ArrivalModel.resolve()
     @State private var path: [ArrivalRoute] = []
@@ -28,46 +49,68 @@ struct ArrivalRootView: View {
     /// lives here, not in RoomsScreen, because the sheet is presented from this
     /// hierarchy; the button downstream stamps itself as the matching source.
     @State private var showJoin = false
-    /// The Account sheet's presentation (roadmap I3, thin settings). A tap-opened
-    /// system sheet (the Mail-mechanism grammar, DESIGN.md §4).
-    @State private var showSettings = false
+    @State private var tab: ShellTab = .launchSelection
     @Namespace private var joinZoom
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationStack(path: $path) {
-            root
-                .navigationDestination(for: ArrivalRoute.self) { route in
-                    destination(route)
-                }
+        Group {
+            if model.isSignedIn {
+                signedInShell
+            } else {
+                WelcomeScreen(
+                    state: model.welcomeState,
+                    onContinueApple: { Task { await model.session.signInWithApple() } },
+                    onContinueDiscord: { Task { await model.session.signIn() } }
+                )
+            }
         }
         .sheet(isPresented: $showJoin) {
             joinSheet
         }
-        .sheet(isPresented: $showSettings) {
-            settingsSheet
+        .onChange(of: model.isSignedIn) { _, signedIn in
+            // Sign-out or deletion drops the shell; a stale pushed room or a live
+            // join sheet must not greet the next sign-in.
+            if !signedIn {
+                path.removeAll()
+                showJoin = false
+            }
         }
     }
 
-    @ViewBuilder
-    private var root: some View {
-        if model.isSignedIn {
-            RoomsScreen(
-                loadPage: { before in await model.rooms.loadPage(before: before) },
-                onOpenRoom: { room in path.append(roomRoute(for: room.gameId)) },
-                onJoinWithCode: { showJoin = true },
-                joinSheetSource: JoinSheetSource(namespace: joinZoom),
-                selfIdentity: model.selfIdentity,
-                onOpenSettings: { showSettings = true }
-            )
-            .toolbar(.hidden, for: .navigationBar)
-        } else {
-            WelcomeScreen(
-                state: model.welcomeState,
-                onContinueApple: { Task { await model.session.signInWithApple() } },
-                onContinueDiscord: { Task { await model.session.signIn() } }
-            )
-            .toolbar(.hidden, for: .navigationBar)
+    /// The signed-in shell: three tabs, named by their places. Only the Rooms tab
+    /// navigates (rooms push inside it); Puzzles and Settings are single pages.
+    private var signedInShell: some View {
+        TabView(selection: $tab) {
+            Tab(ArrivalCopy.roomsTitle, systemImage: "house", value: ShellTab.rooms) {
+                NavigationStack(path: $path) {
+                    RoomsScreen(
+                        loadPage: { before in await model.rooms.loadPage(before: before) },
+                        onOpenRoom: { room in path.append(roomRoute(for: room.gameId)) },
+                        onJoinWithCode: { showJoin = true },
+                        joinSheetSource: JoinSheetSource(namespace: joinZoom)
+                    )
+                    .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: ArrivalRoute.self) { route in
+                        destination(route)
+                            // The room owns the whole screen: board to the top edge,
+                            // deck at the bottom (the full-bleed ruling). The tab bar
+                            // returns when the room pops.
+                            .toolbar(.hidden, for: .tabBar)
+                    }
+                }
+            }
+            Tab(ArrivalCopy.puzzlesTitle, systemImage: "squareshape.split.3x3", value: ShellTab.puzzles) {
+                PuzzlesScreen(
+                    loadPage: { before in await model.puzzles.loadPage(before: before) })
+            }
+            Tab(ArrivalCopy.settingsTitle, systemImage: "gearshape", value: ShellTab.settings) {
+                settingsTab
+            }
         }
+        // The selected tab wears ink, not the system blue: chrome stays achromatic
+        // (people and the destructive tone are the only color, DESIGN.md §1).
+        .tint(Color(rgb: ground.tokens.ink))
     }
 
     /// The join surface: a glass sheet grown from the button, sized to one field.
@@ -90,26 +133,30 @@ struct ArrivalRootView: View {
         .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
     }
 
-    /// The Account surface (roadmap I3, thin settings): a tap-opened system sheet. Sign
-    /// out and a confirmed delete both flip the session phase to signed out, so
-    /// dismissing the sheet lands on Welcome (the root re-reads isSignedIn). A delete
-    /// failure renders inline on the sheet and the sheet stays; only success dismisses.
+    /// The Settings tab (roadmap I3, thin settings). Sign out and a confirmed delete
+    /// both flip the session phase to signed out, so the shell itself swaps to
+    /// Welcome; a delete failure renders inline on the screen and stays retryable.
+    /// The harness identity (an injected token) carries no display facts, so its tab
+    /// is a quiet canvas rather than an invented person.
     @ViewBuilder
-    private var settingsSheet: some View {
+    private var settingsTab: some View {
         if let identity = model.selfIdentity {
             SettingsScreen(
                 identity: identity,
                 versionLabel: model.versionLabel,
                 onSignOut: {
-                    showSettings = false
                     Task { await model.session.signOut() }
                 },
                 onDeleteAccount: {
-                    let failure = await model.session.deleteAccount()
-                    if failure == nil { showSettings = false }
-                    return failure
+                    await model.session.deleteAccount()
                 })
+        } else {
+            Color(rgb: ground.tokens.canvas).ignoresSafeArea()
         }
+    }
+
+    private var ground: GridGround {
+        colorScheme == .dark ? .observatory : .studio
     }
 
     @ViewBuilder

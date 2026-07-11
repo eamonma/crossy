@@ -52,10 +52,19 @@ public enum ArrivalCopy {
 
     public static let joinAction = "Join"
 
+    // MARK: - Puzzles (the library tab: what you've uploaded, browse-only until the
+    // create-flow slice)
+
+    public static let puzzlesTitle = "Puzzles"
+    /// The empty state names the one place uploads happen today; the tab never
+    /// pretends to an upload flow it doesn't have.
+    public static let puzzlesEmpty = "No puzzles yet. Upload one on the web and it shows up here."
+
     // MARK: - Settings (roadmap I3: thin v1, three things and a quiet footer)
 
-    /// The screen title (ID-5: plain, no metaphor).
-    public static let settingsTitle = "Account"
+    /// The screen title, and the tab's label (the signed-in shell's three tabs are
+    /// the three place names: Rooms, Puzzles, Settings).
+    public static let settingsTitle = "Settings"
     /// The name shown when auth state holds none (display name is not persisted yet;
     /// the puck and provider still identify the person).
     public static let settingsNoName = "Signed in"
