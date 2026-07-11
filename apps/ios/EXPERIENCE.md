@@ -48,7 +48,9 @@ production.
    the truth instead of apologizing.
 5. **The invite.** Create a game (`POST /games`), get the code: eight characters
    from an alphabet built to be read aloud on a call. Share via the system sheet;
-   `/g/{code}` unfurls server-side and opens as a universal link.
+   `/g/{code}` unfurls server-side and opens as a universal link. The same sheet
+   is one tap away mid-solve too, from the room-facts popover's Share invite row
+   (next to Copy invite code), the same URL the QR encodes.
 6. **Walk in solving.** A link or code seats a full account as a solver at once
    (`POST /games/join` or `/{id}/join`; owner decision 2026-07-10), so the room
    opens live with the first letter one tap away. Spectating is the guest posture,

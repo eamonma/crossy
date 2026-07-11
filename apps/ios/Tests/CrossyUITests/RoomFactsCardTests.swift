@@ -245,4 +245,28 @@ final class FactsOperationsTests: XCTestCase {
             FactsOperations.make(inviteCode: " TIDECOVE ", isHost: false).inviteCode,
             "TIDECOVE")
     }
+
+    // The share row rides the same code as the copy row, built into a URL
+    // (ShareInvite.url) once a gameId is on hand. Existing callers that never
+    // pass gameId (the web-mirrored default) keep getting a nil shareURL, so
+    // the row silently stays absent rather than crashing.
+    func test_gameIdPresent_buildsShareURL() {
+        let ops = FactsOperations.make(
+            inviteCode: "TIDECOVE", isHost: false, gameId: "g-1", roomName: "Tuesday evening")
+        XCTAssertEqual(
+            ops.shareURL?.absoluteString,
+            "https://crossy.me/game/g-1?code=TIDECOVE&name=Tuesday%20evening")
+    }
+
+    // No gameId (the default every pre-existing caller takes) means no URL to
+    // share: the row stays out exactly as it did before this operation existed.
+    func test_missingGameId_dropsShareURL() {
+        XCTAssertNil(FactsOperations.make(inviteCode: "TIDECOVE", isHost: false).shareURL)
+    }
+
+    // No code means nothing to share, same as the copy row's own rule.
+    func test_missingCode_dropsShareURL() {
+        XCTAssertNil(
+            FactsOperations.make(inviteCode: nil, isHost: false, gameId: "g-1").shareURL)
+    }
 }

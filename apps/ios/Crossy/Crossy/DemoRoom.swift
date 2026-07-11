@@ -62,6 +62,10 @@ final class DemoRoom {
     // §12: the room view carries it to any member). The fixture supplies a
     // read-aloud eight-character code so the row renders offline.
     let inviteCode = "TIDECOVE"
+    // A fixture id so the share row (ShareInvite.url) also renders offline;
+    // the demo transport never dials a real backend, so this id names nothing
+    // real, exactly as the fixture's invite code does.
+    let gameId = "demo-room"
     let selection: SelectionModel
     let chrome = RoomChromeModel()
     private let transport: LoopbackTransport
