@@ -50,8 +50,19 @@ public struct SolveActivityPolicy: Equatable, Sendable {
         phase = newPhase
         let ongoing = status == .ongoing && !kicked
 
-        // A terminal room takes the island down wherever the scene is.
+        // A terminal room takes the island down ONLY when the scene is effectively
+        // foreground: the room bar is back and owns the moment. Backgrounded, the
+        // island belongs to the push channel — the server's alerting update carries
+        // the announcement and its end retires the frame (PROTOCOL.md 12a). This rule
+        // predates the push track and used to fire "wherever the scene is": a trivial
+        // solve completed while the token upload's background assertion kept the
+        // process (and its socket) alive briefly, gameCompleted arrived over that
+        // warm socket, and the island died the instant the room finished, swallowing
+        // the announcement (owner device report 2026-07-11 late). The foreground
+        // return below still sweeps, so a backgrounded terminal island the server
+        // somehow never ended dies on the next return anyway.
         if !ongoing, started {
+            guard newPhase == .active else { return .none }
             started = false
             return .end
         }
