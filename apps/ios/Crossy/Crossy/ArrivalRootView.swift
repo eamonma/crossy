@@ -45,6 +45,11 @@ enum ShellTab: Hashable {
 struct ArrivalRootView: View {
     @State private var model = ArrivalModel.resolve()
     @State private var path: [ArrivalRoute] = []
+    /// The Puzzles tab's own navigation path: starting a game from a puzzle pushes
+    /// the created room inside this tab, the same way an opened room card pushes
+    /// inside Rooms. A per-tab path keeps a room started from Puzzles landing back on
+    /// Puzzles, and its own tab bar hides while the room is up (the full-bleed ruling).
+    @State private var puzzlesPath: [ArrivalRoute] = []
     /// The join sheet's presentation state and its zoom namespace. The namespace
     /// lives here, not in RoomsScreen, because the sheet is presented from this
     /// hierarchy; the button downstream stamps itself as the matching source.
@@ -91,9 +96,11 @@ struct ArrivalRootView: View {
                 // (the held-invite promise, EXPERIENCE.md §3).
                 honorPendingInvite()
             } else {
-                // Sign-out or deletion drops the shell; a stale pushed room or a
-                // live join sheet must not greet the next sign-in.
+                // Sign-out or deletion drops the shell; a stale pushed room (in
+                // either navigating tab) or a live join sheet must not greet the next
+                // sign-in.
                 path.removeAll()
+                puzzlesPath.removeAll()
                 showJoin = false
             }
         }
@@ -125,8 +132,9 @@ struct ArrivalRootView: View {
         }
     }
 
-    /// The signed-in shell: three tabs, named by their places. Only the Rooms tab
-    /// navigates (rooms push inside it); Puzzles and Settings are single pages.
+    /// The signed-in shell: three tabs, named by their places. Rooms and Puzzles both
+    /// navigate (a room pushes inside whichever list opened it, each with its own
+    /// path); Settings is a single page.
     private var signedInShell: some View {
         TabView(selection: $tab) {
             Tab(ArrivalCopy.roomsTitle, systemImage: "house", value: ShellTab.rooms) {
@@ -139,7 +147,7 @@ struct ArrivalRootView: View {
                     )
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: ArrivalRoute.self) { route in
-                        destination(route)
+                        destination(route, pop: { path.removeAll() })
                     }
                 }
                 // The room owns the whole screen (the full-bleed ruling), so the bar
@@ -151,8 +159,27 @@ struct ArrivalRootView: View {
                 .toolbar(path.isEmpty ? .visible : .hidden, for: .tabBar)
             }
             Tab(ArrivalCopy.puzzlesTitle, systemImage: "squareshape.split.3x3", value: ShellTab.puzzles) {
-                PuzzlesScreen(
-                    loadPage: { before in await model.puzzles.loadPage(before: before) })
+                NavigationStack(path: $puzzlesPath) {
+                    PuzzlesScreen(
+                        loadPage: { before in await model.puzzles.loadPage(before: before) },
+                        startGame: { puzzle in
+                            await model.puzzles.startGame(puzzleId: puzzle.puzzleId)
+                        },
+                        onOpenRoom: { gameId in
+                            puzzlesPath.append(roomRoute(for: gameId))
+                        })
+                    // The list draws its own big "Puzzles" title, so the system
+                    // navigation bar stays hidden (the RoomsScreen pattern); the room
+                    // hides its own bar in the destination.
+                    .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: ArrivalRoute.self) { route in
+                        destination(route, pop: { puzzlesPath.removeAll() })
+                    }
+                }
+                // The room owns the whole screen (the full-bleed ruling); the bar
+                // hides while a room started here is pushed, keyed off this tab's own
+                // path exactly as Rooms keys off its own.
+                .toolbar(puzzlesPath.isEmpty ? .visible : .hidden, for: .tabBar)
             }
             Tab(ArrivalCopy.settingsTitle, systemImage: "gearshape", value: ShellTab.settings) {
                 settingsTab
@@ -234,31 +261,32 @@ struct ArrivalRootView: View {
         colorScheme == .dark ? .observatory : .studio
     }
 
+    /// `pop` empties the presenting tab's path (Rooms or Puzzles), so back and the
+    /// kicked exit both land on that tab's list. The room is the only pushed element
+    /// in either tab (join and a start both set the path to just the room, and an
+    /// opened card appended onto an empty path), so a clear is the right pop.
     @ViewBuilder
-    private func destination(_ route: ArrivalRoute) -> some View {
+    private func destination(_ route: ArrivalRoute, pop: @escaping () -> Void) -> some View {
         switch route {
         case .room(let gameId):
             if let facts = model.liveRoomFacts {
-                // Back and the kicked exit pop the same way: the room is the
-                // only pushed element (join set the path to just the room, and
-                // an opened card appended onto an empty path), so home is Rooms.
                 RealRoomView(
                     room: RealRoom(
                         apiBaseURL: facts.apiBaseURL,
                         sessionBaseURL: facts.sessionBaseURL,
                         gameId: gameId,
                         tokenProvider: model.session.tokenProvider),
-                    onBack: { path.removeAll() },
-                    onExit: { path.removeAll() }
+                    onBack: pop,
+                    onExit: pop
                 )
                 .toolbar(.hidden, for: .navigationBar)
             } else {
                 // Unreachable: roomRoute(for:) only builds .room with live facts.
-                DemoRoomView(onBack: { path.removeAll() })
+                DemoRoomView(onBack: pop)
                     .toolbar(.hidden, for: .navigationBar)
             }
         case .fixtureRoom:
-            DemoRoomView(onBack: { path.removeAll() })
+            DemoRoomView(onBack: pop)
                 .toolbar(.hidden, for: .navigationBar)
         }
     }

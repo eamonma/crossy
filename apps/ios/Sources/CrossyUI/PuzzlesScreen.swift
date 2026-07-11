@@ -1,12 +1,15 @@
 // Puzzles, the library tab: the caller's uploaded puzzles from GET /puzzles, newest
 // first, cursor-paginated, the RoomsScreen grammar exactly (title in the scroll,
-// paper cards, pull to refresh, quiet state lines). Browse-only for now: starting a
-// game from a puzzle rides the create-flow slice (recorded slice decision), so the
-// cards are inert paper and the screen carries no standing action.
+// paper cards, pull to refresh, quiet state lines). Each card's one action starts a
+// fresh game from that upload (POST /games, the replay-without-reupload path; the web
+// gallery mirrors it): on success the composition root pushes the created room, the
+// same navigation an opened room card takes.
 //
-// The screen owns scroll, paging, and states; it reaches the network only through
-// the injected page loader (AD-2: CrossyUI sees neither CrossyAPI nor the protocol
-// twins, the composition root adapts both).
+// The screen owns scroll, paging, states, and per-card start progress; it reaches the
+// network only through the two injected closures (AD-2: CrossyUI sees neither
+// CrossyAPI nor the protocol twins, the composition root adapts both). A start
+// resolves to the created gameId or an ArrivalFailure; success is handed up so the
+// root does the push, a failure reads inline on the card and the card recovers.
 
 import CrossyDesign
 import SwiftUI
@@ -26,6 +29,13 @@ public struct PuzzlesPage: Equatable, Sendable {
 
 public struct PuzzlesScreen: View {
     private let loadPage: (String?) async -> Result<PuzzlesPage, ArrivalFailure>
+    /// Start a game from a puzzle: `POST /games` behind the seam, resolving to the
+    /// created gameId on success. The screen owns the in-flight and failure state;
+    /// the root does the navigation with the returned id.
+    private let startGame: (PuzzleCardModel) async -> Result<String, ArrivalFailure>
+    /// The created room, handed to the composition root to push (the RoomsScreen
+    /// onOpenRoom shape: navigation is the root's, not the screen's).
+    private let onOpenRoom: (String) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var puzzles: [PuzzleCardModel] = []
@@ -34,9 +44,24 @@ public struct PuzzlesScreen: View {
     @State private var loaded = false
     @State private var loadingMore = false
     @State private var failure: ArrivalFailure?
+    /// The puzzleId whose `POST /games` is currently out; nil when none. One start at
+    /// a time is enough (a person taps one card), and it keeps the disabled control
+    /// unambiguous.
+    @State private var starting: String?
+    /// A per-card inline failure sentence, keyed by puzzleId; cleared when that card
+    /// is tapped again.
+    @State private var startFailures: [String: String] = [:]
 
-    public init(loadPage: @escaping (String?) async -> Result<PuzzlesPage, ArrivalFailure>) {
+    public init(
+        loadPage: @escaping (String?) async -> Result<PuzzlesPage, ArrivalFailure>,
+        startGame: @escaping (PuzzleCardModel) async -> Result<String, ArrivalFailure> = { _ in
+            .failure(ArrivalFailure(code: nil))
+        },
+        onOpenRoom: @escaping (String) -> Void = { _ in }
+    ) {
         self.loadPage = loadPage
+        self.startGame = startGame
+        self.onOpenRoom = onOpenRoom
     }
 
     private var ground: GridGround {
@@ -59,12 +84,18 @@ public struct PuzzlesScreen: View {
                 }
 
                 ForEach(puzzles) { puzzle in
-                    PuzzleCard(model: puzzle, ground: ground)
-                        .onAppear {
-                            if puzzle.id == puzzles.last?.id {
-                                Task { await loadMore() }
-                            }
+                    PuzzleCard(
+                        model: puzzle,
+                        ground: ground,
+                        starting: starting == puzzle.id,
+                        failure: startFailures[puzzle.id],
+                        onStart: { Task { await start(puzzle) } }
+                    )
+                    .onAppear {
+                        if puzzle.id == puzzles.last?.id {
+                            Task { await loadMore() }
                         }
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -82,6 +113,28 @@ public struct PuzzlesScreen: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .multilineTextAlignment(.center)
             .padding(.top, 48)
+    }
+
+    // MARK: - Start a game (POST /games; the create-flow slice, closed)
+
+    /// Start a fresh game from one puzzle: mark the card in flight, clear any prior
+    /// failure on it, then run the injected create. Success hands the created gameId
+    /// to the root, which pushes the room the same way an opened card does; a failure
+    /// stays on the list and reads inline on the card (a toast would be noise), keyed
+    /// on the §12 code. A second tap while one start is out is a no-op (the button is
+    /// already disabled, this guards the closure too).
+    private func start(_ puzzle: PuzzleCardModel) async {
+        guard starting == nil else { return }
+        starting = puzzle.id
+        startFailures[puzzle.id] = nil
+        defer { starting = nil }
+        switch await startGame(puzzle) {
+        case .success(let gameId):
+            onOpenRoom(gameId)
+        case .failure(let arrivalFailure):
+            startFailures[puzzle.id] = ArrivalCopy.puzzleStartFailure(
+                forCode: arrivalFailure.code)
+        }
     }
 
     // MARK: - Paging (the RoomsScreen contract, verbatim)
