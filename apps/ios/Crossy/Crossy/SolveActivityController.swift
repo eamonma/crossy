@@ -117,9 +117,15 @@ final class SolveActivityController {
         // Zero local updates follow (D15): the server drives the island over APNs once it
         // has this activity's update token. A refused request (authorization raced off,
         // system cap) simply means no island this leave, never a broken room.
+        //
+        // pushType .token is LOAD-BEARING: without it ActivityKit mints a local-only
+        // activity whose pushTokenUpdates never yields, silently, and the server can
+        // never reach the island (found live 2026-07-11: a healthy-looking island, an
+        // empty token registry, and not one error line anywhere).
         guard let activity = try? Activity.request(
             attributes: attributes,
-            content: .init(state: SolveActivityAttributes.ContentState(), staleDate: nil))
+            content: .init(state: SolveActivityAttributes.ContentState(), staleDate: nil),
+            pushType: .token)
         else { return }
         streamPushToken(for: activity)
     }
