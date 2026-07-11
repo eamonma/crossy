@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Direction 04, The Open C. Observatory ground. -->
-  <rect width="1024" height="1024" rx="230" fill="#121118"/>
-  <path d="M 734.15 698.41 A 290 290 0 1 1 734.15 325.59"
-        fill="none" stroke="#EDEAE2" stroke-width="150" stroke-linecap="round"/>
-  <rect x="727" y="437" width="150" height="150" rx="24" fill="#978365"/>
-</svg>

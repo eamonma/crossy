@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Direction 02, The Crossing. Observatory ground: bone entries, same gold cell. -->
-  <rect width="1024" height="1024" rx="230" fill="#121118"/>
-  <g transform="translate(25 0)">
-    <rect x="212" y="437" width="600" height="150" rx="30" fill="#EDEAE2"/>
-    <rect x="362" y="287" width="150" height="450" rx="30" fill="#EDEAE2"/>
-    <rect x="380" y="455" width="114" height="114" rx="18" fill="#978365"/>
-  </g>
-</svg>

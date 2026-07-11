@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- The Crossy mark: the 3x3 core of the CROSSY crossword, letters retired. Dark: bone plates on the Observatory ground, which shows through as blocks and grid lines. -->
+  <rect width="7.375" height="7.375" fill="#EDEAE2"/>
+  <rect y="8.625" width="7.375" height="6.75" fill="#EDEAE2"/>
+  <rect x="8.625" width="6.75" height="7.375" fill="#EDEAE2"/>
+  <rect x="8.625" y="16.625" width="6.75" height="7.375" fill="#EDEAE2"/>
+  <rect x="16.625" y="8.625" width="7.375" height="6.75" fill="#EDEAE2"/>
+  <rect x="16.625" y="16.625" width="7.375" height="7.375" fill="#978365"/>
+</svg>

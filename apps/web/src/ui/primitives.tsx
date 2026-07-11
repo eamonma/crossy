@@ -135,10 +135,13 @@ export function AvatarStack({
 
 /**
  * The Crossy mark: the 3x3 heart of the app icon's CROSSY crossword, blocks stepping
- * down the anti-diagonal to the one gold cell, the Y. Ink is currentColor so it follows
- * the theme (App.tsx toggles data-theme); open cells stay transparent so the page plays
- * the paper. Grid lines run to the frame so the puzzle reads as continuing past the
- * crop, the same move the app icon makes. Gold is the token, never a baked hex.
+ * down the anti-diagonal to the one gold cell, the Y. Canonical geometry lives in
+ * docs/design/logo/generate.py, which checks this component for drift; edit both.
+ * Light draws ink (currentColor) blocks and grid lines, open cells transparent so the
+ * page plays the paper. Dark flips to the identity's plate treatment (app icon,
+ * favicon): the open cells glow as plates, the panel shows through as blocks and grid
+ * lines. Lines run to the frame so the puzzle reads as continuing past the crop.
+ * Gold is the token, never a baked hex.
  */
 function CrosswordMark() {
   return (
@@ -148,20 +151,52 @@ function CrosswordMark() {
       fill="none"
       className="w-full h-full block"
     >
-      <rect x="16" width="8" height="8" fill="currentColor" />
-      <rect x="8" y="8" width="8" height="8" fill="currentColor" />
-      <rect y="16" width="8" height="8" fill="currentColor" />
-      <rect x="16" y="16" width="8" height="8" fill="var(--color-gold-9)" />
-      <path
-        d="M8 0v24M16 0v24M0 8h24M0 16h24"
-        stroke="currentColor"
-        strokeWidth="1.25"
-      />
+      <g className="dark:hidden">
+        <rect x="16" width="8" height="8" fill="currentColor" />
+        <rect x="8" y="8" width="8" height="8" fill="currentColor" />
+        <rect y="16" width="8" height="8" fill="currentColor" />
+        <rect x="16" y="16" width="8" height="8" fill="var(--color-gold-9)" />
+        <path
+          d="M8 0v24M16 0v24M0 8h24M0 16h24"
+          stroke="currentColor"
+          strokeWidth="1.25"
+        />
+      </g>
+      <g className="hidden dark:block">
+        <rect width="7.375" height="7.375" fill="currentColor" />
+        <rect x="8.625" width="6.75" height="7.375" fill="currentColor" />
+        <rect y="8.625" width="7.375" height="6.75" fill="currentColor" />
+        <rect
+          x="16.625"
+          y="8.625"
+          width="7.375"
+          height="6.75"
+          fill="currentColor"
+        />
+        <rect
+          x="8.625"
+          y="16.625"
+          width="6.75"
+          height="7.375"
+          fill="currentColor"
+        />
+        <rect
+          x="16.625"
+          y="16.625"
+          width="7.375"
+          height="7.375"
+          fill="var(--color-gold-9)"
+        />
+      </g>
     </svg>
   );
 }
 
-/** The brand lockup: the crossword mark, gap, serif wordmark. Mark holds still, wordmark tucks. */
+/**
+ * The brand lockup: the crossword mark, gap, serif wordmark. Mark holds still, wordmark
+ * tucks. The canonical recipe (docs/design/logo): mark 24, gap 6, display serif
+ * semibold at 18 (size * 0.75), tracking -0.00625em, boxes center-aligned.
+ */
 export function Logo({
   size = 24,
   withName = true,
