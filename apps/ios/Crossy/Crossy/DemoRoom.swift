@@ -28,6 +28,10 @@
 //    -i2fShare              land the share card open (the share pill,
 //                           inflated: the code headline, the QR, copy link,
 //                           Share…; the presentFacts pattern)
+//    -shareMenu             the share pill presents a system Menu instead of
+//                           inflating the card (ShareSurface, the RosterMenu
+//                           mechanism: the native menu melt; the QR row
+//                           stages a small sheet); composes with -demoRoom
 //    -gooOvershoot          the pill-inflation prototype (PillInflation): the
 //                           facts and share cards open on the underdamped
 //                           inflation curve, a hair past the frame and back

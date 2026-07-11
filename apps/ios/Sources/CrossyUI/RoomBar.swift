@@ -89,8 +89,19 @@ struct RoomBar: View {
     /// inflates the pill into the facts card. Routing is the caller's.
     let onTapTimePill: () -> Void
     /// The share pill's summon: the tap inflates the pill into the share
-    /// card (the facts card's grammar). Routing is the caller's.
+    /// card (the facts card's grammar). Routing is the caller's. The menu
+    /// variant never calls it: a Menu label presents itself.
     let onTapShare: () -> Void
+    /// The menu variant's payload (-shareMenu, ShareSurface): the read-aloud
+    /// code for the titled section and the link the QR row carries. The card
+    /// mechanism ignores both.
+    let shareCode: String?
+    let shareUrlString: String?
+    /// The menu variant's intents, the card's unchanged (AD-2 seams: the
+    /// pasteboard write and UIActivityViewController ride the app target;
+    /// the rows only report).
+    let onCopyShareLink: () -> Void
+    let onShareInvite: () -> Void
     /// The room's lifecycle, for the pill's register (TimePillRegister) and
     /// its spoken label.
     let status: RoomStatus
@@ -126,6 +137,18 @@ struct RoomBar: View {
             #else
                 timedPills
             #endif
+            // The menu variant (-shareMenu, ShareSurface): the share pill as
+            // a Menu label, standing OUTSIDE the container exactly like the
+            // players pill (a Menu inside a GlassEffectContainer breaks its
+            // morph on 26.1, the RosterMenu discipline). The card variant's
+            // pill stays in the cluster; the two never stand together.
+            if hasShare, ShareSurface.mechanism == .menu,
+                let shareCode, let shareUrlString
+            {
+                ShareMenuPill(
+                    ground: ground, code: shareCode, urlString: shareUrlString,
+                    onCopyLink: onCopyShareLink, onShare: onShareInvite)
+            }
             RosterMenu(
                 ground: ground, members: members,
                 selfUserId: selfUserId, onJoinIn: onJoinIn, onKick: onKick,
@@ -150,7 +173,9 @@ struct RoomBar: View {
             // container (its panel is a custom morph, not a Menu, so the
             // 26.1 break does not apply); the players pill keeps the corner,
             // because the people are the bar's color and the island's lead.
-            if hasShare {
+            // The menu variant's pill renders in the outer HStack instead
+            // (same slot, outside the container).
+            if hasShare, ShareSurface.mechanism == .card {
                 sharePill
             }
         }

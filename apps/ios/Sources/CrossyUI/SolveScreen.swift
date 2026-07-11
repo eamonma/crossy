@@ -228,6 +228,13 @@ public struct SolveScreen: View {
                     // operations, at completion the stats card (ID-2).
                     onTapTimePill: { openFacts() },
                     onTapShare: { openShare() },
+                    // The menu variant's payload and intents (-shareMenu,
+                    // ShareSurface): the same code, link, and closures the
+                    // card carries, so the two mechanisms share one truth.
+                    shareCode: shareable?.code,
+                    shareUrlString: shareable?.url.absoluteString,
+                    onCopyShareLink: onCopyShareLink,
+                    onShareInvite: onShareInvite,
                     status: status,
                     selfUserId: store.selfUserId,
                     onJoinIn: onJoinIn,

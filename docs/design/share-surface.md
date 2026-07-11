@@ -128,6 +128,28 @@ linearly and lies about goo, the MorphLab caveat):
   belongs to people and celebration); adopting it means amending that line
   for tap-opened pill inflations specifically.
 
+## The system-Menu candidate (-shareMenu)
+
+A third variant beside the card and the goo prototypes, behind its own switch
+(`ShareSurface.mechanism`, default the card, flipped by the `-shareMenu`
+launch argument; composes with `-demoRoom`). The share pill becomes a system
+`Menu` label on the RosterMenu mechanism, so the open inherits the
+presentation system's own melt, the one Mail actually has and the owner
+already blessed on the players pill. The pill stands OUTSIDE the cluster's
+GlassEffectContainer (the 26.1 container break), between the time pill and
+the players pill as before.
+
+The menu trades the card's hierarchy for the system's feel: Copy link stays
+primary (no inline "Link copied"; a menu cannot restyle a row live), Share…
+hands to the system sheet, and Show QR code stages the card's exact tile
+(ink on paper, quiet zone intact) in a small SwiftUI sheet, because a menu
+cannot render a scannable code inline. The titled section carries the invite
+code, so the read-aloud channel survives the form. The honest costs to judge
+on device: the QR is no longer zero-tap (the card's strongest argument for
+itself), and the code as a section header reads quieter than the card's
+headline. Row set, words, and the sheet's arithmetic are pinned in
+`ShareMenuTests`.
+
 **Owner rulings requested:**
 
 1. Morph character for the two pill panels: clean (law), overshoot, or
@@ -148,7 +170,10 @@ linearly and lies about goo, the MorphLab caveat):
   `GlassMorph.swift` (unclamped blend), `PillInflation.swift` (the switch, the
   curve, the metaball surface), `RoomChromeModel.swift` (share walk).
 - Fixture: `-i2fShare` lands the card open (the presentFacts pattern);
-  `-gooOvershoot` / `-gooMetaball` compose with `-demoRoom` for live taps.
+  `-gooOvershoot` / `-gooMetaball` compose with `-demoRoom` for live taps;
+  `-shareMenu` swaps the pill for the system-Menu variant
+  (`apps/ios/Sources/CrossyUI/ShareMenu.swift`), also composing with
+  `-demoRoom`.
 - Vectors: `InviteQRTests` (uqr parity), `ShareInviteTests` (buildShareUrl
   parity), `ShareCardTests` (slot arithmetic, lexicon words, the strict
   Mail-button width rule).

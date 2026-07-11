@@ -34,6 +34,14 @@ struct ContentView: View {
         } else if arguments.contains("-gooOvershoot") {
             PillInflation.character = .overshoot
         }
+        // The share surface's third candidate (ShareSurface, owner comparison
+        // 2026-07-11): -shareMenu presents the share pill as a system Menu
+        // (the RosterMenu mechanism), so the open rides the native menu melt
+        // instead of inflating the morph card. Composes with -demoRoom for
+        // live taps; no flag means the card, the shipped law.
+        if arguments.contains("-shareMenu") {
+            ShareSurface.mechanism = .menu
+        }
     }
 
     var body: some View {
