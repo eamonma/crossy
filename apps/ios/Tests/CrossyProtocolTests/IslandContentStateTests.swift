@@ -66,9 +66,22 @@ final class IslandContentStateTests: XCTestCase {
         XCTAssertEqual(mixed.total, 78)
         XCTAssertEqual(mixed.pucks.map(\.connected), [true, false, true])
         XCTAssertEqual(mixed.pucks.first?.initial, "E")
+        // The avatar disk key rides the vectors (PROTOCOL.md §12a): two opaque ids and one
+        // explicit null in the mixed room, so both userId wire forms are pinned off the
+        // REAL fixture file, not just the local probes below.
+        XCTAssertEqual(
+            mixed.pucks.map(\.userId),
+            [
+                "a1b2c3d4-0001-4a1a-8b2b-000000000001",
+                "a1b2c3d4-0002-4a1a-8b2b-000000000002",
+                nil,
+            ])
 
         let atCap = try XCTUnwrap(byName["at-cap cluster of four pucks in presence order"])
         XCTAssertEqual(atCap.pucks.count, 4, "the cluster caps at four (PROTOCOL.md §12a)")
+        XCTAssertFalse(
+            atCap.pucks.contains { $0.userId == nil },
+            "the at-cap room's four pucks all carry the avatar key")
 
         let completed = try XCTUnwrap(byName["completed room stamps completedAt with the final fill"])
         XCTAssertEqual(completed.status, .completed)
@@ -78,6 +91,9 @@ final class IslandContentStateTests: XCTestCase {
         let abandoned = try XCTUnwrap(byName["abandoned room freezes a partial fill, no completedAt"])
         XCTAssertEqual(abandoned.status, .abandoned)
         XCTAssertNil(abandoned.completedAt, "an abandoned game never completed (PROTOCOL.md §12a)")
+        XCTAssertEqual(
+            abandoned.pucks.map(\.userId), [nil],
+            "the abandoned room's puck OMITS userId in the fixture; absent decodes as nil")
 
         let minimal = try XCTUnwrap(byName["minimal single-puck room on a small grid"])
         XCTAssertEqual(minimal.pucks.count, 1)
@@ -140,8 +156,10 @@ final class IslandContentStateTests: XCTestCase {
     // MARK: - The puck's avatar disk key (userId), absent-tolerant like avatarUrl (§4/§12a)
 
     /// A present userId decodes verbatim (opaque, the widget's disk key for the avatar puck).
-    /// A local probe, not vendored from the backend agent's vectors: this pins the Swift twin
-    /// of the wire's optional puck userId independently.
+    /// The vectors carry the field since the backend expand landed (all three wire forms,
+    /// pinned off the real file in test_vectorMeaningsMatchTheContract). These probes stay
+    /// because they pin the one distinction the vector decode collapses: absent and explicit
+    /// null both read nil, and a nil re-encodes as ABSENT, never null.
     func test_puckUserIdPresentDecodesOpaqueString() throws {
         let json = Data(
             #"{ "initial": "E", "red": 214, "green": 178, "blue": 92, "connected": true, "userId": "u-42" }"#
