@@ -67,13 +67,15 @@ async function insertEvents(
 /**
  * Upsert the board snapshot. game_state is full DML for the session role (§9). The DO UPDATE
  * WHERE is a single-writer tripwire (INV-7), not a coordination mechanism: an update only
- * applies when the stored row is still ongoing or the incoming snapshot is itself terminal,
- * AND the incoming seq is at least the stored seq. So seq never regresses, and a terminal row
- * is never overwritten by an ongoing snapshot (INV-4) even one carrying a higher seq. The bound
- * is >= not >, so re-flushing an identical terminal snapshot at the same seq still applies (the
- * idempotent retry after a partially-observed flush). A rejected update leaves rowCount 0: for
- * INSERT ... ON CONFLICT DO UPDATE a fresh insert and an applied update both report 1, so 0
- * means only the guard refused, and this writer has lost the row to a newer or terminal writer.
+ * applies when the stored row is still ongoing, or the incoming snapshot repeats the stored
+ * terminal status, AND the incoming seq is at least the stored seq. So seq never regresses, and
+ * a terminal row is final (INV-4): it is never rolled back to ongoing, nor switched between
+ * completed and abandoned, even by a snapshot carrying a higher seq. A terminal row accepts only
+ * an identical-status reflush, and the bound is >= not >, so re-flushing the same terminal
+ * snapshot at the same seq still applies (the idempotent retry after a partially-observed flush).
+ * A rejected update leaves rowCount 0: for INSERT ... ON CONFLICT DO UPDATE a fresh insert and an
+ * applied update both report 1, so 0 means only the guard refused, and this writer has lost the
+ * row to a newer or terminal writer.
  */
 async function upsertSnapshot(
   client: PoolClient,
@@ -94,7 +96,7 @@ async function upsertSnapshot(
        abandoned_at = excluded.abandoned_at,
        stats = excluded.stats,
        recent_command_ids = excluded.recent_command_ids
-     where (game_state.status = 'ongoing' or excluded.status <> 'ongoing')
+     where (game_state.status = 'ongoing' or excluded.status = game_state.status)
        and excluded.last_seq >= game_state.last_seq`,
     [
       gameId,

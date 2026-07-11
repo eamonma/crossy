@@ -1139,6 +1139,46 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     expect(await storedRow(gameId)).toEqual(before);
   });
 
+  it("INV-4: a higher-seq terminal snapshot cannot switch a stored terminal row to a different terminal status (completed to abandoned)", async () => {
+    const userId = randomUUID();
+    const stored: RawCell[] = [
+      { v: "A", by: userId },
+      { v: "B", by: userId },
+      { v: "C", by: userId },
+    ];
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+      gameState: {
+        board: stored,
+        lastSeq: 5,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+        status: "completed",
+      },
+    });
+    const before = await storedRow(gameId);
+    expect(before.status).toBe("completed");
+
+    // A second writer flushes an abandoned snapshot with a HIGHER seq. Terminal is final
+    // (INV-4): completed never becomes abandoned, so the guard refuses even the newer seq.
+    // Only a same-status reflush is allowed, so this must trip the tripwire.
+    const switching = snapshot(
+      "abandoned",
+      [
+        { v: "Z", by: userId },
+        { v: null, by: null },
+        { v: null, by: null },
+      ],
+      9,
+    );
+
+    await expect(
+      flushToPostgres(sessionPool, gameId, [], switching),
+    ).rejects.toBeInstanceOf(SnapshotRegressionError);
+
+    expect(await storedRow(gameId)).toEqual(before);
+  });
+
   it("re-flushing an identical terminal snapshot at equal last_seq succeeds without throwing (idempotent retry)", async () => {
     const userId = randomUUID();
     const stored: RawCell[] = [
