@@ -95,4 +95,27 @@ final class IslandPresentationTests: XCTestCase {
         let seconds = IslandPresentation.frozenSeconds(from: anchor, to: completedAt)
         XCTAssertEqual(IslandPresentation.frozenSolveTime(seconds: seconds), "1:30")
     }
+
+    /// The elapsed register coarsens with the room's age (owner ruling 2026-07-11, the
+    /// ninety-hour question): under a day ticks natively, a day to a week reads in days
+    /// and hours, a week or more is the infinity mark.
+    func test_elapsedRegisterCoarsensWithAge() {
+        let day = 86_400
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: 0), .ticking)
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: day - 1), .ticking)
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: day), .coarse("1 d"))
+        XCTAssertEqual(
+            IslandPresentation.elapsedRegister(ageSeconds: 90 * 3600), .coarse("3 d 18 h"),
+            "the ninety-hour room reads 3 d 18 h")
+        XCTAssertEqual(
+            IslandPresentation.elapsedRegister(ageSeconds: 7 * day - 1), .coarse("6 d 23 h"))
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: 7 * day), .infinity)
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: 400 * day), .infinity)
+    }
+
+    /// A negative age (clock skew: the anchor sits ahead of the device clock) stays in
+    /// the ticking register rather than crashing or coarsening.
+    func test_elapsedRegisterFloorsNegativeAge() {
+        XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: -30), .ticking)
+    }
 }

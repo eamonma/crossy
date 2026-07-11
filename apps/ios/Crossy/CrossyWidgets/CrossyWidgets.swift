@@ -54,24 +54,34 @@ struct SolveActivityWidget: Widget {
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     // The crew reading: the cluster grows, away members drop to the away
-                    // register (owner ruling), terminal brings everyone to full.
-                    PuckCluster(pucks: frame.pucks, diameter: 36, overlap: -10)
-                        .padding(.leading, 4)
+                    // register (owner ruling), terminal brings everyone to full. The
+                    // vertical padding is deliberate mass: the expanded island shrink-wraps
+                    // its content, and a shallow row reads as a thin pill instead of the
+                    // full card (owner device report 2026-07-11). The crew at 44 with air
+                    // claims the Music-scale rectangle.
+                    PuckCluster(pucks: frame.pucks, diameter: 44, overlap: -12)
+                        .padding(.leading, 6)
+                        .padding(.vertical, 10)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    TimerLabel(frame: frame, size: 24, weight: .semibold, maxWidth: 108)
-                        .padding(.trailing, 4)
+                    TimerLabel(frame: frame, size: 32, weight: .semibold, maxWidth: 96)
+                        .padding(.trailing, 6)
+                        .padding(.vertical, 10)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     ExpandedBottom(frame: frame)
                 }
             } compactLeading: {
-                PuckCluster(pucks: Array(frame.pucks.prefix(3)), diameter: 14, overlap: -5)
+                // 16pt pucks balance the trailing clock-plus-ring so the pill reads
+                // symmetrical around the sensor (owner device report 2026-07-11).
+                PuckCluster(pucks: Array(frame.pucks.prefix(3)), diameter: 16, overlap: -6)
             } compactTrailing: {
                 // Timer, then a small progress ring between it and the island's trailing
-                // edge. The ring only appears once progress exists (post-push).
+                // edge. The ring only appears once progress exists (post-push). The cap
+                // hugs the ruled MM:SS form (never three sections); past the hour the
+                // live format is the recorded 2b gap, not this frame's problem.
                 HStack(spacing: 4) {
-                    TimerLabel(frame: frame, size: 13, weight: .semibold, maxWidth: 52)
+                    TimerLabel(frame: frame, size: 13, weight: .semibold, maxWidth: 40)
                     if let fraction = frame.fraction {
                         ProgressRing(fraction: fraction, diameter: 12, stroke: 2, dim: frame.dim)
                     }
@@ -230,14 +240,35 @@ private struct TimerLabel: View {
             if let frozen = frame.frozenTime {
                 Text(verbatim: frozen)
             } else {
-                Text(
-                    timerInterval: frame.anchor...frame.anchor.addingTimeInterval(24 * 3600),
-                    countsDown: false)
+                // The live register coarsens with the room's age (owner ruling
+                // 2026-07-11, the ninety-hour question). Ticking rooms bound the range
+                // from render time, not the anchor: the old anchor-plus-24h end sat in
+                // the PAST for a room over ~16h old and froze the display at the range's
+                // end. Render time plus 9h outlives the island's own 8h system cap, and
+                // every push re-derives it.
+                switch IslandPresentation.elapsedRegister(
+                    ageSeconds: Int(Date().timeIntervalSince(frame.anchor)))
+                {
+                case .ticking:
+                    Text(
+                        timerInterval: frame.anchor...Date().addingTimeInterval(9 * 3600),
+                        countsDown: false)
+                case .coarse(let reading):
+                    Text(verbatim: reading)
+                case .infinity:
+                    Text(verbatim: "\u{221E}")
+                }
             }
         }
         .font(.system(size: size, weight: weight))
         .monospacedDigit()
         .foregroundStyle(.white)
+        // The auto-updating timer reserves its widest possible width and CENTERS the
+        // digits inside it, so the visible time floats left of its own box and dead air
+        // opens between the clock and whatever trails it (owner device report
+        // 2026-07-11). Trailing text alignment pins the digits to the box's right edge;
+        // the frame cap then only bounds the reservation, never pads the glyphs.
+        .multilineTextAlignment(.trailing)
         .frame(maxWidth: maxWidth, alignment: .trailing)
     }
 }
@@ -324,16 +355,20 @@ private struct ExpandedBottom: View {
     let frame: IslandFrame
 
     var body: some View {
-        VStack(spacing: 6) {
+        // Card-scale air (owner device report 2026-07-11): the bottom region carries the
+        // mass that turns the shrink-wrapped pill into the full rectangle. Type steps up
+        // to 15, the meter gets room above and below, and the region pads itself instead
+        // of hugging the sensor row.
+        VStack(spacing: 12) {
             HStack {
                 Text(verbatim: frame.roomLine)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 if let counts = frame.counts {
                     Text(verbatim: counts)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(.white.opacity(0.45 * frame.dim))
                 }
@@ -342,6 +377,9 @@ private struct ExpandedBottom: View {
                 TickedMeter(fraction: fraction, sealed: frame.sealed, dim: frame.dim)
             }
         }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
     }
 }
 

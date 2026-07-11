@@ -53,6 +53,32 @@ public enum IslandPresentation {
         max(0, Int(completedAt.timeIntervalSince(firstFillAt)))
     }
 
+    /// How the live island renders elapsed time for a room of a given age (owner ruling
+    /// 2026-07-11, the ninety-hour question: someone joins a room that has been open for
+    /// days and backgrounds it). The clock's meaningfulness decays with age, so the
+    /// register coarsens instead of growing digits: a fresh room ticks natively, a room
+    /// older than a day reads in days and hours (minutes stop mattering, and the string
+    /// re-derives on every push render), and past a week the room is a place, not a
+    /// race: the infinity mark.
+    public enum ElapsedRegister: Equatable, Sendable {
+        /// Under a day old: the native ticking timer. MM:SS, then H:MM:SS past the
+        /// hour (the three-section form is the recorded 2b gap, accepted for v1).
+        case ticking
+        /// A day to a week old: a static coarse reading such as "3 d 18 h".
+        case coarse(String)
+        /// A week or older: the infinity mark.
+        case infinity
+    }
+
+    public static func elapsedRegister(ageSeconds: Int) -> ElapsedRegister {
+        let day = 86_400
+        if ageSeconds < day { return .ticking }
+        if ageSeconds >= 7 * day { return .infinity }
+        let days = ageSeconds / day
+        let hours = (ageSeconds % day) / 3600
+        return .coarse(hours > 0 ? "\(days) d \(hours) h" : "\(days) d")
+    }
+
     private static func pad(_ value: Int) -> String {
         value < 10 ? "0\(value)" : "\(value)"
     }

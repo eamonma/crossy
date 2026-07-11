@@ -57,6 +57,7 @@ struct IslandLab: View {
                 labButton("5 — near-done 74/78") { await update(Fixtures.nearDone, as: "near-done, 74 of 78") }
                 labButton("6 — terminal flip (completed)") { await stepTerminal() }
                 labButton("7 — stale simulation") { await stepStale() }
+                labButton("8 — ancient room (90 h old)") { await stepAncient() }
 
                 Divider().overlay(.white.opacity(0.2))
                 labButton("End the activity") { await end() }
@@ -85,6 +86,7 @@ struct IslandLab: View {
                 case "nearDone": await update(Fixtures.nearDone, as: "near-done, 74 of 78")
                 case "completed": await update(Fixtures.completed, as: "completed, held (no end)")
                 case "stale": await stepStale()
+                case "ancient": await stepAncient()
                 default: break
                 }
             }
@@ -158,18 +160,52 @@ struct IslandLab: View {
         flippedAway.toggle()
     }
 
-    /// The terminal flip: update to the completed state first so the flip renders on the
-    /// live island (every puck full, timer frozen, meter sealed, "Solved together"), hold
-    /// that frame for a beat, then end with the same terminal state. The end's default
-    /// dismissal keeps the final frame on the lock screen after the island retires.
+    /// The terminal flip, ruled 2026-07-11: done is an EVENT. Two seconds after the tap,
+    /// the completed frame lands as an ALERTING update, and the system announces it by
+    /// expanding the island itself (no long-press): every puck full, timer frozen, meter
+    /// sealed, "Solved together". The end follows once the announcement has had its
+    /// moment, and the default dismissal keeps the final frame on the lock screen. The
+    /// real channel mirrors this as an alert-carrying update push before the end event.
     private func stepTerminal() async {
-        await update(Fixtures.completed, as: "6 — terminal flip: solved together, timer frozen")
-        try? await Task.sleep(for: .seconds(3))
-        guard let activity else { return }
+        status = "6 — solving the last cell…"
+        try? await Task.sleep(for: .seconds(2))
+        guard let activity else {
+            status = "Start step 1 first"
+            return
+        }
+        await activity.update(
+            .init(state: Fixtures.completed, staleDate: nil),
+            alertConfiguration: AlertConfiguration(
+                title: "Solved together",
+                body: LocalizedStringResource(stringLiteral: Fixtures.roomName),
+                sound: .default))
+        status = "6 — done: the island announced itself (expanded, solved together)"
+        try? await Task.sleep(for: .seconds(6))
         await activity.end(
             .init(state: Fixtures.completed, staleDate: nil),
             dismissalPolicy: .default)
         status = "6 — ended with the terminal frame (lock screen keeps it)"
+    }
+
+    /// The ancient room (owner ruling 2026-07-11, the ninety-hour question): a fresh
+    /// activity whose anchor sits 90 hours in the past, so the clock renders the coarse
+    /// register ("3 d 18 h") instead of a ticking timer. Needs its own request: the
+    /// anchor is an attribute, fixed at request time.
+    private func stepAncient() async {
+        await end()
+        let attributes = SolveActivityAttributes(
+            firstFillAt: Date().addingTimeInterval(-Fixtures.ancientSeconds),
+            roomName: Fixtures.roomName,
+            pucks: Fixtures.snapshotPucks)
+        do {
+            activity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: Fixtures.mixed, staleDate: nil))
+            flippedAway = false
+            status = "8 — ancient room: 90 h old, the clock reads 3 d 18 h"
+        } catch {
+            status = "request failed: \(error.localizedDescription)"
+        }
     }
 
     /// A stale simulation: push an ongoing state with a stale date a beat out, then wait
@@ -211,6 +247,8 @@ private enum Fixtures {
     /// A live island caps at MM:SS territory; start ~28 minutes in so the timer reads a
     /// realistic mm:ss and the completed step's frozen interval stays under an hour.
     static let elapsedSeconds: TimeInterval = 28 * 60 + 14
+    /// The ancient room: 90 hours, exactly 3 d 18 h in the coarse register.
+    static let ancientSeconds: TimeInterval = 90 * 3600
 
     /// The pre-push snapshot cluster (attributes), the frozen fallback. Same colors as the
     /// mixed vector so the fallback and the first push read as the same people.
