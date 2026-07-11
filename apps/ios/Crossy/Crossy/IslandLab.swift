@@ -158,14 +158,27 @@ struct IslandLab: View {
         flippedAway.toggle()
     }
 
-    /// The terminal flip: update to the completed state first so the flip renders on the
-    /// live island (every puck full, timer frozen, meter sealed, "Solved together"), hold
-    /// that frame for a beat, then end with the same terminal state. The end's default
-    /// dismissal keeps the final frame on the lock screen after the island retires.
+    /// The terminal flip, ruled 2026-07-11: done is an EVENT. Two seconds after the tap,
+    /// the completed frame lands as an ALERTING update, and the system announces it by
+    /// expanding the island itself (no long-press): every puck full, timer frozen, meter
+    /// sealed, "Solved together". The end follows once the announcement has had its
+    /// moment, and the default dismissal keeps the final frame on the lock screen. The
+    /// real channel mirrors this as an alert-carrying update push before the end event.
     private func stepTerminal() async {
-        await update(Fixtures.completed, as: "6 — terminal flip: solved together, timer frozen")
-        try? await Task.sleep(for: .seconds(3))
-        guard let activity else { return }
+        status = "6 — solving the last cell…"
+        try? await Task.sleep(for: .seconds(2))
+        guard let activity else {
+            status = "Start step 1 first"
+            return
+        }
+        await activity.update(
+            .init(state: Fixtures.completed, staleDate: nil),
+            alertConfiguration: AlertConfiguration(
+                title: "Solved together",
+                body: LocalizedStringResource(stringLiteral: Fixtures.roomName),
+                sound: .default))
+        status = "6 — done: the island announced itself (expanded, solved together)"
+        try? await Task.sleep(for: .seconds(6))
         await activity.end(
             .init(state: Fixtures.completed, staleDate: nil),
             dismissalPolicy: .default)
