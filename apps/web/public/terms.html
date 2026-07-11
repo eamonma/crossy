@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terms of Service — Crossy</title>
+    <meta
+      name="description"
+      content="The terms for using Crossy, a free collaborative crossword app. Plain language, fair rules, and the disclaimers a small indie game needs."
+    />
+    <link rel="canonical" href="https://crossy.party/terms" />
+    <!-- Display serif (Harfang Pro), same Typekit kit the app shell loads. -->
+    <link rel="stylesheet" href="https://use.typekit.net/ckp4hdg.css" />
+    <!-- Body sans + serif fallback for this standalone page (the app self-hosts these via @fontsource). -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Schibsted+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #fdfdfc;
+        --surface: #f9f9f8;
+        --ink: #21201c;
+        --muted: #63635e;
+        --rule: #e2e1de;
+        --font-display: "harfang-pro", "Newsreader", Georgia, serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1917;
+          --surface: #211f1c;
+          --ink: #f1f0ef;
+          --muted: #a1a099;
+          --rule: #35332f;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font-sans);
+        font-size: 1.0625rem;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .wrap {
+        max-width: 44rem;
+        margin: 0 auto;
+        padding: 5rem 1.5rem 7rem;
+      }
+      .home {
+        display: inline-block;
+        margin-bottom: 3.5rem;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .home:hover {
+        opacity: 0.7;
+      }
+      h1 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: clamp(2.5rem, 8vw, 3.75rem);
+        line-height: 1;
+        letter-spacing: -0.02em;
+        margin: 0 0 0.75rem;
+      }
+      .updated {
+        color: var(--muted);
+        font-size: 0.9375rem;
+        margin: 0 0 2.5rem;
+      }
+      .lede {
+        font-size: 1.1875rem;
+        line-height: 1.6;
+        margin: 0 0 1.25rem;
+      }
+      h2 {
+        font-family: var(--font-sans);
+        font-weight: 600;
+        font-size: 1.375rem;
+        letter-spacing: -0.01em;
+        margin: 3rem 0 0.85rem;
+        padding-top: 1.75rem;
+        border-top: 1px solid var(--rule);
+      }
+      h2:first-of-type {
+        border-top: none;
+        padding-top: 0;
+      }
+      p {
+        margin: 0 0 1.1rem;
+      }
+      ul {
+        margin: 0 0 1.1rem;
+        padding-left: 1.2rem;
+      }
+      li {
+        margin: 0 0 0.5rem;
+      }
+      a {
+        color: var(--ink);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        text-decoration-thickness: 1px;
+        text-decoration-color: var(--muted);
+      }
+      a:hover {
+        text-decoration-color: var(--ink);
+      }
+      .toc {
+        margin: 0 0 1rem;
+        padding: 0;
+        list-style: none;
+        color: var(--muted);
+      }
+      .toc li {
+        margin: 0 0 0.35rem;
+      }
+      strong {
+        font-weight: 600;
+      }
+      footer {
+        margin-top: 4rem;
+        padding-top: 1.75rem;
+        border-top: 1px solid var(--rule);
+        color: var(--muted);
+        font-size: 0.9375rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <a class="home" href="/">← Crossy</a>
+
+      <h1>Terms of Service</h1>
+      <p class="updated">Last updated: July 11, 2026</p>
+
+      <p class="lede">
+        Crossy is a free app for solving crosswords with other people in shared
+        rooms, in real time. These terms are the agreement between you and us
+        for using it. We have kept them plain, because rules you cannot read are
+        not fair.
+      </p>
+      <p>
+        The short version: play fair, do not break the app or ruin it for other
+        people, and understand that Crossy is a small free game offered as is.
+        The sections below spell out the rest.
+      </p>
+      <p>
+        These terms cover the Crossy app and the crossy.party website. They do
+        not cover Discord or Apple, who run their own sign-in services under
+        their own terms. How we handle your data is covered separately in our
+        <a href="/privacy">Privacy Policy</a>.
+      </p>
+
+      <ul class="toc">
+        <li><a href="#acceptance">Accepting these terms</a></li>
+        <li><a href="#eligibility">Who can use Crossy</a></li>
+        <li><a href="#accounts">Accounts and sign-in</a></li>
+        <li><a href="#guest">Playing as a guest</a></li>
+        <li><a href="#use">Using Crossy fairly</a></li>
+        <li><a href="#content">What you type in a room</a></li>
+        <li><a href="#ip">Who owns what</a></li>
+        <li><a href="#thirdparty">Services we rely on</a></li>
+        <li><a href="#availability">Availability and no warranty</a></li>
+        <li><a href="#liability">Limits on our liability</a></li>
+        <li><a href="#termination">Ending your use of Crossy</a></li>
+        <li><a href="#changes">Changes to these terms</a></li>
+        <li><a href="#law">Governing law</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+
+      <h2 id="acceptance">Accepting these terms</h2>
+      <p>
+        By using Crossy, you agree to these terms. If you do not agree, please
+        do not use the app. When you sign in or start playing, that use is your
+        acceptance. If you are using Crossy on behalf of an organization, you
+        confirm you have the authority to accept these terms for it.
+      </p>
+
+      <h2 id="eligibility">Who can use Crossy</h2>
+      <p>
+        Crossy is intended for people aged 18 and older. By using the app, you
+        confirm that you are 18 or older. If you are not, please do not use
+        Crossy. You also agree to use it only where doing so is legal for you.
+      </p>
+
+      <h2 id="accounts">Accounts and sign-in</h2>
+      <p>
+        You sign in with Discord or with Apple. We never see your Discord or
+        Apple password, and we rely on them to confirm you are who you say you
+        are. Keep your sign-in credentials with those providers secure, since
+        anyone who can sign in as you can act as you in Crossy.
+      </p>
+      <p>
+        You are responsible for what happens under your account. The display
+        name and avatar you bring from Discord or Apple are shown to other
+        players in a room, so pick something you are comfortable sharing. You
+        may delete your account at any time from the Account screen in the app.
+      </p>
+
+      <h2 id="guest">Playing as a guest</h2>
+      <p>
+        When guest play is available, you can join a room without an account.
+        Guest access is a convenience, not a saved place: your session may not
+        carry over between visits, and features that need an account will not be
+        available. Everything in these terms still applies to you while you play
+        as a guest.
+      </p>
+
+      <h2 id="use">Using Crossy fairly</h2>
+      <p>
+        Crossy is shared space, so a few rules keep it working for everyone. You
+        agree not to:
+      </p>
+      <ul>
+        <li>
+          Break, overload, probe, or interfere with the app, its servers, or
+          anyone else's use of it.
+        </li>
+        <li>
+          Use bots, scripts, or automated means to access Crossy, scrape it, or
+          flood a room, outside of any interface we offer for that purpose.
+        </li>
+        <li>
+          Harass, threaten, impersonate, or abuse other players, including
+          through the name, avatar, or entries you bring into a room.
+        </li>
+        <li>
+          Enter unlawful, hateful, or infringing content into a shared board.
+        </li>
+        <li>
+          Try to reach parts of the service you are not meant to, or to defeat
+          any limit or protection we have put in place.
+        </li>
+        <li>Use Crossy to break the law or anyone else's rights.</li>
+      </ul>
+      <p>
+        A room's invite code is meant for the people you share it with. Do not
+        publish codes to join or disrupt rooms you were not invited to.
+      </p>
+
+      <h2 id="content">What you type in a room</h2>
+      <p>
+        Crossy is multiplayer, so the letters you enter and where your cursor
+        sits are shared with the other people in your room by design. That is
+        the whole point of a collaborative solve. By entering content into a
+        shared board, you give us permission to store it, display it to the
+        others in that room, and keep it as part of that solve so the board
+        stays intact.
+      </p>
+      <p>
+        You keep any rights you have in what you type. You are responsible for
+        it, and you confirm you have the right to share it. We may remove
+        content or limit access when it breaks these terms or the law, though on
+        a crossword grid this is a rare event.
+      </p>
+
+      <h2 id="ip">Who owns what</h2>
+      <p>
+        Crossy, including its name, design, code, and look, belongs to us and is
+        protected by intellectual property law. These terms do not give you any
+        ownership of the app. You may use Crossy for your own personal, non
+        commercial enjoyment, and nothing more.
+      </p>
+      <p>
+        The puzzles in Crossy, including their grids and clues, are provided for
+        you to solve within the app. They belong to us or to the people we
+        licensed them from. Do not copy, redistribute, resell, or build a
+        competing product from them.
+      </p>
+
+      <h2 id="thirdparty">Services we rely on</h2>
+      <p>
+        Crossy is built on services run by other companies, and your use of
+        Crossy depends on them:
+      </p>
+      <ul>
+        <li>
+          <strong>Discord</strong> and <strong>Apple</strong> provide sign-in.
+          When you sign in through them, their own terms and privacy policies
+          apply to that step.
+        </li>
+        <li>
+          <strong>Hosting and infrastructure</strong> providers run the servers
+          and store the data that make the app work.
+        </li>
+      </ul>
+      <p>
+        We do not control these companies and are not responsible for how they
+        run their own services. If one of them changes or goes down, Crossy may
+        be affected along with it.
+      </p>
+
+      <h2 id="availability">Availability and no warranty</h2>
+      <p>
+        Crossy is a free app offered as is and as available. We do our best to
+        keep it running and to keep your boards intact, but we do not promise it
+        will always be up, error free, or without data loss. We may change,
+        pause, or retire features, or the whole app, at any time.
+      </p>
+      <p>
+        To the fullest extent the law allows, we make no warranties of any kind
+        about Crossy, whether express or implied, including any implied warranty
+        of merchantability, fitness for a particular purpose, or non
+        infringement. You use Crossy at your own risk.
+      </p>
+
+      <h2 id="liability">Limits on our liability</h2>
+      <p>
+        To the fullest extent the law allows, we are not liable for any
+        indirect, incidental, special, or consequential damages arising from
+        your use of Crossy, including lost data, lost solves, or interrupted
+        play. Crossy is free, so our total liability to you for any claim
+        connected to the app is limited to the amount you paid to use it, which
+        is nothing.
+      </p>
+      <p>
+        Some places do not allow certain limits on liability, so parts of this
+        section may not apply to you. Where that is the case, our liability is
+        limited to the smallest amount the law allows.
+      </p>
+
+      <h2 id="termination">Ending your use of Crossy</h2>
+      <p>
+        You can stop using Crossy at any time, and you can delete your account
+        from the Account screen in the app. When you delete your account, we
+        handle your data as described in the
+        <a href="/privacy">Privacy Policy</a>.
+      </p>
+      <p>
+        We may suspend or end your access to Crossy if you break these terms, if
+        we are required to, or if we retire the app. The sections meant to
+        outlast your use, such as ownership, disclaimers, and limits on
+        liability, continue to apply after your access ends.
+      </p>
+
+      <h2 id="changes">Changes to these terms</h2>
+      <p>
+        We may update these terms as the app changes or the law requires. When
+        we make a meaningful change, we will update the date at the top of this
+        page. If you keep using Crossy after a change, that use is your
+        acceptance of the updated terms. If you do not agree with a change, stop
+        using the app.
+      </p>
+
+      <h2 id="law">Governing law</h2>
+      <p>
+        These terms are governed by the laws of [Jurisdiction], without regard
+        to its conflict of law rules. Any dispute connected to Crossy or these
+        terms will be handled in the courts of [Jurisdiction], and you agree to
+        that. If any part of these terms is found unenforceable, the rest stays
+        in effect.
+      </p>
+
+      <h2 id="contact">Contact</h2>
+      <p>
+        If you have any question about these terms, email us at
+        <a href="mailto:legal@crossy.party">legal@crossy.party</a>.
+      </p>
+
+      <footer>Crossy</footer>
+    </main>
+  </body>
+</html>
