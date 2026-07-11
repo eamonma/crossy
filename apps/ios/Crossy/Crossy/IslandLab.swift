@@ -1,0 +1,270 @@
+//
+//  IslandLab.swift
+//  Crossy
+//
+//  The island rendering rig (push track, phase 2a). Launching with -islandLab starts a
+//  REAL Live Activity with fixture attributes and steps its content-state through
+//  Activity.update from the foreground app, so the compact island, the long-press
+//  expanded island, the lock-screen banner, and the terminal flip can all be judged
+//  without APNs: no token upload, no session emitter, no key. Networking is another
+//  slice; this rig only exercises rendering.
+//
+//  The steps walk the owner's rulings (2026-07-11): the pre-push fallback, an ongoing
+//  mixed-presence room, an at-cap crew, a presence flip, near-done, the terminal flip,
+//  and a stale simulation (a short stale date on an update, then a wait past it). Fixture
+//  values reuse vectors/live-activity/content-state.json where they fit, so the rig and
+//  the pinned wire agree.
+//
+//  Built to be walked by a hand on a device: every step is a labeled button, the status
+//  line names the state the island is in right now, and nothing advances on its own.
+//  The presence flip is a toggle (press for away, press again for back) and the terminal
+//  step holds the completed frame for a beat before end(), so the flip is watchable on
+//  the island before the activity retires. Two launch args serve scripted runs:
+//  -islandLabAuto walks the sequence unattended; -islandLabHold <state> starts and holds
+//  one state for a screenshot pass.
+//
+//  Evidence only: nothing in the room composes through this screen.
+//
+
+import ActivityKit
+import CrossyProtocol
+import SwiftUI
+
+struct IslandLab: View {
+    @State private var activity: Activity<SolveActivityAttributes>?
+    @State private var status = "Not started"
+    @State private var flippedAway = false
+    @State private var autoRan = false
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 14) {
+                Text(verbatim: "Island Lab")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(verbatim: status)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(2)
+
+                labButton("1 — pre-push (attributes fallback)") { await stepPrePush() }
+                labButton("2 — ongoing mixed presence 34/78") { await stepMixed() }
+                labButton("3 — at-cap crew 61/78") { await update(Fixtures.atCap, as: "at-cap crew, 61 of 78") }
+                labButton(flippedAway ? "4 — presence flip (M comes back)" : "4 — presence flip (M goes away)") {
+                    await stepFlip()
+                }
+                labButton("5 — near-done 74/78") { await update(Fixtures.nearDone, as: "near-done, 74 of 78") }
+                labButton("6 — terminal flip (completed)") { await stepTerminal() }
+                labButton("7 — stale simulation") { await stepStale() }
+
+                Divider().overlay(.white.opacity(0.2))
+                labButton("End the activity") { await end() }
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        // simctl cannot tap (no assistive access), so an optional launch arg auto-walks
+        // the whole sequence with a beat between steps for a scripted screenshot pass.
+        // Plain -islandLab is the manual rig.
+        .task {
+            guard !autoRan else { return }
+            autoRan = true
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("-islandLabAuto") {
+                await autoWalk()
+            } else if let index = arguments.firstIndex(of: "-islandLabHold"),
+                arguments.indices.contains(index + 1) {
+                // Start and hold one named state indefinitely (no terminal, no end), so a
+                // simulator screenshot can catch a live island: the compact/expanded
+                // island and the lock-screen banner render only while the activity holds.
+                await stepPrePush()
+                switch arguments[index + 1] {
+                case "mixed": await stepMixed()
+                case "atCap": await update(Fixtures.atCap, as: "at-cap crew, 61 of 78")
+                case "nearDone": await update(Fixtures.nearDone, as: "near-done, 74 of 78")
+                case "completed": await update(Fixtures.completed, as: "completed, held (no end)")
+                case "stale": await stepStale()
+                default: break
+                }
+            }
+        }
+    }
+
+    private func labButton(_ title: String, _ action: @escaping () async -> Void) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            Text(verbatim: title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .background(.white.opacity(0.08), in: .rect(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Steps
+
+    /// Start (or restart) the activity with fixture attributes and an EMPTY content-state:
+    /// the pre-push island, which must look exactly like it did before the push track.
+    private func stepPrePush() async {
+        await end()
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            status = "Live Activities are off in Settings"
+            return
+        }
+        let attributes = SolveActivityAttributes(
+            firstFillAt: Date().addingTimeInterval(-Fixtures.elapsedSeconds),
+            roomName: Fixtures.roomName,
+            pucks: Fixtures.snapshotPucks)
+        do {
+            activity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: IslandContentState(), staleDate: nil))
+            flippedAway = false
+            status = "1 — pre-push: attributes cluster, progress hidden"
+        } catch {
+            status = "request failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// One update, and the status line names the state so the hand on the device always
+    /// knows what the island should be showing.
+    private func update(_ state: IslandContentState, as label: String, staleDate: Date? = nil) async {
+        guard let activity else {
+            status = "Start step 1 first"
+            return
+        }
+        await activity.update(.init(state: state, staleDate: staleDate))
+        status = label
+    }
+
+    private func stepMixed() async {
+        flippedAway = false
+        await update(Fixtures.mixed, as: "2 — ongoing mixed: A away at 0.38, 34 of 78")
+    }
+
+    /// The presence flip as a toggle, no timer: press once and M drops to the away
+    /// register, press again and M comes back. The hand sets the pace.
+    private func stepFlip() async {
+        if flippedAway {
+            await update(Fixtures.mixed, as: "4 — flip back: M returned to full")
+        } else {
+            await update(Fixtures.oneAway, as: "4 — flip away: M dimmed to 0.38")
+        }
+        flippedAway.toggle()
+    }
+
+    /// The terminal flip: update to the completed state first so the flip renders on the
+    /// live island (every puck full, timer frozen, meter sealed, "Solved together"), hold
+    /// that frame for a beat, then end with the same terminal state. The end's default
+    /// dismissal keeps the final frame on the lock screen after the island retires.
+    private func stepTerminal() async {
+        await update(Fixtures.completed, as: "6 — terminal flip: solved together, timer frozen")
+        try? await Task.sleep(for: .seconds(3))
+        guard let activity else { return }
+        await activity.end(
+            .init(state: Fixtures.completed, staleDate: nil),
+            dismissalPolicy: .default)
+        status = "6 — ended with the terminal frame (lock screen keeps it)"
+    }
+
+    /// A stale simulation: push an ongoing state with a stale date a beat out, then wait
+    /// past it. Everything push-fed should drop to the away register while the timer stays
+    /// full white.
+    private func stepStale() async {
+        await update(
+            Fixtures.mixed, as: "7 — stale in 2 s: push-fed dims, timer stays white",
+            staleDate: Date().addingTimeInterval(2))
+    }
+
+    private func end() async {
+        for activity in Activity<SolveActivityAttributes>.activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+        activity = nil
+        flippedAway = false
+        status = "Ended"
+    }
+
+    /// The scripted walk for an unattended pass: each state, a beat apart.
+    private func autoWalk() async {
+        await stepPrePush()
+        try? await Task.sleep(for: .seconds(2))
+        await stepMixed()
+        try? await Task.sleep(for: .seconds(2))
+        await update(Fixtures.atCap, as: "at-cap crew, 61 of 78")
+        try? await Task.sleep(for: .seconds(2))
+        await update(Fixtures.nearDone, as: "near-done, 74 of 78")
+        try? await Task.sleep(for: .seconds(2))
+        await stepTerminal()
+    }
+}
+
+// MARK: - Fixtures (vectors/live-activity values where they fit)
+
+private enum Fixtures {
+    static let roomName = "Sunday, together"
+    /// A live island caps at MM:SS territory; start ~28 minutes in so the timer reads a
+    /// realistic mm:ss and the completed step's frozen interval stays under an hour.
+    static let elapsedSeconds: TimeInterval = 28 * 60 + 14
+
+    /// The pre-push snapshot cluster (attributes), the frozen fallback. Same colors as the
+    /// mixed vector so the fallback and the first push read as the same people.
+    static let snapshotPucks: [SolveActivityAttributes.Puck] = [
+        .init(initial: "E", red: 214, green: 178, blue: 92),
+        .init(initial: "A", red: 127, green: 119, blue: 221),
+        .init(initial: "M", red: 92, green: 184, blue: 148),
+    ]
+
+    /// "ongoing room, mixed connected and disconnected pucks" (content-state.json).
+    static let mixed = IslandContentState(
+        pucks: [
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false),
+            .init(initial: "M", red: 92, green: 184, blue: 148, connected: true),
+        ],
+        filled: 34, total: 78, status: .ongoing, completedAt: nil)
+
+    /// The mixed room with the third member flipped away too, so two pucks dim at once.
+    static let oneAway = IslandContentState(
+        pucks: [
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false),
+            .init(initial: "M", red: 92, green: 184, blue: 148, connected: false),
+        ],
+        filled: 34, total: 78, status: .ongoing, completedAt: nil)
+
+    /// "at-cap cluster of four pucks in presence order" (content-state.json).
+    static let atCap = IslandContentState(
+        pucks: [
+            .init(initial: "H", red: 214, green: 178, blue: 92, connected: true),
+            .init(initial: "B", red: 127, green: 119, blue: 221, connected: true),
+            .init(initial: "R", red: 92, green: 184, blue: 148, connected: false),
+            .init(initial: "J", red: 224, green: 122, blue: 95, connected: true),
+        ],
+        filled: 61, total: 78, status: .ongoing, completedAt: nil)
+
+    /// Near done: the mixed crew at 74/78, so the ring and meter read nearly sealed.
+    static let nearDone = IslandContentState(
+        pucks: [
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: true),
+            .init(initial: "M", red: 92, green: 184, blue: 148, connected: true),
+        ],
+        filled: 74, total: 78, status: .ongoing, completedAt: nil)
+
+    /// The completed terminal state. completedAt is the anchor plus the elapsed interval,
+    /// so the frozen solve time reads the same mm:ss the live timer had reached.
+    static let completed = IslandContentState(
+        pucks: [
+            .init(initial: "E", red: 214, green: 178, blue: 92, connected: true),
+            .init(initial: "A", red: 127, green: 119, blue: 221, connected: false),
+            .init(initial: "M", red: 92, green: 184, blue: 148, connected: true),
+        ],
+        filled: 78, total: 78, status: .completed,
+        completedAt: ISO8601DateFormatter().string(from: Date()))
+}

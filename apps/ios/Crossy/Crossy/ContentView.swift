@@ -28,6 +28,10 @@ struct ContentView: View {
         } else if ProcessInfo.processInfo.arguments.contains("-meltLab") {
             // The scrubbed melt's recheck rig (MeltLab.swift): evidence only.
             MeltLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-islandLab") {
+            // The island rendering rig (IslandLab.swift): a real Live Activity stepped
+            // from the foreground, no APNs. Evidence only.
+            IslandLab()
         } else if let config = RoomConfig.resolve() {
             RealRoomView(room: RealRoom(config: config))
         } else if wantsDemoRoom {
