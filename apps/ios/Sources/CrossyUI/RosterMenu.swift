@@ -240,6 +240,16 @@ struct RosterMenu: View {
 /// (member, ground) through ImageRenderer at 3x and caches. The render bakes in
 /// the away dim (RosterPuckView's own opacity); non-template, so color survives
 /// the menu.
+///
+/// Menu rows stay initials, deliberately (avatars documented decision). ImageRenderer
+/// is a synchronous one-shot: it captures the puck at render time, and the avatar
+/// image resolves asynchronously, so a remote image is never in the snapshot. Baking
+/// the fetched image in would need a fetch-then-re-render step, but a system Menu does
+/// not refresh its already-rendered rows once open, so the fetched image would land in
+/// a menu the user has closed. The pill cluster, a live SwiftUI surface, carries the
+/// image (RosterPuckView layers AvatarPuckOverlay); the menu row shows the colored
+/// initial, which is the same first-class fallback a null or failed url gets
+/// everywhere (PROTOCOL.md §4). So the row key below need not include the avatar.
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 enum RosterPuckArt {

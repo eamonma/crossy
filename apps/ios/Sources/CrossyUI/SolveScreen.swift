@@ -51,6 +51,10 @@ public struct SolveScreen: View {
     @State private var frames: [ChromePiece: CGRect] = [:]
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
+    /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
+    /// shared avatar fetches once and the 1 Hz clock tick never re-hits the network
+    /// (AvatarImage.swift). Injected into the environment below.
+    @State private var avatarCache = AvatarImageCache()
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -297,6 +301,9 @@ public struct SolveScreen: View {
         // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
         // flag through the environment; below iOS 26 the fallback stays inert.
         .environment(\.chromeClarified, completion.isClarityBeat)
+        // The room's live pucks read the avatar cache here (the pill cluster); a
+        // null or unresolved url just shows the initial (PROTOCOL.md §4).
+        .environment(\.avatarImageCache, avatarCache)
         .onChange(of: model.selection) { _, selection in
             relayCursor(selection, spectating: spectating)
             observeHaptics()

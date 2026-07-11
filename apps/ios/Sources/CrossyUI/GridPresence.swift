@@ -11,8 +11,12 @@ import CrossyDesign
 /// and any conflict flash all borrow this color.
 public struct PresenceMark: Equatable, Sendable {
     public let userId: String
-    /// Avatar fallback initial (Wave 2.1d: 8 px initial), ASCII-uppercased from the
-    /// display name's first character (INV-1: no locale-aware casing).
+    /// The 8 px grid-presence puck is always the initial, never the avatar image: at
+    /// 8 px an image is mud, unreadable and indistinct from its neighbors, where the
+    /// initial in the writer's color still reads (Wave 2.1d: the 8 px initial). The
+    /// avatar image lives only where it is legible, the roster pill cluster; here the
+    /// initial is the render, so this mark carries no avatarUrl. ASCII-uppercased from
+    /// the display name's first character (INV-1: no locale-aware casing).
     public let initial: String
     /// The roster color already resolved for the render ground.
     public let color: RGBColor
