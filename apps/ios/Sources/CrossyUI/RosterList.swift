@@ -48,7 +48,10 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
 
     public init(
         userId: String, displayName: String, wireColor: String,
-        avatarUrl: String? = nil,
+        // No default: a construction site must decide the avatar url explicitly. The nil
+        // default let the island's participant mapping omit it silently, and the island
+        // shipped without avatars (owner device report 2026-07-11).
+        avatarUrl: String?,
         isHost: Bool, isSpectator: Bool, connected: Bool,
         cursor: RosterCursor? = nil
     ) {

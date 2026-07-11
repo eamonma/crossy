@@ -16,6 +16,7 @@ final class RosterListTests: XCTestCase {
     ) -> RosterMember {
         RosterMember(
             userId: id, displayName: name ?? id.capitalized, wireColor: "#17917F",
+            avatarUrl: nil,
             isHost: host, isSpectator: spectator, connected: connected, cursor: cursor)
     }
 

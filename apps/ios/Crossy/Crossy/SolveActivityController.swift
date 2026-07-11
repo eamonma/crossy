@@ -128,6 +128,7 @@ final class SolveActivityController {
         let members = participants.map {
             RosterMember(
                 userId: $0.userId, displayName: $0.displayName, wireColor: $0.color,
+                avatarUrl: $0.avatarUrl,
                 isHost: $0.role == .host, isSpectator: $0.role == .spectator,
                 connected: $0.connected)
         }
