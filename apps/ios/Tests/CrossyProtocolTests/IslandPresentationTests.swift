@@ -105,10 +105,10 @@ final class IslandPresentationTests: XCTestCase {
         XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: day - 1), .ticking)
         XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: day), .coarse("1 d"))
         XCTAssertEqual(
-            IslandPresentation.elapsedRegister(ageSeconds: 90 * 3600), .coarse("3 d 18 h"),
-            "the ninety-hour room reads 3 d 18 h")
+            IslandPresentation.elapsedRegister(ageSeconds: 90 * 3600), .coarse("3 d"),
+            "the ninety-hour room reads 3 d, days only (owner ruling)")
         XCTAssertEqual(
-            IslandPresentation.elapsedRegister(ageSeconds: 7 * day - 1), .coarse("6 d 23 h"))
+            IslandPresentation.elapsedRegister(ageSeconds: 7 * day - 1), .coarse("6 d"))
         XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: 7 * day), .infinity)
         XCTAssertEqual(IslandPresentation.elapsedRegister(ageSeconds: 400 * day), .infinity)
     }

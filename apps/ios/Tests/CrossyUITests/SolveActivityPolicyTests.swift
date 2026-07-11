@@ -54,7 +54,14 @@ final class SolveActivityPolicyTests: XCTestCase {
             .none)
     }
 
-    func test_endsOnCompleted_EXPERIENCE4() {
+    // The push era (PROTOCOL.md 12a): a terminal while the app is away belongs to the
+    // server's announcement (alerting update, then end). The client defers: terminal
+    // observations off the foreground return .none, and the local end happens only
+    // when the scene is effectively foreground again. The old "wherever the scene is"
+    // rule killed the island the instant a room completed while the token upload's
+    // background assertion kept the socket warm, swallowing the announcement (owner
+    // device report 2026-07-11 late).
+    func test_completedWhileAwayDefersToThePushChannel_section12a() {
         var policy = SolveActivityPolicy()
         settledForeground(&policy)
         XCTAssertEqual(
@@ -62,24 +69,50 @@ final class SolveActivityPolicyTests: XCTestCase {
             .start)
         XCTAssertEqual(
             policy.observe(phase: .inactive, status: .completed, kicked: false, hasFirstFill: true),
+            .none)
+        XCTAssertEqual(
+            policy.observe(phase: .background, status: .completed, kicked: false, hasFirstFill: true),
+            .none)
+        // The foreground return still sweeps whatever the server left standing.
+        XCTAssertEqual(
+            policy.observe(phase: .active, status: .completed, kicked: false, hasFirstFill: true),
             .end)
     }
 
-    func test_endsOnAbandoned_EXPERIENCE4() {
+    func test_abandonedWhileAwayDefersToThePushChannel_section12a() {
         var policy = SolveActivityPolicy()
         settledForeground(&policy)
         _ = policy.observe(phase: .inactive, status: .ongoing, kicked: false, hasFirstFill: true)
         XCTAssertEqual(
-            policy.observe(phase: .inactive, status: .abandoned, kicked: false, hasFirstFill: true),
+            policy.observe(phase: .background, status: .abandoned, kicked: false, hasFirstFill: true),
+            .none)
+        XCTAssertEqual(
+            policy.observe(phase: .active, status: .abandoned, kicked: false, hasFirstFill: true),
             .end)
     }
 
-    func test_endsOnKicked_EXPERIENCE4() {
+    func test_kickedWhileAwayDefersToTheServersOwnEnd_section12a() {
+        var policy = SolveActivityPolicy()
+        settledForeground(&policy)
+        _ = policy.observe(phase: .inactive, status: .ongoing, kicked: false, hasFirstFill: true)
+        // The emitter ends a kicked member's own tokens (12a); locally nothing moves
+        // until the foreground return.
+        XCTAssertEqual(
+            policy.observe(phase: .background, status: .ongoing, kicked: true, hasFirstFill: true),
+            .none)
+        XCTAssertEqual(
+            policy.observe(phase: .active, status: .ongoing, kicked: true, hasFirstFill: true),
+            .end)
+    }
+
+    // Foreground is different: the room bar owns the moment, so a terminal that
+    // arrives while the scene is active ends the island at once.
+    func test_terminalAtActiveEndsImmediately_EXPERIENCE4() {
         var policy = SolveActivityPolicy()
         settledForeground(&policy)
         _ = policy.observe(phase: .inactive, status: .ongoing, kicked: false, hasFirstFill: true)
         XCTAssertEqual(
-            policy.observe(phase: .inactive, status: .ongoing, kicked: true, hasFirstFill: true),
+            policy.observe(phase: .active, status: .completed, kicked: false, hasFirstFill: true),
             .end)
     }
 
