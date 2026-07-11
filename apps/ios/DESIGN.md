@@ -116,7 +116,10 @@ below the metaball threshold (SP-i1, section 10: container spacing fuses
 adjacent glass), so the pieces stay separate objects at rest; the players pill
 stands outside the container, because a Menu inside one breaks its morph on
 26.1; below 26 the same layout renders as separate blur-material capsules, the
-one-fallback rule below. The point is honest morphs: a morph-bearing pill is
+one-fallback rule below. A host's menu behind the players pill offers to remove
+any other person from the room, one confirm (`DELETE
+/games/{id}/members/{userId}`, the server enforcing host-only and self-target
+refusal). The point is honest morphs: a morph-bearing pill is
 its own rest surface, so a panel is always the pill reshaped, never a capsule
 conjured out of standing glass. And the panel grows over the pill's own
 footprint, top and trailing edges shared (the Mail-button rule, owner ruling
@@ -175,7 +178,8 @@ content new at the open end (lists, names) fades in late. The morph targets:
   it pours back.
 - Tap the players pill: the roster menu flows out of it, the system's morph
   (rows carry rendered pucks, names, and the quiet state word; the spectator's
-  Join in is a real menu action).
+  Join in is a real menu action, and a host's row for anyone else nests a
+  destructive Remove from room with one confirm).
 - Tap the time pill: the room's facts arrive (owner ruling 2026-07-10: the time
   pill is the room's facts), by one of two mechanisms depending on the moment.
   Mid-solve a popover flows out of the pill (the system's presentation), carrying

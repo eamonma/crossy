@@ -34,9 +34,14 @@ struct RosterMenu: View {
     let onJoinIn: () -> Void
     /// Kick a member (owner ruling 2026-07-10: the host can remove from the
     /// participants panel). The composition root wires this to the REST call
-    /// (`DELETE /games/{id}/members/{userId}`); the fixture no-ops. Threaded
-    /// here now; the host-gated submenu that calls it lands with the kick UI.
+    /// (`DELETE /games/{id}/members/{userId}`); the fixture no-ops. The menu
+    /// offers it only to a host, and never on the host's own row.
     let onKick: (String) -> Void
+
+    /// The member a host is confirming a kick for. A Menu action cannot present
+    /// its own dialog (the menu dismisses on tap), so the tap stages the target
+    /// and the confirmationDialog fires on the pill itself.
+    @State private var kickTarget: RosterMember?
 
     var body: some View {
         if members.isEmpty {
@@ -67,6 +72,28 @@ struct RosterMenu: View {
             #endif
         }
         .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
+        // The one destructive confirm (system confirmationDialog): a Menu row
+        // cannot host its own dialog, so the host's tap stages the target and
+        // the dialog fires here. The system owns the red; the menu stays plain.
+        .confirmationDialog(
+            kickTarget.map { "Remove \($0.displayName) from the room?" } ?? "",
+            isPresented: kickConfirmationBinding,
+            titleVisibility: .visible,
+            presenting: kickTarget
+        ) { member in
+            Button("Remove from room", role: .destructive) { onKick(member.userId) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text(verbatim: "They lose their seat and cannot rejoin with this code.")
+        }
+    }
+
+    /// The confirmation's presentation binding: present while a target is
+    /// staged, clear it on dismiss.
+    private var kickConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { kickTarget != nil },
+            set: { if !$0 { kickTarget = nil } })
     }
 
     /// The loading register: one hollow puck in the same geometry the loaded
@@ -164,24 +191,45 @@ struct RosterMenu: View {
 
     @ViewBuilder
     private var rows: some View {
+        let hosting = RosterList.selfIsHost(members, selfUserId: selfUserId)
         ForEach(RosterList.ordered(members)) { member in
-            // A person is not an action; the row dismisses like Mail's do.
-            Button {} label: {
-                Label {
-                    Text(verbatim: member.displayName)
-                    if let word = RosterList.stateWord(member) {
-                        Text(verbatim: word)
-                    }
-                } icon: {
-                    RosterPuckArt.image(member: member, ground: ground)
-                }
-            }
+            personRow(member, hosting: hosting)
         }
         if RosterList.selfIsSpectator(members, selfUserId: selfUserId) {
             Divider()
             Button(action: onJoinIn) {
                 Label("Join in", systemImage: "person.badge.plus")
             }
+        }
+    }
+
+    /// One person's row. For a host looking at anyone else, the row is a nested
+    /// Menu (Menu supports nesting) holding the destructive remove action, which
+    /// stages the kick confirmation; otherwise the row is a plain non-action
+    /// button that dismisses like Mail's do (a person is not an action).
+    @ViewBuilder
+    private func personRow(_ member: RosterMember, hosting: Bool) -> some View {
+        if hosting, RosterList.canKick(member, selfUserId: selfUserId) {
+            Menu {
+                Button(role: .destructive) { kickTarget = member } label: {
+                    Label("Remove from room", systemImage: "person.badge.minus")
+                }
+            } label: {
+                personLabel(member)
+            }
+        } else {
+            Button {} label: { personLabel(member) }
+        }
+    }
+
+    private func personLabel(_ member: RosterMember) -> some View {
+        Label {
+            Text(verbatim: member.displayName)
+            if let word = RosterList.stateWord(member) {
+                Text(verbatim: word)
+            }
+        } icon: {
+            RosterPuckArt.image(member: member, ground: ground)
         }
     }
 }

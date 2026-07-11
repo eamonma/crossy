@@ -88,6 +88,22 @@ public enum RosterList {
         return members.first { $0.userId == selfUserId }?.isSpectator ?? false
     }
 
+    /// Whether the local participant is the host: the gate on the roster menu's
+    /// kick affordance (owner ruling 2026-07-10: the host can remove from the
+    /// participants panel). Absent or unknown selves are never host; the server
+    /// enforces host-only regardless, so this only decides what the menu offers.
+    public static func selfIsHost(_ members: [RosterMember], selfUserId: String?) -> Bool {
+        guard let selfUserId else { return false }
+        return members.first { $0.userId == selfUserId }?.isHost ?? false
+    }
+
+    /// Whether the host may kick this member: everyone but the host's own row
+    /// (the server refuses a self-target with 403; the menu never offers it).
+    public static func canKick(_ member: RosterMember, selfUserId: String?) -> Bool {
+        guard let selfUserId else { return false }
+        return member.userId != selfUserId
+    }
+
     private static func compareASCII(_ a: String, _ b: String) -> Bool {
         // Lexicographic over UTF-8 bytes: deterministic and locale-free (INV-1).
         for (x, y) in zip(a.utf8, b.utf8) where x != y { return x < y }

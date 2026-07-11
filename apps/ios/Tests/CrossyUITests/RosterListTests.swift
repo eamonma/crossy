@@ -51,6 +51,30 @@ final class RosterListTests: XCTestCase {
         XCTAssertEqual(cluster.overflow, 0)
     }
 
+    // The host gate on the roster menu's kick affordance (owner ruling
+    // 2026-07-10): the local participant's own role decides what the menu
+    // offers; the server enforces host-only regardless.
+    func test_selfIsHost_gatesTheKickAffordance() {
+        let members = [
+            member("you", host: true),
+            member("bee"),
+        ]
+        XCTAssertTrue(RosterList.selfIsHost(members, selfUserId: "you"))
+        XCTAssertFalse(RosterList.selfIsHost(members, selfUserId: "bee"))
+        XCTAssertFalse(RosterList.selfIsHost(members, selfUserId: "ghost"))
+        XCTAssertFalse(RosterList.selfIsHost(members, selfUserId: nil))
+    }
+
+    // The host may kick anyone but themselves: the server refuses a self-target
+    // with 403, so the menu never offers kick on the host's own row.
+    func test_canKick_offersEveryoneButSelf() {
+        let host = member("you", host: true)
+        let other = member("bee")
+        XCTAssertFalse(RosterList.canKick(host, selfUserId: "you"))
+        XCTAssertTrue(RosterList.canKick(other, selfUserId: "you"))
+        XCTAssertFalse(RosterList.canKick(other, selfUserId: nil))
+    }
+
     func test_selfIsSpectator_gatesTheJoinInAffordance_id5() {
         let members = [
             member("you", spectator: true),
