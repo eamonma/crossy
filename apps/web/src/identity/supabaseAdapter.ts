@@ -4,7 +4,7 @@
 //
 // Auth runs against the custom domain (config.supabaseUrl, e.g. https://api.crossy.me) with
 // the new-format publishable key (sb_publishable_...) passed as the key param; it is public by
-// design. Discord OAuth and anonymous guests are the only providers; email gets no surface.
+// design. Discord and Apple OAuth and anonymous guests are the providers; email gets no surface.
 import { createClient } from "@supabase/supabase-js";
 import type {
   Session,
@@ -17,10 +17,24 @@ import type {
   GuestSignInResult,
   Identity,
   IdentitySession,
+  SignInProvider,
 } from "./types";
 
 /** Refresh the token when it has under a minute left, so REST and the WS hello get a fresh one. */
 const REFRESH_THRESHOLD_SEC = 60;
+
+/**
+ * Port provider to the vendor's provider string. The strings coincide today, but the map is the
+ * boundary: vendor vocabulary stays inside this adapter, so the port's union never leaks a Supabase
+ * name and a divergence later is one edit here.
+ */
+const SUPABASE_PROVIDER: Record<SignInProvider, "discord" | "apple"> = {
+  discord: "discord",
+  apple: "apple",
+};
+
+/** Apple's hide-my-email relays land here; the local part is random junk, never a name. */
+const APPLE_PRIVATE_RELAY_SUFFIX = "@privaterelay.appleid.com";
 
 export interface SupabaseIdentityDeps {
   supabaseUrl: string;
@@ -48,8 +62,13 @@ function displayNameOf(user: User): string {
     if (typeof value === "string" && value.trim() !== "") return value;
   }
   const email = typeof user.email === "string" ? user.email : "";
-  const local = email.split("@")[0];
-  return local !== undefined && local !== "" ? local : "Player";
+  // Apple's identity token carries no name, and its hide-my-email relay local part is random junk,
+  // so skip the local-part fallback for those addresses and let "Player" stand.
+  if (!email.endsWith(APPLE_PRIVATE_RELAY_SUFFIX)) {
+    const local = email.split("@")[0];
+    if (local !== undefined && local !== "") return local;
+  }
+  return "Player";
 }
 
 function toSession(session: Session | null): IdentitySession | null {
@@ -143,11 +162,14 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       const session = await freshSession();
       return session?.access_token ?? null;
     },
-    async signInWithDiscord(redirectPath?: string): Promise<void> {
+    async signInWithProvider(
+      provider: SignInProvider,
+      redirectPath?: string,
+    ): Promise<void> {
       const { origin, pathAndQuery } = currentUrl();
       const redirectTo = `${origin}${redirectPath ?? pathAndQuery}`;
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: "discord",
+        provider: SUPABASE_PROVIDER[provider],
         options: { redirectTo },
       });
       if (error !== null) throw new Error(error.message);

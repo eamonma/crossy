@@ -372,8 +372,8 @@ export function LiveApp({
             </h1>
             <p className="mx-auto mt-3 mb-0 max-w-[24rem] text-2 text-text-muted text-balance">
               {state.invited
-                ? "Your friends left this puzzle open. Sign in with Discord to solve with them, or watch as a guest."
-                : "Sign in with Discord to open your game."}
+                ? "Your friends left this puzzle open. Sign in to solve with them, or watch as a guest."
+                : "Sign in to open your game."}
             </p>
           </div>
           <Divider className="m-0" />
@@ -383,6 +383,7 @@ export function LiveApp({
                 identity={identity}
                 config={config}
                 discordLabel="Sign in with Discord"
+                appleLabel="Sign in with Apple"
                 allowGuest={state.invited}
               />
             </div>
@@ -839,7 +840,14 @@ function LiveGame({
 
   function startSignIn(): void {
     setSigningIn(true);
-    void identity.signInWithDiscord().catch(() => setSigningIn(false));
+    void identity
+      .signInWithProvider("discord")
+      .catch(() => setSigningIn(false));
+  }
+
+  function startAppleSignIn(): void {
+    setSigningIn(true);
+    void identity.signInWithProvider("apple").catch(() => setSigningIn(false));
   }
 
   const activeClue = clueOn(
@@ -934,6 +942,7 @@ function LiveGame({
             guest={needsFullAccount}
             onUpgrade={() => void upgrade()}
             onSignIn={startSignIn}
+            onAppleSignIn={startAppleSignIn}
             upgrading={upgrading}
             signingIn={signingIn}
           />

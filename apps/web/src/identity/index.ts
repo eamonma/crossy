@@ -5,6 +5,7 @@ export type {
   IdentitySession,
   GuestSignInOptions,
   GuestSignInResult,
+  SignInProvider,
 } from "./types";
 export { createIdentity, shouldUseSupabase } from "./createIdentity";
 export { createMockIdentity } from "./mockAdapter";

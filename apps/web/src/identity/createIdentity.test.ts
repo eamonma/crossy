@@ -45,7 +45,7 @@ describe("adapter selection", () => {
       supabasePublishableKey: "sb_publishable_x",
     });
     expect(typeof identity.getAccessToken).toBe("function");
-    expect(typeof identity.signInWithDiscord).toBe("function");
+    expect(typeof identity.signInWithProvider).toBe("function");
     expect(identity.getSession()).toBeNull();
   });
 });
