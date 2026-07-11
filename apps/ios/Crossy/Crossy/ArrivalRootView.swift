@@ -71,6 +71,7 @@ struct ArrivalRootView: View {
             } else {
                 WelcomeScreen(
                     state: model.welcomeState,
+                    privacyURL: model.privacyURL,
                     onContinueApple: { Task { await model.session.signInWithApple() } },
                     onContinueDiscord: { Task { await model.session.signIn() } }
                 )
@@ -217,6 +218,7 @@ struct ArrivalRootView: View {
             SettingsScreen(
                 identity: identity,
                 versionLabel: model.versionLabel,
+                privacyURL: model.privacyURL,
                 onSignOut: {
                     Task { await model.session.signOut() }
                 },
