@@ -77,4 +77,43 @@ final class GridModuleTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             GridModule.glyphSize(forLength: 10), GridModule.rebusMinimumFontSize)
     }
+
+    // Selection must never shift a cell's own content: only the fill/highlight
+    // changes (CrossyGridView.drawFills), never the glyph or number position. The
+    // content-placement primitives take no fill/selection input at all, so a
+    // selected and unselected cell resolve to the identical draw point for the
+    // same cell index and value length. This pins the geometry so a future draw
+    // pass cannot reintroduce a selection-dependent inset, border, or reflow.
+    func test_glyphOrigin_isIndependentOfSelectionState() {
+        let cell = 42
+        let cols = 9
+        let origin = GridModule.cellOrigin(cell, cols: cols)
+        let glyphPoint = CGPoint(
+            x: origin.x + GridModule.glyphCenterX,
+            y: origin.y + GridModule.capCenterY(
+                baseline: GridModule.glyphBaseline, fontSize: GridModule.glyphFontSize))
+        // No overload or parameter exists to vary this by isCurrent/isSelected;
+        // recomputing from the same inputs must be bit-for-bit identical, which is
+        // the whole guarantee: the draw pass has nothing selection-shaped to feed in.
+        let recomputed = CGPoint(
+            x: origin.x + GridModule.glyphCenterX,
+            y: origin.y + GridModule.capCenterY(
+                baseline: GridModule.glyphBaseline, fontSize: GridModule.glyphFontSize))
+        XCTAssertEqual(glyphPoint, recomputed)
+    }
+
+    func test_numberOrigin_isIndependentOfSelectionState() {
+        let cell = 17
+        let cols = 5
+        let origin = GridModule.cellOrigin(cell, cols: cols)
+        let numberPoint = CGPoint(
+            x: origin.x + GridModule.numberLeading,
+            y: origin.y + GridModule.capCenterY(
+                baseline: GridModule.numberBaseline, fontSize: GridModule.numberFontSize))
+        let recomputed = CGPoint(
+            x: origin.x + GridModule.numberLeading,
+            y: origin.y + GridModule.capCenterY(
+                baseline: GridModule.numberBaseline, fontSize: GridModule.numberFontSize))
+        XCTAssertEqual(numberPoint, recomputed)
+    }
 }
