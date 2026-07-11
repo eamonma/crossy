@@ -350,7 +350,7 @@ describe("session read-coupling contract (INV-7; DESIGN.md §9)", () => {
 
   it("limits the session role to users.display_name and avatar, never is_anonymous (§9, INV-6-adjacent)", async () => {
     // Allowed: the participant-payload projection (user_id is the join key, not PII). avatar is
-    // the resolved avatar URL the session renders (PROTOCOL.md §4), granted by 0005; it is never
+    // the resolved avatar URL the session renders (PROTOCOL.md §4), granted by 0006; it is never
     // an email, so this grant exposes no email to the session (INV-6 spirit).
     const { rows } = await asRole("crossy_session", (c) =>
       c.query<{ display_name: string | null; avatar: string | null }>(
