@@ -56,4 +56,31 @@ final class ArrivalCopyTests: XCTestCase {
         XCTAssertFalse(ArrivalFailure(code: "GAME_NOT_FOUND").isFinal)
         XCTAssertFalse(ArrivalFailure.offline.isFinal)
     }
+
+    func test_theStartGameActionMatchesTheWebGalleryWords() {
+        // The library's one action starts a fresh game (POST /games); the web gallery
+        // uses "New game" / "Starting...", so the app's words match.
+        XCTAssertEqual(ArrivalCopy.puzzleStartGame, "New game")
+        XCTAssertEqual(ArrivalCopy.puzzleStarting, "Starting")
+    }
+
+    func test_startFailureIsOneSentencePerCodeAndNeverShowsTheRawCode() {
+        // A failed start reads inline on the card, keyed on the §12 code, same posture
+        // as the join and delete errors: say what happened, offer a retry, no raw code.
+        let codes = [
+            "FULL_ACCOUNT_REQUIRED", "UNAUTHORIZED", "PUZZLE_NOT_FOUND", "INTERNAL",
+        ]
+        for code in codes {
+            let sentence = ArrivalCopy.puzzleStartFailure(forCode: code)
+            XCTAssertFalse(sentence.isEmpty)
+            XCTAssertFalse(
+                sentence.contains(code),
+                "no raw codes on screen (§12 posture): \(code)")
+        }
+        // Network weather and an unknown future code both read as plain, honest lines.
+        XCTAssertFalse(ArrivalCopy.puzzleStartFailure(forCode: nil).isEmpty)
+        XCTAssertEqual(
+            ArrivalCopy.puzzleStartFailure(forCode: "BARRED"),
+            "Couldn't start the game. Try again.")
+    }
 }

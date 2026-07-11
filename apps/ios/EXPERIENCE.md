@@ -75,8 +75,9 @@ stands top-trailing as a glass capsule (code or QR, one panel); New game becomes
 the standing action at the bottom when the create-flow slice lands (amended
 2026-07-10 late: Join left the bottom cluster for the top corner). Empty state is
 an invitation, not a void: one line and the same actions. The puzzles library is
-its own tab (browse today, `GET /puzzles`; it backs creation when the create flow
-lands).
+its own tab (`GET /puzzles`): each upload's one action, New game, starts a fresh
+game from it (`POST /games`) and opens the created room, the replay-without-reupload
+path (the web gallery mirrors it).
 
 ### Create a game
 

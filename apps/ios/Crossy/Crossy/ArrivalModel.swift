@@ -60,11 +60,14 @@ protocol RoomsProviding {
     func join(code: String) async -> Result<String, ArrivalFailure>
 }
 
-/// The puzzles side: one page of the caller's uploads (browse-only; starting a game
-/// from a puzzle rides the create-flow slice).
+/// The puzzles side: one page of the caller's uploads, plus starting a fresh game
+/// from one (`POST /games`; the replay-without-reupload path the empty state points
+/// at). Success is the created gameId, so the root pushes the room exactly as an
+/// opened room card does.
 @MainActor
 protocol PuzzlesProviding {
     func loadPage(before: String?) async -> Result<PuzzlesPage, ArrivalFailure>
+    func startGame(puzzleId: String) async -> Result<String, ArrivalFailure>
 }
 
 // MARK: - Real backend
@@ -187,6 +190,19 @@ struct RealPuzzles: PuzzlesProviding {
                             cols: summary.cols)
                     },
                     nextBefore: page.nextBefore))
+        } catch {
+            return .failure(ArrivalFailure(digesting: error))
+        }
+    }
+
+    /// `POST /games` with the puzzleId alone (no name): the puzzle library's start is
+    /// unnamed by default, exactly as the web gallery's "New game" is. The created
+    /// gameId opens the room; the invite code is not needed here (the room view reads
+    /// it back for the host, GameView.inviteCode, §12).
+    func startGame(puzzleId: String) async -> Result<String, ArrivalFailure> {
+        do {
+            let created = try await api.createGame(CreateGameRequest(puzzleId: puzzleId))
+            return .success(created.gameId)
         } catch {
             return .failure(ArrivalFailure(digesting: error))
         }
@@ -343,6 +359,14 @@ struct FixturePuzzles: PuzzlesProviding {
                         author: nil, rows: 5, cols: 5),
                 ],
                 nextBefore: nil))
+    }
+
+    /// The stubbed start: a beat (long enough to see the card's "Starting" state),
+    /// then a created gameId that opens the loopback room, the same landing the
+    /// fixture join takes. No network, no create.
+    func startGame(puzzleId: String) async -> Result<String, ArrivalFailure> {
+        try? await Task.sleep(for: .milliseconds(400))
+        return .success("fixture-created")
     }
 }
 

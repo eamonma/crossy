@@ -68,6 +68,29 @@ public enum ArrivalCopy {
     /// The empty state names the one place uploads happen today; the tab never
     /// pretends to an upload flow it doesn't have.
     public static let puzzlesEmpty = "No puzzles yet. Upload one on the web and it shows up here."
+    /// The one action on a puzzle card: start a fresh game from that upload (the
+    /// replay-without-reupload path the empty state points at). The web gallery uses
+    /// the same words.
+    public static let puzzleStartGame = "New game"
+    /// The card's in-flight label while `POST /games` is out, the web's "Starting..."
+    /// with the same voice.
+    public static let puzzleStarting = "Starting"
+    /// A failed start stays on the list and lets the card recover (a toast would be
+    /// noise); the one line reads inline, keyed on the §12 code.
+    public static func puzzleStartFailure(forCode code: String?) -> String {
+        switch code {
+        case nil:
+            return "Couldn't reach Crossy to start the game. Try again."
+        case "FULL_ACCOUNT_REQUIRED":
+            return "Starting a game needs a signed-in account."
+        case "UNAUTHORIZED":
+            return "Your sign-in expired. Sign in again, then start the game."
+        case "PUZZLE_NOT_FOUND":
+            return "That puzzle is no longer available."
+        default:
+            return "Couldn't start the game. Try again."
+        }
+    }
 
     // MARK: - Settings (roadmap I3: thin v1, three things and a quiet footer)
 
