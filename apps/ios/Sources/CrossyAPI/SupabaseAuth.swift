@@ -134,6 +134,37 @@ public struct SupabaseAuthClient: Sendable {
         try await grant("refresh_token", body: ["refresh_token": refreshToken], now: now)
     }
 
+    /// `POST {auth}/token?grant_type=id_token`: trade an Apple identity token for a
+    /// session (roadmap I3a, Sign in with Apple). GoTrue hashes the raw `nonce` we send
+    /// and compares its hex against the id_token's nonce claim, so the value here is the
+    /// RAW nonce, not the hashed challenge Apple stamped. Same grant plumbing and error
+    /// taxonomy as the pkce leg (`refused` on 4xx, weather otherwise).
+    public func exchangeAppleIDToken(
+        _ idToken: String, nonce: String, now: Date = Date()
+    ) async throws -> SupabaseSession {
+        try await grant(
+            "id_token",
+            body: ["provider": "apple", "id_token": idToken, "nonce": nonce],
+            now: now)
+    }
+
+    /// `PUT {auth}/user`: push the Apple full name into GoTrue's user metadata, which the
+    /// API mirrors to the display name. Best-effort by design, mirroring signOut(): it
+    /// never throws, because a name push must never fail a sign-in. True on a 2xx.
+    public func updateUserFullName(_ fullName: String, accessToken: String) async -> Bool {
+        var request = URLRequest(
+            url: configuration.authBaseURL.appendingPathComponent("user"))
+        request.httpMethod = "PUT"
+        request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(["data": ["full_name": fullName]])
+        guard let (_, response) = try? await session.data(for: request),
+            let http = response as? HTTPURLResponse
+        else { return false }
+        return (200..<300).contains(http.statusCode)
+    }
+
     /// `POST {auth}/logout`: revoke the refresh token server-side. Best-effort by
     /// design: local sign-out (Keychain clear) must succeed even offline, so the
     /// caller never awaits a verdict here.

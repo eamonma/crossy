@@ -40,6 +40,7 @@ public final class AuthSession {
 
     private let client: SupabaseAuthClient
     private let web: any WebAuthenticating
+    private let apple: any AppleAuthenticating
     private let keychain: any KeychainStoring
     private let now: @Sendable () -> Date
 
@@ -51,11 +52,13 @@ public final class AuthSession {
     public init(
         client: SupabaseAuthClient,
         web: any WebAuthenticating,
+        apple: any AppleAuthenticating,
         keychain: any KeychainStoring,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.client = client
         self.web = web
+        self.apple = apple
         self.keychain = keychain
         self.now = now
     }
@@ -91,6 +94,49 @@ public final class AuthSession {
         } catch {
             machine.apply(.signInFailed)
         }
+    }
+
+    /// The Apple sign-in leg (roadmap I3a, second provider): a nonce, the system sheet,
+    /// the id_token grant, persist. It walks the same machine as signIn(), so the two
+    /// providers are interchangeable to the UI's routing (no new phases). The raw nonce
+    /// stays here for the grant; Apple only ever sees its hash.
+    ///
+    /// The name leg is best-effort and swallowed: Apple hands the full name only on the
+    /// first authorization, so when it arrives we push it to GoTrue and, if that took,
+    /// run one immediate refresh so the very next access token carries the name into the
+    /// server's display-name mirror (the API coalesces, so a nameless later token never
+    /// clobbers it; without this the mirror sits null until the natural refresh). Any
+    /// failure in this leg leaves the session standing.
+    public func signInWithApple() async {
+        guard machine.apply(.signInStarted) else { return }
+        let rawNonce = PKCE.verifier()
+        do {
+            let authorization = try await apple.authenticate(
+                nonceChallenge: AppleNonce.challenge(for: rawNonce))
+            let session = try await client.exchangeAppleIDToken(
+                authorization.idToken, nonce: rawNonce, now: now())
+            persist(session)
+            if let fullName = authorization.fullName {
+                await pushFullName(fullName, on: session)
+            }
+            machine.apply(.signInCompleted)
+        } catch AppleAuthenticationError.canceled {
+            machine.apply(.signInCanceled)
+        } catch {
+            machine.apply(.signInFailed)
+        }
+    }
+
+    /// Push the Apple name into the display-name mirror once, then refresh so the next
+    /// token carries it. Best-effort throughout: any failure here leaves `session` as the
+    /// persisted truth and the sign-in stands.
+    private func pushFullName(_ fullName: String, on session: SupabaseSession) async {
+        guard await client.updateUserFullName(fullName, accessToken: session.accessToken)
+        else { return }
+        guard let refreshed = try? await client.refresh(
+            refreshToken: session.refreshToken, now: now())
+        else { return }
+        persist(refreshed)
     }
 
     /// Sign out: revoke best-effort, clear the Keychain, drop the session. Local

@@ -53,6 +53,46 @@ private struct FakeWeb: WebAuthenticating {
     }
 }
 
+private struct FakeApple: AppleAuthenticating {
+    enum Outcome {
+        case authorization(idToken: String, fullName: String?)
+        case canceled
+        case failed
+    }
+
+    let outcome: Outcome
+    /// Records the nonce challenge the session handed Apple (the hashed form).
+    let challenges: Recorder
+
+    final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [String] = []
+        var all: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return values
+        }
+        func record(_ value: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            values.append(value)
+        }
+    }
+
+    @MainActor
+    func authenticate(nonceChallenge: String) async throws -> AppleIDAuthorization {
+        challenges.record(nonceChallenge)
+        switch outcome {
+        case .authorization(let idToken, let fullName):
+            return AppleIDAuthorization(idToken: idToken, fullName: fullName)
+        case .canceled:
+            throw AppleAuthenticationError.canceled
+        case .failed:
+            throw AppleAuthenticationError.failed(underlying: URLError(.timedOut))
+        }
+    }
+}
+
 // MARK: - Fixtures
 
 private let grantBody = Data(
@@ -71,9 +111,13 @@ private let grantBody = Data(
 @MainActor
 private func makeSession(
     web: [FakeWeb.Outcome] = [.callback("crossy://auth/callback?code=the-code")],
+    apple: FakeApple.Outcome = .canceled,
     keychain: any KeychainStoring = InMemoryKeychain(),
     now: @escaping @Sendable () -> Date = { Date(timeIntervalSince1970: 1_000_000) }
-) -> (session: AuthSession, opened: FakeWeb.Recorder, keychain: any KeychainStoring) {
+) -> (
+    session: AuthSession, opened: FakeWeb.Recorder, challenges: FakeApple.Recorder,
+    keychain: any KeychainStoring
+) {
     let configuration = SupabaseAuthConfiguration(
         supabaseURL: "https://api.crossy.me",
         publishableKey: "sb_publishable_test",
@@ -83,12 +127,14 @@ private func makeSession(
     let client = SupabaseAuthClient(
         configuration: configuration, session: URLSession(configuration: stubbed))
     let opened = FakeWeb.Recorder()
+    let challenges = FakeApple.Recorder()
     let session = AuthSession(
         client: client,
         web: FakeWeb(outcomes: web, opened: opened),
+        apple: FakeApple(outcome: apple, challenges: challenges),
         keychain: keychain,
         now: now)
-    return (session, opened, keychain)
+    return (session, opened, challenges, keychain)
 }
 
 // MARK: - The suite
@@ -98,7 +144,7 @@ private func makeSession(
 final class AuthSessionTests: XCTestCase {
     func test_signInWalksPKCEExchangesTheCodeAndPersistsToTheKeychain() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
-        let (session, opened, keychain) = makeSession()
+        let (session, opened, _, keychain) = makeSession()
 
         await session.signIn()
 
@@ -146,7 +192,7 @@ final class AuthSessionTests: XCTestCase {
 
     func test_cancelingTheSheetReturnsToSignedOutAndWritesNothing() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
-        let (session, _, keychain) = makeSession(web: [.canceled])
+        let (session, _, _, keychain) = makeSession(web: [.canceled])
 
         await session.signIn()
 
@@ -157,7 +203,7 @@ final class AuthSessionTests: XCTestCase {
 
     func test_aWebFailureLandsInFailedWithRetryOpen_EXPERIENCEWelcomeRetry() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
-        let (session, _, _) = makeSession(web: [.failed, .callback("crossy://auth/callback?code=the-code")])
+        let (session, _, _, _) = makeSession(web: [.failed, .callback("crossy://auth/callback?code=the-code")])
 
         await session.signIn()
         XCTAssertEqual(session.phase, .failed)
@@ -170,7 +216,7 @@ final class AuthSessionTests: XCTestCase {
 
     func test_aCallbackWithoutACodeIsAFailureNotACrash() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
-        let (session, _, _) = makeSession(
+        let (session, _, _, _) = makeSession(
             web: [.callback("crossy://auth/callback?error=access_denied")])
 
         await session.signIn()
@@ -186,7 +232,7 @@ final class AuthSessionTests: XCTestCase {
         try keychain.write(
             try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
         StubURLProtocol.install { _ in (500, Data()) }
-        let (session, _, _) = makeSession(keychain: keychain)
+        let (session, _, _, _) = makeSession(keychain: keychain)
 
         session.restore()
 
@@ -204,7 +250,7 @@ final class AuthSessionTests: XCTestCase {
         try keychain.write(
             try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
         StubURLProtocol.install { _ in (200, grantBody) }
-        let (session, _, _) = makeSession(keychain: keychain)
+        let (session, _, _, _) = makeSession(keychain: keychain)
         session.restore()
 
         let token = try await session.currentToken()
@@ -228,7 +274,7 @@ final class AuthSessionTests: XCTestCase {
         try keychain.write(
             try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
         StubURLProtocol.install { _ in (401, Data(#"{"error":"invalid_grant"}"#.utf8)) }
-        let (session, _, _) = makeSession(keychain: keychain)
+        let (session, _, _, _) = makeSession(keychain: keychain)
         session.restore()
 
         do {
@@ -249,7 +295,7 @@ final class AuthSessionTests: XCTestCase {
         try keychain.write(
             try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
         StubURLProtocol.install { _ in throw URLError(.notConnectedToInternet) }
-        let (session, _, _) = makeSession(keychain: keychain)
+        let (session, _, _, _) = makeSession(keychain: keychain)
         session.restore()
 
         let token = try await session.currentToken()
@@ -262,7 +308,7 @@ final class AuthSessionTests: XCTestCase {
 
     func test_signOutClearsTheKeychainAndTheTokenPathThrows() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
-        let (session, _, keychain) = makeSession()
+        let (session, _, _, keychain) = makeSession()
         await session.signIn()
         XCTAssertEqual(session.phase, .signedIn)
 
@@ -277,6 +323,135 @@ final class AuthSessionTests: XCTestCase {
         } catch is SignedOutError {}
         // The revoke was attempted best-effort against the logout endpoint.
         XCTAssertEqual(StubURLProtocol.recordedRequests.first?.path, "/auth/v1/logout")
+    }
+
+    // MARK: - Sign in with Apple (roadmap I3a, second provider)
+
+    func test_signInWithAppleWalksTheNonceExchangesTheTokenAndPersists() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, challenges, keychain) = makeSession(
+            apple: .authorization(idToken: "apple-id-token", fullName: nil))
+
+        await session.signInWithApple()
+
+        XCTAssertEqual(session.phase, .signedIn)
+        XCTAssertEqual(session.userId, "11111111-2222-3333-4444-555555555555")
+
+        // Apple saw the hashed nonce, hex form (AppleNonce.challenge), never a raw one.
+        let challenge = try XCTUnwrap(challenges.all.first)
+        XCTAssertEqual(challenge.count, 64, "SHA-256 hex is 64 chars")
+        XCTAssertTrue(challenge.allSatisfy { "0123456789abcdef".contains($0) })
+
+        // The exchange hit the id_token grant with the provider, the token, and the RAW
+        // nonce whose hex is exactly what Apple saw.
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.path, "/auth/v1/token")
+        XCTAssertEqual(request.queryValue("grant_type"), "id_token")
+        let body = try JSONDecoder().decode([String: String].self, from: XCTUnwrap(request.body))
+        XCTAssertEqual(body["provider"], "apple")
+        XCTAssertEqual(body["id_token"], "apple-id-token")
+        XCTAssertEqual(AppleNonce.challenge(for: try XCTUnwrap(body["nonce"])), challenge)
+
+        let blob = try XCTUnwrap(try keychain.read(account: AuthSession.keychainAccount))
+        let persisted = try JSONDecoder().decode(SupabaseSession.self, from: blob)
+        XCTAssertEqual(persisted.accessToken, "granted-access")
+    }
+
+    func test_cancelingAppleReturnsQuietlyToSignedOut() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, _, keychain) = makeSession(apple: .canceled)
+
+        await session.signInWithApple()
+
+        XCTAssertEqual(session.phase, .signedOut)
+        XCTAssertNil(try keychain.read(account: AuthSession.keychainAccount))
+        XCTAssertTrue(StubURLProtocol.recordedRequests.isEmpty, "no authorization, no grant")
+    }
+
+    func test_anAppleFailureLandsInFailedWithRetryOpen() async throws {
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, _, _) = makeSession(apple: .failed)
+
+        await session.signInWithApple()
+
+        XCTAssertEqual(session.phase, .failed)
+        XCTAssertTrue(StubURLProtocol.recordedRequests.isEmpty)
+    }
+
+    func test_appleFullNameIsPushedThenRefreshedSoTheNextTokenCarriesTheMirror() async throws {
+        // The grant returns the first session; the name push takes; the immediate refresh
+        // returns a second session, which must be the one that persists (so the very next
+        // access token carries the name into the server's display-name mirror).
+        let refreshedGrant = Data(
+            """
+            {
+              "access_token": "named-access",
+              "token_type": "bearer",
+              "expires_at": 4102444800,
+              "refresh_token": "named-refresh",
+              "user": { "id": "11111111-2222-3333-4444-555555555555" }
+            }
+            """.utf8)
+        StubURLProtocol.install { request in
+            switch request.queryValue("grant_type") {
+            case "id_token": return (200, grantBody)
+            case "refresh_token": return (200, refreshedGrant)
+            default:
+                // The PUT /user name push: any 2xx signals it took.
+                return (200, Data("{}".utf8))
+            }
+        }
+        let (session, _, _, keychain) = makeSession(
+            apple: .authorization(idToken: "apple-id-token", fullName: "Ada Lovelace"))
+
+        await session.signInWithApple()
+
+        XCTAssertEqual(session.phase, .signedIn)
+        let requests = StubURLProtocol.recordedRequests
+        // Three legs in order: the id_token grant, the PUT /user, the refresh.
+        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests[0].queryValue("grant_type"), "id_token")
+        XCTAssertEqual(requests[1].method, "PUT")
+        XCTAssertEqual(requests[1].path, "/auth/v1/user")
+        let namePush = try JSONDecoder().decode(
+            [String: [String: String]].self, from: XCTUnwrap(requests[1].body))
+        XCTAssertEqual(namePush["data"]?["full_name"], "Ada Lovelace")
+        XCTAssertEqual(requests[2].queryValue("grant_type"), "refresh_token")
+
+        // The refreshed session is the persisted truth, so the next token is the named one.
+        let blob = try XCTUnwrap(try keychain.read(account: AuthSession.keychainAccount))
+        let persisted = try JSONDecoder().decode(SupabaseSession.self, from: blob)
+        XCTAssertEqual(persisted.accessToken, "named-access")
+    }
+
+    func test_aFailedNamePushStillCompletesSignInWithTheOriginalSession() async throws {
+        // The name leg is best-effort: a refused PUT /user is swallowed, no refresh runs,
+        // and the original granted session stands as the persisted truth.
+        StubURLProtocol.install { request in
+            switch request.queryValue("grant_type") {
+            case "id_token": return (200, grantBody)
+            default:
+                return (500, Data("{}".utf8))  // the PUT /user push fails
+            }
+        }
+        let (session, _, _, keychain) = makeSession(
+            apple: .authorization(idToken: "apple-id-token", fullName: "Ada Lovelace"))
+
+        await session.signInWithApple()
+
+        XCTAssertEqual(session.phase, .signedIn)
+        let requests = StubURLProtocol.recordedRequests
+        // The grant and the failed push; no refresh, because the push did not take.
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].queryValue("grant_type"), "id_token")
+        XCTAssertEqual(requests[1].path, "/auth/v1/user")
+        XCTAssertFalse(
+            requests.contains { $0.queryValue("grant_type") == "refresh_token" },
+            "a failed name push runs no refresh")
+
+        let blob = try XCTUnwrap(try keychain.read(account: AuthSession.keychainAccount))
+        let persisted = try JSONDecoder().decode(SupabaseSession.self, from: blob)
+        XCTAssertEqual(persisted.accessToken, "granted-access", "the original session stands")
     }
 
     func test_anEmptyConfigurationResolvesNilSoTheUnconfiguredStateIsHonest() {
