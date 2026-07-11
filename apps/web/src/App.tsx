@@ -28,6 +28,8 @@ import {
 import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
+import { CompletionOverlay } from "./ui/Completion";
+import type { StackMember } from "./ui/primitives";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
 import { Landing } from "./ui/Landing";
@@ -272,6 +274,7 @@ function DemoApp({
   const [flashes, setFlashes] = useState<ReadonlyMap<number, FlashEntry>>(
     new Map(),
   );
+  const [dismissedCompletion, setDismissedCompletion] = useState(false);
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -282,6 +285,11 @@ function DemoApp({
   const puzzle = board.puzzle;
   const grid = useMemo(() => gridOf(boardId), [boardId]);
   const frozen = store.status !== "ongoing";
+
+  // "Reset board" re-arms the completion overlay, so the demo can replay it.
+  useEffect(() => {
+    if (store.status === "ongoing") setDismissedCompletion(false);
+  }, [store.status]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -346,6 +354,20 @@ function DemoApp({
       else list.push(entry);
     }
     return byCell;
+  }, [store, version]);
+
+  // The completion overlay's roster, the LiveApp mapping on the fake session's
+  // participants, so "Complete game" exercises the real celebration surface here.
+  const members: StackMember[] = useMemo(() => {
+    void version;
+    return store.participants.map((p) => ({
+      userId: p.userId,
+      initial: p.displayName.charAt(0) || "?",
+      avatarUrl: p.avatarUrl,
+      color: p.color,
+      connected: p.connected,
+      role: p.role,
+    }));
   }, [store, version]);
 
   function switchBoard(id: string): void {
@@ -501,6 +523,19 @@ function DemoApp({
           onFlashEnd={onFlashEnd}
         />
       </div>
+
+      {store.status === "completed" && !dismissedCompletion && (
+        <CompletionOverlay
+          stats={store.stats}
+          fallbackSeconds={0}
+          title={board.label}
+          members={members}
+          selfId={store.selfUserId ?? SELF_USER_ID}
+          shareUrl={null}
+          onDismiss={() => setDismissedCompletion(true)}
+          onHome={() => window.location.assign("/")}
+        />
+      )}
     </div>
   );
 }
