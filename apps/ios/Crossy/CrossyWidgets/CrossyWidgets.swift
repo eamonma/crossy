@@ -240,9 +240,24 @@ private struct TimerLabel: View {
             if let frozen = frame.frozenTime {
                 Text(verbatim: frozen)
             } else {
-                Text(
-                    timerInterval: frame.anchor...frame.anchor.addingTimeInterval(24 * 3600),
-                    countsDown: false)
+                // The live register coarsens with the room's age (owner ruling
+                // 2026-07-11, the ninety-hour question). Ticking rooms bound the range
+                // from render time, not the anchor: the old anchor-plus-24h end sat in
+                // the PAST for a room over ~16h old and froze the display at the range's
+                // end. Render time plus 9h outlives the island's own 8h system cap, and
+                // every push re-derives it.
+                switch IslandPresentation.elapsedRegister(
+                    ageSeconds: Int(Date().timeIntervalSince(frame.anchor)))
+                {
+                case .ticking:
+                    Text(
+                        timerInterval: frame.anchor...Date().addingTimeInterval(9 * 3600),
+                        countsDown: false)
+                case .coarse(let reading):
+                    Text(verbatim: reading)
+                case .infinity:
+                    Text(verbatim: "\u{221E}")
+                }
             }
         }
         .font(.system(size: size, weight: weight))
