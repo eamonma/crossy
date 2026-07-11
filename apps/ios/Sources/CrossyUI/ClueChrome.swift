@@ -100,6 +100,15 @@ struct ClueChrome: View {
         // surface over mid-gesture).
         .simultaneousGesture(dismissDrag)
         .position(x: frame.midX, y: frame.midY)
+        // The bar borrows the slot's height through a preference (ChromeFramesKey
+        // -> onPreferenceChange -> frames), which lands as a raw @State change and
+        // SNAPS the frame on a clue wrap: the sizer's own .animation carries the
+        // feather but cannot cross the preference to the glass. Breathe it HERE,
+        // keyed to the rest height, so only a clue change animates on the chrome
+        // spring while the melt's progress writes still pass through raw (SP-i1:
+        // rest.height holds constant through a drag, so this stays inert then).
+        // Reduce Motion cuts, matching the sizer.
+        .animation(reduceMotion ? nil : .crossyChrome, value: morph.rest.height)
         .onChange(of: glintMarks.map(\.userId)) { _, ids in
             glintChanged(ids)
         }
@@ -129,6 +138,12 @@ struct ClueChrome: View {
         // frame is still travelling toward it: a new line reveals as the bar
         // grows instead of reflowing against the old height.
         .fixedSize(horizontal: false, vertical: true)
+        // The chevrons ride the row's vertical center, which jumps as the label
+        // wraps; without this they SNAP to the new center a pass before the
+        // borrowed-height frame breathes (owner device finding). Key on the clue,
+        // so the row reflows on the chrome spring in step with the outer frame,
+        // and stays inert through a melt (the tag holds while progress scrubs).
+        .animation(reduceMotion ? nil : .crossyChrome, value: current?.tag)
         .contentShape(Rectangle())
         // High priority or the row's buttons win the touch and the melt never
         // scrubs (a plain .gesture ranks BELOW child gestures; owner device
