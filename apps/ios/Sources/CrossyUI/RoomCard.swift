@@ -1,0 +1,135 @@
+// One room card (EXPERIENCE.md §3 Rooms): geometry fingerprint, member dots, puzzle
+// title, optional game name. Cards sell people, not progress: no lifecycle chip (the
+// endpoint deliberately carries none, PROTOCOL.md §12) and no fill fraction. The
+// card is paper, not glass (DESIGN.md §1: glass is what you hold, and a scrolling
+// list is content); people are the only color on it.
+
+import CrossyDesign
+import SwiftUI
+
+/// A room as the card renders it, plain data (the RosterMember pattern: CrossyUI
+/// names its own types, protocol twins stay in their ring, AD-2). The composition
+/// root maps `GET /games` rows here.
+public struct RoomCardModel: Identifiable, Equatable, Sendable {
+    public let gameId: String
+    /// Optional display label, shown back verbatim (never normalized, §12).
+    public let name: String?
+    /// Display metadata, null when the document carried none.
+    public let puzzleTitle: String?
+    public let rows: Int
+    public let cols: Int
+    public let memberCount: Int
+    /// The creator's user id: the one member the list row names, so the one honest
+    /// person-color the card can carry.
+    public let createdBy: String
+
+    public var id: String { gameId }
+
+    public init(
+        gameId: String, name: String?, puzzleTitle: String?,
+        rows: Int, cols: Int, memberCount: Int, createdBy: String
+    ) {
+        self.gameId = gameId
+        self.name = name
+        self.puzzleTitle = puzzleTitle
+        self.rows = rows
+        self.cols = cols
+        self.memberCount = memberCount
+        self.createdBy = createdBy
+    }
+
+    /// The headline: the game's own name when it has one, else the puzzle title,
+    /// else the honest geometry.
+    public var headline: String {
+        if let name, !name.isEmpty { return name }
+        if let puzzleTitle, !puzzleTitle.isEmpty { return puzzleTitle }
+        return "\(rows)\u{00D7}\(cols) crossword"
+    }
+
+    /// The subline under a named game: the puzzle title, absent when it would
+    /// repeat the headline.
+    public var subline: String? {
+        guard let name, !name.isEmpty else { return nil }
+        guard let puzzleTitle, !puzzleTitle.isEmpty, puzzleTitle != name else { return nil }
+        return puzzleTitle
+    }
+}
+
+/// The member-dot arithmetic, pure so it pins headlessly: at most `cap` dots, the
+/// rest a +N (the count-badge vocabulary the board already speaks, root DESIGN.md
+/// §10).
+public enum RoomCardDots {
+    public static let cap = 4
+
+    public static func counts(memberCount: Int, cap: Int = cap) -> (dots: Int, overflow: Int) {
+        let members = max(memberCount, 0)
+        if members <= cap { return (members, 0) }
+        return (cap, members - cap)
+    }
+}
+
+/// The card itself. Tap handling belongs to the list.
+public struct RoomCard: View {
+    private let model: RoomCardModel
+    private let ground: GridGround
+
+    public init(model: RoomCardModel, ground: GridGround) {
+        self.model = model
+        self.ground = ground
+    }
+
+    public var body: some View {
+        HStack(spacing: 14) {
+            GeometryFingerprintView(rows: model.rows, cols: model.cols, ground: ground)
+                .frame(width: 52, height: 52)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: model.headline)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    .lineLimit(1)
+                if let subline = model.subline {
+                    Text(verbatim: subline)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(rgb: ground.tokens.number))
+                        .lineLimit(1)
+                }
+                dots
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(rgb: ground.tokens.cell))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(rgb: ground.tokens.gridLine), lineWidth: 1))
+        )
+    }
+
+    /// Member dots. The list row names one member (the creator), so one dot carries
+    /// that person's roster color and the rest stay quiet; painting invented colors
+    /// on unknown members would be dressing (people are the only color, and only
+    /// real people earn it).
+    private var dots: some View {
+        let (count, overflow) = RoomCardDots.counts(memberCount: model.memberCount)
+        return HStack(spacing: 5) {
+            ForEach(0..<count, id: \.self) { index in
+                Circle()
+                    .fill(
+                        index == 0
+                            ? Color(rgb: ground.rosterColor(IdentityRoster.color(for: model.createdBy)))
+                            : Color(rgb: ground.tokens.number).opacity(0.45)
+                    )
+                    .frame(width: 8, height: 8)
+            }
+            if overflow > 0 {
+                Text(verbatim: "+\(overflow)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+            }
+        }
+        .padding(.top, 2)
+    }
+}

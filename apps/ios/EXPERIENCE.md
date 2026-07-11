@@ -20,7 +20,9 @@ chat and opens straight into the app.
 **v1 scope** (owner decisions, 2026-07-09): iPhone first. Named accounts only;
 Discord OAuth via Supabase; no guest sign-in (guests are a web-only spectate
 feature). More sign-in options come later, Sign in with Apple and passkeys among
-them, deliberately unrushed. iOS 26 floor (root DESIGN.md D06). Nothing here races
+them, deliberately unrushed. iOS 18 floor (owner ruling 2026-07-10, amending root
+DESIGN.md D06): the full glass chrome needs iOS 26; 18 through 25 gets the same
+layout on a simple blur material (apps/ios/DESIGN.md section 4). Nothing here races
 a deadline.
 
 **Non-goals for v1**, recorded so nobody quietly builds them: iPad-optimized layout,
@@ -66,11 +68,15 @@ dead end.
 
 ### Rooms (home)
 
-The signed-in root. Room cards from `GET /games` (cursor-paginated, newest first):
-geometry fingerprint, member dots, puzzle title, optional game name. Two standing
-actions: New game, Join with a code (glass cluster, merges on scroll). Empty state
-is an invitation, not a void: one line and the same two actions. A puzzles shelf
-(`GET /puzzles`) backs game creation and is reachable here.
+The signed-in root, the home tab of the shell (system tab bar: Rooms, Puzzles,
+Settings; DESIGN.md §4). Room cards from `GET /games` (cursor-paginated, newest
+first): geometry fingerprint, member dots, puzzle title, optional game name. Join
+stands top-trailing as a glass capsule (code or QR, one panel); New game becomes
+the standing action at the bottom when the create-flow slice lands (amended
+2026-07-10 late: Join left the bottom cluster for the top corner). Empty state is
+an invitation, not a void: one line and the same actions. The puzzles library is
+its own tab (browse today, `GET /puzzles`; it backs creation when the create flow
+lands).
 
 ### Create a game
 
@@ -79,12 +85,21 @@ name, 80 chars trimmed (PROTOCOL.md section 12). Creation returns the invite cod
 the share card is the immediate next beat, share sheet one tap away. Ingestion
 failures read as named, human sentences (section 5).
 
-### Join with a code
+### Join a room (code or QR)
 
-One field, the read-aloud alphabet, autocapitalized, ambiguity-free. `POST
+Camera-first panel: a viewport scans any invite QR — the projector's share link,
+the `/g/{code}` unfurl link, or a bare code (InviteScan digests all three) — and
+beneath it the one field, the read-aloud alphabet, autocapitalized,
+ambiguity-free. A scan takes the typed path exactly: it fills the field and
+submits, one attempt per scanned code. The camera stays live while a code is
+typed (owner ruling 2026-07-11): focusing the field shrinks the viewport to a
+compact strip above the keyboard and raises the sheet to clear it, rather than
+folding the camera away, so a person can scan and type at once. `POST
 /games/join` resolves the code alone; `GAME_NOT_FOUND` reads "That code doesn't
-match any room." `DENIED` (kicked) is honest and final. Success lands a full
-account in the room as a solver (owner decision 2026-07-10).
+match any room." `DENIED` (kicked) is honest and final, scanned or typed. A
+refused or absent camera gives way to one plain sentence over the field — never a
+dead end. Success lands a full account in the room as a solver (owner decision
+2026-07-10).
 
 ### The room (solve screen)
 
@@ -114,9 +129,10 @@ States, each honest and distinct:
   rendered as described in `DESIGN.md` section 8: calm dot, breathing dot, dimmed
   room with countdown. Input during reconnect is held gracefully, not swallowed
   silently: the overlay and reconciliation rules of PROTOCOL.md section 8 govern.
-- **Completed.** The mosaic, the frozen time, then the stats: solve time, entries,
-  solvers (`gameCompleted.stats`). The connection stays open; the room becomes a
-  finished object you can revisit from Rooms.
+- **Completed.** The mosaic plays and the stats arrive with it (owner ruling
+  2026-07-10): the frozen time, entries, solvers (`gameCompleted.stats`). The
+  connection stays open; the room becomes a finished object you can revisit
+  from Rooms.
 - **Abandoned.** Terminal and quiet: the board freezes with a one-line notice.
 - **Kicked.** `kicked` notice then close: the room exits with one honest sentence;
   the code is dead for this account thereafter (denylist).

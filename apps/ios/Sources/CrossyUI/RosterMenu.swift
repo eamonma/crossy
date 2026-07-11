@@ -1,0 +1,310 @@
+// The roster as a system presentation (owner ruling 2026-07-10, the morph lab's
+// verdict on the Mail mechanism: "exactly what i want"). Mail's "..." button is
+// a stock menu, and its goo is the presentation system's own: menus flow out of
+// the glass controls that present them (WWDC25 session 323), the shader
+// blending the departing pill into the arriving surface. Frame study of the
+// owner's recording proved that blend unreachable by hand (soft mid-flight
+// edges are two shapes' fields merging, not a tweened rect), so the players
+// pill now IS a Menu label and the system owns the morph. The custom roster
+// panel and its puck riders retired with this; the GlassMorph single-surface
+// grammar remains the law for drag-scrubbed morphs (the melt, SP-i1) and the
+// stats card.
+//
+// Menu rows carry rendered puck images: a non-template image passes through in
+// full color (Messages' pin menus show contact photos), where a symbol would
+// template to gray. Name is the title, the quiet state word the subtitle
+// (ID-5 lexicon), and the spectator's one affordance, Join in, is a real menu
+// action. Presence order is RosterList's, the same rule the pill cluster reads.
+//
+// Two caveats, both deliberate: a Menu inside a GlassEffectContainer breaks its
+// morph on 26.1 (ecosystem finding), so this pill stands OUTSIDE the cluster's
+// container; and the system glass button cannot read the clarity beat's
+// environment flag, a gap that rides the clarity beat's own pending keep-or-cut
+// ruling.
+
+import CrossyDesign
+import SwiftUI
+
+@available(iOS 17.0, macOS 14.0, *)
+@MainActor
+struct RosterMenu: View {
+    let ground: GridGround
+    let members: [RosterMember]
+    let selfUserId: String?
+    let onJoinIn: () -> Void
+    /// Kick a member (owner ruling 2026-07-10: the host can remove from the
+    /// participants panel). The composition root wires this to the REST call
+    /// (`DELETE /games/{id}/members/{userId}`); the fixture no-ops. The menu
+    /// offers it only to a host, and never on the host's own row.
+    let onKick: (String) -> Void
+
+    /// The member a host is confirming a kick for. A Menu action cannot present
+    /// its own dialog (the menu dismisses on tap), so the tap stages the target
+    /// and the confirmationDialog fires on the pill itself.
+    @State private var kickTarget: RosterMember?
+
+    /// The shared avatar cache the room injects (the pill cluster and the rows read
+    /// the same instance). Reading it here resolves the row snapshots' images; a
+    /// surface with no cache renders every row as its initial.
+    @Environment(\.avatarImageCache) private var avatarCache
+
+    var body: some View {
+        if members.isEmpty {
+            // The welcome has not landed: an empty cluster squishes the glass
+            // capsule into a blob (owner device finding 2026-07-10). A hollow
+            // puck holds the pill's register until the room arrives; it is not
+            // a control yet, so touches pass through and VoiceOver skips it.
+            placeholderPill
+        } else {
+            presentedPill
+        }
+    }
+
+    private var presentedPill: some View {
+        Group {
+            #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    // The verified recipe from the morph lab: a plain label in
+                    // the system's glass button style; the menu morphs out of
+                    // the control. The pill's own ChromeGlassSurface would
+                    // stand glass the presentation does not know.
+                    menu.buttonStyle(.glass)
+                } else {
+                    fallbackMenu
+                }
+            #else
+                fallbackMenu
+            #endif
+        }
+        .accessibilityLabel(Text(verbatim: "Roster, \(members.count) in the room"))
+        // The one destructive confirm (system confirmationDialog): a Menu row
+        // cannot host its own dialog, so the host's tap stages the target and
+        // the dialog fires here. The system owns the red; the menu stays plain.
+        .confirmationDialog(
+            kickTarget.map { "Remove \($0.displayName) from the room?" } ?? "",
+            isPresented: kickConfirmationBinding,
+            titleVisibility: .visible,
+            presenting: kickTarget
+        ) { member in
+            Button("Remove from room", role: .destructive) { onKick(member.userId) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text(verbatim: "They lose their seat and cannot rejoin with this code.")
+        }
+    }
+
+    /// The confirmation's presentation binding: present while a target is
+    /// staged, clear it on dismiss.
+    private var kickConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { kickTarget != nil },
+            set: { if !$0 { kickTarget = nil } })
+    }
+
+    /// The loading register: one hollow puck in the same geometry the loaded
+    /// pill starts with (self is always a member once the room lands), so the
+    /// roster's arrival fills a circle that was already standing instead of
+    /// materializing new chrome.
+    private var placeholderPill: some View {
+        Group {
+            #if os(iOS)
+                if #available(iOS 26.0, *) {
+                    Button {} label: {
+                        placeholderPuck
+                            .frame(height: ChromeLayout.pillHeight - 14)
+                    }
+                    .buttonStyle(.glass)
+                } else {
+                    placeholderFallback
+                }
+            #else
+                placeholderFallback
+            #endif
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var placeholderFallback: some View {
+        placeholderPuck
+            .padding(.horizontal, 10)
+            .frame(height: ChromeLayout.pillHeight)
+            .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+    }
+
+    /// A hollow circle at the away member's strength: someone will be here.
+    private var placeholderPuck: some View {
+        Circle()
+            .stroke(Color(rgb: ground.tokens.number).opacity(0.35), lineWidth: 1.5)
+            .frame(width: 24, height: 24)
+    }
+
+    /// Below 26 (and the macOS test build) the same Menu presents the system's
+    /// plain menu from the pill's fallback material: one mechanism, the §4
+    /// one-fallback rule. This branch draws its own capsule, so the label
+    /// carries the pill's full geometry.
+    private var fallbackMenu: some View {
+        Menu {
+            rows
+        } label: {
+            pillContent
+                .padding(.horizontal, 10)
+                .frame(height: ChromeLayout.pillHeight)
+                .contentShape(Capsule())
+                .modifier(
+                    ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The system glass button pads and shapes its own capsule, so it takes
+    /// the bare cluster: a full pill frame on the label stacks the button's
+    /// padding on ours and inflates the pill out of the bar's register (owner
+    /// device finding 2026-07-10). Bare pucks alone land short (~38 pt), so
+    /// the label carries just enough height that content plus the style's
+    /// ~7 pt sides meets the register. Measured on the 26.5 sim; retune at
+    /// I2e if an OS revision repads.
+    private var menu: some View {
+        Menu {
+            rows
+        } label: {
+            pillContent
+                .frame(height: ChromeLayout.pillHeight - 14)
+        }
+    }
+
+    // MARK: The pill (the cluster at rest, unchanged vocabulary)
+
+    private var pillContent: some View {
+        let cluster = RosterList.cluster(members)
+        return HStack(spacing: 4) {
+            HStack(spacing: -7) {
+                ForEach(cluster.pucks) { member in
+                    RosterPuckView(member: member, ground: ground, diameter: 24)
+                }
+            }
+            if cluster.overflow > 0 {
+                Text(verbatim: "+\(cluster.overflow)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+            }
+        }
+    }
+
+    // MARK: The rows (people, then the spectator's one action)
+
+    @ViewBuilder
+    private var rows: some View {
+        let hosting = RosterList.selfIsHost(members, selfUserId: selfUserId)
+        ForEach(RosterList.ordered(members)) { member in
+            personRow(member, hosting: hosting)
+        }
+        if RosterList.selfIsSpectator(members, selfUserId: selfUserId) {
+            Divider()
+            Button(action: onJoinIn) {
+                Label("Join in", systemImage: "person.badge.plus")
+            }
+        }
+    }
+
+    /// One person's row. For a host looking at anyone else, the row is a nested
+    /// Menu (Menu supports nesting) holding the destructive remove action, which
+    /// stages the kick confirmation; otherwise the row is a plain non-action
+    /// button that dismisses like Mail's do (a person is not an action).
+    @ViewBuilder
+    private func personRow(_ member: RosterMember, hosting: Bool) -> some View {
+        if hosting, RosterList.canKick(member, selfUserId: selfUserId) {
+            Menu {
+                Button(role: .destructive) { kickTarget = member } label: {
+                    Label("Remove from room", systemImage: "person.badge.minus")
+                }
+            } label: {
+                personLabel(member)
+            }
+        } else {
+            Button {} label: { personLabel(member) }
+        }
+    }
+
+    private func personLabel(_ member: RosterMember) -> some View {
+        Label {
+            Text(verbatim: member.displayName)
+            if let word = RosterList.stateWord(member) {
+                Text(verbatim: word)
+            }
+        } icon: {
+            RosterPuckArt.image(
+                member: member, ground: ground, avatar: resolvedAvatar(member))
+        }
+    }
+
+    /// The cache's image for this member, or nil when there is no url, it is still
+    /// loading, or there is no cache. Read during body so the rows rebuild (and the
+    /// snapshot re-renders with the image) once the shared cache publishes.
+    private func resolvedAvatar(_ member: RosterMember) -> Image? {
+        guard let url = member.avatarUrl, let cache = avatarCache else { return nil }
+        return cache.image(for: url)
+    }
+}
+
+// MARK: - Rendered pucks
+
+/// Menu rows take a rendered Image, not a live view (a system Menu rasterizes its rows
+/// and never refreshes them once open), so each puck renders once per (member, ground,
+/// avatar) through ImageRenderer at 3x and caches. The render bakes in the away dim
+/// (RosterPuckBody's own opacity); non-template, so color and photo survive the menu.
+///
+/// The snapshot bakes in whatever the caller resolved from the avatar cache: the image
+/// when it is present, else the colored initial, the same first-class fallback a null or
+/// failed url gets everywhere (PROTOCOL.md §4). The pill cluster is a live surface always
+/// on screen before the menu, so it has usually loaded the image into the shared cache by
+/// the time the menu opens; a rare avatar still in flight then shows the initial for that
+/// opening and lands on the next. The row key includes an avatar token so a resolved image
+/// makes a fresh snapshot instead of being masked by an earlier initials-only one.
+@available(iOS 17.0, macOS 14.0, *)
+@MainActor
+enum RosterPuckArt {
+    /// The row diameter the retired panel used; menu icons sit comfortably here.
+    static let puckDiameter: CGFloat = 26
+
+    private static var cache: [String: Image] = [:]
+
+    static func image(member: RosterMember, ground: GridGround, avatar: Image?) -> Image {
+        let ink = ground.tokens.ink
+        // The avatar token: the url when a resolved image is in this snapshot, else
+        // empty. Without it the initials-only render would be served under the same key
+        // forever, masking the image once it lands.
+        let avatarToken = avatar == nil ? "" : (member.avatarUrl ?? "")
+        let key = [
+            member.userId, member.initial, member.wireColor,
+            String(member.connected), "\(ink.red).\(ink.green).\(ink.blue)",
+            avatarToken,
+        ].joined(separator: "|")
+        if let hit = cache[key] { return hit }
+
+        // The puck's ring is a centered stroke (RosterPuckBody), so it overhangs the
+        // frame by half its line width; the live pill has room around it, but
+        // ImageRenderer rasterizes to the frame and would clip that overhang at the
+        // four cardinal points (the top/left/right/bottom of the circle, where it
+        // meets the bounding box). A hairline of padding gives the overhang room so
+        // the ring renders whole, and it leaves the icon symmetric so the menu's
+        // slotting is unmoved.
+        let renderer = ImageRenderer(
+            content: RosterPuckBody(
+                member: member, ground: ground, diameter: puckDiameter, avatar: avatar)
+                .padding(1))
+        renderer.scale = 3
+        var rendered: Image?
+        #if canImport(UIKit)
+            rendered = renderer.uiImage.map { Image(uiImage: $0) }
+        #elseif canImport(AppKit)
+            rendered = renderer.nsImage.map { Image(nsImage: $0) }
+        #endif
+        guard let image = rendered else {
+            return Image(systemName: "person.crop.circle.fill")
+        }
+        cache[key] = image
+        return image
+    }
+}

@@ -16,6 +16,13 @@ coverage/
 .build/
 DerivedData/
 *.xcuserstate
+xcuserdata/
+
+# iOS harness scratch (apps/ios/scripts): pidfiles and per-run derived data, never
+# committed. The room proof's screenshots live in the OS tmpdir, outside the repo.
+apps/ios/scripts/.integration.pid
+apps/ios/scripts/.room.pid
+apps/ios/scripts/.room-derived/
 
 # OS / editor
 .DS_Store

@@ -41,6 +41,18 @@ cross-reference highlights, conflict flashes, the completion mosaic. Grids up to
 25x25 ingestion cap must render legibly; past comfortable glyph size the grid pans
 and zooms under the standing chrome.
 
+**The board is full-bleed** (owner ruling 2026-07-10). The canvas fills the solve
+screen from the screen's top edge to the key deck's top edge; the room bar and the
+clue bar float over it as glass. The deck is the one hard boundary: the board never
+runs under it (ID-4, the deck sits over solid canvas). Because the bars float, the
+camera, not the layout, keeps content readable: the clamp treats the room bar and
+the one-line clue bar plus feather as standing insets (a fitting board centers
+between the bars; a panned board rests its first row just below the room bar and
+its last just above the feather, the scroll-inset grammar), and a wrapped clue's
+taller bar rescues only the selected cell, panning it clear on the chrome spring,
+never during a live pinch or drag. The standing insets are built from constants, so
+clue length can never move the board: that is the point of the whole arrangement.
+
 **Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
 only person-marker on the board at rest is the presence puck in the cell corner. A
 writer's color appears in motion (the flash, a cursor) and at completion (the
@@ -95,25 +107,139 @@ The standing pieces:
 
 | piece        | register | notes                                                            |
 | ------------ | -------- | ---------------------------------------------------------------- |
-| room bar     | frosted  | name, shared clock, roster pucks, weather dot                    |
-| clue bar     | frosted  | active clue, direction chip, prev/next                           |
-| sheets       | frosted  | clue browser, roster, share card; each is a morph target, below  |
+| room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable), players (pucks, overflow count) |
+| clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict); floats over the full-bleed board on a feather, a wash of the ground's canvas fading up from beneath the glass so live cells never meet a hard edge (both grounds by token, ID-3) |
+| sheets       | frosted  | clue browser, share card; custom overlay panels (SP-i1), morph targets below. The roster rides a system menu instead |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
 
+**The room bar is a cluster** (owner ruling 2026-07-10). Three small standing
+pieces in the compact-toolbar register, not one bar: a back button leading
+(circular standing glass, the room's way out), the time pill, and the players
+pill. The leading pill retired the same day (owner ruling 2026-07-10): the
+room name lives in the facts card now, and the weather moved into the time
+pill, which carries the room's vital signs in one place, status dot, reconnect
+countdown, ambient clock. The time pill is always tappable, because the time
+pill is the room's facts: mid-solve it opens the room-facts card, at
+completion the same surface is the stats card (ID-2 unchanged). On iOS 26+ the
+back button and the time pill share one GlassEffectContainer with spacing held
+below the metaball threshold (SP-i1, section 10: container spacing fuses
+adjacent glass), so the pieces stay separate objects at rest; the players pill
+stands outside the container, because a Menu inside one breaks its morph on
+26.1; below 26 the same layout renders as separate blur-material capsules, the
+one-fallback rule below. The players pill shows only the people who are playing,
+host or solver (owner ruling 2026-07-10): guests always seat as spectators
+(PROTOCOL.md section 12), so a puck in the pill means solving, and guests leave
+the top bar without a wire change. The menu behind the pill still lists
+everyone, spectators with their quiet Watching word. A host's menu behind the
+players pill offers to remove any other person from the room, one confirm
+(`DELETE /games/{id}/members/{userId}`, the server enforcing host-only and
+self-target refusal). The point is honest morphs: a morph-bearing pill is
+its own rest surface, so a panel is always the pill reshaped, never a capsule
+conjured out of standing glass. And the panel grows over the pill's own
+footprint, top and trailing edges shared (the Mail-button rule, owner ruling
+2026-07-10): the open surface covers the spot it grew from, it never hangs
+beside a still-visible opener. The facts card grows leftward from the time
+pill and can reach the back button on narrow layouts; an eclipsed back button
+hands off for the card's life (PanelEclipse).
+
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
-one piece of glass reshaped (maps to the iOS 26 glass-container morphing APIs):
+one piece of glass reshaped. SP-i1 pinned the implementation
+(reports/spikes/sp-i1-glass.md): a morph is one persistent glass surface whose
+frame and corner radius interpolate with gesture progress. The two-view
+glassEffectID swap snaps instead of scrubbing (device recheck rides I2c), and a
+system sheet presentation cannot morph at all, so every sheet below is a custom
+overlay panel living in the room's own hierarchy. SP-i5 ratified this by owner
+feel test on device (reports/spikes/sp-i5-detent-browser.md): the system detent
+sheet is grow-then-swap, not the melt, and fuses the clue bar and the deck into
+one surface; the ruling is the clue bar as its own glass over a separate deck.
+
+Amended 2026-07-10, evening: the law above governs drag-scrubbed morphs, where
+a finger owns progress. A tap-opened pill panel rides the system's own
+presentation instead (the Mail mechanism). Frame study of Mail's menu at 60 fps
+showed its goo is the glass shader blending two shapes' fields, soft-edged
+mid-flight, unreachable by tweening one crisp surface; menus and popovers flow
+out of the glass controls that present them (WWDC25 session 323). So the roster
+is a Menu flowing out of the players pill, ruled on device against the Mail
+reference, and the system owns its placement, stacking, and dismissal. SP-i5's
+finding stands for sheets: a detent sheet still cannot melt.
+
+Amended again 2026-07-10 (owner ruling): the MID-SOLVE facts card is a system
+popover too, not a custom morph. A tap on the time pill while the room runs
+presents a popover flowing out of the pill (the MorphLab variant C mechanism,
+`.presentationCompactAdaptation(.popover)`), which hosts arbitrary content: the
+facts, then a divider, then operations the API already supports (copy the
+invite code, and the host's end-game, one confirm). The COMPLETION path does
+not change: at completion the tap still summons the clock-rider morph stats
+card (ID-2, the frozen clock inflating to the headline, content riding the
+surface); the popover is the running room's surface only. The morph machinery
+stays for that one surface, and the `timeHandedOff` yield now applies only on
+the completion path. Container finding, proven on the Air sim before wiring
+(MorphLab variant D): unlike a Menu, a `.popover` does NOT break inside a
+GlassEffectContainer on 26.1. A popover presents on its own system layer above
+the hierarchy and never morphs its glass through the presenter's container, so
+its presentation is indistinguishable from an out-of-container reference and
+the presenting cluster stays whole. The time pill therefore stays inside the
+cluster's container (the roster's Menu still stands outside, because a Menu
+does break there).
+
+Content rides the morph (owner device finding, 2026-07-10). A morphing surface
+is never empty glass: the elements alive at both ends, the clue bar's pinned
+row, the stats card's clock, travel with the surface and hand off from the
+chrome they left, so nothing inflates hollow and nobody renders twice. Only
+content new at the open end (lists, names) fades in late. The morph targets:
 
 - Pull the clue bar up: it melts into the clue browser. Release below threshold and
-  it pours back.
-- Tap the roster pucks: the cluster inflates into the roster sheet.
+  it pours back. With the browser open, a downward drag scrubs the melt back under
+  the finger (SP-i1 unchanged: the finger owns progress raw; release settles by
+  position and velocity, the sheet grammar). The drag resolves against the
+  scrolling clue list the way system sheets resolve it: it takes the surface only
+  while the list rests at its top, otherwise the list scrolls, and a pull that
+  runs the list into its top hands the surface over mid-gesture (PanelDismiss
+  pins the arbitration). The pinned row keeps its own bidirectional drag.
+  The bar itself breathes with the clue (owner ruling 2026-07-10, the ClueFitLab
+  verdict): a long clue wraps to at most three lines and the bar's slot sizes to
+  the same words (ClueBarSizer, the row's invisible twin). Since the full-bleed
+  ruling the slot floats over the board, bottom edge pinned above the deck, so the
+  bar grows upward over live cells on the chrome spring and NOTHING else re-lays
+  out; the board never moves with clue length (the camera rescues an occluded
+  selected cell, section 2). The capsule keeps radius = height/2 as it grows. One
+  line floors at the standing 52, so short clues are untouched. Past three lines
+  the ellipsis returns (the pathological clue on the narrowest phone). Reduce
+  Motion cuts the height change.
+- Tap the players pill: the roster menu flows out of it, the system's morph
+  (rows carry rendered pucks, names, and the quiet state word; the spectator's
+  Join in is a real menu action, and a host's row for anyone else nests a
+  destructive Remove from room with one confirm).
+- Tap the time pill: the room's facts arrive (owner ruling 2026-07-10: the time
+  pill is the room's facts), by one of two mechanisms depending on the moment.
+  Mid-solve a popover flows out of the pill (the system's presentation), carrying
+  the room's name and the crossword's facts with the live clock as the headline,
+  then a divider and the §12 operations. At completion the same tap keeps the
+  custom morph: the frozen clock inflates into the stats card (ID-2: the timer
+  becomes the headline, so the headline comes from the timer, and the clock
+  rides the surface from the pill). The mid-solve popover dismisses the system's
+  way (the outside touch swallowed, Mail's manners); the completion morph pours
+  back on a touch and the frozen pill summons it again.
 - The invite capsule is the share card, condensed.
 - A rebus-capable entry summons the bubble from the cell; commit condenses it back.
 - Backgrounding the app condenses the room bar into the island.
 - On the home screen, New game and Join ride as a cluster and merge to one pill on
   scroll.
 - On a panning 25x25, standing bars thin while you travel and return at rest.
+
+**Transient panels yield to intent** (owner ruling 2026-07-10). A touch outside
+an open custom panel (the completion stats card, the clue browser) dismisses it
+and still lands where it fell: no dead tap-catchers, the room never eats a
+touch. Panels are mutually exclusive, opening any one pours back the others, and
+a status transition to completed or abandoned pours back the melt (the stats
+card then owns the completion stage) and the mid-solve facts popover (that
+surface is the running room's only). The one exception is a live finger: a melt
+being scrubbed is never force-closed, because the finger owns progress (SP-i1).
+The system transients, the roster menu and the mid-solve facts popover, keep the
+system's own manners: the outside touch that dismisses them is swallowed,
+exactly as Mail's is.
 
 **Presence glints.** Chrome stays achromatic until a person passes beneath it: a
 cursor sliding under the clue bar throws a brief specular in that player's color
@@ -125,9 +251,94 @@ ever carries, with one scripted exception at completion (section 8).
 - Tint with brand color.
 - Touch the board. The rebus bubble floats above a cell and never sits between the
   eye and a filled cell.
-- Stack on itself. One glass layer, ever; a sheet replaces a bar.
+- Stack on itself. One glass layer, ever; a sheet replaces a bar. Sheets here are
+  custom overlay panels: a system sheet presentation hard-cuts and stacks glass on
+  glass (SP-i1), so it never appears in the room.
 - Survive Reduce Transparency as-is. Every glass surface has a considered solid
   fallback.
+
+**Below iOS 26.** The floor is iOS 18 (owner ruling 2026-07-10, amending root
+DESIGN.md D06). Glass APIs need 26, so on 18 through 25 every glass surface
+renders as one simple blur material: same geometry, same layout, same motion,
+the system's regular material in place of glass. One fallback for all chrome,
+never a second design system, and no per-piece fallback decisions. Degraded is
+accepted.
+
+**Arrival notes: the join sheet** (owner device report 2026-07-10). Join with a
+code was a full push, and it jolted: the screen focused its field in onAppear, so
+the keyboard animated up while the push was still mid-flight, the slideover racing
+the keyboard. The owner ruled for a glass sheet that flows out of the button. Two
+honest mechanisms on 26 were weighed by motion quality:
+
+- **The zoom push** (`.navigationTransition(.zoom(sourceID:in:))` with
+  `.matchedTransitionSource` on the button) keeps every navigation semantic
+  untouched, but it stays a full-screen push: the whole page zooms in, the interior
+  is still a plain canvas, and it never reads as a sheet growing out of the control.
+  It solves the source but not the surface. Rejected on feel.
+- **The glass sheet** (a system sheet presentation, one small detent for the field
+  plus the button) is the surface the owner asked for. On 26 the sheet wears the
+  material treatment; paired with the button as its zoom source, it grows out of the
+  capsule instead of sliding over the page. This is the Mail mechanism the roster
+  already rides (a system presentation flowing out of the glass control that
+  presents it, §4 amendment): the arrival sheet is that grammar reused. SP-i5
+  rejected system detent sheets for in-room panels because a detent sheet cannot
+  melt into the clue browser; arrival has no melt law, so that finding does not bind
+  here, and the owner explicitly asked for a sheet. Adopted.
+
+The keyboard rises WITH the presentation, not after it (amended the same evening:
+deferring focus one presentation-length let the sheet settle at its detent and
+then jump, the system's keyboard avoidance shoving the whole container up with the
+content following, owner device report). In a sheet the keyboard is part of the
+rise: the field focuses as the sheet appears and the system lifts sheet and
+keyboard as one motion from the bottom. The focus task still cancels with the
+sheet, so a fast dismiss never fights a pending focus. Below iOS 26 (and the macOS test host, floor 14) the sheet slides in as a
+plain material sheet and the zoom is skipped: no glass required, the §4 one-fallback
+rule. Semantics are unchanged from the push: success dismisses the sheet and sets
+the path to the room alone, so back from the room and the kicked exit both land on
+Rooms, never a stale code field.
+
+**Arrival notes: the tab bar** (owner ruling 2026-07-10 late). The signed-in
+shell is the system tab bar carrying the three stable places, mirroring the web's
+destinations: Rooms, Puzzles, Settings. The bar is adopted, never imitated: on 26
+it is the system's Liquid Glass; on 18 through 25 it is the plain material tab
+bar, the same one-fallback rule as all chrome. The selected tab wears ink, not
+the system blue (chrome stays achromatic; people and the destructive tone are the
+only color). Only Rooms navigates: a room pushes inside that tab and hides the
+bar, because the board and deck own the whole screen (the full-bleed ruling), and
+the bar returns on pop. Settings is a tab now, so the account puck that stood
+top-trailing on Rooms is retired. New game is not a tab: an action is not a
+place, and it rides the create-flow slice, inheriting the standing bottom slot
+Join vacated (the cluster-merge moment is amended: Join stands top-trailing
+now, ruled the same night). Puzzles is browse-only until then: paper cards, no
+tap targets, no promise the flow can't keep. Welcome stays bar-less; there is
+no shell before there is a person.
+
+**Arrival notes: the join panel** (owner ruling 2026-07-10 late, "code or QR").
+Join is a small glass capsule top-trailing on Rooms — the corner the account
+puck vacated — and its sheet is camera-first: a dark viewport (a camera is a
+window, not paper) scanning for any invite QR, the typed path always standing
+beneath it. A scan is the same act as typing: the digested code (InviteScan:
+the share link, the /g/ unfurl link, or a bare code) fills the field and
+submits, so the person sees what the camera read, and DENIED's finality binds
+scans exactly as keys. One attempt per scanned code; a QR lingering in frame
+never becomes a retry loop. The keyboard law bends here, deliberately: this
+sheet does NOT autofocus (the keyboard would bury the viewport); the field
+focuses on tap. The camera then stays LIVE under the keyboard (owner ruling
+2026-07-11, superseding the earlier "viewport folds on focus"): a person can
+type a code and keep scanning at once, so the viewport does not fold to
+nothing, it shrinks to a compact live strip (~130 pt) riding above the keyboard
+while the resting window is ~300 pt, and the sheet raises its detent from the
+resting camera-first fraction to a taller focused fraction so the strip and the
+field both clear the keys. The change rides the chrome spring, both heights at
+once, and the camera session never tears down (the strip only resizes, so a
+scan still fills and submits mid-type). The screen owns the detent, because it
+owns the field's focus; the sheet keeps swipe-down dismissal and its drag
+indicator. Camera refused or absent (the simulator has none): one plain
+sentence in the viewport, which shrinks the same way on focus so the focused
+layout never collapses in the denied state either; the field is untouched —
+never a dead end. The camera itself is the app target's (AVFoundation behind a
+scanner slot and a verdict enum, AD-2); CrossyUI renders chrome and digests
+payloads, and the digest is pure and pinned (InviteScanTests).
 
 ## 5. Two grounds, one app
 
@@ -185,10 +396,13 @@ reduced-motion equivalent that crossfades instead of moving.
 - **The flash** (PROTOCOL.md section 8): roughly 300 ms in the winner's color when a
   visible value changes under you. The loudest thing in the room; it gets a tuned
   curve (sharp attack, long decay), not a linear fade.
-- **Haptics**: a light tick when the cursor crosses a block; a soft thud when a word
-  completes; a double tick when a word you were mid-typing is finished by someone
-  else; a distinct completion pattern for `gameCompleted`. Never a haptic for a
-  teammate's routine letters (that would buzz constantly in a lively room).
+- **Haptics**: a light tick when the cursor travels to another word — a block
+  crossed, a line changed, a swipe between words, the axis toggled (owner ruling
+  2026-07-10, broadening the block-cross tick; steps within a word stay silent); a
+  soft thud when a word completes; a double tick when a word you were mid-typing is
+  finished by someone else; a distinct completion pattern for `gameCompleted`.
+  Never a haptic for a teammate's routine letters (that would buzz constantly in a
+  lively room).
 - **The key deck**: specular pop plus haptic tick per press, sixty times a minute,
   tuned on hardware before anything else is (ID-4).
 
@@ -203,6 +417,8 @@ reduced-motion equivalent that crossfades instead of moving.
 - **Honest weather.** Three connection states, three registers (PROTOCOL.md
   section 7): live is a calm dot, resyncing is a breathing dot, reconnecting dims
   the room with a quiet countdown. Never a modal, never a spinner over the grid.
+  The weather lives in the time pill (owner ruling 2026-07-10): the dot and the
+  countdown sit beside the ambient clock, one pill for the room's vital signs.
 - **The island.** The room condensed: pucks leading, the derived timer trailing,
   black glass. The room bar and the island share capsule geometry so backgrounding
   reads as the same object changing state. The timer ticks natively from
@@ -224,10 +440,15 @@ Format follows the root decision log. ID-1 through ID-5 were ruled by the owner 
   whip. Before the first fill it reads 0:00 quietly (the timer starts at first
   fill, root DESIGN.md D15).
 - **ID-3 Ground follows system appearance; screenshots lead Observatory**
-  (adopted 2026-07-10).
+  (adopted 2026-07-10; reaffirmed the same day). The owner briefly considered
+  shipping one ground, then ruled both stay for v1 once the two renders were
+  side by side: the app follows system light/dark. Nothing may hard-code either
+  ground's values past the token layer.
 - **ID-4 The key deck is clear glass pucks** (adopted 2026-07-10, hardware-gated).
   Build the acrylic deck per SP-i2; if it proves too much in hand, revert to
-  Studio-quiet keys, the named alternate.
+  Studio-quiet keys, the named alternate. **Hardware-confirmed 2026-07-10: the
+  owner ran the SP-i2 rig on device and ruled for the glass.** Below iOS 26 the
+  pucks render as the section 4 blur-material fallback.
 - **ID-5 Copy is plain and warm** (adopted 2026-07-10). Common words, controls that
   say what happens, no metaphors on controls, nothing precious. The spectator
   upgrade reads Join in. Lexicon in `apps/ios/EXPERIENCE.md` section 5.
@@ -240,9 +461,18 @@ Format follows the root decision log. ID-1 through ID-5 were ruled by the owner 
 
 ## 10. Open items
 
-- Verify the iOS 26 glass APIs (glassEffect, glass-container morphing, interactive
-  glass) at M5 kickoff; already registered in root DESIGN.md section 15. If a morph
-  in section 4 is not expressible, the fallback is a crossfade, never a modal.
+- Glass APIs verified by SP-i1 (2026-07-10, reports/spikes/sp-i1-glass.md), closing
+  the root DESIGN.md section 15 item: glassEffect, GlassEffectContainer, and
+  interactive glass are real and compose; the melt is a single persistent surface
+  interpolating frame and corner radius; glassEffectID matched-geometry swaps snap
+  in the simulator (device recheck 2026-07-10: irrelevant for tap-opened pill
+  panels, which now ride system presentations per section 4's amended morph
+  grammar; the swap remains unbuilt-on for scrubbed morphs); system sheets never
+  morph, so panels are custom overlays. The fallback stands: crossfade, never a
+  modal. One caution
+  for the deck: container spacing metaball-fuses adjacent keys, so the deck uses
+  tight spacing or its own container. Reduce Transparency could not be driven
+  headlessly in the simulator; the solid fallback is built and verifies on device.
 - Device tuning pass: roster contrast on both grounds, glyph weights, flash curve,
   haptic strengths, deck feel (ID-4).
 - Exploration artifacts (direction board, glass plan, 2026-07-09) are linked from

@@ -1,0 +1,136 @@
+// Arrival copy (EXPERIENCE.md §5, ID-5): plain and warm, controls that say what
+// happens, errors that say what went wrong and what to do, without apology. Lexicon
+// sentences are verbatim contract; everything else here follows their voice. Errors
+// key on the stable §12 code STRING (PROTOCOL.md §12), one human sentence per code:
+// CrossyUI does not import CrossyProtocol (AD-2), and the codes are strings on the
+// wire anyway, so the composition root passes the code through and the raw string
+// never reaches the screen.
+
+/// A failed arrival call as the screens consume it: the stable code when the server
+/// spoke, nil when the network never answered. The sentence derives from the code
+/// alone, never from server prose.
+public struct ArrivalFailure: Error, Equatable, Sendable {
+    /// The §12 code string (`GAME_NOT_FOUND`, `DENIED`, ...), or nil for network
+    /// weather (nothing was judged).
+    public let code: String?
+
+    public init(code: String?) {
+        self.code = code
+    }
+
+    /// Network weather: no server verdict, retrying can help.
+    public static let offline = ArrivalFailure(code: nil)
+
+    public var sentence: String { ArrivalCopy.sentence(forCode: code) }
+
+    /// DENIED is honest and final (EXPERIENCE.md §3 Join): the denylist does not
+    /// change on retry, so the join screen stops inviting one.
+    public var isFinal: Bool { code == "DENIED" }
+}
+
+public enum ArrivalCopy {
+    // MARK: - Welcome (EXPERIENCE.md §3: wordmark, one line, one button)
+
+    /// The one line that says what this is.
+    public static let welcomeLine = "Crosswords you solve together."
+    public static let continueWithApple = "Continue with Apple"
+    public static let continueWithDiscord = "Continue with Discord"
+    /// Auth failure returns here with a plain retry, never a dead end.
+    public static let signInFailed = "Sign-in didn't finish. Try again."
+    /// The honest unconfigured state: the plist slots are empty in this build.
+    public static let signInUnconfigured = "This build isn't set up for sign-in yet."
+
+    // MARK: - Rooms (lexicon: home is Rooms)
+
+    public static let roomsTitle = "Rooms"
+    /// The empty state is an invitation, not a void: one line, then the standing
+    /// actions carry the rest.
+    public static let roomsEmpty = "No rooms yet. Join a friend's room with a code."
+
+    // MARK: - Join (the top affordance and its camera-first panel)
+
+    /// The top-trailing capsule on Rooms: one word, the glyph carries the how.
+    public static let joinAffordance = "Join"
+    /// The panel title: a room is what you join, however the code arrives.
+    public static let joinTitle = "Join a room"
+    /// Under the viewport, before the field: the typed path is always standing.
+    public static let joinTypeInstead = "or type the code"
+    /// The camera refused or absent: one plain sentence in the viewport, the field
+    /// still beneath it (never a dead end).
+    public static let joinScanDenied =
+        "The camera's off for Crossy. Type the code, or turn it on in Settings."
+    public static let joinAction = "Join"
+
+    // MARK: - Puzzles (the library tab: what you've uploaded, browse-only until the
+    // create-flow slice)
+
+    public static let puzzlesTitle = "Puzzles"
+    /// The empty state names the one place uploads happen today; the tab never
+    /// pretends to an upload flow it doesn't have.
+    public static let puzzlesEmpty = "No puzzles yet. Upload one on the web and it shows up here."
+
+    // MARK: - Settings (roadmap I3: thin v1, three things and a quiet footer)
+
+    /// The screen title, and the tab's label (the signed-in shell's three tabs are
+    /// the three place names: Rooms, Puzzles, Settings).
+    public static let settingsTitle = "Settings"
+    /// The name shown when auth state holds none (display name is not persisted yet;
+    /// the puck and provider still identify the person).
+    public static let settingsNoName = "Signed in"
+    public static let signOutAction = "Sign out"
+    public static let deleteAccountAction = "Delete account"
+    /// The provider line beneath the name, or the fallback when none is remembered.
+    public static let providerDiscord = "Discord"
+    public static let providerApple = "Apple"
+    public static let providerUnknown = "Signed in"
+
+    /// The two-beat confirmation body (roadmap I3): the consequence stated plainly, so
+    /// the destructive action is never a surprise. Identity removed; hosted games handed
+    /// on or ended; past contributions remain as an anonymous former participant.
+    public static let deleteAccountConfirmTitle = "Delete your account?"
+    public static let deleteAccountConfirmBody =
+        "Your account is removed. Games you host pass to another solver, or end if you "
+        + "are the last one. Your past answers stay in those rooms, credited to a former "
+        + "participant with no name."
+    /// The destructive button in the dialog.
+    public static let deleteAccountConfirmAction = "Delete account"
+    public static let deleteAccountCancelAction = "Keep my account"
+
+    /// The inline delete-failure sentence, keyed on the stable §12 code (same voice as
+    /// the arrival errors: say what happened, offer the retry, no apology).
+    public static func deleteFailure(forCode code: String?) -> String {
+        switch code {
+        case nil:
+            return "Couldn't reach Crossy to delete your account. Try again."
+        case "UNAUTHORIZED":
+            return "Your sign-in expired. Sign in again, then delete your account."
+        default:
+            return "Couldn't delete your account. Try again."
+        }
+    }
+
+    // MARK: - Errors, keyed on stable codes only (PROTOCOL.md §12)
+
+    /// One human sentence per §12 code. An unknown code (the vocabulary grows, §12
+    /// says so) degrades to the plain fallback; the raw code never renders.
+    public static func sentence(forCode code: String?) -> String {
+        switch code {
+        case nil:
+            return "Couldn't reach Crossy. Check your connection and try again."
+        case "GAME_NOT_FOUND":
+            // Lexicon verbatim: join failure.
+            return "That code doesn't match any room."
+        case "DENIED":
+            // Lexicon verbatim: kicked; on a join the denylist is the only cause.
+            return "The host removed you from this room."
+        case "UNAUTHORIZED":
+            return "Your sign-in expired. Sign in again."
+        case "FULL_ACCOUNT_REQUIRED":
+            return "This needs a signed-in account."
+        case "VALIDATION":
+            return "That isn't a code Crossy recognizes."
+        default:
+            return "Something went wrong. Try again."
+        }
+    }
+}
