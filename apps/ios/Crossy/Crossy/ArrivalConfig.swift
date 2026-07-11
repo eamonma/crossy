@@ -55,6 +55,10 @@ struct ArrivalConfig {
     let webOrigin: URL
     /// nil when the plist auth slots are empty: the honest unconfigured state.
     let auth: SupabaseAuthConfiguration?
+    /// nil when the plist token slot is empty: analytics off, makeAnalytics selects
+    /// the noop (the auth slot's posture exactly). The token is public by design (a
+    /// phc_ token is write-only), so it is committed like the publishable key.
+    let analytics: AnalyticsConfiguration?
 
     /// The production web origin, the fallback when no plist/launch-fact value
     /// resolves. Mirrors deploy/README.md's custom-domain cutover table.
@@ -84,7 +88,10 @@ struct ArrivalConfig {
             auth: SupabaseAuthConfiguration(
                 supabaseURL: plist["SupabaseURL"],
                 publishableKey: plist["SupabasePublishableKey"],
-                redirect: redirect))
+                redirect: redirect),
+            analytics: AnalyticsConfiguration(
+                projectToken: plist["PostHogProjectToken"],
+                host: plist["PostHogHost"]))
     }
 
     private static func plistValues(bundle: Bundle) -> [String: String] {

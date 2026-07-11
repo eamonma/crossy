@@ -13,6 +13,7 @@
 		FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F33000D30A004CA5C7 /* CrossySession */; };
 		FB3E59F73000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F83000D30A004CA5C7 /* CrossyProtocol */; };
 		FB15AC113000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB15AC123000D30A004CA5C7 /* CrossyProtocol */; };
+		FBAD5E013001AAAA004CA5C7 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = FBAD5E023001AAAA004CA5C7 /* PostHog */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -92,6 +93,7 @@
 				FB3E59F53000D30A004CA5C7 /* CrossyAPI in Frameworks */,
 				FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */,
 				FB3E59F73000D30A004CA5C7 /* CrossyProtocol in Frameworks */,
+				FBAD5E013001AAAA004CA5C7 /* PostHog in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -168,6 +170,7 @@
 				FB3E59F23000D30A004CA5C7 /* CrossyAPI */,
 				FB3E59F33000D30A004CA5C7 /* CrossySession */,
 				FB3E59F83000D30A004CA5C7 /* CrossyProtocol */,
+				FBAD5E023001AAAA004CA5C7 /* PostHog */,
 			);
 			productName = Crossy;
 			productReference = FB3E59DB3000D30A004CA5C7 /* Crossy.app */;
@@ -202,6 +205,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				FB3E59F03000D30A004CA5C7 /* XCLocalSwiftPackageReference ".." */,
+				FBAD5E033001AAAA004CA5C7 /* XCRemoteSwiftPackageReference "posthog-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FB3E59DC3000D30A004CA5C7 /* Products */;
@@ -547,6 +551,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		FBAD5E033001AAAA004CA5C7 /* XCRemoteSwiftPackageReference "posthog-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/PostHog/posthog-ios.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.56.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		FB3E59F13000D30A004CA5C7 /* CrossyUI */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -567,6 +582,11 @@
 		FB15AC123000D30A004CA5C7 /* CrossyProtocol */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CrossyProtocol;
+		};
+		FBAD5E023001AAAA004CA5C7 /* PostHog */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FBAD5E033001AAAA004CA5C7 /* XCRemoteSwiftPackageReference "posthog-ios" */;
+			productName = PostHog;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

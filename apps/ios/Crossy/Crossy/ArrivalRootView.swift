@@ -68,6 +68,10 @@ struct ArrivalRootView: View {
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
+    /// The analytics port CrossyApp built (the noop in every rig composition, so
+    /// nothing here checks). Identify and signed_in live on this view because it is
+    /// the one observer of the session phase; the seam the routing already reads.
+    @Environment(\.analytics) private var analytics
 
     var body: some View {
         Group {
@@ -87,15 +91,30 @@ struct ArrivalRootView: View {
         }
         // A cold launch straight from an invite link, already signed in: the code
         // is set before this view's observers register, so honor it once on appear.
-        .task { honorPendingInvite() }
+        // A restored session is likewise already signed in before this view exists,
+        // so the standing user is identified here; signed_in stays reserved for the
+        // observed transition below, never a relaunch or resume of a standing session.
+        .task {
+            if let userId = model.session.userId { analytics.identify(userId: userId) }
+            honorPendingInvite()
+        }
         // A link arriving while the app runs.
         .onChange(of: pendingInvite.code) { honorPendingInvite() }
         .onChange(of: model.isSignedIn) { _, signedIn in
             if signedIn {
+                // The one transition into signed in: an interactive sign-in
+                // completing (a restored session never passes here). The person
+                // becomes known and the shared-vocabulary event fires exactly once
+                // per sign-in, matching web and server funnels.
+                if let userId = model.session.userId { analytics.identify(userId: userId) }
+                analytics.capture("signed_in")
                 // Sign-in completed: honor an invite that was held while signed out
                 // (the held-invite promise, EXPERIENCE.md §3).
                 honorPendingInvite()
             } else {
+                // Sign-out, deletion, or a terminal refresh refusal: the identity is
+                // no longer standing, so analytics forgets it too.
+                analytics.reset()
                 // Sign-out or deletion drops the shell; a stale pushed room (in
                 // either navigating tab) or a live join sheet must not greet the next
                 // sign-in.

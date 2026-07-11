@@ -15,10 +15,24 @@ struct CrossyApp: App {
     /// honor it (the environment carries it down to ArrivalRootView).
     @State private var pendingInvite = PendingInvite()
 
+    /// The analytics port, built once from the committed config (Analytics/). The
+    /// noop when the token slot is empty or the composition is a rig (previews,
+    /// labs, demo room, fixture, harness), so the capture below is safe to fire
+    /// unconditionally.
+    private let analytics: any Analytics
+
+    init() {
+        analytics = makeAnalytics(config: ArrivalConfig.load())
+        // Once per cold launch: the App is instantiated exactly once per process,
+        // so this never repeats on a foreground resume.
+        analytics.capture("app_opened")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(pendingInvite)
+                .environment(\.analytics, analytics)
                 // Universal Links (applinks:crossy.me): the system Camera app's QR
                 // banner and any tap on a crossy.me invite hand the app a browsing
                 // activity carrying the web URL. InviteScan digests it to a code

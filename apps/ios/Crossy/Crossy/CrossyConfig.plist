@@ -16,5 +16,12 @@
 	<string>https://api.crossy.me</string>
 	<key>SupabasePublishableKey</key>
 	<string>sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd</string>
+	<!-- The phc_ project token is write-only (it can only ingest events), public by
+	     design: the publishable-key footing above. An empty token slot means
+	     analytics off (the noop port, Analytics/). -->
+	<key>PostHogProjectToken</key>
+	<string>phc_u9iX7goA9p2krqJur7uYPK7C64jzaDJFreKfYPfypknP</string>
+	<key>PostHogHost</key>
+	<string>https://us.i.posthog.com</string>
 </dict>
 </plist>
