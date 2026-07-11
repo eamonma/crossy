@@ -31,12 +31,19 @@ public struct SolveScreen: View {
     /// row when it is present; nil leaves the row out (a room that has no code
     /// in hand yet).
     private let inviteCode: String?
+    /// The room's id, needed only to build the shareable invite URL
+    /// (ShareInvite.url, the same link the QR code encodes). Nil leaves the
+    /// share row out exactly as a nil `inviteCode` leaves the copy row out.
+    private let gameId: String?
     private let onBack: () -> Void
     private let onJoinIn: () -> Void
     private let onExit: () -> Void
     /// Copy the invite code to the clipboard (the composition root owns the
     /// platform pasteboard; CrossyUI reports the intent only).
     private let onCopyInviteCode: () -> Void
+    /// Raise the system share sheet for the invite URL (the composition root
+    /// owns UIActivityViewController; CrossyUI reports the intent only).
+    private let onShareInvite: () -> Void
     /// End the game, host abandon (`POST /games/{id}/abandon`, PROTOCOL.md §12).
     /// Confirmed in the popover, then reported here.
     private let onEndGame: () -> Void
@@ -76,12 +83,14 @@ public struct SolveScreen: View {
         puzzleAuthor: String? = nil,
         puzzleDate: String? = nil,
         inviteCode: String? = nil,
+        gameId: String? = nil,
         model: SelectionModel? = nil,
         chrome: RoomChromeModel? = nil,
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
         onCopyInviteCode: @escaping () -> Void = {},
+        onShareInvite: @escaping () -> Void = {},
         onEndGame: @escaping () -> Void = {},
         onKick: @escaping (String) -> Void = { _ in }
     ) {
@@ -93,10 +102,12 @@ public struct SolveScreen: View {
         self.puzzleAuthor = puzzleAuthor
         self.puzzleDate = puzzleDate
         self.inviteCode = inviteCode
+        self.gameId = gameId
         self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
         self.onCopyInviteCode = onCopyInviteCode
+        self.onShareInvite = onShareInvite
         self.onEndGame = onEndGame
         self.onKick = onKick
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
@@ -206,6 +217,10 @@ public struct SolveScreen: View {
                             completedAt: store.completedAt ?? store.abandonedAt,
                             onCopyInviteCode: {
                                 onCopyInviteCode()
+                                chrome.factsPopoverPresented = false
+                            },
+                            onShareInvite: {
+                                onShareInvite()
                                 chrome.factsPopoverPresented = false
                             },
                             onEndGame: {
@@ -423,7 +438,8 @@ public struct SolveScreen: View {
     private var factsOperations: FactsOperations {
         let selfIsHost =
             rosterMembers.first { $0.userId == store.selfUserId }?.isHost ?? false
-        return FactsOperations.make(inviteCode: inviteCode, isHost: selfIsHost)
+        return FactsOperations.make(
+            inviteCode: inviteCode, isHost: selfIsHost, gameId: gameId, roomName: roomName)
     }
 
     /// The facts morph: rest is the TIME PILL's reported frame (the card is

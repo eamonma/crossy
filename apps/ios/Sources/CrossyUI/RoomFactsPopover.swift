@@ -38,6 +38,11 @@ struct RoomFactsPopover: View {
     /// platform clipboard, so CrossyUI stays free of UIKit; the row only reports
     /// the intent).
     let onCopyInviteCode: () -> Void
+    /// Raise the system share sheet for the invite URL (the composition root
+    /// owns UIActivityViewController, so CrossyUI stays free of UIKit; the row
+    /// only reports the intent). Absent when `operations.shareURL` is nil, so
+    /// a nil closure never fires.
+    let onShareInvite: () -> Void
     /// End the game (host abandon). Confirmed here first, then reported.
     let onEndGame: () -> Void
 
@@ -124,6 +129,11 @@ struct RoomFactsPopover: View {
                 operationRow(
                     "Copy invite code", systemImage: "doc.on.doc",
                     role: nil, action: onCopyInviteCode)
+            }
+            if operations.shareURL != nil {
+                operationRow(
+                    "Share invite", systemImage: "square.and.arrow.up",
+                    role: nil, action: onShareInvite)
             }
             if operations.canEndGame {
                 operationRow(

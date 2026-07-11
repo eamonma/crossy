@@ -148,25 +148,35 @@ public struct FactsOperations: Equatable, Sendable {
     /// is then absent). The room view carries it (PROTOCOL.md §12), so a live
     /// room always has it; the demo has one too.
     public let inviteCode: String?
+    /// The shareable invite URL (ShareInvite.url, the same link the QR code
+    /// encodes), nil exactly when `inviteCode` is nil. Carried alongside the
+    /// bare code because the system share sheet wants a URL, not a code.
+    public let shareURL: URL?
     /// The host's destructive end-game, offered only to the host (the server
     /// refuses a non-host abandon anyway; the client simply does not show it).
     public let canEndGame: Bool
 
-    public init(inviteCode: String?, canEndGame: Bool) {
+    public init(inviteCode: String?, shareURL: URL?, canEndGame: Bool) {
         self.inviteCode = inviteCode
+        self.shareURL = shareURL
         self.canEndGame = canEndGame
     }
 
     /// The operations for the local participant. `isHost` gates the destructive
-    /// end-game; a blank or absent code drops the copy row. A terminal room
-    /// offers no operations: the popover is the mid-solve surface only (the
-    /// stats card owns completion), and ending an already-ended game is a
-    /// no-op (INV-4), so the whole popover path is gated on `ongoing` upstream.
-    public static func make(inviteCode: String?, isHost: Bool) -> FactsOperations {
+    /// end-game; a blank or absent code drops the copy and share rows. A
+    /// terminal room offers no operations: the popover is the mid-solve
+    /// surface only (the stats card owns completion), and ending an
+    /// already-ended game is a no-op (INV-4), so the whole popover path is
+    /// gated on `ongoing` upstream. `gameId`/`roomName` default to nil so
+    /// existing callers keep compiling unchanged; without a `gameId` there is
+    /// no URL to share and `shareURL` is nil (the row simply does not render).
+    public static func make(
+        inviteCode: String?, isHost: Bool, gameId: String? = nil, roomName: String? = nil
+    ) -> FactsOperations {
         let trimmed = inviteCode?.trimmingCharacters(in: .whitespaces)
-        return FactsOperations(
-            inviteCode: (trimmed?.isEmpty == false) ? trimmed : nil,
-            canEndGame: isHost)
+        let code = (trimmed?.isEmpty == false) ? trimmed : nil
+        let shareURL = gameId.flatMap { ShareInvite.url(gameId: $0, code: code, name: roomName) }
+        return FactsOperations(inviteCode: code, shareURL: shareURL, canEndGame: isHost)
     }
 
     /// Whether the popover renders a divider and any operation rows at all.

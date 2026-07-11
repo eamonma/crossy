@@ -56,6 +56,7 @@ struct ContentView: View {
 /// the standalone -i2* launches have nowhere to go and keep the no-op.
 struct DemoRoomView: View {
     @State private var room = DemoRoom()
+    @State private var shareURL: URL?
     var onBack: () -> Void = {}
 
     var body: some View {
@@ -68,6 +69,7 @@ struct DemoRoomView: View {
             puzzleAuthor: room.puzzleAuthor,
             puzzleDate: room.puzzleDate,
             inviteCode: room.inviteCode,
+            gameId: room.gameId,
             model: room.selection,
             chrome: room.chrome,
             onBack: onBack,
@@ -76,12 +78,20 @@ struct DemoRoomView: View {
             // popover's composition and the roster's kick submenu are visible;
             // the actions do nothing.
             onCopyInviteCode: {},
+            // The share sheet itself is real (it writes nothing, PROTOCOL.md
+            // has no bearing on it), so the demo renders it exactly as a live
+            // room would, over the same fixture URL the copy row's code names.
+            onShareInvite: {
+                shareURL = ShareInvite.url(
+                    gameId: room.gameId, code: room.inviteCode, name: room.roomName)
+            },
             onEndGame: {},
             onKick: { _ in }
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController).
         .solveActivity(store: room.store, chrome: room.chrome, roomName: room.roomName)
+        .shareInviteSheet(url: $shareURL)
         .task { await room.run() }
     }
 }
@@ -98,6 +108,7 @@ struct RealRoomView: View {
     private let onBack: () -> Void
     private let onExit: () -> Void
     @State private var ready = false
+    @State private var shareURL: URL?
     @Environment(\.colorScheme) private var colorScheme
 
     init(
@@ -121,6 +132,7 @@ struct RealRoomView: View {
                     clues: room.clues,
                     roomName: room.roomName,
                     inviteCode: room.inviteCode,
+                    gameId: room.gameId,
                     model: room.selection,
                     chrome: room.chrome,
                     onBack: onBack,
@@ -130,6 +142,14 @@ struct RealRoomView: View {
                     // RealRoom (PROTOCOL.md §12).
                     onCopyInviteCode: {
                         if let code = room.inviteCode { UIPasteboard.general.string = code }
+                    },
+                    // Same seam, same reasoning: the composition root owns
+                    // UIActivityViewController (ShareSheet.swift) so CrossyUI
+                    // stays UIKit-free. The URL is the same one the QR code
+                    // encodes (ShareInvite.url), never re-derived.
+                    onShareInvite: {
+                        shareURL = ShareInvite.url(
+                            gameId: room.gameId, code: room.inviteCode, name: room.roomName)
                     },
                     onEndGame: { room.endGame() },
                     onKick: { userId in room.kick(userId: userId) }
@@ -144,6 +164,7 @@ struct RealRoomView: View {
                 .solveActivity(
                     store: room.store, chrome: room.chrome, roomName: room.roomName,
                     registration: room.liveActivityRegistration)
+                .shareInviteSheet(url: $shareURL)
             }
         }
         .task {
