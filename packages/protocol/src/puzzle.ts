@@ -65,3 +65,43 @@ export function toClientPuzzle(puzzle: ServerPuzzle): ClientPuzzle {
   void solution;
   return client;
 }
+
+/**
+ * A puzzle's black-square silhouette, the pattern only (PROTOCOL.md §12). An array of `rows`
+ * strings, each exactly `cols` characters, where `#` is a black square and `.` is a playable
+ * cell, indexed row-major like the board (row `r`, column `c` is character `c` of string `r`,
+ * cell index `r * cols + c`). This is a plain `string[]`, deliberately not branded: it carries
+ * the same public geometry as the block indices already on `ClientPuzzle`, no letters and no
+ * numbering, so it is INV-6-safe by content, not by type.
+ */
+export type Mask = readonly string[];
+
+/** The two glyphs a mask row is built from: block and playable. */
+const MASK_BLOCK = "#";
+const MASK_CELL = ".";
+
+/**
+ * Derive the black-square silhouette from a puzzle's geometry (PROTOCOL.md §12). The inputs are
+ * the pattern-only facts every stored puzzle carries (`rows`, `cols`, and the block cell indices,
+ * DESIGN.md §7); the solution is neither read nor reachable here, so INV-6 holds by construction:
+ * this cannot emit a letter it never received. The block set makes the scan O(rows*cols) with
+ * O(1) membership, cheap enough for a list endpoint at the 25x25 cap (625 cells). An index outside
+ * the grid is ignored, so a malformed stored `blocks` never throws on a read path.
+ */
+export function deriveMask(geometry: {
+  readonly rows: number;
+  readonly cols: number;
+  readonly blocks: readonly number[];
+}): Mask {
+  const { rows, cols, blocks } = geometry;
+  const blocked = new Set(blocks);
+  const mask: string[] = [];
+  for (let r = 0; r < rows; r += 1) {
+    let row = "";
+    for (let c = 0; c < cols; c += 1) {
+      row += blocked.has(r * cols + c) ? MASK_BLOCK : MASK_CELL;
+    }
+    mask.push(row);
+  }
+  return mask;
+}
