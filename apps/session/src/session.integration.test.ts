@@ -23,6 +23,7 @@ import { createFakeAuthProvider } from "@crossy/auth";
 import type { FakeAuthProvider } from "@crossy/auth";
 import {
   decodeServerMessage,
+  LIVE_ACTIVITY_MAX_AGE_MS,
   type Role,
   type ServerMessage,
   type SyncMessage,
@@ -34,6 +35,7 @@ import { flushToPostgres, SnapshotRegressionError } from "./writer";
 import type { StateSnapshot } from "./writer";
 import { hydrateGame } from "./hydrate";
 import { loadGameState, loadPuzzleSnapshot } from "./repo";
+import { loadLiveTokens } from "./push/tokens";
 
 const POSTGRES_IMAGE = "postgres:16-alpine";
 const BOOT_TIMEOUT_MS = 180_000;
@@ -2070,5 +2072,117 @@ describe("presence and liveness (PROTOCOL.md §6, §9)", () => {
     } finally {
       await liveServer.close();
     }
+  });
+});
+
+// The Live Activity token-read path (PROTOCOL.md "Live Activity push"; migration 0007). Folded into
+// this suite so there is still ONE Testcontainers boot per package: two container suites in one
+// vitest run race the Testcontainers reaper. The emitter reads live_activity_tokens under the
+// crossy_session SELECT grant, filtered by the created_at TTL window; the API is the single writer
+// (INV-7), so the session role must not be able to write it.
+describe("live_activity_tokens read under the session SELECT grant (0007, §12a)", () => {
+  /** Insert a token row as the API would (admin pool), with an explicit created_at for the TTL test. */
+  async function seedToken(
+    gameId: string,
+    userId: string,
+    token: string,
+    environment: "sandbox" | "production",
+    createdAt: Date,
+  ): Promise<void> {
+    await adminPool.query(
+      "insert into users (user_id, display_name) values ($1, $2) on conflict do nothing",
+      [userId, "Member"],
+    );
+    await adminPool.query(
+      `insert into live_activity_tokens (token, user_id, game_id, apns_environment, created_at)
+       values ($1, $2, $3, $4, $5)`,
+      [token, userId, gameId, environment, createdAt.toISOString()],
+    );
+  }
+
+  it("reads all fresh tokens for a game, in insertion order, under crossy_session (§12a)", async () => {
+    const u1 = randomUUID();
+    const u2 = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: u1, role: "solver" },
+        { userId: u2, role: "solver" },
+      ],
+    });
+    const nowMs = Date.now();
+    await seedToken(gameId, u1, "tok-a", "sandbox", new Date(nowMs - 1000));
+    await seedToken(gameId, u2, "tok-b", "production", new Date(nowMs - 500));
+    const tokens = await loadLiveTokens(sessionPool, gameId, nowMs);
+    expect(tokens).toEqual([
+      { token: "tok-a", userId: u1, environment: "sandbox" },
+      { token: "tok-b", userId: u2, environment: "production" },
+    ]);
+  });
+
+  it("excludes a token older than the 12h TTL window (§12a lock-screen cap)", async () => {
+    const uFresh = randomUUID();
+    const uStale = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: uFresh, role: "solver" },
+        { userId: uStale, role: "solver" },
+      ],
+    });
+    const nowMs = Date.now();
+    await seedToken(
+      gameId,
+      uFresh,
+      "fresh",
+      "sandbox",
+      new Date(nowMs - 60_000),
+    );
+    // One second past the window: dead, must not be read (the reader filters, no sweeper needed).
+    await seedToken(
+      gameId,
+      uStale,
+      "stale",
+      "sandbox",
+      new Date(nowMs - LIVE_ACTIVITY_MAX_AGE_MS - 1000),
+    );
+    const tokens = await loadLiveTokens(sessionPool, gameId, nowMs);
+    expect(tokens.map((t) => t.token)).toEqual(["fresh"]);
+  });
+
+  it("scopes the read to the game: another game's tokens never leak in (§12a)", async () => {
+    const uA = randomUUID();
+    const uB = randomUUID();
+    const gameA = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: uA, role: "solver" }],
+    });
+    const gameB = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: uB, role: "solver" }],
+    });
+    const nowMs = Date.now();
+    await seedToken(gameA, uA, "a-tok", "sandbox", new Date(nowMs));
+    await seedToken(gameB, uB, "b-tok", "sandbox", new Date(nowMs));
+    const tokens = await loadLiveTokens(sessionPool, gameA, nowMs);
+    expect(tokens.map((t) => t.token)).toEqual(["a-tok"]);
+  });
+
+  it("the session role cannot write live_activity_tokens: it reads, never mutates (INV-7)", async () => {
+    // The registry is api-owned (single writer crossy_api). The session holds SELECT only, so an
+    // INSERT under the session role is refused at the grant layer, the same shape this suite proves
+    // for the other api-owned tables.
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+    });
+    await expect(
+      sessionPool.query(
+        `insert into live_activity_tokens (token, user_id, game_id, apns_environment)
+         values ($1, $2, $3, $4)`,
+        ["nope", userId, gameId, "sandbox"],
+      ),
+    ).rejects.toThrow(/permission denied/i);
   });
 });

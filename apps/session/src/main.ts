@@ -11,6 +11,14 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { createJwksAuthPort } from "@crossy/auth";
 import type { JwksAuthConfig } from "@crossy/auth";
+import {
+  ApnsAdapter,
+  LiveActivityPushEmitter,
+  createHttp2Transport,
+  createInertEmitter,
+  readApnsCredentials,
+} from "./push/emitter";
+import type { ActivityPushEmitter } from "./push/emitter";
 import { createSessionServer } from "./server";
 
 // The JWK Set shape the auth port expects, named without importing `jose` (a service never
@@ -61,11 +69,29 @@ async function main(): Promise<void> {
       ? Number(internalPortRaw)
       : undefined;
 
+  // The Live Activity push emitter (PROTOCOL.md "Live Activity push"). Built only when the APNs
+  // env is complete (APNS_TEAM_ID, APNS_KEY_ID, APNS_PRIVATE_KEY); with any absent the emitter is
+  // INERT with one startup log line, so dev machines and CI run the session identically. The
+  // bundle id is a code constant (com.eamonma.Crossy), never env.
+  const apnsCreds = readApnsCredentials(process.env);
+  const pushEmitter: ActivityPushEmitter =
+    apnsCreds === null
+      ? (console.log(
+          "APNs env incomplete (APNS_TEAM_ID / APNS_KEY_ID / APNS_PRIVATE_KEY): " +
+            "Live Activity push emitter is INERT",
+        ),
+        createInertEmitter())
+      : new LiveActivityPushEmitter({
+          pool,
+          adapter: new ApnsAdapter(apnsCreds, createHttp2Transport()),
+        });
+
   const server = await createSessionServer({
     authPort,
     pool,
     host: process.env["HOST"] ?? "0.0.0.0",
     port: Number(process.env["PORT"] ?? "8081"),
+    pushEmitter,
     ...(internalBearer !== undefined && internalBearer !== ""
       ? { internalBearer }
       : {}),
@@ -81,6 +107,7 @@ async function main(): Promise<void> {
     void (async () => {
       try {
         await server.drain();
+        pushEmitter.stop();
         authPort.stop();
         await pool.end();
       } finally {
