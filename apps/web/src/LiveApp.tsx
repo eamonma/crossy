@@ -63,7 +63,7 @@ import { useElapsedSeconds, formatDuration } from "./ui/gameTime";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
 import type { Navigate } from "./nav";
-import { homeHref } from "./nav";
+import { homeHref, togglePartyHref } from "./nav";
 
 type Role = "host" | "solver" | "spectator";
 
@@ -425,6 +425,11 @@ export function LiveApp({
         gameId={state.ready.gameId}
         code={state.ready.code}
         name={state.ready.name}
+        // Leaving party mode drops ?party=1 and lands back on the interactive game, the exit
+        // side of the same toggle the sidebar menu opens.
+        onExit={() =>
+          navigate(togglePartyHref(state.ready.gameId, params, false))
+        }
       />
     );
   }
