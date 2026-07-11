@@ -8,6 +8,7 @@
 import type { Pool } from "pg";
 import { GameActor } from "./actor";
 import type { ActorOptions } from "./actor";
+import type { Analytics } from "./analytics/analytics";
 import { hydrateGame } from "./hydrate";
 import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
 import { loadGameRow, loadGameState } from "./repo";
@@ -28,6 +29,12 @@ export class ActorRegistry {
      * so the whole push channel is a no-op and the session behaves identically.
      */
     private readonly pushEmitter?: ActivityPushEmitter,
+    /**
+     * The product analytics port, passed to every actor it hydrates. Optional: omitted in
+     * tests and when POSTHOG_TOKEN is absent (the noop), so terminal transitions capture
+     * nothing and the session behaves identically.
+     */
+    private readonly analytics?: Analytics,
   ) {
     this.persistence = createPgPersistence(pool);
   }
@@ -109,6 +116,7 @@ export class ActorRegistry {
       this.now,
       this.actorOptions,
       this.pushEmitter,
+      this.analytics,
     );
   }
 }

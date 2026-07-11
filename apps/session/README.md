@@ -54,12 +54,14 @@ as a hint.
 
 Read only in `main.ts` (12-factor), passed to `createSessionServer`:
 
-| Variable                | Required | Purpose                                                        |
-| ----------------------- | -------- | -------------------------------------------------------------- |
-| `DATABASE_URL`          | yes      | Postgres connection (the `crossy_session` role in production). |
-| `SUPABASE_ISSUER`       | yes      | Token issuer for the auth port (JWKS derived from it).         |
-| `INTERNAL_BEARER_TOKEN` | no       | Enables the membership-changed endpoint; unset disables it.    |
-| `PORT` / `HOST`         | no       | Listen address (defaults 8081 / 0.0.0.0).                      |
+| Variable                | Required | Purpose                                                                                          |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`          | yes      | Postgres connection (the `crossy_session` role in production).                                   |
+| `SUPABASE_ISSUER`       | yes      | Token issuer for the auth port (JWKS derived from it).                                           |
+| `INTERNAL_BEARER_TOKEN` | no       | Enables the membership-changed endpoint; unset disables it.                                      |
+| `PORT` / `HOST`         | no       | Listen address (defaults 8081 / 0.0.0.0).                                                        |
+| `POSTHOG_TOKEN`         | no       | Enables product analytics (posthog-node); unset selects a noop and the SDK is never constructed. |
+| `POSTHOG_HOST`          | no       | PostHog ingestion host; defaults to `https://us.i.posthog.com`.                                  |
 
 ## Testing
 

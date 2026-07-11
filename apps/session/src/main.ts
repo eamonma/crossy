@@ -12,6 +12,12 @@ import { Pool } from "pg";
 import { createJwksAuthPort } from "@crossy/auth";
 import type { JwksAuthConfig } from "@crossy/auth";
 import {
+  createNoopAnalytics,
+  createPosthogAnalytics,
+  readPosthogConfig,
+} from "./analytics/analytics";
+import type { Analytics } from "./analytics/analytics";
+import {
   ApnsAdapter,
   LiveActivityPushEmitter,
   createHttp2Transport,
@@ -86,12 +92,23 @@ async function main(): Promise<void> {
           adapter: new ApnsAdapter(apnsCreds, createHttp2Transport()),
         });
 
+  // Product analytics (posthog-node behind the src/analytics port). Absent POSTHOG_TOKEN
+  // selects the noop and the SDK is never constructed, so dev machines and CI capture
+  // nothing and make zero analytics network calls. POSTHOG_HOST defaults to the US cloud.
+  const posthogConfig = readPosthogConfig(process.env);
+  const analytics: Analytics =
+    posthogConfig === null
+      ? (console.log("POSTHOG_TOKEN unset: product analytics is a no-op"),
+        createNoopAnalytics())
+      : createPosthogAnalytics(posthogConfig);
+
   const server = await createSessionServer({
     authPort,
     pool,
     host: process.env["HOST"] ?? "0.0.0.0",
     port: Number(process.env["PORT"] ?? "8081"),
     pushEmitter,
+    analytics,
     ...(internalBearer !== undefined && internalBearer !== ""
       ? { internalBearer }
       : {}),
@@ -109,6 +126,9 @@ async function main(): Promise<void> {
         await server.drain();
         pushEmitter.stop();
         authPort.stop();
+        // Flush the buffered analytics queue before the process exits; without this the
+        // tail of captured events is dropped (the SDK buffers in memory).
+        await analytics.shutdown();
         await pool.end();
       } finally {
         process.exit(0);

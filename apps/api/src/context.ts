@@ -4,6 +4,7 @@
 // live pool (DESIGN.md §8, §11). `ApiEnv` types Hono's per-request context: the auth
 // middleware resolves an `Identity` and every downstream handler reads it type-safely.
 import type { AuthPort, Identity } from "@crossy/auth";
+import type { Analytics } from "./analytics/analytics";
 import type { Db } from "./db/client";
 
 /**
@@ -77,6 +78,13 @@ export interface AppDeps {
    * API-owned tombstone still runs); the composition root sets the real adapter at M3b.
    */
   readonly vendorIdentity?: VendorIdentityPort;
+  /**
+   * The product analytics port (src/analytics, the only dir that imports posthog-node).
+   * Omit to capture nothing (tests, and the composition root's noop when POSTHOG_TOKEN is
+   * unset behaves the same). capture is fire-and-forget and never throws into a handler;
+   * event properties are counts and ids only (INV-6).
+   */
+  readonly analytics?: Analytics;
   /**
    * Apple app identifier `<TeamID>.<bundleID>` published in the AASA file
    * (`/.well-known/apple-app-site-association`), so `/g/{code}` links open the iOS app as

@@ -54,6 +54,7 @@ import type { Pool } from "pg";
 import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import type { ActorOptions, Connection, GameActor } from "./actor";
+import type { Analytics } from "./analytics/analytics";
 import { colorForUser } from "./color";
 import { errorFrame } from "./frames";
 import { performHandshake } from "./handshake";
@@ -134,6 +135,13 @@ export interface SessionServerConfig {
    * complete). Fire-and-forget throughout: no server path ever awaits it.
    */
   readonly pushEmitter?: ActivityPushEmitter;
+  /**
+   * The product analytics port (src/analytics). When present it is passed to every actor
+   * (terminal transitions) and fed at the join seam here; when omitted nothing captures and
+   * the session behaves exactly as before (the composition root supplies it; unset
+   * POSTHOG_TOKEN yields the noop). Fire-and-forget throughout: no path ever awaits it.
+   */
+  readonly analytics?: Analytics;
 }
 
 export interface SessionServer {
@@ -160,6 +168,7 @@ export function createSessionServer(
     now,
     config.actorOptions,
     config.pushEmitter,
+    config.analytics,
   );
   let draining = false;
 
@@ -249,6 +258,9 @@ export function createSessionServer(
           ...(config.pushEmitter !== undefined
             ? { pushEmitter: config.pushEmitter }
             : {}),
+          ...(config.analytics !== undefined
+            ? { analytics: config.analytics }
+            : {}),
         });
       });
     },
@@ -307,6 +319,8 @@ interface ConnectionDeps {
   readonly livenessTimeoutMs: number;
   /** Fed at the presence sites (connect/disconnect) when configured; absent means inert. */
   readonly pushEmitter?: ActivityPushEmitter;
+  /** Fed at the join seam (first live socket) when configured; absent means no capture. */
+  readonly analytics?: Analytics;
 }
 
 function handleConnection(
@@ -420,10 +434,25 @@ function handleConnection(
     if (firstForUser) {
       const notice = await buildPlayerConnected(deps.pool, gameId, conn);
       result.actor.broadcastExcept(conn, notice);
+      const facts = result.actor.boardFacts();
       // A cluster member arrived: refresh the island (a member who joined after the activity
       // started still appears; PROTOCOL.md "Live Activity push"). Fire-and-forget, after the WS
       // broadcast. The policy dedupes a spectator (non-cluster) connect.
-      deps.pushEmitter?.onPresence(gameId, result.actor.boardFacts());
+      deps.pushEmitter?.onPresence(gameId, facts);
+      // room_joined, beside the same presence seam: the member's first live socket, after the
+      // handshake verified membership against Postgres (INV-8), is the session's authoritative
+      // "member entered the room" moment (the membership INSERT itself is API-owned, INV-7).
+      // A reconnect after a full disconnect fires again, same as the playerConnected notice.
+      // Counts and ids only (INV-6).
+      deps.analytics?.capture({
+        distinctId: conn.userId,
+        event: "room_joined",
+        properties: {
+          roomId: gameId,
+          filled: facts.filled,
+          total: facts.total,
+        },
+      });
     }
   }
 

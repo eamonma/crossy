@@ -7,6 +7,12 @@ import { serve } from "@hono/node-server";
 import { Pool } from "pg";
 import { createJwksAuthPort } from "@crossy/auth";
 import type { JwksAuthConfig } from "@crossy/auth";
+import {
+  createNoopAnalytics,
+  createPosthogAnalytics,
+  readPosthogConfig,
+} from "./analytics/analytics";
+import type { Analytics } from "./analytics/analytics";
 import { buildApp } from "./app";
 import { createDb } from "./db/client";
 import { createHttpMembershipNotifier } from "./identity/http-notifier";
@@ -97,10 +103,23 @@ async function main(): Promise<void> {
     );
   }
 
+  // Product analytics (posthog-node behind the src/analytics port). Absent POSTHOG_TOKEN
+  // selects the noop and the SDK is never constructed, so dev machines and CI capture
+  // nothing and make zero analytics network calls. POSTHOG_HOST defaults to the US cloud.
+  const posthogConfig = readPosthogConfig(process.env);
+  const analytics: Analytics =
+    posthogConfig === null
+      ? createNoopAnalytics()
+      : createPosthogAnalytics(posthogConfig);
+  if (posthogConfig === null) {
+    console.warn("POSTHOG_TOKEN unset: product analytics is a no-op");
+  }
+
   const app = buildApp({
     db,
     authPort,
     sessionWsBase: required("SESSION_WS_BASE"),
+    analytics,
     ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
     ...(appleAppId !== undefined && appleAppId !== "" ? { appleAppId } : {}),
     ...(membershipNotifier !== undefined ? { membershipNotifier } : {}),
@@ -108,8 +127,30 @@ async function main(): Promise<void> {
   });
 
   const port = Number(process.env["PORT"] ?? "8080");
-  serve({ fetch: app.fetch, port });
+  const server = serve({ fetch: app.fetch, port });
   console.log(`core API listening on :${port}`);
+
+  // Graceful shutdown: stop accepting connections, flush the analytics buffer, stop the
+  // ports. The analytics client buffers events in memory, so exiting on the bare signal
+  // (the previous behavior) would drop the unflushed tail.
+  let shuttingDown = false;
+  const shutdown = (signal: string): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`${signal} received: shutting down`);
+    void (async () => {
+      try {
+        server.close();
+        await analytics.shutdown();
+        authPort.stop();
+        await pool.end();
+      } finally {
+        process.exit(0);
+      }
+    })();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
 // Start only when run directly, so importing the module has no side effect.

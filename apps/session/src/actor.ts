@@ -37,6 +37,8 @@ import {
   cellSetToWire,
   toEngineCommand,
 } from "./adapt";
+import { createNoopAnalytics } from "./analytics/analytics";
+import type { Analytics } from "./analytics/analytics";
 import { errorFrame } from "./frames";
 import type { EngineSolution, HydratedGame } from "./hydrate";
 import { Mailbox } from "./mailbox";
@@ -115,6 +117,13 @@ export class GameActor {
    */
   private readonly pushEmitter: ActivityPushEmitter;
 
+  /**
+   * The product analytics port (src/analytics). Same posture as the push emitter: fire-and-
+   * forget beside the terminal seams, never awaited, never on the keystroke path. Defaults
+   * to the noop, so an actor built without one (every existing test) behaves as before.
+   */
+  private readonly analytics: Analytics;
+
   constructor(
     readonly gameId: string,
     hydrated: HydratedGame,
@@ -122,6 +131,7 @@ export class GameActor {
     private readonly now: () => Date,
     options: ActorOptions = {},
     pushEmitter?: ActivityPushEmitter,
+    analytics?: Analytics,
   ) {
     this.state = hydrated.boardState;
     this.solution = hydrated.solution;
@@ -134,6 +144,7 @@ export class GameActor {
       options.flushEventThreshold ?? FLUSH_EVENT_THRESHOLD;
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
     this.pushEmitter = pushEmitter ?? createInertEmitter();
+    this.analytics = analytics ?? createNoopAnalytics();
   }
 
   /**
@@ -360,7 +371,7 @@ export class GameActor {
     }
 
     if (completion !== null) {
-      await this.completeGame(completion, at);
+      await this.completeGame(completion, at, connection.userId);
       return;
     }
     // A non-terminal fill changed the counts: feed the debounced fill push (fire-and-forget). The
@@ -374,30 +385,49 @@ export class GameActor {
    * Terminal completion (INV-3): flush the buffered events plus the completed snapshot
    * SYNCHRONOUSLY, deriving the authoritative participantCount (DISTINCT user_id over
    * cell_events) inside that same transaction, then broadcast `gameCompleted`. Persisted
-   * before broadcast, exactly once.
+   * before broadcast, exactly once. `by` is the member whose move completed the game.
    */
-  private async completeGame(terminalSeq: number, at: string): Promise<void> {
+  private async completeGame(
+    terminalSeq: number,
+    at: string,
+    by: string,
+  ): Promise<void> {
     this.completedAt = at;
     const events = this.pending;
-    this.stats = await this.persistence.flushTerminal(
+    const stats = await this.persistence.flushTerminal(
       this.gameId,
       events,
       (participantCount) => {
-        const stats = this.computeStats(terminalSeq, at, participantCount);
-        return { snap: this.snapshotForFlush(stats), stats };
+        const s = this.computeStats(terminalSeq, at, participantCount);
+        return { snap: this.snapshotForFlush(s), stats: s };
       },
     );
+    this.stats = stats;
     this.pending = [];
     this.cancelFlushTimer();
     this.broadcast({
       type: "gameCompleted",
       seq: terminalSeq,
       at,
-      stats: this.stats,
+      stats,
     });
     // Terminal moment (PROTOCOL.md "Live Activity push"): end the island with the final
     // content-state and a dismissal date. Fire-and-forget, after the WS broadcast.
-    this.pushEmitter.onTerminal(this.gameId, this.boardFacts());
+    const facts = this.boardFacts();
+    this.pushEmitter.onTerminal(this.gameId, facts);
+    // solve_completed, beside the same terminal seam the push reacts to: the transition was
+    // decided and persisted exactly once above (INV-3), so the event fires exactly once per
+    // game. Counts and ids only, never a cell or letter (INV-6).
+    this.analytics.capture({
+      distinctId: by,
+      event: "solve_completed",
+      properties: {
+        roomId: this.gameId,
+        filled: facts.filled,
+        total: facts.total,
+        participantCount: stats.participantCount,
+      },
+    });
   }
 
   /**
@@ -420,7 +450,20 @@ export class GameActor {
     this.broadcast({ type: "gameAbandoned", seq, at, by });
     // Terminal moment (PROTOCOL.md "Live Activity push"): end the island with the frozen partial
     // fill and a dismissal date. Fire-and-forget, after the WS broadcast.
-    this.pushEmitter.onTerminal(this.gameId, this.boardFacts());
+    const facts = this.boardFacts();
+    this.pushEmitter.onTerminal(this.gameId, facts);
+    // room_abandoned, beside the same terminal seam: `by` is the host the API authorized
+    // (DESIGN.md §7), so the room-level transition still has a single acting member. The
+    // INV-4 guard above makes it at-most-once. Counts and ids only (INV-6).
+    this.analytics.capture({
+      distinctId: by,
+      event: "room_abandoned",
+      properties: {
+        roomId: this.gameId,
+        filled: facts.filled,
+        total: facts.total,
+      },
+    });
   }
 
   /**

@@ -157,8 +157,10 @@ in-memory fake, which mints real ES256 tokens; the Supabase adapter is construct
 
 `server.ts` is the composition root: it reads `DATABASE_URL`, `SUPABASE_ISSUER`, and
 `SESSION_WS_BASE` (required), plus the optional `CORS_ORIGIN`, `SESSION_INTERNAL_BASE`,
-`INTERNAL_BEARER_TOKEN`, and `APPLE_APP_ID` (the iOS `<TeamID>.<bundleID>` for the AASA
-route; owner-set in Railway once the Apple app record exists, see `deploy/README.md`).
+`INTERNAL_BEARER_TOKEN`, `APPLE_APP_ID` (the iOS `<TeamID>.<bundleID>` for the AASA
+route; owner-set in Railway once the Apple app record exists, see `deploy/README.md`),
+`POSTHOG_TOKEN` (product analytics; unset selects a noop and posthog-node is never
+constructed), and `POSTHOG_HOST` (defaults to `https://us.i.posthog.com`).
 It constructs the live ports and listens. Deployment provisions a login role carrying
 `crossy_api`'s privileges (see the migration note), so no `SET ROLE` is needed in
 production.
