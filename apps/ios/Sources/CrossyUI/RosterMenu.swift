@@ -266,9 +266,17 @@ enum RosterPuckArt {
         ].joined(separator: "|")
         if let hit = cache[key] { return hit }
 
+        // The puck's ring is a centered stroke (RosterPuckView), so it overhangs the
+        // frame by half its line width; the live pill has room around it, but
+        // ImageRenderer rasterizes to the frame and would clip that overhang at the
+        // four cardinal points (the top/left/right/bottom of the circle, where it
+        // meets the bounding box). A hairline of padding gives the overhang room so
+        // the ring renders whole, and it leaves the icon symmetric so the menu's
+        // slotting is unmoved.
         let renderer = ImageRenderer(
             content: RosterPuckView(
-                member: member, ground: ground, diameter: puckDiameter))
+                member: member, ground: ground, diameter: puckDiameter)
+                .padding(1))
         renderer.scale = 3
         var rendered: Image?
         #if canImport(UIKit)
