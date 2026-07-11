@@ -4,6 +4,7 @@
 // real GameStore fed through its real inbound path, so the pin covers the exact
 // composite the view will draw, overlay entries included.
 
+import CoreGraphics
 import CrossyDesign
 import CrossyProtocol
 import CrossyStore
@@ -131,6 +132,35 @@ final class GridFrameTests: XCTestCase {
         XCTAssertEqual(
             GridFrame.selfIdentity(participants: [], selfUserId: "ana").name,
             IdentityRoster.color(for: "ana").name)
+    }
+
+    // Selecting a cell must not shift its own content: the glyph draw point the
+    // renderer computes for a cell (CrossyGridView.drawCellContent) comes only from
+    // the cell index and its value length, never from frame.fill(cell). Selecting
+    // cell 6 changes its fill to .current but must leave the same cell's glyph
+    // origin exactly where an unselected frame would draw it.
+    func test_selectingACell_neverMovesItsOwnGlyphOrigin() {
+        let store = liveStore()
+        let unselected = GridFrame(store: store, puzzle: mini, selection: nil, ground: .studio)
+        let selected = GridFrame(
+            store: store, puzzle: mini,
+            selection: GridSelection(cell: 6, isAcross: true), ground: .studio)
+        XCTAssertEqual(unselected.fill(6), .base)
+        XCTAssertEqual(selected.fill(6), .current)
+
+        func glyphOrigin(_ frame: GridFrame, cell: Int) -> CGPoint {
+            let value = frame.values[cell] ?? ""
+            let marks = frame.presence[cell] ?? []
+            let origin = GridModule.cellOrigin(cell, cols: mini.cols)
+            let size = GridModule.glyphSize(forLength: max(value.count, 1))
+            let shift = marks.isEmpty ? 0 : GridModule.glyphPresenceShift
+            return CGPoint(
+                x: origin.x + GridModule.glyphCenterX + shift,
+                y: origin.y + GridModule.capCenterY(
+                    baseline: GridModule.glyphBaseline, fontSize: GridModule.glyphFontSize))
+        }
+
+        XCTAssertEqual(glyphOrigin(unselected, cell: 6), glyphOrigin(selected, cell: 6))
     }
 
     // INV-6: nothing solution-shaped can ride the frame into the renderer.
