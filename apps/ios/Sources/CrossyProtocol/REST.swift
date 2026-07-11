@@ -442,11 +442,18 @@ public struct GameView: Sendable, Equatable, Codable {
         public let userId: String
         public let role: Role
         public let joinedAt: String
+        /// The same opaque nullable avatar field the participant carries (PROTOCOL.md
+        /// §4, §12). Synthesized Codable already handles a trailing optional the way
+        /// the field needs: absent or null decodes to nil, a present non-string
+        /// throws, and encode omits it when nil, so a pre-avatar `GET /games/{id}`
+        /// still decodes and re-encodes byte-for-byte.
+        public let avatarUrl: String?
 
-        public init(userId: String, role: Role, joinedAt: String) {
+        public init(userId: String, role: Role, joinedAt: String, avatarUrl: String? = nil) {
             self.userId = userId
             self.role = role
             self.joinedAt = joinedAt
+            self.avatarUrl = avatarUrl
         }
     }
 

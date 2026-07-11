@@ -15,6 +15,11 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
     public let displayName: String
     /// The wire color string, authoritative for roster slotting.
     public let wireColor: String
+    /// The opaque server-resolved avatar URL, nil when the server has none
+    /// (PROTOCOL.md §4). The render layers the fetched image over the colored
+    /// initial puck when this is present and returns to the initial when it is nil,
+    /// still loading, or fails; the initial is always the floor.
+    public let avatarUrl: String?
     public let isHost: Bool
     public let isSpectator: Bool
     public let connected: Bool
@@ -23,11 +28,13 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
 
     public init(
         userId: String, displayName: String, wireColor: String,
+        avatarUrl: String? = nil,
         isHost: Bool, isSpectator: Bool, connected: Bool
     ) {
         self.userId = userId
         self.displayName = displayName
         self.wireColor = wireColor
+        self.avatarUrl = avatarUrl
         self.isHost = isHost
         self.isSpectator = isSpectator
         self.connected = connected

@@ -491,12 +491,19 @@ public struct PlayerConnectedMessage: Sendable, Equatable, Codable {
 
     public let userId: String
     public let displayName: String
+    /// The same opaque nullable avatar field the participant carries (PROTOCOL.md
+    /// §4, §6), absent-tolerant on the wire so a pre-avatar server still decodes.
+    public let avatarUrl: String?
     public let color: String
     public let role: Role
 
-    public init(userId: String, displayName: String, color: String, role: Role) {
+    public init(
+        userId: String, displayName: String, avatarUrl: String? = nil,
+        color: String, role: Role
+    ) {
         self.userId = userId
         self.displayName = displayName
+        self.avatarUrl = avatarUrl
         self.color = color
         self.role = role
     }
@@ -505,6 +512,7 @@ public struct PlayerConnectedMessage: Sendable, Equatable, Codable {
         case type
         case userId
         case displayName
+        case avatarUrl
         case color
         case role
     }
@@ -514,6 +522,8 @@ public struct PlayerConnectedMessage: Sendable, Equatable, Codable {
         try expectWireType(container, CodingKeys.type, Self.wireType)
         userId = try container.decode(String.self, forKey: .userId)
         displayName = try container.decode(String.self, forKey: .displayName)
+        // Absent or null both read as nil; a present non-string throws (§4 rule).
+        avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
         color = try container.decode(String.self, forKey: .color)
         role = try container.decode(Role.self, forKey: .role)
     }
@@ -523,6 +533,7 @@ public struct PlayerConnectedMessage: Sendable, Equatable, Codable {
         try container.encode(Self.wireType, forKey: .type)
         try container.encode(userId, forKey: .userId)
         try container.encode(displayName, forKey: .displayName)
+        try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
         try container.encode(color, forKey: .color)
         try container.encode(role, forKey: .role)
     }

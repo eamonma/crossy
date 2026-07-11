@@ -281,6 +281,7 @@ public final class GameStore {
             let joined = Participant(
                 userId: notice.userId,
                 displayName: notice.displayName,
+                avatarUrl: notice.avatarUrl,
                 color: notice.color,
                 role: notice.role,
                 connected: true)
@@ -295,6 +296,7 @@ public final class GameStore {
                 participants[index] = Participant(
                     userId: present.userId,
                     displayName: present.displayName,
+                    avatarUrl: present.avatarUrl,
                     color: present.color,
                     role: present.role,
                     connected: false)

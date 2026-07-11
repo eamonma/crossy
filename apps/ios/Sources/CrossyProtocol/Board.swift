@@ -65,16 +65,62 @@ public struct Cell: Sendable, Equatable, Codable {
 public struct Participant: Sendable, Equatable, Codable {
     public let userId: String
     public let displayName: String
+    /// The opaque, server-resolved avatar URL (PROTOCOL.md §4), nil when the server
+    /// has none: a client renders the image when present and falls back to the
+    /// initial when it is null, loading, or fails. Absent-tolerant on the wire (the
+    /// firstFillAt/commandId posture), unlike the nullable-and-present fields above:
+    /// a missing key and an explicit null both read as nil, so a server predating
+    /// this field still decodes, and a present non-string still throws.
+    public let avatarUrl: String?
     public let color: String
     public let role: Role
     public let connected: Bool
 
-    public init(userId: String, displayName: String, color: String, role: Role, connected: Bool) {
+    public init(
+        userId: String, displayName: String, avatarUrl: String? = nil,
+        color: String, role: Role, connected: Bool
+    ) {
         self.userId = userId
         self.displayName = displayName
+        self.avatarUrl = avatarUrl
         self.color = color
         self.role = role
         self.connected = connected
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case userId
+        case displayName
+        case avatarUrl
+        case color
+        case role
+        case connected
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decode(String.self, forKey: .userId)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        // Absent-tolerant: a missing key and an explicit null both read as nil, so a
+        // pre-avatar server decodes; a present non-string throws (typeMismatch).
+        avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        color = try container.decode(String.self, forKey: .color)
+        role = try container.decode(Role.self, forKey: .role)
+        connected = try container.decode(Bool.self, forKey: .connected)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(userId, forKey: .userId)
+        try container.encode(displayName, forKey: .displayName)
+        // Omit-when-nil (the resumeFromSeq/firstFillAt/commandId posture): an absent
+        // avatar stays off the wire so a re-encoded pre-avatar snapshot reproduces
+        // its fixture byte-for-byte. The field means the same, present-null or
+        // absent: no avatar (PROTOCOL.md §4, null is first-class either way).
+        try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
+        try container.encode(color, forKey: .color)
+        try container.encode(role, forKey: .role)
+        try container.encode(connected, forKey: .connected)
     }
 }
 
