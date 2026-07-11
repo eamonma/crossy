@@ -28,6 +28,16 @@ export type MembershipChange =
  */
 export interface MembershipNotifier {
   membershipChanged(gameId: string, change: MembershipChange): Promise<void>;
+  /**
+   * Signal that a Live Activity token just registered for `userId` in `gameId` (PROTOCOL.md 12a).
+   * The session hands the fresh island the current authoritative frame at once, killing the
+   * up-to-20s wait before a just-backgrounded island shows live data and closing the
+   * disconnect-before-token race. Same internal channel, bearer, and failure posture as
+   * `membershipChanged`: the caller fires it after the token upsert already succeeded and treats
+   * any failure as log-and-drop, since the registration stands and the TTL/debounce world works
+   * without the welcome.
+   */
+  liveActivityRegistered(gameId: string, userId: string): Promise<void>;
 }
 
 /**

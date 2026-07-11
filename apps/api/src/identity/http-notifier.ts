@@ -46,5 +46,28 @@ export function createHttpMembershipNotifier(
         );
       }
     },
+    async liveActivityRegistered(
+      gameId: string,
+      userId: string,
+    ): Promise<void> {
+      // Same channel and bearer as membershipChanged (PROTOCOL.md 12a). A non-2xx throws so the
+      // caller (the token-registration route) can log-and-drop; the registration already succeeded.
+      const res = await doFetch(
+        `${base}/internal/games/${gameId}/live-activity-registered`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${config.bearer}`,
+          },
+          body: JSON.stringify({ userId }),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(
+          `session live-activity-registered for ${gameId} returned HTTP ${res.status}`,
+        );
+      }
+    },
   };
 }

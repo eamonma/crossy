@@ -59,6 +59,10 @@ let app: Hono<ApiEnv>;
 // `vendorShouldFail` model a downstream fault to exercise the degraded and error paths.
 let notifyCalls: { gameId: string; change: MembershipChange }[] = [];
 let notifyShouldFail = false;
+// The Live Activity welcome notice (PROTOCOL.md 12a) rides the same recording notifier, so the
+// M3a-style suite proves the API fires it after a token upsert without a socket or a network hop.
+let welcomeCalls: { gameId: string; userId: string }[] = [];
+let welcomeShouldFail = false;
 let vendorDeletions: string[] = [];
 let vendorShouldFail = false;
 
@@ -66,6 +70,10 @@ const membershipNotifier: MembershipNotifier = {
   async membershipChanged(gameId, change) {
     notifyCalls.push({ gameId, change });
     if (notifyShouldFail) throw new Error("session unreachable (test)");
+  },
+  async liveActivityRegistered(gameId, userId) {
+    welcomeCalls.push({ gameId, userId });
+    if (welcomeShouldFail) throw new Error("session unreachable (test)");
   },
 };
 const vendorIdentity: VendorIdentityPort = {
@@ -79,6 +87,8 @@ const vendorIdentity: VendorIdentityPort = {
 function resetRecorders(): void {
   notifyCalls = [];
   notifyShouldFail = false;
+  welcomeCalls = [];
+  welcomeShouldFail = false;
   vendorDeletions = [];
   vendorShouldFail = false;
 }
@@ -2257,5 +2267,61 @@ describe("Live Activity token registry (PROTOCOL.md Live Activity push; DESIGN.m
     expect(cols).toEqual(
       ["apns_environment", "created_at", "game_id", "token", "user_id"].sort(),
     );
+  });
+
+  it("fires the welcome notice to the session after a successful registration (PROTOCOL.md 12a)", async () => {
+    resetRecorders();
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostSub });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token: tokenFor("welcome"),
+      environment: "sandbox",
+    });
+    expect(res.status).toBe(204);
+    // The API signalled the session over the same internal channel the kick flow uses, naming the
+    // game and the registering member, so the emitter can hand that member's tokens the current frame.
+    expect(welcomeCalls).toContainEqual({ gameId, userId: hostSub });
+  });
+
+  it("a failed welcome notice is log-and-drop: registration still succeeds with 204", async () => {
+    resetRecorders();
+    welcomeShouldFail = true;
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const token = tokenFor("welcome-fail");
+
+    const res = await postJson(`/games/${gameId}/live-activity-tokens`, host, {
+      token,
+      environment: "sandbox",
+    });
+    // The notice threw, but the registration already committed: 204 stands and the row is written.
+    expect(res.status).toBe(204);
+    const rows = await adminPool.query(
+      "select 1 from live_activity_tokens where token=$1",
+      [token],
+    );
+    expect(rows.rows).toHaveLength(1);
+    resetRecorders();
+  });
+
+  it("a non-member registration never reaches the welcome notice (gate before the signal)", async () => {
+    resetRecorders();
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+
+    const res = await postJson(
+      `/games/${gameId}/live-activity-tokens`,
+      stranger,
+      { token: tokenFor("stranger-welcome"), environment: "sandbox" },
+    );
+    expect(res.status).toBe(403);
+    // The membership gate refused before the upsert, so no welcome was signalled for the stranger.
+    expect(welcomeCalls).toHaveLength(0);
   });
 });

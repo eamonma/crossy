@@ -56,6 +56,23 @@ export type PushAudience =
   | { readonly kind: "exceptUser"; readonly userId: string };
 
 /**
+ * The welcome observation (PROTOCOL.md 12a): a token just registered, so the freshly born island
+ * behind it is showing frame-one data the CLIENT built at backgrounding. This drives an IMMEDIATE
+ * update carrying the server's current authoritative content-state to exactly that member's tokens,
+ * so the island shows live data at once rather than waiting out the fill debounce window. It
+ * BYPASSES the game-level dedupe (the fresh token has never received anything, so the game-level
+ * lastSent must not suppress it), yet it still UPDATES lastSent: the state it sends is current truth
+ * for everyone, so recording it keeps the game dedupe honest for the next presence or fill. It also
+ * permanently closes the known race where a member's own disconnect presence push fires before their
+ * token lands and is dropped: the welcome re-sends current truth to the token the moment it exists.
+ */
+export interface WelcomeObservation {
+  readonly kind: "welcome";
+  /** The registering member; the audience is exactly this user's own tokens. */
+  readonly userId: string;
+}
+
+/**
  * An ActivityKit alert dictionary (Apple's documented Live Activity payload shape: `aps.alert`
  * with `title`, `body`, and `sound` as siblings). Present only on an ALERTING update: it makes the
  * push break through, so the system auto-expands the island and lights a dark lock screen. The
@@ -141,7 +158,8 @@ export type Observation =
   | { readonly kind: "presence" }
   | { readonly kind: "fill" }
   | TerminalObservation
-  | { readonly kind: "kick"; readonly userId: string };
+  | { readonly kind: "kick"; readonly userId: string }
+  | WelcomeObservation;
 
 /**
  * Per-game policy memory, carried between folds. `lastSent` is the content-state most recently
@@ -237,6 +255,8 @@ export function fold(
       return immediateUpdateFold(prev, contentState, nowMs);
     case "fill":
       return fillFold(prev, contentState, nowMs);
+    case "welcome":
+      return welcomeFold(prev, observation.userId, contentState, nowMs);
   }
 }
 
@@ -445,10 +465,56 @@ function immediateUpdateFold(
 }
 
 /**
- * Fill: debounced latest-state. If the debounce window is open (>= DEBOUNCE_MS since the last fill
- * push), push now at priority 5. Otherwise hold this state as `pendingFill` (replacing any earlier
- * held state, so only the latest survives, never a queue) and ask to be woken when the window
- * opens. A fill identical to the last sent never pushes.
+ * Welcome (PROTOCOL.md 12a): a token just registered, so its freshly born island must be handed the
+ * server's current authoritative frame at once. One IMMEDIATE priority-10 `update` carrying the
+ * current content-state, aimed at exactly that member's own tokens. Two deliberate departures from
+ * the other folds:
+ *   - It BYPASSES the game-level dedupe. Every other fold suppresses a content-state equal to
+ *     lastSent, because the whole roster already has it. Here the audience is a fresh token that has
+ *     received nothing, so an equal lastSent must NOT suppress the welcome; the token still needs its
+ *     first frame. That also closes the known race: a member's own disconnect presence push can fire
+ *     before their token lands and be dropped, and the welcome re-delivers current truth once the
+ *     token exists.
+ *   - It still UPDATES lastSent (and lastSentAtMs) to this content-state. The state is current truth
+ *     for the whole game, not just this user, so recording it keeps the next presence/fill dedupe
+ *     honest; a per-user send does not corrupt the game-level memory, it refreshes it with the truth
+ *     everyone would have received. lastFillPushAtMs is untouched: a welcome is not a fill, so it
+ *     neither opens nor re-arms the fill window. Any held pendingFill/pendingEnd is left as-is, since
+ *     the welcome targets one user out of band and does not resolve the game-wide debounce.
+ */
+function welcomeFold(
+  prev: PolicyState,
+  userId: string,
+  cs: LiveActivityContentState,
+  nowMs: number,
+): PolicyResult {
+  return {
+    state: {
+      ...prev,
+      lastSent: cs,
+      lastSentAtMs: nowMs,
+    },
+    decisions: [
+      {
+        event: "update",
+        priority: 10,
+        contentState: cs,
+        audience: { kind: "user", userId },
+        staleAfterMs: STALE_AFTER_MS,
+      },
+    ],
+    wakeAtMs: null,
+  };
+}
+
+/**
+ * Fill: LEADING-EDGE debounced latest-state. If the debounce window is open (the first fill ever, or
+ * >= DEBOUNCE_MS since the last fill push), push NOW at priority 5 and re-arm the window (record this
+ * push as lastFillPushAtMs), so a fill after quiet leads rather than trailing the full window.
+ * Otherwise coalesce: hold this state as `pendingFill` (replacing any earlier held state, so only the
+ * latest survives, never a queue) and ask to be woken when the window opens, at which point
+ * flushPending emits the latest held state (the trailing flush). A fill identical to the last sent
+ * never pushes (duplicate suppression, unchanged).
  */
 function fillFold(
   prev: PolicyState,

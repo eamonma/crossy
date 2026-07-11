@@ -293,6 +293,147 @@ describe("§12a policy: fill is debounced latest-state at priority 5", () => {
   });
 });
 
+describe("§12a policy: fill is LEADING-EDGE with trailing coalescing", () => {
+  it("leading fire: a fill after quiet pushes immediately, never trailing the window", () => {
+    // No prior fill push (quiet): the first fill leads at once, it does not wait DEBOUNCE_MS.
+    const r = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "fill" },
+      cs({ filled: 11 }),
+      0,
+    );
+    expect(r.decisions).toHaveLength(1);
+    expect(r.decisions[0]).toMatchObject({ event: "update", priority: 5 });
+    // The window re-arms on the leading fire: lastFillPushAtMs stamps this push.
+    expect(r.state.lastFillPushAtMs).toBe(0);
+  });
+
+  it("in-window coalesce: fills inside the window collapse to the latest held state", () => {
+    let state: PolicyState = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "fill" },
+      cs({ filled: 11 }),
+      0,
+    ).state;
+    // Three fills before the window opens: none push, only the latest is held (no queue).
+    const a = fold(state, { kind: "fill" }, cs({ filled: 12 }), 5_000);
+    expect(a.decisions).toHaveLength(0);
+    state = a.state;
+    state = fold(state, { kind: "fill" }, cs({ filled: 13 }), 6_000).state;
+    const c = fold(state, { kind: "fill" }, cs({ filled: 14 }), 7_000);
+    expect(c.decisions).toHaveLength(0);
+    expect(c.state.pendingFill).toEqual(cs({ filled: 14 }));
+    // The wake is anchored to the leading push, so the trailing flush is one window later.
+    expect(c.wakeAtMs).toBe(DEBOUNCE_MS);
+  });
+
+  it("trailing flush carries the latest held state at the window boundary", () => {
+    const held = st({
+      lastSent: cs({ filled: 11 }),
+      lastSentAtMs: 0,
+      lastFillPushAtMs: 0,
+      pendingFill: cs({ filled: 14 }),
+    });
+    const flushed = flushPending(held, DEBOUNCE_MS);
+    expect(flushed.decisions).toHaveLength(1);
+    expect(flushed.decisions[0]).toMatchObject({
+      event: "update",
+      priority: 5,
+    });
+    expect(flushed.state.lastSent).toEqual(cs({ filled: 14 }));
+    expect(flushed.state.pendingFill).toBeNull();
+    // The window re-arms on the trailing flush too, so the next leading fire needs a fresh window.
+    expect(flushed.state.lastFillPushAtMs).toBe(DEBOUNCE_MS);
+  });
+
+  it("re-arm: a fill one window after the leading fire leads again", () => {
+    const afterLead = st({
+      lastSent: cs({ filled: 11 }),
+      lastSentAtMs: 0,
+      lastFillPushAtMs: 0,
+    });
+    const r = fold(
+      afterLead,
+      { kind: "fill" },
+      cs({ filled: 20 }),
+      DEBOUNCE_MS,
+    );
+    expect(r.decisions).toHaveLength(1);
+    expect(r.decisions[0]!.priority).toBe(5);
+    expect(r.state.lastFillPushAtMs).toBe(DEBOUNCE_MS);
+  });
+});
+
+describe("§12a policy: a welcome hands a fresh token the current authoritative frame", () => {
+  it("emits one immediate priority-10 update to the registering user's own tokens", () => {
+    const r = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "welcome", userId: "u7" },
+      cs({ filled: 30 }),
+      1000,
+    );
+    expect(r.decisions).toHaveLength(1);
+    expect(r.decisions[0]).toMatchObject({
+      event: "update",
+      priority: 10,
+      audience: { kind: "user", userId: "u7" },
+      staleAfterMs: STALE_AFTER_MS,
+    });
+    expect(r.wakeAtMs).toBeNull();
+  });
+
+  it("BYPASSES the game-level dedupe: it fires even when the state equals lastSent", () => {
+    // A presence push already set lastSent to this exact frame; the whole roster has it. A fresh
+    // token that just registered has received nothing, so the welcome must still deliver it.
+    const primed = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "presence" },
+      cs(),
+      1000,
+    ).state;
+    const r = fold(primed, { kind: "welcome", userId: "u7" }, cs(), 2000);
+    expect(r.decisions).toHaveLength(1);
+    expect(r.decisions[0]).toMatchObject({
+      event: "update",
+      audience: { kind: "user", userId: "u7" },
+    });
+  });
+
+  it("still updates lastSent to the sent frame (current truth for everyone), without a fill re-arm", () => {
+    const primed = st({
+      lastSent: cs({ filled: 5 }),
+      lastSentAtMs: 500,
+      lastFillPushAtMs: 500,
+      pendingFill: cs({ filled: 6 }),
+    });
+    const r = fold(
+      primed,
+      { kind: "welcome", userId: "u7" },
+      cs({ filled: 9 }),
+      2000,
+    );
+    // lastSent refreshes to the truth this token received, so the next dedupe stays honest...
+    expect(r.state.lastSent).toEqual(cs({ filled: 9 }));
+    expect(r.state.lastSentAtMs).toBe(2000);
+    // ...but a welcome is not a fill, so it neither opens nor re-arms the fill window,
+    // and it leaves any held pendingFill/pendingEnd untouched (it targets one user out of band).
+    expect(r.state.lastFillPushAtMs).toBe(500);
+    expect(r.state.pendingFill).toEqual(cs({ filled: 6 }));
+  });
+
+  it("a following presence to the whole game deduplicates against the welcome's lastSent", () => {
+    // The welcome recorded current truth as lastSent; a presence carrying the same frame is a no-op.
+    const afterWelcome = fold(
+      INITIAL_POLICY_STATE,
+      { kind: "welcome", userId: "u7" },
+      cs(),
+      1000,
+    ).state;
+    const presence = fold(afterWelcome, { kind: "presence" }, cs(), 2000);
+    expect(presence.decisions).toHaveLength(0);
+  });
+});
+
 describe("§12a policy: a duplicate content-state never pushes (dedupe)", () => {
   it("a presence push equal to the last sent is suppressed", () => {
     const first = fold(INITIAL_POLICY_STATE, { kind: "presence" }, cs(), 1000);
