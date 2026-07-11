@@ -9,6 +9,21 @@
 
 import CrossyDesign
 
+/// A member's live cursor as the roster needs it (PROTOCOL.md §4, §9: `board.cursors`
+/// carries `{userId, cell, direction}` for every connected solver, best-effort,
+/// cleared when their last socket closes). Twin of the wire `Cursor`/store `Cursor`,
+/// kept here so RosterList and RosterMenu stay plain-data consumers (the GridPresence
+/// pattern) rather than importing the store or protocol types.
+public struct RosterCursor: Sendable, Equatable {
+    public let cell: Int
+    public let isAcross: Bool
+
+    public init(cell: Int, isAcross: Bool) {
+        self.cell = cell
+        self.isAcross = isAcross
+    }
+}
+
 /// One participant as the chrome needs it, plain data.
 public struct RosterMember: Sendable, Equatable, Identifiable {
     public let userId: String
@@ -23,13 +38,19 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
     public let isHost: Bool
     public let isSpectator: Bool
     public let connected: Bool
+    /// The member's live cursor, or nil when they have none right now: never
+    /// connected with a cursor yet, or a spectator (spectator cursors are
+    /// suppressed client-side by default, PROTOCOL.md §9; DESIGN.md §15). This is
+    /// the one fact the roster's "Go to" action gates on.
+    public let cursor: RosterCursor?
 
     public var id: String { userId }
 
     public init(
         userId: String, displayName: String, wireColor: String,
         avatarUrl: String? = nil,
-        isHost: Bool, isSpectator: Bool, connected: Bool
+        isHost: Bool, isSpectator: Bool, connected: Bool,
+        cursor: RosterCursor? = nil
     ) {
         self.userId = userId
         self.displayName = displayName
@@ -38,6 +59,7 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
         self.isHost = isHost
         self.isSpectator = isSpectator
         self.connected = connected
+        self.cursor = cursor
     }
 
     /// The member's roster identity (wire color first, hash-of-id fallback).
@@ -115,6 +137,16 @@ public enum RosterList {
     public static func canKick(_ member: RosterMember, selfUserId: String?) -> Bool {
         guard let selfUserId else { return false }
         return member.userId != selfUserId
+    }
+
+    /// Whether the roster's "Go to" action is live for this member: only when they
+    /// hold a live cursor right now (PROTOCOL.md §4, §9). No cursor means the
+    /// action is absent or disabled, never a jump to a stale or guessed cell. A
+    /// spectator never carries a cursor here (client-side suppression, DESIGN.md
+    /// §15), so this predicate alone keeps the action off their row with no extra
+    /// role check.
+    public static func canJump(_ member: RosterMember) -> Bool {
+        member.cursor != nil
     }
 
     private static func compareASCII(_ a: String, _ b: String) -> Bool {

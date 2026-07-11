@@ -5,17 +5,18 @@ import XCTest
 // The roster derivations: presence order for the puck cluster and the menu's
 // rows (connected first, byte-ordered within a group so nothing shuffles
 // between renders, INV-1: no locale-aware collation), the cluster's overflow
-// cap, the menu subtitle's state word, and the spectator predicate behind the
-// Join in affordance (ID-5; EXPERIENCE.md Watching).
+// cap, the menu subtitle's state word, the spectator predicate behind the
+// Join in affordance (ID-5; EXPERIENCE.md Watching), and the live-cursor
+// predicate behind the roster's Go to action (PROTOCOL.md §4, §9).
 
 final class RosterListTests: XCTestCase {
     private func member(
         _ id: String, name: String? = nil, connected: Bool = true,
-        host: Bool = false, spectator: Bool = false
+        host: Bool = false, spectator: Bool = false, cursor: RosterCursor? = nil
     ) -> RosterMember {
         RosterMember(
             userId: id, displayName: name ?? id.capitalized, wireColor: "#17917F",
-            isHost: host, isSpectator: spectator, connected: connected)
+            isHost: host, isSpectator: spectator, connected: connected, cursor: cursor)
     }
 
     func test_ordered_connectedComeFirstThenByteOrder_inv1() {
@@ -129,5 +130,35 @@ final class RosterListTests: XCTestCase {
         XCTAssertEqual(RosterList.stateWord(member("w", spectator: true)), "Watching")
         XCTAssertEqual(RosterList.stateWord(member("h", host: true)), "Host")
         XCTAssertNil(RosterList.stateWord(member("s")))
+    }
+
+    // The roster's Go to action (PROTOCOL.md §4, §9: `board.cursors` carries
+    // `{userId, cell, direction}` for every connected solver) is live only when
+    // the member holds a live cursor right now; no cursor yields no jump target,
+    // whatever their role or connection state.
+    func test_canJump_gatesOnALiveCursorOnly() {
+        let solving = member("bee", cursor: RosterCursor(cell: 4, isAcross: true))
+        let idle = member("sam")
+        XCTAssertTrue(RosterList.canJump(solving))
+        XCTAssertFalse(RosterList.canJump(idle))
+    }
+
+    // A member with no cursor yields no jump target: the absent-cursor case is
+    // the one the enable/disable rule and the composition root's resolution both
+    // key on (SolveScreen.onGoTo guards on `member.cursor` before calling
+    // `SelectionModel.jump(to:)`).
+    func test_canJump_falseForAMemberWithNoCursor() {
+        let awayHost = member("h", connected: false, host: true)
+        let watcher = member("w", spectator: true)
+        XCTAssertFalse(RosterList.canJump(awayHost))
+        XCTAssertFalse(RosterList.canJump(watcher))
+    }
+
+    // The host and non-host cases the menu's placement rule cares about: a
+    // jumpable member always offers Go to (RosterMenu.personRow reads this
+    // alongside `canKick`, independent of who is asking).
+    func test_canJump_isIndependentOfHostOrSelf() {
+        let target = member("bee", host: true, cursor: RosterCursor(cell: 0, isAcross: false))
+        XCTAssertTrue(RosterList.canJump(target))
     }
 }

@@ -145,6 +145,15 @@ section 12). Host powers live here: kick (`DELETE /games/{id}/members/{userId}`,
 never themselves) and abandon (`POST /games/{id}/abandon`, one confirm, plainly
 worded). A spectator's one action here is Join in.
 
+Each member's row also offers Go to when they hold a live cursor (`board.cursors`,
+PROTOCOL.md sections 4 and 9): tapping it moves the camera to the cell they are
+currently solving, on the same follow curve a clue-browser jump already rides
+(GridCamera). No cursor, no action: the row renders plain. Placement follows the
+host's other power: for the room owner, Go to sits next to Kick; for anyone else,
+it takes the slot Kick would occupy. Self's own row never offers it, since you do
+not jump to yourself. Web mirrors the same rule from the solving-now roster: a
+teammate's avatar dot becomes the action when they have a live cursor.
+
 ### Clue browser
 
 The clue bar, stretched: both directions, current word pinned, filled words quietly

@@ -153,6 +153,29 @@ final class SelectionModelTests: XCTestCase {
         XCTAssertEqual(harness.model.selection.isAcross, false)
     }
 
+    // MARK: - Jump (the roster's Go to target resolution)
+
+    // The roster's Go to action resolves a member's live cursor
+    // (RosterCursor, PROTOCOL.md §4, §9) into the same GridSelection a
+    // clue-browser jump lands on, and CrossyGridView's `.onChange(of: selection)`
+    // then drives the GridCamera follow (I2c) unmodified: the mechanism is
+    // exactly `jump(to:)`, so pinning `jump` here pins the roster's target
+    // resolution too.
+    func test_jump_landsOnTheGivenCellAndAxis_rosterGoTo() {
+        let harness = Harness(puzzle: puzzle)
+        let cursor = RosterCursor(cell: 11, isAcross: false)
+        harness.model.jump(to: GridSelection(cell: cursor.cell, isAcross: cursor.isAcross))
+        XCTAssertEqual(harness.model.selection, GridSelection(cell: 11, isAcross: false))
+    }
+
+    func test_jump_ignoresABlockedOrOutOfRangeTarget() {
+        let harness = Harness(puzzle: puzzle)
+        harness.model.jump(to: GridSelection(cell: 2, isAcross: true))  // a block
+        XCTAssertEqual(harness.model.selection, GridSelection(cell: 0, isAcross: true))
+        harness.model.jump(to: GridSelection(cell: 999, isAcross: true))  // out of range
+        XCTAssertEqual(harness.model.selection, GridSelection(cell: 0, isAcross: true))
+    }
+
     func test_filledFacts_flowThroughTheRenderedCompositeClosure_INV10() {
         let harness = Harness(puzzle: puzzle)
         // Cell 11 filled by "the room" (not via the model): typing at 10 must skip
