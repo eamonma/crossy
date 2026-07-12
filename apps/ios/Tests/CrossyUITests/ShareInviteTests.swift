@@ -9,32 +9,24 @@ import XCTest
 final class ShareInviteTests: XCTestCase {
     func test_buildsAJoinablePathFormLink() {
         XCTAssertEqual(
-            ShareInvite.url(gameId: "g-1", code: "ABCD2345", name: nil)?.absoluteString,
+            ShareInvite.url(gameId: "g-1", code: "ABCD2345")?.absoluteString,
             "https://crossy.party/game/g-1?code=ABCD2345")
     }
 
-    func test_appendsTheNameURLEncoded() {
-        XCTAssertEqual(
-            ShareInvite.url(gameId: "g-1", code: "ABCD2345", name: "Sunday themeless")?
-                .absoluteString,
-            "https://crossy.party/game/g-1?code=ABCD2345&name=Sunday%20themeless")
+    // The code is the whole query: the room name is API-served (GET /games/{id}),
+    // so the link never carries it.
+    func test_carriesOnlyTheCode() throws {
+        let url = try XCTUnwrap(ShareInvite.url(gameId: "g-1", code: "ABCD2345"))
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(items?.map(\.name), ["code"])
     }
 
     func test_noCodeMeansNoLink() {
-        XCTAssertNil(ShareInvite.url(gameId: "g-1", code: nil, name: "Named"))
-    }
-
-    // A blank name is treated as absent (SolveScreen's default `roomName` is
-    // `""`, not nil): the query stays code-only rather than carrying an empty
-    // `name=` pair.
-    func test_blankNameIsTreatedAsAbsent() {
-        XCTAssertEqual(
-            ShareInvite.url(gameId: "g-1", code: "ABCD2345", name: "")?.absoluteString,
-            "https://crossy.party/game/g-1?code=ABCD2345")
+        XCTAssertNil(ShareInvite.url(gameId: "g-1", code: nil))
     }
 
     // An empty code, same rule as the copy row: nothing to share.
     func test_emptyCodeMeansNoLink() {
-        XCTAssertNil(ShareInvite.url(gameId: "g-1", code: "", name: nil))
+        XCTAssertNil(ShareInvite.url(gameId: "g-1", code: ""))
     }
 }

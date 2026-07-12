@@ -47,7 +47,6 @@ describe("party QR target (the QR joins as a solver, never opens another project
       origin: "https://crossy.party",
       gameId: "g-1",
       code: "ABCD2345",
-      name: "Sunday Stumper",
     });
     expect(url).not.toBeNull();
     const parsed = new URL(url!);

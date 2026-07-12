@@ -20,23 +20,23 @@ export function resolveInviteField(
 }
 
 /**
- * Build the shareable invite URL from the resolved fields, in the path-route form the router
+ * Build the shareable invite URL from the resolved code, in the path-route form the router
  * serves (`/game/<id>?code=...`); links minted before path routing (`?game=<id>&code=...`)
  * keep working through the router's one-time redirect. The invite code is the capability a
  * new visitor needs to self-join, so it stays in the link; a null code means there is nothing
- * to share yet and the popover shows its fallback message. The optional name rides along so
- * an old-style link keeps rendering a title before the recipient becomes a member.
+ * to share yet and the popover shows its fallback message. The game name is not appended:
+ * a member gets it from GET /games/{id}, and no other receiving surface reads it (the
+ * signed-out gate shows no title, iOS parses only the code, the unfurl copy is static).
+ * `resolveInviteField` keeps reading `?name=` so already-minted links still title old games.
  */
 export function buildShareUrl(args: {
   origin: string;
   gameId: string;
   code: string | null;
-  name: string | null;
 }): string | null {
-  const { origin, gameId, code, name } = args;
+  const { origin, gameId, code } = args;
   if (code === null) return null;
-  const base = `${origin}/game/${encodeURIComponent(gameId)}?code=${code}`;
-  return name === null ? base : `${base}&name=${encodeURIComponent(name)}`;
+  return `${origin}/game/${encodeURIComponent(gameId)}?code=${code}`;
 }
 
 /**
@@ -45,16 +45,14 @@ export function buildShareUrl(args: {
  * they refuse to fire for a same-domain Safari tap or from an in-app browser (Discord), which is
  * exactly where an invitee lands on the web. A custom scheme can be invoked from a button on that
  * page, so the invite gate offers it. The shape mirrors the web link (`/game/<id>?code=...`); the
- * app digests it through the same parser as a scanned QR (iOS InviteScan, the `?code=` branch).
- * A null code means the app has nothing to join, so there is no link to offer.
+ * app digests it through the same parser as a scanned QR (iOS InviteScan, the `?code=` branch),
+ * which reads nothing but the code. A null code means there is no link to offer.
  */
 export function buildAppLink(args: {
   gameId: string;
   code: string | null;
-  name: string | null;
 }): string | null {
-  const { gameId, code, name } = args;
+  const { gameId, code } = args;
   if (code === null) return null;
-  const base = `crossy://game/${encodeURIComponent(gameId)}?code=${code}`;
-  return name === null ? base : `${base}&name=${encodeURIComponent(name)}`;
+  return `crossy://game/${encodeURIComponent(gameId)}?code=${code}`;
 }
