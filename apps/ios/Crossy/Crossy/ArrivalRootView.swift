@@ -217,7 +217,14 @@ struct ArrivalRootView: View {
                         joinSheetSource: JoinSheetSource(namespace: joinZoom),
                         roomZoomSource: RoomZoomSource(namespace: roomZoom)
                     )
-                    .toolbar(.hidden, for: .navigationBar)
+                    // The Rooms nav bar is VISIBLE but title-less now (the
+                    // toolbar-adoption ruling, DESIGN.md §4): the screen keeps
+                    // its in-content 32pt "Rooms" title, and the bar carries only
+                    // the Join item, which goos into the room's trailing cluster
+                    // across the #132 zoom push. An empty inline title claims the
+                    // strip without a system title fighting the hand-set one.
+                    .navigationTitle("")
+                    .navigationBarTitleDisplayMode(.inline)
                     .navigationDestination(for: ArrivalRoute.self) { route in
                         // Only the Rooms tab zooms: the room grows out of the card
                         // (or the Join capsule) that launched it. The zoom is applied
@@ -390,19 +397,43 @@ struct ArrivalRootView: View {
                     onBack: pop,
                     onExit: pop
                 )
-                .toolbar(.hidden, for: .navigationBar)
+                .modifier(RoomNavBarChrome())
             } else {
                 // Unreachable: roomRoute(for:) only builds .room with live facts.
                 DemoRoomView(onBack: pop)
-                    .toolbar(.hidden, for: .navigationBar)
+                    .modifier(RoomNavBarChrome())
             }
         case .fixtureRoom:
             DemoRoomView(onBack: pop)
-                .toolbar(.hidden, for: .navigationBar)
+                .modifier(RoomNavBarChrome())
         }
     }
 
     private func roomRoute(for gameId: String) -> ArrivalRoute {
         model.liveRoomFacts == nil ? .fixtureRoom : .room(gameId: gameId)
+    }
+}
+
+/// The room's navigation-bar chrome (the toolbar-adoption ruling, DESIGN.md §4).
+/// The bar is VISIBLE and title-less now (the room draws no title; the board
+/// bleeds to the top edge under the bar's glass items, the full-bleed
+/// amendment), the SYSTEM back button hidden so OUR back item is the only way
+/// out (onBack/kicked-exit semantics), and the bar transparent so it floats over
+/// the board rather than owning a strip. SolveScreen supplies the items through
+/// `.toolbar`; this only sets the container's disposition. The floor is iOS 18,
+/// and every API here lives at 18 or has an inert older path.
+private struct RoomNavBarChrome: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            // OUR back item leads the toolbar; the system back would double it
+            // (the gate rig showed two chevrons), so it is hidden here.
+            .navigationBarBackButtonHidden(true)
+            // The board runs under the bar (the full-bleed amendment): a
+            // transparent bar floats its glass items over the grid instead of
+            // owning the top strip. The items carry their own glass on 26 and the
+            // plain material below.
+            .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
