@@ -15,7 +15,11 @@ function Avatar({
       data-slot="avatar"
       data-size={size}
       className={cn(
-        "group/avatar relative flex size-8 shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-10 data-[size=sm]:size-6 dark:after:mix-blend-lighten",
+        // Sizes as rem literals (badge.tsx's lesson): the theme's Radix spacing steps
+        // render size-8 at 48px and size-6 at 32px, so the stock shadcn scale quietly
+        // outgrows every row calibrated for 32/24/40px avatars (the game toolbar's
+        // 36px floor, its 8rem presence slot).
+        "group/avatar relative flex size-[2rem] shrink-0 rounded-full select-none after:absolute after:inset-0 after:rounded-full after:border after:border-border after:mix-blend-darken data-[size=lg]:size-[2.5rem] data-[size=sm]:size-[1.5rem] dark:after:mix-blend-lighten",
         className,
       )}
       {...props}

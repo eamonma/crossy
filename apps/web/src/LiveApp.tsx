@@ -53,8 +53,8 @@ import {
   ClueStrip,
   clueOn,
 } from "./ui/Clues";
-import { SolvingNow } from "./ui/SolvingNow";
-import { buildRoster, cluePresence } from "./ui/roster";
+import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
+import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
 import { parseClueRefs, referencedCells } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
@@ -177,6 +177,9 @@ interface Ready {
   selfId: string | null;
   /** True for a guest: they can never hold solver or host (DESIGN.md section 8). */
   isAnonymous: boolean;
+  /** The REST membership snapshot: the only pre-welcome truth about the room, sizing the
+   * SolvingNow placeholder before presence arrives with the first snapshot. */
+  members: readonly GameMember[];
 }
 
 type LoadState =
@@ -339,6 +342,7 @@ export function LiveApp({
           apiBase: api,
           selfId,
           isAnonymous,
+          members: view.members,
         },
       });
     })().catch(() => {
@@ -537,8 +541,9 @@ function Skeleton({ className = "" }: { className?: string }) {
  * twin columns at the wide breakpoint), filled with
  * quiet placeholder blocks instead of a centered card. No geometry is known yet, so the
  * board area is a square shimmer; when REST lands, LiveGame renders the real grid at its
- * true geometry, so only the placeholders change, not the frame. No spinner. In the shell
- * it fills the same content frame the live game will, so nothing jumps when it settles.
+ * true geometry, and the chrome rows here match the live rows height for height, so only
+ * the placeholders change, not the frame. No spinner. In the shell it fills the same
+ * content frame the live game will, so nothing jumps when it settles.
  */
 function LoadingGameShell({ inShell }: { inShell: boolean }) {
   const railList = (
@@ -568,20 +573,25 @@ function LoadingGameShell({ inShell }: { inShell: boolean }) {
         aria-busy="true"
         aria-label="Opening the game"
       >
-        <header className="flex items-center gap-2 px-2 sm:px-3 py-2">
-          <Skeleton className="h-8 w-8 rounded-3" />
+        {/* GameToolbar's resting geometry exactly (36px row, py-1.5, the reserved 8rem
+            presence slot), so the swap to the live room holds the chrome row still. */}
+        <header className="flex min-h-[calc(1.5rem+0.75rem)] items-center gap-2 px-2 sm:px-3 py-1.5">
+          <Skeleton className="h-6 w-6 rounded-3" />
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Skeleton className="h-6 w-40 max-w-[45%] rounded-3" />
             <Skeleton className="h-4 w-12 rounded-2" />
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Skeleton className="h-7 w-16 rounded-3" />
-            <Skeleton className="h-8 w-8 rounded-3" />
-            <Skeleton className="h-8 w-20 rounded-3" />
+          <div className="flex items-center gap-3">
+            <div className="flex min-w-[8rem] shrink-0 items-center justify-end">
+              <Skeleton className="h-6 w-16 rounded-3" />
+            </div>
+            <Skeleton className="h-6 w-6 rounded-3" />
+            <Skeleton className="h-6 w-16 rounded-3" />
           </div>
         </header>
 
-        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-dashed border-border-dashed">
+        {/* ClueStrip's height exactly: its text-4 line (1.75rem) plus py-1.5. */}
+        <div className="flex min-h-[2.5rem] items-center gap-3 px-4 border-b border-dashed border-border-dashed">
           <Skeleton className="h-4 w-8 rounded-2" />
           <Skeleton className="h-4 w-2/3 max-w-[24rem] rounded-2" />
         </div>
@@ -797,6 +807,30 @@ function LiveGame({
   // with the teammates on it. Self is dropped (your row is already amber), so a solo game and a
   // room where only you have a resolvable cursor both yield an empty map and unchanged rows.
   const presenceByClue = useMemo(() => cluePresence(roster), [roster]);
+
+  // The solving-now slot for the rail and the dock. Pre-welcome the roster is always empty
+  // (participants ride the first snapshot), so mounting the real block then would shove the
+  // clue lists down the moment people load. Instead the placeholder stands at the block's
+  // exact geometry, sized from the REST membership snapshot: rows for the host and solver
+  // members (the roster's single-row regime, GROUP_PAST), the watching line when other
+  // members spectate, nothing at all for a solo room.
+  const otherMembers = ready.members.filter(
+    (m) => m.userId !== ready.selfId,
+  ).length;
+  const solvingNow =
+    awaitingFirstSync && otherMembers > 0 ? (
+      <SolvingNowPlaceholder
+        solverRows={Math.min(
+          ready.members.filter((m) => m.role !== "spectator").length,
+          GROUP_PAST,
+        )}
+        watching={ready.members.some(
+          (m) => m.role === "spectator" && m.userId !== ready.selfId,
+        )}
+      />
+    ) : awaitingFirstSync ? null : (
+      <SolvingNow roster={roster} onGoTo={goToTeammate} />
+    );
 
   const handleKey = useCallback(
     (key: string, shift: boolean): boolean => {
@@ -1062,7 +1096,7 @@ function LiveGame({
             filled={filled}
             presence={presenceByClue}
             referenced={referenced}
-            solvingNow={<SolvingNow roster={roster} onGoTo={goToTeammate} />}
+            solvingNow={solvingNow}
             onJump={jumpToClue}
           />
 
@@ -1075,7 +1109,7 @@ function LiveGame({
             filled={filled}
             presence={presenceByClue}
             referenced={referenced}
-            solvingNow={<SolvingNow roster={roster} onGoTo={goToTeammate} />}
+            solvingNow={solvingNow}
             onJump={jumpToClue}
           />
         </div>
