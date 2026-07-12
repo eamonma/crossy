@@ -1,6 +1,7 @@
 # JS
 node_modules/
 dist/
+dist-firefox/
 coverage/
 *.tsbuildinfo
 
