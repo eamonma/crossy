@@ -1,58 +1,110 @@
-# Extension pairing handshake (proposal)
+# Extension auth: its own Supabase session
 
-Status: proposal for the Wave 6.2 follow-up track. This slice ships dev-only auth: an
-options page where a bearer token and API base URL are pasted into
-`chrome.storage.local`. That is a developer tool, not the product. The web-side
-counterpart is out of scope for this branch.
+Status: adopted (owner ruling, 2026-07-12). This replaces the earlier
+`externally_connectable` pairing proposal, recorded under Rejected below. The
+paste-token dev surface is gone.
 
-## Proposal
+## The design
 
-Pair through `externally_connectable` messaging with the crossy.party web app. The
-manifest declares `"externally_connectable": {"matches": ["https://crossy.party/*"]}`,
-so only that origin may open the channel; the browser enforces it before any code
-runs. After an explicit "Connect the extension" click on crossy.party, the page calls
-`chrome.runtime.sendMessage(EXTENSION_ID, {type: "crossy/pair", accessToken,
-expiresAt})`. The extension's `onMessageExternal` listener checks `sender.origin`
-against the same allowlist (defense in depth over the manifest gate), stores the
-token, and replies with the paired state. The API base URL stops being user input:
-a paired extension talks to the production API.
+The extension is a first-class Supabase auth client with its own session, not a
+borrower of the web app's. Sign-in runs OAuth through the browser identity API,
+against the same providers the web offers (Discord primary, Apple):
 
-Why this channel: the sender origin is browser-verified, the token never rides the
-page DOM or a broadcast `window.postMessage` that any script in the page could
-listen to, and no content script needs to run on crossy.party in Chrome.
+1. The popup's provider button hands off to the service worker (the popup closes
+   when the auth window takes focus, so the flow cannot live there). The worker
+   builds `{AUTH_BASE}/auth/v1/authorize` with `provider`, a PKCE S256
+   `code_challenge`, and `redirect_to = identity.getRedirectURL()`, then calls
+   `identity.launchWebAuthFlow`.
+2. The captured redirect carries `?code=`, exchanged at
+   `{AUTH_BASE}/auth/v1/token?grant_type=pkce` with the code verifier.
+3. The `{access_token, refresh_token, expires_at, email, display name}` set lands in
+   `chrome.storage.local` (local, never sync: a refresh token must not fan out
+   across devices).
 
-## Threat considerations
+The flow is hand-rolled over fetch and WebCrypto (`src/auth/`); supabase-js stays
+out of the bundle. Every GoTrue call sends the publishable key as `apikey`; it is
+public by design, the same key the web client serves in `/config.json`.
 
-- **Who may message.** Exactly `https://crossy.party`. No wildcard subdomains, no
-  crossy.me (it 301s to crossy.party and never serves the app). Dev builds may add
-  localhost; store builds must not.
-- **Token lifetime.** The extension holds only the short-lived access token, the
-  same bearer the SPA uses (about an hour). Never the refresh token: extension
-  storage is plaintext on disk, and a long-lived credential there widens theft. On a
-  401 the extension marks itself unpaired and points the user at crossy.party.
-- **Refresh.** Once paired, the web app may re-push a fresh access token on any
-  visit while signed in; the first pairing is always an explicit click. Whether an
-  hourly re-visit is acceptable or the push should be automatic is an open question
-  below.
-- **Revocation.** Expiry bounds exposure to the token lifetime. An "unpair" action
-  in the options page clears storage; a `crossy/unpair` message from the web does
-  the same. Server-side session revocation fails the token closed on the next
-  request, since the API verifies per request.
+**Refresh.** MV3 workers are ephemeral, so freshness has two legs: a
+`chrome.alarms` alarm aimed five minutes before expiry, and an on-demand check
+(any token request inside the sixty-second margin refreshes first). All refreshes
+run in the worker, single-flight, so rotation never races between contexts.
+Rotation safety: the new pair is persisted in one atomic `storage.set` before the
+old one is forgotten. A refresh failure splits two ways and only one signs out:
+400/401/403 from the grant is a definitive verdict on the credential (revoked,
+already used, malformed), so the session clears and the popup returns to
+signed-out; everything else (network down, 429, 5xx, a misconfigured base
+answering 404) retries later and never signs out.
 
-## What the web side needs
+**Sign out.** `POST {AUTH_BASE}/auth/v1/logout?scope=local` best-effort with the
+access token, then storage clears regardless. `scope=local` so only the
+extension's session dies; the web app and other devices stay signed in.
 
-- A "Connect the extension" affordance, behind a user click, full accounts only.
-- The published extension id per browser build, shipped as config.
-- A small module that sends `crossy/pair` with the current access token, treats a
-  rejected `sendMessage` as "extension not installed", and shows the paired state.
-- Optionally a token re-push on visits once paired, per the refresh question.
+**Bearer holder, not verifier.** Tokens minted under the `api.crossy.party` custom
+domain carry the Supabase ref-domain issuer
+(`https://qvnvokstvbarsxhufrja.supabase.co/auth/v1`). The extension never decodes
+or validates claims, issuer included; it stores tokens and presents them.
+
+## Baked defaults
+
+- `DEFAULT_API_BASE = https://rest.crossy.party` (the Crossy REST API)
+- `DEFAULT_AUTH_BASE = https://api.crossy.party` (Supabase auth, GoTrue under
+  `/auth/v1`)
+
+These are different hosts, and the distinction bit in practice: pasting the auth
+host as the API base yields Kong's "requested path is invalid". So the API base is
+no longer user input. The options page is an advanced section for local stacks
+only: API base, auth base, and publishable key overrides, empty by default. Host
+permissions stay on demand (requested inside the click gesture) and cover the
+defaults and any override alike.
+
+## Rejected
+
+- **Token relay from crossy.party** (`externally_connectable` messaging, or a
+  content-script `postMessage` relay): relays are access-token-only, because
+  sharing the refresh token between the SPA and the extension trips Supabase's
+  rotation reuse detection. An access token dies about an hour after the last
+  crossy.party visit, and the extension is used away from crossy.party by design;
+  a credential that goes stale unless you keep visiting the site defeats the tool.
+- **OAuth 2.1 dynamic client registration**: a registered client would buy
+  per-client policy that nothing consumes today. Revisit only when a real consumer
+  appears.
+
+## Stable ids
+
+**Chrome.** The manifest commits a `key` (public key only), pinning the unpacked
+dev id to `kgnlalghkpkbnkagkhbccnocoacpcmem`. Generated with:
+
+```sh
+openssl genrsa -out crossy-ext-dev.pem 2048
+# manifest "key":
+openssl rsa -in crossy-ext-dev.pem -pubout -outform DER | openssl base64 -A
+# extension id:
+openssl rsa -in crossy-ext-dev.pem -pubout -outform DER \
+  | shasum -a 256 | cut -c1-32 | tr '0-9a-f' 'a-p'
+```
+
+Only the public key is committed. Unpacked dev loads need nothing else: Chrome
+derives the id from the manifest key. The Chrome Web Store assigns its own id at
+first upload unless the first package carries the private key; whether the store
+id should match the dev id is a packaging-wave call (ROADMAP Wave 6.4), and the
+owner holds the `.pem` for that choice.
+
+**Firefox.** `browser_specific_settings.gecko.id = "extension@crossy.party"`.
+Chrome logs an unrecognized-key warning for this block and ignores it; nothing
+breaks.
+
+## Supabase redirect allowlist
+
+The owner must add the identity redirect URLs to the Supabase auth URL allowlist:
+
+- Chrome: `https://kgnlalghkpkbnkagkhbccnocoacpcmem.chromiumapp.org/`
+- Firefox: `https://a9cefb33c7f1e3c38f826caa8834a8fc2b0fddd7.extensions.allizom.org/`
+  (the host is the SHA-1 hex of the gecko id; confirm with
+  `browser.identity.getRedirectURL()` in the extension console)
 
 ## Open questions
 
-- Firefox has no `externally_connectable`. The counterpart there is a content
-  script scoped to crossy.party relaying `window.postMessage` with strict
-  `event.origin` checks and the same message shapes. Ship both from the start, or
-  Chrome first?
-- Automatic refresh push versus re-pairing when the token expires.
-- Whether pairing deserves server-side visibility (a connected-devices list) or
-  stays purely client-side.
+- Whether signed-in extensions deserve server-side visibility (a connected-devices
+  list) or stay purely client-side. Unchanged from the previous proposal.
+- Store-build ids and allowlist entries for the published packages (Wave 6.4).

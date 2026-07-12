@@ -3,8 +3,13 @@
   "name": "Crossy",
   "version": "0.0.1",
   "description": "Add the crossword on the page you are reading to your Crossy library.",
-  "permissions": ["activeTab", "storage"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlbNQ7gBPgOrAW9ESSKOANFLQWrz3gcmqsQWN+DOB+W/Bsuxt+n22EsGeakOEhAzUwc03gXW9GrTfwlwJ94ZGKyWQRCErzQdLqo5jRBl7iJktgFhbhEBcb3L81x6pr/3/eE3NH7zCgt+CMPJG6j7pzSoxXR+ZXo/QdC9/1LLZ2Z8HF6Xu7YQ1Ht4vJOZdBdjPSJnY6uF0TwvzS2QfdBa6HEGefakK+8qhTiSisey2VZRCnXj79WmZWPJb10E6rRwbBuexf0DctohaZ7LjyGc67XZ8PBoNcIgstr46tAXmF7WirvpQG/zWd+4E/9fXahQSRO+M/s6ZJsVmeEbcmCLx1QIDAQAB",
+  "permissions": ["activeTab", "storage", "identity", "alarms"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
   "content_scripts": [
     {
       "matches": [
@@ -35,5 +40,11 @@
   },
   "options_ui": {
     "page": "options.html"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "extension@crossy.party",
+      "strict_min_version": "115.0"
+    }
   }
 }
