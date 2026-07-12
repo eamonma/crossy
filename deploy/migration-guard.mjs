@@ -22,7 +22,7 @@
 // would trip on it.
 
 /* global process, console */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -232,27 +232,87 @@ export function scanMigrations(dir = DEFAULT_MIGRATIONS_DIR) {
   return violations;
 }
 
+/**
+ * Read the Drizzle journal entries (`meta/_journal.json`), sorted by idx. Returns [] when the
+ * folder has no journal, so the deny-list folder-scan tests (bare temp dirs) treat "no journal"
+ * as "nothing to check".
+ */
+export function readJournalEntries(dir = DEFAULT_MIGRATIONS_DIR) {
+  const path = join(dir, "meta", "_journal.json");
+  if (!existsSync(path)) return [];
+  const journal = JSON.parse(readFileSync(path, "utf8"));
+  const entries = Array.isArray(journal.entries) ? [...journal.entries] : [];
+  return entries.sort((a, b) => a.idx - b.idx);
+}
+
+/**
+ * Journal `when` timestamps MUST be strictly increasing by idx. Drizzle's migrator applies a
+ * migration only when its `when` (folderMillis) is GREATER than the single highest `created_at`
+ * already recorded (`drizzle/node-postgres/migrator`), reading that high-water mark once. So a
+ * later-idx migration stamped at or below an earlier one is SILENTLY SKIPPED on any database that
+ * already recorded the earlier, higher stamp. A fresh database applies everything (no high-water
+ * yet), so CI never sees it; only an existing database (production) does. Hand-edited round or
+ * future `when` values are exactly this hazard: they poisoned the high-water mark here and silently
+ * skipped 0009 and 0010 on production. Returns one entry per out-of-order migration.
+ */
+export function scanJournalOrder(dir = DEFAULT_MIGRATIONS_DIR) {
+  const entries = readJournalEntries(dir);
+  const violations = [];
+  for (let i = 1; i < entries.length; i += 1) {
+    const prev = entries[i - 1];
+    const cur = entries[i];
+    if (!(cur.when > prev.when)) {
+      violations.push({
+        tag: cur.tag,
+        when: cur.when,
+        prevTag: prev.tag,
+        prevWhen: prev.when,
+      });
+    }
+  }
+  return violations;
+}
+
 function main() {
   const dir = DEFAULT_MIGRATIONS_DIR;
   const violations = scanMigrations(dir);
-  if (violations.length === 0) {
-    console.log(`migration-guard: OK, no destructive statements in ${dir}`);
+  const journalOrder = scanJournalOrder(dir);
+  if (violations.length === 0 && journalOrder.length === 0) {
+    console.log(
+      `migration-guard: OK, no destructive statements and a monotonic journal in ${dir}`,
+    );
     process.exit(0);
   }
-  console.error(
-    "migration-guard: BLOCKED. A migration contains a destructive or lock-hazardous statement " +
-      "that must not ride an auto push-to-main deploy:",
-  );
-  for (const v of violations) {
-    console.error(`  ${v.file}: ${v.rules.join(", ")}`);
+  if (violations.length > 0) {
+    console.error(
+      "migration-guard: BLOCKED. A migration contains a destructive or lock-hazardous statement " +
+        "that must not ride an auto push-to-main deploy:",
+    );
+    for (const v of violations) {
+      console.error(`  ${v.file}: ${v.rules.join(", ")}`);
+    }
+    console.error(
+      "\nExpand-only migrations ride the pipeline; contract/destructive changes are deliberate.\n" +
+        "If this is a reviewed contract migration, apply it by hand: GitHub > Actions > Deploy >\n" +
+        "Run workflow, set migrations_only=true and pick your branch (it applies migrations from\n" +
+        "that ref and rolls nothing). Then add the file to ALLOWLIST in deploy/migration-guard.mjs\n" +
+        "so later deploys pass. See deploy/README.md (Migrations + roles).",
+    );
   }
-  console.error(
-    "\nExpand-only migrations ride the pipeline; contract/destructive changes are deliberate.\n" +
-      "If this is a reviewed contract migration, apply it by hand: GitHub > Actions > Deploy >\n" +
-      "Run workflow, set migrations_only=true and pick your branch (it applies migrations from\n" +
-      "that ref and rolls nothing). Then add the file to ALLOWLIST in deploy/migration-guard.mjs\n" +
-      "so later deploys pass. See deploy/README.md (Migrations + roles).",
-  );
+  if (journalOrder.length > 0) {
+    console.error(
+      "migration-guard: BLOCKED. meta/_journal.json `when` timestamps are not strictly increasing\n" +
+        "by idx. Drizzle applies a migration only when its `when` exceeds the highest already\n" +
+        "recorded, so an out-of-order stamp is SILENTLY SKIPPED on an existing database (a fresh DB\n" +
+        "applies everything, so CI stays green). Make the `when` values strictly increase; never\n" +
+        "hand-edit them to round or future values. See deploy/README.md (Migrations + roles).",
+    );
+    for (const v of journalOrder) {
+      console.error(
+        `  ${v.tag} (when=${v.when}) must be greater than ${v.prevTag} (when=${v.prevWhen})`,
+      );
+    }
+  }
   process.exit(1);
 }
 
