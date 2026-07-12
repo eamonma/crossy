@@ -52,6 +52,12 @@ its last just above the feather, the scroll-inset grammar), and a wrapped clue's
 taller bar rescues only the selected cell, panning it clear on the chrome spring,
 never during a live pinch or drag. The standing insets are built from constants, so
 clue length can never move the board: that is the point of the whole arrangement.
+Amended 2026-07-11 (the toolbar-adoption ruling, §4): full-bleed is a
+TRANSPARENT item-bearing system bar floating over the board, not "no bar". The
+board still bleeds to the top edge; the room bar's pieces ride the system nav
+bar's items now, and the standing top inset reads the system bar's height rather
+than a reported RoomBar frame. Constant-built still: clue length never moves the
+board.
 
 **Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
 only person-marker on the board at rest is the presence puck in the cell corner. A
@@ -142,7 +148,12 @@ footprint, top and trailing edges shared (the Mail-button rule, owner ruling
 2026-07-10): the open surface covers the spot it grew from, it never hangs
 beside a still-visible opener. The facts card grows leftward from the time
 pill and can reach the back button on narrow layouts; an eclipsed back button
-hands off for the card's life (PanelEclipse).
+hands off for the card's life (PanelEclipse). Amended 2026-07-11 (the
+toolbar-adoption ruling, §4): on the Rooms→room seam the hand-drawn cluster
+retires and this piece set becomes the system nav bar's items (back leading, the
+time pill then the players and share Menus trailing, a ToolbarSpacer between the
+pill and the Menus). The register above holds unchanged; only the host changes,
+from an overlay VStack to `ToolbarItem`s, so the push can goo them in place.
 
 **Morph grammar.** Glass morphs; it never transitions. No modals, no new surfaces,
 one piece of glass reshaped. SP-i1 pinned the implementation
@@ -226,6 +237,45 @@ frame interpolation (SP-i1 unchanged, a finger owns progress raw and a two-view
 swap snaps under it), and below iOS 26 the facts card falls back to the same
 frame-interpolation walk. Only the tap-opened facts card, only on 26+, rides the
 system swap.
+
+Amended 2026-07-11 (the toolbar-adoption ruling, judged on device; SP-i6, Route
+1). The Rooms→room seam's TOP CHROME becomes the system navigation bar's own
+items. SP-i6 variant E proved on the 26.5 sim that the system morphs nav-bar
+items IN PLACE across a push (Mail's Edit → Select + "..." grammar), the items
+living in the bar's persistent layer while the two screens slide beneath them.
+The owner's decisive device fact: with the #132 zoom driving the push ("match
+on") the back-swipe SCRUBS the item goo under the finger; without it, it does
+not. So the zoom push and the system-toolbar top chrome are ONE package, not two
+choices. Production adopts real `ToolbarItem`s for the top chrome on this seam:
+the Join capsule becomes a trailing item on Rooms and goos into the room's
+trailing cluster (the time pill, then the players and share Menus, split by a
+`ToolbarSpacer` so they read as separate pills, Mail's "..." grammar). This
+supersedes the hand-drawn top-chrome cluster on this seam: the RoomBar's pieces
+retire as hand-positioned overlay glass and re-home as bar items, and the
+occlusion clamp reads the system bar's height instead of a reported RoomBar
+frame (the standing insets stay constant-built, DESIGN.md §2, so clue length
+still can never move the board). The RoomBar cluster law (below) is amended: on
+this seam the cluster IS the system bar's item set, keeping our own back button
+as a leading item (onBack/kicked-exit semantics preserved, never the system
+back), the TimePillRegister and every accessibility label intact. Two findings
+carried into production from the SP-i6 sim run. First, a `Label` in a 26 nav-bar
+item renders ICON-ONLY (even with `.labelStyle(.titleAndIcon)`), so a bar item
+that must read as a word builds its content as an explicit HStack (glyph + Text)
+or Text alone; the Join item takes the HStack, matching the retired capsule's
+register, flagged for the owner's device eye. Second, the 26.1 Menu-in-container
+break gains a bar corollary: a Menu-bearing item lives in the SYSTEM bar's own
+container (not ours), and the gate proved the players and share Menus host as
+glass labels, fuse into the "..." cluster, and morph in place across the push
+without collapsing the bar layout; the menu's own presentation animation on the
+tap stays the owner's device call (the same Menu+`.buttonStyle(.glass)`
+mechanism RosterMenu already ships and the owner ratified). The full-bleed ruling
+(§2) gains a one-line amendment: the board still bleeds to the top edge, but a
+TRANSPARENT item-bearing system bar floats over it (never "no bar"), so the
+board reads under the bar's glass items exactly as it read under the hand-drawn
+cluster. Scope: the Rooms tab and the room only; the Puzzles tab keeps its hidden
+bar and hand-set title for now (a follow-up moves it to the same grammar). Below
+26 the bar items render as the system's plain material (the one-fallback rule),
+and the macOS test host (14) gates the 26-only API exactly as RoomBar/KeyDeck do.
 
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
