@@ -17,20 +17,22 @@ import { celebrationPalette, completionCells } from "./completionStats";
 /** How long the drift lasts, spawn stagger included. Long enough to feel like weather,
  * short enough that the card is the thing you are left with. */
 const SPAWN_WINDOW_S = 0.9;
-const FALL_MIN_S = 2.4;
-const FALL_MAX_S = 3.6;
+const FALL_MIN_S = 2.6;
+const FALL_MAX_S = 4.4;
 
 interface Fleck {
   x0: number; // spawn x, px
   drift: number; // horizontal drift, px/s
   delay: number; // s before this fleck enters
-  fall: number; // s to cross the stage
+  fall: number; // s to cross the stage (heavier flecks fall faster)
   sway: number; // sway amplitude, px
   swayRate: number; // rad/s
+  wobbleRate: number; // rad/s, the second sway frequency so no two paths repeat
   phase: number; // rad
   rot0: number; // rad
   spin: number; // rad/s
-  size: number; // px
+  len: number; // px, the long axis of the paper strip
+  wide: number; // px, the short axis (len * aspect)
   color: string;
 }
 
@@ -44,8 +46,11 @@ function prefersReducedMotion(): boolean {
 /**
  * The viewport-wide drift. Position and alpha are pure functions of elapsed time
  * (no per-frame integration), so a dropped frame costs smoothness, never trajectory.
- * Flecks stagger in across the spawn window, sway as they fall, and fade out
- * individually over the last fifth of their own fall.
+ * Flecks stagger in across the spawn window, sway on two frequencies as they fall, and
+ * fade out individually over the last fifth of their own fall. Every fleck carries a
+ * mass: heavier ones are a touch larger and fall faster and straighter, lighter ones are
+ * tiny and slow and sway wide, so the field reads as paper caught in air, not a loop.
+ * Small and many is the brief: fine pieces read as texture where big ones read as clipart.
  */
 function Confetti({ colors }: { colors: readonly string[] }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -66,21 +71,31 @@ function Confetti({ colors }: { colors: readonly string[] }) {
 
     const rand = (a: number, b: number): number => a + Math.random() * (b - a);
     // Density scales with the stage so a phone is not buried and a desktop is not
-    // sparse; the clamp keeps both ends tasteful.
-    const count = Math.min(240, Math.max(120, Math.round(w / 7)));
-    const flecks: Fleck[] = Array.from({ length: count }, () => ({
-      x0: rand(-20, w + 20),
-      drift: rand(-14, 14),
-      delay: rand(0, SPAWN_WINDOW_S),
-      fall: rand(FALL_MIN_S, FALL_MAX_S),
-      sway: rand(6, 26),
-      swayRate: rand(1.6, 3.4),
-      phase: rand(0, Math.PI * 2),
-      rot0: rand(0, Math.PI * 2),
-      spin: rand(-3, 3),
-      size: rand(5, 10),
-      color: colors[Math.floor(rand(0, colors.length))]!,
-    }));
+    // sparse; the clamp keeps both ends tasteful. Pieces are small now, so the field
+    // holds far more of them than the old coarse drift did.
+    const count = Math.min(460, Math.max(200, Math.round(w / 3.4)));
+    const flecks: Fleck[] = Array.from({ length: count }, () => {
+      // Mass in [0,1] biased light (squared) so most flecks are fine texture and a few
+      // heavier pieces punch through; every physical trait derives from it.
+      const mass = Math.random() ** 2;
+      const len = rand(3, 4.5) + mass * 3.5; // 3px specks up to ~8px heavier strips
+      return {
+        x0: rand(-20, w + 20),
+        drift: rand(-16, 16) * (1 - 0.5 * mass), // heavy flecks drift less sideways
+        delay: rand(0, SPAWN_WINDOW_S),
+        // Heavy flecks fall fast (toward FALL_MIN), light ones dawdle (toward FALL_MAX).
+        fall: FALL_MAX_S - (FALL_MAX_S - FALL_MIN_S) * mass * rand(0.75, 1),
+        sway: (24 - 16 * mass) * rand(0.7, 1.15), // light flecks sway wide, heavy barely
+        swayRate: rand(1.3, 2.6) * (0.7 + 0.6 * mass),
+        wobbleRate: rand(3.4, 6.2),
+        phase: rand(0, Math.PI * 2),
+        rot0: rand(0, Math.PI * 2),
+        spin: rand(-3.4, 3.4) * (1.3 - mass), // light flecks tumble faster
+        len,
+        wide: len * rand(0.28, 0.52), // paper strips, aspect varied so none are twins
+        color: colors[Math.floor(rand(0, colors.length))]!,
+      };
+    });
     const totalS = SPAWN_WINDOW_S + FALL_MAX_S;
 
     let raf = 0;
@@ -95,8 +110,13 @@ function Confetti({ colors }: { colors: readonly string[] }) {
         const p = t / f.fall;
         // Ease-in fall: flecks gather speed as if gravity, no per-frame physics.
         const y = -24 + (h + 48) * (0.55 * p + 0.45 * p * p);
+        // Two-frequency sway: a wide primary drift plus a small fast wobble, so no two
+        // flecks trace the same sine and the air reads turbulent, not metronomic.
         const x =
-          f.x0 + f.drift * t + f.sway * Math.sin(f.swayRate * t + f.phase);
+          f.x0 +
+          f.drift * t +
+          f.sway * Math.sin(f.swayRate * t + f.phase) +
+          f.sway * 0.28 * Math.sin(f.wobbleRate * t + f.phase);
         const alpha =
           Math.min(1, t / 0.25) * Math.max(0, Math.min(1, (1 - p) / 0.2));
         ctx.save();
@@ -104,7 +124,7 @@ function Confetti({ colors }: { colors: readonly string[] }) {
         ctx.rotate(f.rot0 + f.spin * t);
         ctx.globalAlpha = alpha;
         ctx.fillStyle = f.color;
-        ctx.fillRect(-f.size / 2, -f.size * 0.3, f.size, f.size * 0.6);
+        ctx.fillRect(-f.len / 2, -f.wide / 2, f.len, f.wide);
         ctx.restore();
       }
       raf = requestAnimationFrame(tick);

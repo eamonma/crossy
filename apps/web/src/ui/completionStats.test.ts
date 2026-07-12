@@ -43,30 +43,57 @@ describe("completionCells", () => {
 });
 
 describe("celebrationPalette", () => {
-  it("leads with the house golds and doubles the people's roster colors", () => {
+  it("leads with the house gold scale (styles.css --color-gold-5..9)", () => {
+    const palette = celebrationPalette([]);
+    expect(palette).toEqual([
+      "#e1dccf",
+      "#d8d0bf",
+      "#cbc0a8",
+      "#b9a88d",
+      "#978365",
+    ]);
+  });
+
+  it("warms each person's hash color toward gold, never ships the raw primary", () => {
     const palette = celebrationPalette([
       { color: "#3e63dd", role: "solver" },
       { color: "#e5484d", role: "host" },
     ]);
-    expect(palette.slice(0, 4)).toEqual([
-      "#978365",
-      "#b9a88d",
-      "#cbc0a8",
+    // The base gold field leads unchanged; the people follow as warm tints.
+    expect(palette.slice(0, 5)).toEqual([
       "#e1dccf",
+      "#d8d0bf",
+      "#cbc0a8",
+      "#b9a88d",
+      "#978365",
     ]);
-    expect(palette.filter((c) => c === "#3e63dd")).toHaveLength(2);
-    expect(palette.filter((c) => c === "#e5484d")).toHaveLength(2);
+    // No raw roster primary survives into the field.
+    expect(palette).not.toContain("#3e63dd");
+    expect(palette).not.toContain("#e5484d");
+    // Each person contributes exactly one tinted fleck color, pulled toward gold-8.
+    expect(palette).toHaveLength(7);
+    for (const c of palette.slice(5)) {
+      expect(c).toMatch(/^#[0-9a-f]{6}$/);
+    }
   });
 
   it("lends spectators no color: they watched, they did not write", () => {
     const palette = celebrationPalette([
       { color: "#3e63dd", role: "spectator" },
     ]);
-    expect(palette).not.toContain("#3e63dd");
-    expect(palette.length).toBeGreaterThan(0);
+    // The spectator's hue never enters, even tinted; only the house golds remain.
+    expect(palette).toEqual(celebrationPalette([]));
+  });
+
+  it("survives a malformed hash color by leaving the field its warm anchor", () => {
+    const palette = celebrationPalette([
+      { color: "not-a-color", role: "host" },
+    ]);
+    expect(palette).toHaveLength(6);
+    expect(palette[5]).toBe("#b9a88d"); // the gold-8 anchor
   });
 
   it("celebrates in the house golds when the roster is empty", () => {
-    expect(celebrationPalette([])).toHaveLength(4);
+    expect(celebrationPalette([])).toHaveLength(5);
   });
 });
