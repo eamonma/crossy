@@ -154,6 +154,7 @@ struct RealRooms: RoomsProviding {
                             memberCount: summary.memberCount,
                             createdBy: summary.createdBy,
                             createdAt: summary.createdAt,
+                            completedAt: summary.completedAt,
                             lastActivityAt: summary.lastActivityAt)
                     },
                     nextBefore: page.nextBefore))
@@ -316,18 +317,21 @@ struct FixtureRooms: RoomsProviding {
                         puzzleTitle: "A door left ajar", rows: 9, cols: 9,
                         memberCount: 3, createdBy: "you",
                         createdAt: "2026-07-06T19:00:00.000Z",
+                        completedAt: nil,
                         lastActivityAt: "2026-07-09T21:14:00.000Z"),
                     RoomCardModel(
                         gameId: "fixture-themeless", name: nil,
                         puzzleTitle: "Themeless Saturday", rows: 15, cols: 15,
                         memberCount: 2, createdBy: "bee",
                         createdAt: "2026-07-04T11:00:00.000Z",
+                        completedAt: nil,
                         lastActivityAt: "2026-07-08T15:02:00.000Z"),
                     RoomCardModel(
                         gameId: "fixture-stumper", name: "Sunday call",
                         puzzleTitle: "The Stumper", rows: 21, cols: 21,
                         memberCount: 6, createdBy: "ada",
                         createdAt: "2026-07-05T09:00:00.000Z",
+                        completedAt: nil,
                         lastActivityAt: nil),
                 ],
                 nextBefore: nil))

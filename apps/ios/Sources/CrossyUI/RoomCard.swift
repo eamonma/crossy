@@ -1,8 +1,11 @@
 // One room card (EXPERIENCE.md §3 Rooms): geometry fingerprint, member dots, puzzle
-// title, optional game name. Cards sell people, not progress: no lifecycle chip (the
-// endpoint deliberately carries none, PROTOCOL.md §12) and no fill fraction. The
-// card is paper, not glass (DESIGN.md §1: glass is what you hold, and a scrolling
-// list is content); people are the only color on it.
+// title, optional game name. Cards sell people, not progress: no fill fraction, and no
+// lifecycle chip on the card face. The endpoint DOES carry a lifecycle fact
+// (`completedAt`, PROTOCOL.md §12, the completed read expand), but a solved room's
+// quiet is the section's to tell, not a chip's: the Rooms screen gathers solved rooms
+// into a trailing "Solved" shelf and dims their silhouette, so the card stays about
+// people. The card is paper, not glass (DESIGN.md §1: glass is what you hold, and a
+// scrolling list is content); people are the only color on it.
 
 import CrossyDesign
 import SwiftUI
@@ -25,6 +28,12 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// When the room was created (ISO 8601), the fallback sort key for a room no one
     /// has played yet (§12). Kept off the card face; it feeds ordering only.
     public let createdAt: String
+    /// When the room completed (ISO 8601), or nil while it is ongoing AND nil for an
+    /// abandoned room, which never completed (§12, the completed read expand). The one
+    /// lifecycle fact the home reads: a non-nil value gathers the room into the trailing
+    /// "Solved" shelf. INV-6-safe (a bare timestamp, never a cell value). Kept off the
+    /// card face; the section tells the story.
+    public let completedAt: String?
     /// The room's last activity (ISO 8601), or nil when no one has played yet: the
     /// newest board event's time, `MAX(cell_events.at)` server-side (§12). It is the
     /// key the rooms list orders on, most recent first; a played room leads. INV-6-safe
@@ -33,10 +42,14 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
 
     public var id: String { gameId }
 
+    /// True when the room has a completion time: the fact the trailing "Solved" shelf
+    /// gathers on (§12). Null (ongoing, or an abandoned room) reads as not solved.
+    public var isSolved: Bool { completedAt != nil }
+
     public init(
         gameId: String, name: String?, puzzleTitle: String?,
         rows: Int, cols: Int, memberCount: Int, createdBy: String,
-        createdAt: String, lastActivityAt: String?
+        createdAt: String, completedAt: String?, lastActivityAt: String?
     ) {
         self.gameId = gameId
         self.name = name
@@ -46,6 +59,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.memberCount = memberCount
         self.createdBy = createdBy
         self.createdAt = createdAt
+        self.completedAt = completedAt
         self.lastActivityAt = lastActivityAt
     }
 
@@ -88,6 +102,29 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
             if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
             return a.gameId > b.gameId
         }
+    }
+
+    /// Split rooms into the two shelves the Rooms screen renders (the web's grammar,
+    /// Home.tsx GamesList): live rooms lead, solved rooms gather trailing. The partition
+    /// PRESERVES the input order within each group and never re-sorts, so the caller's
+    /// activity order carries through and appended pages stay stable (§12 pagination:
+    /// pages are createdAt-bounded and appended, never globally re-sorted, so a solved
+    /// room from page 2 lands after page 1's solved rooms). When nothing is solved the
+    /// `solved` group is empty and the screen draws no trailing header. Pure and
+    /// non-mutating.
+    public static func shelved(
+        _ rooms: [RoomCardModel]
+    ) -> (live: [RoomCardModel], solved: [RoomCardModel]) {
+        var live: [RoomCardModel] = []
+        var solved: [RoomCardModel] = []
+        for room in rooms {
+            if room.isSolved {
+                solved.append(room)
+            } else {
+                live.append(room)
+            }
+        }
+        return (live, solved)
     }
 }
 

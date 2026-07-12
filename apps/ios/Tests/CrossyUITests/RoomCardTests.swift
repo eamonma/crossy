@@ -10,12 +10,12 @@ final class RoomCardTests: XCTestCase {
     private func model(
         name: String? = nil, title: String? = nil, members: Int = 2,
         gameId: String = "g1", createdAt: String = "2026-07-01T00:00:00.000Z",
-        lastActivityAt: String? = nil
+        completedAt: String? = nil, lastActivityAt: String? = nil
     ) -> RoomCardModel {
         RoomCardModel(
             gameId: gameId, name: name, puzzleTitle: title,
             rows: 15, cols: 15, memberCount: members, createdBy: "u1",
-            createdAt: createdAt, lastActivityAt: lastActivityAt)
+            createdAt: createdAt, completedAt: completedAt, lastActivityAt: lastActivityAt)
     }
 
     func test_orderedByActivity_matchesTheServersWithinPageOrder_PROTOCOL12() {
@@ -49,6 +49,59 @@ final class RoomCardTests: XCTestCase {
             lastActivityAt: "2026-06-01T00:00:00.000Z")
         // Equal activity, x created later, so x leads.
         XCTAssertEqual(RoomCardModel.orderedByActivity([y, x]).map(\.gameId), ["x", "y"])
+    }
+
+    func test_isSolvedReadsTheCompletedFact_PROTOCOL12() {
+        // §12: completedAt is the one lifecycle fact the home needs; a non-null time is solved,
+        // null (ongoing, or an abandoned game that never completed) is not.
+        XCTAssertTrue(model(completedAt: "2026-07-08T20:11:47.000Z").isSolved)
+        XCTAssertFalse(model(completedAt: nil).isSolved, "ongoing (and abandoned) read as not solved")
+    }
+
+    func test_shelved_partitionsLiveFromSolved_PROTOCOL12() {
+        // The web's shelf grammar (Home.tsx GamesList): live rooms lead, solved gather trailing.
+        let live1 = model(gameId: "a", completedAt: nil)
+        let solved1 = model(gameId: "b", completedAt: "2026-07-08T20:11:47.000Z")
+        let live2 = model(gameId: "c", completedAt: nil)
+        let solved2 = model(gameId: "d", completedAt: "2026-07-09T09:00:00.000Z")
+
+        let shelved = RoomCardModel.shelved([live1, solved1, live2, solved2])
+        XCTAssertEqual(shelved.live.map(\.gameId), ["a", "c"])
+        XCTAssertEqual(shelved.solved.map(\.gameId), ["b", "d"])
+    }
+
+    func test_shelved_preservesOrderWithinEachGroup_PROTOCOL12() {
+        // Partition never re-sorts: each group keeps the input order (the caller already
+        // ordered by activity, and pages append never globally re-sort, §12 pagination).
+        let rooms = [
+            model(gameId: "s1", completedAt: "2026-07-09T00:00:00.000Z"),
+            model(gameId: "l1", completedAt: nil),
+            model(gameId: "s2", completedAt: "2026-07-08T00:00:00.000Z"),
+            model(gameId: "l2", completedAt: nil),
+            model(gameId: "s3", completedAt: "2026-07-07T00:00:00.000Z"),
+        ]
+        let shelved = RoomCardModel.shelved(rooms)
+        XCTAssertEqual(shelved.live.map(\.gameId), ["l1", "l2"], "live order preserved")
+        XCTAssertEqual(shelved.solved.map(\.gameId), ["s1", "s2", "s3"], "solved order preserved")
+    }
+
+    func test_shelved_allLiveGivesEmptySolved_PROTOCOL12() {
+        // When nothing is solved the trailing section does not render (the web's all-live shelf
+        // carries no empty header); the helper reports an empty solved group.
+        let rooms = [model(gameId: "a"), model(gameId: "b")]
+        let shelved = RoomCardModel.shelved(rooms)
+        XCTAssertEqual(shelved.live.map(\.gameId), ["a", "b"])
+        XCTAssertTrue(shelved.solved.isEmpty)
+    }
+
+    func test_shelved_allSolvedGivesEmptyLive_PROTOCOL12() {
+        let rooms = [
+            model(gameId: "a", completedAt: "2026-07-08T00:00:00.000Z"),
+            model(gameId: "b", completedAt: "2026-07-09T00:00:00.000Z"),
+        ]
+        let shelved = RoomCardModel.shelved(rooms)
+        XCTAssertTrue(shelved.live.isEmpty)
+        XCTAssertEqual(shelved.solved.map(\.gameId), ["a", "b"])
     }
 
     func test_headlinePrefersTheGameNameThenTheTitleThenGeometry() {
