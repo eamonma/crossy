@@ -7,6 +7,7 @@
 
 import type { BoardState, Cell, Grid } from "@crossy/engine";
 import type { Stats } from "@crossy/protocol";
+import { serverPuzzleToSolution } from "@crossy/protocol";
 
 /** The engine's comparator input: cell index to its full solution string. */
 export type EngineSolution = ReadonlyMap<number, string>;
@@ -70,10 +71,10 @@ function readPuzzle(snapshot: PuzzleSnapshot): {
     rows: snapshot.rows,
     blocks: new Set(snapshot.blocks),
   };
-  const solution = new Map<number, string>();
-  snapshot.solution.forEach((value, cell) => {
-    if (value !== null) solution.set(cell, value);
-  });
+  // One extraction of the snapshot into a cell -> value map, shared with the API's Archive
+  // read model (packages/protocol), so the live comparator and first-correct attribution
+  // read one cell index space and cannot drift (INV-6-safe: server-side only, never outbound).
+  const solution = serverPuzzleToSolution(snapshot);
   return { grid, solution };
 }
 
