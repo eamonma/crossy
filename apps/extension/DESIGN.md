@@ -94,6 +94,15 @@ owner holds the `.pem` for that choice.
 Chrome logs an unrecognized-key warning for this block and ignores it; nothing
 breaks.
 
+The background form does not share that tolerance: Chrome hard-rejects an MV3
+manifest carrying `background.scripts` ("requires manifest version of 2 or
+lower", observed on a real load 2026-07-12), while Firefox runs MV3 backgrounds
+as event pages via exactly that key. One manifest cannot serve both. The
+committed manifest and `dist/` are the Chrome form (`service_worker` only,
+pinned by `manifest.test.ts`); `build:firefox` emits `dist-firefox/` with the
+background swapped to `scripts` (`scripts/build-firefox.mjs`). The
+`browser ?? chrome` shim in the code is unaffected either way.
+
 ## Supabase redirect allowlist
 
 The owner must add the identity redirect URLs to the Supabase auth URL allowlist:
