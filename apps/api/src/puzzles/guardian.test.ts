@@ -282,6 +282,16 @@ describe("guardian translator: grouped entries (PROTOCOL.md section 12)", () => 
     }
   });
 
+  it("synthesizes See <n> when a continuation clue is markup-only (projects to empty, owner ruling 2026-07-12)", () => {
+    // The emptiness signal is the PROJECTED text, not the raw string: a clue of only tags and
+    // whitespace projects to "" and must synthesize, exactly like an absent clue.
+    const doc = grouped();
+    (doc["entries"] as Record<string, unknown>[])[3]!["clue"] = "<i></i>";
+    const r = accept(doc);
+    expect(r.puzzle.clues.across[1]?.text).toBe("See 1");
+    expect(r.puzzle.clues.across[1]).not.toHaveProperty("runs");
+  });
+
   it("rejects a continuation whose head entry is not in the document as VALIDATION", () => {
     const doc = base();
     (doc["entries"] as Record<string, unknown>[])[3]!["group"] = [
@@ -289,6 +299,26 @@ describe("guardian translator: grouped entries (PROTOCOL.md section 12)", () => 
       "3-across",
     ];
     expectReject(doc, "VALIDATION");
+  });
+});
+
+describe("guardian translator: clue markup is captured as runs (owner ruling 2026-07-12)", () => {
+  it("captures a Guardian clue's <i> as an italic run through the shared seam", () => {
+    const doc = base();
+    (doc["entries"] as Record<string, unknown>[])[0]!["clue"] =
+      "Feline <i>friend</i>";
+    const r = accept(doc);
+    expect(r.puzzle.clues.across[0]).toEqual({
+      number: 1,
+      text: "Feline friend",
+      cellIndices: [0, 1, 2],
+      runs: [{ t: "Feline " }, { t: "friend", s: ["i"] }],
+    });
+  });
+
+  it("leaves a plain Guardian clue without a runs field (law 2)", () => {
+    const r = accept(base());
+    expect(r.puzzle.clues.across[0]).not.toHaveProperty("runs");
   });
 });
 

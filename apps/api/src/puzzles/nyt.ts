@@ -29,16 +29,16 @@
 import { asciiUppercase } from "@crossy/protocol";
 import type { ServerPuzzle, Solution } from "@crossy/protocol";
 import {
+  buildRunClue,
   checkDimensions,
   checkSolutionGrid,
-  decodeEntities,
   deriveWordRuns,
   isObject,
   isPositiveInt,
   readMetadata,
   reject,
 } from "./ingest";
-import type { IngestResult, PuzzleFeatures, WordRun } from "./ingest";
+import type { IngestResult, PuzzleFeatures, RunClue, WordRun } from "./ingest";
 
 /** The one cell `type` value that means a plain cell (reference default when absent). */
 const PLAIN_CELL_TYPE = 1;
@@ -288,16 +288,15 @@ export function translateNyt(body: unknown): IngestResult {
   const buildClues = (
     direction: "across" | "down",
     wordRuns: readonly WordRun[],
-  ) => {
-    const built = [];
+  ): RunClue[] | null => {
+    const built: RunClue[] = [];
     for (const run of wordRuns) {
       const clue = matchRun(run, direction);
       if (clue === null) return null;
-      built.push({
-        number: run.number,
-        text: decodeEntities(clue.text.trim()),
-        cellIndices: run.cells,
-      });
+      // The v6 `text[0].plain` is already plain per the reference, but funnel it through the
+      // shared markup seam anyway so any residual entities decode and the {text, runs} contract
+      // is uniform across formats (clue-runs.ts).
+      built.push(buildRunClue(run.number, clue.text, run.cells));
     }
     return built;
   };
