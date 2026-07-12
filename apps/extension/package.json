@@ -1,0 +1,20 @@
+{
+  "name": "@crossy/extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/content.ts src/popup.ts src/options.ts --bundle --format=iife --outdir=dist --log-level=warning && cp public/manifest.json public/popup.html public/options.html dist/",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@crossy/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.2",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

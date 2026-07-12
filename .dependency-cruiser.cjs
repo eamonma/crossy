@@ -31,6 +31,18 @@ module.exports = {
       to: { path: "^apps/" },
     },
     {
+      name: "extension-imports-protocol-only",
+      comment:
+        "apps/extension is deliberately dumb: detect, extract, post (DESIGN.md §7, D21). " +
+        "It may import packages/protocol and nothing else from the workspace, so no " +
+        "translation logic can migrate off the server ACL into the client. Matches both " +
+        "the resolved packages/ path and the bare @crossy/ specifier, like the vendor " +
+        "rules below, so an import added before its dependency is installed fails too.",
+      severity: "error",
+      from: { path: "^apps/extension/" },
+      to: { path: "^(packages/(?!protocol/)|@crossy/(?!protocol$|protocol/))" },
+    },
+    {
       name: "no-app-cross-imports",
       comment:
         "Apps are independent deployables; they share code via packages/* only.",

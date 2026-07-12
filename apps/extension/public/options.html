@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crossy options</title>
+  </head>
+  <body>
+    <main style="max-width: 480px; padding: 8px; font-family: system-ui">
+      <h1>Crossy (dev auth)</h1>
+      <p>
+        Paste an API base URL and a bearer token. This is the v1-dev auth
+        surface; the pairing handshake with the web app replaces it (see
+        DESIGN.md in apps/extension).
+      </p>
+      <p>
+        <label>
+          API base URL<br />
+          <input
+            id="apiBaseUrl"
+            type="url"
+            size="40"
+            placeholder="https://api.crossy.party"
+          />
+        </label>
+      </p>
+      <p>
+        <label>
+          Bearer token<br />
+          <input id="token" type="password" size="40" />
+        </label>
+      </p>
+      <p><button id="save">Save</button></p>
+      <p id="status"></p>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
