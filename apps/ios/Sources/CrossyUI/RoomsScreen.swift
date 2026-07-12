@@ -40,6 +40,38 @@ public struct JoinSheetSource {
     }
 }
 
+/// The room push's zoom source (native continuity, DESIGN.md §4): a tapped room
+/// card is the surface the room grows from, and the room pours back into its card
+/// on the pop. The namespace is handed down from the composition root exactly like
+/// JoinSheetSource (AD-2: CrossyUI never owns the namespace; the push lives in the
+/// arrival hierarchy). Unlike the join sheet's single source, the list carries many
+/// cards, so the id is derived per room from the gameId through the pure helper
+/// below; the stamp on the card and the room destination's zoom share that one
+/// contract, so they always name the same source.
+public struct RoomZoomSource {
+    let namespace: Namespace.ID
+
+    /// One card, one id, derived from its gameId. The card stamp and the room
+    /// destination both build the id this way, so a tapped card and the room it
+    /// pushes always name the same source. Pure and pinned (RoomZoomSourceTests),
+    /// the register the repo holds for shared vocabulary (ArrivalCopyTests).
+    public static func sourceID(for gameId: String) -> String {
+        "crossy.room.\(gameId)"
+    }
+
+    /// The Join capsule's zoom id (slice 2), distinct from JoinSheetSource.id so
+    /// the capsule can wear both stamps: the sheet's source AND the room push's,
+    /// so a code-join grows the room from the same capsule the sheet melted back
+    /// into. One room per join, so a constant suffices. Its own prefix, never the
+    /// per-room "crossy.room." shape, so no gameId derivation can ever collide with
+    /// it (RoomZoomSourceTests pins this).
+    public static let joinCapsuleID = "crossy.join.capsule.room"
+
+    public init(namespace: Namespace.ID) {
+        self.namespace = namespace
+    }
+}
+
 public struct RoomsScreen: View {
     private let loadPage: (String?) async -> Result<RoomsPage, ArrivalFailure>
     private let onOpenRoom: (RoomCardModel) -> Void
@@ -48,6 +80,10 @@ public struct RoomsScreen: View {
     /// grows from (arrival notes, DESIGN.md §4). nil in previews and on macOS,
     /// where the transition floor (iOS 18) is absent; the button then just taps.
     private let joinSheetSource: JoinSheetSource?
+    /// The zoom source for the room push: each card IS the surface its room grows
+    /// from (native continuity, DESIGN.md §4). nil in previews and on macOS, the
+    /// same floor as the join source; the card then just pushes plainly.
+    private let roomZoomSource: RoomZoomSource?
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var rooms: [RoomCardModel] = []
@@ -61,12 +97,14 @@ public struct RoomsScreen: View {
         loadPage: @escaping (String?) async -> Result<RoomsPage, ArrivalFailure>,
         onOpenRoom: @escaping (RoomCardModel) -> Void,
         onJoinWithCode: @escaping () -> Void,
-        joinSheetSource: JoinSheetSource? = nil
+        joinSheetSource: JoinSheetSource? = nil,
+        roomZoomSource: RoomZoomSource? = nil
     ) {
         self.loadPage = loadPage
         self.onOpenRoom = onOpenRoom
         self.onJoinWithCode = onJoinWithCode
         self.joinSheetSource = joinSheetSource
+        self.roomZoomSource = roomZoomSource
     }
 
     private var ground: GridGround {
@@ -102,7 +140,14 @@ public struct RoomsScreen: View {
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: 20))
+        // The capsule wears TWO zoom sources: the join sheet's (the sheet grows out
+        // of the capsule) and the room push's (a code-join grows the room from this
+        // same capsule after the sheet melts back into it, slice 2, DESIGN.md §4).
+        // The ids are distinct (RoomZoomSourceTests pins that), and the second stamp
+        // wraps the first in the modifier chain, so both name the same capsule
+        // geometry without contesting one id.
         .modifier(JoinSheetSourceMark(source: joinSheetSource))
+        .modifier(JoinCapsuleRoomSourceMark(source: roomZoomSource))
         .padding(.trailing, 20)
         .padding(.top, 12)
         .accessibilityLabel(ArrivalCopy.joinTitle)
@@ -154,6 +199,11 @@ public struct RoomsScreen: View {
             RoomCard(model: room, ground: ground)
         }
         .buttonStyle(.plain)
+        // The card is the surface the room grows from: it stamps itself as the
+        // push's zoom source with the per-room id, so the room destination reaches
+        // it and the room pours back into this card on the pop (native continuity,
+        // DESIGN.md §4). Absent on macOS and below iOS 18, the §4 one-fallback rule.
+        .modifier(RoomZoomSourceMark(source: roomZoomSource, gameId: room.gameId))
         .onAppear {
             if room.id == rooms.last?.id {
                 Task { await loadMore() }
@@ -261,6 +311,84 @@ private struct JoinSheetZoom: ViewModifier {
             if #available(iOS 18.0, *), let source {
                 content.navigationTransition(
                     .zoom(sourceID: JoinSheetSource.id, in: source.namespace))
+            } else {
+                content
+            }
+        #else
+            content
+        #endif
+    }
+}
+
+// MARK: - The room-push zoom pairing (native continuity, DESIGN.md §4)
+
+/// Stamps a room card as the push's zoom source with its per-room id, so the room
+/// grows out of the card and pours back into it on the pop. Mirrors
+/// JoinSheetSourceMark exactly: gated to iOS 18+ (the package floor on device); the
+/// macOS test host (14) and any absent source leave the card bare, the §4
+/// one-fallback rule.
+private struct RoomZoomSourceMark: ViewModifier {
+    let source: RoomZoomSource?
+    let gameId: String
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *), let source {
+                content.matchedTransitionSource(
+                    id: RoomZoomSource.sourceID(for: gameId), in: source.namespace)
+            } else {
+                content
+            }
+        #else
+            content
+        #endif
+    }
+}
+
+/// Stamps the Join capsule as the room push's zoom source (slice 2): a code-join
+/// grows the room from the capsule the sheet melted back into (native continuity,
+/// DESIGN.md §4). Same gate as every other stamp (§4 one-fallback rule). This is a
+/// SECOND source on the capsule (the join sheet's is the first): the two stamps
+/// share the capsule's geometry under distinct ids, chained one over the other.
+private struct JoinCapsuleRoomSourceMark: ViewModifier {
+    let source: RoomZoomSource?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *), let source {
+                content.matchedTransitionSource(
+                    id: RoomZoomSource.joinCapsuleID, in: source.namespace)
+            } else {
+                content
+            }
+        #else
+            content
+        #endif
+    }
+}
+
+extension View {
+    /// The room push's destination half of the zoom: the room grows out of the
+    /// card (or the Join capsule) that carries the matching source (native
+    /// continuity, DESIGN.md §4). The composition root applies this to the room
+    /// destination, passing the id of whichever source initiated the push; a nil id
+    /// (a deep-link push, no visible source on screen) skips the zoom for the
+    /// default push. Below iOS 18 (and the macOS test host) the room pushes plainly,
+    /// the §4 one-fallback rule.
+    public func roomZoom(from source: RoomZoomSource?, sourceID: String?) -> some View {
+        modifier(RoomZoom(source: source, sourceID: sourceID))
+    }
+}
+
+private struct RoomZoom: ViewModifier {
+    let source: RoomZoomSource?
+    let sourceID: String?
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *), let source, let sourceID {
+                content.navigationTransition(
+                    .zoom(sourceID: sourceID, in: source.namespace))
             } else {
                 content
             }
