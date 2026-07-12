@@ -12,9 +12,14 @@ import { chromeLocalArea, loadSession, SESSION_KEY } from "./auth/store";
 import { buildEnvelope } from "./envelope";
 import { EXTRACT_REQUEST } from "./messaging";
 import type { ExtractResponse } from "./messaging";
-import { ensureOriginPermission, loadBases } from "./settings";
+import { loadBases, requestOriginPermissions } from "./settings";
+import type { Bases } from "./settings";
 
 const WEB_LIBRARY_URL = "https://crossy.party/puzzles";
+
+// Resolved once at init so click handlers never await before their permission
+// request (Firefox drops the gesture after any await; settings.ts).
+let bases: Bases;
 
 const identityEl = document.getElementById("identity") as HTMLParagraphElement;
 const statusEl = document.getElementById("status") as HTMLParagraphElement;
@@ -48,9 +53,14 @@ function renderSignedOut(): void {
     button.textContent = label;
     button.addEventListener("click", () => {
       void (async () => {
-        // The permission request must stay inside the click gesture.
-        const bases = await loadBases();
-        await ensureOriginPermission(bases.authBaseUrl);
+        // First await, nothing before it: Firefox requires permissions.request
+        // synchronously inside the gesture (settings.ts; bases pre-resolved).
+        const granted = await requestOriginPermissions([bases.authBaseUrl]);
+        if (!granted) {
+          statusEl.textContent =
+            "Crossy needs permission to reach the sign-in server.";
+          return;
+        }
         statusEl.textContent =
           "Finish signing in in the window that opened, then reopen this popup.";
         const reply = (await chrome.runtime.sendMessage({
@@ -79,8 +89,14 @@ function renderIngest(extraction: ExtractResponse & { ok: true }): void {
     button.disabled = true;
     resultEl.textContent = "Adding.";
     void (async () => {
-      const bases = await loadBases();
-      await ensureOriginPermission(bases.apiBaseUrl);
+      // First await, nothing before it (Firefox gesture law; settings.ts).
+      const granted = await requestOriginPermissions([bases.apiBaseUrl]);
+      if (!granted) {
+        resultEl.textContent =
+          "Crossy needs permission to reach the API to add this puzzle.";
+        button.disabled = false;
+        return;
+      }
       const token = (await chrome.runtime.sendMessage({
         type: AUTH_TOKEN,
       })) as TokenReply;
@@ -157,6 +173,7 @@ async function renderSignedIn(who: {
 }
 
 async function init(): Promise<void> {
+  bases = await loadBases();
   const session = await loadSession(chromeLocalArea());
   if (session === null) {
     renderSignedOut();

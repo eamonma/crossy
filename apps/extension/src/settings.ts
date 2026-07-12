@@ -92,14 +92,19 @@ export function originPattern(baseUrl: string): string {
 }
 
 /**
- * Ensure the extension may reach an origin (API base or auth base, default or
- * override). Requested on demand, never at install; must run inside a user gesture
- * (a click handler qualifies).
+ * Request access to one or more base URLs' origins, on demand, never at install.
+ * Firefox law (observed on a real load, 2026-07-12): permissions.request must be
+ * reached synchronously from the user input handler. Any await before it, a
+ * contains() pre-check or a storage read, unwinds the gesture and Firefox throws
+ * "permissions.request may only be called from a user input handler"; Chrome is
+ * laxer, and the strict form works in both. That is also why this takes a list:
+ * a second request after the first await is already outside the gesture, so
+ * every origin a click needs rides one call. request resolves true without
+ * prompting when everything asked for is already granted.
  */
-export async function ensureOriginPermission(
-  baseUrl: string,
+export function requestOriginPermissions(
+  baseUrls: readonly string[],
 ): Promise<boolean> {
-  const origins = [originPattern(baseUrl)];
-  if (await chrome.permissions.contains({ origins })) return true;
+  const origins = baseUrls.map(originPattern);
   return chrome.permissions.request({ origins });
 }

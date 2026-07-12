@@ -101,7 +101,18 @@ as event pages via exactly that key. One manifest cannot serve both. The
 committed manifest and `dist/` are the Chrome form (`service_worker` only,
 pinned by `manifest.test.ts`); `build:firefox` emits `dist-firefox/` with the
 background swapped to `scripts` (`scripts/build-firefox.mjs`). The
-`browser ?? chrome` shim in the code is unaffected either way.
+`browser ?? chrome` shim in the code is unaffected either way. The mirror
+warning is expected: Firefox flags the Chrome-only `key` property as an
+unexpected manifest key and ignores it, exactly as Chrome does with the
+`gecko` block.
+
+Two more Firefox laws, both observed on the first temporary load (2026-07-12):
+`permissions.request` must be reached synchronously from the user input
+handler, so no await may precede it in a click path and every origin a click
+needs rides one request (`requestOriginPermissions`; the popup pre-resolves
+bases at init for this reason). And Firefox treats all host permissions as
+opt-in, including content-script match patterns, so puzzle-page detection is
+dead until the user grants site access from the extensions button.
 
 ## Supabase redirect allowlist
 

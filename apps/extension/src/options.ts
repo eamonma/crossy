@@ -8,9 +8,9 @@ import {
   clearOverrides,
   DEFAULT_API_BASE,
   DEFAULT_AUTH_BASE,
-  ensureOriginPermission,
   loadOverrides,
   normalizeBaseUrl,
+  requestOriginPermissions,
   saveOverrides,
 } from "./settings";
 import type { Overrides } from "./settings";
@@ -62,14 +62,14 @@ saveEl.addEventListener("click", () => {
     overrides.publishableKey = publishableKeyEl.value.trim();
   }
 
+  const toRequest = [overrides.apiBaseUrl, overrides.authBaseUrl].filter(
+    (base): base is string => base !== undefined,
+  );
   void (async () => {
-    // Request host permissions first: the requests must stay inside the gesture.
-    let granted = true;
-    for (const base of [overrides.apiBaseUrl, overrides.authBaseUrl]) {
-      if (base !== undefined) {
-        granted = (await ensureOriginPermission(base)) && granted;
-      }
-    }
+    // One request carrying every origin, first await: Firefox drops the gesture
+    // after any await, so a second sequential request would throw (settings.ts).
+    const granted =
+      toRequest.length === 0 || (await requestOriginPermissions(toRequest));
     await saveOverrides(overrides as Overrides);
     statusEl.textContent = granted
       ? "Saved."
