@@ -59,15 +59,18 @@ func makeAnalytics(config: ArrivalConfig?) -> any Analytics {
 }
 
 /// True for the compositions that never speak to a vendor: Xcode previews, the
-/// evidence rigs (-morphLab, -meltLab, -islandLab, -pillArrivalLab), the offline demo
-/// room (-demoRoom and the -i2* scripts that imply it), the -i3Fixture walk, and the
-/// harness identity (CROSSY_IT_TOKEN). These are all launch-time facts, so the
-/// selection is made once.
+/// evidence rigs (-morphLab, -meltLab, -islandLab, -pillArrivalLab, -seededBirthLab),
+/// the offline demo room (-demoRoom and the -i2* scripts that imply it), the
+/// -i3Fixture walk, and the harness identity (CROSSY_IT_TOKEN). These are all
+/// launch-time facts, so the selection is made once.
 private func quietComposition() -> Bool {
     if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
         return true
     }
-    let rigs = ["morphLab", "meltLab", "islandLab", "pillArrivalLab", "demoRoom", "i3Fixture"]
+    let rigs = [
+        "morphLab", "meltLab", "islandLab", "pillArrivalLab", "seededBirthLab",
+        "demoRoom", "i3Fixture",
+    ]
     if rigs.contains(where: { LaunchFacts.flag($0) }) { return true }
     if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-i2") }) {
         return true
