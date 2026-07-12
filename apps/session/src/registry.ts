@@ -4,6 +4,17 @@
 // game share one hydration and therefore one actor, which is what makes the actor the
 // single writer (INV-2, INV-7). A game that does not exist resolves to null and is not
 // cached, so a game created after a failed lookup can still hydrate later.
+//
+// Passivation (DESIGN.md §6 "passivate"): a periodic sweep evicts actors that have held
+// zero sockets for the idle window, so the map is bounded by concurrently active games
+// rather than every game touched since the last deploy. The eviction order preserves the
+// single writer (INV-7): drain the pending tail through the actor's mailbox FIRST, then,
+// synchronously with no await in between, recheck zero sockets, mark the actor evicted,
+// and delete the map entry. The evicted mark closes the remaining race: a handshake that
+// resolved this actor before the delete but attaches after is refused and re-resolves
+// through `getOrHydrate`, hydrating fresh from the row the drain just flushed. Nothing is
+// lost, because an evicted actor by construction held zero sockets and an empty buffer at
+// the moment it was dropped.
 
 import type { Pool } from "pg";
 import { GameActor } from "./actor";
@@ -15,9 +26,14 @@ import { loadGameRow, loadGameState } from "./repo";
 import { createPgPersistence } from "./writer";
 import type { GamePersistence } from "./writer";
 
+/** DESIGN.md §15: the passivation delay, a guess to tune with real traffic. */
+export const PASSIVATE_AFTER_MS_DEFAULT = 30 * 60_000;
+
 export class ActorRegistry {
   private readonly actors = new Map<string, Promise<GameActor | null>>();
   private readonly persistence: GamePersistence;
+  /** Re-entrancy guard: a slow sweep (many drains) must not overlap the next tick's. */
+  private sweeping = false;
 
   constructor(
     private readonly pool: Pool,
@@ -35,6 +51,8 @@ export class ActorRegistry {
      * nothing and the session behaves identically.
      */
     private readonly analytics?: Analytics,
+    /** Idle window before an actor with zero sockets is evicted (DESIGN.md §6, §15). */
+    private readonly passivateAfterMs: number = PASSIVATE_AFTER_MS_DEFAULT,
   ) {
     this.persistence = createPgPersistence(pool);
   }
@@ -104,6 +122,63 @@ export class ActorRegistry {
       [...this.actors.values()].map((p) => p.catch(() => null)),
     );
     return settled.filter((a): a is GameActor => a !== null);
+  }
+
+  /** Cached entries, in-flight hydrations included. Introspection for tests and ops logs. */
+  liveActorCount(): number {
+    return this.actors.size;
+  }
+
+  /**
+   * One passivation pass (DESIGN.md §6): evict every actor that has held zero sockets for
+   * the idle window. Returns the eviction count. Serialized against itself, so a tick that
+   * fires while a slow sweep still drains is a no-op rather than a double-drain.
+   */
+  async sweep(): Promise<number> {
+    if (this.sweeping) return 0;
+    this.sweeping = true;
+    try {
+      let evicted = 0;
+      for (const [gameId, entry] of [...this.actors]) {
+        const actor = await entry.catch(() => null);
+        if (actor === null) continue;
+        // The entry can change while this sweep awaits (evicted elsewhere, re-hydrated):
+        // only ever evict the exact entry that was inspected.
+        if (this.actors.get(gameId) !== entry) continue;
+        const idle = actor.idleMillis(this.now());
+        if (idle === null || idle < this.passivateAfterMs) continue;
+        if (await this.passivate(gameId, entry, actor)) evicted += 1;
+      }
+      return evicted;
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  /**
+   * Evict one idle actor, preserving the single writer (INV-7): drain the pending tail
+   * through the mailbox first (a flush fault aborts and leaves the actor for the next
+   * sweep, buffer intact), then SYNCHRONOUSLY recheck that no socket attached during the
+   * drain, mark the actor evicted, and drop the map entry. No await separates the recheck
+   * from the delete, so an attach can land before it (aborting the eviction) or after the
+   * mark (refused, and the handshake re-resolves), never between.
+   */
+  private async passivate(
+    gameId: string,
+    entry: Promise<GameActor | null>,
+    actor: GameActor,
+  ): Promise<boolean> {
+    try {
+      await actor.drain();
+    } catch (error) {
+      console.error(`passivation drain fault for game ${gameId}:`, error);
+      return false;
+    }
+    if (actor.connectionCount > 0) return false;
+    if (this.actors.get(gameId) !== entry) return false;
+    actor.markEvicted();
+    this.actors.delete(gameId);
+    return true;
   }
 
   private async hydrate(gameId: string): Promise<GameActor | null> {

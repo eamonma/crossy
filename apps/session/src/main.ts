@@ -102,6 +102,14 @@ async function main(): Promise<void> {
         createNoopAnalytics())
       : createPosthogAnalytics(posthogConfig);
 
+  // Passivation window override (DESIGN.md §15: the 30-minute default is a guess to tune
+  // with real traffic). Unset means the server default; the sweep cadence is not env-tunable.
+  const passivateAfterMsRaw = process.env["PASSIVATE_AFTER_MS"];
+  const passivateAfterMs =
+    passivateAfterMsRaw !== undefined && passivateAfterMsRaw !== ""
+      ? Number(passivateAfterMsRaw)
+      : undefined;
+
   const server = await createSessionServer({
     authPort,
     pool,
@@ -113,6 +121,7 @@ async function main(): Promise<void> {
       ? { internalBearer }
       : {}),
     ...(internalPort !== undefined ? { internalPort } : {}),
+    ...(passivateAfterMs !== undefined ? { passivateAfterMs } : {}),
   });
   console.log(`session service listening on ${server.url}`);
 

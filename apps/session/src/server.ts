@@ -88,6 +88,13 @@ const FORMER_PARTICIPANT = "former participant";
  */
 const LIVENESS_TIMEOUT_MS = 45_000;
 
+/**
+ * Passivation sweep cadence (DESIGN.md §6): how often the registry looks for idle actors.
+ * Cheap (a map scan; drains only fire for eviction candidates), so a minute keeps the
+ * eviction lag small next to the 30-minute idle window. Tunable per server for tests.
+ */
+const PASSIVATE_SWEEP_INTERVAL_MS = 60_000;
+
 /** At most 10 `moveCursor` relays per second per socket (PROTOCOL.md §9); excess is dropped. */
 const CURSOR_MAX_PER_SECOND = 10;
 const CURSOR_WINDOW_MS = 1000;
@@ -129,6 +136,14 @@ export interface SessionServerConfig {
    */
   readonly livenessTimeoutMs?: number;
   /**
+   * Passivation window (DESIGN.md §6, §15): an actor with zero live sockets for this long is
+   * drained and evicted by the sweep. Defaults to 30 minutes (the §15 guess, tunable via
+   * PASSIVATE_AFTER_MS); tests inject a small value to exercise eviction without the wait.
+   */
+  readonly passivateAfterMs?: number;
+  /** Sweep cadence for passivation; defaults to 60 s. Tests inject a small value. */
+  readonly passivateSweepIntervalMs?: number;
+  /**
    * The Live Activity push emitter (PROTOCOL.md "Live Activity push"). When present it is passed to
    * every actor and fed at the presence sites; when omitted the whole channel is inert and the
    * session behaves exactly as before (the composition root supplies it only when the APNs env is
@@ -155,6 +170,8 @@ export interface SessionServer {
   drain(): Promise<void>;
   /** Hard teardown for tests: terminate sockets without a drain. */
   close(): Promise<void>;
+  /** Cached actor entries (DESIGN.md §6): tests assert passivation through this. */
+  liveActorCount(): number;
 }
 
 /** Start the session WebSocket server and resolve once it is listening. */
@@ -169,8 +186,23 @@ export function createSessionServer(
     config.actorOptions,
     config.pushEmitter,
     config.analytics,
+    config.passivateAfterMs,
   );
   let draining = false;
+
+  // Passivation sweep (DESIGN.md §6): a fixed-cadence tick; the registry serializes
+  // overlapping ticks itself and each eviction drains before it drops (INV-5, INV-7).
+  const sweepTimer = setInterval(() => {
+    void registry
+      .sweep()
+      .then((evicted) => {
+        if (evicted > 0) console.log(`passivated ${evicted} idle actor(s)`);
+      })
+      .catch((error: unknown) => {
+        console.error("passivation sweep fault:", error);
+      });
+  }, config.passivateSweepIntervalMs ?? PASSIVATE_SWEEP_INTERVAL_MS);
+  sweepTimer.unref?.();
 
   // The internal endpoint is served on the public `port` only when no separate
   // `internalPort` is configured. In a Railway deploy `internalPort` is set, so the public
@@ -268,6 +300,7 @@ export function createSessionServer(
 
   async function drain(): Promise<void> {
     draining = true;
+    clearInterval(sweepTimer);
     // Stop the listeners from accepting new sockets; existing ones stay up for the flush.
     httpServer.close();
     internalHttpServer?.close();
@@ -305,7 +338,11 @@ export function createSessionServer(
           port,
           url: `ws://${host}:${port}`,
           drain,
-          close: () => closeServer(httpServer, wss, internalHttpServer),
+          close: () => {
+            clearInterval(sweepTimer);
+            return closeServer(httpServer, wss, internalHttpServer);
+          },
+          liveActorCount: () => registry.liveActorCount(),
         });
       });
     });
@@ -412,29 +449,47 @@ function handleConnection(
   });
 
   async function runHandshake(decoded: Decoded<ClientMessage>): Promise<void> {
-    const result = await performHandshake(deps, gameId, decoded);
-    if (!result.ok) {
-      send(result.error);
-      ws.close(1008, result.error.code);
+    // The attach can race a passivation eviction (DESIGN.md §6): a handshake that resolved
+    // its actor just before the registry dropped it is refused by the evicted mark and must
+    // re-resolve, which hydrates a fresh actor from the flushed row. One retry is the
+    // expected worst case; the bound is paranoia, never hit in practice.
+    let conn: Connection | null = null;
+    let attachedActor: GameActor | null = null;
+    let firstForUser = false;
+    for (let attempt = 0; attempt < 3 && attachedActor === null; attempt++) {
+      const result = await performHandshake(deps, gameId, decoded);
+      if (!result.ok) {
+        send(result.error);
+        ws.close(1008, result.error.code);
+        return;
+      }
+      conn = {
+        userId: result.userId,
+        role: result.role,
+        send,
+        close: (code, reason) => ws.close(code, reason),
+      };
+      const attach = result.actor.addConnection(conn);
+      if (attach.attached) {
+        attachedActor = result.actor;
+        firstForUser = attach.firstForUser;
+      }
+    }
+    if (attachedActor === null || conn === null) {
+      // Three evictions in one handshake: give up transiently; the client reconnects.
+      ws.close(1013, "TRY_AGAIN_LATER");
       return;
     }
-    const conn: Connection = {
-      userId: result.userId,
-      role: result.role,
-      send,
-      close: (code, reason) => ws.close(code, reason),
-    };
-    const firstForUser = result.actor.addConnection(conn);
-    actor = result.actor;
+    actor = attachedActor;
     connection = conn;
     live = true;
     // The connecting socket gets the full participant list in its own welcome, so it is excluded
     // from the connect notice. Only the user's FIRST live socket announces (PROTOCOL.md §6, §9).
-    send(await buildWelcome(deps.pool, gameId, result.actor, conn));
+    send(await buildWelcome(deps.pool, gameId, attachedActor, conn));
     if (firstForUser) {
       const notice = await buildPlayerConnected(deps.pool, gameId, conn);
-      result.actor.broadcastExcept(conn, notice);
-      const facts = result.actor.boardFacts();
+      attachedActor.broadcastExcept(conn, notice);
+      const facts = attachedActor.boardFacts();
       // A cluster member arrived: refresh the island (a member who joined after the activity
       // started still appears; PROTOCOL.md "Live Activity push"). Fire-and-forget, after the WS
       // broadcast. The policy dedupes a spectator (non-cluster) connect.
