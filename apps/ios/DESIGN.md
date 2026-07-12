@@ -379,6 +379,39 @@ BarItemGlass.backgroundHidden), so no hollow capsule floats where the pill stood
 Every glass bar item (the pill, the back button, the Menus) now rides that ONE rule:
 system glass, visible at rest, suppressed only on the yield.
 
+Amended 2026-07-12 (the seeded-birth rule; the goo on live data). The #132 zoom push
+goos the Rooms Join item into the room's trailing cluster, but the goo needs the
+cluster to EXIST during the push. The one-beat rule above (whole cluster on the
+welcome) left the withholding bar back-only, so on live data nothing goos: the pills
+pop at the welcome, after the push. The fix is TRUE DATA, not the retired placeholder:
+the list row now carries every member's full identity (`{userId, name, avatarUrl,
+role}`) and the member-only invite code (the §12 row expand, wired ahead of this seam),
+so a CARD-TAP arrival is born with players + share STANDING, identity-true from the
+row's member stack. The tap records the card's members and code beside the path (the
+`roomZoomSourceID` precedent, keyed by gameId, cleared on sign-out); RealRoom seeds the
+store's roster from them at construction (each member not-yet-heard-from at `connected:
+false`, name/avatarUrl/role TRUE from the wire; GameStore.seedRoster stays gated to
+`connecting`, the welcome stays the authority) and takes the seeded invite code so the
+share payload exists pre-REST (REST overwrites both when it lands). The withholding bar
+(RoomOpeningToolbarHost) and the full bar (RoomToolbar) both stand the seeded players
+and share pills in the SAME placements, so the nav bar keeps their identity across the
+withheld→ready swap and nothing re-inserts; the goo therefore plays on live data with
+ZERO placeholders. The players pill renders the seeded members through the exact same
+RosterMenu → RosterList.cluster path the live pill uses, so the solvers-only display
+rule applies identically: a seeded spectator seeds the store but never widens the pill.
+The one-beat rule remains the UNSEEDED fallback (deep links, code-joins, which have no
+card and record no seed): their whole trailing cluster still arrives together on the
+welcome. And the TIMER stays a welcome arrival on BOTH paths: its clock genuinely needs
+the welcome, so ClusterPresence gates the timer on the sync state alone (`showsTimer`)
+while the players and share pills gate on `seeded || live` (`showsPlayers`/`showsShare`),
+one pure seam, no view-inline branch (ClusterPresenceTests / SeededRosterFilterTests pin
+it). This SUPERSEDES the placeholder seed experiment above, which died because its data
+was false (count-only, guests miscounted, hollow pucks); this is true data, roles
+included, which is the difference. The board still does not move at any beat (the §2
+constant inset is untouched; -pillArrivalLab holds at 0.00 pt drift through the seeded
+sequence). The seeded withholding frame is offline-judgeable through -seededBirthLab
+(evidence only).
+
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
 with the surface and hands off from the chrome it left, so the melt never
