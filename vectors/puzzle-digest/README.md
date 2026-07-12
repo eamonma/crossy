@@ -41,27 +41,35 @@ One JSON file per cluster, kebab-case, a bare array of cases, UTF-8, prettier-fo
 
 ## What the digest is over (draft, D23 owns the final list)
 
-The canon is a deterministic byte-string built from the **stable, solution-bearing identity**
-of a puzzle and nothing that varies with the source outlet or a later ingest-pipeline change:
+Governing principle (owner ruling 2026-07-12): **a false positive costs far more than a false
+negative.** A duplicate copy is harmless clutter; wrongly collapsing two different puzzles is a
+lost puzzle. So the canon is the **strict** end of the dial: it hashes the whole translated
+`ServerPuzzle` object, and only an every-field match dedups. The cost is accepted false
+negatives (the same puzzle from two outlets, or across a normalization change, may hash apart
+into two rows).
+
+The canon is a deterministic byte-string over every field the object carries:
 
 - `rows`, `cols`
 - `blocks`: the sorted black-square cell-index set
+- `circles`, `shadedCircles`: sorted cell-index sets (included: a circle overlay is part of
+  what the puzzle is; two ingests that disagree on it are, by the strict principle, two rows)
 - `solution`: the per-cell answer array, each cell ASCII-uppercased (INV-1), a black square
   encoded as a fixed sentinel, in row-major cell order
+- `clues`: in grid-derived order, each clue's normalized plain `text`. Text is the canonical
+  projection and is stable across the clue-runs wave (adding `runs` never changes `text`), so
+  `runs` never enters the hash. Numbering is grid-derived, never trusted from the document
+  (`nyt.ts`, `guardian.ts`).
 
-Deliberately **excluded** from the canon, each with a reason:
+Deliberately **excluded**, each with a reason:
 
-- **clue text / `runs`**: entity and markup variance across outlets, and the landing
-  clue-runs wave (which reprojects `text` from structured `runs`), would split two ingests of
-  the same daily puzzle. Numbering is grid-derived, never trusted from the document
-  (`nyt.ts`, `guardian.ts`), so it adds no identity the geometry does not already carry.
-- **circles / shadedCircles**: a visual overlay, not the solve. Two ingests of one puzzle
-  that disagree on circle detection are still the same puzzle; excluding circles keeps them
-  one row. (Open for D23: whether a circle-bearing variant is a distinct enough artifact to
-  key on. The draft says no.)
-- **title / author**: display metadata, outlet-specific, not identity.
+- **`runs`**: a derived restyling of `text`; hashing `text` already captures the clue prose,
+  and hashing `runs` would make the digest depend on a representation detail.
+- **title / author**: display metadata, outlet-specific, not the puzzle itself. (Open for
+  D23: a strict reading could include them; the draft leaves them out because a byline is not
+  content and two outlets of one puzzle disagree on it constantly.)
 - **source.format**: the whole point is that the same puzzle via `nyt` and via a later `.puz`
-  upload collapses to one digest.
+  upload can still collapse to one digest.
 
 ## Case shapes (draft)
 
@@ -98,7 +106,7 @@ implementation fix the exact separator grammar, and this file becomes its golden
 
 ```json
 {
-  "name": "same grid, different clue prose, one digest",
+  "name": "same grid, DIFFERENT clue prose, distinct digest (strict: clue text is in the hash)",
   "a": {
     "rows": 3,
     "cols": 3,
@@ -123,9 +131,14 @@ implementation fix the exact separator grammar, and this file becomes its golden
       ]
     }
   },
-  "sameDigest": true
+  "sameDigest": false
 }
 ```
+
+A `MUST` collapse pair (`sameDigest: true`) is now a re-ingest of the identical document:
+same geometry, same solution, and byte-identical normalized clue text. The `runs` field may
+differ between the two (one carries styling, one does not) yet they still collapse, because
+`runs` is excluded and only the plain `text` projection is hashed.
 
 ```json
 {
