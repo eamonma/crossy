@@ -20,6 +20,11 @@
 //
 // Check order is fixed and documented on `translateXwordInfo` so the same bad puzzle always
 // yields the same code (deterministic, total).
+//
+// With the multi-format registry (PROTOCOL.md section 12, D21) this file also exports the
+// shared pieces every translator uses so the named rejections apply uniformly across formats:
+// the dimension cap and per-cell domain checks (`checkDimensions`, `checkSolutionGrid`),
+// grid-derived numbering (`deriveWordRuns`), entity decoding, and metadata reading.
 import { asciiUppercase } from "@crossy/protocol";
 import type { ServerPuzzle, Solution, Clue } from "@crossy/protocol";
 
@@ -60,7 +65,9 @@ const ENTITY = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g;
  * The stable machine-readable rejection codes ingestion can emit. Every member is also an
  * `ApiErrorCode` (http/errors.ts), so a route passes one straight to `fail` without a mapping
  * table. `VALIDATION` covers a malformed document; the rest are the named domain rejections
- * (DESIGN.md section 7, PROTOCOL.md section 12, SP5).
+ * (DESIGN.md section 7, PROTOCOL.md section 12, SP5). `SOLUTION_MISSING` joins with the
+ * multi-format registry (PROTOCOL.md section 12, D11): a well-formed document with no complete
+ * solution grid, which only translators for formats that can omit solutions (guardian) emit.
  */
 export type IngestErrorCode =
   | "VALIDATION"
@@ -69,7 +76,8 @@ export type IngestErrorCode =
   | "DEGENERATE_GRID"
   | "REBUS_TOO_LONG"
   | "UNSOLVABLE_CELL"
-  | "AMBIGUOUS_SOLUTION";
+  | "AMBIGUOUS_SOLUTION"
+  | "SOLUTION_MISSING";
 
 /** Detected feature flags, stored with the puzzle (DESIGN.md section 7, section 9 `features`). */
 export interface PuzzleFeatures {
@@ -108,15 +116,18 @@ export type IngestResult =
       readonly message: string;
     };
 
-function reject(code: IngestErrorCode, message: string): IngestResult {
+/** Build one named rejection. Shared by every translator in the registry (DESIGN.md 7). */
+export function reject(code: IngestErrorCode, message: string): IngestResult {
   return { ok: false, code, message };
 }
 
-function isObject(x: unknown): x is Record<string, unknown> {
+/** Shared body guard: a plain JSON object (dispatch.ts keys envelope detection on it). */
+export function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
-function isPositiveInt(x: unknown): x is number {
+/** Shared numeric guard for dimensions and lengths. */
+export function isPositiveInt(x: unknown): x is number {
   return typeof x === "number" && Number.isInteger(x) && x > 0;
 }
 
@@ -125,7 +136,7 @@ function isStringArray(x: unknown): x is string[] {
 }
 
 /** A grid-derived word: its number (assigned by scanning the grid) and its cell run. */
-interface WordRun {
+export interface WordRun {
   readonly number: number;
   readonly cells: readonly number[];
 }
@@ -138,7 +149,7 @@ interface WordRun {
  * unchecked cell (crossed by only one word) is simply absent from the other direction, never a
  * crash (SP5: tolerate unchecked cells).
  */
-function deriveWordRuns(
+export function deriveWordRuns(
   rows: number,
   cols: number,
   isBlockAt: (index: number) => boolean,
@@ -187,7 +198,7 @@ function deriveWordRuns(
  * numeric references are left verbatim; only a recognized entity is rewritten, and tags such as
  * `<i>` are untouched (DESIGN.md section 7 accepts HTML clue text).
  */
-function decodeEntities(text: string): string {
+export function decodeEntities(text: string): string {
   if (!text.includes("&")) return text;
   return text.replace(ENTITY, (match, token: string) => {
     if (token.charAt(0) === "#") {
@@ -215,7 +226,7 @@ function decodeEntities(text: string): string {
  * entity-decoded (the same one-pass decode used for clue text, so `&amp;` renders as `&`),
  * trimmed, and capped at `MAX_METADATA_LENGTH`; an empty result is stored as null.
  */
-function readMetadata(raw: unknown): string | null {
+export function readMetadata(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const decoded = decodeEntities(raw).trim();
   if (decoded === "") return null;
@@ -303,6 +314,64 @@ function readCircleIndices(
 }
 
 /**
+ * Shared dimension cap (PROTOCOL.md section 12: the named rejections apply to every format
+ * uniformly). Both dimensions are checked independently (SP5: real grids are non-square).
+ * Returns the rejection, or null when the grid fits. Every translator runs this before any
+ * per-cell work, so the cap bounds the scans that follow.
+ */
+export function checkDimensions(
+  rows: number,
+  cols: number,
+): IngestResult | null {
+  if (rows > MAX_DIMENSION || cols > MAX_DIMENSION) {
+    return reject(
+      "OVERSIZE_GRID",
+      `grid ${rows}x${cols} exceeds the ${MAX_DIMENSION}x${MAX_DIMENSION} cap in some dimension`,
+    );
+  }
+  return null;
+}
+
+/**
+ * Shared per-cell domain checks every translator runs on its normalized (ASCII-uppercased,
+ * INV-1) solution grid, in this fixed order (the xwordinfo steps 9-11):
+ *
+ *  1. DEGENERATE_GRID  every cell is null (zero playable cells, DESIGN.md section 7)
+ *  2. REBUS_TOO_LONG   some cell's solution exceeds 10 characters (whole-grid scan)
+ *  3. UNSOLVABLE_CELL  some cell's solution has no A-Z0-9 first character (D12)
+ *
+ * Each rule scans the whole grid before the next, so the code chosen never depends on where in
+ * the grid the offending cell sits. Returns the first rejection, or null when the grid passes.
+ */
+export function checkSolutionGrid(
+  solution: readonly (Solution | null)[],
+): IngestResult | null {
+  if (solution.every((s) => s === null)) {
+    return reject("DEGENERATE_GRID", "grid has no playable cells");
+  }
+  for (const s of solution) {
+    if (s !== null && s.length > MAX_REBUS_LENGTH) {
+      return reject(
+        "REBUS_TOO_LONG",
+        `a solution cell exceeds the ${MAX_REBUS_LENGTH}-character cap`,
+      );
+    }
+  }
+  for (const s of solution) {
+    if (
+      s !== null &&
+      !(s.length >= 1 && ENTERABLE_FIRST_CHAR.test(s.charAt(0)))
+    ) {
+      return reject(
+        "UNSOLVABLE_CELL",
+        "a solution cell has no enterable value under the A-Z0-9 first-character rule",
+      );
+    }
+  }
+  return null;
+}
+
+/**
  * Translate one XWord Info JSON document into an internal `ServerPuzzle`, or reject it with a
  * single named code. The check order is fixed so the same bad puzzle always yields the same code:
  *
@@ -364,13 +433,9 @@ export function translateXwordInfo(body: unknown): IngestResult {
   const rows = size["rows"];
   const cols = size["cols"];
 
-  // 5.
-  if (rows > MAX_DIMENSION || cols > MAX_DIMENSION) {
-    return reject(
-      "OVERSIZE_GRID",
-      `grid ${rows}x${cols} exceeds the ${MAX_DIMENSION}x${MAX_DIMENSION} cap in some dimension`,
-    );
-  }
+  // 5. The shared dimension cap (checkDimensions bounds all later per-cell work).
+  const oversize = checkDimensions(rows, cols);
+  if (oversize !== null) return oversize;
 
   // 6.
   const cellCount = rows * cols;
@@ -419,35 +484,11 @@ export function translateXwordInfo(body: unknown): IngestResult {
     }
   }
 
-  // 9.
-  if (blocks.length === cellCount) {
-    return reject("DEGENERATE_GRID", "grid has no playable cells");
-  }
-
-  // 10. Length cap, scanned over the whole grid before enterability so a too-long cell anywhere
-  //     wins over an unsolvable cell anywhere.
-  for (const [, s] of solution.entries()) {
-    if (s !== null && s.length > MAX_REBUS_LENGTH) {
-      return reject(
-        "REBUS_TOO_LONG",
-        `a solution cell exceeds the ${MAX_REBUS_LENGTH}-character cap`,
-      );
-    }
-  }
-
-  // 11. Enterability: first-char acceptance (D12). A whole-symbol cell like `/` has no legal
-  //     input; `A/B` is fine because typing `A` completes it (SP5).
-  for (const [, s] of solution.entries()) {
-    if (
-      s !== null &&
-      !(s.length >= 1 && ENTERABLE_FIRST_CHAR.test(s.charAt(0)))
-    ) {
-      return reject(
-        "UNSOLVABLE_CELL",
-        "a solution cell has no enterable value under the A-Z0-9 first-character rule",
-      );
-    }
-  }
+  // 9, 10, 11. The shared per-cell domain checks: degenerate grid, then the length cap over the
+  //     whole grid, then enterability (first-char acceptance, D12: a whole-symbol cell like `/`
+  //     has no legal input; `A/B` is fine because typing `A` completes it, SP5).
+  const domain = checkSolutionGrid(solution);
+  if (domain !== null) return domain;
 
   // 12 & 13. Structure the clues against grid-derived word runs.
   const runs = deriveWordRuns(rows, cols, (i) => solution[i] === null);

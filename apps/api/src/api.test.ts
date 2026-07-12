@@ -517,6 +517,168 @@ describe("POST /puzzles ingestion ACL (ROADMAP Phase 3 Track C, G1; SP5; INV-6)"
   });
 });
 
+describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21; ROADMAP 6.1 x1)", () => {
+  const MARKER = "MARKERWORD";
+
+  /** Read the stored `source` jsonb for one puzzle via the superuser inspection pool. */
+  async function storedSource(puzzleId: string): Promise<unknown> {
+    const { rows } = await adminPool.query(
+      "select source from puzzles where puzzle_id = $1",
+      [puzzleId],
+    );
+    return rows[0].source;
+  }
+
+  it("stores source {kind: 'upload', format: 'xwordinfo'} on the legacy bare path", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, FIXTURE);
+    expect(res.status).toBe(201);
+    const { puzzleId } = (await res.json()) as { puzzleId: string };
+    expect(await storedSource(puzzleId)).toEqual({
+      kind: "upload",
+      format: "xwordinfo",
+    });
+  });
+
+  it("ingests the {format, document} envelope equivalently to the bare body, same source", async () => {
+    const token = await auth.mintUpgraded();
+    const bare = await postJson("/puzzles", token, FIXTURE);
+    const enveloped = await postJson("/puzzles", token, {
+      format: "xwordinfo",
+      document: FIXTURE,
+    });
+    expect(bare.status).toBe(201);
+    expect(enveloped.status).toBe(201);
+    const bareBody = (await bare.json()) as {
+      puzzleId: string;
+      puzzle: unknown;
+    };
+    const envBody = (await enveloped.json()) as {
+      puzzleId: string;
+      puzzle: unknown;
+    };
+    expect(envBody.puzzle).toEqual(bareBody.puzzle);
+    expect(await storedSource(envBody.puzzleId)).toEqual({
+      kind: "upload",
+      format: "xwordinfo",
+    });
+  });
+
+  it("rejects an unknown format as UNKNOWN_FORMAT 400, naming the format, never the document (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "puz",
+      document: { grid: [MARKER], answer: MARKER },
+    });
+    await expectRejectionNoLeak(res, 400, "UNKNOWN_FORMAT", MARKER);
+  });
+
+  it("rejects format without document as VALIDATION 400, never echoing the body (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "xwordinfo",
+      extra: MARKER,
+    });
+    await expectRejectionNoLeak(res, 400, "VALIDATION", MARKER);
+  });
+
+  it("rejects a non-string format as VALIDATION 400, never echoing the document (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: 42,
+      document: { grid: [MARKER] },
+    });
+    await expectRejectionNoLeak(res, 400, "VALIDATION", MARKER);
+  });
+
+  // A synthetic Guardian-shaped 3x3 (never real Guardian content, DESIGN.md §7): CAT/DOG
+  // across, CUD/TAG down, center block. Positions are 0-based {x, y}.
+  const guardianEntry = (
+    id: string,
+    clue: string,
+    direction: string,
+    x: number,
+    y: number,
+    solution: string,
+  ) => ({
+    id,
+    humanNumber: id.split("-")[0],
+    clue,
+    direction,
+    length: 3,
+    group: [id],
+    position: { x, y },
+    separatorLocations: {},
+    solution,
+  });
+  const guardianDoc = () => ({
+    id: "crosswords/quick/1",
+    name: "Synthetic quick No 1",
+    dimensions: { cols: 3, rows: 3 },
+    solutionAvailable: true,
+    entries: [
+      guardianEntry("1-across", "Feline (3)", "across", 0, 0, "CAT"),
+      guardianEntry("1-down", "Chewed morsel (3)", "down", 0, 0, "CUD"),
+      guardianEntry("2-down", "Label (3)", "down", 2, 0, "TAG"),
+      guardianEntry("3-across", "Canine (3)", "across", 0, 2, "DOG"),
+    ],
+  });
+
+  it("ingests a guardian envelope: stored solution server-side, ClientPuzzle view, source format (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "guardian",
+      document: guardianDoc(),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      puzzleId: string;
+      puzzle: Record<string, unknown>;
+    };
+    expect(hasKeyDeep(body.puzzle, "solution")).toBe(false);
+    expect(body.puzzle.blocks).toEqual([4]);
+    expect(await storedSource(body.puzzleId)).toEqual({
+      kind: "upload",
+      format: "guardian",
+    });
+    const { rows } = await adminPool.query(
+      "select data from puzzles where puzzle_id = $1",
+      [body.puzzleId],
+    );
+    expect(rows[0].data.solution).toEqual([
+      "C",
+      "A",
+      "T",
+      "U",
+      null,
+      "A",
+      "D",
+      "O",
+      "G",
+    ]);
+  });
+
+  it("rejects a guardian document with solutionAvailable false as SOLUTION_MISSING 422, no leak (INV-6, D11)", async () => {
+    const token = await auth.mintUpgraded();
+    const doc = guardianDoc();
+    const res = await postJson("/puzzles", token, {
+      format: "guardian",
+      document: { ...doc, solutionAvailable: false },
+    });
+    await expectRejectionNoLeak(res, 422, "SOLUTION_MISSING", "CAT");
+  });
+
+  it("applies the shared domain rejections to guardian documents (OVERSIZE_GRID 422)", async () => {
+    const token = await auth.mintUpgraded();
+    const doc = guardianDoc();
+    const res = await postJson("/puzzles", token, {
+      format: "guardian",
+      document: { ...doc, dimensions: { cols: 26, rows: 3 } },
+    });
+    await expectRejectionNoLeak(res, 422, "OVERSIZE_GRID", "CAT");
+  });
+});
+
 describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
   it("creates a game, seats the creator as host, and denormalizes the snapshot", async () => {
     const token = await auth.mintUpgraded();
