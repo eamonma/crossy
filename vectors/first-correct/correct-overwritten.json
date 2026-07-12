@@ -1,0 +1,16 @@
+[
+  {
+    "name": "a later same-correct overwrite by another user never moves an already-assigned owner",
+    "intent": "Scheme 1: once u1 is the first-correct owner, u2 writing the identical correct value later does not re-own. owners are userIds only (INV-6).",
+    "given": {
+      "solution": [[0, "A"]],
+      "events": [
+        { "seq": 5, "cell": 0, "userId": "u1", "value": "A" },
+        { "seq": 9, "cell": 0, "userId": "u2", "value": "A" }
+      ]
+    },
+    "then": {
+      "owners": { "0": "u1" }
+    }
+  }
+]

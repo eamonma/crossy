@@ -1,0 +1,16 @@
+[
+  {
+    "name": "comparator first-char acceptance counts as correct: A owns via S before B writes the full STAR",
+    "intent": "Shares the engine comparator. matches(\"STAR\", \"S\") is true (a rebus solution's first character is accepted), so u1's S at seq 4 is the FIRST correct write and owns; u2's full STAR at seq 8 does not re-own. Casing is ASCII-only (INV-1). owners are userIds only (INV-6).",
+    "given": {
+      "solution": [[0, "STAR"]],
+      "events": [
+        { "seq": 4, "cell": 0, "userId": "u1", "value": "S" },
+        { "seq": 8, "cell": 0, "userId": "u2", "value": "STAR" }
+      ]
+    },
+    "then": {
+      "owners": { "0": "u1" }
+    }
+  }
+]

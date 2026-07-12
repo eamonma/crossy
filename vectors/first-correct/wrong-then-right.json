@@ -1,0 +1,16 @@
+[
+  {
+    "name": "a wrong guess earns no credit; the first CORRECT writer owns the cell",
+    "intent": "Correctness is matches(solution[cell], value): u1's non-matching Z is not correct and never owns. The FIRST matching write (u2) owns. owners are userIds only (INV-6).",
+    "given": {
+      "solution": [[0, "A"]],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "Z" },
+        { "seq": 2, "cell": 0, "userId": "u2", "value": "A" }
+      ]
+    },
+    "then": {
+      "owners": { "0": "u2" }
+    }
+  }
+]

@@ -1,0 +1,21 @@
+[
+  {
+    "name": "each cell written correct once by a distinct user owns to that writer",
+    "intent": "Scheme 1 first-ever-correct baseline: the FIRST matching writer owns the cell. then.owners holds userIds only, never a solution value (INV-6).",
+    "given": {
+      "solution": [
+        [0, "A"],
+        [1, "B"],
+        [2, "C"]
+      ],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "A" },
+        { "seq": 2, "cell": 1, "userId": "u2", "value": "B" },
+        { "seq": 3, "cell": 2, "userId": "u3", "value": "C" }
+      ]
+    },
+    "then": {
+      "owners": { "0": "u1", "1": "u2", "2": "u3" }
+    }
+  }
+]

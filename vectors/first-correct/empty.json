@@ -1,0 +1,16 @@
+[
+  {
+    "name": "no events yields an empty owner map",
+    "intent": "With no events, no cell ever goes correct, so the owner map is empty. owners are userIds only (INV-6).",
+    "given": {
+      "solution": [
+        [0, "A"],
+        [1, "B"]
+      ],
+      "events": []
+    },
+    "then": {
+      "owners": {}
+    }
+  }
+]
