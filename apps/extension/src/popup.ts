@@ -1,8 +1,9 @@
 // Action popup. Signed out: one button per provider; the click requests both host
 // origins (inside the gesture) and hands the flow to the service worker, because
 // this popup closes when the auth window takes focus. Signed in on a supported
-// page: Play in Crossy leads (ingest, then open the web app's play intent in a new
-// tab), Add to library is the quieter path (result line plus a library link).
+// page: Play in Crossy is the sole action (ingest, then open the web app's play
+// intent in a new tab). On a page whose on-page pill this solver has hidden, a
+// quiet footer line offers to show it again, in either auth state.
 // Every rejection is surfaced verbatim (PROTOCOL.md section 12), never rewritten.
 
 import { postPuzzle } from "./api";
@@ -24,11 +25,12 @@ import { buildEnvelope } from "./envelope";
 import { EXTRACT_REQUEST } from "./messaging";
 import type { ExtractResponse } from "./messaging";
 import {
-  loadBases,
-  playIntentUrl,
-  requestOriginPermissions,
-  WEB_LIBRARY_URL,
-} from "./settings";
+  loadPillDisabled,
+  pillReSummonSite,
+  setPillDisabled,
+} from "./pill/toggle";
+import type { PillSite } from "./pill/toggle";
+import { loadBases, playIntentUrl, requestOriginPermissions } from "./settings";
 import type { Bases } from "./settings";
 
 // Resolved once at init so click handlers never await before their permission
@@ -39,6 +41,7 @@ const identityEl = document.getElementById("identity") as HTMLParagraphElement;
 const statusEl = document.getElementById("status") as HTMLParagraphElement;
 const actionsEl = document.getElementById("actions") as HTMLDivElement;
 const resultEl = document.getElementById("result") as HTMLParagraphElement;
+const pillNoteEl = document.getElementById("pill-note") as HTMLParagraphElement;
 
 const PROVIDERS: ReadonlyArray<{
   provider: Provider;
@@ -186,12 +189,8 @@ function renderIngest(extraction: ExtractResponse & { ok: true }): void {
   const play = document.createElement("button");
   play.className = "primary";
   play.textContent = "Play in Crossy";
-  const add = document.createElement("button");
-  add.className = "quiet";
-  add.textContent = "Add to library";
   const setBusy = (busy: boolean): void => {
     play.disabled = busy;
-    add.disabled = busy;
   };
   const fail = (run: IngestRun & { ok: false }): void => {
     if (run.sessionEnded) {
@@ -218,26 +217,7 @@ function renderIngest(extraction: ExtractResponse & { ok: true }): void {
     })();
   });
 
-  add.addEventListener("click", () => {
-    setBusy(true);
-    showResult("Adding.", false);
-    void (async () => {
-      // No await before ingest: its permission request opens the gesture.
-      const run = await ingest(extraction);
-      if (!run.ok) {
-        fail(run);
-        return;
-      }
-      const link = document.createElement("a");
-      link.href = WEB_LIBRARY_URL;
-      link.target = "_blank";
-      link.textContent = "Open your library";
-      resultEl.classList.remove("error");
-      resultEl.replaceChildren(`Added puzzle ${run.puzzleId}. `, link);
-    })();
-  });
-
-  actionsEl.replaceChildren(play, add);
+  actionsEl.replaceChildren(play);
 }
 
 async function renderSignedIn(who: {
@@ -280,8 +260,45 @@ async function renderSignedIn(who: {
 // init and double-render underneath it; the silent flow calls init itself on success.
 let silentInFlight = false;
 
+async function activeTabUrl(): Promise<string | null> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab?.url ?? null;
+}
+
+// The re-summon line: on a pill site whose on-page button this solver has hidden,
+// offer to show it. About page UI, not auth, so it runs in either state. Nothing
+// renders off a pill site or where the pill is already showing (pillReSummonSite).
+async function renderPillNote(): Promise<void> {
+  const url = await activeTabUrl();
+  const site =
+    url === null ? null : pillReSummonSite(url, await loadPillDisabled());
+  if (site === null) {
+    pillNoteEl.replaceChildren();
+    return;
+  }
+  const text = document.createElement("span");
+  text.textContent = "On-page button hidden here.";
+  const show = document.createElement("button");
+  show.className = "linklike";
+  show.textContent = "Show it";
+  show.addEventListener("click", () => {
+    show.disabled = true;
+    void showAgain(site);
+  });
+  pillNoteEl.replaceChildren(text, show);
+}
+
+async function showAgain(site: PillSite): Promise<void> {
+  await setPillDisabled(site, false);
+  // The pill mounts at page load, so a reload is the honest instruction.
+  pillNoteEl.replaceChildren("Shown. Reload the page to see it.");
+}
+
 async function init(): Promise<void> {
   bases = await loadBases();
+  // The pill note is about page UI, not auth, so it renders on every init in either
+  // state, outside the silent flow's control path below.
+  await renderPillNote();
   const session = await loadSession(chromeLocalArea());
   if (session !== null) {
     await renderSignedIn({

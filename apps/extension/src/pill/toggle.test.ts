@@ -3,6 +3,8 @@ import {
   loadPillDisabled,
   parsePillDisabled,
   PILL_DISABLED_KEY,
+  pillReSummonSite,
+  pillSiteForUrl,
   setPillDisabled,
 } from "./toggle";
 
@@ -55,5 +57,73 @@ describe("pill per-site toggle", () => {
     const store = stubStorage();
     await setPillDisabled("nyt", true);
     expect(store[PILL_DISABLED_KEY]).toEqual({ nyt: true });
+  });
+});
+
+describe("pillSiteForUrl", () => {
+  it("maps a Guardian crossword page to guardian (both host forms)", () => {
+    expect(
+      pillSiteForUrl("https://www.theguardian.com/crosswords/quick/17012"),
+    ).toBe("guardian");
+    expect(
+      pillSiteForUrl("https://theguardian.com/crosswords/cryptic/29001"),
+    ).toBe("guardian");
+  });
+
+  it("maps an NYT crosswords game page to nyt", () => {
+    expect(pillSiteForUrl("https://www.nytimes.com/crosswords/game/mini")).toBe(
+      "nyt",
+    );
+    expect(
+      pillSiteForUrl(
+        "https://www.nytimes.com/crosswords/game/daily/2026/07/12",
+      ),
+    ).toBe("nyt");
+  });
+
+  it("returns null off the pill's content-script scope", () => {
+    // NYT crosswords home, not a game page: no pill there.
+    expect(pillSiteForUrl("https://www.nytimes.com/crosswords")).toBeNull();
+    // A non-pill host.
+    expect(
+      pillSiteForUrl("https://example.com/crosswords/game/mini"),
+    ).toBeNull();
+    // AmuseLabs runs in the publisher iframe and grows no top-level pill (D22).
+    expect(
+      pillSiteForUrl("https://cdn.amuselabs.com/pmm/crossword?id=abc"),
+    ).toBeNull();
+    // Non-https and unparseable.
+    expect(
+      pillSiteForUrl("http://www.theguardian.com/crosswords/quick/1"),
+    ).toBeNull();
+    expect(pillSiteForUrl("not a url")).toBeNull();
+  });
+});
+
+describe("pillReSummonSite", () => {
+  it("names the site only on a pill page whose pill is hidden", () => {
+    expect(
+      pillReSummonSite("https://www.theguardian.com/crosswords/quick/1", {
+        guardian: true,
+      }),
+    ).toBe("guardian");
+  });
+
+  it("stays null when the pill still shows there", () => {
+    expect(
+      pillReSummonSite("https://www.theguardian.com/crosswords/quick/1", {}),
+    ).toBeNull();
+    // Another site is hidden, but not this one.
+    expect(
+      pillReSummonSite("https://www.theguardian.com/crosswords/quick/1", {
+        nyt: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("stays null off a pill page even when sites are hidden", () => {
+    expect(
+      pillReSummonSite("https://example.com/", { guardian: true, nyt: true }),
+    ).toBeNull();
   });
 });
