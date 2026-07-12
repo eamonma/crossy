@@ -31,7 +31,7 @@ import {
   resolveInviteField,
 } from "./domain/invite";
 import { isAppleMobile } from "./lib/platform";
-import type { Clue, Puzzle } from "./domain/types";
+import type { Clue, ClueRun, Puzzle } from "./domain/types";
 import {
   cellClick,
   clueClick,
@@ -74,11 +74,14 @@ import { homeHref, togglePartyHref } from "./nav";
 
 type Role = "host" | "solver" | "spectator";
 
-/** A structured clue on the ClientPuzzle (PROTOCOL puzzle model): number, prose, cell run. */
+/** A structured clue on the ClientPuzzle (PROTOCOL puzzle model): number, prose, cell run. `runs`
+ * is the optional styled form of `text` (italic, bold, sub/sup); its `t` concatenation equals
+ * `text`, so `text` stays the plain fallback and older payloads (no `runs`) render as before. */
 interface ClientClue {
   number: number;
   text: string;
   cellIndices: readonly number[];
+  runs?: readonly ClueRun[];
 }
 
 /** The solution-stripped puzzle facts the game view carries (ClientPuzzle, PROTOCOL.md §12). */
@@ -115,18 +118,24 @@ function toPuzzle(cp: ClientPuzzleView): Puzzle {
     cp.rows,
     blocks,
   );
-  const textOf = (
+  const clueOf = (
     list: readonly ClientClue[] | undefined,
     number: number,
-  ): string | undefined => list?.find((c) => c.number === number)?.text;
+  ): ClientClue | undefined => list?.find((c) => c.number === number);
 
+  // Attach the payload's prose to the geometry-derived clue: plain `text` always, and the
+  // optional styled `runs` beside it when present. Absent both (demo boards, or a clue the
+  // payload lacks) leaves the clue untouched, so those paths render exactly as before.
   const withText = (
     clues: Clue[],
     list: readonly ClientClue[] | undefined,
   ): Clue[] =>
     clues.map((c) => {
-      const text = textOf(list, c.number);
-      return text === undefined ? c : { ...c, text };
+      const found = clueOf(list, c.number);
+      if (found === undefined) return c;
+      return found.runs === undefined
+        ? { ...c, text: found.text }
+        : { ...c, text: found.text, runs: found.runs };
     });
 
   return {

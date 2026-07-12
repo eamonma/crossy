@@ -28,6 +28,7 @@ import type { FlashEntry, PresenceEntry } from "./CrosswordGrid";
 import { buildRoster, GROUP_CAP, GROUP_PAST } from "./roster";
 import type { ClueGroup, SolverEntry } from "./roster";
 import { partyProgress } from "./partyProgress";
+import { ClueText } from "./ClueText";
 import { buildShareUrl } from "../domain/invite";
 import { useElapsedSeconds, formatDuration } from "./gameTime";
 import { useWakeLock } from "./useWakeLock";
@@ -373,7 +374,7 @@ function Roster({
                 <>
                   <ClueTag clue={s.clue} />
                   <span className="min-w-0 truncate text-[1.1em] text-text-muted">
-                    {s.clue.text ?? "—"}
+                    <ClueText clue={s.clue} />
                   </span>
                 </>
               )}
@@ -387,7 +388,7 @@ function Roster({
               <Cluster people={g.people} />
               <ClueTag clue={g.clue} />
               <span className="min-w-0 truncate text-[1.1em] text-text-muted">
-                {g.clue.text ?? "—"}
+                <ClueText clue={g.clue} />
               </span>
             </div>
           ))}

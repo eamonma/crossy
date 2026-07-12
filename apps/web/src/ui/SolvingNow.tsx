@@ -9,6 +9,7 @@ import { ChevronDownIcon, ChevronUpIcon } from "@radix-ui/react-icons";
 import type { Clue } from "../domain/types";
 import type { Roster, SolverEntry } from "./roster";
 import { GROUP_CAP, GROUP_PAST, canJump } from "./roster";
+import { ClueText } from "./ClueText";
 import { CapsLabel, cx } from "./primitives";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -222,7 +223,7 @@ export function SolvingNow({
                   <>
                     <ClueTag clue={s.clue} />
                     <span className="min-w-0 truncate text-2 text-text-muted">
-                      {s.clue.text ?? "—"}
+                      <ClueText clue={s.clue} />
                     </span>
                   </>
                 )}
@@ -247,7 +248,7 @@ export function SolvingNow({
                   )}
                   <ClueTag clue={g.clue} />
                   <span className="min-w-0 truncate text-2 text-text-muted">
-                    {g.clue.text ?? "—"}
+                    <ClueText clue={g.clue} />
                   </span>
                 </div>
               ))}
