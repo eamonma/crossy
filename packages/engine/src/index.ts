@@ -22,6 +22,8 @@ export type {
 } from "./types";
 export { matches } from "./comparator";
 export { applyWithCompletion } from "./completion";
+export { firstCorrect } from "./first-correct";
+export type { OwnerMap, WriteEvent } from "./first-correct";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,
