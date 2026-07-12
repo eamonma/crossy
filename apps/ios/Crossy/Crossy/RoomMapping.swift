@@ -44,28 +44,6 @@ enum RoomMapping {
         }
     }
 
-    /// The pre-REST count-seed roster (DESIGN.md §4, the live-data birth rule): a
-    /// tapped room card knows only how many members a room holds (RoomCardModel
-    /// .memberCount, threaded as a RoomArrivalSeed), not who they are, so the room
-    /// stands that many PLACEHOLDER pucks before the REST view lands and gives them
-    /// identities. Each carries a synthetic placeholder id (RoomArrivalSeed
-    /// .placeholderID), so the roster renders it as the achromatic floor and never a
-    /// hash color that would flip; an empty name and color and `role: .solver` are
-    /// inert (the placeholder branch reads none of them). `connected: false` matches
-    /// the REST seed's not-yet-heard-from register. The store gates the seed to
-    /// `connecting` (GameStore.seedRoster), so the REST roster's real ids overwrite
-    /// this count-seed the instant `GET /games/{id}` lands, and the welcome rebuilds
-    /// the roster wholesale after that: the synthetic ids never survive the handshake.
-    /// The count clamps non-negative through the seed's own arithmetic.
-    static func placeholderRoster(count: Int) -> [Participant] {
-        (0..<RoomArrivalSeed.placeholderPuckCount(count)).map { index in
-            Participant(
-                userId: RoomArrivalSeed.placeholderID(index),
-                displayName: "", avatarUrl: nil,
-                color: "", role: .solver, connected: false)
-        }
-    }
-
     /// The ClientPuzzle mapping proper. Clue numbering derives from the clue starts
     /// the document already carries (each clue's first cell numbers, and an across and
     /// a down clue starting in the same cell share the number by crossword

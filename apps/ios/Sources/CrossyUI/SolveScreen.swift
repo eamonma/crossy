@@ -638,13 +638,7 @@ public struct SolveScreen: View {
                 connected: $0.connected,
                 cursor: store.cursors[$0.userId].map {
                     RosterCursor(cell: $0.cell, isAcross: $0.direction == .across)
-                },
-                // A pre-REST count-seed participant (RoomArrivalSeed) carries a
-                // placeholder id: it renders the achromatic floor (DESIGN.md §4, the
-                // live-data birth rule), its count honest before its identity lands.
-                // The REST seed's real ids and the welcome's roster are never
-                // placeholders, so they take the identified branch untouched.
-                placeholder: RoomArrivalSeed.isPlaceholderID($0.userId))
+                })
         }
     }
 

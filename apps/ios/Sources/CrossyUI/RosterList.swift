@@ -43,14 +43,6 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
     /// suppressed client-side by default, PROTOCOL.md §9; DESIGN.md §15). This is
     /// the one fact the roster's "Go to" action gates on.
     public let cursor: RosterCursor?
-    /// Whether this is a pre-REST placeholder puck (DESIGN.md §4, the live-data birth
-    /// rule): the count from the tapped card's list row, standing before the REST view
-    /// gives it an identity. A placeholder has no real userId, name, or color yet, so
-    /// it renders the achromatic hollow floor (RosterPuckBody) rather than a hash color
-    /// that would flip when the real id lands; the count is honest, the identity is not.
-    /// Defaulted false, so every existing construction site (SolveScreen, Settings, the
-    /// island) stays an identified member untouched; only the seed sets it true.
-    public let placeholder: Bool
 
     public var id: String { userId }
 
@@ -61,8 +53,7 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
         // shipped without avatars (owner device report 2026-07-11).
         avatarUrl: String?,
         isHost: Bool, isSpectator: Bool, connected: Bool,
-        cursor: RosterCursor? = nil,
-        placeholder: Bool = false
+        cursor: RosterCursor? = nil
     ) {
         self.userId = userId
         self.displayName = displayName
@@ -72,7 +63,6 @@ public struct RosterMember: Sendable, Equatable, Identifiable {
         self.isSpectator = isSpectator
         self.connected = connected
         self.cursor = cursor
-        self.placeholder = placeholder
     }
 
     /// The member's roster identity (wire color first, hash-of-id fallback).

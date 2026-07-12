@@ -72,19 +72,19 @@ final class RealRoom {
     }
 
     /// The arrival composition (I3): the token rides a provider so REST and every
-    /// socket redial resolve it fresh (a silent refresh mid-solve just works). `seed`
-    /// is the tapped card's known facts (RoomArrivalSeed, DESIGN.md §4, the live-data
-    /// birth rule): the room seeds that many placeholder pucks at construction, so the
-    /// players pill stands at its true width from the withholding room's first frame
-    /// and goos in with the #132 zoom push instead of popping at REST-mount. A deep
-    /// link or a code-join has no card and passes nil, keeping today's REST-gated
-    /// arrival (the pill arrives at the welcome's beat).
+    /// socket redial resolve it fresh (a silent refresh mid-solve just works). The
+    /// withholding room stands its back button from the push's first frame; the whole
+    /// trailing cluster (players, share, timer) arrives together on the welcome's beat
+    /// (DESIGN.md §4, one arrival beat). The pre-REST count-seed retired 2026-07-12: a
+    /// card's memberCount counted everyone but the pill cluster is solvers-only, so the
+    /// placeholder count was wrong by construction, and the hollow pucks read as an
+    /// empty capsule on device. The REST roster still seeds the store in run() below
+    /// (identity-true), so the pill lands at its right width when the board mounts.
     init(
         apiBaseURL: URL,
         sessionBaseURL: URL,
         gameId: String,
-        tokenProvider: any BearerTokenProviding,
-        seed: RoomArrivalSeed? = nil
+        tokenProvider: any BearerTokenProviding
     ) {
         self.gameId = gameId
         self.sessionBaseURL = sessionBaseURL
@@ -102,19 +102,6 @@ final class RealRoom {
         // reaches the chrome.
         let chrome = chrome
         store.onKicked = { _ in chrome.kicked = true }
-
-        // Seed the players pill from the tapped card's member count BEFORE the REST
-        // fetch (DESIGN.md §4, the live-data birth rule): the withholding room carries
-        // no board yet, but its bar's players pill can stand at true count from frame
-        // one, so the #132 zoom push has something to goo into on live data. The store
-        // gates the seed to `connecting`, and the REST roster's real ids overwrite it
-        // (run() below) the instant the view lands, so the placeholder pucks give way
-        // to identities without a width change unless membership genuinely moved since
-        // the list row (a real event). No seed (a deep link, a code-join) means today's
-        // REST-gated arrival, unchanged.
-        if let seed {
-            store.seedRoster(RoomMapping.placeholderRoster(count: seed.memberCount))
-        }
     }
 
     /// Fetch the game view over REST (solution-stripped, INV-6), map it to the render
