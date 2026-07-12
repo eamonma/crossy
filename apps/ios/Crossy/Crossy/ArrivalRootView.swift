@@ -86,6 +86,16 @@ struct ArrivalRootView: View {
     /// with the paths. NOTE: Puzzles-tab pushes stay default (no zoom) in this PR;
     /// the puzzle card as a zoom source is a follow-up.
     @State private var roomZoomSourceID: String?
+    /// The tapped card's true facts, recorded beside the path at tap time (the
+    /// seeded-birth rule, DESIGN.md §4, §12), keyed by gameId exactly as
+    /// `roomZoomSourceID` is: a card tap records its member stack and invite code, so
+    /// the pushed room is born identity-true and the goo plays on live data. A deep
+    /// link or a code-join records nothing (no card), so its room reads nil here and
+    /// keeps the one-beat arrival. Cleared on sign-out with the paths and the zoom
+    /// source (the room's card is gone). Keyed rather than single-slotted because two
+    /// pushes can be staged in the two navigating tabs, and a stale seed must never
+    /// dress the wrong room.
+    @State private var roomSeeds: [String: RoomArrivalSeed] = [:]
     /// A code-join staged for after the sheet melts back into the Join capsule
     /// (slice 2): join success dismisses the sheet, and the room pushes only when
     /// the sheet's dismissal completes (the sheet's .onDisappear), so the read is
@@ -163,9 +173,11 @@ struct ArrivalRootView: View {
                 path.removeAll()
                 puzzlesPath.removeAll()
                 showJoin = false
-                // The Rooms path is empty now, so the zoom source and a staged join
-                // are stale: clear them with the paths (the room's card is gone).
+                // The Rooms path is empty now, so the zoom source, the recorded seeds,
+                // and a staged join are stale: clear them with the paths (the room's
+                // card is gone).
                 roomZoomSourceID = nil
+                roomSeeds.removeAll()
                 pendingJoinGameId = nil
             }
         }
@@ -216,11 +228,24 @@ struct ArrivalRootView: View {
                             // and pours back into it on the pop (native continuity,
                             // DESIGN.md §4). The id matches the card's stamp exactly.
                             roomZoomSourceID = RoomZoomSource.sourceID(for: room.gameId)
+                            // Record the card's true facts beside the path (the
+                            // seeded-birth rule, DESIGN.md §4, §12): its member stack
+                            // and invite code seed the room identity-true, so the
+                            // players and share pills stand from the push's first
+                            // frame and the goo plays on live data. Keyed by gameId,
+                            // read at construction, cleared on sign-out.
+                            roomSeeds[room.gameId] = RoomArrivalSeed(
+                                members: room.members, inviteCode: room.inviteCode)
                             path.append(roomRoute(for: room.gameId))
                         },
                         onJoinWithCode: { showJoin = true },
                         joinSheetSource: JoinSheetSource(namespace: joinZoom),
-                        roomZoomSource: RoomZoomSource(namespace: roomZoom)
+                        roomZoomSource: RoomZoomSource(namespace: roomZoom),
+                        // The evidence walk (-i3AutoOpen): the first loaded room
+                        // opens through the production tap seam, so a headless
+                        // capture can watch the seeded birth and the goo against
+                        // a live stack. Evidence only, false on every real path.
+                        autoOpenFirstRoom: LaunchFacts.flag("i3AutoOpen")
                     )
                     // The Rooms nav bar is VISIBLE but title-less now (the
                     // toolbar-adoption ruling, DESIGN.md §4): the screen keeps
@@ -400,6 +425,12 @@ struct ArrivalRootView: View {
                         sessionBaseURL: facts.sessionBaseURL,
                         gameId: gameId,
                         tokenProvider: model.session.tokenProvider,
+                        // The tapped card's seed (the seeded-birth rule, DESIGN.md §4,
+                        // §12), recorded at tap time and keyed by gameId. nil for a
+                        // deep link or a code-join (no card), which keeps the one-beat
+                        // arrival. RealRoom seeds the store's roster and the share
+                        // payload from it before the REST fetch.
+                        seed: roomSeeds[gameId],
                         navigationPrefs: { typingPrefs.navigationPrefs }),
                     onBack: pop,
                     onExit: pop
@@ -438,7 +469,11 @@ struct RoomNavBarChrome: ViewModifier {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             // OUR back item leads the toolbar; the system back would double it
-            // (the gate rig showed two chevrons), so it is hidden here.
+            // (the gate rig showed two chevrons), so it is hidden here. The edge
+            // swipe-back survives the hiding (device census 2026-07-12: the pop
+            // machinery stays enabled and delegated); what starved it was the
+            // grid claiming every touch, fixed at the edge-pop gutter
+            // (CrossyGridView).
             .navigationBarBackButtonHidden(true)
             // The board runs under the bar (the full-bleed amendment): a
             // transparent bar floats its glass items over the grid instead of

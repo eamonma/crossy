@@ -71,23 +71,30 @@ enum ClueFeather {
 
 extension GridOcclusion {
     /// The STANDING cover for the camera's clamp: the room bar above, the
-    /// one-line clue bar plus feather below. The bottom is built from constants
-    /// on purpose (the bar HEIGHT, never the live slot), so the clamp is a
-    /// fixed fact and clue length can never move the board.
-    static func standing(board: CGRect?, roomBar: CGRect?) -> GridOcclusion {
-        guard let board else { return .none }
+    /// one-line clue bar plus feather below. BOTH edges are built from constants
+    /// on purpose (DESIGN.md §2, the standing-inset law): the top is the system
+    /// bar's height (the room container's top safe-area inset, the band the board
+    /// bleeds under, constant-built and never a reported bar-item frame), and the
+    /// bottom is the bar HEIGHT plus feather. So neither clue length NOR the pill's
+    /// arrival can move the board: the grid's top edge is at its final position on
+    /// its first rendered frame and never moves (the owner device regression,
+    /// 2026-07-12, where the grid loaded high and dropped as the pill materialized,
+    /// closed at the root, the inset no longer waiting on any onGeometryChange).
+    static func standing(board: CGRect?, topInset: CGFloat) -> GridOcclusion {
+        guard board != nil else { return .none }
         return GridOcclusion(
-            top: max(0, (roomBar?.maxY ?? board.minY) - board.minY),
+            top: max(0, topInset),
             bottom: ChromeLayout.barHeight + ClueFeather.extent)
     }
 
     /// The LIVE cover the selected cell must escape: the wrapped bar's actual
     /// slot plus feather. Feeds only the camera's follow (GridCamera.following
     /// keepClear), so a breathing bar rescues the one occluded cell and moves
-    /// nothing else.
-    static func keepClear(board: CGRect?, roomBar: CGRect?, clueSlot: CGRect?) -> GridOcclusion {
+    /// nothing else. The standing top rides the same constant band (never a
+    /// reported frame), so the follow's ceiling holds still across the arrival too.
+    static func keepClear(board: CGRect?, topInset: CGFloat, clueSlot: CGRect?) -> GridOcclusion {
         guard let board else { return .none }
-        let standing = standing(board: board, roomBar: roomBar)
+        let standing = standing(board: board, topInset: topInset)
         guard let clueSlot else { return standing }
         return GridOcclusion(
             top: standing.top,
@@ -245,6 +252,38 @@ extension View {
     }
 }
 
+/// Reads the room container's TOP SAFE-AREA INSET, the system bar's standing
+/// height (DESIGN.md §2, the constant-built board inset, SLICE C). Under the
+/// visible, transparent nav bar the container's top safe-area inset IS the bar's
+/// bottom edge, exactly the band the full-bleed board bleeds under, so this is the
+/// grid's standing top occlusion, constant-built from the container's own layout
+/// and never a welcome-gated bar-item frame. The container reports it before the
+/// first paint (it is layout, not an item that arrives with the room's data), so
+/// the board's top edge is final on frame one and never moves when the pill lands.
+/// `.onGeometryChange` is iOS 18 / macOS 15; the macOS test host (14) and any older
+/// floor take the inert path (the room never renders on macOS; tests read the pure
+/// GridOcclusion seam directly), the reportBarItemFrame gating discipline.
+@available(iOS 17.0, macOS 14.0, *)
+struct RoomTopInsetReader: ViewModifier {
+    let onChange: (CGFloat) -> Void
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *) {
+                content.onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.safeAreaInsets.top
+                } action: { top in
+                    onChange(top)
+                }
+            } else {
+                content
+            }
+        #else
+            content
+        #endif
+    }
+}
+
 /// Converts the bar items' global frames into the room's coordinate space (the
 /// toolbar-adoption ruling, DESIGN.md §4). Pure so it is pinned in tests: the
 /// facts card's rest geometry depends on it, so a wrong offset would launch the
@@ -264,6 +303,41 @@ enum BarItemFrames {
     {
         guard let roomOrigin else { return [:] }
         return globals.mapValues { inRoomSpace($0, roomOrigin: roomOrigin) }
+    }
+
+    /// The synthesized `roomBar` rect (the toolbar-adoption ruling, DESIGN.md §4;
+    /// the standing-inset law, DESIGN.md §2). The hand-drawn bar retired, so the
+    /// bar's room-space rect is derived from the bar items' converted frames: it
+    /// spans the board's width (inset like every chrome piece) at the bar's row,
+    /// so `standing.top` measures from the board's bled top edge down to the bar's
+    /// bottom exactly as the reported bar did.
+    ///
+    /// The vertical band is ANCHORED ON THE BACK BUTTON, which stands in the bar
+    /// row from frame one (never gated on the welcome), so the band is IDENTICAL
+    /// before and after the time pill arrives and the board cannot move by even a
+    /// point when the pill materializes (§2: insets are constant-built, clue
+    /// length and now pill arrival can never move the board; the empty-pre-welcome
+    /// hole this closes moved the grid on the owner's device, 2026-07-12). The
+    /// time pill NEVER creates or resizes the band; it only extends the horizontal
+    /// clamp the facts card reads (minX/maxX are board-derived, so in practice the
+    /// pill changes nothing here, but the rect exists from frame one for the melt
+    /// and occlusion regardless). When only the pill's frame exists (a defensive
+    /// path, the back button always reports first in the real bar) the band falls
+    /// back to it. nil until an anchor and the board land, so the morphs withhold
+    /// cleanly.
+    static func synthesizedRoomBar(from merged: [ChromePiece: CGRect], inset: CGFloat)
+        -> CGRect?
+    {
+        let anchor = merged[.backButton] ?? merged[.timePill]
+        guard let anchor, let board = merged[.board] else { return nil }
+        let minX = board.minX + inset
+        let maxX = board.maxX - inset
+        // The band is the anchor's row alone. The back button is the anchor
+        // whenever it exists, so the band's top and bottom are constant across the
+        // welcome (the board never moves); the pill does not widen the band.
+        return CGRect(
+            x: minX, y: anchor.minY,
+            width: max(0, maxX - minX), height: anchor.height)
     }
 }
 

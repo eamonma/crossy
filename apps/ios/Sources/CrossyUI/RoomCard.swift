@@ -73,10 +73,17 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// The room's full membership as display identity, join-ordered (first joiner first,
     /// PROTOCOL.md §12), so the arrival layer can seed the room-open chrome true at tap
     /// time. Empty when the server predates the row stack (§14) or in fixtures that carry
-    /// none; `memberCount` stays the honest total either way. Not yet rendered on the card
-    /// face: the identity-true stack and the open choreography are a deliberate later
-    /// slice, judged on device.
+    /// none; `memberCount` stays the honest total either way. Not rendered on the card
+    /// face: the identity-true stack feeds the seeded-birth choreography (the room-open
+    /// chrome), not the card silhouette.
     public let members: [RoomCardMember]
+    /// The room's invite code (§12), member-only and on every list row under the same
+    /// member-scoped rule the game view carries it (the list is member-scoped, so every
+    /// row's reader is a member). Nil when the server predates the field (§14) or in
+    /// fixtures that carry none. Not on the card face: it feeds the seeded-birth share
+    /// pill (born from this code, so the share payload exists pre-REST) and never a
+    /// visible label.
+    public let inviteCode: String?
 
     public var id: String { gameId }
 
@@ -90,7 +97,11 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         createdAt: String, completedAt: String?, lastActivityAt: String?,
         // No default: a construction site must decide the stack explicitly (the
         // RosterMember avatar lesson; a silent [] shipped the island without avatars).
-        members: [RoomCardMember]
+        members: [RoomCardMember],
+        // No default either, for the same reason: the seeded-birth share pill is born
+        // from this code, so a construction site must decide it explicitly rather than
+        // silently ship a room that cannot share pre-REST.
+        inviteCode: String?
     ) {
         self.gameId = gameId
         self.name = name
@@ -103,6 +114,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.completedAt = completedAt
         self.lastActivityAt = lastActivityAt
         self.members = members
+        self.inviteCode = inviteCode
     }
 
     /// The headline: the game's own name when it has one, else the puzzle title,

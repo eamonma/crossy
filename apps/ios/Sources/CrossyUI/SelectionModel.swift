@@ -24,7 +24,7 @@ public final class SelectionModel {
     /// The wire value charset cap (PROTOCOL.md §3): 1 to 10 glyphs.
     public static let rebusGlyphCap = 10
 
-    private let puzzle: GridPuzzle
+    private var puzzle: GridPuzzle
     @ObservationIgnored private let isFilled: (Int) -> Bool
     @ObservationIgnored private let isFrozen: () -> Bool
     @ObservationIgnored private let sendPlace: (Int, String) -> Void
@@ -70,6 +70,19 @@ public final class SelectionModel {
     }
 
     public var isRebusActive: Bool { rebusBuffer != nil }
+
+    /// The room's REST geometry replacing the construction stand-in (the one-host
+    /// arrival, DESIGN.md §4): the live room builds this model ONCE over a 1x1
+    /// placeholder so the view's `@State` pin holds a single instance for the
+    /// room's whole life, then re-targets it here when the real grid arrives. The
+    /// cursor restarts at the new puzzle's initial cell (a stand-in cursor means
+    /// nothing on the real grid) and an open rebus entry is discarded like every
+    /// other move-away (impossible pre-board, but the rule is total).
+    public func retarget(puzzle: GridPuzzle) {
+        self.puzzle = puzzle
+        rebusBuffer = nil
+        selection = InputActions.initialSelection(puzzle)
+    }
 
     // MARK: - Intents
 

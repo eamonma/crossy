@@ -67,29 +67,141 @@ final class RoomPillClusterTests: XCTestCase {
     }
 }
 
-// The time pill's presence in the bar (DESIGN.md §4 toolbar amendment): the pill
-// ARRIVES when the room is live, so the open frame's trailing cluster is share +
-// players only (both width-stable) and the pill's arrival is an honest bar-item
-// insertion, not the slot settling after the #132 zoom push. Pure on the store's
-// sync state (the honest existing fact, GameStore's SyncState), the
-// RoomWeather.from(sync:) discipline.
+// The trailing pieces' presence in the bar (DESIGN.md §4 toolbar amendment, §12,
+// the seeded-birth rule). Two arrival shapes, chosen by whether the room was born
+// with a seed: a card-tap arrival records the row's true member stack, so the
+// players and share pills STAND from the push's first frame and the goo plays on
+// live data; a deep link or a code-join has no card, so it keeps the one-beat
+// fallback (the whole trailing cluster on the welcome's beat). The timer is
+// welcome-gated on BOTH paths (its clock needs the welcome). Every decision is pure
+// on the store's honest sync state (the RoomWeather.from(sync:) discipline) and the
+// seeded fact; share keeps its own payload gate on top (tested at the bar).
 
-final class TimePillPresenceTests: XCTestCase {
+final class ClusterPresenceTests: XCTestCase {
     // Before the first welcome the store is `connecting` (no board truth yet):
-    // the pill is absent, so the open cluster is share + players only and no slot
-    // resolves its width after the zoom push.
-    func test_beforeTheWelcome_theTimePillIsAbsent_section4() {
-        XCTAssertFalse(TimePillPresence.isLive(sync: .connecting))
+    // `isLive` is false, so the timer and the unseeded whole cluster are absent.
+    func test_beforeTheWelcome_isLiveIsFalse_section4() {
+        XCTAssertFalse(ClusterPresence.isLive(sync: .connecting))
     }
 
-    // The welcome flips sync off `connecting` and the pill materializes into the
-    // bar as its own insertion. Every post-welcome state has a board, so the pill
-    // stands through live, resyncing, and a reconnect alike (a terminal room's
-    // sealed pill arrives the same way, on its welcome's beat).
-    func test_onceLive_theTimePillArrives_section4() {
-        XCTAssertTrue(TimePillPresence.isLive(sync: .live))
-        XCTAssertTrue(TimePillPresence.isLive(sync: .resyncing))
-        XCTAssertTrue(TimePillPresence.isLive(sync: .reconnecting))
+    // The welcome flips sync off `connecting`. Every post-welcome state has a board,
+    // so `isLive` holds through live, resyncing, and a reconnect alike (a terminal
+    // room's sealed cluster arrives the same way, on its welcome's beat).
+    func test_onceLive_isLiveIsTrue_section4() {
+        XCTAssertTrue(ClusterPresence.isLive(sync: .live))
+        XCTAssertTrue(ClusterPresence.isLive(sync: .resyncing))
+        XCTAssertTrue(ClusterPresence.isLive(sync: .reconnecting))
+    }
+
+    // The TIMER waits for the welcome on both paths: its clock genuinely needs the
+    // welcome, so a seed cannot stand it early. showsTimer is exactly isLive.
+    func test_theTimerIsWelcomeGated_onBothPaths_section4() {
+        XCTAssertFalse(ClusterPresence.showsTimer(sync: .connecting))
+        XCTAssertTrue(ClusterPresence.showsTimer(sync: .live))
+    }
+
+    // The UNSEEDED path (deep links, code-joins): players and share wait for the
+    // welcome too, so pre-welcome the withholding bar is back-only (the one-beat
+    // fallback, no card to seed from).
+    func test_unseeded_playersAndShareWaitForTheWelcome_section4() {
+        XCTAssertFalse(ClusterPresence.showsPlayers(sync: .connecting, seeded: false))
+        XCTAssertFalse(ClusterPresence.showsShare(sync: .connecting, seeded: false))
+        XCTAssertTrue(ClusterPresence.showsPlayers(sync: .live, seeded: false))
+        XCTAssertTrue(ClusterPresence.showsShare(sync: .live, seeded: false))
+    }
+
+    // The SEEDED path (a card-tap arrival, §12): players and share STAND pre-welcome,
+    // from the push's first frame, so the room is born identity-true and the goo plays
+    // on live data. The timer still waits (above), so only the two pills stand early.
+    func test_seeded_playersAndShareStandPreWelcome_section4() {
+        XCTAssertTrue(ClusterPresence.showsPlayers(sync: .connecting, seeded: true))
+        XCTAssertTrue(ClusterPresence.showsShare(sync: .connecting, seeded: true))
+        // The timer is not seeded early: it needs the welcome even here.
+        XCTAssertFalse(ClusterPresence.showsTimer(sync: .connecting))
+    }
+
+    // Once live, a seeded room's pills stand exactly as an unseeded room's do: the
+    // seed only advanced their arrival to pre-welcome, it never changes the live
+    // state, so the withheld→ready→live progression is monotone (nothing re-inserts).
+    func test_seeded_convergesWithLive_section4() {
+        XCTAssertTrue(ClusterPresence.showsPlayers(sync: .live, seeded: true))
+        XCTAssertTrue(ClusterPresence.showsShare(sync: .live, seeded: true))
+        XCTAssertTrue(ClusterPresence.showsTimer(sync: .live))
+    }
+}
+
+// The solvers-only pill filter applies to a SEEDED roster identically to a live one
+// (DESIGN.md §4, owner ruling 2026-07-10; §12). A card-tap arrival seeds the store
+// with the row's full member stack, roles included, and the players pill renders
+// through the SAME RosterList.cluster path the live pill uses, so a seeded spectator
+// seeds the store but never widens the pill. Pinned here on RosterMember (the shape
+// both the seeded withholding bar and the live bar feed RosterMenu), so the parity is
+// one filter, not two.
+
+final class SeededRosterFilterTests: XCTestCase {
+    // A seeded roster: everyone not-yet-heard-from (`connected: false`, the seed's
+    // liveness), a host, a solver, and a guest-spectator. The cluster shows the host
+    // and the solver, never the spectator, exactly as it would for a live roster.
+    func test_seededSpectatorNeverWidensThePill_section4() {
+        let seeded = [
+            RosterMember(
+                userId: "host", displayName: "Ana", wireColor: "",
+                avatarUrl: nil, isHost: true, isSpectator: false, connected: false),
+            RosterMember(
+                userId: "solver", displayName: "Bee", wireColor: "",
+                avatarUrl: nil, isHost: false, isSpectator: false, connected: false),
+            RosterMember(
+                userId: "guest", displayName: "Guest", wireColor: "",
+                avatarUrl: nil, isHost: false, isSpectator: true, connected: false),
+        ]
+        let cluster = RosterList.cluster(seeded)
+        XCTAssertEqual(cluster.pucks.map(\.userId), ["host", "solver"])
+        XCTAssertEqual(cluster.overflow, 0)
+        XCTAssertFalse(
+            cluster.pucks.contains { $0.isSpectator },
+            "a seeded spectator seeds the store but never widens the pill")
+    }
+
+    // The parity is that ONE filter: the seeded roster (connected: false) and the same
+    // people live (connected: true) yield the identical solver set, because the cluster
+    // filters on the seat (isSpectator), never on liveness. So the withheld→ready swap
+    // shows the same pucks and nothing re-inserts.
+    func test_seededAndLive_yieldTheSameSolvers_section4() {
+        func roster(connected: Bool) -> [RosterMember] {
+            [
+                RosterMember(
+                    userId: "host", displayName: "Ana", wireColor: "",
+                    avatarUrl: nil, isHost: true, isSpectator: false, connected: connected),
+                RosterMember(
+                    userId: "guest", displayName: "Guest", wireColor: "",
+                    avatarUrl: nil, isHost: false, isSpectator: true, connected: connected),
+            ]
+        }
+        let seeded = RosterList.cluster(roster(connected: false)).pucks.map(\.userId)
+        let live = RosterList.cluster(roster(connected: true)).pucks.map(\.userId)
+        XCTAssertEqual(seeded, live)
+        XCTAssertEqual(seeded, ["host"])
+    }
+}
+
+// A bar item's system glass capsule is never conjured empty (DESIGN.md §4). The
+// nav bar draws the capsule from the item's PRESENCE, not its content (the
+// empty-capsule finding, rig 2026-07-12), so a handed-off item whose content
+// sits at opacity 0 would stand a hollow capsule. BarItemGlass hides the item's
+// shared background exactly while it is handed off, so the pill yields with no
+// floating empty glass and the item stays present for its frame to keep reporting.
+
+final class BarItemGlassTests: XCTestCase {
+    // Standing (not handed off): the capsule shows, the pill is whole.
+    func test_standingPill_keepsItsCapsule_section4() {
+        XCTAssertFalse(BarItemGlass.backgroundHidden(handedOff: false))
+    }
+
+    // Handed off (the facts card open, or an eclipse): the content is invisible,
+    // so the capsule's shared background hides and no empty glass floats where
+    // the pill stood (glass is never conjured empty, DESIGN.md §4).
+    func test_handedOffPill_hidesItsCapsule_section4() {
+        XCTAssertTrue(BarItemGlass.backgroundHidden(handedOff: true))
     }
 }
 
