@@ -140,12 +140,12 @@ public struct RoomsScreen: View {
         }
         .buttonStyle(.plain)
         .modifier(ChromeGlassSurface(cornerRadius: 20))
-        // The capsule wears TWO zoom sources: the join sheet's (it grows out of the
-        // capsule), and the room push's (a code-join grows the room from this same
-        // capsule after the sheet melts back into it, slice 2, DESIGN.md §4). Two
-        // matchedTransitionSource stamps on one view can fight over one geometry, so
-        // the room-push stamp rides an enclosing wrapper (the extra transparent
-        // padding is outside the glass, so the capsule reads the same either way).
+        // The capsule wears TWO zoom sources: the join sheet's (the sheet grows out
+        // of the capsule) and the room push's (a code-join grows the room from this
+        // same capsule after the sheet melts back into it, slice 2, DESIGN.md §4).
+        // The ids are distinct (RoomZoomSourceTests pins that), and the second stamp
+        // wraps the first in the modifier chain, so both name the same capsule
+        // geometry without contesting one id.
         .modifier(JoinSheetSourceMark(source: joinSheetSource))
         .modifier(JoinCapsuleRoomSourceMark(source: roomZoomSource))
         .padding(.trailing, 20)
@@ -348,8 +348,8 @@ private struct RoomZoomSourceMark: ViewModifier {
 /// Stamps the Join capsule as the room push's zoom source (slice 2): a code-join
 /// grows the room from the capsule the sheet melted back into (native continuity,
 /// DESIGN.md §4). Same gate as every other stamp (§4 one-fallback rule). This is a
-/// SECOND source on the capsule (the join sheet's is the first), so it rides an
-/// enclosing wrapper to keep the two stamps from fighting over one geometry.
+/// SECOND source on the capsule (the join sheet's is the first): the two stamps
+/// share the capsule's geometry under distinct ids, chained one over the other.
 private struct JoinCapsuleRoomSourceMark: ViewModifier {
     let source: RoomZoomSource?
 

@@ -76,12 +76,15 @@ struct ArrivalRootView: View {
     /// continuity, DESIGN.md §4): a tapped card's per-room id, or the Join capsule's
     /// id on a code-join. The room destination zooms from this source, so the room
     /// grows out of the surface it was launched from and pours back into it on the
-    /// pop. Deliberately NOT cleared when the push completes: the pop needs it to
-    /// pour the room back into its card. It clears only when the path empties (the
-    /// .onChange below) or on sign-out (the paths clear there too). A deep-link push
-    /// leaves it nil: no visible source on screen, so the room takes the default
-    /// push. NOTE: Puzzles-tab pushes stay default (no zoom) in this PR; the puzzle
-    /// card as a zoom source is a follow-up.
+    /// pop. Deliberately never cleared on the pop: the path empties at the START of
+    /// the pop (the tab-bar note below), so clearing on emptiness would flip the
+    /// zoom modifier's branch and restructure the exiting room mid-animation, the
+    /// very snap this zoom exists to avoid. Staleness is handled at the source
+    /// instead: every push site assigns it (a card tap its card's id, a code-join
+    /// the capsule's, a deep link nil for the default push, there being no visible
+    /// source on screen), so no push ever inherits a stale id. Sign-out resets it
+    /// with the paths. NOTE: Puzzles-tab pushes stay default (no zoom) in this PR;
+    /// the puzzle card as a zoom source is a follow-up.
     @State private var roomZoomSourceID: String?
     /// A code-join staged for after the sheet melts back into the Join capsule
     /// (slice 2): join success dismisses the sheet, and the room pushes only when
@@ -165,14 +168,6 @@ struct ArrivalRootView: View {
         // Join must open the camera-first panel, never a stale code.
         .onChange(of: showJoin) { _, open in
             if !open { deepLinkPrefill = "" }
-        }
-        // The zoom source outlives the push on purpose: the pop needs it to pour the
-        // room back into its card (native continuity, DESIGN.md §4). Clear it only
-        // when the Rooms path empties, so a later default push (a deep link) never
-        // inherits a stale source. Keyed off emptiness, not attached to the room, so
-        // it survives the pop transaction and clears once the room is gone.
-        .onChange(of: path.isEmpty) { _, empty in
-            if empty { roomZoomSourceID = nil }
         }
     }
 
