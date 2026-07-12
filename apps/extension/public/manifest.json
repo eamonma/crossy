@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Crossy",
+  "version": "0.0.1",
+  "description": "Add the crossword on the page you are reading to your Crossy library.",
+  "permissions": ["activeTab", "storage"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.theguardian.com/crosswords/*",
+        "https://theguardian.com/crosswords/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Add to Crossy"
+  },
+  "options_ui": {
+    "page": "options.html"
+  }
+}
