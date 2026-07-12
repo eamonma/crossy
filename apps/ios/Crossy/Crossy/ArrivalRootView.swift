@@ -462,7 +462,11 @@ struct RoomNavBarChrome: ViewModifier {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             // OUR back item leads the toolbar; the system back would double it
-            // (the gate rig showed two chevrons), so it is hidden here.
+            // (the gate rig showed two chevrons), so it is hidden here. The edge
+            // swipe-back survives the hiding (device census 2026-07-12: the pop
+            // machinery stays enabled and delegated); what starved it was the
+            // grid claiming every touch, fixed at the edge-pop gutter
+            // (CrossyGridView).
             .navigationBarBackButtonHidden(true)
             // The board runs under the bar (the full-bleed amendment): a
             // transparent bar floats its glass items over the grid instead of

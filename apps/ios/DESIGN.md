@@ -412,6 +412,36 @@ constant inset is untouched; -pillArrivalLab holds at 0.00 pt drift through the 
 sequence). The seeded withholding frame is offline-judgeable through -seededBirthLab
 (evidence only).
 
+Amended 2026-07-12, same day (the one-host arrival; the mid-transition paint
+finding). On device against the live stack the seeded bar stood HOLLOW: capsules
+without glyphs until the welcome's rebuild finally painted them (the owner's "empty
+pills", second sighting; the overnight burst's f_18/f_20 pin it). The mechanism: bar
+item content hosted or re-hosted while the zoom push is in flight is measured but
+never composited, and a whole-host swap even after the push blanks every item for a
+beat. So the withheld→ready TOOLBAR SWAP above is retired: the live room mounts ONE
+SolveScreen with the push, and that screen owns the bar for the room's whole life.
+Pre-REST the screen withholds the board and the deck (`opening`; the stand-in
+geometry never paints), and the bar's ITEM SET is frozen at its birth shape until
+the push settles (`barSettled`: presence computes against `connecting` until then),
+so the timer only ever inserts into a settled, standing bar. The SelectionModel is
+built once over the stand-in and re-targeted in place when the REST geometry lands
+(SelectionModel.retarget; the view's @State pin holds one instance).
+RoomOpeningToolbarHost survives only on the room-cannot-open screen. Two
+corollaries, both owner-ratified on device the same day. First, the room's CONTENT
+is our own hierarchy and paints fine mid-flight, so the board, clue bar, and deck
+arrive at `ready` (inside the zoom on a fast wire, the old immediacy) riding the
+chrome spring: the grid fades IN PLACE (its constant top edge untouched, §2), the
+deck rises from the bottom edge (the system keyboard's grammar; removals keep the
+quiet crossfade), the clue bar fades on its own presence one frame behind. Second,
+the way home: the zoom's interactive pop was real but starved, because the grid
+camera's one-point drag claimed every touch on the board (hiding the system back
+button does NOT disable the pop machinery; the device census pinned it enabled and
+delegated). The leading 24 pt of the grid is now the edge-pop gutter
+(CrossyGridView): a strip that takes taps (same cell resolution) but stands no drag,
+so an edge swipe belongs to the system's own dismissal again. The back button's hit
+surface also grew to the capsule it always drew (a bare chevron is a ~10 pt target;
+the label now fills 28 pt, all of it tappable, the circle unchanged).
+
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
 with the surface and hands off from the chrome it left, so the melt never

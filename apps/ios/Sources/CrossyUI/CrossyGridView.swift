@@ -250,10 +250,41 @@ public struct CrossyGridView: View {
             }
             .onAppear { wireFlashSink() }
             .onDisappear { followTask?.cancel() }
+            // The edge-pop gutter (owner report 2026-07-12): the camera drag
+            // claims any touch that moves one point, so a back swipe from the
+            // leading edge never reached the system's interactive pop — the
+            // zoom scrub the grammar was chosen for. This strip stands ABOVE
+            // the drag surface with no drag gesture of its own: a tap still
+            // places the cursor (the same resolution the grid's tap runs), but
+            // a pan that starts here belongs to the system recognizers on the
+            // ancestor hosting views, the way home. `.leading` flips with RTL,
+            // matching the pop gesture's own edge.
+            .overlay(alignment: .leading) {
+                Color.clear
+                    .frame(width: Self.popGutterWidth)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        SpatialTapGesture().onEnded { value in
+                            guard
+                                let cell = camera.cell(
+                                    at: value.location, rows: puzzle.rows,
+                                    cols: puzzle.cols),
+                                !puzzle.blocks.contains(cell)
+                            else { return }
+                            onPlaceCursor(cell)
+                        }
+                    )
+            }
         }
         .accessibilityLabel(
             Text(verbatim: "\(puzzle.cols) by \(puzzle.rows) crossword grid"))
     }
+
+    /// The leading strip the camera's drag never claims, so the system's
+    /// interactive pop can (the edge-pop gutter above). Sized to the system's
+    /// own edge-gesture band.
+    private static let popGutterWidth: CGFloat = 24
 
     /// The follow pan, interpolated by hand at display cadence: the Canvas draws
     /// through context transforms, so `withAnimation` on the camera state would

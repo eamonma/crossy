@@ -620,6 +620,13 @@ struct RoomBackButton: View {
             Image(systemName: "chevron.backward")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
+                // The hit surface is the LABEL's bounds, and a bare chevron is
+                // ~10pt wide — the owner had to aim for it (report 2026-07-12).
+                // Grow the label toward the capsule the system draws anyway and
+                // make the whole area tappable; the capsule's minimum diameter
+                // absorbs the growth, so the circle does not change size.
+                .frame(width: 28, height: 28)
+                .contentShape(Rectangle())
         }
         .accessibilityLabel(Text(verbatim: "Back"))
         .opacity(handedOff ? 0 : 1)
