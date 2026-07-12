@@ -131,7 +131,7 @@ export function SignInButtons({
         return (
           <Button
             key={provider.id}
-            variant="default"
+            variant="inverse"
             size="lg"
             onClick={() => onProvider(provider)}
             className="w-full"
@@ -167,20 +167,16 @@ export function SignInButtons({
 
 /**
  * The slim top-bar auth affordance. Signed in it is the avatar chip and its sign-out menu.
- * Signed out it never presents the providers: the choice lives in one place, the landing tray,
- * so the bar carries at most a single "Sign in" text link that routes there (`onSignIn`). A
- * caller that omits `onSignIn` hides the affordance outright; the landing does this, since the
- * page itself is the sign-in and a header link back to it would be circular. This keeps the bar
- * a single control no matter how many providers ship. `config` is accepted for a stable call
- * signature across every caller, unused here today.
+ * Signed out it renders nothing: every signed-out surface (the landing, the create and invite
+ * gates) already carries its own inline sign-in, so a header link would only be a redundant
+ * second one, and on an invite it would route away and drop the room. `config` is accepted for
+ * a stable call signature across every caller, unused here today.
  */
 export function AuthBar({
   identity,
-  onSignIn,
 }: {
   identity: Identity;
   config: AppConfig;
-  onSignIn?: () => void;
 }) {
   const [session, setSession] = useState<IdentitySession | null>(() =>
     identity.getSession(),
@@ -188,14 +184,7 @@ export function AuthBar({
 
   useEffect(() => identity.onChange(setSession), [identity]);
 
-  if (session === null) {
-    if (onSignIn === undefined) return null;
-    return (
-      <Button variant="link" size="sm" onClick={onSignIn}>
-        Sign in
-      </Button>
-    );
-  }
+  if (session === null) return null;
 
   return (
     <DropdownMenu>

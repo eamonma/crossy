@@ -12,35 +12,6 @@ import type { Identity } from "../identity";
 import { TopBar } from "./TopBar";
 import { CapsLabel } from "./primitives";
 import { SignInButtons } from "./AuthBar";
-import { Silhouette } from "./Silhouette";
-
-/**
- * The ticket's stub art: a small, symmetric crossword face, the app's own Silhouette renderer
- * (not hand-drawn rects), standing in for a ticket's barcode so the object reads as a real
- * ticket without a foreign graphic. Static geometry, since the cold landing has no puzzle yet;
- * it follows light and dark through the board paint tokens for free.
- */
-const TICKET_MASK: readonly string[] = [
-  "..#....",
-  "..#....",
-  ".......",
-  "###.###",
-  ".......",
-  "....#..",
-  "....#..",
-];
-
-/** One fact in the ticket's three-fact row: a mono caps key over a serif value. */
-function Fact({ k, v }: { k: string; v: string }) {
-  return (
-    <div>
-      <div className="font-mono text-1 uppercase tracking-[var(--tracking-caps)] text-text-subtle">
-        {k}
-      </div>
-      <div className="mt-1 font-display text-5 text-text">{v}</div>
-    </div>
-  );
-}
 
 export function Landing({
   identity,
@@ -51,7 +22,7 @@ export function Landing({
 }) {
   return (
     <div className="min-h-dvh flex flex-col">
-      {/* The header hides its sign-in link on the landing: the page itself is the sign-in. */}
+      {/* Signed out, the header carries no sign-in of its own: this page is the sign-in. */}
       <TopBar identity={identity} config={config} />
       <main className="flex-1 grid place-items-center p-4 py-8 sm:py-12">
         {/* The ticket. Two stubs held by a perforation; every arrival screen is a variant of
@@ -82,39 +53,19 @@ export function Landing({
             <h1 className="mt-3 font-display font-medium tracking-[-0.02em] text-gold-12 text-[clamp(2.4rem,4vw,3.4rem)] leading-[0.98]">
               One grid, everyone at once.
             </h1>
-            <p className="mt-4 max-w-[26rem] text-4 leading-relaxed text-text-muted">
-              Bring a puzzle, share a link, and solve it together in real time.
-            </p>
-            <div className="mt-6 flex gap-6">
-              <Fact k="Bring" v="Any puzzle" />
-              <Fact k="Invite" v="One link" />
-              <Fact k="Play on" v="Web · iPhone" />
-            </div>
           </section>
 
           {/* The tray: the action, on the plain panel face. The one sign-in on the page, the same
               provider control every gate uses, inline with no toggle. No guest path on a cold
               landing (nothing to watch yet); the guest path stays on the invite gate. */}
-          <section className="flex flex-col justify-center gap-3 p-7 sm:p-9">
-            <div>
-              <div className="font-display text-6 text-text">Start a room</div>
-              <p className="mt-1 text-2 text-text-muted">
-                Pick a puzzle. Send the link.
-              </p>
-            </div>
+          <section className="flex flex-col justify-center gap-4 p-7 sm:p-9">
+            <div className="font-display text-6 text-text">Start a room</div>
             <SignInButtons
               identity={identity}
               config={config}
               verb="Sign in"
               allowGuest={false}
             />
-            <div className="mt-2 flex items-center gap-3 border-t border-dashed border-border-dashed pt-4">
-              <Silhouette mask={TICKET_MASK} className="size-11 shrink-0" />
-              <p className="text-1 leading-normal text-text-subtle">
-                Returning players sign in the same way. Guests you invite join
-                with one tap, no account needed.
-              </p>
-            </div>
           </section>
         </div>
       </main>

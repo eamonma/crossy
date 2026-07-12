@@ -16,6 +16,9 @@ const buttonVariants = cva(
         // The one gold CTA per screen. White glyph, no scale, darkens on hover (was
         // BUTTON_VARIANT.solid).
         default: "bg-primary text-primary-foreground hover:bg-solid-hover",
+        // The strong ink CTA (sign-in): a dark face on light, a light face on dark, so it
+        // flips with the theme and reads as the primary action without spending the gold.
+        inverse: "bg-text text-background hover:bg-text/85",
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground",
         // The panel recipe as a control: warm face, hairline, quiet hover tint (was

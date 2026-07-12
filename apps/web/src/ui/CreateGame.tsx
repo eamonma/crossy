@@ -141,7 +141,6 @@ export function CreateGame({
         identity={identity}
         config={config}
         onHome={() => navigate(homeHref(params))}
-        onSignIn={() => navigate("/")}
       />
       <main className="flex-1 px-4 py-6 flex items-center justify-center">
         <div className="w-full max-w-[28rem] pb-9">{card}</div>
@@ -163,8 +162,8 @@ function CreateGate({
     <DialogCard>
       <DialogHeader title="Create a game">
         {guest
-          ? "You're here as a guest, and guests can watch but not host. Sign in to create games of your own."
-          : "Upload a puzzle, share one link, and solve it together. Hosting takes an account."}
+          ? "Guests can watch but not host. Sign in to create your own games."
+          : "Upload a puzzle and share the link. Hosting takes an account."}
       </DialogHeader>
       {/* Guest sign-in is a dead end here (guests can't create), so the gate offers
           the account providers alone. */}

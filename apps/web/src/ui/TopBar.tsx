@@ -33,15 +33,10 @@ export function TopBar({
   identity,
   config,
   onHome,
-  onSignIn,
 }: {
   identity: Identity;
   config: AppConfig;
   onHome?: () => void;
-  // Signed out, the bar shows one "Sign in" link that routes to the landing (where the provider
-  // choice lives). Omit it and the bar hides the affordance entirely: the landing does this,
-  // since the page itself is the sign-in.
-  onSignIn?: () => void;
 }) {
   return (
     <header className="w-full px-4 pt-4">
@@ -68,13 +63,9 @@ export function TopBar({
             Privacy Policy
           </a>
           <ThemeToggle />
-          {/* Spread the handler only when set: exactOptionalPropertyTypes keeps the optional
-              prop's type free of `undefined`, and omitting it is what hides the affordance. */}
-          <AuthBar
-            identity={identity}
-            config={config}
-            {...(onSignIn ? { onSignIn } : {})}
-          />
+          {/* Signed in, the avatar menu; signed out, nothing, since every signed-out surface
+              carries its own inline sign-in. */}
+          <AuthBar identity={identity} config={config} />
         </div>
       </div>
     </header>
