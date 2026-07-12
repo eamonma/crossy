@@ -46,6 +46,42 @@ domain carry the Supabase ref-domain issuer
 (`https://qvnvokstvbarsxhufrja.supabase.co/auth/v1`). The extension never decodes
 or validates claims, issuer included; it stores tokens and presents them.
 
+**Silent sign-in.** If you are already signed into the web app, the extension signs
+itself in with no click. The mechanism shares no tokens. It leans on the OAuth
+provider (Discord primary) still holding a live session in the browser: the extension
+runs its OWN normal PKCE flow with `interactive: false`, which completes with no
+visible window when that provider session exists. On success the extension gets its
+own independent, properly-rotating session, exactly as the interactive flow does; the
+two flows run the same authorize URL, the same code exchange, the same atomic persist,
+differing only in the `interactive` flag. On failure (no live provider session) it
+stays signed out silently. This is safe because the extension is signed out when the
+silent attempt runs: a failure has nothing to lose, so it never signs out and never
+raises an error, unlike a refresh failure on an existing session. The attempt is
+single-flighted and stands down while an interactive sign-in is in flight or a session
+already exists, so at most one OAuth flow ever races to persist. Discord only; Apple
+rarely keeps a silent session and its button stays.
+
+Two triggers fire it. The popup, opening signed out, asks the worker for a silent
+sign-in behind a quiet "checking" state and time-boxes the wait, dropping to the
+provider buttons on failure or timeout; this needs no extra permission and works on
+both browsers. The crossy.party content script is the automatic half: at
+`document_idle` it makes one best-effort read of `window.localStorage` for a
+supabase-js `sb-*-auth-token` entry with a live `expires_at`, and if present asks the
+worker to attempt a silent sign-in (only when the extension is itself signed out). The
+only thing that crosses to the worker is a boolean "web session present" signal; the
+script never reads, forwards, or logs the web app's tokens. The coupling to
+supabase-js's storage layout is deliberately loose: if the key format changes or
+nothing matches, it does nothing and the popup trigger still covers the case. On
+Firefox this content script's host permission is opt-in (all host permissions are, so
+the user grants site access from the extensions button), so the automatic half
+degrades to the popup trigger there.
+
+This is web-to-extension only. Extension-to-web is deliberately not done: pushing the
+extension's session back into the web origin would mean injecting tokens into
+crossy.party's storage and sharing a refresh token across the two contexts, which
+trips Supabase's rotation reuse detection. The independent-session property is the
+whole point; a shared refresh token would break it.
+
 ## Baked defaults
 
 - `DEFAULT_API_BASE = https://rest.crossy.party` (the Crossy REST API)
@@ -102,10 +138,13 @@ as event pages via exactly that key. One manifest cannot serve both. The
 committed manifest and `dist/` are the Chrome form (`service_worker` only,
 pinned by `manifest.test.ts`); `build:firefox` emits `dist-firefox/` with the
 background swapped to `scripts` (`scripts/build-firefox.mjs`). The
-`browser ?? chrome` shim in the code is unaffected either way. The mirror
-warning is expected: Firefox flags the Chrome-only `key` property as an
-unexpected manifest key and ignores it, exactly as Chrome does with the
-`gecko` block.
+`browser ?? chrome` shim in the code is unaffected either way. That transform
+also drops the top-level `key` from the Firefox build: it pins the Chrome
+unpacked dev id and means nothing to Firefox, which logged "Reading manifest:
+Warning processing key" and ignored it. Stripping it stops the warning; the
+Chrome `dist/` keeps `key` (both pinned by `manifest.test.ts`). The reverse
+still holds, harmlessly: Chrome logs an unrecognized-key warning for the
+`gecko` block and ignores it.
 
 Two more Firefox laws, both observed on the first temporary load (2026-07-12):
 `permissions.request` must be reached synchronously from the user input

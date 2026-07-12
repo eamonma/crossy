@@ -6,26 +6,22 @@
 // token, POST, new tab, all things a content script cannot do itself.
 
 import { postPuzzle } from "./api";
+import { runPkceAttempt } from "./auth/attempt";
 import type { Provider } from "./auth/flow";
-import { buildAuthorizeUrl, extractCode } from "./auth/flow";
 import type { AuthTarget } from "./auth/gotrue";
-import { exchangeCode, revokeSession } from "./auth/gotrue";
+import { revokeSession } from "./auth/gotrue";
 import type { SignInReply, TokenReply } from "./auth/messages";
-import { AUTH_SIGN_IN, AUTH_SIGN_OUT, AUTH_TOKEN } from "./auth/messages";
-import { generateVerifier, s256Challenge } from "./auth/pkce";
+import {
+  AUTH_SIGN_IN,
+  AUTH_SIGN_OUT,
+  AUTH_SILENT_SIGN_IN,
+  AUTH_TOKEN,
+} from "./auth/messages";
 import type { RefreshOutcome } from "./auth/refresh";
 import { refreshStoredSession } from "./auth/refresh";
-import {
-  needsRefresh,
-  refreshAlarmWhenMs,
-  sessionFromTokenResponse,
-} from "./auth/session";
-import {
-  chromeLocalArea,
-  clearSession,
-  loadSession,
-  saveSession,
-} from "./auth/store";
+import { needsRefresh, refreshAlarmWhenMs } from "./auth/session";
+import { SilentSignIn } from "./auth/silent";
+import { chromeLocalArea, clearSession, loadSession } from "./auth/store";
 import { buildEnvelope } from "./envelope";
 import { PLAY_REQUEST } from "./pill/messages";
 import type { PlayReply, PlayRequest } from "./pill/messages";
@@ -40,6 +36,12 @@ const ext = typeof browser === "undefined" ? chrome : browser;
 const REFRESH_ALARM = "crossy/auth/refresh";
 /** The dev-auth storage key from before this design; cleared on update. */
 const LEGACY_SETTINGS_KEY = "settings";
+
+// The only provider tried silently. Discord keeps a live browser session across
+// visits; Apple rarely does, and its interactive button stays for it. interactive:false
+// resolves fast when the provider session is live and fails fast when it is not; the
+// popup time-boxes its own wait for the worker's reply.
+const SILENT_PROVIDER: Provider = "discord";
 
 const area = chromeLocalArea();
 
@@ -88,51 +90,63 @@ async function runScheduledRefresh(): Promise<void> {
   // "signed_out" cleared storage in refreshStoredSession; "no_session" needs nothing.
 }
 
-async function signIn(provider: Provider): Promise<SignInReply> {
-  const target = await authTarget();
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  const verifier = generateVerifier(bytes);
-  const challenge = await s256Challenge(verifier);
-  const redirectUri = ext.identity.getRedirectURL();
-  const url = buildAuthorizeUrl(
-    target.authBaseUrl,
-    provider,
-    redirectUri,
-    challenge,
-  );
-
-  let redirect: string | undefined;
-  try {
-    redirect = await ext.identity.launchWebAuthFlow({ url, interactive: true });
-  } catch {
-    return { ok: false, reason: "sign-in was cancelled" };
-  }
-  if (redirect === undefined) {
-    return { ok: false, reason: "sign-in was cancelled" };
-  }
-
-  const extraction = extractCode(redirect);
-  if (!extraction.ok) return { ok: false, reason: extraction.reason };
-
-  const result = await exchangeCode(target, extraction.code, verifier);
-  if (!result.ok) {
-    return {
-      ok: false,
-      reason:
-        result.status === null
-          ? `could not reach ${target.authBaseUrl}`
-          : `token exchange failed (HTTP ${result.status})`,
-    };
-  }
-  const session = sessionFromTokenResponse(result.body, nowSec());
-  if (session === null) {
-    return { ok: false, reason: "unexpected token response" };
-  }
-  await saveSession(session, area);
-  armAlarm(session.expiresAt);
-  return { ok: true };
+function randomBytes(out: Uint8Array): void {
+  crypto.getRandomValues(out);
 }
+
+// True while an interactive sign-in is mid-flight, so a concurrent silent attempt
+// stands down: two OAuth flows racing to persist a session would clobber each other.
+let interactiveInFlight = false;
+
+async function signIn(provider: Provider): Promise<SignInReply> {
+  interactiveInFlight = true;
+  try {
+    const result = await runPkceAttempt(provider, {
+      target: await authTarget(),
+      area,
+      redirectUri: ext.identity.getRedirectURL(),
+      launch: (url) =>
+        ext.identity.launchWebAuthFlow({ url, interactive: true }),
+      randomBytes,
+      nowSec,
+    });
+    if (!result.ok) return { ok: false, reason: result.reason };
+    armAlarm(result.session.expiresAt);
+    return { ok: true };
+  } finally {
+    interactiveInFlight = false;
+  }
+}
+
+/**
+ * Sign in with no UI by running the normal PKCE flow with interactive:false, which
+ * completes only when the provider (Discord) still has a live browser session. The
+ * extension is signed OUT when this runs, so a failure has no session to lose: it
+ * NEVER signs anything out and NEVER surfaces an error. It just resolves failed. This
+ * is deliberately unlike the interactive flow's definitive-versus-transient handling,
+ * which exists to decide when to drop an existing session.
+ *
+ * Single-flight and the stand-down guards (never while interactive is in flight, never
+ * while already signed in) live in SilentSignIn; the attempt itself is here.
+ */
+const silent = new SilentSignIn({
+  interactiveInFlight: () => interactiveInFlight,
+  alreadySignedIn: async () => (await loadSession(area)) !== null,
+  attempt: async () => {
+    const result = await runPkceAttempt(SILENT_PROVIDER, {
+      target: await authTarget(),
+      area,
+      redirectUri: ext.identity.getRedirectURL(),
+      launch: (url) =>
+        ext.identity.launchWebAuthFlow({ url, interactive: false }),
+      randomBytes,
+      nowSec,
+    });
+    if (!result.ok) return { ok: false };
+    armAlarm(result.session.expiresAt);
+    return { ok: true };
+  },
+});
 
 async function signOut(): Promise<void> {
   const session = await loadSession(area);
@@ -187,6 +201,10 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (type === AUTH_SIGN_IN) {
     const { provider } = message as { provider: Provider };
     void signIn(provider).then(sendResponse);
+    return true;
+  }
+  if (type === AUTH_SILENT_SIGN_IN) {
+    void silent.run().then(sendResponse);
     return true;
   }
   if (type === AUTH_SIGN_OUT) {
