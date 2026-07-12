@@ -1,6 +1,7 @@
 // The SPA's path router, kept hand-rolled and small (no react-router): route parsing, link
 // builders, and the one navigation primitive the screens share. Paths select the surface:
-// `/` (home), `/puzzles` (the library), `/new` (create), `/game/<id>` (the live game, with
+// `/` (home), `/puzzles` (the library, with `?play=<puzzleId>` as the extension's post-ingest
+// play intent, D22), `/new` (create), `/game/<id>` (the live game, with
 // `?code=` riding along on invite links). Old query-routed URLs (`?game=`, `?puzzles=1`,
 // `?create=1`) still parse to the same routes and are canonicalized once via replaceState
 // (`canonicalHref`), so invite links in the wild keep working. The dev/smoke overrides
@@ -15,10 +16,12 @@ export type Navigate = (to: string) => void;
 
 /** The parsed surface. `demo` is the dev-only fake-session board behind `?demo=1`. `party` on the
  * game route is the read-only projector screen (`/game/<id>?party=1`), opened on a TV; it is a
- * presentation flag on the same game, not a separate surface, so the game still loads normally. */
+ * presentation flag on the same game, not a separate surface, so the game still loads normally.
+ * `play` on the puzzles route is the extension's post-ingest play intent (D22): the library
+ * puzzle to preselect for room creation, consumed once by the puzzles panel. */
 export type Route =
   | { readonly kind: "home" }
-  | { readonly kind: "puzzles" }
+  | { readonly kind: "puzzles"; readonly play?: string }
   | { readonly kind: "create" }
   | { readonly kind: "settings" }
   | { readonly kind: "game"; readonly gameId: string; readonly party?: boolean }
@@ -71,6 +74,15 @@ export function gameHref(
   return `/game/${encodeURIComponent(gameId)}${qs(p)}`;
 }
 
+/** The play intent (D22): `/puzzles?play=<puzzleId>`, the URL the extension opens after an
+ * ingest. Constructible from a base origin plus the puzzle id alone; the puzzles panel consumes
+ * it once (one explicit click creates the room, landing here never does). */
+export function playHref(puzzleId: string, params: URLSearchParams): string {
+  const p = preservedParams(params);
+  p.set("play", puzzleId);
+  return `/puzzles${qs(p)}`;
+}
+
 /** The projector link: the game URL plus `?party=1`, the read-only screen a host opens on a TV. */
 export function partyHref(gameId: string, params: URLSearchParams): string {
   return gameHref(gameId, params, { party: "1" });
@@ -95,6 +107,16 @@ function gameRoute(gameId: string, params: URLSearchParams): Route {
     : { kind: "game", gameId };
 }
 
+/** The puzzles route with its play intent read off `?play=<puzzleId>` (the extension's
+ * post-ingest landing, D22). Attached only when non-empty, so a plain library link stays
+ * `{ kind: "puzzles" }`. */
+function puzzlesRoute(params: URLSearchParams): Route {
+  const play = params.get("play");
+  return play !== null && play !== ""
+    ? { kind: "puzzles", play }
+    : { kind: "puzzles" };
+}
+
 /**
  * Parse a location into a Route. Legacy query keys win over the path so an old-style URL
  * renders the right surface on the very first paint, before `canonicalHref` cleans the
@@ -107,10 +129,10 @@ export function parseRoute(pathname: string, params: URLSearchParams): Route {
     return gameRoute(legacyGame, params);
   }
   if (params.get("create") !== null) return { kind: "create" };
-  if (params.get("puzzles") !== null) return { kind: "puzzles" };
+  if (params.get("puzzles") !== null) return puzzlesRoute(params);
 
   const segments = pathname.split("/").filter((s) => s !== "");
-  if (segments[0] === "puzzles") return { kind: "puzzles" };
+  if (segments[0] === "puzzles") return puzzlesRoute(params);
   if (segments[0] === "new") return { kind: "create" };
   if (segments[0] === "settings") return { kind: "settings" };
   if (segments[0] === "game" && segments[1] !== undefined) {
@@ -144,6 +166,13 @@ export function canonicalHref(
     return gameHref(game, params, extras);
   }
   if (params.get("create") !== null) return createHref(params);
-  if (params.get("puzzles") !== null) return puzzlesHref(params);
+  if (params.get("puzzles") !== null) {
+    // The play intent survives the one-time redirect, so a legacy `?puzzles=1&play=<id>` link
+    // still lands with its puzzle preselected.
+    const play = params.get("play");
+    return play !== null && play !== ""
+      ? playHref(play, params)
+      : puzzlesHref(params);
+  }
   return null;
 }
