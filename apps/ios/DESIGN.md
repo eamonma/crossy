@@ -283,15 +283,33 @@ joins our SwiftUI transaction, so `withAnimation(.crossyChrome)` around a
 width-driving value does not make the bar breathe; the room seeds its true roster
 and keeps the first-connect pill terse so the open frame carries no snap, and the
 residual snaps are honest, each marking a real change. Arrival finding (device
-2026-07-11): the time pill arrives when the room is live, so the open frame's
-cluster is width-stable (share + players only, both stable from frame one) and
-the pill's arrival is an honest bar-item insertion on the welcome's beat
+2026-07-11, refined 2026-07-12): the time pill arrives when the room is live, so
+the open frame's cluster is width-stable (share + players only, both stable from
+frame one) and the pill's arrival is a bar-item insertion on the welcome's beat
 (TimePillPresence keys on the store's sync state; a terminal room's sealed pill
-arrives the same way). Recorded, not fixed (device 2026-07-11): the facts-card
-metaball from the bar-hosted pill is broken, the departing stub lives in our
-GlassEffectContainer and the pill's glass in the system bar's, and two containers
-cannot blend, so the goo departs orphaned; the facts-card presentation awaits an
-owner redesign and the morph code is untouched.
+arrives the same way). The insert carries NO animation: the nav bar's slot pass
+is UIKit's own and joins no SwiftUI transaction, so the pill just appears (device
+2026-07-12, same pass as the width snap). A content-only fade-in was weighed and
+rejected, because the system draws a bar item's glass capsule from the item's
+mere PRESENCE, not its content (rig 2026-07-12: a `ToolbarItem` whose content is
+opacity 0 still stands a full glass capsule), so fading the content in would
+reveal it inside an already-standing EMPTY capsule, exactly what glass never does.
+The bare insert is the honest arrival; Reduce Motion changes nothing, the insert
+never animated. Empty-capsule finding and fix (rig + device 2026-07-12): the same
+presence-not-content rule broke the yield. When the facts card opens the time
+pill hands off (content to opacity 0), but the system capsule stood on regardless,
+so an empty glass capsule floated in the bar where the pill was (visible in the
+open-card capture, and a contributor to the metaball reading as broken). Fixed by
+hiding the handed-off item's shared background (`sharedBackgroundVisibility(.hidden)`
+while `timeHandedOff`), which suppresses the capsule while the item stays present
+so its frame keeps reporting live (the card's pour-back reads it, no stale value,
+no removed slot); the eclipsed back button takes the same treatment. Recorded,
+not fixed (device 2026-07-11): the facts-card metaball from the bar-hosted pill is
+still broken, the departing stub lives in our GlassEffectContainer and the pill's
+glass in the system bar's, and two containers cannot blend, so the goo departs
+orphaned; the facts-card presentation awaits an owner redesign and the morph code
+is untouched (the empty-capsule fix above removes the hollow capsule that made the
+break read worse, but the two-container blend remains the owner's redesign).
 
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels

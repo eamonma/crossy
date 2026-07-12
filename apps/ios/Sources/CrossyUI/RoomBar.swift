@@ -43,11 +43,17 @@ import SwiftUI
 /// the pill ARRIVES once the room is live. Before the first `welcome` lands the
 /// store is `connecting`, so the trailing cluster is share + players only, both
 /// width-stable from the open frame; the welcome flips `sync` off `connecting`
-/// and the pill materializes as its own bar-item insertion (the bar animates the
-/// insert natively), so the open frame's cluster no longer settles its slots
-/// after the #132 zoom push. A terminal room's sealed pill arrives the same way,
-/// on its welcome's beat: any state but `connecting` means a welcome landed and
-/// a board exists. Pure so a test pins it, the RoomWeather.from(sync:) discipline.
+/// and the pill materializes as its own bar-item insertion, so the open frame's
+/// cluster no longer settles its slots after the #132 zoom push. The insert
+/// itself carries NO animation (device rig 2026-07-12: the nav bar's slot pass is
+/// UIKit's own and joins no SwiftUI transaction, so the pill just appears); a
+/// content-only fade was weighed and rejected, because the system draws the glass
+/// capsule from the item's mere presence, not its content (the empty-capsule
+/// finding), so fading the content in would reveal it inside an already-standing
+/// EMPTY capsule, the one thing §4 forbids. The honest arrival is the bare insert.
+/// A terminal room's sealed pill arrives the same way, on its welcome's beat: any
+/// state but `connecting` means a welcome landed and a board exists. Pure so a
+/// test pins it, the RoomWeather.from(sync:) discipline.
 @available(iOS 17.0, macOS 14.0, *)
 enum TimePillPresence {
     /// True once the first welcome has landed (the room is live). Keyed on the
@@ -55,6 +61,22 @@ enum TimePillPresence {
     /// GameStore's SyncState), never a new flag.
     static func isLive(sync: SyncState) -> Bool {
         sync != .connecting
+    }
+}
+
+/// A bar item's system glass capsule, gated so it is never conjured empty
+/// (DESIGN.md §4). The nav bar draws the capsule from the item's mere PRESENCE,
+/// not its content (the empty-capsule finding, rig 2026-07-12), so a handed-off
+/// item whose content sits at opacity 0 would stand a hollow capsule. The rule is
+/// one fact: the capsule's shared background hides exactly while the item is
+/// handed off, and the item stays present so its frame keeps reporting. Pure so a
+/// test pins the "no empty capsule" contract, applied at every glass bar item.
+@available(iOS 17.0, macOS 14.0, *)
+enum BarItemGlass {
+    /// True when the item's shared background must hide (the item is handed off,
+    /// so its content is invisible and the capsule would otherwise stand empty).
+    static func backgroundHidden(handedOff: Bool) -> Bool {
+        handedOff
     }
 }
 
@@ -175,6 +197,13 @@ struct RoomBarInputs {
                     ground: inputs.ground, handedOff: inputs.backHandedOff,
                     onBack: inputs.onBack, reportFrame: inputs.reportFrame)
             }
+            // The eclipsed back button leaves no empty capsule either (the same
+            // §4 rule, the empty-capsule finding): its content goes to opacity 0
+            // on a narrow-layout eclipse, and the system capsule would otherwise
+            // stand hollow, so the shared background hides for the eclipse's life.
+            .sharedBackgroundVisibility(
+                BarItemGlass.backgroundHidden(handedOff: inputs.backHandedOff)
+                    ? .hidden : .automatic)
             // The time pill ARRIVES once the room is live (DESIGN.md §4 toolbar
             // amendment): before the first welcome the trailing cluster is share
             // + players only, both width-stable from the open frame, so the pill's
@@ -190,6 +219,19 @@ struct RoomBarInputs {
                         status: inputs.status, handedOff: inputs.timeHandedOff,
                         onTap: inputs.onTapTimePill, reportFrame: inputs.reportFrame)
                 }
+                // The yielded pill leaves NO empty capsule (DESIGN.md §4: glass is
+                // never conjured empty). The item's content goes to opacity 0 while
+                // handed off, but the SYSTEM nav bar draws its glass capsule from
+                // the item's mere PRESENCE, not its content (the empty-capsule
+                // finding, device rig 2026-07-12), so opacity 0 alone leaves a
+                // hollow capsule floating where the pill stood. Hiding the item's
+                // shared background suppresses that capsule while the facts card
+                // stands over the pill's footprint; the item stays present, so its
+                // frame keeps reporting live (the card's pour-back reads it) instead
+                // of a stale retained value.
+                .sharedBackgroundVisibility(
+                    BarItemGlass.backgroundHidden(handedOff: inputs.timeHandedOff)
+                        ? .hidden : .automatic)
                 // A fixed spacer between every trailing pill so the cluster reads
                 // as SEPARATE glass pills, not one fused "..." capsule (the
                 // room-bar cluster law, DESIGN.md §4: back / time / share /

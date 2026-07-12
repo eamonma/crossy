@@ -93,6 +93,27 @@ final class TimePillPresenceTests: XCTestCase {
     }
 }
 
+// A bar item's system glass capsule is never conjured empty (DESIGN.md §4). The
+// nav bar draws the capsule from the item's PRESENCE, not its content (the
+// empty-capsule finding, rig 2026-07-12), so a handed-off item whose content
+// sits at opacity 0 would stand a hollow capsule. BarItemGlass hides the item's
+// shared background exactly while it is handed off, so the pill yields with no
+// floating empty glass and the item stays present for its frame to keep reporting.
+
+final class BarItemGlassTests: XCTestCase {
+    // Standing (not handed off): the capsule shows, the pill is whole.
+    func test_standingPill_keepsItsCapsule_section4() {
+        XCTAssertFalse(BarItemGlass.backgroundHidden(handedOff: false))
+    }
+
+    // Handed off (the facts card open, or an eclipse): the content is invisible,
+    // so the capsule's shared background hides and no empty glass floats where
+    // the pill stood (glass is never conjured empty, DESIGN.md §4).
+    func test_handedOffPill_hidesItsCapsule_section4() {
+        XCTAssertTrue(BarItemGlass.backgroundHidden(handedOff: true))
+    }
+}
+
 // The time pill's register (redesign 2026-07-11): the room's vital signs
 // while it runs, its record at a terminal status. The mapping is pure so the
 // pill renders no policy, and the spoken line follows the register (ID-2: the
