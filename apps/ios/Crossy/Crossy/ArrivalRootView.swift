@@ -268,11 +268,15 @@ struct ArrivalRootView: View {
                                 sourceID: roomZoomSourceID)
                     }
                 }
-                // The tab bar's hiding is the room's own now (RoomNavBarChrome, the
-                // presence-based fix): keying it here on the path emptiness janked the
-                // interactive pop (the tab bar was absent from the list the zoom
-                // reveals mid-swipe, then snapped in at commit), so the destination
-                // owns it and the tab bar rides back in with the revealed list.
+                // The room owns the whole screen (the full-bleed ruling), so the bar
+                // hides while anything is pushed. Keyed off the path, NOT attached to
+                // the pushed room: attaching `.toolbar(.hidden, for: .tabBar)` to the
+                // destination broke the FIRST push per process (the nav bar's items and
+                // the interactive-pop gesture both failed to materialize until a
+                // re-push warmed them, owner report 2026-07-12); keying off the path
+                // here has no such race, and the path empties at the start of a button
+                // pop so the bar rides that animation.
+                .toolbar(path.isEmpty ? .visible : .hidden, for: .tabBar)
             }
             Tab(ArrivalCopy.puzzlesTitle, systemImage: "squareshape.split.3x3", value: ShellTab.puzzles) {
                 NavigationStack(path: $puzzlesPath) {
@@ -292,9 +296,11 @@ struct ArrivalRootView: View {
                         destination(route, pop: { puzzlesPath.removeAll() })
                     }
                 }
-                // The tab bar's hiding is the room's own (RoomNavBarChrome), the same
-                // presence-based fix the Rooms tab uses; keying it on this tab's path
-                // janked the interactive pop identically.
+                // The room owns the whole screen (the full-bleed ruling); the bar
+                // hides while a room started here is pushed, keyed off this tab's own
+                // path exactly as Rooms keys off its own (and for the same first-push
+                // reason: never attached to the destination).
+                .toolbar(puzzlesPath.isEmpty ? .visible : .hidden, for: .tabBar)
             }
             Tab(ArrivalCopy.settingsTitle, systemImage: "gearshape", value: ShellTab.settings) {
                 settingsTab
@@ -477,16 +483,11 @@ struct RoomNavBarChrome: ViewModifier {
             // owning the top strip. The items carry their own glass on 26 and the
             // plain material below.
             .toolbarBackground(.hidden, for: .navigationBar)
-            // The tab bar hides while the room is on screen (the full-bleed ruling),
-            // tied to the room's PRESENCE here rather than the tab's path emptiness
-            // (amended 2026-07-12). Under the leading-edge interactive pop (restored
-            // with the edge-pop gutter), the path stays non-empty until the gesture
-            // commits, so a path-keyed tab bar was absent from the list the zoom
-            // reveals mid-swipe and then snapped in at commit (owner report: "the tab
-            // bar is there sometimes and not others"). Attached to the destination,
-            // the tab bar rides back in WITH the revealed list, and the iOS 18 zoom
-            // transition animates it for the button pop too.
-            .toolbar(.hidden, for: .tabBar)
+            // The tab bar is NOT hidden here: attaching `.toolbar(.hidden, for:
+            // .tabBar)` to the destination broke the first push per process (the nav
+            // bar's items and the swipe-back both failed to materialize until a re-push
+            // warmed them, owner report 2026-07-12). The tab bar hides at the tab level
+            // instead, keyed on the path (see the Rooms/Puzzles tabs above).
             // Pinch-to-close is disabled in every room (owner ruling 2026-07-12):
             // the zoom transition's pinch dismiss fought the board's own pinch-zoom
             // at the camera floor (a pinch-in meaning "zoom out" instead left the
