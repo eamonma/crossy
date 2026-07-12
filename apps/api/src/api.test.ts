@@ -12,6 +12,7 @@
  *
  * No silent skips (repo rule): if Docker is unreachable the suite FAILS loudly.
  */
+import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -676,6 +677,75 @@ describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21;
       document: { ...doc, dimensions: { cols: 26, rows: 3 } },
     });
     await expectRejectionNoLeak(res, 422, "OVERSIZE_GRID", "CAT");
+  });
+
+  // A synthetic AmuseLabs (PuzzleMe) 3x3 (never real AmuseLabs content, DESIGN.md §7): the same
+  // CAT/DOG grid as decoded JSON. The box is column-major (box[col][row], xword-dl reference)
+  // and the envelope document is the base64 blob, encoded here exactly as the extension would
+  // find it in the page (the extension never decodes, PROTOCOL.md §12).
+  const amuseDoc = () => ({
+    title: "Synthetic PuzzleMe No 1",
+    author: "Synthia",
+    w: 3,
+    h: 3,
+    box: [
+      ["C", "U", "D"],
+      ["A", "\u0000", "O"],
+      ["T", "A", "G"],
+    ],
+    placedWords: [
+      { clue: { clue: "Feline (3)" }, acrossNotDown: true, x: 0, y: 0 },
+      { clue: { clue: "Chewed morsel (3)" }, acrossNotDown: false, x: 0, y: 0 },
+      { clue: { clue: "Label (3)" }, acrossNotDown: false, x: 2, y: 0 },
+      { clue: { clue: "Canine (3)" }, acrossNotDown: true, x: 0, y: 2 },
+    ],
+  });
+  const amuseBlob = (doc: unknown) =>
+    Buffer.from(JSON.stringify(doc), "utf8").toString("base64");
+
+  it("ingests an amuselabs envelope: blob decoded server-side, ClientPuzzle view, source format (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "amuselabs",
+      document: amuseBlob(amuseDoc()),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      puzzleId: string;
+      puzzle: Record<string, unknown>;
+    };
+    expect(hasKeyDeep(body.puzzle, "solution")).toBe(false);
+    expect(body.puzzle.blocks).toEqual([4]);
+    expect(await storedSource(body.puzzleId)).toEqual({
+      kind: "upload",
+      format: "amuselabs",
+    });
+    const { rows } = await adminPool.query(
+      "select data from puzzles where puzzle_id = $1",
+      [body.puzzleId],
+    );
+    expect(rows[0].data.solution).toEqual([
+      "C",
+      "A",
+      "T",
+      "U",
+      null,
+      "A",
+      "D",
+      "O",
+      "G",
+    ]);
+  });
+
+  it("rejects an amuselabs blob with empty answer cells as SOLUTION_MISSING 422, no leak (INV-6, D11)", async () => {
+    const token = await auth.mintUpgraded();
+    const doc = amuseDoc();
+    doc.box[0] = ["", "U", "D"]; // an empty cell: the outlet served no answer there
+    const res = await postJson("/puzzles", token, {
+      format: "amuselabs",
+      document: amuseBlob(doc),
+    });
+    await expectRejectionNoLeak(res, 422, "SOLUTION_MISSING", "TAG");
   });
 });
 
