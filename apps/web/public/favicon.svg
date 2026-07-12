@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- The tightest crop of the CROSSY crossword (the app icon) that survives 16px:
-       a 2x2 window with the block TOP-RIGHT, so its blocks fall on the same
-       anti-diagonal as the in-app mark; the gold Y sits bottom-right. Grid lines
-       run to the frame so the puzzle reads as continuing past it. Light mirrors
-       icon-light (ink on bone); dark mirrors icon-dark (bone plates on Observatory,
-       the ground showing through as the grid line). The favicon cannot see the
-       app's data-theme, so it keys on prefers-color-scheme. -->
+  <!-- The Crossy mark reduced for 16px: a 2x2 window keeping the mark's two
+       signature corner cells, the top-right block (on the anti-diagonal, as in
+       the mark) and the bottom-right gold cell (the Y). Grid lines run to the
+       frame so the puzzle reads as continuing past it. Light mirrors the mark
+       (ink on bone); dark mirrors it too (bone plates on Observatory, the
+       ground showing through as the grid line). Emitted by
+       docs/design/logo/generate.py; edit the generator, not this file. -->
   <style>
     .ground { fill: #F2F1EC; }
     .open { fill: #F2F1EC; }

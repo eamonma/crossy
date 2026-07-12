@@ -1,97 +1,91 @@
-# Crossy logo exploration
+# Crossy logo
 
-A selection set, not final assets. Nothing here is wired into the app; the live iOS
-icon, favicon, and sidebar are untouched. Pick a direction, and the survivor gets
-rebuilt on real tokens (ImageRenderer app icon, scheme-aware SVG favicon, `Logo` in
-`apps/web/src/ui/primitives.tsx`).
+The canonical identity: one mark, one wordmark, two lockups, light and dark.
+Every SVG here is emitted by `generate.py`. Edit the generator, never the SVGs.
 
-Open `sheet.html` in a browser to judge everything side by side. Each direction ships
-four SVGs: `icon-light.svg` and `icon-dark.svg` (1024, Studio and Observatory grounds,
-squircle as a stand-in for the system mask), `favicon.svg` (drawn on a 32 grid, must
-survive 16), and `wordmark.svg` (the sidebar lockup: mark 24, gap 6, display serif
-semibold 18, the recipe `AppShell.tsx` already carries).
+| file                                       | what                                                 |
+| ------------------------------------------ | ---------------------------------------------------- |
+| `mark-light.svg` / `mark-dark.svg`         | the mark alone                                       |
+| `wordmark-light.svg` / `wordmark-dark.svg` | Crossy, Harfang Pro outlines                         |
+| `lockup-horizontal-*.svg`                  | mark, gap, wordmark                                  |
+| `lockup-stacked-*.svg`                     | mark above wordmark                                  |
+| `wordmark_data.py`                         | committed Harfang outlines (see below)               |
+| `app-icon/`                                | the CROSSY crossword icon: emitted SVGs + PNG cutter |
+| `preview/`                                 | rendered lockups for review                          |
 
-This sheet builds on the earlier A to D contact sheet: A the crossword cell, B round
-caps, C 1-Across, D the ink block. Directions 01 through 04 are those four pushed to a
-full identity each; 05 stages the web's existing drawn monogram against them so the
-incumbents compete honestly.
+## The mark
 
-## Ground rules the set obeys
+The 3x3 heart of the CROSSY crossword: three blocks stepping down the
+anti-diagonal to one gold cell, the Y's cell. Grid lines run to the frame so
+the puzzle reads as continuing past the crop. The full CROSSY tile (the app
+icon) spells the name, so it never sits beside the wordmark; the lockup
+carries this fragment.
 
-- Real tokens only: `Grounds.swift` Studio and Observatory palettes, web `gold-9`
-  (#978365) as the single permitted accent. No gradients, no bevels, no third color.
-- One object per mark. If it needs a caption to parse, it is out.
-- Favicon and wordmark SVGs flip ink with `prefers-color-scheme`, so toggle OS
-  appearance to judge dark tabs and the dark sidebar.
+Light draws ink on the ground, open cells transparent. Dark is the plate
+treatment the app icon and favicon already use: open cells glow bone, the
+gold cell stays gold, the ground shows through as blocks and grid lines.
 
-## The directions
+## The wordmark
 
-### 01 · The Cell (from A)
+Crossy in Harfang Pro, normal 600, the brand serif the app already sets.
+Typekit text is render-unstable (the kit may not load, the fallback differs),
+so the canonical wordmark is outlined to vector paths: `wordmark_data.py`
+holds the six glyphs, their advances and GPOS kerning, extracted from the
+project's own Adobe Fonts kit by `extract_wordmark.py`. Only outlines are
+committed, never a font file; Adobe Fonts permits logo artwork made from an
+active kit. Rerun the extractor only if the kit or the face changes.
 
-One square of the grid holding its clue number and a C. This is the shipped app icon
-restaged as the whole identity; below icon scale the number retires and the mark
-becomes cell plus C.
+## The lockup recipe
 
-Fits because the cell is the atom of the product and it is already on the phone.
-Risk: the letterform does the work, so at 16px it is a letter in a box, quiet to the
-point of anonymous. Also the least differentiated from every other letter-in-a-tile
-app icon.
+Horizontal: mark 24, gap 6 to the type origin, Crossy at 18 semibold,
+tracking -0.00625em, mark box and text box center-aligned. With Harfang's
+metrics (ascent 947, descent 275, upem 1000) the baseline lands 18.048 below
+the mark top; the SVGs bake that in. This is exactly what the web renders
+live (`Logo` in `apps/web/src/ui/primitives.tsx`, mark 24, gap 6, text 18).
 
-### 02 · The Crossing (from C, 1-Across)
+Stacked: mark 24 centered over the word ink, gap 6 from mark bottom to the
+cap line.
 
-A four-cell across entry and a three-cell down entry sharing one square; the shared
-square is the one gold accent. Deliberately asymmetric so it reads as a grid crossing,
-never a pharmacy plus. This is the only direction that says the actual product: two
-words, two people, one cell.
+## Tokens
 
-Fits the space-age register best: flat interlocking geometry, Panton-bold, no type.
-Strongest shrinker in the set; at 16px it is still exactly itself. Risk: abstract
-enough that it needs a beat to read as crossword rather than generic tetromino.
+| token                     | value                                                      |
+| ------------------------- | ---------------------------------------------------------- |
+| ink                       | `#1D1B18`                                                  |
+| bone                      | `#EDEAE2`                                                  |
+| gold                      | `#978365` (gold-9, the single accent, always the Y's cell) |
+| Studio ground (light)     | `#F2F1EC`                                                  |
+| Observatory ground (dark) | `#121118`                                                  |
 
-### 03 · The Checker (from D, the ink block)
+No gradients, no bevels, no third color. One object per mark.
 
-The smallest true crossword fragment: a 2x2 tile, two open cells, two ink blocks on
-the rising diagonal. The icon shows the full tile on the ground tokens; the favicon
-reduces to the two blocks and lets negative space imply the rest.
+## Clear space and minimum size
 
-Fits because the black square is the most iconic single object in crosswords and
-nobody owns it. Quietest mark here, pure Eames economy. Risk: two rounded squares can
-drift toward generic geometry, and it says "crossword" more than it says "Crossy",
-there is no letter anywhere.
+Clear space: one grid cell (a third of the mark) on all sides, minimum.
+The mark holds from 20px up; below that use the favicon reduction. Lockups
+hold from mark height 20 up. In-app UI text near the logo follows the app's
+own type system; the wordmark is never re-set in live text on brand surfaces
+(store pages, social cards, print).
 
-### 04 · The Open C (from B, round caps)
+## One geometry, four artifacts
 
-A round-capped C stroke with a cell docked in its aperture, completing the implied
-circle. The letter carries its square: C for Crossy, cell for crossword, one object.
+The crossword core (blocks on the anti-diagonal, CROSSY in the open cells,
+gold on the Y) is defined once in `generate.py`. Everything else is a crop or
+reduction of it:
 
-The most designed mark of the set, orbit-and-station space-age. Drawn geometry rather
-than type, so the favicon holds at 16. Risk: rotated it flirts with power-button and
-spinner cliches; the square (not a dot) in the gap is what keeps it honest. Judge it
-upside down and small before trusting it.
+- the mark: the 3x3 core, letters retired
+- app icon: crop-medium, a 5x5 grid around the core, the frame slicing the
+  outer ring mid-cell (`app-icon/`)
+- favicon: a 2x2 reduction keeping the mark's two signature corner cells,
+  the top-right block and the gold Y cell (`apps/web/public/favicon.svg`,
+  emitted here)
+- web mark: the same 3x3 as JSX in `apps/web/src/ui/primitives.tsx`
+  (`CrosswordMark`), themed with currentColor and the gold token;
+  `generate.py` fails if its geometry drifts
 
-### 05 · The Ligature (the web incumbent, undisked)
+## Regenerating
 
-The existing drawn Cy monogram from `primitives.tsx`, lifted out of its gold disc and
-staged bare: ink on Studio, bone on Observatory. Included so the current web equity
-competes on the same board instead of dying by default.
-
-Fits the claude.ai register: a single confident piece of type as the whole brand.
-Risk is scale: a drawn serif ligature at 16px mushes, and the favicon file here is the
-honest stress test. If it wins, it likely wins as icon and sidebar mark with a
-simplified favicon cut from it.
-
-## How to choose fast
-
-1. Squint at the 16px column in `sheet.html`. Kill anything that dies.
-2. Toggle OS dark mode. Kill anything that only works on bone.
-3. Imagine it alone on a phone screen with no name under it. Kill anything that
-   could belong to another app.
-
-## What happens to the survivor
-
-- App icon: rebuilt via the existing SwiftUI ImageRenderer pipeline on Ground tokens
-  (light, dark, tinted; opaque flattened, 1024).
-- Favicon: a real scheme-aware SVG favicon plus fallback PNGs.
-- Web sidebar: `Logo` swap in `primitives.tsx`, keeping the mark-holds-still,
-  wordmark-tucks behavior `AppShell.tsx` already implements.
-- iOS wordmark and any in-app brand moments follow, same tokens.
+```sh
+python3 generate.py   # all SVGs + the web favicon + the drift check
+./render.sh           # the above, then preview PNGs (qlmanage + Pillow)
+app-icon/render.sh    # appiconset PNGs, only when the icon geometry changes
+```

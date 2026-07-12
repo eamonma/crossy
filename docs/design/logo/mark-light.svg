@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- The Crossy mark: the 3x3 core of the CROSSY crossword, letters retired. Light: ink blocks and grid lines, the gold Y cell, open cells transparent. -->
+  <rect y="16" width="8" height="8" fill="#1D1B18"/>
+  <rect x="8" y="8" width="8" height="8" fill="#1D1B18"/>
+  <rect x="16" width="8" height="8" fill="#1D1B18"/>
+  <rect x="16" y="16" width="8" height="8" fill="#978365"/>
+  <path d="M8 0v24M16 0v24M0 8h24M0 16h24" stroke="#1D1B18" stroke-width="1.25" fill="none"/>
+</svg>
