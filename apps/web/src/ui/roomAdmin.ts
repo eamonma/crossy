@@ -7,11 +7,44 @@
 // Pure gating first (host, not-self), mirroring RosterList.selfIsHost/canKick byte for byte in
 // spirit so a host sees the same affordances on both platforms; the server enforces host-only
 // and self-target regardless (FORBIDDEN), so this only decides what the UI offers.
+import type { StackMember } from "./primitives";
 import type { TokenSource } from "./homeData";
 
 interface RoomMember {
   userId: string;
   role: "host" | "solver" | "spectator";
+}
+
+/**
+ * The Players panel split by presence (PROTOCOL.md §4: each `Participant` carries `connected`;
+ * no wire change): the people here now lead, the away members gather below. Pure data in, pure
+ * data out; the panel renders the two lists and skips the away heading when it is empty (no
+ * ghost heading). Store order is preserved within each section (the caller already ordered self
+ * first, PR #130), so the split only groups, never reshuffles.
+ *
+ * Away membership follows the AvatarStack display rule (primitives.tsx) byte for byte so the two
+ * surfaces agree: a disconnected member joins the away section only when it holds host or solver,
+ * or it is self. A disconnected spectator (a guest who wandered off, PROTOCOL.md §12 seats guests
+ * as spectators) is dropped from both sections, never a permanent away ghost. Self is always kept,
+ * connected or not, and self is always online here (the viewer is by definition present).
+ */
+export function partitionRoster(
+  members: readonly StackMember[],
+  selfUserId: string | null,
+): { online: readonly StackMember[]; away: readonly StackMember[] } {
+  const online: StackMember[] = [];
+  const away: StackMember[] = [];
+  for (const m of members) {
+    const isSelf = m.userId === selfUserId;
+    if (m.connected || isSelf) {
+      online.push(m);
+      continue;
+    }
+    // Disconnected and not self: away only when they hold a seat that persists as a ghost
+    // (host or solver). A disconnected guest-spectator drops out entirely (AvatarStack's rule).
+    if (m.role === "host" || m.role === "solver") away.push(m);
+  }
+  return { online, away };
 }
 
 /** Whether the local participant is the host: gates End game and the kick affordance. */

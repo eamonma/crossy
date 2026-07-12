@@ -203,8 +203,22 @@ struct RosterMenu: View {
     @ViewBuilder
     private var rows: some View {
         let hosting = RosterList.selfIsHost(members, selfUserId: selfUserId)
-        ForEach(RosterList.ordered(members)) { member in
-            personRow(member, hosting: hosting)
+        // Presence split (PROTOCOL.md §4 `connected`): the people here now lead in their own
+        // Section, the away members gather below theirs, skipped when nobody is away so no ghost
+        // header stands. A menu Section carries the quiet grouping header the system draws; the
+        // away pucks already render dimmed (RosterPuckBody), so the section reads calm.
+        let split = RosterList.sections(members, selfUserId: selfUserId)
+        Section("Here") {
+            ForEach(split.here) { member in
+                personRow(member, hosting: hosting)
+            }
+        }
+        if !split.away.isEmpty {
+            Section("Away") {
+                ForEach(split.away) { member in
+                    personRow(member, hosting: hosting)
+                }
+            }
         }
         if RosterList.selfIsSpectator(members, selfUserId: selfUserId) {
             Divider()

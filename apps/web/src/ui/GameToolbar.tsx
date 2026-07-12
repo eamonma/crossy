@@ -19,9 +19,9 @@ import {
   Share1Icon,
 } from "@radix-ui/react-icons";
 import { renderSVG } from "uqr";
-import { AvatarStack } from "./primitives";
+import { AvatarStack, CapsLabel } from "./primitives";
 import type { StackMember } from "./primitives";
-import { abandonGame, isHost, kickMember } from "./roomAdmin";
+import { abandonGame, isHost, kickMember, partitionRoster } from "./roomAdmin";
 import type { TokenSource } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -304,9 +304,56 @@ function SharePopover({
   );
 }
 
+/** One presence section of the roster: a quiet caps heading (the panel's eyebrow recipe, the
+ * same CapsLabel "Solving now" wears) over its member rows. An away row keeps the dimmed avatar
+ * (opacity-55, the AvatarStack away treatment) so the section reads calm without shouting. The
+ * kick affordance rides in per row via the render child, so both sections share one row shape. */
+function RosterSection({
+  label,
+  people,
+  selfId,
+  children,
+}: {
+  label: string;
+  people: readonly StackMember[];
+  selfId: string | null;
+  /** The trailing control for a row, or null (self carries none). */
+  children: (m: StackMember) => React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <CapsLabel className="px-1.5 pt-0.5">{label}</CapsLabel>
+      {people.map((m) => (
+        <div
+          key={m.userId}
+          className="flex items-center gap-2 rounded-md px-1.5 py-1"
+        >
+          <Avatar size="sm" className={!m.connected ? "opacity-55" : ""}>
+            {m.avatarUrl !== null && <AvatarImage src={m.avatarUrl} alt="" />}
+            <AvatarFallback
+              className={
+                m.userId === selfId
+                  ? "bg-gold-4 text-gold-11"
+                  : "bg-sand-4 text-sand-11"
+              }
+            >
+              {m.initial.toUpperCase().slice(0, 1)}
+            </AvatarFallback>
+          </Avatar>
+          <span className="min-w-0 flex-1 truncate text-2 text-text">
+            {m.userId === selfId ? "You" : m.name}
+          </span>
+          {children(m)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** The host's roster popover: the avatar stack becomes the trigger for a plain member list
  * with a per-row "Remove from room" action (RosterMenu.swift's kick, host only, never the
- * host's own row). A non-host sees the plain stack with no popover, unchanged from today. */
+ * host's own row). A non-host sees the plain stack with no popover, unchanged from today.
+ * The list splits by presence: the people here now lead, away members gather below. */
 function RosterPopover({
   members,
   selfId,
@@ -319,6 +366,30 @@ function RosterPopover({
   const [target, setTarget] = useState<StackMember | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { online, away } = useMemo(
+    () => partitionRoster(members, selfId),
+    [members, selfId],
+  );
+
+  /** The per-row kick affordance: everyone but self (the server refuses a self-target), the same
+   * rule in both sections so an away member is still removable. */
+  function renderKick(m: StackMember) {
+    if (m.userId === selfId) return null;
+    return (
+      <Button
+        variant="ghost"
+        size="xs"
+        className="text-danger-text hover:bg-destructive/10"
+        onClick={() => {
+          setError(null);
+          setTarget(m);
+        }}
+      >
+        Remove
+      </Button>
+    );
+  }
 
   async function confirmKick(): Promise<void> {
     if (target === null) return;
@@ -356,43 +427,17 @@ function RosterPopover({
           <PopoverHeader className="px-1.5 pt-1">
             <PopoverTitle className="text-1">Players</PopoverTitle>
           </PopoverHeader>
-          {members.map((m) => (
-            <div
-              key={m.userId}
-              className="flex items-center gap-2 rounded-md px-1.5 py-1"
-            >
-              <Avatar size="sm" className={!m.connected ? "opacity-55" : ""}>
-                {m.avatarUrl !== null && (
-                  <AvatarImage src={m.avatarUrl} alt="" />
-                )}
-                <AvatarFallback
-                  className={
-                    m.userId === selfId
-                      ? "bg-gold-4 text-gold-11"
-                      : "bg-sand-4 text-sand-11"
-                  }
-                >
-                  {m.initial.toUpperCase().slice(0, 1)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="min-w-0 flex-1 truncate text-2 text-text">
-                {m.userId === selfId ? "You" : m.name}
-              </span>
-              {m.userId !== selfId && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  className="text-danger-text hover:bg-destructive/10"
-                  onClick={() => {
-                    setError(null);
-                    setTarget(m);
-                  }}
-                >
-                  Remove
-                </Button>
-              )}
-            </div>
-          ))}
+          {/* Presence split (PROTOCOL.md §4 `connected`): the people here now lead, the away
+              members gather below their own quiet heading, skipped when nobody is away so no ghost
+              heading stands. Store order holds inside each section (self stays first). */}
+          <RosterSection label="Here" people={online} selfId={selfId}>
+            {(m) => renderKick(m)}
+          </RosterSection>
+          {away.length > 0 && (
+            <RosterSection label="Away" people={away} selfId={selfId}>
+              {(m) => renderKick(m)}
+            </RosterSection>
+          )}
           {error !== null && (
             <p className="m-0 px-1.5 text-1 text-danger-text" role="alert">
               {error}
