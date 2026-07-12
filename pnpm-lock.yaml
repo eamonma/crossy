@@ -41,6 +41,9 @@ importers:
       '@crossy/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@crossy/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@crossy/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

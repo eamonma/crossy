@@ -90,6 +90,31 @@ export function toClientPuzzle(puzzle: ServerPuzzle): ClientPuzzle {
 }
 
 /**
+ * Lift the per-cell solution array into a `cell -> value` map: the comparator's input shape
+ * (`ReadonlyMap<number, string>`, the engine's `Solution`). The array is row-major and cell-
+ * indexed exactly like the board (index `i` is cell `i`), and a `null` entry (a black square or
+ * an absent cell) is skipped, so a cell with no solution never appears in the map. This is the
+ * single translation of the stored snapshot into a solution map: the session hydrates the live
+ * comparator through it, and the API's Archive read model joins `cell_events` against it, so both
+ * read one cell index space and first-correct attribution can never drift from the live game.
+ *
+ * The return type is a plain `ReadonlyMap<number, string>`, deliberately not branded and not the
+ * engine's `Solution` name (protocol imports no workspace code; the engine's type is structurally
+ * this map). It is server-only by usage: the caller must never place it on a `ClientPuzzle` or any
+ * outbound payload, because a `value` is solution content (INV-6). Accepting the structural
+ * `{ solution }` shape lets a `ServerPuzzle` and any snapshot carrying the same array both call in.
+ */
+export function serverPuzzleToSolution(puzzle: {
+  readonly solution: readonly (string | null)[];
+}): ReadonlyMap<number, string> {
+  const solution = new Map<number, string>();
+  puzzle.solution.forEach((value, cell) => {
+    if (value !== null) solution.set(cell, value);
+  });
+  return solution;
+}
+
+/**
  * A puzzle's black-square silhouette, the pattern only (PROTOCOL.md §12). An array of `rows`
  * strings, each exactly `cols` characters, where `#` is a black square and `.` is a playable
  * cell, indexed row-major like the board (row `r`, column `c` is character `c` of string `r`,

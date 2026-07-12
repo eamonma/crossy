@@ -3303,3 +3303,181 @@ describe("signup starter seed (DESIGN.md §8; INV-6 no-solution-leak; INV-7 user
     expect(hasKeyDeep(await res.json(), "solution")).toBe(false);
   });
 });
+
+// ------------------------------------------------------------------------------------------
+// GET /games/{id}/attribution: the Archive first-correct owner map (design/post-game/
+// FIRST-CORRECT.md PR5; DESIGN.md §7, §9). Reads the session-owned cell_events log under the
+// API's SELECT grant, lifts the Solution from the game's puzzle_snapshot, runs the engine's
+// firstCorrect projection, and serves the owner map (userIds only) for completed games only.
+// ------------------------------------------------------------------------------------------
+
+/**
+ * Append a board event with an explicit `cell` and `value` through the superuser fixture, standing
+ * in for the session (the single writer of cell_events, DESIGN.md §9). Unlike `seedCellEvent` (cell
+ * 0, throwaway `A`, used for the list's MAX(at) ordering), the attribution read joins the value and
+ * cell against the solution, so a test must place real letters at real cells. `seq` orders the log
+ * and must be unique per game. `value` may be null (a clear), which is never correct (INV-6-safe:
+ * the API never emits the value, only the owner it implies).
+ */
+async function seedAttributionEvent(
+  gameId: string,
+  userId: string,
+  seq: number,
+  cell: number,
+  value: string | null,
+): Promise<void> {
+  await adminPool.query(
+    `insert into cell_events (game_id, seq, cell, user_id, value, at)
+       values ($1, $2, $3, $4, $5, now())`,
+    [gameId, seq, cell, userId, value],
+  );
+}
+
+/** The attribution wire shape: the owner map alone, cell key (string in JSON) to userId. */
+interface AttributionBody {
+  owners: Record<string, string>;
+}
+
+describe("GET /games/{id}/attribution (first-correct Archive read model) (design/post-game/FIRST-CORRECT.md; DESIGN.md §7, §9; INV-6)", () => {
+  // FIXTURE is a 2x2 all-playable grid with solution ["H","I","O","N"] at cells 0..3.
+  it("a completed game yields the first-correct owner map, immune to a later overwrite (scheme 1)", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // The write log: host first-corrects cells 0 (H) and 1 (I); mate first-corrects cell 2 (O).
+    // Cell 3 (N) is first typed WRONG by mate (X, not correct), then corrected by host, so host
+    // owns cell 3. Then mate OVERWRITES cell 0 with the still-correct H at a later seq: scheme 1
+    // must NOT move the owner, host keeps cell 0 (the cleanup-pass-immunity the doc pins).
+    await seedAttributionEvent(gameId, hostId, 1, 0, "H"); // host owns 0
+    await seedAttributionEvent(gameId, hostId, 2, 1, "I"); // host owns 1
+    await seedAttributionEvent(gameId, mateId, 3, 2, "O"); // mate owns 2
+    await seedAttributionEvent(gameId, mateId, 4, 3, "X"); // wrong, owns nothing
+    await seedAttributionEvent(gameId, hostId, 5, 3, "N"); // host first-corrects 3
+    await seedAttributionEvent(gameId, mateId, 6, 0, "H"); // re-correct, must not move owner
+
+    // Gate the game to completed (the session, here the fixture, stamps completed_at).
+    await seedGameState(gameId, "2026-06-10T10:00:00.000Z");
+
+    const res = await get(`/games/${gameId}/attribution`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AttributionBody;
+    // First-ever-correct: host owns 0,1,3; mate owns 2. The re-correct of 0 never displaces host.
+    expect(body.owners).toEqual({
+      "0": hostId,
+      "1": hostId,
+      "2": mateId,
+      "3": hostId,
+    });
+  });
+
+  it("gate: an ongoing game is GAME_NOT_FOUND and computes no owner map (completed-only)", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    // Events exist and would produce a map, but the game is ongoing (game_state row, no
+    // completed_at), so the endpoint must refuse and compute nothing.
+    await seedAttributionEvent(gameId, hostId, 1, 0, "H");
+    await seedGameState(gameId, null);
+
+    const res = await get(`/games/${gameId}/attribution`, host);
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("gate: a game with no game_state row yet (never connected) is GAME_NOT_FOUND (completed-only)", async () => {
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    // No seedGameState: the actor never materialized game_state, so the game is not completed.
+    const res = await get(`/games/${gameId}/attribution`, host);
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("gate: an abandoned game is GAME_NOT_FOUND and computes no owner map (recap deferred; completed-only)", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    await seedAttributionEvent(gameId, hostId, 1, 0, "H");
+    // An abandoned game has a terminal game_state row but never stamped completed_at.
+    await adminPool.query(
+      `insert into game_state (game_id, status, completed_at, abandoned_at)
+         values ($1, 'abandoned', null, now())
+       on conflict (game_id) do update set status = 'abandoned', abandoned_at = now()`,
+      [gameId],
+    );
+
+    const res = await get(`/games/${gameId}/attribution`, host);
+    expect(res.status).toBe(404);
+    await expectError(res, "GAME_NOT_FOUND");
+  });
+
+  it("INV-6: the completed-game response carries no solution letter, no value, no events anywhere", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    // Plant every solution letter into the log, so if the response ever serialized a value or the
+    // snapshot, one of these letters would surface in the raw JSON text.
+    await seedAttributionEvent(gameId, hostId, 1, 0, "H");
+    await seedAttributionEvent(gameId, hostId, 2, 1, "I");
+    await seedAttributionEvent(gameId, hostId, 3, 2, "O");
+    await seedAttributionEvent(gameId, hostId, 4, 3, "N");
+    await seedGameState(gameId, "2026-06-11T11:00:00.000Z");
+
+    const res = await get(`/games/${gameId}/attribution`, host);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const body = JSON.parse(text) as Record<string, unknown>;
+    // The body is the owner map only: userIds, never a solution value or a raw event.
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "value")).toBe(false);
+    expect(hasKeyDeep(body, "events")).toBe(false);
+    expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
+    // No solution letter rides the wire. The owners map holds userIds (UUIDs) only; a bare grid
+    // letter would only appear if a value or snapshot leaked. Each solution cell is a single
+    // uppercase letter, so scan the raw text for any of them as a whole-token value.
+    for (const letter of ["H", "I", "O", "N"]) {
+      expect(text).not.toContain(`:"${letter}"`);
+    }
+    // The owner map is present and correct (host solved every cell).
+    expect((body as unknown as AttributionBody).owners).toEqual({
+      "0": hostId,
+      "1": hostId,
+      "2": hostId,
+      "3": hostId,
+    });
+  });
+
+  it("authz: a non-member viewer is refused NOT_PARTICIPANT, the same gate as the game view", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    await seedAttributionEvent(gameId, hostId, 1, 0, "H");
+    await seedGameState(gameId, "2026-06-12T12:00:00.000Z");
+
+    // A non-member never learns whether the game exists (same as GET /games/{id}): NOT_PARTICIPANT.
+    const res = await get(`/games/${gameId}/attribution`, stranger);
+    expect(res.status).toBe(403);
+    await expectError(res, "NOT_PARTICIPANT");
+  });
+
+  it("authz: an unauthenticated caller is rejected UNAUTHORIZED before any read", async () => {
+    const res = await app.request(`/games/${randomUUID()}/attribution`, {
+      method: "GET",
+      headers: { "content-type": "application/json" },
+    });
+    expect(res.status).toBe(401);
+    await expectError(res, "UNAUTHORIZED");
+  });
+});

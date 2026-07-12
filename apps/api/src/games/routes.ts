@@ -23,6 +23,7 @@ import {
   notifyLiveActivityRegistered,
   notifyMembership,
 } from "../identity/notify";
+import { firstCorrectOwners, toAttributionView } from "../archive/attribution";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -699,6 +700,71 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       session: { ws: `${deps.sessionWsBase}/games/${game.gameId}/ws` },
     };
     return c.json(view);
+  });
+
+  // GET /games/{id}/attribution: the post-game first-correct owner map (design/post-game/
+  // FIRST-CORRECT.md, the Archive read model, DESIGN.md §7, §9). Tier 1: `{ owners: { [cell]:
+  // userId } }`, who FIRST placed the correct value in each cell, computed on read from the
+  // event log (no cache, no new column). The response carries userIds only, so it is INV-6-safe
+  // by construction (the client already holds the roster from the game view; this never repeats
+  // names or colors).
+  //
+  // Auth is the game-view path's, reused verbatim: a viewer who can see the room. The invite code
+  // and the puzzle are not part of this payload, so there is nothing member-only to protect beyond
+  // "you can see this room"; the same membership gate the view applies is the right policy, no new
+  // one invented.
+  //
+  // Gated to COMPLETED games only, returning GAME_NOT_FOUND (404) and computing nothing otherwise.
+  // The owner map for an ONGOING game leaks solving progress (which cells are locked in correct is
+  // a heat map of what the room has finished), and an ABANDONED-game recap is a deferred product
+  // decision. A completed game is immutable (INV-4: terminal status, append-only log frozen), so
+  // this read is stable: compute it at any later time and get the same map.
+  app.get("/:id/attribution", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    if (!UUID.test(gameId)) {
+      return fail(c, "GAME_NOT_FOUND", "no such game");
+    }
+
+    // Membership gate, byte-identical to the game view: load the members and require the caller
+    // among them. A non-member is NOT_PARTICIPANT; an unauthenticated caller was already stopped
+    // by authMiddleware. Any role qualifies, spectators included, exactly as the view allows.
+    const members = await deps.db
+      .select({ userId: schema.memberships.userId })
+      .from(schema.memberships)
+      .where(eq(schema.memberships.gameId, gameId));
+    if (!members.some((m) => m.userId === identity.userId)) {
+      // A game the caller cannot see (non-member) and a game that does not exist both surface as
+      // "not a member" here without a prior existence probe: same as the view, a non-member never
+      // learns whether the gameId is real. GAME_NOT_FOUND is reserved for the terminal gate below.
+      return fail(c, "NOT_PARTICIPANT", "not a member of this game");
+    }
+
+    // Completion gate: read the session-owned `game_state.completed_at` under the API's SELECT-only
+    // grant (migration 0005), the same read `GET /games` uses. A game that is not completed
+    // (ongoing, abandoned, or with no game_state row yet) returns GAME_NOT_FOUND and computes
+    // nothing: the attribution surface exists only once a game is done and the input can no longer
+    // change. `completed_at` is a bare timestamp, never a cell value (INV-6).
+    const state = await deps.db
+      .select({ completedAt: schema.gameState.completedAt })
+      .from(schema.gameState)
+      .where(eq(schema.gameState.gameId, gameId))
+      .limit(1);
+    if (state.length === 0 || state[0]!.completedAt === null) {
+      return fail(c, "GAME_NOT_FOUND", "no such completed game");
+    }
+
+    // The game exists and is completed; compute the owner map on read. `firstCorrectOwners`
+    // returns null only for an unknown gameId, which the membership gate already excluded, so a
+    // null here is an internal inconsistency; treat it as not found rather than 500 a member.
+    const owners = await firstCorrectOwners(deps.db, gameId);
+    if (owners === null) {
+      return fail(c, "GAME_NOT_FOUND", "no such game");
+    }
+
+    // INV-6: the response is the owner map only (userIds), serialized through a type that has no
+    // field for a solution value or a raw event, so no solution content can ride this payload.
+    return c.json(toAttributionView(owners));
   });
 
   // POST /games/{id}/role: self-upgrade spectator to solver (PROTOCOL.md §12, DESIGN.md §8).
