@@ -659,6 +659,33 @@
   }
 }
 
+/*
+ * Contribution mosaic (ui/ContributionMosaic.tsx): the post-game reveal treatment of the solved
+ * board. Each cell's owner color and its letter animate opacity as the arc moves INK -> FIELD ->
+ * WASH; the per-cell transition-delay is set inline by the component to drive the diagonal sweep.
+ * The color fades a touch slower than the letter (the field is the thing that blooms). The
+ * component sets transition: none inline for a snap frame or reduced motion, so this rule is the
+ * animated default and the inline override is the honest exception.
+ */
+.board-mosaic .mosaic-color {
+  transition: opacity 480ms var(--ease-out);
+}
+
+.board-mosaic .mosaic-letter {
+  transition:
+    opacity 340ms var(--ease-out),
+    fill 300ms var(--ease-standard);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The component already crosses straight to WASH under reduced motion; belt-and-braces, kill
+     any transition so nothing sweeps even if a frame slips through. */
+  .board-mosaic .mosaic-color,
+  .board-mosaic .mosaic-letter {
+    transition: none;
+  }
+}
+
 /* Bottom-sheet entrance: a quiet rise, 200ms, disabled under reduced motion. */
 @keyframes crossy-sheet-in {
   from {

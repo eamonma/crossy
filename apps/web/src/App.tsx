@@ -19,6 +19,7 @@ import { boardById, boards } from "./domain/boards";
 import type { Clue } from "./domain/types";
 import { createFakeSession, SELF_USER_ID } from "./demo/fakeSession";
 import type { FakeSession } from "./demo/fakeSession";
+import { MosaicDemo } from "./demo/MosaicDemo";
 import {
   cellClick,
   clueClick,
@@ -531,6 +532,18 @@ function DemoApp({
       </div>
 
       {store.status === "completed" && !dismissedCompletion && (
+        // Ultimate mount for the contribution mosaic: when this overlay is dismissed, the plain
+        // solved board sits behind it. The mosaic reveal is a treatment of that board, so it
+        // belongs here (and in LiveApp's twin `completed` branch), with the caller deriving the
+        // owner map from the store's last-writer `by` via `store.writerOf(cell)`:
+        //   const ownerMap: Record<number, string> = {};
+        //   for (let c = 0; c < cols * rows; c += 1) {
+        //     const by = store.writerOf(c);
+        //     if (by !== null) ownerMap[c] = by;
+        //   }
+        // Left out of the live flow for now: that surface is entangled with the
+        // `dismissedCompletion` dance and the confetti motion. The self-contained component and
+        // its full demo live below (MosaicDemo); the report flags the seam.
         <CompletionOverlay
           stats={store.stats}
           fallbackSeconds={0}
@@ -542,6 +555,8 @@ function DemoApp({
           onHome={() => window.location.assign("/")}
         />
       )}
+
+      <MosaicDemo />
     </div>
   );
 }

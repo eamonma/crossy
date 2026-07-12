@@ -161,6 +161,18 @@ export class GameStore {
     return this.cellsValue.get(cell)?.v ?? null;
   }
 
+  /**
+   * The last writer of a cell's sequenced value: the `by` already on the wire (PROTOCOL.md
+   * section 8, the same field the conflict flash reads). Null for an empty or never-written
+   * cell. Read-only over confirmed state (the optimistic overlay carries no attribution), so
+   * it introduces no new data path; the post-game mosaic reads it to paint each square its
+   * owner's color. A later read model (first-correct, DESIGN.md D16) supersedes this source
+   * without touching the caller's shape.
+   */
+  writerOf(cell: number): string | null {
+    return this.cellsValue.get(cell)?.by ?? null;
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
