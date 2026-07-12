@@ -32,9 +32,16 @@ export function isNytCrosswordGamePage(url: string): boolean {
 const V6_PUZZLE_PREFIX = "/svc/crosswords/v6/puzzle/";
 
 /**
- * The same-origin path of the v6 puzzle JSON for a game page, or null when the URL is
- * not a plain /crosswords/game/{stream} page (archive/date subpaths are out of scope:
- * the by-stream endpoint does not address a specific dated puzzle).
+ * The same-origin path of the v6 puzzle JSON for a game page, or null for any other
+ * URL. Two page-path forms map to the endpoint:
+ *
+ *   /crosswords/game/{stream}             -> {stream}.json            (today's puzzle)
+ *   /crosswords/game/{stream}/YYYY/MM/DD  -> {stream}/YYYY-MM-DD.json (a dated puzzle)
+ *
+ * The dated form is how the site addresses the daily (the bare /game/daily URL lands
+ * on /game/daily/YYYY/MM/DD), with slashes in the page path and dashes in the endpoint
+ * path. Date parts pass through as the URL carries them (zero-padded); the endpoint is
+ * the authority on validity, so no calendar arithmetic happens here.
  */
 export function nytPuzzleEndpoint(url: string): string | null {
   let parsed: URL;
@@ -43,9 +50,12 @@ export function nytPuzzleEndpoint(url: string): string | null {
   } catch {
     return null;
   }
-  const match = /^\/crosswords\/game\/([a-z][a-z0-9-]*)\/?$/.exec(
-    parsed.pathname,
-  );
+  const match =
+    /^\/crosswords\/game\/([a-z][a-z0-9-]*)(?:\/(\d{4})\/(\d{2})\/(\d{2}))?\/?$/.exec(
+      parsed.pathname,
+    );
   if (match === null) return null;
-  return `${V6_PUZZLE_PREFIX}${match[1]}.json`;
+  const [, stream, year, month, day] = match;
+  if (year === undefined) return `${V6_PUZZLE_PREFIX}${stream}.json`;
+  return `${V6_PUZZLE_PREFIX}${stream}/${year}-${month}-${day}.json`;
 }
