@@ -1,0 +1,147 @@
+[
+  {
+    "name": "same grid, DIFFERENT clue prose, DISTINCT digest (clue text is in the hash, strict whole-object)",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "clues": {
+        "across": [{ "number": 1, "text": "Feline", "cellIndices": [0, 1, 2] }],
+        "down": []
+      }
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "clues": {
+        "across": [
+          {
+            "number": 1,
+            "text": "House pet, informally",
+            "cellIndices": [0, 1, 2]
+          }
+        ],
+        "down": []
+      }
+    },
+    "sameDigest": false
+  },
+  {
+    "name": "same grid, DIFFERENT circles, DISTINCT digest (circles are in the hash, whole-object)",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "circles": []
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "circles": [0, 4, 8]
+    },
+    "sameDigest": false
+  },
+  {
+    "name": "byte-identical re-ingest, runs differ but plain text identical, SAME digest (runs excluded)",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "clues": {
+        "across": [
+          {
+            "number": 1,
+            "text": "Cat, in a way",
+            "cellIndices": [0, 1, 2],
+            "runs": [{ "t": "Cat", "s": ["i"] }, { "t": ", in a way" }]
+          }
+        ],
+        "down": []
+      }
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "clues": {
+        "across": [
+          { "number": 1, "text": "Cat, in a way", "cellIndices": [0, 1, 2] }
+        ],
+        "down": []
+      }
+    },
+    "sameDigest": true
+  },
+  {
+    "name": "INV-1: a lowercase solution folds to the SAME digest (ASCII-uppercased in the canon)",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"]
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["c", "a", "t", "a", "r", "e", "t", "e", "a"]
+    },
+    "sameDigest": true
+  },
+  {
+    "name": "blocks reordered, SAME digest (blocks are a sorted set)",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [0, 4],
+      "solution": [null, "A", "T", "A", null, "E", "T", "E", "A"]
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [4, 0],
+      "solution": [null, "A", "T", "A", null, "E", "T", "E", "A"]
+    },
+    "sameDigest": true
+  },
+  {
+    "name": "one solution letter differs, DISTINCT digest",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"]
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["B", "A", "T", "A", "R", "E", "T", "E", "A"]
+    },
+    "sameDigest": false
+  },
+  {
+    "name": "transposed grid is a distinct puzzle, DISTINCT digest (rows/cols in the canon)",
+    "a": {
+      "rows": 1,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T"]
+    },
+    "b": {
+      "rows": 3,
+      "cols": 1,
+      "blocks": [],
+      "solution": ["C", "A", "T"]
+    },
+    "sameDigest": false
+  }
+]

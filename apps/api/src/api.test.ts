@@ -24,6 +24,7 @@ import type { FakeAuthProvider } from "@crossy/auth";
 import type { Hono } from "hono";
 import { buildApp } from "./app";
 import { createDb } from "./db/client";
+import { puzzleDigest } from "./puzzles/digest";
 import {
   STARTER_GAME_NAME,
   STARTER_PUZZLE_FEATURES,
@@ -162,9 +163,24 @@ async function roleOf(res: Response): Promise<string> {
   return ((await res.json()) as { role: string }).role;
 }
 
-/** Ingest the fixture puzzle as `token`'s owner; return its id. */
+// Each ingestFixture call ingests a DISTINCT puzzle (a unique clue, which is in the content
+// digest), so repeated ingests by one account create separate rows and never collapse on the
+// dedup index (D23). This restores the "each ingest is a new row" assumption these list and
+// pagination tests were written against; the dedup suite posts FIXTURE directly to exercise the
+// collapse.
+let fixtureSeq = 0;
+
+/** Ingest a distinct fixture puzzle as `token`'s owner; return its id. */
 async function ingestFixture(token: string): Promise<string> {
-  const res = await postJson("/puzzles", token, FIXTURE);
+  fixtureSeq += 1;
+  const doc = {
+    ...FIXTURE,
+    clues: {
+      ...FIXTURE.clues,
+      across: [`1. friendly opener ${fixtureSeq}`, "3. keyboard basics"],
+    },
+  };
+  const res = await postJson("/puzzles", token, doc);
   expect(res.status).toBe(201);
   return ((await res.json()) as { puzzleId: string }).puzzleId;
 }
@@ -388,6 +404,145 @@ describe("POST /puzzles (PROTOCOL.md §12; INV-6)", () => {
   });
 });
 
+describe("POST /puzzles dedup (DESIGN.md D23, PROTOCOL.md §12; INV-6)", () => {
+  // A second well-formed XWord Info doc: same 2x2 shape, a different solution grid, so it
+  // translates cleanly but hashes to a different content digest than FIXTURE.
+  const OTHER = {
+    size: { rows: 2, cols: 2 },
+    grid: ["C", "A", "T", "S"],
+    clues: {
+      across: ["1. feline", "3. men, informally"],
+      down: ["1. taxi", "2. matured"],
+    },
+  };
+
+  /** Count a caller's stored puzzle rows (created_by = user_id = the JWT sub). */
+  async function puzzleCount(userId: string): Promise<number> {
+    const { rows } = await adminPool.query(
+      "select count(*)::int as n from puzzles where created_by = $1",
+      [userId],
+    );
+    return rows[0].n as number;
+  }
+
+  it("re-posting the same puzzle by one account collapses to the existing row: 200 + duplicate, same id (D23)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+
+    const first = await postJson("/puzzles", token, FIXTURE);
+    expect(first.status).toBe(201);
+    const firstId = ((await first.json()) as { puzzleId: string }).puzzleId;
+
+    const second = await postJson("/puzzles", token, FIXTURE);
+    expect(second.status).toBe(200);
+    const body = (await second.json()) as {
+      puzzleId: string;
+      duplicate?: boolean;
+    };
+    expect(body.duplicate).toBe(true);
+    expect(body.puzzleId).toBe(firstId);
+
+    // The re-post resolved to the one row, never a copy.
+    expect(await puzzleCount(sub)).toBe(1);
+
+    // The digest is stored server-side and equals the digest of the stored ServerPuzzle.
+    const { rows } = await adminPool.query(
+      "select data, content_digest from puzzles where puzzle_id = $1",
+      [firstId],
+    );
+    expect(rows[0].content_digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(rows[0].content_digest).toBe(puzzleDigest(rows[0].data));
+  });
+
+  it("a fresh insert is 201 and omits the duplicate marker (absent reads as false)", async () => {
+    const token = await auth.mintUpgraded({ sub: randomUUID() });
+    const res = await postJson("/puzzles", token, FIXTURE);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("duplicate");
+  });
+
+  it("a different puzzle by the same account is a new row, not a duplicate: 201 (D23 strict)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+
+    const a = await postJson("/puzzles", token, FIXTURE);
+    expect(a.status).toBe(201);
+    const idA = ((await a.json()) as { puzzleId: string }).puzzleId;
+
+    const b = await postJson("/puzzles", token, OTHER);
+    expect(b.status).toBe(201);
+    const idB = ((await b.json()) as { puzzleId: string }).puzzleId;
+
+    expect(idB).not.toBe(idA);
+    expect(await puzzleCount(sub)).toBe(2);
+  });
+
+  it("the same puzzle from a DIFFERENT account is not a duplicate: 201, its own row (per-account scope, D21)", async () => {
+    const subA = randomUUID();
+    const subB = randomUUID();
+    const a = await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub: subA }),
+      FIXTURE,
+    );
+    expect(a.status).toBe(201);
+    const idA = ((await a.json()) as { puzzleId: string }).puzzleId;
+
+    const b = await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub: subB }),
+      FIXTURE,
+    );
+    // B has never uploaded this: it is a fresh insert for B, not "someone already has it".
+    expect(b.status).toBe(201);
+    const bBody = (await b.json()) as { puzzleId: string; duplicate?: boolean };
+    expect(bBody.duplicate).toBeUndefined();
+    expect(bBody.puzzleId).not.toBe(idA);
+    expect(await puzzleCount(subA)).toBe(1);
+    expect(await puzzleCount(subB)).toBe(1);
+  });
+
+  it("the duplicate response carries no solution and no digest anywhere (INV-6)", async () => {
+    const token = await auth.mintUpgraded({ sub: randomUUID() });
+    const firstRes = await postJson("/puzzles", token, FIXTURE);
+    const firstId = ((await firstRes.json()) as { puzzleId: string }).puzzleId;
+    const { rows } = await adminPool.query(
+      "select content_digest from puzzles where puzzle_id = $1",
+      [firstId],
+    );
+    const digest = rows[0].content_digest as string;
+
+    const res = await postJson("/puzzles", token, FIXTURE);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const body = JSON.parse(text) as Record<string, unknown>;
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "content_digest")).toBe(false);
+    expect(hasKeyDeep(body, "digest")).toBe(false);
+    // The solution-derived digest must never ride the wire, even as an opaque string.
+    expect(text).not.toContain(digest);
+  });
+
+  it("two concurrent identical posts race to exactly one row: one 201, one 200 (ON CONFLICT atomic)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    // Warm the account with a distinct puzzle first, so this asserts the dedup race, not the
+    // JIT user-upsert race.
+    expect((await postJson("/puzzles", token, OTHER)).status).toBe(201);
+
+    const [x, y] = await Promise.all([
+      postJson("/puzzles", token, FIXTURE),
+      postJson("/puzzles", token, FIXTURE),
+    ]);
+    expect([x.status, y.status].sort()).toEqual([200, 201]);
+    const idX = ((await x.json()) as { puzzleId: string }).puzzleId;
+    const idY = ((await y.json()) as { puzzleId: string }).puzzleId;
+    expect(idX).toBe(idY);
+    expect(await puzzleCount(sub)).toBe(2); // OTHER + the single FIXTURE row
+  });
+});
+
 describe("POST /puzzles ingestion ACL (ROADMAP Phase 3 Track C, G1; SP5; INV-6)", () => {
   // The named rejections run through the real endpoint as the crossy_api role, so the wiring
   // from the ACL's stable code to its HTTP status is exercised, and every rejection path is
@@ -594,12 +749,19 @@ describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21;
   });
 
   it("ingests the {format, document} envelope equivalently to the bare body, same source", async () => {
-    const token = await auth.mintUpgraded();
-    const bare = await postJson("/puzzles", token, FIXTURE);
-    const enveloped = await postJson("/puzzles", token, {
-      format: "xwordinfo",
-      document: FIXTURE,
-    });
+    // Distinct accounts, so this proves translation equivalence in isolation from dedup (D23):
+    // the same content by one account would collapse (covered in the dedup suite); across two it
+    // is two fresh 201s whose projected puzzles must match.
+    const bare = await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub: randomUUID() }),
+      FIXTURE,
+    );
+    const enveloped = await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub: randomUUID() }),
+      { format: "xwordinfo", document: FIXTURE },
+    );
     expect(bare.status).toBe(201);
     expect(enveloped.status).toBe(201);
     const bareBody = (await bare.json()) as {

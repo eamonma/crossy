@@ -1,0 +1,2 @@
+ALTER TABLE "puzzles" ADD COLUMN "content_digest" text;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "puzzles_created_by_content_digest_key" ON "puzzles" USING btree ("created_by","content_digest") WHERE content_digest IS NOT NULL;

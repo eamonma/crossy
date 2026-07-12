@@ -1,0 +1,20 @@
+[
+  {
+    "name": "3x3 open grid canonical string hashes to a stable sha256",
+    "canon": "crossy-puzzle-digest/v1\ndims=3x3\nblocks=\ncircles=\nshaded=\nsolution=C|A|T|A|R|E|T|E|A",
+    "algorithm": "sha256",
+    "digest": "19bee53524490ca260dc17c879ee7eaf423b917267c311755343e010474ae3ce"
+  },
+  {
+    "name": "a rebus canonical string hashes stably (multi-character cell preserved)",
+    "canon": "crossy-puzzle-digest/v1\ndims=1x3\nblocks=\ncircles=\nshaded=\nsolution=ONE|T|O",
+    "algorithm": "sha256",
+    "digest": "d98913369e955924c10424cc0d16090d0b31784d4d65b81712069656dc083ee2"
+  },
+  {
+    "name": "clues in the canon hash stably (across-then-down, ascending)",
+    "canon": "crossy-puzzle-digest/v1\ndims=3x3\nblocks=\ncircles=\nshaded=\nsolution=C|A|T|A|R|E|T|E|A\nclue=A:1:First across\nclue=A:4:Second across\nclue=D:1:First down",
+    "algorithm": "sha256",
+    "digest": "a6454a0686e76415e77c24c5ba9410c3b89fc317db3e160f0faeab7e9736fb86"
+  }
+]

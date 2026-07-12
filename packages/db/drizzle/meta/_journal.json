@@ -71,6 +71,13 @@
       "when": 1783816251163,
       "tag": "0009_starter_features_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783888247343,
+      "tag": "0010_puzzle_content_digest",
+      "breakpoints": true
     }
   ]
 }
