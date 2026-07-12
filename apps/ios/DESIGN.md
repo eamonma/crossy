@@ -321,6 +321,68 @@ orphaned; the facts-card presentation awaits an owner redesign and the morph cod
 is untouched (the empty-capsule fix above removes the hollow capsule that made the
 break read worse, but the two-container blend remains the owner's redesign).
 
+Amended 2026-07-12 (the live-data birth rule; owner device finding on the real
+backend). On live data the top chrome POPPED: share and players did not animate
+with the #132 zoom push (they did on the fixture), and the timer arrived
+unceremoniously. The diagnosis, confirmed: RealRoomView WITHHOLDS SolveScreen
+until the REST view lands (the I3f rule, the RoomOpening quiet canvas), and
+RoomOpening carried NO toolbar items, so during the push there was nothing to goo
+into on live data; every item popped at REST-mount. DemoRoom mounts SolveScreen
+instantly, which is why the fixture looked right. The rule: THE BAR IS BORN WITH
+THE PUSH. The withholding room carries its chrome even before the board
+(RoomOpeningToolbarHost over the RoomOpening and RoomOpenFailure branches), so
+OUR back button stands from the push's first frame (a way out on the failure
+branch too), and the players pill stands seeded (below). The time pill and the
+share pill do NOT stand pre-REST: the pill is REST-gated by design (it arrives on
+the welcome's beat, TimePillPresence), and the share menu's rows BAKE the invite
+code, which only `GET /games/{id}` carries, so a Menu whose rows are built at item
+build cannot defer that payload cleanly; share stays a REST-gated item, arriving
+when the code lands, never a dead control (evaluated honestly and kept gated).
+
+The seed vocabulary (the live-data birth rule). A tapped room card already knows
+facts the withholding room can use: its member count and name (RoomCardModel). The
+composition root threads a RoomArrivalSeed BESIDE the path (keyed by gameId, the
+`roomZoomSourceID` precedent, so the route stays Hashable, one value), and RealRoom
+seeds that many PLACEHOLDER pucks at construction so the players pill stands at true
+width from frame one and the push goos into it. The card does NOT carry the viewer's
+ROLE (a list row names the creator, not the reader's seat), so the seed carries none
+and nothing role-gated stands from it. Deep links and code-joins have no card and
+carry no seed: their arrival stays REST-gated, honestly. Each beat only ADDS detail
+(the roster-seed precedent, GameStore.seedRoster): the count comes from the list row,
+identities and avatars land at REST, initials at welcome. A placeholder puck has no
+identity yet, so it renders the ACHROMATIC HOLLOW FLOOR (RosterPuckBody's placeholder
+branch, the RosterMenu placeholder register) rather than a hash color that would flip
+when the real id lands; only the count is honest pre-REST, and only the count drives
+the width. The store gates every seed to `connecting`, so the REST roster's real ids
+overwrite the count-seed, and the welcome rebuilds the roster wholesale after that:
+the synthetic placeholder ids never survive the handshake, and the pill never resizes
+across the beats unless membership genuinely moved since the list row (a real event).
+
+The timer's self-owned glass carve-out (the SLICE 2 redesign; supersedes the
+"bare insert, no animation" arrival finding above for the TIME PILL only). The Q3
+rig finding: `.sharedBackgroundVisibility(.hidden)` suppresses an item's system
+capsule WHILE THE ITEM STAYS PRESENT (the yield already uses it; here it is the
+escape hatch). One item, the arriving one, owns its glass so its arrival can ride
+the chrome spring: the time pill's item PERMANENTLY suppresses the system capsule
+(BarItemGlass.timePillBackgroundHidden, never gated on handoff) and the pill
+content carries ITS OWN real glass (`.glassEffect(.regular)` in a capsule on 26 via
+ChromeGlassSurface, the blur material below; the pre-#140 register recovered
+whole: horizontal padding 12, pillHeight, the capsule contentShape). The arrival is
+then fully ours: content and glass fade and settle in together on the chrome spring
+(`.crossyChrome`, opacity plus a slight scale settle reads as materialize), and no
+frame is ever empty glass because the glass RIDES THE CONTENT (the presence-not-
+content capsule the bare-insert finding feared is gone: there is no system capsule
+to stand hollow). Reduce Motion holds the pill arrived from the first frame, so it
+snaps in with no animation. The yield simplifies for this item: opacity 0 hides
+glass and content together, no capsule to suppress separately (the back button and
+the Menus keep the #149 arrangement, system glass suppressed only on the yield).
+The pill's reported frame is unchanged (the facts card's rest), and register parity
+was rig-checked against the system-glass share and players items on both grounds:
+the self-owned capsule reads as the bar's register (tint, blur, stroke); the owner
+judges the final register on device. Recorded for history: the bare-insert finding
+stands for a hypothetical system-capsule pill, but the shipping time pill owns its
+glass, so it materializes rather than popping.
+
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
 with the surface and hands off from the chrome it left, so the melt never
