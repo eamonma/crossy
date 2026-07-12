@@ -10,12 +10,35 @@ final class RoomCardTests: XCTestCase {
     private func model(
         name: String? = nil, title: String? = nil, members: Int = 2,
         gameId: String = "g1", createdAt: String = "2026-07-01T00:00:00.000Z",
-        completedAt: String? = nil, lastActivityAt: String? = nil
+        completedAt: String? = nil, lastActivityAt: String? = nil,
+        stack: [RoomCardMember] = []
     ) -> RoomCardModel {
         RoomCardModel(
             gameId: gameId, name: name, puzzleTitle: title,
             rows: 15, cols: 15, memberCount: members, createdBy: "u1",
-            createdAt: createdAt, completedAt: completedAt, lastActivityAt: lastActivityAt)
+            createdAt: createdAt, completedAt: completedAt, lastActivityAt: lastActivityAt,
+            members: stack)
+    }
+
+    func test_roomCardModelCarriesTheMappedMemberStack_PROTOCOL12() {
+        // §12: the row's member stack rides the model as display identity, join order
+        // preserved, so the arrival layer can seed the room-open chrome true at tap time.
+        // Not rendered on the card face yet; the model carrying it is the contract here.
+        let stack = [
+            RoomCardMember(
+                userId: "u1", name: "Ana", avatarUrl: "https://cdn.example/a.png",
+                isHost: true, isSpectator: false),
+            RoomCardMember(
+                userId: "u2", name: "Guest", avatarUrl: nil,
+                isHost: false, isSpectator: true),
+        ]
+        let room = model(members: 2, stack: stack)
+        XCTAssertEqual(room.members, stack, "identity and order carry through untouched")
+        XCTAssertEqual(room.members.count, room.memberCount, "the stack matches the count")
+        // An older server omits the stack (§14): empty members, the count still honest.
+        let older = model(members: 3)
+        XCTAssertTrue(older.members.isEmpty)
+        XCTAssertEqual(older.memberCount, 3)
     }
 
     func test_orderedByActivity_matchesTheServersWithinPageOrder_PROTOCOL12() {
