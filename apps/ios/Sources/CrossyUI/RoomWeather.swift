@@ -1,10 +1,12 @@
 // Honest weather (apps/ios/DESIGN.md §8): three connection states, three registers
 // (PROTOCOL.md §7). Live is a calm dot; resyncing is a breathing dot and nothing
 // else changes (the snapshot applies wholesale when it lands, the board keeps its
-// last truth); reconnecting dims the room with a quiet countdown. Never a modal,
-// never a spinner over the grid. The client-local `connecting` state (pre-first-
-// welcome, no board truth yet) renders like reconnecting without a countdown: the
-// room is honestly not live, mirroring the web's de-emphasized pre-welcome grid.
+// last truth); reconnecting dims the room with a quiet countdown and names itself,
+// because a person lost something mid-solve. Never a modal, never a spinner over the
+// grid. The client-local `connecting` state (pre-first-welcome, no board truth yet) is
+// the QUIET register: the dimmed dot beside the clock, no word and no countdown, since
+// a first join has lost nothing (redesign 2026-07-11, the terse first-connect pill).
+// The board still dims, mirroring the web's de-emphasized pre-welcome grid.
 // The mapping is a pure function of the store's SyncState so tests pin it; the dot
 // itself is achromatic (people are the only color, DESIGN.md §3).
 
@@ -52,8 +54,14 @@ public struct RoomWeather: Equatable, Sendable {
             return RoomWeather(
                 dot: .dimmed, boardDimmed: true, showsCountdown: true, label: "Reconnecting")
         case .connecting:
+            // The FIRST connect is quiet (DESIGN.md §8: never a spinner; the room's law
+            // is a hush, not a status word). A reconnect exists because a person LOST
+            // something mid-solve, so it names itself and counts down; a first join has
+            // lost nothing, so the pill carries only the dimmed dot beside the clock, no
+            // word and no countdown. The board still dims (the room is honestly not live
+            // yet), mirroring the web's de-emphasized pre-welcome grid.
             return RoomWeather(
-                dot: .dimmed, boardDimmed: true, showsCountdown: false, label: "Connecting")
+                dot: .dimmed, boardDimmed: true, showsCountdown: false, label: nil)
         }
     }
 

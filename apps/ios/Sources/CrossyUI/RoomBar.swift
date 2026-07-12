@@ -336,7 +336,11 @@ struct RoomTimePill: View {
             }
             // The one implicit animation here, keyed on the register alone
             // (never a tick, never drag geometry, SP-i1 untouched): the
-            // ongoing-to-terminal swap crossfades on the chrome spring.
+            // ongoing-to-terminal swap crossfades its CONTENT on the chrome
+            // spring. The pill's WIDTH does not ride this: a bar item's frame is
+            // the system nav bar's to lay out, and it hard-snaps regardless of
+            // our transaction (the toolbar amendment's width-snap finding,
+            // DESIGN.md §4), so no width-driving value is wrapped here.
             .animation(reduceMotion ? nil : .crossyChrome, value: register)
         }
         .accessibilityLabel(
@@ -387,7 +391,11 @@ struct RoomTimePill: View {
         switch weather.dot {
         case .calm: return "Connected"
         case .breathing: return "Catching up"
-        case .dimmed: return weather.label ?? "Reconnecting"
+        // The dimmed dot is both registers; the visible word is gone for a first
+        // connect (the terse pill, redesign 2026-07-11), so the spoken word stays
+        // honest by the one fact that separates them: a reconnect counts down, a
+        // first connect does not. VoiceOver still hears which is happening.
+        case .dimmed: return weather.label ?? (weather.showsCountdown ? "Reconnecting" : "Connecting")
         }
     }
 }
