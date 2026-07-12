@@ -55,9 +55,19 @@ clue length can never move the board: that is the point of the whole arrangement
 Amended 2026-07-11 (the toolbar-adoption ruling, §4): full-bleed is a
 TRANSPARENT item-bearing system bar floating over the board, not "no bar". The
 board still bleeds to the top edge; the room bar's pieces ride the system nav
-bar's items now, and the standing top inset reads the system bar's height rather
-than a reported RoomBar frame. Constant-built still: clue length never moves the
-board.
+bar's items now, and the standing top inset reads a roomBar rect synthesized from
+the bar items' own frames rather than a reported RoomBar frame. Constant-built
+still: clue length never moves the board. Amended 2026-07-12 (owner device
+regression, same standing-inset law): the synthesized rect must be ANCHORED ON
+THE BACK BUTTON, which stands in the bar row from frame one. The first cut
+anchored on the time pill, which arrives only on the welcome (TimePillPresence),
+so pre-welcome no rect synthesized, the standing inset read 0, and the grid sat
+higher and DROPPED when the pill loaded, the board moving, exactly what the law
+forbids. The back button is present from frame one, so its row is the band from
+frame one and the pill's arrival extends nothing vertical: the band is identical
+across the welcome beat and the board does not move by a point. The pure seam
+(BarItemFrames.synthesizedRoomBar) pins it; the clue-bar melt gains correct
+geometry pre-welcome as a bonus (it read the same rect).
 
 **Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
 only person-marker on the board at rest is the presence puck in the cell corner. A

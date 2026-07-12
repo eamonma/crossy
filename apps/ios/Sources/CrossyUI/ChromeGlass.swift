@@ -265,6 +265,41 @@ enum BarItemFrames {
         guard let roomOrigin else { return [:] }
         return globals.mapValues { inRoomSpace($0, roomOrigin: roomOrigin) }
     }
+
+    /// The synthesized `roomBar` rect (the toolbar-adoption ruling, DESIGN.md §4;
+    /// the standing-inset law, DESIGN.md §2). The hand-drawn bar retired, so the
+    /// bar's room-space rect is derived from the bar items' converted frames: it
+    /// spans the board's width (inset like every chrome piece) at the bar's row,
+    /// so `standing.top` measures from the board's bled top edge down to the bar's
+    /// bottom exactly as the reported bar did.
+    ///
+    /// The vertical band is ANCHORED ON THE BACK BUTTON, which stands in the bar
+    /// row from frame one (never gated on the welcome), so the band is IDENTICAL
+    /// before and after the time pill arrives and the board cannot move by even a
+    /// point when the pill materializes (§2: insets are constant-built, clue
+    /// length and now pill arrival can never move the board; the empty-pre-welcome
+    /// hole this closes moved the grid on the owner's device, 2026-07-12). The
+    /// time pill NEVER creates or resizes the band; it only extends the horizontal
+    /// clamp the facts card reads (minX/maxX are board-derived, so in practice the
+    /// pill changes nothing here, but the rect exists from frame one for the melt
+    /// and occlusion regardless). When only the pill's frame exists (a defensive
+    /// path, the back button always reports first in the real bar) the band falls
+    /// back to it. nil until an anchor and the board land, so the morphs withhold
+    /// cleanly.
+    static func synthesizedRoomBar(from merged: [ChromePiece: CGRect], inset: CGFloat)
+        -> CGRect?
+    {
+        let anchor = merged[.backButton] ?? merged[.timePill]
+        guard let anchor, let board = merged[.board] else { return nil }
+        let minX = board.minX + inset
+        let maxX = board.maxX - inset
+        // The band is the anchor's row alone. The back button is the anchor
+        // whenever it exists, so the band's top and bottom are constant across the
+        // welcome (the board never moves); the pill does not widen the band.
+        return CGRect(
+            x: minX, y: anchor.minY,
+            width: max(0, maxX - minX), height: anchor.height)
+    }
 }
 
 /// The room's own global origin, reported so the bar items' global frames convert

@@ -497,22 +497,14 @@ public struct SolveScreen: View {
         return merged
     }
 
-    /// The synthesized `roomBar` frame (the toolbar-adoption ruling): with the
-    /// hand-drawn bar retired, the bar's room-space rect is derived from the bar
-    /// items' converted frames. It spans the board's width (inset like every
-    /// chrome piece) at the pills' vertical row, so `standing.top` measures from
-    /// the board's bled top edge down to the bar's bottom exactly as the reported
-    /// bar did, and the facts card clamps leftward within it. nil until the time
-    /// pill's frame lands, so the morph geometry withholds cleanly.
+    /// The synthesized `roomBar` frame (the toolbar-adoption ruling; the pure seam
+    /// is BarItemFrames.synthesizedRoomBar, tested against §2 and §4). Anchored on
+    /// the back button, which stands in the bar row from frame one, so the band
+    /// holds identical before and after the time pill arrives and the board never
+    /// moves on the welcome beat (§2). The morphs withhold until the anchor and the
+    /// board land.
     private func synthesizedRoomBar(from merged: [ChromePiece: CGRect]) -> CGRect? {
-        guard let pill = merged[.timePill], let board = merged[.board] else { return nil }
-        let minX = board.minX + ChromeLayout.inset
-        let maxX = board.maxX - ChromeLayout.inset
-        // Include the back button's extent when present, so a card clamped to the
-        // bar never overruns the leading edge and the top inset covers both rows.
-        let top = min(pill.minY, merged[.backButton]?.minY ?? pill.minY)
-        let bottom = max(pill.maxY, merged[.backButton]?.maxY ?? pill.maxY)
-        return CGRect(x: minX, y: top, width: max(0, maxX - minX), height: bottom - top)
+        BarItemFrames.synthesizedRoomBar(from: merged, inset: ChromeLayout.inset)
     }
 
     /// The store's status as render data (the RosterMember pattern: protocol
