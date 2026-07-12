@@ -160,20 +160,32 @@ struct DemoRoomView: View {
 
 /// The live-stack room (RealRoom): REST fetch then the real socket. Before the REST
 /// view lands, `room.puzzle` is a 1x1 stand-in that carries no true geometry (RealRoom
-/// initializer), so this view withholds `SolveScreen` entirely rather than paint it: a
-/// board built from the stand-in would show the wrong dimensions for one frame and
-/// then reflow the instant `ready` flips, which is the bug I3f closes. `RoomOpening`
-/// fills the same screen with no board at all until then (mirrors the web loading
-/// shell, apps/web/src/LiveApp.tsx's `LoadingGameShell`: nothing renders at the wrong
-/// size, ever). A fatal wiring failure reads plainly instead of a blank room. `onBack`
-/// is the bar's back button and `onExit` the kicked terminal's way home (both pop to
-/// Rooms); the harness composition has nowhere to pop to and keeps the default no-ops.
+/// initializer), so SolveScreen mounts with its board WITHHELD (`opening`): a board
+/// built from the stand-in would show the wrong dimensions for one frame and then
+/// reflow, the bug I3f closes (mirrors the web loading shell, apps/web/src/LiveApp.tsx's
+/// `LoadingGameShell`: nothing renders at the wrong size, ever). The screen itself is
+/// never swapped: ONE SolveScreen, one toolbar host, from the push's first frame to the
+/// room's last (the mid-transition paint finding, DESIGN.md §4). A fatal wiring failure
+/// reads plainly instead of a blank room. `onBack` is the bar's back button and `onExit`
+/// the kicked terminal's way home (both pop to Rooms); the harness composition has
+/// nowhere to pop to and keeps the default no-ops.
 @available(iOS 18.0, *)
 struct RealRoomView: View {
     @State private var room: RealRoom
     private let onBack: () -> Void
     private let onExit: () -> Void
     @State private var ready = false
+    /// The push's settle beat (the mid-transition paint finding, DESIGN.md §4): bar
+    /// item content hosted or re-hosted while the zoom push is in flight is measured
+    /// but never composited — the capsules stand hollow until the next whole-bar
+    /// rebuild (the owner's "empty pills", both eras) — and even a settled host SWAP
+    /// blanks every item for a beat (the owner's flash). The room therefore mounts
+    /// ONE SolveScreen with the push (one toolbar host for the room's whole life)
+    /// and freezes the bar's ITEM SET (SolveScreen.barSettled) until the transition
+    /// is over, so the timer only ever inserts into a settled, standing bar. The
+    /// BOARD does not wait for this beat: our own hierarchy paints fine mid-flight
+    /// (only bar content goes hollow), so the room's content arrives at `ready`.
+    @State private var pushSettled = false
     @State private var shareURL: URL?
     /// One avatar cache shared by the room's live pucks and the island snapshot, so the
     /// island writes the very images the room already resolved (no second fetch).
@@ -194,9 +206,13 @@ struct RealRoomView: View {
         colorScheme == .dark ? .observatory : .studio
     }
 
-    /// The withholding bar's seeded trailing cluster (the seeded-birth rule, DESIGN.md
+    /// The FAILURE screen's seeded trailing cluster (the seeded-birth rule, DESIGN.md
     /// §4, §12), or nil when the room was not born with a seed (a deep link or a
-    /// code-join), which keeps the withholding bar back-only. Built from the SEEDED
+    /// code-join), which keeps that bar back-only. The live path no longer uses the
+    /// opening host (one SolveScreen owns the bar for the room's whole life; the
+    /// mid-transition paint finding): this seed dresses only the room-cannot-open
+    /// screen, so the goo still has something identity-true to land on. Built from
+    /// the SEEDED
     /// store: `room.store.participants` are the card's members (seeded at construction,
     /// still standing pre-welcome), mapped to RosterMember through the SAME field map
     /// SolveScreen and the island use, so the withholding pill renders through the exact
@@ -206,9 +222,7 @@ struct RealRoomView: View {
     /// so the withholding share pill and the live one carry the same URL. The action
     /// closures match SolveScreen's (copy/share through ShareInvite, kick through the
     /// room); onJoinIn stays the SolveScreen default (the spectator seat-change is not
-    /// wired in the live room yet). The full bar stands the same two items in the same
-    /// placements when SolveScreen mounts still pre-welcome, so identity holds across
-    /// the swap and only the timer inserts later.
+    /// wired in the live room yet).
     private var openingSeed: RoomOpeningSeed? {
         guard room.chrome.seeded else { return nil }
         let members = room.store.participants.map {
@@ -233,7 +247,7 @@ struct RealRoomView: View {
 
     var body: some View {
         Group {
-            if let fatal = room.fatal {
+            if let fatal = room.fatal, pushSettled {
                 // The failure branch keeps a way out (DESIGN.md §4, the live-data birth
                 // rule): OUR back button stands so a room that cannot open is never a
                 // dead end. A seeded room stands its identity-true players and share
@@ -243,20 +257,17 @@ struct RealRoomView: View {
                     .modifier(
                         RoomOpeningToolbarHost(
                             ground: ground, seed: openingSeed, onBack: onBack))
-            } else if !ready {
-                // The bar is born with the push (DESIGN.md §4, the live-data birth
-                // rule): the withholding room carries OUR back button even before the
-                // board, so the #132 zoom push goos it in place instead of the way out
-                // popping at REST-mount. When the room was born with a seed (a card-tap
-                // arrival, §12), the identity-true players and share pills stand here
-                // from the push's first frame, so the goo plays on live data; the timer
-                // stays welcome-gated and joins when SolveScreen mounts and the welcome
-                // lands (one arrival beat). An unseeded room is back-only here.
-                RoomOpening(dark: colorScheme == .dark)
-                    .modifier(
-                        RoomOpeningToolbarHost(
-                            ground: ground, seed: openingSeed, onBack: onBack))
             } else {
+                // The bar is born with the push and hosted exactly once (DESIGN.md
+                // §4, the live-data birth rule + the mid-transition paint finding):
+                // SolveScreen mounts here from the push's first frame, its board
+                // withheld until the REST geometry lands AND the zoom settles, its
+                // bar's item set frozen until the settle beat. OUR back button (and,
+                // seeded, the identity-true players and share pills) stand from
+                // frame one so the #132 zoom push goos them in place; the timer and
+                // the board arrive together against the settled, standing bar, so
+                // no capsule is ever hosted mid-flight (hollow) or re-hosted (the
+                // flash).
                 SolveScreen(
                     store: room.store,
                     puzzle: room.puzzle,
@@ -272,6 +283,14 @@ struct RealRoomView: View {
                     model: room.selection,
                     chrome: room.chrome,
                     avatarCache: avatarCache,
+                    // The board is OUR hierarchy: it paints fine mid-transition
+                    // (only BAR content hosted mid-flight goes hollow), so the
+                    // grid, clue bar, and deck arrive the instant the geometry
+                    // does — on a fast wire that is inside the zoom itself, the
+                    // old immediacy — while the bar's item set alone waits out
+                    // the settle beat.
+                    opening: !ready,
+                    barSettled: pushSettled,
                     onBack: onBack,
                     onExit: onExit,
                     // The pasteboard write is the composition root's (CrossyUI
@@ -313,21 +332,14 @@ struct RealRoomView: View {
         .task {
             await room.run(onReady: { ready = true })
         }
-    }
-}
-
-/// The pre-REST instant (I3f): no board, because no true geometry exists yet. A quiet
-/// canvas rather than a spinner, in the same two grounds every other terminal surface
-/// uses (`RoomOpenFailure` next door); it holds the screen for at most one REST round
-/// trip, so it never needs to say anything.
-private struct RoomOpening: View {
-    let dark: Bool
-
-    var body: some View {
-        (dark
-            ? Color(red: 0.07, green: 0.067, blue: 0.094)
-            : Color(red: 0.949, green: 0.945, blue: 0.925))
-            .ignoresSafeArea()
+        // The settle clock starts with the push (this view mounts when the zoom
+        // begins). 0.8s clears the zoom's ~0.6s run with margin; a slow network
+        // dominates it anyway (`ready` lands later), so only LAN-fast arrivals
+        // actually wait, and what they wait for is a bar that paints.
+        .task {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            pushSettled = true
+        }
     }
 }
 

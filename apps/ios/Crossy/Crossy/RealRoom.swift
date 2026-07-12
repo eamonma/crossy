@@ -43,7 +43,12 @@ final class RealRoom {
     private(set) var puzzle: GridPuzzle
     private(set) var clues: ClueBook
     private(set) var roomName: String
-    private(set) var selection: SelectionModel
+    /// ONE instance for the room's whole life (the one-host arrival, DESIGN.md
+    /// §4): SolveScreen mounts with the push and pins this in `@State`, so the
+    /// REST geometry re-targets the model in place (SelectionModel.retarget)
+    /// instead of replacing it — a fresh instance would never reach the pinned
+    /// view.
+    let selection: SelectionModel
     /// The room's invite code, held from the game view (PROTOCOL.md §12: `GET
     /// /games/{id}` returns it to any member). The facts card's copy row
     /// reads it; nil until the fetch lands.
@@ -144,7 +149,7 @@ final class RealRoom {
         clues = mapped.clues
         roomName = view.name ?? ""
         inviteCode = view.inviteCode
-        selection = SelectionModel(store: store, puzzle: mapped.puzzle)
+        selection.retarget(puzzle: mapped.puzzle)
         // Seed the players pill with the REST roster before the first frame renders,
         // so the pill stands at its true width instead of a lone placeholder puck that
         // snaps wide when the `welcome` lands (owner device finding 2026-07-11). The

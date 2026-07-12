@@ -47,6 +47,23 @@ final class SelectionModelTests: XCTestCase {
         XCTAssertEqual(harness.model.selection, GridSelection(cell: 0, isAcross: true))
     }
 
+    func test_retarget_swapsGeometryInPlaceAndResetsCursor_oneHostArrival() {
+        // The live room's birth (the one-host arrival, DESIGN.md §4): ONE model
+        // instance built over the construction stand-in, re-aimed at the REST
+        // geometry in place, so the view's @State pin keeps working truth.
+        let harness = Harness(puzzle: GridPuzzle(rows: 1, cols: 1, blocks: []))
+        harness.model.press(.rebus)  // an open buffer must not survive the swap
+        XCTAssertTrue(harness.model.isRebusActive)
+
+        harness.model.retarget(puzzle: puzzle)
+
+        XCTAssertFalse(harness.model.isRebusActive)
+        XCTAssertEqual(harness.model.selection, GridSelection(cell: 0, isAcross: true))
+        // The new geometry answers: a jump the 1x1 stand-in would have refused.
+        harness.model.jump(to: GridSelection(cell: 8, isAcross: false))
+        XCTAssertEqual(harness.model.selection, GridSelection(cell: 8, isAcross: false))
+    }
+
     func test_letterPress_placesAtCursorAndAdvances_typingAdvanceFamily() {
         let harness = Harness(puzzle: puzzle)
         harness.model.press(.letter("C"))

@@ -21,6 +21,18 @@ import SwiftUI
 public struct SolveScreen: View {
     private let store: GameStore
     private let puzzle: GridPuzzle
+    /// The one-host arrival (DESIGN.md §4, the mid-transition paint finding): the
+    /// live room mounts this screen WITH the push and never swaps it, so the bar
+    /// is hosted exactly once. `opening` withholds the board and the deck (the
+    /// puzzle is still the composition root's stand-in; no true geometry exists
+    /// until REST lands) while the toolbar host stays mounted underneath.
+    /// `barSettled` is the push's settle beat: until it is true, the bar's ITEM
+    /// SET is frozen at its birth shape (presence computes against `connecting`),
+    /// because an item inserted or re-hosted while the zoom is in flight is
+    /// measured but never composited (the hollow-capsule finding). Steady-state
+    /// compositions (the demo, the labs) pass neither and keep today's behavior.
+    private let opening: Bool
+    private let barSettled: Bool
     private let clues: ClueBook
     private let roomName: String
     private let puzzleTitle: String?
@@ -112,6 +124,8 @@ public struct SolveScreen: View {
         model: SelectionModel? = nil,
         chrome: RoomChromeModel? = nil,
         avatarCache: AvatarImageCache? = nil,
+        opening: Bool = false,
+        barSettled: Bool = true,
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
@@ -129,6 +143,8 @@ public struct SolveScreen: View {
         self.puzzleDate = puzzleDate
         self.inviteCode = inviteCode
         self.shareUrl = shareUrl
+        self.opening = opening
+        self.barSettled = barSettled
         self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
@@ -163,6 +179,13 @@ public struct SolveScreen: View {
         let members = rosterMembers
         let spectating = RosterList.selfIsSpectator(members, selfUserId: store.selfUserId)
         let status = roomStatus
+        // The bar's item set freezes until the push settles (the mid-transition
+        // paint finding, DESIGN.md §4): presence computes against `connecting`
+        // until then, so nothing inserts into a bar the system will not
+        // composite. The seeded players and share pills predate the freeze (they
+        // are the birth shape, standing from the push's first frame); only the
+        // timer and the unseeded cluster wait out the settle beat.
+        let barSync: SyncState = barSettled ? store.sync : .connecting
 
         return ZStack {
             // The base layer: the full-bleed board over the deck (the owner's
@@ -172,28 +195,52 @@ public struct SolveScreen: View {
             // and the clue bar float over it as separate layers, so neither
             // bar's height is the board's business.
             VStack(spacing: 0) {
-                boardArea(weather: weather)
+                if opening {
+                    // The withheld birth (the one-host arrival): no true geometry
+                    // exists before REST, so the board and the deck stand down and
+                    // the canvas holds the frame. The toolbar host below stays
+                    // mounted throughout, which is the whole point: the bar is
+                    // born once with the push and its content is never re-hosted.
+                    Color.clear
+                } else {
+                    // The board's arrival is a fade IN PLACE: its top edge is
+                    // layout truth from frame one (the constant-built inset,
+                    // DESIGN.md §2) and must not move on any data beat, so the
+                    // grid may only gain presence, never position.
+                    boardArea(weather: weather)
+                        .transition(.opacity)
 
-                // A terminal status retires the deck for everyone, spectator or
-                // not (RoomTerminal.deckRetired; a frozen room has no seat worth
-                // upgrading): mutations were already refused by the store and
-                // InputActions, this is the rendered truth. Selection stays for
-                // browsing; taps and swipes are pure navigation after the freeze.
-                switch status {
-                case .completed:
-                    // The finished room breathes (owner ruling 2026-07-10,
-                    // removing the first build's Solved-together zone and its
-                    // Stats button): the deck just leaves, the board keeps the
-                    // space, and the stats live behind the frozen clock.
-                    Color.clear.frame(height: 12)
-                case .abandoned:
-                    abandonedZone
-                case .ongoing:
-                    if spectating {
-                        watchingZone
-                    } else {
-                        deckZone
+                    // A terminal status retires the deck for everyone, spectator or
+                    // not (RoomTerminal.deckRetired; a frozen room has no seat worth
+                    // upgrading): mutations were already refused by the store and
+                    // InputActions, this is the rendered truth. Selection stays for
+                    // browsing; taps and swipes are pure navigation after the freeze.
+                    Group {
+                        switch status {
+                        case .completed:
+                            // The finished room breathes (owner ruling 2026-07-10,
+                            // removing the first build's Solved-together zone and its
+                            // Stats button): the deck just leaves, the board keeps the
+                            // space, and the stats live behind the frozen clock.
+                            Color.clear.frame(height: 12)
+                        case .abandoned:
+                            abandonedZone
+                        case .ongoing:
+                            if spectating {
+                                watchingZone
+                            } else {
+                                deckZone
+                            }
+                        }
                     }
+                    // The deck arrives the way a keyboard does: rising from the
+                    // bottom edge (with the fade), the system's own grammar for
+                    // this surface. Removal keeps the quiet crossfade a terminal
+                    // status has always used (the deck "just leaves").
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity))
                 }
             }
             // Transient panels yield to intent (DESIGN.md §4): every touch
@@ -207,6 +254,10 @@ public struct SolveScreen: View {
             // spring instead of jumping (owner finding 2026-07-10). Reduce
             // Motion cuts.
             .animation(reduceMotion ? nil : .crossyChrome, value: status)
+            // The withheld birth's settle beat rides the same spring (the
+            // one-host arrival): the grid fades in place, the deck rises. Reduce
+            // Motion cuts, leaving the honest instant swap.
+            .animation(reduceMotion ? nil : .crossyChrome, value: opening)
 
             // The completion confetti (owner ask 2026-07-11): a restrained
             // roster-colored drift riding the celebration's instant, between
@@ -244,6 +295,11 @@ public struct SolveScreen: View {
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
                     onJump: { model.jump(to: ClueBrowserList.jumpTarget($0)) })
+                    // The clue bar joins the settle beat's fade: it mounts one
+                    // frame after the board (its rest slot is a reported frame),
+                    // so it rides its own presence on the same spring instead of
+                    // popping against the grid's fade.
+                    .transition(.opacity)
             }
 
             // No tap-away catchers anywhere (DESIGN.md §4: transient panels
@@ -287,6 +343,10 @@ public struct SolveScreen: View {
             // owns its stage, its dismissal, and its stacking, exactly as
             // the roster menu does.
         }
+        // The clue bar's arrival scope (see its `.transition` above): its
+        // presence flips when the rest slot's frame first reports, one frame
+        // after `opening` flips, so it needs its own animation value.
+        .animation(reduceMotion ? nil : .crossyChrome, value: meltMorph != nil)
         .coordinateSpace(name: ChromeLayout.roomSpace)
         // The room container's top safe-area inset: the system bar's standing
         // height, the band the full-bleed board bleeds under (DESIGN.md §2, the
@@ -348,11 +408,11 @@ public struct SolveScreen: View {
                     // on live data. Unseeded, all three wait for the welcome (the
                     // one-beat fallback). ClusterPresence is the one pure seam; share
                     // keeps `hasShare` on top for its payload gate.
-                    showsTimer: ClusterPresence.showsTimer(sync: store.sync),
+                    showsTimer: ClusterPresence.showsTimer(sync: barSync),
                     showsPlayers: ClusterPresence.showsPlayers(
-                        sync: store.sync, seeded: chrome.seeded),
+                        sync: barSync, seeded: chrome.seeded),
                     showsShare: ClusterPresence.showsShare(
-                        sync: store.sync, seeded: chrome.seeded),
+                        sync: barSync, seeded: chrome.seeded),
                     hasShare: shareable != nil,
                     onBack: onBack,
                     // One mechanism for both moments (redesign 2026-07-11): the
