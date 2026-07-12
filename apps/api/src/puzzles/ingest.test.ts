@@ -532,9 +532,11 @@ describe("ingestion ACL: HTML entity decoding in clue text (DESIGN.md section 7,
   it("projects a whitelist tag out of the plain text, capturing it as a run instead (owner ruling 2026-07-12)", () => {
     // The plain projection drops the markup (the tag is captured in `runs`, asserted in
     // clue-runs.test.ts and the xwordinfo runs test below); unknown entities and bare ampersands
-    // still survive verbatim in the projection.
+    // still survive verbatim in the projection, while known names (the Latin-1 and typographic
+    // table in entities.ts) decode.
     expect(firstAcross("<i>emphasis</i>")).toBe("emphasis");
-    expect(firstAcross("dash &mdash; here")).toBe("dash &mdash; here");
+    expect(firstAcross("dash &mdash; here")).toBe("dash — here");
+    expect(firstAcross("&notaname; stays")).toBe("&notaname; stays");
     expect(firstAcross("Q&A session")).toBe("Q&A session");
   });
 

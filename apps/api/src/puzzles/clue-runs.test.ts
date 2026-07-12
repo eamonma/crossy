@@ -113,6 +113,21 @@ describe("clue-runs law 6: text is the normalized plain string", () => {
   it("law 6: a Unicode whitespace run (tab, NBSP entity, newline) collapses to one ASCII space", () => {
     expect(text("a\t\n&nbsp; b")).toBe("a b");
   });
+
+  it("law 6: Latin-1 named entities decode (vectors/v1/clue-runs entities.json: &eacute;)", () => {
+    expect(text("Caf&eacute; au lait")).toBe("Café au lait");
+    expect(text("Se&ntilde;or, &frac12; and &deg;")).toBe("Señor, ½ and °");
+  });
+
+  it("law 6: typographic named entities decode (curly quote, ellipsis, dashes)", () => {
+    expect(text("&ldquo;Wait&hellip;&rdquo; &ndash; &mdash;")).toBe(
+      "“Wait…” – —",
+    );
+  });
+
+  it("law 6/8: one-pass decode keeps &amp;eacute; as the literal entity spelling", () => {
+    expect(text("&amp;eacute;")).toBe("&eacute;");
+  });
 });
 
 describe("clue-runs law 7: tag vocabulary maps to styles; others keep content; br is a space", () => {
