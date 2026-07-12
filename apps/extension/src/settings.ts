@@ -14,9 +14,6 @@ export const DEFAULT_AUTH_BASE = "https://api.crossy.party";
 /** The web app. The extension ingests; crossy.party plays (D22). Never user input. */
 const WEB_ORIGIN = "https://crossy.party";
 
-/** The signed-in library on the web app. */
-export const WEB_LIBRARY_URL = `${WEB_ORIGIN}/puzzles`;
-
 /**
  * The web app's play intent for one puzzle: where "Play in Crossy" lands after
  * ingest. The route is pinned by the web app; keeping it here makes a route

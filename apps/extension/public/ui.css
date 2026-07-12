@@ -197,6 +197,28 @@ body.popup #result:empty {
   display: none;
 }
 
+/* The re-summon line: a hairline note offering a hidden on-page pill back; the
+   "Show it" action rides the linklike button. Absent when the page has no pill or
+   its pill already shows. */
+body.popup #pill-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+body.popup #pill-note button {
+  flex: none;
+  font-size: 12px;
+}
+
+body.popup #pill-note:empty {
+  display: none;
+}
+
 /* The identity footer: quiet, under its own hairline; absent when signed out. */
 body.popup #identity {
   display: flex;
