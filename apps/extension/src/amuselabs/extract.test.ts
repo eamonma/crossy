@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { extractRawcAssignment, parseAmuseParams } from "./extract";
+import {
+  extractAmuseDocument,
+  extractRawcAssignment,
+  parseAmuseParams,
+} from "./extract";
 import {
   SYNTHETIC_RAWC,
   classicRawcScript,
+  syntheticCapturedDoc,
   syntheticParamsJson,
 } from "./fixtures";
 
@@ -54,6 +59,41 @@ describe("parseAmuseParams", () => {
     });
     expect(parseAmuseParams('{"rawc":123}').ok).toBe(false);
     expect(parseAmuseParams('{"rawc":""}').ok).toBe(false);
+  });
+});
+
+describe("extractAmuseDocument (capture preference, PROTOCOL.md section 12)", () => {
+  it("prefers the captured decoded document over any rawc source (the page already decoded it)", () => {
+    const doc = syntheticCapturedDoc();
+    expect(
+      extractAmuseDocument(doc, syntheticParamsJson, () => [classicRawcScript]),
+    ).toEqual({ ok: true, document: doc });
+  });
+
+  it("falls back to the rawc string exactly as before when nothing was captured", () => {
+    expect(extractAmuseDocument(null, syntheticParamsJson, () => [])).toEqual({
+      ok: true,
+      document: SYNTHETIC_RAWC,
+    });
+    expect(extractAmuseDocument(null, null, () => [classicRawcScript])).toEqual(
+      { ok: true, document: SYNTHETIC_RAWC },
+    );
+  });
+
+  it("keeps the existing no-puzzle reply when neither source exists", () => {
+    expect(extractAmuseDocument(null, null, () => [])).toEqual({
+      ok: false,
+      reason: "no PuzzleMe params on this page",
+    });
+  });
+
+  it("never reads inline scripts when the params rawc suffices (lazy fallback)", () => {
+    let read = false;
+    extractAmuseDocument(null, syntheticParamsJson, () => {
+      read = true;
+      return [];
+    });
+    expect(read).toBe(false);
   });
 });
 

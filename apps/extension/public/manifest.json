@@ -36,7 +36,17 @@
       ],
       "js": ["amuselabs/content.js"],
       "all_frames": true,
-      "run_at": "document_idle"
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.amuselabs.com/pmm/crossword*",
+        "https://*.amuselabs.com/*/crossword*"
+      ],
+      "js": ["amuselabs/page-capture.js"],
+      "all_frames": true,
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "action": {
@@ -55,7 +65,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "extension@crossy.party",
-      "strict_min_version": "115.0"
+      "strict_min_version": "128.0"
     }
   }
 }

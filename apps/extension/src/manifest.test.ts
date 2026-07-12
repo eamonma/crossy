@@ -16,21 +16,49 @@ const manifest = JSON.parse(
   icons: unknown;
   action: { default_icon: unknown };
   content_scripts: ReadonlyArray<{
+    matches: readonly string[];
     js: readonly string[];
     all_frames?: boolean;
+    run_at?: string;
+    world?: string;
   }>;
+  browser_specific_settings: { gecko: { strict_min_version: string } };
 };
+
+const byEntry = new Map(manifest.content_scripts.map((s) => [s.js[0], s]));
 
 describe("manifest", () => {
   it("keeps the Chrome-loadable MV3 background form, service worker only", () => {
     expect(manifest.background).toEqual({ service_worker: "background.js" });
   });
 
-  it("keeps pill surfaces top-level: only the AmuseLabs frame adapter runs all_frames (D22)", () => {
-    const byEntry = new Map(manifest.content_scripts.map((s) => [s.js[0], s]));
+  it("keeps pill surfaces top-level: only the AmuseLabs frame scripts run all_frames (D22)", () => {
     expect(byEntry.get("content.js")?.all_frames).toBeUndefined();
     expect(byEntry.get("nyt/content.js")?.all_frames).toBeUndefined();
     expect(byEntry.get("amuselabs/content.js")?.all_frames).toBe(true);
+    expect(byEntry.get("amuselabs/page-capture.js")?.all_frames).toBe(true);
+  });
+
+  it("runs the AmuseLabs capture in the MAIN world at document_start, matches shared with the adapter", () => {
+    const adapter = byEntry.get("amuselabs/content.js");
+    const capture = byEntry.get("amuselabs/page-capture.js");
+    expect(capture?.world).toBe("MAIN");
+    expect(capture?.run_at).toBe("document_start");
+    expect(capture?.matches).toEqual([
+      "https://*.amuselabs.com/pmm/crossword*",
+      "https://*.amuselabs.com/*/crossword*",
+    ]);
+    expect(adapter?.matches).toEqual(capture?.matches);
+    // The adapter's message listener must predate the page's first JSON.parse,
+    // so it starts at document_start too, in its default ISOLATED world.
+    expect(adapter?.run_at).toBe("document_start");
+    expect(adapter?.world).toBeUndefined();
+  });
+
+  it("pins the Firefox floor at 128, where MAIN-world content scripts arrive", () => {
+    expect(manifest.browser_specific_settings.gecko.strict_min_version).toBe(
+      "128.0",
+    );
   });
 
   it("ships the four icon sizes, committed and rendered from the app-icon source", () => {

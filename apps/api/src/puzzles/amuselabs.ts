@@ -1,11 +1,14 @@
 // AmuseLabs (PuzzleMe) translator (PROTOCOL.md section 12; DESIGN.md section 7, D21; ROADMAP
-// 6.1 x3). The envelope document is a STRING: the raw encoded blob exactly as found in the page
-// (`window.rawc` / `window.puzzleEnv.rawc` / the `params` script's `rawc`); the extension never
-// decodes it (DESIGN.md section 7: the extension is deliberately dumb). Decoding is translation
-// and happens here, in the ACL, so the external format is still parsed exactly once, at the
-// boundary. Same contract as the other translators: fixed documented check order, one named
-// rejection with a stable code, and rejection messages never echo blob or decoded content
-// (INV-6 discipline).
+// 6.1 x3). The envelope document has two forms. A STRING is the raw encoded blob exactly as
+// found in the page (`window.rawc` / `window.puzzleEnv.rawc` / the `params` script's `rawc`);
+// the extension never decodes it (DESIGN.md section 7: the extension is deliberately dumb).
+// Decoding is translation and happens here, in the ACL, so the external format is still parsed
+// exactly once, at the boundary. An OBJECT is the page's own decoded puzzle document, captured
+// in the frame by the extension when the outlet ships the newer keyless obfuscation whose
+// descramble lives only in the frame's compiled JS (still not the extension decoding: the page
+// did); it skips the decode step and enters the same structural validation below. Same contract
+// as the other translators: fixed documented check order, one named rejection with a stable
+// code, and rejection messages never echo blob or decoded content (INV-6 discipline).
 //
 // Encoding variants are pinned from the thisisparker/xword-dl project (MIT), the parsing
 // reference (DESIGN.md section 15):
@@ -219,10 +222,12 @@ function readCircles(
  * with a single named code. The check order is fixed so the same bad document always yields the
  * same code:
  *
- *  1. VALIDATION          document is a string (the raw encoded blob, PROTOCOL.md section 12)
- *  2. VALIDATION          the blob decodes via a supported deterministic variant (plain base64,
+ *  1. VALIDATION          document is a string (the raw encoded blob) or a JSON object (the
+ *                         page's own decoded puzzle document, PROTOCOL.md section 12)
+ *  2. VALIDATION          a string decodes via a supported deterministic variant (plain base64,
  *                         or the embedded-key scramble; a keyless scramble is named here)
- *  3. VALIDATION          the decoded document is a JSON object
+ *  3. VALIDATION          the decoded document is a JSON object (string form; the object form
+ *                         arrives past this check by construction)
  *  4. VALIDATION          `w` and `h` are positive integers
  *  5. OVERSIZE_GRID       w or h exceeds 25 (shared cap; bounds all later per-cell work)
  *  6. VALIDATION          `box` is `w` columns of `h` strings (column-major, box[col][row])
@@ -242,20 +247,24 @@ function readCircles(
  * `deriveWordRuns`, never from `clueNum` or entry order.
  */
 export function translateAmuseLabs(body: unknown): IngestResult {
-  // 1.
-  if (typeof body !== "string") {
+  // 1. Two document forms, one validation pipeline: a string is decoded here (2, 3), an
+  //    object is the page's own decode and joins at the shared checks (4 onward).
+  let doc: unknown;
+  if (typeof body === "string") {
+    // 2.
+    const decoded = decodeBlob(body);
+    if (!decoded.ok) return reject("VALIDATION", decoded.message);
+    doc = decoded.document;
+  } else if (isObject(body)) {
+    doc = body;
+  } else {
     return reject(
       "VALIDATION",
-      "an amuselabs document must be the encoded blob string",
+      "an amuselabs document must be the encoded blob string or the decoded puzzle object",
     );
   }
 
-  // 2.
-  const decoded = decodeBlob(body);
-  if (!decoded.ok) return reject("VALIDATION", decoded.message);
-
   // 3.
-  const doc = decoded.document;
   if (!isObject(doc)) {
     return reject("VALIDATION", "the blob must decode to a JSON object");
   }
