@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Party completion — Direction 1: The Seal</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <style>
+      /* The board keeps a quiet gold wash at the moment of completion. */
+      .stage::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          120% 90% at 50% 45%,
+          rgba(151, 131, 101, 0.14),
+          rgba(151, 131, 101, 0) 60%
+        );
+        pointer-events: none;
+      }
+      /* Fine warm flecks, matched to the retuned solve-client confetti. */
+      .fleck {
+        position: absolute;
+        border-radius: 1px;
+      }
+
+      .rail {
+        justify-content: flex-start;
+      }
+      .logo-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .logo {
+        font-family: var(--font-display);
+        font-size: 1.5em;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .seal {
+        margin-top: 2.2em;
+        display: flex;
+        flex-direction: column;
+      }
+      .eyebrow {
+        color: var(--color-text-accent);
+      }
+      .title {
+        font-family: var(--font-display);
+        font-size: 3.4em;
+        font-weight: 500;
+        line-height: 1.02;
+        letter-spacing: -0.015em;
+        margin-top: 0.2em;
+      }
+      .time {
+        font-family: var(--font-mono);
+        font-size: 4.6em;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        margin-top: 0.55em;
+        font-variant-numeric: tabular-nums;
+      }
+      .sub {
+        color: var(--color-text-muted);
+        font-size: 1.05em;
+        margin-top: 0.5em;
+      }
+
+      .stats {
+        margin-top: 1.6em;
+        display: flex;
+        gap: 2.4em;
+      }
+      .stat .k {
+        color: var(--color-text-subtle);
+      }
+      .stat .v {
+        font-family: var(--font-mono);
+        font-size: 1.9em;
+        font-variant-numeric: tabular-nums;
+        margin-top: 0.15em;
+      }
+
+      .solvers {
+        margin-top: 1.8em;
+      }
+      .avatars {
+        display: flex;
+        margin-top: 0.7em;
+      }
+      .avatar {
+        width: 2.4em;
+        height: 2.4em;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 1em;
+        box-shadow: 0 0 0 3px var(--color-panel);
+        margin-left: -0.5em;
+      }
+      .avatar:first-child {
+        margin-left: 0;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+      .join {
+        display: flex;
+        align-items: center;
+        gap: 1.2em;
+        padding-top: 1.4em;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .qr {
+        width: 8.5em;
+        height: 8.5em;
+        background: #fff;
+        border-radius: 0.6em;
+        box-shadow: var(--shadow-lg);
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        grid-template-rows: repeat(9, 1fr);
+        padding: 0.5em;
+        gap: 1px;
+      }
+      .qr i {
+        background: var(--color-sand-12);
+        border-radius: 1px;
+      }
+      .qr i.off {
+        background: transparent;
+      }
+      .join .label .h {
+        font-size: 1.25em;
+        font-weight: 600;
+      }
+      .join .label .m {
+        color: var(--color-text-muted);
+        font-size: 0.95em;
+        margin-top: 0.25em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="party">
+      <div class="stage" id="stage">
+        <div
+          class="board"
+          id="board"
+          style="grid-template-columns: repeat(5, 130px)"
+        ></div>
+      </div>
+      <aside class="rail">
+        <div class="logo-row">
+          <div class="logo">Crossy</div>
+        </div>
+
+        <div class="seal">
+          <div class="caps eyebrow">Solved together</div>
+          <div class="title">Sunday Mini</div>
+          <div class="time">6:12</div>
+          <div class="sub">Filled and correct. The room's puzzle is done.</div>
+
+          <div class="stats">
+            <div class="stat">
+              <div class="caps k">Solvers</div>
+              <div class="v">4</div>
+            </div>
+            <div class="stat">
+              <div class="caps k">Entries</div>
+              <div class="v">73</div>
+            </div>
+          </div>
+
+          <div class="solvers">
+            <div class="caps" style="color: var(--color-text)">
+              Who was here
+            </div>
+            <div class="avatars">
+              <div class="avatar" style="background: #8c7a5e">M</div>
+              <div class="avatar" style="background: #7d7f95">J</div>
+              <div class="avatar" style="background: #957d7d">A</div>
+              <div class="avatar" style="background: #7d9585">R</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+
+        <div class="join">
+          <div class="qr" id="qr"></div>
+          <div class="label">
+            <div class="h">Scan to start the next one</div>
+            <div class="m">Point your phone camera at the code.</div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      // A finished 5x5 mini. B = block.
+      const grid = [
+        ["S", "O", "L", "V", "E"],
+        ["P", "A", "R", "T", "Y"],
+        ["A", "B", "", "B", "A"],
+        ["R", "O", "U", "N", "D"],
+        ["E", "S", "T", "B", "B"],
+      ];
+      const nums = {
+        "0,0": 1,
+        "0,1": 2,
+        "0,2": 3,
+        "0,3": 4,
+        "0,4": 5,
+        "1,0": 6,
+        "2,0": 7,
+        "3,0": 8,
+        "4,0": 9,
+      };
+      const board = document.getElementById("board");
+      grid.forEach((row, r) =>
+        row.forEach((ch, c) => {
+          const cell = document.createElement("div");
+          cell.className = "cell" + (ch === "" ? " block" : "");
+          if (nums[r + "," + c]) {
+            const n = document.createElement("div");
+            n.className = "num";
+            n.textContent = nums[r + "," + c];
+            cell.appendChild(n);
+          }
+          if (ch !== "") cell.append(ch);
+          board.appendChild(cell);
+        }),
+      );
+
+      // A QR stand-in (real code in production via uqr): a plausible module pattern.
+      const qr = document.getElementById("qr");
+      const seed = [
+        1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1,
+        1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0,
+        1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+        1, 1, 0, 1, 1, 0, 1, 0, 1,
+      ];
+      seed.forEach((v) => {
+        const i = document.createElement("i");
+        if (!v) i.className = "off";
+        qr.appendChild(i);
+      });
+
+      // Fine warm confetti at the moment of the seal, palette matched to Part A. The stage is
+      // the left ~66% of a 1920x1080 board; place flecks across it in percentages.
+      const stage = document.getElementById("stage");
+      const palette = [
+        "#e1dccf",
+        "#d8d0bf",
+        "#cbc0a8",
+        "#b9a88d",
+        "#978365",
+        "#a99b93",
+        "#9b8f9a",
+      ];
+      for (let i = 0; i < 240; i++) {
+        const f = document.createElement("div");
+        f.className = "fleck";
+        const len = 3 + Math.random() * 5;
+        f.style.width = len + "px";
+        f.style.height = len * (0.3 + Math.random() * 0.25) + "px";
+        f.style.left = Math.random() * 100 + "%";
+        f.style.top = Math.random() * 88 + "%";
+        f.style.background = palette[(Math.random() * palette.length) | 0];
+        f.style.transform = "rotate(" + Math.random() * 360 + "deg)";
+        f.style.opacity = 0.55 + Math.random() * 0.4;
+        stage.appendChild(f);
+      }
+    </script>
+  </body>
+</html>

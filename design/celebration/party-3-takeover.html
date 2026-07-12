@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Party completion — Direction 3: The Takeover</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <style>
+      body {
+        background: var(--color-panel-feature);
+      }
+
+      /* Full-bleed marquee: the board has receded to a memento token top-left; the whole
+     screen becomes the celebration surface, readable from the back of a room. */
+      .takeover {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+
+      .fleck {
+        position: absolute;
+        border-radius: 1px;
+      }
+
+      .eyebrow {
+        color: var(--color-text-accent);
+        font-size: 1.6rem;
+        z-index: 2;
+      }
+      .huge {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: 18rem;
+        line-height: 0.84;
+        letter-spacing: -0.03em;
+        z-index: 2;
+        margin-top: 0.1em;
+      }
+      .name {
+        font-family: var(--font-display);
+        font-size: 3.4rem;
+        font-weight: 500;
+        color: var(--color-text-muted);
+        letter-spacing: -0.01em;
+        margin-top: 0.5rem;
+        z-index: 2;
+      }
+
+      .facts {
+        display: flex;
+        gap: 4rem;
+        margin-top: 3.2rem;
+        align-items: flex-end;
+        z-index: 2;
+      }
+      .fact {
+        text-align: center;
+      }
+      .fact .k {
+        color: var(--color-text-subtle);
+        font-size: 1.2rem;
+      }
+      .fact .v {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        font-size: 3.4rem;
+        line-height: 1;
+        margin-top: 0.4rem;
+      }
+      .fact.time .v {
+        font-size: 5rem;
+      }
+
+      .avatars {
+        display: flex;
+        margin-top: 3rem;
+        z-index: 2;
+      }
+      .avatar {
+        width: 4rem;
+        height: 4rem;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 1.5rem;
+        box-shadow: 0 0 0 4px var(--color-panel-feature);
+        margin-left: -0.9rem;
+      }
+      .avatar:first-child {
+        margin-left: 0;
+      }
+
+      /* The finished board, shrunk to a memento in the top-left corner. */
+      .memento {
+        position: absolute;
+        top: 3rem;
+        left: 3rem;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+      .memento .board {
+        display: grid;
+        grid-template-columns: repeat(5, 1.5rem);
+        box-shadow: var(--shadow-lg);
+      }
+      .memento .cell {
+        width: 1.5rem;
+        height: 1.5rem;
+        font-size: 0.75rem;
+        border: 0.5px solid var(--stroke);
+      }
+      .memento .cell .num {
+        display: none;
+      }
+      .memento .logo {
+        font-family: var(--font-display);
+        font-size: 1.6rem;
+        font-weight: 600;
+      }
+
+      /* Scan-to-join, bottom-right, quiet. */
+      .join {
+        position: absolute;
+        bottom: 3rem;
+        right: 3rem;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        color: var(--color-text-muted);
+        font-size: 1.2rem;
+      }
+      .qr {
+        width: 6rem;
+        height: 6rem;
+        background: #fff;
+        border-radius: 0.5rem;
+        display: grid;
+        grid-template-columns: repeat(9, 1fr);
+        grid-template-rows: repeat(9, 1fr);
+        padding: 0.4rem;
+        gap: 1px;
+        box-shadow: var(--shadow-lg);
+      }
+      .qr i {
+        background: var(--color-sand-12);
+        border-radius: 1px;
+      }
+      .qr i.off {
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="takeover" id="stage">
+      <div class="memento">
+        <div class="board" id="memento"></div>
+        <div class="logo">Crossy</div>
+      </div>
+
+      <div class="eyebrow caps">Solved together</div>
+      <div class="huge">Solved</div>
+      <div class="name">Sunday Mini</div>
+
+      <div class="facts">
+        <div class="fact">
+          <div class="k caps">Solvers</div>
+          <div class="v">4</div>
+        </div>
+        <div class="fact time">
+          <div class="k caps">Time</div>
+          <div class="v">6:12</div>
+        </div>
+        <div class="fact">
+          <div class="k caps">Entries</div>
+          <div class="v">73</div>
+        </div>
+      </div>
+
+      <div class="avatars">
+        <div class="avatar" style="background: #8c7a5e">M</div>
+        <div class="avatar" style="background: #7d7f95">J</div>
+        <div class="avatar" style="background: #957d7d">A</div>
+        <div class="avatar" style="background: #7d9585">R</div>
+      </div>
+
+      <div class="join">
+        <div class="qr" id="qr"></div>
+        <div>Scan to solve the next one</div>
+      </div>
+    </div>
+
+    <script>
+      const grid = [
+        ["S", "O", "L", "V", "E"],
+        ["P", "A", "R", "T", "Y"],
+        ["A", "B", "", "B", "A"],
+        ["R", "O", "U", "N", "D"],
+        ["E", "S", "T", "B", "B"],
+      ];
+      const memento = document.getElementById("memento");
+      grid.forEach((row) =>
+        row.forEach((ch) => {
+          const cell = document.createElement("div");
+          cell.className = "cell" + (ch === "" ? " block" : "");
+          if (ch !== "") cell.append(ch);
+          memento.appendChild(cell);
+        }),
+      );
+      const qr = document.getElementById("qr");
+      const seed = [
+        1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1,
+        1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0,
+        1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+        1, 1, 0, 1, 1, 0, 1, 0, 1,
+      ];
+      seed.forEach((v) => {
+        const i = document.createElement("i");
+        if (!v) i.className = "off";
+        qr.appendChild(i);
+      });
+
+      // Confetti across the full bleed, warm palette matched to Part A.
+      const stage = document.getElementById("stage");
+      const palette = [
+        "#e1dccf",
+        "#d8d0bf",
+        "#cbc0a8",
+        "#b9a88d",
+        "#978365",
+        "#a99b93",
+        "#9b8f9a",
+        "#8c7a5e",
+      ];
+      for (let i = 0; i < 320; i++) {
+        const f = document.createElement("div");
+        f.className = "fleck";
+        const len = 4 + Math.random() * 6;
+        f.style.width = len + "px";
+        f.style.height = len * (0.3 + Math.random() * 0.25) + "px";
+        f.style.left = Math.random() * 1920 + "px";
+        f.style.top = Math.random() * 1080 + "px";
+        f.style.background = palette[(Math.random() * palette.length) | 0];
+        f.style.transform = "rotate(" + Math.random() * 360 + "deg)";
+        f.style.opacity = 0.4 + Math.random() * 0.45;
+        stage.appendChild(f);
+      }
+    </script>
+  </body>
+</html>

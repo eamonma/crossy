@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Party completion — Direction 2: The Curtain</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <style>
+      /* A diagonal gold shimmer has just swept the board (the mosaic beat); it settles into
+     a faint warm hold so the finished grid stays the hero. */
+      .stage::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          118deg,
+          rgba(151, 131, 101, 0) 30%,
+          rgba(151, 131, 101, 0.22) 48%,
+          rgba(225, 220, 207, 0.3) 52%,
+          rgba(151, 131, 101, 0) 70%
+        );
+        pointer-events: none;
+      }
+
+      .rail {
+        justify-content: flex-start;
+      }
+      .logo {
+        font-family: var(--font-display);
+        font-size: 1.4em;
+        font-weight: 600;
+      }
+
+      .headline {
+        font-family: var(--font-display);
+        font-size: 5.2em;
+        font-weight: 500;
+        line-height: 0.92;
+        letter-spacing: -0.02em;
+        margin-top: 0.5em;
+      }
+      .headline .name {
+        display: block;
+        font-size: 0.42em;
+        color: var(--color-text-muted);
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        margin-top: 0.35em;
+      }
+      .metrow {
+        margin-top: 0.9em;
+        display: flex;
+        align-items: baseline;
+        gap: 0.7em;
+      }
+      .metrow .time {
+        font-family: var(--font-mono);
+        font-size: 2.4em;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+      }
+      .metrow .word {
+        color: var(--color-text-muted);
+        font-size: 1.05em;
+      }
+
+      /* The roll call: who solved which share, a credits panel. */
+      .rollcall {
+        margin-top: 1.8em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75em;
+      }
+      .rollcall .head {
+        color: var(--color-text-accent);
+        margin-bottom: 0.2em;
+      }
+      .person {
+        display: flex;
+        align-items: center;
+        gap: 0.8em;
+      }
+      .person .dot {
+        width: 1.7em;
+        height: 1.7em;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.85em;
+        flex-shrink: 0;
+      }
+      .person .name {
+        font-weight: 600;
+        width: 5.2em;
+        flex-shrink: 0;
+      }
+      .person .bar {
+        height: 0.55em;
+        border-radius: 999px;
+        flex: 1;
+        background: var(--color-sand-4);
+        overflow: hidden;
+        position: relative;
+      }
+      .person .bar > span {
+        position: absolute;
+        inset: 0 auto 0 0;
+        border-radius: 999px;
+      }
+      .person .share {
+        font-family: var(--font-mono);
+        font-variant-numeric: tabular-nums;
+        color: var(--color-text-muted);
+        width: 3.2em;
+        text-align: right;
+        flex-shrink: 0;
+        font-size: 0.95em;
+      }
+
+      .spacer {
+        flex: 1;
+      }
+      .foot {
+        padding-top: 1.2em;
+        border-top: 1px dashed var(--color-border-dashed);
+        display: flex;
+        align-items: center;
+        gap: 1em;
+        color: var(--color-text-muted);
+        font-size: 1em;
+      }
+      .qrmini {
+        width: 3.4em;
+        height: 3.4em;
+        background: #fff;
+        border-radius: 0.4em;
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        grid-template-rows: repeat(7, 1fr);
+        padding: 0.25em;
+        gap: 1px;
+        box-shadow: var(--shadow-lg);
+        flex-shrink: 0;
+      }
+      .qrmini i {
+        background: var(--color-sand-12);
+        border-radius: 1px;
+      }
+      .qrmini i.off {
+        background: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="party">
+      <div class="stage" id="stage">
+        <div
+          class="board"
+          id="board"
+          style="grid-template-columns: repeat(5, 130px)"
+        ></div>
+      </div>
+      <aside class="rail">
+        <div class="logo">Crossy</div>
+        <div class="headline">Solved.<span class="name">Sunday Mini</span></div>
+        <div class="metrow">
+          <div class="time">6:12</div>
+          <div class="word">25 of 25 clues</div>
+        </div>
+
+        <div class="rollcall">
+          <div class="caps head">Solved by</div>
+          <div class="person">
+            <div class="dot" style="background: #8c7a5e">M</div>
+            <div class="name">Mira</div>
+            <div class="bar">
+              <span style="width: 38%; background: #8c7a5e"></span>
+            </div>
+            <div class="share">28</div>
+          </div>
+          <div class="person">
+            <div class="dot" style="background: #7d7f95">J</div>
+            <div class="name">Jonas</div>
+            <div class="bar">
+              <span style="width: 30%; background: #7d7f95"></span>
+            </div>
+            <div class="share">22</div>
+          </div>
+          <div class="person">
+            <div class="dot" style="background: #957d7d">A</div>
+            <div class="name">Ade</div>
+            <div class="bar">
+              <span style="width: 20%; background: #957d7d"></span>
+            </div>
+            <div class="share">15</div>
+          </div>
+          <div class="person">
+            <div class="dot" style="background: #7d9585">R</div>
+            <div class="name">Rui</div>
+            <div class="bar">
+              <span style="width: 12%; background: #7d9585"></span>
+            </div>
+            <div class="share">8</div>
+          </div>
+        </div>
+
+        <div class="spacer"></div>
+        <div class="foot">
+          <div class="qrmini" id="qr"></div>
+          <div>Scan to keep the room. Next puzzle, same people.</div>
+        </div>
+      </aside>
+    </div>
+
+    <script>
+      const grid = [
+        ["S", "O", "L", "V", "E"],
+        ["P", "A", "R", "T", "Y"],
+        ["A", "B", "", "B", "A"],
+        ["R", "O", "U", "N", "D"],
+        ["E", "S", "T", "B", "B"],
+      ];
+      const nums = {
+        "0,0": 1,
+        "0,1": 2,
+        "0,2": 3,
+        "0,3": 4,
+        "0,4": 5,
+        "1,0": 6,
+        "2,0": 7,
+        "3,0": 8,
+        "4,0": 9,
+      };
+      const board = document.getElementById("board");
+      grid.forEach((row, r) =>
+        row.forEach((ch, c) => {
+          const cell = document.createElement("div");
+          cell.className = "cell" + (ch === "" ? " block" : "");
+          if (nums[r + "," + c]) {
+            const n = document.createElement("div");
+            n.className = "num";
+            n.textContent = nums[r + "," + c];
+            cell.appendChild(n);
+          }
+          if (ch !== "") cell.append(ch);
+          board.appendChild(cell);
+        }),
+      );
+      const qr = document.getElementById("qr");
+      const seed = [
+        1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0,
+        0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 1,
+        1,
+      ];
+      seed.forEach((v) => {
+        const i = document.createElement("i");
+        if (!v) i.className = "off";
+        qr.appendChild(i);
+      });
+    </script>
+  </body>
+</html>
