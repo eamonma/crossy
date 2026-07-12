@@ -15,6 +15,8 @@
 //  Ground follows system appearance inside every screen (ID-3).
 //
 
+import CrossyDesign
+import CrossyProtocol
 import CrossyStore
 import CrossyUI
 import SwiftUI
@@ -176,12 +178,46 @@ struct RealRoomView: View {
         self.onExit = onExit
     }
 
+    private var ground: GridGround {
+        colorScheme == .dark ? .observatory : .studio
+    }
+
+    /// The withholding room's roster (DESIGN.md §4, the live-data birth rule): the
+    /// store's seeded participants mapped to the placeholder-aware member (the count is
+    /// honest from the tapped card's list row, the identity lands at REST). The app
+    /// target sees CrossyProtocol's Participant here; CrossyUI's RoomOpeningRoster keeps
+    /// the placeholder rule in one place, so the seeded pill and the live pill read the
+    /// same. Empty until the seed is present (a deep link or code-join carries none), so
+    /// the withholding pill simply does not stand and the arrival stays REST-gated.
+    private var openingMembers: [RosterMember] {
+        room.store.participants.map {
+            RoomOpeningRoster.member(
+                userId: $0.userId, displayName: $0.displayName, wireColor: $0.color,
+                avatarUrl: $0.avatarUrl, isHost: $0.role == .host,
+                isSpectator: $0.role == .spectator, connected: $0.connected)
+        }
+    }
+
     var body: some View {
         Group {
             if let fatal = room.fatal {
+                // The failure branch keeps a way out (DESIGN.md §4, the live-data birth
+                // rule): the back button stands so a room that cannot open is never a
+                // dead end; the seeded players pill rides along for continuity if a
+                // count was seeded.
                 RoomOpenFailure(message: fatal, dark: colorScheme == .dark)
+                    .modifier(
+                        RoomOpeningToolbarHost(
+                            ground: ground, members: openingMembers, onBack: onBack))
             } else if !ready {
+                // The bar is born with the push (DESIGN.md §4, the live-data birth
+                // rule): the withholding room carries its chrome even before the board,
+                // so the #132 zoom push goos OUR back button and the seeded players
+                // pill in place instead of every item popping at REST-mount.
                 RoomOpening(dark: colorScheme == .dark)
+                    .modifier(
+                        RoomOpeningToolbarHost(
+                            ground: ground, members: openingMembers, onBack: onBack))
             } else {
                 SolveScreen(
                     store: room.store,

@@ -34,6 +34,24 @@ struct RosterPuckBody: View {
     let avatar: Image?
 
     var body: some View {
+        if member.placeholder {
+            // The pre-REST placeholder puck (DESIGN.md §4, the live-data birth rule):
+            // the count is honest, the identity is not, so this stands the achromatic
+            // hollow floor (the RosterMenu placeholderPuck vocabulary, one register)
+            // rather than a hash color that would flip when the real id lands at REST.
+            // Number tone, not a person color; chrome stays achromatic until a person
+            // is here (§3). Ring line width and dim match the identified puck so the
+            // beat only adds detail, never a jump in weight.
+            Circle()
+                .stroke(Color(rgb: ground.tokens.number).opacity(0.35), lineWidth: 1.5)
+                .frame(width: diameter, height: diameter)
+                .accessibilityHidden(true)
+        } else {
+            identifiedPuck
+        }
+    }
+
+    private var identifiedPuck: some View {
         ZStack {
             Circle()
                 .fill(Color(rgb: ground.rosterColor(member.identity)))

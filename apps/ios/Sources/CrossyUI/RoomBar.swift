@@ -73,11 +73,27 @@ enum TimePillPresence {
 /// test pins the "no empty capsule" contract, applied at every glass bar item.
 @available(iOS 17.0, macOS 14.0, *)
 enum BarItemGlass {
-    /// True when the item's shared background must hide (the item is handed off,
-    /// so its content is invisible and the capsule would otherwise stand empty).
+    /// True when a SYSTEM-glass item's shared background must hide (the item is
+    /// handed off, so its content is invisible and the capsule would otherwise stand
+    /// empty). The back button and the Menus ride this rule: their glass is the bar's,
+    /// visible at rest, suppressed only on the yield.
     static func backgroundHidden(handedOff: Bool) -> Bool {
         handedOff
     }
+
+    /// The time pill's shared background hides ALWAYS (the timer's self-owned glass
+    /// carve-out, DESIGN.md §4, the SLICE 2 redesign). The pill's item PERMANENTLY
+    /// suppresses the system capsule and its content carries ITS OWN real glass
+    /// (ChromeGlassSurface / the pre-#140 register), so the arrival can ride the chrome
+    /// spring: opacity plus a slight scale settle reads as MATERIALIZE, and no frame is
+    /// ever empty glass because the glass rides the content (a system capsule would
+    /// stand from the item's presence a beat before the content, the very hollow the
+    /// escape hatch closes). The Q3 rig finding: `.sharedBackgroundVisibility(.hidden)`
+    /// suppresses the item's system capsule while the item stays present, so the pill
+    /// keeps reporting its frame (the facts card's rest) with no system glass behind
+    /// it. On the yield, opacity 0 hides glass and content together (no capsule to
+    /// suppress separately, unlike the system-glass items above).
+    static let timePillBackgroundHidden = true
 }
 
 /// The bar's item placements, gated for the macOS test host: `.topBarLeading`
@@ -327,6 +343,166 @@ struct RoomToolbarHost: ViewModifier {
         #else
             content.toolbar { RoomToolbarFallback(inputs: inputs) }
         #endif
+    }
+}
+
+// MARK: - The withholding room's bar (the live-data birth rule, DESIGN.md §4)
+
+/// The chrome the WITHHOLDING room carries before the board (DESIGN.md §4, the
+/// live-data birth rule). On live data RealRoomView withholds SolveScreen until the
+/// REST view lands (the I3f quiet canvas), so the full RoomToolbar has no host yet;
+/// without a bar during the #132 zoom push there is NOTHING to goo into, and every
+/// item pops at REST-mount (owner device finding: on live data share and players do
+/// not animate, only the fixture's instant SolveScreen looked right). This carries the
+/// pieces that CAN stand pre-REST so the push goos them in place: OUR back button
+/// always (the way out, onBack/kicked-exit semantics), and the players pill seeded
+/// from the tapped card's count (RoomArrivalSeed, count-true placeholder pucks). The
+/// time pill and the share pill do NOT stand here: both are REST-gated (the pill
+/// arrives on the welcome's beat, TimePillPresence; the share menu's rows bake the
+/// invite code, which only GET /games/{id} carries, so it cannot defer cleanly and
+/// stays a REST-gated item, never a dead control). The pieces reuse RoomBackButton and
+/// RosterMenu in the SAME placements the full bar uses, so the nav bar keeps their
+/// identity across the withheld→ready branch swap and nothing re-inserts.
+#if os(iOS)
+    @available(iOS 26.0, *)
+    @MainActor
+    struct RoomOpeningToolbar: ToolbarContent {
+        let ground: GridGround
+        let members: [RosterMember]
+        let backHandedOff: Bool
+        let onBack: () -> Void
+
+        var body: some ToolbarContent {
+            ToolbarItem(placement: .topBarLeading) {
+                // The withholding room opens no panel, so the back button reports no
+                // frame here (nothing reads it yet, PanelEclipse is idle); the full
+                // bar re-attaches the report when SolveScreen mounts.
+                RoomBackButton(
+                    ground: ground, handedOff: backHandedOff,
+                    onBack: onBack, reportFrame: { _, _ in })
+            }
+            // The eclipsed back button leaves no empty capsule (the #149 arrangement,
+            // BarItemGlass): idle here (no panel eclipses it in the withholding room),
+            // but kept so the item's disposition matches the full bar exactly and the
+            // nav bar keeps its identity across the withheld→ready swap.
+            .sharedBackgroundVisibility(
+                BarItemGlass.backgroundHidden(handedOff: backHandedOff)
+                    ? .hidden : .automatic)
+            // The seeded players pill: the count is honest from the card's list row
+            // (placeholder pucks, the achromatic floor), so the pill stands at true
+            // width and the push goos into it. Its roster menu is inert pre-REST (no
+            // self identity, no live cursors, no host actions yet), so its closures
+            // no-op and selfUserId is nil; the REST roster fills identities and the
+            // welcome fills presence, the beats that add detail.
+            ToolbarItem(placement: .topBarTrailing) {
+                RosterMenu(
+                    ground: ground, members: members,
+                    selfUserId: nil, onJoinIn: {}, onKick: { _ in }, onGoTo: { _ in })
+            }
+        }
+    }
+#endif
+
+/// The below-26 fallback (and the macOS test host) for the withholding room's bar:
+/// the same pieces (back + seeded players), no ToolbarSpacer (26-only), the plain bar
+/// material (the §4 one-fallback rule).
+@available(iOS 18.0, macOS 14.0, *)
+@MainActor
+struct RoomOpeningToolbarFallback: ToolbarContent {
+    let ground: GridGround
+    let members: [RosterMember]
+    let backHandedOff: Bool
+    let onBack: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: BarPlacement.leading) {
+            RoomBackButton(
+                ground: ground, handedOff: backHandedOff,
+                onBack: onBack, reportFrame: { _, _ in })
+        }
+        ToolbarItem(placement: BarPlacement.trailing) {
+            RosterMenu(
+                ground: ground, members: members,
+                selfUserId: nil, onJoinIn: {}, onKick: { _ in }, onGoTo: { _ in })
+        }
+    }
+}
+
+/// Attaches the withholding room's bar (DESIGN.md §4, the live-data birth rule),
+/// gating the 26-only path from the below-26 fallback exactly as RoomToolbarHost does.
+/// Public so the app target's RealRoomView (the composition root that owns the
+/// withholding, AD-2) can carry it over the RoomOpening and RoomOpenFailure branches:
+/// the bar is born with the push, so back always stands and the seeded players pill
+/// stands at true count, and the failure branch keeps the back button as a way out.
+/// The members come from the store's seeded roster (placeholder pucks pre-REST); the
+/// withholding room opens no panel, so no frame is reported here (the full bar
+/// re-attaches the report when SolveScreen mounts).
+@available(iOS 18.0, macOS 14.0, *)
+public struct RoomOpeningToolbarHost: ViewModifier {
+    let ground: GridGround
+    let members: [RosterMember]
+    let backHandedOff: Bool
+    let onBack: () -> Void
+
+    public init(
+        ground: GridGround,
+        members: [RosterMember],
+        backHandedOff: Bool = false,
+        onBack: @escaping () -> Void
+    ) {
+        self.ground = ground
+        self.members = members
+        self.backHandedOff = backHandedOff
+        self.onBack = onBack
+    }
+
+    public func body(content: Content) -> some View {
+        #if os(iOS)
+            if #available(iOS 26.0, *) {
+                content.toolbar {
+                    RoomOpeningToolbar(
+                        ground: ground, members: members, backHandedOff: backHandedOff,
+                        onBack: onBack)
+                }
+            } else {
+                content.toolbar {
+                    RoomOpeningToolbarFallback(
+                        ground: ground, members: members, backHandedOff: backHandedOff,
+                        onBack: onBack)
+                }
+            }
+        #else
+            content.toolbar {
+                RoomOpeningToolbarFallback(
+                    ground: ground, members: members, backHandedOff: backHandedOff,
+                    onBack: onBack)
+            }
+        #endif
+    }
+}
+
+/// The withholding room's roster, mapped from the store's seeded participants
+/// (DESIGN.md §4, the live-data birth rule). The composition root owns the store, so
+/// the app target reads `store.participants` and hands a plain closure here; this pure
+/// helper keeps the placeholder rule (RoomArrivalSeed.isPlaceholderID) in ONE place,
+/// the same rule SolveScreen's rosterMembers applies once the board mounts, so the
+/// seeded pill and the live pill read identically. Pinned in tests.
+@available(iOS 17.0, macOS 14.0, *)
+public enum RoomOpeningRoster {
+    /// One seeded participant's plain facts as the roster needs them. The app target
+    /// passes the store participant's fields (it sees CrossyProtocol's Participant;
+    /// CrossyUI does not), so this takes the bare tuple and applies the placeholder
+    /// rule. `connected` and the role flags ride through for parity with the live
+    /// mapping, though a placeholder puck reads none of them (it renders the floor).
+    public static func member(
+        userId: String, displayName: String, wireColor: String, avatarUrl: String?,
+        isHost: Bool, isSpectator: Bool, connected: Bool
+    ) -> RosterMember {
+        RosterMember(
+            userId: userId, displayName: displayName, wireColor: wireColor,
+            avatarUrl: avatarUrl, isHost: isHost, isSpectator: isSpectator,
+            connected: connected,
+            placeholder: RoomArrivalSeed.isPlaceholderID(userId))
     }
 }
 
