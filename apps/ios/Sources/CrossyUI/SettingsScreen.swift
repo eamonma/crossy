@@ -74,6 +74,11 @@ public struct SettingsScreen: View {
     /// composition root maps it to the live page and presents the Safari sheet.
     private let onOpenLegal: (LegalPage) -> Void
 
+    /// The per-device typing preferences (personal-settings slice 1), the shared store
+    /// the composition root also feeds into the open room, so a change here reaches the
+    /// cursor live. `@Bindable` so the toggle and picker write straight through.
+    @Bindable private var typingPrefs: NavigationSettingsStore
+
     @Environment(\.colorScheme) private var colorScheme
     @State private var confirmingDelete = false
     @State private var deleting = false
@@ -86,12 +91,14 @@ public struct SettingsScreen: View {
 
     public init(
         identity: AccountIdentity,
+        typingPrefs: NavigationSettingsStore,
         versionLabel: String? = nil,
         onSignOut: @escaping () -> Void,
         onDeleteAccount: @escaping () async -> ArrivalFailure?,
         onOpenLegal: @escaping (LegalPage) -> Void
     ) {
         self.identity = identity
+        self.typingPrefs = typingPrefs
         self.versionLabel = versionLabel
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
@@ -107,6 +114,10 @@ public struct SettingsScreen: View {
             title
             identityRow
                 .padding(.top, 28)
+                .padding(.horizontal, 24)
+
+            typingSection
+                .padding(.top, 32)
                 .padding(.horizontal, 24)
 
             Spacer()
@@ -177,6 +188,53 @@ public struct SettingsScreen: View {
                 }
             }
             Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The typing preferences (personal-settings slice 1): a quiet caps header over two
+    /// native controls, a toggle and a menu picker. Both write straight to the shared
+    /// store, so the open room's cursor follows the change live. The system controls are
+    /// the tap-opened grammar the delete dialog already uses (DESIGN.md §4); no new
+    /// visual language, the label voice and ground tokens are the screen's own.
+    private var typingSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(verbatim: ArrivalCopy.settingsTypingSection)
+                .font(.system(size: 12, weight: .semibold))
+                .textCase(.uppercase)
+                .kerning(0.6)
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+
+            Toggle(isOn: $typingPrefs.skipFilledInWord) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: ArrivalCopy.settingsSkipFilledTitle)
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    Text(verbatim: ArrivalCopy.settingsSkipFilledSubtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(rgb: ground.tokens.number))
+                }
+            }
+            .tint(Color(rgb: ground.tokens.ink))
+
+            HStack {
+                Text(verbatim: ArrivalCopy.settingsEndOfWordTitle)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                Spacer(minLength: 12)
+                // The picker's boolean maps first-blank/next-clue, so the menu carries
+                // the two option labels the copy pins and the store reads them back.
+                Picker(
+                    ArrivalCopy.settingsEndOfWordTitle,
+                    selection: $typingPrefs.endOfWordIsNextClue
+                ) {
+                    Text(verbatim: ArrivalCopy.settingsEndOfWordNextClue).tag(true)
+                    Text(verbatim: ArrivalCopy.settingsEndOfWordFirstBlank).tag(false)
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .tint(Color(rgb: ground.tokens.number))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -275,6 +333,14 @@ public struct SettingsScreen: View {
     }
 }
 
+/// A throwaway store so a preview's toggles never persist into the shared defaults.
+@available(iOS 17.0, macOS 14.0, *)
+@MainActor
+private func previewTypingPrefs() -> NavigationSettingsStore {
+    NavigationSettingsStore(
+        defaults: UserDefaults(suiteName: "preview.settings") ?? .standard)
+}
+
 #Preview("Account, Studio") {
     if #available(iOS 17.0, macOS 14.0, *) {
         SettingsScreen(
@@ -282,6 +348,7 @@ public struct SettingsScreen: View {
                 userId: "11111111-2222-3333-4444-555555555555",
                 displayName: "Ada Lovelace",
                 providerLabel: ArrivalCopy.providerDiscord),
+            typingPrefs: previewTypingPrefs(),
             versionLabel: "1.0 (12)",
             onSignOut: {},
             onDeleteAccount: { nil },
@@ -296,6 +363,7 @@ public struct SettingsScreen: View {
                 userId: "abcdef01-2345-6789-abcd-ef0123456789",
                 displayName: nil,
                 providerLabel: ArrivalCopy.providerApple),
+            typingPrefs: previewTypingPrefs(),
             versionLabel: "1.0 (12)",
             onSignOut: {},
             onDeleteAccount: { ArrivalFailure(code: nil) },

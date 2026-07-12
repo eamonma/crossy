@@ -25,6 +25,41 @@ public enum BoardNavigation {
         var grid: Grid { Grid(cols: cols, rows: rows, blocks: blocks) }
     }
 
+    /// The end-of-word behavior in plain values, the engine's `EndOfWordBehavior`
+    /// re-expressed so the input layer (roadmap I2b) never names an engine type (AD-2).
+    public enum EndOfWord: Sendable, Equatable {
+        case firstBlank
+        case nextClue
+
+        var engine: EndOfWordBehavior {
+            switch self {
+            case .firstBlank: return .firstBlank
+            case .nextClue: return .nextClue
+            }
+        }
+    }
+
+    /// The navigation preferences re-expressed for callers above the store, the engine's
+    /// `NavigationPrefs` in plain values (the `Geometry` pattern). `.default` reproduces
+    /// the pre-slice iOS behavior exactly, so an unset device sees zero change.
+    public struct NavigationPrefs: Sendable, Equatable {
+        public let skipFilledInWord: Bool
+        public let endOfWord: EndOfWord
+
+        public init(skipFilledInWord: Bool, endOfWord: EndOfWord) {
+            self.skipFilledInWord = skipFilledInWord
+            self.endOfWord = endOfWord
+        }
+
+        public static let `default` = NavigationPrefs(
+            skipFilledInWord: true, endOfWord: .firstBlank)
+
+        var engine: CrossyEngine.NavigationPrefs {
+            CrossyEngine.NavigationPrefs(
+                skipFilledInWord: skipFilledInWord, endOfWord: endOfWord.engine)
+        }
+    }
+
     private static func direction(_ isAcross: Bool) -> Direction {
         isAcross ? .across : .down
     }
@@ -52,11 +87,24 @@ public enum BoardNavigation {
     }
 
     /// The cursor move after a letter lands at `from`, with `filled` the board after
-    /// that keystroke (the typing-advance and full-word-asymmetry vectors).
+    /// that keystroke (the typing-advance and full-word-asymmetry vectors). Default
+    /// prefs; keeps the solving axis.
     public static func typingAdvance(
         _ geometry: Geometry, isAcross: Bool, from: Int, filled: Set<Int>
     ) -> Int {
         CrossyEngine.typingAdvance(geometry.grid, direction(isAcross), from, filled)
+    }
+
+    /// The pref-aware typing advance (personal-settings slice 1): the person's chosen
+    /// skip-filled and end-of-word behavior arrives as `prefs` data. `.nextClue` may
+    /// cross the across/down axis, so this returns the landing axis alongside the cell.
+    public static func typingAdvance(
+        _ geometry: Geometry, isAcross: Bool, from: Int, filled: Set<Int>,
+        prefs: NavigationPrefs
+    ) -> (cell: Int, isAcross: Bool) {
+        let target = CrossyEngine.typingAdvance(
+            geometry.grid, direction(isAcross), from, filled, prefs.engine)
+        return (target.cell, target.direction == .across)
     }
 
     /// The cursor move on Backspace (the backspace-step-back vectors).

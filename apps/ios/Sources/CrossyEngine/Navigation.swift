@@ -182,29 +182,69 @@ public func tabTarget(
 }
 
 /// The cursor move after a letter is placed at `from`, with `filled` the board after that
-/// keystroke (so `from` is filled). Advance forward with filled-skip inside the word to the
-/// next empty cell; at the word's end, wrap to the word's first empty cell if the word is
-/// incomplete, or stay on the last cell if the word is full (DESIGN §5).
+/// keystroke (so `from` is filled). The default-prefs advance the navigation vectors pin:
+/// filled-skip forward inside the word to the next empty cell, then at the word's end wrap
+/// to the word's first empty cell if the word is incomplete, or stay on its last cell if the
+/// word is full (DESIGN §5). This is `NavigationPrefs.default` and keeps the same axis, so
+/// the return is a bare cell; the five-argument overload carries a person's chosen prefs and
+/// its possible axis change.
 public func typingAdvance(
     _ grid: Grid, _ direction: Direction, _ from: Int, _ filled: Set<Int>
 ) -> Int {
+    typingAdvance(grid, direction, from, filled, NavigationPrefs.default).cell
+}
+
+/// The pref-aware typing advance (personal-settings slice 1). `prefs` arrives as data
+/// (INV-9); with `NavigationPrefs.default` this is byte-for-byte the four-argument rule
+/// above, so the vectors stay green. The two knobs compose independently:
+///
+/// - `skipFilledInWord` on: scan forward past filled cells to the next blank inside the
+///   word. Off: advance to the immediately next cell of the word, filled or not.
+/// - `endOfWord` decides the move when no in-word forward cell remains. `.firstBlank`
+///   wraps to the word's first blank, staying on the word's last cell when it is full
+///   (the vectored pre-slice rule). `.nextClue` always advances to the next clue in the
+///   Tab traversal order, blanks behind or not (the NYT "move to next word" rule).
+///
+/// The next-clue move reuses `tabTarget` forward, the exact order the auto-advance path
+/// already walks, so it skips full clues and may cross the across/down axis; the returned
+/// `direction` is the landing clue's axis (`.firstBlank`'s in-word landings keep `direction`).
+public func typingAdvance(
+    _ grid: Grid, _ direction: Direction, _ from: Int, _ filled: Set<Int>,
+    _ prefs: NavigationPrefs
+) -> (cell: Int, direction: Direction) {
     let stride = strideOf(grid, direction)
     let bounds = wordBounds(grid, direction, from)
 
-    var cell = from + stride
-    while cell <= bounds.end {
-        if !filled.contains(cell) { return cell }
-        cell += stride
+    // Advance within the word. Skip-on hunts the next blank; skip-off takes the very next
+    // cell regardless of fill. Either way this only fires while a forward cell remains.
+    if prefs.skipFilledInWord {
+        var cell = from + stride
+        while cell <= bounds.end {
+            if !filled.contains(cell) { return (cell, direction) }
+            cell += stride
+        }
+    } else if from + stride <= bounds.end {
+        return (from + stride, direction)
     }
 
-    // Nothing empty after `from`: wrap to the word's first empty cell if any remains.
-    cell = bounds.start
-    while cell <= bounds.end {
-        if !filled.contains(cell) { return cell }
-        cell += stride
+    // No forward cell left inside the word: apply the end-of-word rule.
+    switch prefs.endOfWord {
+    case .firstBlank:
+        var cell = bounds.start
+        while cell <= bounds.end {
+            if !filled.contains(cell) { return (cell, direction) }
+            cell += stride
+        }
+        // The word is full: stay on its last cell. This is the pre-slice default the
+        // navigation vectors pin (full-word-asymmetry.json: typing the last cell of a
+        // full word stays on it). The spec's prose asks `.firstBlank` to advance to the
+        // next clue here; the vector wins (CLAUDE.md precedence), so the default holds
+        // still and the report flags the divergence for the orchestrator.
+        return (bounds.end, direction)
+    case .nextClue:
+        // Advance to the next clue in the Tab order the auto-advance path already walks.
+        return tabTarget(grid, direction, from, .forward, filled)
     }
-
-    return bounds.end  // the word is full: stay on its last cell
 }
 
 /// The cursor move on Backspace. A non-empty `from` clears in place and stays. An

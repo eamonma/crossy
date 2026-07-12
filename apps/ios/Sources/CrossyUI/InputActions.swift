@@ -26,7 +26,9 @@ public struct InputEffect: Equatable, Sendable {
 }
 
 /// Everything an input transform reads: geometry, the INV-10 rendered fill set
-/// (sequenced state painted with the overlay), the cursor, and the terminal freeze.
+/// (sequenced state painted with the overlay), the cursor, the terminal freeze, and the
+/// per-device navigation prefs (personal-settings slice 1). Prefs default to the pre-slice
+/// behavior, so callers that never set them are unchanged and the navigation vectors hold.
 public struct InputEnv: Sendable {
     public let geometry: BoardNavigation.Geometry
     /// Cells currently rendering non-null (GameStore.renderValue, INV-10).
@@ -35,15 +37,20 @@ public struct InputEnv: Sendable {
     /// True after completed or abandoned: navigation stays live, mutation freezes
     /// locally and never reaches the wire (the web twin's frozen rule).
     public let frozen: Bool
+    /// The person's typing-advance settings, per device and client-local; `.default`
+    /// reproduces the pre-slice behavior exactly.
+    public let navigationPrefs: BoardNavigation.NavigationPrefs
 
     public init(
-        puzzle: GridPuzzle, filled: Set<Int>, selection: GridSelection, frozen: Bool
+        puzzle: GridPuzzle, filled: Set<Int>, selection: GridSelection, frozen: Bool,
+        navigationPrefs: BoardNavigation.NavigationPrefs = .default
     ) {
         self.geometry = BoardNavigation.Geometry(
             cols: puzzle.cols, rows: puzzle.rows, blocks: puzzle.blocks)
         self.filled = filled
         self.selection = selection
         self.frozen = frozen
+        self.navigationPrefs = navigationPrefs
     }
 }
 
@@ -136,11 +143,14 @@ public enum InputActions {
         if env.frozen { return refused(env) }
         var filledAfter = env.filled
         filledAfter.insert(env.selection.cell)
+        // The pref-aware advance carries the person's skip-filled and end-of-word choices
+        // (slice 1). The end-of-word `.nextClue` move may cross the across/down axis, so
+        // the landing axis rides back with the cell rather than being pinned here.
         let next = BoardNavigation.typingAdvance(
             env.geometry, isAcross: env.selection.isAcross, from: env.selection.cell,
-            filled: filledAfter)
+            filled: filledAfter, prefs: env.navigationPrefs)
         return InputEffect(
-            selection: GridSelection(cell: next, isAcross: env.selection.isAcross),
+            selection: GridSelection(cell: next.cell, isAcross: next.isAcross),
             mutations: [.place(cell: env.selection.cell, value: value)])
     }
 

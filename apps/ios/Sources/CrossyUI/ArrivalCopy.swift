@@ -118,6 +118,18 @@ public enum ArrivalCopy {
     public static let settingsNoName = "Signed in"
     public static let signOutAction = "Sign out"
     public static let deleteAccountAction = "Delete account"
+
+    // Typing preferences (personal-settings slice 1): the two per-device navigation
+    // knobs, worded the way the web twin words them so both surfaces read the same.
+    /// The quiet caps header over the typing-preferences block.
+    public static let settingsTypingSection = "Typing"
+    /// The skip-filled toggle and its one-line subtitle.
+    public static let settingsSkipFilledTitle = "Skip filled squares"
+    public static let settingsSkipFilledSubtitle = "While typing within a word"
+    /// The end-of-word picker and its two option labels.
+    public static let settingsEndOfWordTitle = "At the end of a word"
+    public static let settingsEndOfWordNextClue = "Move to the next clue"
+    public static let settingsEndOfWordFirstBlank = "Jump back to the first blank"
     /// The provider line beneath the name, or the fallback when none is remembered.
     public static let providerDiscord = "Discord"
     public static let providerApple = "Apple"
