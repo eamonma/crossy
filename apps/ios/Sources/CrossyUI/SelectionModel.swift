@@ -29,32 +29,44 @@ public final class SelectionModel {
     @ObservationIgnored private let isFrozen: () -> Bool
     @ObservationIgnored private let sendPlace: (Int, String) -> Void
     @ObservationIgnored private let sendClear: (Int) -> Void
+    /// The person's navigation settings, read fresh on every keystroke so a change in
+    /// Settings applies live to the open room (personal-settings slice 1). It arrives as
+    /// a closure over the app's local store; the default reproduces the pre-slice behavior.
+    @ObservationIgnored private let navigationPrefs: () -> BoardNavigation.NavigationPrefs
 
     public init(
         puzzle: GridPuzzle,
         isFilled: @escaping (Int) -> Bool,
         isFrozen: @escaping () -> Bool,
         sendPlace: @escaping (Int, String) -> Void,
-        sendClear: @escaping (Int) -> Void
+        sendClear: @escaping (Int) -> Void,
+        navigationPrefs: @escaping () -> BoardNavigation.NavigationPrefs = { .default }
     ) {
         self.puzzle = puzzle
         self.isFilled = isFilled
         self.isFrozen = isFrozen
         self.sendPlace = sendPlace
         self.sendClear = sendClear
+        self.navigationPrefs = navigationPrefs
         self.selection = InputActions.initialSelection(puzzle)
     }
 
     /// The store binding: fills read the INV-10 rendered composite (sequenced state
     /// painted with the overlay), the freeze reads the terminal status, and
-    /// mutations go through the store's command path.
-    public convenience init(store: GameStore, puzzle: GridPuzzle) {
+    /// mutations go through the store's command path. Navigation prefs arrive as a
+    /// closure the composition root supplies over the app's local settings store; the
+    /// default keeps the pre-slice behavior for callers that pass none.
+    public convenience init(
+        store: GameStore, puzzle: GridPuzzle,
+        navigationPrefs: @escaping () -> BoardNavigation.NavigationPrefs = { .default }
+    ) {
         self.init(
             puzzle: puzzle,
             isFilled: { store.renderValue($0) != nil },
             isFrozen: { store.status != .ongoing },
             sendPlace: { store.placeLetter(cell: $0, value: $1) },
-            sendClear: { store.clearCell(cell: $0) })
+            sendClear: { store.clearCell(cell: $0) },
+            navigationPrefs: navigationPrefs)
     }
 
     public var isRebusActive: Bool { rebusBuffer != nil }
@@ -145,7 +157,8 @@ public final class SelectionModel {
             puzzle: puzzle,
             filled: Set((0..<puzzle.cellCount).filter(isFilled)),
             selection: selection,
-            frozen: isFrozen())
+            frozen: isFrozen(),
+            navigationPrefs: navigationPrefs())
     }
 
     private func apply(_ effect: InputEffect) {

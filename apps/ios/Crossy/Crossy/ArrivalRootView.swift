@@ -98,6 +98,11 @@ struct ArrivalRootView: View {
     /// RoomsScreen, because the push lives in this hierarchy (AD-2, mirroring the
     /// join sheet's namespace ownership).
     @Namespace private var roomZoom
+    /// The per-device typing settings (personal-settings slice 1), owned here so both
+    /// the Settings tab that edits them and every room that reads them share one store;
+    /// a change in Settings reaches an open room live (SelectionModel re-reads the prefs
+    /// closure on each keystroke). Persisted in UserDefaults, off the wire entirely.
+    @State private var typingPrefs = NavigationSettingsStore()
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
@@ -349,6 +354,7 @@ struct ArrivalRootView: View {
         if let identity = model.selfIdentity {
             SettingsScreen(
                 identity: identity,
+                typingPrefs: typingPrefs,
                 versionLabel: model.versionLabel,
                 onSignOut: {
                     Task { await model.session.signOut() }
@@ -393,7 +399,8 @@ struct ArrivalRootView: View {
                         apiBaseURL: facts.apiBaseURL,
                         sessionBaseURL: facts.sessionBaseURL,
                         gameId: gameId,
-                        tokenProvider: model.session.tokenProvider),
+                        tokenProvider: model.session.tokenProvider,
+                        navigationPrefs: { typingPrefs.navigationPrefs }),
                     onBack: pop,
                     onExit: pop
                 )

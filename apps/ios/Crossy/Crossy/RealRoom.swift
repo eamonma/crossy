@@ -60,9 +60,14 @@ final class RealRoom {
     private let sessionBaseURL: URL
     private let tokenProvider: any BearerTokenProviding
     private let api: CrossyAPIClient
+    /// The person's typing settings, read fresh on every keystroke (personal-settings
+    /// slice 1), so a change in Settings reaches this open room live. The default keeps
+    /// the pre-slice behavior for the harness composition, which sets none.
+    private let navigationPrefs: () -> BoardNavigation.NavigationPrefs
 
     /// The harness composition: every fact including the token is injected
-    /// (RoomConfig, the CROSSY_IT_* pattern).
+    /// (RoomConfig, the CROSSY_IT_* pattern). No settings surface, so the pre-slice
+    /// default prefs stand.
     convenience init(config: RoomConfig) {
         self.init(
             apiBaseURL: config.apiBaseURL,
@@ -73,21 +78,26 @@ final class RealRoom {
 
     /// The arrival composition (I3): the token rides a provider so REST and every
     /// socket redial resolve it fresh (a silent refresh mid-solve just works).
+    /// `navigationPrefs` is the person's live typing settings (slice 1); the default
+    /// keeps the pre-slice behavior for callers that pass none.
     init(
         apiBaseURL: URL,
         sessionBaseURL: URL,
         gameId: String,
-        tokenProvider: any BearerTokenProviding
+        tokenProvider: any BearerTokenProviding,
+        navigationPrefs: @escaping () -> BoardNavigation.NavigationPrefs = { .default }
     ) {
         self.gameId = gameId
         self.sessionBaseURL = sessionBaseURL
         self.tokenProvider = tokenProvider
+        self.navigationPrefs = navigationPrefs
         let placeholder = GridPuzzle(rows: 1, cols: 1, blocks: [])
         puzzle = placeholder
         clues = .empty
         roomName = ""
         api = CrossyAPIClient(baseURL: apiBaseURL, tokenProvider: tokenProvider)
-        selection = SelectionModel(store: store, puzzle: placeholder)
+        selection = SelectionModel(
+            store: store, puzzle: placeholder, navigationPrefs: navigationPrefs)
 
         // The kicked terminal is the composition root's flag (I2d): the store hands the
         // notice off here (it carries no seq, PROTOCOL.md §6), and the root raises the
@@ -117,7 +127,8 @@ final class RealRoom {
         clues = mapped.clues
         roomName = view.name ?? ""
         inviteCode = view.inviteCode
-        selection = SelectionModel(store: store, puzzle: mapped.puzzle)
+        selection = SelectionModel(
+            store: store, puzzle: mapped.puzzle, navigationPrefs: navigationPrefs)
         // Seed the players pill with the REST roster before the first frame renders,
         // so the pill stands at its true width instead of a lone placeholder puck that
         // snaps wide when the `welcome` lands (owner device finding 2026-07-11). The
