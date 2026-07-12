@@ -25,6 +25,11 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
  * scoped to a spectator's WS mutation, so a dedicated REST code is clearer than overloading it.
  * INTERNAL (500) reuses the §11 name for a server fault, returned when a downstream call the
  * action depends on (the session-service notify for an abandon) fails.
+ *
+ * The multi-format ingest envelope (PROTOCOL.md §12, Phase 6, D21) adds UNKNOWN_FORMAT (the
+ * envelope names a format outside the registry; the message names the format and never echoes
+ * the document) and SOLUTION_MISSING (a well-formed document with no complete solution grid;
+ * v1 requires solutions at ingest so check and completion work unchanged, D11).
  */
 export type ApiErrorCode =
   | "UNAUTHORIZED" // 401: bad or missing bearer token
@@ -41,7 +46,9 @@ export type ApiErrorCode =
   | "DEGENERATE_GRID" // 422: zero playable cells, completion would be vacuous (DESIGN.md §7)
   | "REBUS_TOO_LONG" // 422: a solution cell longer than the 10-char cap (SP5)
   | "UNSOLVABLE_CELL" // 422: a solution cell no legal input can satisfy (DESIGN.md §7, SP5)
-  | "AMBIGUOUS_SOLUTION"; // 422: two clues for one slot, a Schroedinger puzzle (SP5)
+  | "AMBIGUOUS_SOLUTION" // 422: two clues for one slot, a Schroedinger puzzle (SP5)
+  | "UNKNOWN_FORMAT" // 400: the envelope names a format not in the registry (PROTOCOL.md §12)
+  | "SOLUTION_MISSING"; // 422: a well-formed document with no complete solution grid (PROTOCOL.md §12, D11)
 
 const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
   UNAUTHORIZED: 401,
@@ -59,6 +66,8 @@ const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
   REBUS_TOO_LONG: 422,
   UNSOLVABLE_CELL: 422,
   AMBIGUOUS_SOLUTION: 422,
+  UNKNOWN_FORMAT: 400,
+  SOLUTION_MISSING: 422,
 };
 
 /** Serialize an API error to its JSON body and HTTP status. */

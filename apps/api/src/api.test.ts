@@ -517,6 +517,81 @@ describe("POST /puzzles ingestion ACL (ROADMAP Phase 3 Track C, G1; SP5; INV-6)"
   });
 });
 
+describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21; ROADMAP 6.1 x1)", () => {
+  const MARKER = "MARKERWORD";
+
+  /** Read the stored `source` jsonb for one puzzle via the superuser inspection pool. */
+  async function storedSource(puzzleId: string): Promise<unknown> {
+    const { rows } = await adminPool.query(
+      "select source from puzzles where puzzle_id = $1",
+      [puzzleId],
+    );
+    return rows[0].source;
+  }
+
+  it("stores source {kind: 'upload', format: 'xwordinfo'} on the legacy bare path", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, FIXTURE);
+    expect(res.status).toBe(201);
+    const { puzzleId } = (await res.json()) as { puzzleId: string };
+    expect(await storedSource(puzzleId)).toEqual({
+      kind: "upload",
+      format: "xwordinfo",
+    });
+  });
+
+  it("ingests the {format, document} envelope equivalently to the bare body, same source", async () => {
+    const token = await auth.mintUpgraded();
+    const bare = await postJson("/puzzles", token, FIXTURE);
+    const enveloped = await postJson("/puzzles", token, {
+      format: "xwordinfo",
+      document: FIXTURE,
+    });
+    expect(bare.status).toBe(201);
+    expect(enveloped.status).toBe(201);
+    const bareBody = (await bare.json()) as {
+      puzzleId: string;
+      puzzle: unknown;
+    };
+    const envBody = (await enveloped.json()) as {
+      puzzleId: string;
+      puzzle: unknown;
+    };
+    expect(envBody.puzzle).toEqual(bareBody.puzzle);
+    expect(await storedSource(envBody.puzzleId)).toEqual({
+      kind: "upload",
+      format: "xwordinfo",
+    });
+  });
+
+  it("rejects an unknown format as UNKNOWN_FORMAT 400, naming the format, never the document (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "puz",
+      document: { grid: [MARKER], answer: MARKER },
+    });
+    await expectRejectionNoLeak(res, 400, "UNKNOWN_FORMAT", MARKER);
+  });
+
+  it("rejects format without document as VALIDATION 400, never echoing the body (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "xwordinfo",
+      extra: MARKER,
+    });
+    await expectRejectionNoLeak(res, 400, "VALIDATION", MARKER);
+  });
+
+  it("rejects a non-string format as VALIDATION 400, never echoing the document (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: 42,
+      document: { grid: [MARKER] },
+    });
+    await expectRejectionNoLeak(res, 400, "VALIDATION", MARKER);
+  });
+});
+
 describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
   it("creates a game, seats the creator as host, and denormalizes the snapshot", async () => {
     const token = await auth.mintUpgraded();

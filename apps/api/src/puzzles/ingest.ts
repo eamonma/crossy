@@ -112,7 +112,8 @@ function reject(code: IngestErrorCode, message: string): IngestResult {
   return { ok: false, code, message };
 }
 
-function isObject(x: unknown): x is Record<string, unknown> {
+/** Shared body guard: a plain JSON object (dispatch.ts keys envelope detection on it). */
+export function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
