@@ -11,13 +11,13 @@ final class RoomCardTests: XCTestCase {
         name: String? = nil, title: String? = nil, members: Int = 2,
         gameId: String = "g1", createdAt: String = "2026-07-01T00:00:00.000Z",
         completedAt: String? = nil, lastActivityAt: String? = nil,
-        stack: [RoomCardMember] = []
+        stack: [RoomCardMember] = [], inviteCode: String? = nil
     ) -> RoomCardModel {
         RoomCardModel(
             gameId: gameId, name: name, puzzleTitle: title,
             rows: 15, cols: 15, memberCount: members, createdBy: "u1",
             createdAt: createdAt, completedAt: completedAt, lastActivityAt: lastActivityAt,
-            members: stack)
+            members: stack, inviteCode: inviteCode)
     }
 
     func test_roomCardModelCarriesTheMappedMemberStack_PROTOCOL12() {

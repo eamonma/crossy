@@ -39,29 +39,60 @@ import CrossyDesign
 import CrossyStore
 import SwiftUI
 
-/// Whether the trailing cluster stands in the bar yet (DESIGN.md §4 toolbar
-/// amendment, SLICE B: one arrival beat). ALL of it (share, players, timer)
-/// ARRIVES on the welcome's beat, together. Before the first `welcome` lands the
-/// store is `connecting`, so the trailing cluster is absent and the withholding
-/// bar is back-only; the welcome flips `sync` off `connecting` and the whole
-/// cluster materializes as its own bar-item insertions, everything true at once
-/// (the solver-filtered members, the invite payload, the ticking clock), so the
-/// open frame's cluster never settles its slots after the #132 zoom push and no
-/// item pops on a different beat. The insert itself carries NO animation (device
-/// rig 2026-07-12: the nav bar's slot pass is UIKit's own and joins no SwiftUI
-/// transaction, so the items just appear). A terminal room's sealed cluster
-/// arrives the same way, on its welcome's beat: any state but `connecting` means a
-/// welcome landed and a board exists. Pure so a test pins it, the
-/// RoomWeather.from(sync:) discipline. Share keeps its OWN payload gate on top
-/// (the invite code, never a dead control); this is the one presence rule beneath
-/// all three.
+/// Whether each trailing piece stands in the bar yet (DESIGN.md §4 toolbar
+/// amendment). Two arrival shapes, chosen by whether the room was BORN WITH A SEED
+/// (the seeded-birth rule, 2026-07-12): a card-tap arrival records the tapped row's
+/// true member stack (PROTOCOL.md §12), so the cluster is born identity-true and
+/// the players + share pills STAND from the push's first frame, and the goo plays
+/// on live data. The unseeded arrival (deep links, code-joins) has no card, so it
+/// keeps the one-beat fallback (SLICE B): the whole trailing cluster arrives
+/// together on the welcome's beat.
+///
+/// The timer is a welcome arrival on BOTH paths: its clock genuinely needs the
+/// welcome (`firstFillAt` and the live sync), so it can never stand pre-welcome
+/// even seeded. So the split is exactly one axis: the timer waits for the welcome
+/// always; the players and share pills stand pre-welcome when a seed exists, and
+/// wait for the welcome otherwise. Every decision is pure on the store's honest
+/// `sync` (`connecting` is the only pre-welcome state, GameStore's SyncState) and
+/// the seeded fact (RoomChromeModel.seeded, set by the composition root at
+/// construction), never a view-inline branch. The insert itself carries NO
+/// animation (device rig 2026-07-12: the nav bar's slot pass is UIKit's own and
+/// joins no SwiftUI transaction, so the items just appear). Share keeps its OWN
+/// payload gate on top (the invite code, never a dead control), which the seed
+/// satisfies pre-REST (GameSummary carries the member-only code, §12); this is the
+/// one presence rule beneath all three.
 @available(iOS 17.0, macOS 14.0, *)
 enum ClusterPresence {
     /// True once the first welcome has landed (the room is live). Keyed on the
     /// store's honest existing fact (`connecting` is the only pre-welcome state,
-    /// GameStore's SyncState), never a new flag.
+    /// GameStore's SyncState), never a new flag. The unseeded whole-cluster gate
+    /// and the timer's gate on both paths.
     static func isLive(sync: SyncState) -> Bool {
         sync != .connecting
+    }
+
+    /// Whether the TIMER stands. Welcome-gated on both paths (its clock needs the
+    /// welcome; a seed cannot stand it early), so this is `isLive` unchanged. A
+    /// terminal room's sealed pill arrives the same way, on its welcome's beat.
+    static func showsTimer(sync: SyncState) -> Bool {
+        isLive(sync: sync)
+    }
+
+    /// Whether the PLAYERS pill stands. Seeded: it stands from the push's first
+    /// frame, identity-true from the row's member stack (the goo plays on live
+    /// data). Unseeded: it waits for the welcome (the one-beat fallback). The pucks
+    /// render through the exact same RosterMenu → RosterList.cluster path either
+    /// way, so the solvers-only display rule applies to seeded members identically
+    /// (spectators seed the store but never widen the pill).
+    static func showsPlayers(sync: SyncState, seeded: Bool) -> Bool {
+        seeded || isLive(sync: sync)
+    }
+
+    /// Whether the SHARE pill stands. Same seeded-vs-welcome shape as players; the
+    /// bar keeps `hasShare` (the code + link payload) on top of this, which the
+    /// seed satisfies pre-REST from the member-only invite code (§12).
+    static func showsShare(sync: SyncState, seeded: Bool) -> Bool {
+        seeded || isLive(sync: sync)
     }
 }
 
@@ -156,12 +187,15 @@ struct RoomBarInputs {
     let members: [RosterMember]
     let backHandedOff: Bool
     let timeHandedOff: Bool
-    /// Whether the whole trailing cluster stands in the bar yet (ClusterPresence,
-    /// DESIGN.md §4 toolbar amendment, SLICE B): false before the first welcome, so
-    /// the withholding bar is back-only, and share, players, and timer all arrive
-    /// together on the welcome's beat (one arrival beat). Share keeps `hasShare` on
-    /// top for its own payload gate.
-    let showsCluster: Bool
+    /// Whether each trailing piece stands in the bar yet (ClusterPresence, DESIGN.md
+    /// §4 toolbar amendment). The timer is welcome-gated on both paths; the players
+    /// and share pills stand pre-welcome when the room was born with a seed (the
+    /// seeded-birth rule, §12), so a card-tap arrival goos its cluster on live data,
+    /// and wait for the welcome otherwise (the one-beat fallback). Share keeps
+    /// `hasShare` on top for its own payload gate (the seed satisfies it pre-REST).
+    let showsTimer: Bool
+    let showsPlayers: Bool
+    let showsShare: Bool
     let hasShare: Bool
     let onBack: () -> Void
     let onTapTimePill: () -> Void
@@ -214,13 +248,18 @@ struct RoomBarInputs {
             .sharedBackgroundVisibility(
                 BarItemGlass.backgroundHidden(handedOff: inputs.backHandedOff)
                     ? .hidden : .automatic)
-            // The trailing cluster ARRIVES together once the room is live (DESIGN.md
-            // §4 toolbar amendment, SLICE B: one arrival beat). Before the first
-            // welcome the bar is back-only; the welcome flips sync and the whole
-            // cluster (timer, share, players) materializes on the same beat, each
-            // everything true at once. Sharing one presence gate means no item pops
-            // on a different beat, the staggered sequence the owner saw retired.
-            if inputs.showsCluster {
+            // The trailing pieces arrive per the seeded-birth rule (DESIGN.md §4
+            // toolbar amendment, §12). Each gates on its own ClusterPresence
+            // decision now, not one shared flag: the TIMER waits for the welcome on
+            // both paths (its clock needs the welcome), while the players and share
+            // pills STAND from the push's first frame when the room was born with a
+            // seed, so a card-tap arrival goos them on live data. Trailing order is
+            // fixed timer / share / players, so when the timer lands on the welcome
+            // it inserts BEFORE a seeded share + players that already stood, and they
+            // keep their identity (the same items, never re-inserted). An unseeded
+            // room stands nothing trailing until the welcome, when all three insert
+            // together (the one-beat fallback).
+            if inputs.showsTimer {
                 ToolbarItem(placement: .topBarTrailing) {
                     RoomTimePill(
                         ground: inputs.ground, weather: inputs.weather,
@@ -243,22 +282,25 @@ struct RoomBarInputs {
                 // room-bar cluster law, DESIGN.md §4: back / time / share /
                 // players, each its own object). One spacer per gap.
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                // Share keeps its OWN payload gate on top of the cluster presence
-                // (never a dead control): the Menu's rows bake the invite code, so
-                // the item stands only once the code and link exist. On the welcome
-                // beat the code is already in hand (GET /games/{id}), so share arrives
-                // with the cluster; a room with no shareable never stands it.
-                if inputs.hasShare, let code = inputs.shareCode,
-                    let url = inputs.shareUrlString
-                {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        ShareMenuPill(
-                            ground: inputs.ground, code: code, urlString: url,
-                            onCopyLink: inputs.onCopyShareLink,
-                            onShare: inputs.onShareInvite)
-                    }
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            // Share keeps its OWN payload gate on top of the presence rule (never a
+            // dead control): the Menu's rows bake the invite code, so the item stands
+            // only once the code and link exist. A seed carries the member-only code
+            // pre-REST (§12), so share stands from the push's first frame on a
+            // card-tap arrival; unseeded, it waits for the welcome. A room with no
+            // shareable never stands it.
+            if inputs.showsShare, inputs.hasShare, let code = inputs.shareCode,
+                let url = inputs.shareUrlString
+            {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareMenuPill(
+                        ground: inputs.ground, code: code, urlString: url,
+                        onCopyLink: inputs.onCopyShareLink,
+                        onShare: inputs.onShareInvite)
                 }
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            if inputs.showsPlayers {
                 ToolbarItem(placement: .topBarTrailing) {
                     RosterMenu(
                         ground: inputs.ground, members: inputs.members,
@@ -286,12 +328,13 @@ struct RoomToolbarFallback: ToolbarContent {
                 ground: inputs.ground, handedOff: inputs.backHandedOff,
                 onBack: inputs.onBack, reportFrame: inputs.reportFrame)
         }
-        // The trailing cluster arrives together on the welcome's beat here too
-        // (DESIGN.md §4 toolbar amendment, SLICE B): before the room is live the
-        // fallback bar is back-only, and timer, share, and players insert together
-        // when sync flips. The bar's own item insertion is the system's, Reduce
-        // Motion included.
-        if inputs.showsCluster {
+        // The trailing pieces gate per the seeded-birth rule here too (DESIGN.md §4
+        // toolbar amendment, §12): the timer waits for the welcome, the seeded
+        // players and share stand from the push's first frame (unseeded, all three
+        // wait for the welcome, the one-beat fallback). No ToolbarSpacer here (it is
+        // 26-only); the system's default item spacing keeps the pills apart. The
+        // bar's own item insertion is the system's, Reduce Motion included.
+        if inputs.showsTimer {
             ToolbarItem(placement: BarPlacement.trailing) {
                 RoomTimePill(
                     ground: inputs.ground, weather: inputs.weather,
@@ -300,16 +343,18 @@ struct RoomToolbarFallback: ToolbarContent {
                     status: inputs.status, handedOff: inputs.timeHandedOff,
                     onTap: inputs.onTapTimePill, reportFrame: inputs.reportFrame)
             }
-            if inputs.hasShare, let code = inputs.shareCode,
-                let url = inputs.shareUrlString
-            {
-                ToolbarItem(placement: BarPlacement.trailing) {
-                    ShareMenuPill(
-                        ground: inputs.ground, code: code, urlString: url,
-                        onCopyLink: inputs.onCopyShareLink,
-                        onShare: inputs.onShareInvite)
-                }
+        }
+        if inputs.showsShare, inputs.hasShare, let code = inputs.shareCode,
+            let url = inputs.shareUrlString
+        {
+            ToolbarItem(placement: BarPlacement.trailing) {
+                ShareMenuPill(
+                    ground: inputs.ground, code: code, urlString: url,
+                    onCopyLink: inputs.onCopyShareLink,
+                    onShare: inputs.onShareInvite)
             }
+        }
+        if inputs.showsPlayers {
             ToolbarItem(placement: BarPlacement.trailing) {
                 RosterMenu(
                     ground: inputs.ground, members: inputs.members,
@@ -345,20 +390,27 @@ struct RoomToolbarHost: ViewModifier {
 // MARK: - The withholding room's bar (the live-data birth rule, DESIGN.md §4)
 
 /// The chrome the WITHHOLDING room carries before the board (DESIGN.md §4, the
-/// live-data birth rule). On live data RealRoomView withholds SolveScreen until the
-/// REST view lands (the I3f quiet canvas), so the full RoomToolbar has no host yet;
-/// without a bar during the #132 zoom push there is NOTHING to goo into, and every
-/// item pops at REST-mount (owner device finding: on live data the trailing cluster
-/// did not animate, only the fixture's instant SolveScreen looked right). The rule:
-/// THE BAR IS BORN WITH THE PUSH, carrying only the piece that CAN stand pre-REST:
-/// OUR back button, the way out (onBack/kicked-exit semantics). The players pill no
-/// longer stands pre-welcome (the seed experiment retired 2026-07-12: its count was
-/// wrong by construction, the pill cluster is solvers-only but a card's memberCount
-/// counts everyone; the hollow placeholder pucks read as an empty capsule on device).
-/// The whole trailing cluster arrives together on the welcome's beat now (SLICE B), so
-/// pre-welcome the withholding bar is back-only. The back button reuses RoomBackButton
-/// in the SAME placement the full bar uses, so the nav bar keeps its identity across
-/// the withheld→ready branch swap and nothing re-inserts.
+/// live-data birth rule, and the seeded-birth rule §12). On live data RealRoomView
+/// withholds SolveScreen until the REST view lands (the I3f quiet canvas), so the
+/// full RoomToolbar has no host yet; without a bar during the #132 zoom push there is
+/// NOTHING to goo into, and every item pops at REST-mount (owner device finding: on
+/// live data the trailing cluster did not animate, only the fixture's instant
+/// SolveScreen looked right). The rule: THE BAR IS BORN WITH THE PUSH.
+///
+/// OUR back button always stands (the way out, onBack/kicked-exit semantics). When a
+/// SEED exists (a card-tap arrival recorded the row's true member stack, §12), the
+/// players pill and the share pill ALSO stand from the push's first frame,
+/// identity-true: the players pill through the exact same RosterMenu → RosterList
+/// .cluster path the live pill uses (solvers-only, so spectators seed the store but
+/// never widen the pill), and the share pill from the seeded invite code (its Menu
+/// payload complete pre-REST). The timer stays welcome-gated (its clock needs the
+/// welcome), so it never stands here even seeded. This supersedes the deleted
+/// placeholder experiment, which was false (count-only, guests miscounted, hollow
+/// pucks); this is true data, the difference. The pieces reuse the SAME piece views
+/// in the SAME placements the full bar uses (back leading; share then players
+/// trailing, split by a ToolbarSpacer), so the nav bar keeps their identity across
+/// the withheld→ready branch swap and nothing re-inserts; the welcome then inserts
+/// only the timer, before the standing share.
 #if os(iOS)
     @available(iOS 26.0, *)
     @MainActor
@@ -366,6 +418,11 @@ struct RoomToolbarHost: ViewModifier {
         let ground: GridGround
         let backHandedOff: Bool
         let onBack: () -> Void
+        /// The seeded trailing cluster, present only when the room was born with a
+        /// seed. nil on the unseeded path (deep links, code-joins), where the
+        /// withholding bar stays back-only and the whole cluster arrives on the
+        /// welcome (the one-beat fallback).
+        let seed: RoomOpeningSeed?
 
         var body: some ToolbarContent {
             ToolbarItem(placement: .topBarLeading) {
@@ -383,19 +440,85 @@ struct RoomToolbarHost: ViewModifier {
             .sharedBackgroundVisibility(
                 BarItemGlass.backgroundHidden(handedOff: backHandedOff)
                     ? .hidden : .automatic)
+            // The seeded trailing cluster: share then players, split by a spacer, the
+            // full bar's trailing order minus the welcome-gated timer. The full bar
+            // stands the same two items in the same placements when SolveScreen mounts
+            // still pre-welcome, so the identity holds across the swap and only the
+            // timer inserts later.
+            if let seed {
+                if let code = seed.shareCode, let url = seed.shareUrlString {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ShareMenuPill(
+                            ground: ground, code: code, urlString: url,
+                            onCopyLink: seed.onCopyShareLink, onShare: seed.onShareInvite)
+                    }
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    RosterMenu(
+                        ground: ground, members: seed.members,
+                        selfUserId: seed.selfUserId, onJoinIn: seed.onJoinIn,
+                        onKick: seed.onKick, onGoTo: seed.onGoTo)
+                }
+            }
         }
     }
 #endif
 
+/// The seeded trailing cluster the withholding bar stands (DESIGN.md §4, the
+/// seeded-birth rule §12): the identity-true players and share pills, born from the
+/// tapped row's member stack and its invite code, so the goo plays on live data with
+/// no placeholders. Threaded through RoomOpeningToolbarHost by the composition root,
+/// which owns the store→RosterMember map and the share payload; nil on the unseeded
+/// path. The members are the SEEDED roster (RosterList.cluster filters spectators
+/// out, the solvers-only rule, identically to the live pill), so a spectator seat
+/// seeds the store but never widens the pill.
+@available(iOS 17.0, macOS 14.0, *)
+public struct RoomOpeningSeed {
+    let members: [RosterMember]
+    let selfUserId: String?
+    let shareCode: String?
+    let shareUrlString: String?
+    let onJoinIn: () -> Void
+    let onKick: (String) -> Void
+    let onGoTo: (RosterMember) -> Void
+    let onCopyShareLink: () -> Void
+    let onShareInvite: () -> Void
+
+    public init(
+        members: [RosterMember],
+        selfUserId: String?,
+        shareCode: String?,
+        shareUrlString: String?,
+        onJoinIn: @escaping () -> Void = {},
+        onKick: @escaping (String) -> Void = { _ in },
+        onGoTo: @escaping (RosterMember) -> Void = { _ in },
+        onCopyShareLink: @escaping () -> Void = {},
+        onShareInvite: @escaping () -> Void = {}
+    ) {
+        self.members = members
+        self.selfUserId = selfUserId
+        self.shareCode = shareCode
+        self.shareUrlString = shareUrlString
+        self.onJoinIn = onJoinIn
+        self.onKick = onKick
+        self.onGoTo = onGoTo
+        self.onCopyShareLink = onCopyShareLink
+        self.onShareInvite = onShareInvite
+    }
+}
+
 /// The below-26 fallback (and the macOS test host) for the withholding room's bar:
-/// the same piece (back only), no ToolbarSpacer (26-only), the plain bar material
-/// (the §4 one-fallback rule).
+/// the same pieces as the 26 path, no ToolbarSpacer (26-only), the plain bar
+/// material (the §4 one-fallback rule). Back always; the seeded share and players
+/// when a seed exists (the seeded-birth rule §12).
 @available(iOS 18.0, macOS 14.0, *)
 @MainActor
 struct RoomOpeningToolbarFallback: ToolbarContent {
     let ground: GridGround
     let backHandedOff: Bool
     let onBack: () -> Void
+    let seed: RoomOpeningSeed?
 
     var body: some ToolbarContent {
         ToolbarItem(placement: BarPlacement.leading) {
@@ -403,31 +526,51 @@ struct RoomOpeningToolbarFallback: ToolbarContent {
                 ground: ground, handedOff: backHandedOff,
                 onBack: onBack, reportFrame: { _, _ in })
         }
+        if let seed {
+            if let code = seed.shareCode, let url = seed.shareUrlString {
+                ToolbarItem(placement: BarPlacement.trailing) {
+                    ShareMenuPill(
+                        ground: ground, code: code, urlString: url,
+                        onCopyLink: seed.onCopyShareLink, onShare: seed.onShareInvite)
+                }
+            }
+            ToolbarItem(placement: BarPlacement.trailing) {
+                RosterMenu(
+                    ground: ground, members: seed.members,
+                    selfUserId: seed.selfUserId, onJoinIn: seed.onJoinIn,
+                    onKick: seed.onKick, onGoTo: seed.onGoTo)
+            }
+        }
     }
 }
 
-/// Attaches the withholding room's bar (DESIGN.md §4, the live-data birth rule),
-/// gating the 26-only path from the below-26 fallback exactly as RoomToolbarHost does.
-/// Public so the app target's RealRoomView (the composition root that owns the
-/// withholding, AD-2) can carry it over the RoomOpening and RoomOpenFailure branches:
-/// the bar is born with the push, so OUR back button always stands (the way out on the
-/// failure branch too), and the whole trailing cluster arrives together on the
-/// welcome's beat once SolveScreen mounts (SLICE B). The withholding room opens no
-/// panel, so no frame is reported here (the full bar re-attaches the report when
-/// SolveScreen mounts).
+/// Attaches the withholding room's bar (DESIGN.md §4, the live-data birth rule and
+/// the seeded-birth rule §12), gating the 26-only path from the below-26 fallback
+/// exactly as RoomToolbarHost does. Public so the app target's RealRoomView (the
+/// composition root that owns the withholding, AD-2) can carry it over the
+/// RoomOpening and RoomOpenFailure branches: the bar is born with the push, so OUR
+/// back button always stands (the way out on the failure branch too). When the room
+/// was born with a seed, the composition root hands a RoomOpeningSeed and the
+/// identity-true players + share pills stand from the push's first frame; the timer
+/// stays welcome-gated, arriving when SolveScreen mounts and the welcome lands. The
+/// withholding room opens no panel, so no frame is reported here (the full bar
+/// re-attaches the report when SolveScreen mounts).
 @available(iOS 18.0, macOS 14.0, *)
 public struct RoomOpeningToolbarHost: ViewModifier {
     let ground: GridGround
     let backHandedOff: Bool
     let onBack: () -> Void
+    let seed: RoomOpeningSeed?
 
     public init(
         ground: GridGround,
         backHandedOff: Bool = false,
+        seed: RoomOpeningSeed? = nil,
         onBack: @escaping () -> Void
     ) {
         self.ground = ground
         self.backHandedOff = backHandedOff
+        self.seed = seed
         self.onBack = onBack
     }
 
@@ -437,20 +580,20 @@ public struct RoomOpeningToolbarHost: ViewModifier {
                 content.toolbar {
                     RoomOpeningToolbar(
                         ground: ground, backHandedOff: backHandedOff,
-                        onBack: onBack)
+                        onBack: onBack, seed: seed)
                 }
             } else {
                 content.toolbar {
                     RoomOpeningToolbarFallback(
                         ground: ground, backHandedOff: backHandedOff,
-                        onBack: onBack)
+                        onBack: onBack, seed: seed)
                 }
             }
         #else
             content.toolbar {
                 RoomOpeningToolbarFallback(
                     ground: ground, backHandedOff: backHandedOff,
-                    onBack: onBack)
+                    onBack: onBack, seed: seed)
             }
         #endif
     }

@@ -51,6 +51,19 @@ public final class RoomChromeModel {
     /// the reconnect deadline this is the root's fact to set, not the store's.
     public var kicked = false
 
+    /// The room was BORN WITH A SEED (the seeded-birth rule, DESIGN.md §4,
+    /// 2026-07-12): a card-tap arrival recorded the tapped row's true member stack
+    /// (PROTOCOL.md §12) and seeded the store's roster before the REST fetch, so the
+    /// players and share pills stand identity-true from the push's first frame and
+    /// the goo plays on live data. A deep link or a code-join has no card, so it
+    /// stays false and the whole trailing cluster keeps the one-beat welcome
+    /// arrival. The composition root's fact, like the reconnect deadline and the
+    /// kicked flag; the store never knows whether its roster was seeded from a card
+    /// or from REST (both land through `seedRoster`, gated to `connecting`). Read by
+    /// ClusterPresence.showsPlayers/showsShare; the timer stays welcome-gated on
+    /// both paths.
+    public var seeded = false
+
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
     @ObservationIgnored private var factsSettleTask: Task<Void, Never>?
 

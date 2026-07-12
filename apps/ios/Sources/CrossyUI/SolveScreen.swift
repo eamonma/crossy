@@ -339,15 +339,20 @@ public struct SolveScreen: View {
                     // refracts through a panel's surface).
                     backHandedOff: pillEclipsed(.backButton),
                     timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
-                    // The whole trailing cluster arrives when the room is live
-                    // (DESIGN.md §4 toolbar amendment, SLICE B: one arrival beat):
-                    // before the first welcome the store is `connecting`, so the
-                    // cluster is absent and the bar is back-only; the welcome flips
-                    // sync and timer, share, and players materialize together, each
-                    // everything true at once. A terminal room's sealed cluster
-                    // arrives the same way, on its welcome's beat (ClusterPresence,
-                    // the honest sync fact).
-                    showsCluster: ClusterPresence.isLive(sync: store.sync),
+                    // Each trailing piece gates per the seeded-birth rule (DESIGN.md
+                    // §4 toolbar amendment, §12): the timer waits for the welcome on
+                    // both paths (its clock needs the welcome), while the players and
+                    // share pills stand from the push's first frame when the room was
+                    // born with a seed (chrome.seeded), so a card-tap arrival keeps
+                    // them standing across the withheld→ready swap and the goo plays
+                    // on live data. Unseeded, all three wait for the welcome (the
+                    // one-beat fallback). ClusterPresence is the one pure seam; share
+                    // keeps `hasShare` on top for its payload gate.
+                    showsTimer: ClusterPresence.showsTimer(sync: store.sync),
+                    showsPlayers: ClusterPresence.showsPlayers(
+                        sync: store.sync, seeded: chrome.seeded),
+                    showsShare: ClusterPresence.showsShare(
+                        sync: store.sync, seeded: chrome.seeded),
                     hasShare: shareable != nil,
                     onBack: onBack,
                     // One mechanism for both moments (redesign 2026-07-11): the
