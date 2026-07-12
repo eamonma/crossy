@@ -91,6 +91,40 @@ final class GridFrameTests: XCTestCase {
         XCTAssertEqual(frame.fill(24), .base)
     }
 
+    // The cross-reference set threads through the frame: a cell in it, not otherwise
+    // claimed by a higher level, resolves to .crossReference, and the active word
+    // still outranks a bare teammate below it. The set defaults empty, so the
+    // convenience init and every existing call site keep resolving as before.
+    func test_crossReferenceSetResolvesBelowCheckAndAboveActiveWord() {
+        let frame = GridFrame(
+            puzzle: mini,
+            values: [:],
+            selection: GridSelection(cell: 10, isAcross: false),
+            cursors: [],
+            participants: [],
+            selfUserId: "ana",
+            ground: .studio,
+            crossReference: [7, 10, 15])
+        // Cell 10 is current: current outranks a cross-reference on the same cell.
+        XCTAssertEqual(frame.fill(10), .current)
+        // Cell 15 is in the active word (down through 10) AND cross-referenced:
+        // cross-reference outranks the active word.
+        XCTAssertEqual(frame.fill(15), .crossReference)
+        // Cell 7 is cross-referenced and nothing higher claims it.
+        XCTAssertEqual(frame.fill(7), .crossReference)
+        // Cell 8 is neither: base.
+        XCTAssertEqual(frame.fill(8), .base)
+    }
+
+    func test_crossReferenceDefaultsEmpty_soExistingFramesNeverTint() {
+        let frame = GridFrame(
+            store: liveStore(), puzzle: mini,
+            selection: GridSelection(cell: 10, isAcross: false), ground: .studio)
+        for cell in 0..<mini.cellCount {
+            XCTAssertNotEqual(frame.fill(cell), .crossReference, "cell \(cell)")
+        }
+    }
+
     // The local cursor and active word render in the local player's color, slotted
     // from the wire color string (the server's string is authoritative).
     func test_cursorTintIsTheLocalPlayersRosterColor() {

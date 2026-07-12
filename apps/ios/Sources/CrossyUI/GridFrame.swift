@@ -17,6 +17,10 @@ public struct GridFrame: Equatable, Sendable {
     /// The word running through the selection on its axis, highlighted in the local
     /// player's color.
     public let activeWord: Set<Int>
+    /// The cells of every clue the current clue cross-references (ClueBook
+    /// .referencedCells), faintly tinted relative to the selection. Empty by default,
+    /// so a frame built without cross-reference facts tints nothing.
+    public let crossReference: Set<Int>
     /// The tint for the local cursor and active word: the local player's roster
     /// color, or ink when ID-1 mutes color in motion (the cursor is color in motion,
     /// apps/ios/DESIGN.md §9; the presence pucks stay colored, they are the
@@ -31,11 +35,13 @@ public struct GridFrame: Equatable, Sendable {
         participants: [GridPresence.ParticipantInput],
         selfUserId: String?,
         ground: GridGround,
+        crossReference: Set<Int> = [],
         colorInMotionEnabled: Bool = AttributionSwitches.colorInMotionEnabled
     ) {
         self.puzzle = puzzle
         self.values = values
         self.selection = selection
+        self.crossReference = crossReference
         self.presence = GridPresence.marks(
             cursors: cursors,
             participants: participants,
@@ -55,6 +61,7 @@ public struct GridFrame: Equatable, Sendable {
             isBlock: puzzle.blocks.contains(cell),
             isCurrent: cell == selection?.cell,
             isChecked: false,  // check styling is M6 scope (GridFill note)
+            isCrossReferenced: crossReference.contains(cell),
             inActiveWord: activeWord.contains(cell),
             hasTeammate: presence[cell] != nil)
     }

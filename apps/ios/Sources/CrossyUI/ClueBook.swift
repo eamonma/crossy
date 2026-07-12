@@ -74,7 +74,13 @@ public struct ClueBook: Sendable, Equatable {
     /// The union of the referenced entries' cells, for the board's faint tint. Every
     /// cell of every clue the `current` clue references, relative to that selection.
     public func referencedCells(for current: ClueEntry?) -> Set<Int> {
-        let ids = referencedIds(for: current)
+        cells(of: referencedIds(for: current))
+    }
+
+    /// The union of cells for a set of entry ids (ClueBook.referencedIds output). Lets
+    /// a call site parse once and feed both the browser rows and the board tint from
+    /// one id set, so the two can never disagree.
+    public func cells(of ids: Set<String>) -> Set<Int> {
         guard !ids.isEmpty else { return [] }
         var cells: Set<Int> = []
         for entry in across + down where ids.contains(entry.id) {
