@@ -54,10 +54,31 @@ describe("nytPuzzleEndpoint", () => {
     ).toBe("/svc/crosswords/v6/puzzle/daily.json");
   });
 
-  it("returns null for archive/date subpaths the by-stream endpoint cannot address", () => {
+  it("maps a dated game page to the dated endpoint (slashes in, dashes out)", () => {
     expect(
       nytPuzzleEndpoint(
-        "https://www.nytimes.com/crosswords/game/daily/2026/07/11",
+        "https://www.nytimes.com/crosswords/game/daily/2026/07/12",
+      ),
+    ).toBe("/svc/crosswords/v6/puzzle/daily/2026-07-12.json");
+    expect(
+      nytPuzzleEndpoint(
+        "https://www.nytimes.com/crosswords/game/mini/2026/07/12/",
+      ),
+    ).toBe("/svc/crosswords/v6/puzzle/mini/2026-07-12.json");
+  });
+
+  it("returns null for paths that are neither a stream nor a dated stream", () => {
+    expect(
+      nytPuzzleEndpoint("https://www.nytimes.com/crosswords/game/daily/2026"),
+    ).toBeNull();
+    expect(
+      nytPuzzleEndpoint(
+        "https://www.nytimes.com/crosswords/game/daily/2026/7/12",
+      ),
+    ).toBeNull();
+    expect(
+      nytPuzzleEndpoint(
+        "https://www.nytimes.com/crosswords/game/daily/2026/07/12/extra",
       ),
     ).toBeNull();
     expect(nytPuzzleEndpoint("not a url")).toBeNull();
