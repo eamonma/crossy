@@ -320,9 +320,10 @@ public struct GameSummary: Sendable, Equatable, Codable {
     public let completedAt: String?
     /// The game's last activity: the newest board event's ISO 8601 timestamp, or nil when no one
     /// has played yet (§12). `MAX(cell_events.at)` read server-side under a SELECT-only grant,
-    /// never a cell value or a solution (INV-6-safe). The list arrives ordered by this field,
-    /// most recent first. Additive and optional on the wire (§14): decoded with
-    /// `decodeIfPresent` so an older server that omits it still decodes (nil = unplayed).
+    /// never a cell value or a solution (INV-6-safe). The list arrives ordered by
+    /// `COALESCE(lastActivityAt, createdAt)`, most recent first, so an unplayed game orders by its
+    /// creation time rather than sorting last. Additive and optional on the wire (§14): decoded
+    /// with `decodeIfPresent` so an older server that omits it still decodes (nil = unplayed).
     public let lastActivityAt: String?
     public let puzzle: PuzzleRef
 

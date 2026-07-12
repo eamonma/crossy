@@ -19,8 +19,9 @@ final class RoomCardTests: XCTestCase {
     }
 
     func test_orderedByActivity_matchesTheServersWithinPageOrder_PROTOCOL12() {
-        // Most recently active first; a played room outranks an unplayed one; unplayed rooms fall
-        // back to createdAt (newest first). The rule mirrors the server's page order (§12).
+        // Most recently touched first, keyed on COALESCE(lastActivityAt, createdAt) (§12). Here the
+        // played rooms' activity (2026-06) is newer than the unplayed rooms' createdAt (2026-03,
+        // 2026-05), so the played rooms lead by activity, then the unplayed by createdAt.
         let played1 = model(
             gameId: "a", createdAt: "2026-01-01T00:00:00.000Z",
             lastActivityAt: "2026-06-01T00:00:00.000Z")
@@ -35,8 +36,24 @@ final class RoomCardTests: XCTestCase {
         let ordered = RoomCardModel.orderedByActivity([
             unplayedOld, played1, unplayedNew, played2,
         ])
-        // Played by activity (b then a), then unplayed by createdAt (d then c).
+        // Coalesced key desc: b (06-05), a (06-01), then d (05-01), c (03-01).
         XCTAssertEqual(ordered.map(\.gameId), ["b", "a", "d", "c"])
+    }
+
+    func test_orderedByActivity_sortsAFreshUnplayedRoomAboveOlderActivity_PROTOCOL12() {
+        // Owner ruling: creating a room is its first activity, so the key is
+        // COALESCE(lastActivityAt, createdAt). A freshly created unplayed room (recent createdAt,
+        // no play) outranks an older room whose last activity predates that creation, NOT below it.
+        let playedOld = model(
+            gameId: "played", createdAt: "2026-01-01T00:00:00.000Z",
+            lastActivityAt: "2026-06-01T00:00:00.000Z")
+        let freshUnplayed = model(
+            gameId: "fresh", createdAt: "2026-06-10T00:00:00.000Z",
+            lastActivityAt: nil)
+        // Coalesce: fresh keys on 2026-06-10, newer than played's activity 2026-06-01, so it leads.
+        XCTAssertEqual(
+            RoomCardModel.orderedByActivity([playedOld, freshUnplayed]).map(\.gameId),
+            ["fresh", "played"])
     }
 
     func test_orderedByActivity_isStableAndTotalOnTies() {
