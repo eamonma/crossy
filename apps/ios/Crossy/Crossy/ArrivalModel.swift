@@ -319,12 +319,15 @@ struct FixtureRooms: RoomsProviding {
                         createdAt: "2026-07-06T19:00:00.000Z",
                         completedAt: nil,
                         lastActivityAt: "2026-07-09T21:14:00.000Z"),
+                    // One solved room, so the trailing "Solved" section is judgeable in the
+                    // fixture walk (-i3Fixture -i3SignedIn): a real completedAt gathers it into
+                    // the shelf and dims its silhouette. The others stay live above it.
                     RoomCardModel(
                         gameId: "fixture-themeless", name: nil,
                         puzzleTitle: "Themeless Saturday", rows: 15, cols: 15,
                         memberCount: 2, createdBy: "bee",
                         createdAt: "2026-07-04T11:00:00.000Z",
-                        completedAt: nil,
+                        completedAt: "2026-07-08T15:07:00.000Z",
                         lastActivityAt: "2026-07-08T15:02:00.000Z"),
                     RoomCardModel(
                         gameId: "fixture-stumper", name: "Sunday call",
