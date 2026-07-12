@@ -9,6 +9,7 @@ import {
   STARTER_GAME_NAME,
   STARTER_PUZZLE,
   STARTER_PUZZLE_AUTHOR,
+  STARTER_PUZZLE_FEATURES,
   STARTER_PUZZLE_TITLE,
 } from "./starter-puzzle";
 
@@ -24,6 +25,7 @@ export async function seedStarterGame(db: Db, userId: string): Promise<void> {
     .insert(schema.puzzles)
     .values({
       data: STARTER_PUZZLE,
+      features: STARTER_PUZZLE_FEATURES,
       title: STARTER_PUZZLE_TITLE,
       author: STARTER_PUZZLE_AUTHOR,
       createdBy: userId,
