@@ -235,7 +235,12 @@ struct ArrivalRootView: View {
                         },
                         onJoinWithCode: { showJoin = true },
                         joinSheetSource: JoinSheetSource(namespace: joinZoom),
-                        roomZoomSource: RoomZoomSource(namespace: roomZoom)
+                        roomZoomSource: RoomZoomSource(namespace: roomZoom),
+                        // The evidence walk (-i3AutoOpen): the first loaded room
+                        // opens through the production tap seam, so a headless
+                        // capture can watch the seeded birth and the goo against
+                        // a live stack. Evidence only, false on every real path.
+                        autoOpenFirstRoom: LaunchFacts.flag("i3AutoOpen")
                     )
                     // The Rooms nav bar is VISIBLE but title-less now (the
                     // toolbar-adoption ruling, DESIGN.md §4): the screen keeps

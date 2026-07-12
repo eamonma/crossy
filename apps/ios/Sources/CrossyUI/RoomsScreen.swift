@@ -84,6 +84,10 @@ public struct RoomsScreen: View {
     /// from (native continuity, DESIGN.md §4). nil in previews and on macOS, the
     /// same floor as the join source; the card then just pushes plainly.
     private let roomZoomSource: RoomZoomSource?
+    /// The evidence walk (-i3AutoOpen): after the first load, open the first room
+    /// through the exact production tap seam, so headless captures can watch the
+    /// seeded birth and the goo. False everywhere but the rig composition.
+    private let autoOpenFirstRoom: Bool
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var rooms: [RoomCardModel] = []
@@ -98,13 +102,15 @@ public struct RoomsScreen: View {
         onOpenRoom: @escaping (RoomCardModel) -> Void,
         onJoinWithCode: @escaping () -> Void,
         joinSheetSource: JoinSheetSource? = nil,
-        roomZoomSource: RoomZoomSource? = nil
+        roomZoomSource: RoomZoomSource? = nil,
+        autoOpenFirstRoom: Bool = false
     ) {
         self.loadPage = loadPage
         self.onOpenRoom = onOpenRoom
         self.onJoinWithCode = onJoinWithCode
         self.joinSheetSource = joinSheetSource
         self.roomZoomSource = roomZoomSource
+        self.autoOpenFirstRoom = autoOpenFirstRoom
     }
 
     private var ground: GridGround {
@@ -122,7 +128,20 @@ public struct RoomsScreen: View {
             // title-less. Below iOS 18 (and the macOS test host) the toolbar
             // still hosts the button, plainly, no zoom (§4 one-fallback rule).
             .toolbar { joinToolbarItem }
-            .task { await reload() }
+            .task {
+                await reload()
+                // The evidence walk (-i3AutoOpen): open the first loaded room
+                // through the EXACT production tap seam (onOpenRoom records the
+                // seed and the zoom source, then pushes), after one beat so the
+                // list paints and the zoom source exists. Headless captures of
+                // the seeded birth and the goo ride this; a hand never could be
+                // scripted onto the glass. Evidence only; the composition root
+                // passes true only for the rig arg.
+                if autoOpenFirstRoom, let first = rooms.first {
+                    try? await Task.sleep(nanoseconds: 600_000_000)
+                    onOpenRoom(first)
+                }
+            }
     }
 
     /// Join as a trailing nav-bar item (the toolbar-adoption ruling, DESIGN.md
