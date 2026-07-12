@@ -13,6 +13,7 @@ import {
 import type { Direction } from "@crossy/engine";
 import type { Clue } from "../domain/types";
 import type { CluePresence, SolverEntry } from "./roster";
+import { ClueText } from "./ClueText";
 import { Divider, cx } from "./primitives";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,7 +52,7 @@ export function ClueStrip({ clue }: { clue: Clue | undefined }) {
             {DIR_ABBR[clue.direction]}
           </span>
           <span className="min-w-0 text-4 font-medium text-text">
-            {clue.text ?? "—"}
+            <ClueText clue={clue} />
           </span>
         </>
       ) : (
@@ -100,7 +101,7 @@ export function ClueBar({
               {DIR_ABBR[clue.direction]}
             </span>
             <span className="min-w-0 truncate text-3 font-medium text-text">
-              {clue.text ?? "—"}
+              <ClueText clue={clue} />
             </span>
           </>
         ) : (
@@ -244,7 +245,7 @@ function ClueList({
                   {c.number}
                 </span>
                 <span className={cx("py-1 pl-2 pr-4 text-2 text-text", dim)}>
-                  {c.text ?? "—"}
+                  <ClueText clue={c} />
                 </span>
                 {onClue !== undefined && <PresenceDots people={onClue} />}
               </button>
@@ -414,7 +415,7 @@ function DockAxis({
                   {c.number}
                 </span>
                 <span className={cx("py-1 pl-2 pr-4 text-2 text-text", dim)}>
-                  {c.text ?? "—"}
+                  <ClueText clue={c} />
                 </span>
                 {onClue !== undefined && <PresenceDots people={onClue} />}
               </button>
