@@ -125,6 +125,28 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertEqual(list.nextBefore, "2026-07-07T09:30:00.000Z")
     }
 
+    func test_gamesListCarriesCompletionThroughCompletedAt_PROTOCOL12() throws {
+        // §12: GET /games reports completion through `completedAt`, the ISO time a game finished,
+        // null while ongoing (and null for an abandoned game). The fixture pins both branches:
+        // the first row is ongoing (null), the second is solved (a real timestamp).
+        let list = try assertLosslessRoundTrip(GamesListResponse.self, .rest, "games-list")
+        XCTAssertNil(list.games[0].completedAt, "an ongoing game has null completion")
+        XCTAssertEqual(
+            list.games[1].completedAt, "2026-07-08T20:11:47.000Z",
+            "a solved game carries its ISO completion time")
+    }
+
+    func test_gamesListDecodesAnOlderServerThatOmitsCompletedAt_PROTOCOL14() throws {
+        // §14 additive tolerance, mirroring lastActivityAt: a server predating the completion
+        // read omits `completedAt`; the twin decodes it as nil (reads as ongoing, §12).
+        let legacy = Data(
+            #"""
+            {"games":[{"gameId":"g","name":null,"role":"solver","createdAt":"2026-07-01T00:00:00.000Z","createdBy":"u","memberCount":2,"lastActivityAt":null,"puzzle":{"puzzleId":"p","rows":15,"cols":15,"title":null}}],"nextBefore":null}
+            """#.utf8)
+        let decoded = try JSONDecoder().decode(GamesListResponse.self, from: legacy)
+        XCTAssertNil(decoded.games[0].completedAt, "an omitted completedAt reads as ongoing")
+    }
+
     func test_gamesListPresentNullCursorMeansExhaustedNotAbsent() throws {
         // A present-null nextBefore (list exhausted) must be distinguishable from an absent key
         // (older server): the client stops on the former and falls back on the latter (§12, §14).
