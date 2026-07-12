@@ -6,30 +6,38 @@
   </head>
   <body>
     <main style="max-width: 480px; padding: 8px; font-family: system-ui">
-      <h1>Crossy (dev auth)</h1>
+      <h1>Crossy</h1>
       <p>
-        Paste an API base URL and a bearer token. This is the v1-dev auth
-        surface; the pairing handshake with the web app replaces it (see
-        DESIGN.md in apps/extension).
+        Nothing to configure: the extension talks to Crossy production and you
+        sign in from the popup.
+      </p>
+      <h2>Advanced (local development)</h2>
+      <p>
+        Overrides for running against a local stack. Leave every field empty for
+        production.
       </p>
       <p>
         <label>
-          API base URL<br />
-          <input
-            id="apiBaseUrl"
-            type="url"
-            size="40"
-            placeholder="https://api.crossy.party"
-          />
+          API base override<br />
+          <input id="apiBaseUrl" type="url" size="40" />
         </label>
       </p>
       <p>
         <label>
-          Bearer token<br />
-          <input id="token" type="password" size="40" />
+          Auth base override (Supabase)<br />
+          <input id="authBaseUrl" type="url" size="40" />
         </label>
       </p>
-      <p><button id="save">Save</button></p>
+      <p>
+        <label>
+          Publishable key override<br />
+          <input id="publishableKey" type="text" size="40" />
+        </label>
+      </p>
+      <p>
+        <button id="save">Save</button>
+        <button id="reset">Reset to production defaults</button>
+      </p>
       <p id="status"></p>
     </main>
     <script src="options.js"></script>

@@ -1,27 +1,72 @@
-// v1-dev auth settings: an API base URL and a bearer token pasted on the options page,
-// held in chrome.storage.local (local, not sync: a token should not fan out across
-// devices). The pairing handshake with the web app replaces this surface (DESIGN.md
-// in this app).
+// Baked production defaults plus optional dev overrides (chrome.storage.local under
+// "overrides"). The defaults matter: rest.crossy.party is the Crossy REST API and
+// api.crossy.party is Supabase auth; pasting the auth host as the API base yields
+// Kong's "requested path is invalid", which is why the API base is no longer user
+// input in the normal path. Overrides exist only for local stacks (options page,
+// advanced section).
 
-export interface Settings {
+/** The Crossy REST API (POST /puzzles lives here). */
+export const DEFAULT_API_BASE = "https://rest.crossy.party";
+
+/** Supabase auth custom domain (GoTrue under /auth/v1). */
+export const DEFAULT_AUTH_BASE = "https://api.crossy.party";
+
+/** Public by design: the same publishable key the web client ships in /config.json. */
+export const DEFAULT_PUBLISHABLE_KEY =
+  "sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd";
+
+/** The dev overrides as stored; absent fields fall back to the baked defaults. */
+export interface Overrides {
+  readonly apiBaseUrl?: string;
+  readonly authBaseUrl?: string;
+  readonly publishableKey?: string;
+}
+
+/** The resolved bases every caller uses: overrides where set, defaults otherwise. */
+export interface Bases {
   readonly apiBaseUrl: string;
-  readonly token: string;
+  readonly authBaseUrl: string;
+  readonly publishableKey: string;
 }
 
-const KEY = "settings";
+const OVERRIDES_KEY = "overrides";
 
-export async function loadSettings(): Promise<Settings | null> {
-  const stored = await chrome.storage.local.get(KEY);
-  const raw: unknown = stored[KEY];
-  if (typeof raw !== "object" || raw === null) return null;
-  const { apiBaseUrl, token } = raw as Partial<Settings>;
-  if (typeof apiBaseUrl !== "string" || apiBaseUrl === "") return null;
-  if (typeof token !== "string" || token === "") return null;
-  return { apiBaseUrl, token };
+export async function loadOverrides(): Promise<Overrides> {
+  const stored = await chrome.storage.local.get(OVERRIDES_KEY);
+  const raw: unknown = stored[OVERRIDES_KEY];
+  if (typeof raw !== "object" || raw === null) return {};
+  const { apiBaseUrl, authBaseUrl, publishableKey } = raw as Partial<
+    Record<keyof Overrides, unknown>
+  >;
+  const overrides: {
+    apiBaseUrl?: string;
+    authBaseUrl?: string;
+    publishableKey?: string;
+  } = {};
+  if (typeof apiBaseUrl === "string" && apiBaseUrl !== "")
+    overrides.apiBaseUrl = apiBaseUrl;
+  if (typeof authBaseUrl === "string" && authBaseUrl !== "")
+    overrides.authBaseUrl = authBaseUrl;
+  if (typeof publishableKey === "string" && publishableKey !== "")
+    overrides.publishableKey = publishableKey;
+  return overrides;
 }
 
-export async function saveSettings(settings: Settings): Promise<void> {
-  await chrome.storage.local.set({ [KEY]: settings });
+export async function saveOverrides(overrides: Overrides): Promise<void> {
+  await chrome.storage.local.set({ [OVERRIDES_KEY]: overrides });
+}
+
+export async function clearOverrides(): Promise<void> {
+  await chrome.storage.local.remove(OVERRIDES_KEY);
+}
+
+export async function loadBases(): Promise<Bases> {
+  const overrides = await loadOverrides();
+  return {
+    apiBaseUrl: overrides.apiBaseUrl ?? DEFAULT_API_BASE,
+    authBaseUrl: overrides.authBaseUrl ?? DEFAULT_AUTH_BASE,
+    publishableKey: overrides.publishableKey ?? DEFAULT_PUBLISHABLE_KEY,
+  };
 }
 
 /** Trim and canonicalize a pasted base URL; null when it is not an http(s) URL. */
@@ -47,8 +92,9 @@ export function originPattern(baseUrl: string): string {
 }
 
 /**
- * Ensure the extension may reach the API origin. Requested on demand, never at
- * install; must run inside a user gesture (a click handler qualifies).
+ * Ensure the extension may reach an origin (API base or auth base, default or
+ * override). Requested on demand, never at install; must run inside a user gesture
+ * (a click handler qualifies).
  */
 export async function ensureOriginPermission(
   baseUrl: string,
