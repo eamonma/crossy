@@ -60,6 +60,7 @@ const FAMILIES = [
   "navigation",
   "completion",
   "client-store",
+  "clue-runs",
 ] as const;
 type Family = (typeof FAMILIES)[number];
 
@@ -76,6 +77,7 @@ const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   navigation: runNavigation,
   completion: runCompletion,
   "client-store": null,
+  "clue-runs": null,
 };
 
 type JsonObject = Record<string, unknown>;
@@ -424,12 +426,85 @@ function clientStoreShapeProblems(c: JsonObject): string[] {
   return problems;
 }
 
+/** The clue-style vocabulary, in the fixed order runs' `s` must follow (PROTOCOL.md §12, law 4). */
+const CLUE_STYLES = ["b", "i", "sub", "sup"] as const;
+
+/**
+ * One `runs` entry: `{ t, s? }`. `t` is a non-empty string (law 3, no empty run); `s` is an
+ * optional array over the style vocabulary, in the fixed b,i,sub,sup order (law 4), with no
+ * duplicates and never empty (law 3). Adjacent-merge and projection are semantic and pinned by
+ * the vectors' `then`, not by this shape check.
+ */
+function clueRunProblems(x: unknown, where: string): string[] {
+  if (!isObject(x)) return [`${where}: object { t, s? } required`];
+  const problems: string[] = [];
+  if (!isString(x.t) || x.t.length === 0)
+    problems.push(`${where}.t: non-empty string required (law 3)`);
+  if (x.s !== undefined) {
+    if (!isStringArray(x.s) || x.s.length === 0) {
+      problems.push(
+        `${where}.s: non-empty array of styles when present (law 3)`,
+      );
+    } else {
+      const order = CLUE_STYLES as readonly string[];
+      let lastRank = -1;
+      const seen = new Set<string>();
+      for (const style of x.s) {
+        const rank = order.indexOf(style);
+        if (rank === -1)
+          problems.push(
+            `${where}.s: unknown style "${style}"; one of ${order.join(", ")}`,
+          );
+        else if (rank <= lastRank)
+          problems.push(
+            `${where}.s: styles must be unique and ordered b,i,sub,sup (law 4), got "${style}"`,
+          );
+        else lastRank = rank;
+        if (seen.has(style))
+          problems.push(`${where}.s: duplicate style "${style}" (law 3)`);
+        seen.add(style);
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Clue-runs cases map a vendor-HTML clue string to `{ text, runs? }` (PROTOCOL.md §12). `given.raw`
+ * is the raw clue string; `then.text` is the canonical plain projection; `then.runs`, present only
+ * when the clue carries styling (law 2), is the minimal structured form. This family is foreign to
+ * the engine (the manifest `foreign` set): the runner shape-validates it but never executes it here.
+ * Its consumer is the clue-run parser and renderer in apps/web and iOS, not packages/engine.
+ */
+function clueRunsShapeProblems(c: JsonObject): string[] {
+  const problems: string[] = [];
+  if (!isString(c.name)) problems.push("name: string required");
+  if (!isObject(c.given) || !isString(c.given.raw))
+    problems.push("given.raw: string required");
+  if (!isObject(c.then)) {
+    problems.push("then: object required");
+    return problems;
+  }
+  const t = c.then;
+  if (!isString(t.text)) problems.push("then.text: string required");
+  if (t.runs !== undefined) {
+    if (!Array.isArray(t.runs) || t.runs.length === 0)
+      problems.push("then.runs: non-empty array when present (law 2)");
+    else
+      t.runs.forEach((r, i) =>
+        problems.push(...clueRunProblems(r, `then.runs[${i}]`)),
+      );
+  }
+  return problems;
+}
+
 const shapeProblems: Record<Family, (c: JsonObject) => string[]> = {
   reducer: reducerShapeProblems,
   comparator: comparatorShapeProblems,
   navigation: navigationShapeProblems,
   completion: completionShapeProblems,
   "client-store": clientStoreShapeProblems,
+  "clue-runs": clueRunsShapeProblems,
 };
 
 // --- Engine binding: adapters between the vector JSON and the engine's own types ---

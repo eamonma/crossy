@@ -1,0 +1,36 @@
+[
+  {
+    "name": "law 11: the starred-clue convention passes through untouched",
+    "given": { "raw": "*Like this clue's answer" },
+    "then": { "text": "*Like this clue's answer" }
+  },
+  {
+    "name": "law 6: Unicode whitespace collapses to single ASCII spaces and trims",
+    "given": { "raw": "  Lots\tof   space  " },
+    "then": { "text": "Lots of space" }
+  },
+  {
+    "name": "law 10: a collapsed space across a style boundary carries the style of its first whitespace char",
+    "given": { "raw": "<i>word </i> next" },
+    "then": {
+      "text": "word next",
+      "runs": [{ "t": "word ", "s": ["i"] }, { "t": "next" }]
+    }
+  },
+  {
+    "name": "law 10: a run emptied by leading trim is dropped, later styled content survives",
+    "given": { "raw": "<b> </b><i>keeper</i>" },
+    "then": {
+      "text": "keeper",
+      "runs": [{ "t": "keeper", "s": ["i"] }]
+    }
+  },
+  {
+    "name": "law 10: a run emptied by trailing trim is dropped",
+    "given": { "raw": "<i>keeper</i><b> </b>" },
+    "then": {
+      "text": "keeper",
+      "runs": [{ "t": "keeper", "s": ["i"] }]
+    }
+  }
+]

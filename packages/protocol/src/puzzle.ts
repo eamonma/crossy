@@ -15,11 +15,34 @@
  */
 export type Solution = string & { readonly __solutionBrand: unique symbol };
 
-/** A clue, structured at ingestion (DESIGN.md §7). No answer field, on either side of the split. */
+/**
+ * A clue style token (PROTOCOL.md §12). Vendor markup maps into this closed set: `<i>`/`<em>` to
+ * `"i"`, `<b>`/`<strong>` to `"b"`, `<sub>` to `"sub"`, `<sup>` to `"sup"`. Nesting flattens to a
+ * set, ordered `b`, `i`, `sub`, `sup` in a run's `s`.
+ */
+export type ClueStyle = "i" | "b" | "sub" | "sup";
+
+/**
+ * One styled span of a clue (PROTOCOL.md §12). `t` is a non-empty slice of the plain text; `s` is
+ * its style set, omitted when the run is plain. The concatenation of every run's `t` equals the
+ * clue's `text` exactly (the plain projection).
+ */
+export interface ClueRun {
+  readonly t: string;
+  readonly s?: readonly ClueStyle[];
+}
+
+/**
+ * A clue, structured at ingestion (DESIGN.md §7). No answer field, on either side of the split.
+ * `text` is the canonical plain projection; `runs` is the optional additive render form
+ * (PROTOCOL.md §12), present only when the clue carries styling, omitted when it is wholly plain.
+ */
 export interface Clue {
   readonly number: number;
   readonly text: string;
   readonly cellIndices: readonly number[];
+  /** Structured markup runs (PROTOCOL.md §12). Absent when the clue is unstyled; renders `text`. */
+  readonly runs?: readonly ClueRun[];
 }
 
 /** Across and down clue lists. */
