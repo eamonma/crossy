@@ -11,6 +11,21 @@ export const DEFAULT_API_BASE = "https://rest.crossy.party";
 /** Supabase auth custom domain (GoTrue under /auth/v1). */
 export const DEFAULT_AUTH_BASE = "https://api.crossy.party";
 
+/** The web app. The extension ingests; crossy.party plays (D22). Never user input. */
+const WEB_ORIGIN = "https://crossy.party";
+
+/** The signed-in library on the web app. */
+export const WEB_LIBRARY_URL = `${WEB_ORIGIN}/puzzles`;
+
+/**
+ * The web app's play intent for one puzzle: where "Play in Crossy" lands after
+ * ingest. The route is pinned by the web app; keeping it here makes a route
+ * change a one-line diff.
+ */
+export function playIntentUrl(puzzleId: string): string {
+  return `${WEB_ORIGIN}/puzzles?play=${encodeURIComponent(puzzleId)}`;
+}
+
 /** Public by design: the same publishable key the web client ships in /config.json. */
 export const DEFAULT_PUBLISHABLE_KEY =
   "sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd";

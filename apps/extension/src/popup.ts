@@ -1,8 +1,9 @@
-// Action popup, three honest states. Signed out: one button per provider; the click
-// requests the auth-origin permission (inside the gesture) and hands the flow to the
-// service worker, because this popup closes when the auth window takes focus. Signed
-// in: the identity line, sign out, and the ingest flow. Every rejection is surfaced
-// verbatim (PROTOCOL.md section 12), never rewritten.
+// Action popup. Signed out: one button per provider; the click requests both host
+// origins (inside the gesture) and hands the flow to the service worker, because
+// this popup closes when the auth window takes focus. Signed in on a supported
+// page: Play in Crossy leads (ingest, then open the web app's play intent in a new
+// tab), Add to library is the quieter path (result line plus a library link).
+// Every rejection is surfaced verbatim (PROTOCOL.md section 12), never rewritten.
 
 import { postPuzzle } from "./api";
 import type { Provider } from "./auth/flow";
@@ -12,10 +13,13 @@ import { chromeLocalArea, loadSession, SESSION_KEY } from "./auth/store";
 import { buildEnvelope } from "./envelope";
 import { EXTRACT_REQUEST } from "./messaging";
 import type { ExtractResponse } from "./messaging";
-import { loadBases, requestOriginPermissions } from "./settings";
+import {
+  loadBases,
+  playIntentUrl,
+  requestOriginPermissions,
+  WEB_LIBRARY_URL,
+} from "./settings";
 import type { Bases } from "./settings";
-
-const WEB_LIBRARY_URL = "https://crossy.party/puzzles";
 
 // Resolved once at init so click handlers never await before their permission
 // request (Firefox drops the gesture after any await; settings.ts).
@@ -26,10 +30,19 @@ const statusEl = document.getElementById("status") as HTMLParagraphElement;
 const actionsEl = document.getElementById("actions") as HTMLDivElement;
 const resultEl = document.getElementById("result") as HTMLParagraphElement;
 
-const PROVIDERS: ReadonlyArray<{ provider: Provider; label: string }> = [
-  { provider: "discord", label: "Sign in with Discord" },
-  { provider: "apple", label: "Sign in with Apple" },
+const PROVIDERS: ReadonlyArray<{
+  provider: Provider;
+  label: string;
+  tone: "primary" | "quiet";
+}> = [
+  { provider: "discord", label: "Sign in with Discord", tone: "primary" },
+  { provider: "apple", label: "Sign in with Apple", tone: "quiet" },
 ];
+
+function showResult(text: string, isError: boolean): void {
+  resultEl.classList.toggle("error", isError);
+  resultEl.textContent = text;
+}
 
 async function extractFromActiveTab(): Promise<ExtractResponse | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -47,18 +60,24 @@ async function extractFromActiveTab(): Promise<ExtractResponse | null> {
 function renderSignedOut(): void {
   identityEl.textContent = "";
   statusEl.textContent = "Sign in to add puzzles to your Crossy library.";
-  resultEl.textContent = "";
-  const buttons = PROVIDERS.map(({ provider, label }) => {
+  showResult("", false);
+  const buttons = PROVIDERS.map(({ provider, label, tone }) => {
     const button = document.createElement("button");
+    button.className = tone;
     button.textContent = label;
     button.addEventListener("click", () => {
       void (async () => {
         // First await, nothing before it: Firefox requires permissions.request
         // synchronously inside the gesture (settings.ts; bases pre-resolved).
-        const granted = await requestOriginPermissions([bases.authBaseUrl]);
+        // Both origins ride this one request so the ingest path is already
+        // granted by the time it is needed.
+        const granted = await requestOriginPermissions([
+          bases.authBaseUrl,
+          bases.apiBaseUrl,
+        ]);
         if (!granted) {
           statusEl.textContent =
-            "Crossy needs permission to reach the sign-in server.";
+            "Crossy needs permission to reach its servers to sign you in.";
           return;
         }
         statusEl.textContent =
@@ -81,62 +100,122 @@ function renderSignedOut(): void {
   actionsEl.replaceChildren(...buttons);
 }
 
+type IngestRun =
+  | { readonly ok: true; readonly puzzleId: string }
+  | {
+      readonly ok: false;
+      readonly sessionEnded: boolean;
+      readonly line: string;
+    };
+
+// Callers reach this synchronously from their click handler, so the permission
+// request inside stays the gesture's first await (Firefox law; settings.ts). It is
+// a silent fallback: sign-in already asked for this origin, and request resolves
+// without prompting when it is granted.
+async function ingest(
+  extraction: ExtractResponse & { ok: true },
+): Promise<IngestRun> {
+  const granted = await requestOriginPermissions([bases.apiBaseUrl]);
+  if (!granted) {
+    return {
+      ok: false,
+      sessionEnded: false,
+      line: "Crossy needs permission to reach the API to add this puzzle.",
+    };
+  }
+  const token = (await chrome.runtime.sendMessage({
+    type: AUTH_TOKEN,
+  })) as TokenReply;
+  if (!token.ok) {
+    if (token.reason === "signed_out") {
+      return { ok: false, sessionEnded: true, line: "" };
+    }
+    return {
+      ok: false,
+      sessionEnded: false,
+      line: "Could not refresh your session. Check your connection and try again.",
+    };
+  }
+  let outcome;
+  try {
+    outcome = await postPuzzle(
+      bases.apiBaseUrl,
+      token.accessToken,
+      buildEnvelope(extraction.format, extraction.document),
+    );
+  } catch {
+    return {
+      ok: false,
+      sessionEnded: false,
+      line: `NETWORK: could not reach ${bases.apiBaseUrl}`,
+    };
+  }
+  if (outcome.ok) return { ok: true, puzzleId: outcome.puzzleId };
+  // The named rejection, verbatim (PROTOCOL.md section 12).
+  return {
+    ok: false,
+    sessionEnded: false,
+    line: `${outcome.code}: ${outcome.message}`,
+  };
+}
+
 function renderIngest(extraction: ExtractResponse & { ok: true }): void {
-  statusEl.textContent = "Crossword found.";
-  const button = document.createElement("button");
-  button.textContent = "Add to Crossy";
-  button.addEventListener("click", () => {
-    button.disabled = true;
-    resultEl.textContent = "Adding.";
+  statusEl.textContent = "Crossword found on this page.";
+  const play = document.createElement("button");
+  play.className = "primary";
+  play.textContent = "Play in Crossy";
+  const add = document.createElement("button");
+  add.className = "quiet";
+  add.textContent = "Add to library";
+  const setBusy = (busy: boolean): void => {
+    play.disabled = busy;
+    add.disabled = busy;
+  };
+  const fail = (run: IngestRun & { ok: false }): void => {
+    if (run.sessionEnded) {
+      renderSignedOut();
+      statusEl.textContent = "Your session ended. Sign in again.";
+      return;
+    }
+    showResult(run.line, true);
+    setBusy(false);
+  };
+
+  play.addEventListener("click", () => {
+    setBusy(true);
+    showResult("Opening in Crossy.", false);
     void (async () => {
-      // First await, nothing before it (Firefox gesture law; settings.ts).
-      const granted = await requestOriginPermissions([bases.apiBaseUrl]);
-      if (!granted) {
-        resultEl.textContent =
-          "Crossy needs permission to reach the API to add this puzzle.";
-        button.disabled = false;
+      // No await before ingest: its permission request opens the gesture.
+      const run = await ingest(extraction);
+      if (!run.ok) {
+        fail(run);
         return;
       }
-      const token = (await chrome.runtime.sendMessage({
-        type: AUTH_TOKEN,
-      })) as TokenReply;
-      if (!token.ok) {
-        if (token.reason === "signed_out") {
-          renderSignedOut();
-          statusEl.textContent = "Your session ended. Sign in again.";
-        } else {
-          resultEl.textContent =
-            "Could not refresh your session. Check your connection and try again.";
-          button.disabled = false;
-        }
-        return;
-      }
-      let outcome;
-      try {
-        outcome = await postPuzzle(
-          bases.apiBaseUrl,
-          token.accessToken,
-          buildEnvelope(extraction.format, extraction.document),
-        );
-      } catch {
-        resultEl.textContent = `NETWORK: could not reach ${bases.apiBaseUrl}`;
-        button.disabled = false;
-        return;
-      }
-      if (outcome.ok) {
-        const link = document.createElement("a");
-        link.href = WEB_LIBRARY_URL;
-        link.target = "_blank";
-        link.textContent = "Open your library";
-        resultEl.replaceChildren(`Added puzzle ${outcome.puzzleId}. `, link);
-      } else {
-        // The named rejection, verbatim (PROTOCOL.md section 12).
-        resultEl.textContent = `${outcome.code}: ${outcome.message}`;
-        button.disabled = false;
-      }
+      await chrome.tabs.create({ url: playIntentUrl(run.puzzleId) });
+      window.close();
     })();
   });
-  actionsEl.replaceChildren(button);
+
+  add.addEventListener("click", () => {
+    setBusy(true);
+    showResult("Adding.", false);
+    void (async () => {
+      // No await before ingest: its permission request opens the gesture.
+      const run = await ingest(extraction);
+      if (!run.ok) {
+        fail(run);
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = WEB_LIBRARY_URL;
+      link.target = "_blank";
+      link.textContent = "Open your library";
+      resultEl.classList.remove("error");
+      resultEl.replaceChildren(`Added puzzle ${run.puzzleId}. `, link);
+    })();
+  });
+
+  actionsEl.replaceChildren(play, add);
 }
 
 async function renderSignedIn(who: {
@@ -144,6 +223,7 @@ async function renderSignedIn(who: {
   email: string | null;
 }): Promise<void> {
   const signOut = document.createElement("button");
+  signOut.className = "linklike";
   signOut.textContent = "Sign out";
   signOut.addEventListener("click", () => {
     signOut.disabled = true;
@@ -156,7 +236,9 @@ async function renderSignedIn(who: {
     who.email !== null && who.email !== who.displayName
       ? `${who.displayName} (${who.email})`
       : who.displayName;
-  identityEl.replaceChildren(`Signed in as ${label} `, signOut);
+  const name = document.createElement("span");
+  name.textContent = `Signed in as ${label}`;
+  identityEl.replaceChildren(name, signOut);
 
   const extraction = await extractFromActiveTab();
   if (extraction === null) {
