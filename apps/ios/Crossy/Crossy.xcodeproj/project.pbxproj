@@ -53,6 +53,13 @@
 			);
 			target = FB15AC023000D30A004CA5C7 /* CrossyWidgets */;
 		};
+		FB3E59DE3000D30A004CA5C7 /* Exceptions for "Crossy" folder in "Crossy" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FB3E59DA3000D30A004CA5C7 /* Crossy */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -71,6 +78,9 @@
 		};
 		FB3E59DD3000D30A004CA5C7 /* Crossy */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FB3E59DE3000D30A004CA5C7 /* Exceptions for "Crossy" folder in "Crossy" target */,
+			);
 			path = Crossy;
 			sourceTree = "<group>";
 		};
