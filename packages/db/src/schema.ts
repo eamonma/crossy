@@ -12,6 +12,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -115,6 +116,12 @@ export const puzzles = pgTable(
     createdBy: uuid("created_by").references(() => users.userId, {
       onDelete: "no action",
     }),
+    // Per-account content digest for ingest dedup (DESIGN.md D23, PROTOCOL.md §12). A sha256
+    // over the whole translated ServerPuzzle in canonical form (apps/api/src/puzzles/digest.ts).
+    // Nullable and expand-only: existing rows predate the column and read as un-digested, so
+    // dedup is forward-only. INV-6: the digest is solution-derived, a solution oracle, so it is
+    // server-only, never selected into a client payload (the GET /puzzles column list omits it).
+    contentDigest: text("content_digest"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -124,6 +131,14 @@ export const puzzles = pgTable(
     // (`WHERE created_by = $1 ORDER BY created_at DESC`). Composite so the filter and the
     // ordering are one index scan; Postgres reads it backward for the DESC order.
     index("puzzles_created_by_created_at_idx").on(t.createdBy, t.createdAt),
+    // Dedup mechanism itself (D23): a re-post of the same content by the same account collapses
+    // to the existing row via `ON CONFLICT (created_by, content_digest) DO NOTHING`. PARTIAL on
+    // `content_digest IS NOT NULL` so it constrains only new digested rows and never collides
+    // the un-digested history. Per-account scope: a hit means "you already added this", never a
+    // cross-account fact (DESIGN.md D21 posture).
+    uniqueIndex("puzzles_created_by_content_digest_key")
+      .on(t.createdBy, t.contentDigest)
+      .where(sql`content_digest IS NOT NULL`),
   ],
 );
 

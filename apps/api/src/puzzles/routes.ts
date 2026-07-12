@@ -15,11 +15,18 @@ import { fail } from "../http/errors";
 import { parseBefore, parseLimit } from "../http/pagination";
 import { authMiddleware } from "../auth/middleware";
 import { dispatchIngest } from "./dispatch";
+import { puzzleDigest } from "./digest";
 
-/** The `POST /puzzles` response. `puzzle` is `ClientPuzzle`: no solution field, structurally. */
+/**
+ * The `POST /puzzles` response (PROTOCOL.md §12). `puzzle` is `ClientPuzzle`: no solution field,
+ * structurally. `duplicate` is present and `true` only on the idempotent dedup path (D23), where
+ * the status is `200` and the body carries the caller's existing row; a fresh insert is `201` and
+ * omits `duplicate` (absent reads as `false`). The content digest is never a field here (INV-6).
+ */
 interface PuzzleView {
   readonly puzzleId: string;
   readonly puzzle: ClientPuzzle;
+  readonly duplicate?: true;
 }
 
 /**
@@ -77,12 +84,21 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, parsed.code, parsed.message);
     }
 
+    // Per-account content digest for dedup (DESIGN.md D23, PROTOCOL.md §12). Computed only now,
+    // after the document has translated and passed every domain check, so a rejection still
+    // returns its named 422/400 and never a 200. INV-6: the digest is solution-derived, a solution
+    // oracle, so it lives in its own server-side column and never appears on this response.
+    const contentDigest = puzzleDigest(parsed.puzzle);
+
     // Store the internal ServerPuzzle (solutions included) plus its detected features,
     // server-side only. The client view drops the solution by type (INV-6). `createdBy`
     // records the uploader (the JIT-upserted caller) so `GET /puzzles` can list their own
-    // uploads; it does not change this endpoint's response shape. `source.format` records
-    // the registry format on every ingest path, legacy included (DESIGN.md §7: a debugging
-    // fact, not behavior).
+    // uploads. `source.format` records the registry format on every ingest path, legacy
+    // included (DESIGN.md §7: a debugging fact, not behavior).
+    //
+    // ON CONFLICT (created_by, content_digest) DO NOTHING makes a re-post idempotent and atomic
+    // under the two-tabs / two-clicks race: the losing insert returns zero rows, never a copy.
+    // `targetWhere` matches the partial unique index's predicate (migration 0010).
     const inserted = await deps.db
       .insert(schema.puzzles)
       .values({
@@ -94,14 +110,43 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
         // in dedicated columns, never in `data`, so no solution rides along (INV-6).
         title: parsed.title,
         author: parsed.author,
+        contentDigest,
+      })
+      .onConflictDoNothing({
+        target: [schema.puzzles.createdBy, schema.puzzles.contentDigest],
+        where: sql`content_digest IS NOT NULL`,
       })
       .returning({ puzzleId: schema.puzzles.puzzleId });
 
+    // A digest match is a whole-object match (D23), so the existing row's puzzle is byte-identical
+    // to this one; the same projected ClientPuzzle serves both outcomes, and we never re-select
+    // the solution-bearing `data` column.
+    const puzzle = toClientPuzzle(parsed.puzzle);
+
+    if (inserted.length === 1) {
+      const view: PuzzleView = { puzzleId: inserted[0]!.puzzleId, puzzle };
+      return c.json(view, 201);
+    }
+
+    // Duplicate: never block (D23). Resolve to the caller's existing row and mark it. The
+    // re-select is scoped to the caller and reads only the id (never `data`), so a 200 reveals
+    // only that YOU already added this puzzle, never that another account holds it.
+    const existing = await deps.db
+      .select({ puzzleId: schema.puzzles.puzzleId })
+      .from(schema.puzzles)
+      .where(
+        and(
+          eq(schema.puzzles.createdBy, identity.userId),
+          eq(schema.puzzles.contentDigest, contentDigest),
+        ),
+      )
+      .limit(1);
     const view: PuzzleView = {
-      puzzleId: inserted[0]!.puzzleId,
-      puzzle: toClientPuzzle(parsed.puzzle),
+      puzzleId: existing[0]!.puzzleId,
+      puzzle,
+      duplicate: true,
     };
-    return c.json(view, 201);
+    return c.json(view, 200);
   });
 
   // GET /puzzles: the caller's uploaded puzzles, newest first. Visibility is `created_by =
