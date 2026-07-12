@@ -55,19 +55,25 @@ clue length can never move the board: that is the point of the whole arrangement
 Amended 2026-07-11 (the toolbar-adoption ruling, §4): full-bleed is a
 TRANSPARENT item-bearing system bar floating over the board, not "no bar". The
 board still bleeds to the top edge; the room bar's pieces ride the system nav
-bar's items now, and the standing top inset reads a roomBar rect synthesized from
-the bar items' own frames rather than a reported RoomBar frame. Constant-built
-still: clue length never moves the board. Amended 2026-07-12 (owner device
-regression, same standing-inset law): the synthesized rect must be ANCHORED ON
-THE BACK BUTTON, which stands in the bar row from frame one. The first cut
-anchored on the time pill, which arrives only on the welcome (TimePillPresence),
-so pre-welcome no rect synthesized, the standing inset read 0, and the grid sat
-higher and DROPPED when the pill loaded, the board moving, exactly what the law
-forbids. The back button is present from frame one, so its row is the band from
-frame one and the pill's arrival extends nothing vertical: the band is identical
-across the welcome beat and the board does not move by a point. The pure seam
-(BarItemFrames.synthesizedRoomBar) pins it; the clue-bar melt gains correct
-geometry pre-welcome as a bonus (it read the same rect).
+bar's items now. Constant-built still: clue length never moves the board.
+Amended 2026-07-12 (owner device regression on the real backend, and its
+correction): the board's standing top inset is the SYSTEM BAR'S HEIGHT, read as a
+CONSTANT off the room's OWN container (its top safe-area inset, the band the
+full-bleed board bleeds under), NEVER a reported bar-item frame. The first two
+cuts derived the inset from a roomBar rect synthesized from the bar items' own
+frames (first anchored on the pill, then on the back button). Both were wrong for
+the BOARD: a live room mounts the board BEFORE any bar item's onGeometryChange
+fires, so the reported-frame inset landed late, the grid sat high and DROPPED as
+the frame arrived, the board moving, exactly what the law forbids. (The sim rig
+missed it because it held the welcome while the frames already reported, so it
+read 0 there.) Reading the inset off the container is layout truth, reported
+before the first paint: the grid's top edge is at its final position on frame one
+and never moves when the pill arrives (GridOcclusion.standing takes the constant
+topInset; ConstantBoardInsetTests pins it; -pillArrivalLab proves it on delayed
+timing). The synthesized roomBar rect (BarItemFrames.synthesizedRoomBar, back-
+button-anchored) survives for the FACTS CARD's span and the CLUE-BAR MELT only,
+both post-welcome when their own reported frames are live; the BOARD no longer
+reads it at all.
 
 **Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
 only person-marker on the board at rest is the presence puck in the cell corner. A
@@ -293,12 +299,17 @@ joins our SwiftUI transaction, so `withAnimation(.crossyChrome)` around a
 width-driving value does not make the bar breathe; the room seeds its true roster
 and keeps the first-connect pill terse so the open frame carries no snap, and the
 residual snaps are honest, each marking a real change. Arrival finding (device
-2026-07-11, refined 2026-07-12): the time pill arrives when the room is live, so
-the open frame's cluster is width-stable (share + players only, both stable from
-frame one) and the pill's arrival is a bar-item insertion on the welcome's beat
-(TimePillPresence keys on the store's sync state; a terminal room's sealed pill
-arrives the same way). The insert carries NO animation: the nav bar's slot pass
-is UIKit's own and joins no SwiftUI transaction, so the pill just appears (device
+2026-07-11, refined then settled 2026-07-12): ONE ARRIVAL BEAT. The whole trailing
+cluster (share, players, timer) arrives together when the room is live, so
+pre-welcome the bar is back-only and the welcome inserts every trailing item on
+the same beat, each true at once (solver-filtered members, invite payload, ticking
+clock). ClusterPresence keys on the store's sync state (share keeps its own payload
+gate on top, never a dead control); a terminal room's sealed cluster arrives the
+same way. The earlier cut gated only the timer on the welcome and stood share and
+players from REST-mount, so on live data they arrived on different beats, a
+staggered ugly sequence (owner device 2026-07-12); gating the whole cluster on one
+rule retired it. The insert carries NO animation: the nav bar's slot pass is
+UIKit's own and joins no SwiftUI transaction, so the items just appear (device
 2026-07-12, same pass as the width snap). A content-only fade-in was weighed and
 rejected, because the system draws a bar item's glass capsule from the item's
 mere PRESENCE, not its content (rig 2026-07-12: a `ToolbarItem` whose content is
@@ -332,56 +343,41 @@ instantly, which is why the fixture looked right. The rule: THE BAR IS BORN WITH
 THE PUSH. The withholding room carries its chrome even before the board
 (RoomOpeningToolbarHost over the RoomOpening and RoomOpenFailure branches), so
 OUR back button stands from the push's first frame (a way out on the failure
-branch too), and the players pill stands seeded (below). The time pill and the
-share pill do NOT stand pre-REST: the pill is REST-gated by design (it arrives on
-the welcome's beat, TimePillPresence), and the share menu's rows BAKE the invite
-code, which only `GET /games/{id}` carries, so a Menu whose rows are built at item
-build cannot defer that payload cleanly; share stays a REST-gated item, arriving
-when the code lands, never a dead control (evaluated honestly and kept gated).
+branch too). The whole trailing cluster (timer, share, players) arrives together
+on the welcome's beat once SolveScreen mounts (one arrival beat, above); nothing
+trailing stands pre-welcome.
 
-The seed vocabulary (the live-data birth rule). A tapped room card already knows
-facts the withholding room can use: its member count and name (RoomCardModel). The
-composition root threads a RoomArrivalSeed BESIDE the path (keyed by gameId, the
-`roomZoomSourceID` precedent, so the route stays Hashable, one value), and RealRoom
-seeds that many PLACEHOLDER pucks at construction so the players pill stands at true
-width from frame one and the push goos into it. The card does NOT carry the viewer's
-ROLE (a list row names the creator, not the reader's seat), so the seed carries none
-and nothing role-gated stands from it. Deep links and code-joins have no card and
-carry no seed: their arrival stays REST-gated, honestly. Each beat only ADDS detail
-(the roster-seed precedent, GameStore.seedRoster): the count comes from the list row,
-identities and avatars land at REST, initials at welcome. A placeholder puck has no
-identity yet, so it renders the ACHROMATIC HOLLOW FLOOR (RosterPuckBody's placeholder
-branch, the RosterMenu placeholder register) rather than a hash color that would flip
-when the real id lands; only the count is honest pre-REST, and only the count drives
-the width. The store gates every seed to `connecting`, so the REST roster's real ids
-overwrite the count-seed, and the welcome rebuilds the roster wholesale after that:
-the synthetic placeholder ids never survive the handshake, and the pill never resizes
-across the beats unless membership genuinely moved since the list row (a real event).
+The placeholder seed experiment, RETIRED 2026-07-12 (owner device finding). The
+first cut threaded a RoomArrivalSeed beside the path (the tapped card's member
+count and name) and stood that many PLACEHOLDER pucks pre-REST, so the players
+pill would show at true width from frame one. It was WRONG BY CONSTRUCTION: the
+pill cluster is solvers-only (owner ruling 2026-07-10, guests seat as spectators
+and leave the top bar), but a card's `memberCount` counts EVERYONE including
+spectators and guests, so the placeholder count never matched the solver-filtered
+pill that lands. And the achromatic hollow placeholder pucks read as an ugly empty
+pill on device. So the whole seed vocabulary died: RoomArrivalSeed, the
+count-driven placeholder roster, the RosterMember placeholder flag, and the
+hollow-puck branch. The REST-roster seed (GameStore.seedRoster from `GET
+/games/{id}`) SURVIVES: it is identity-true (the real member ids, gated to
+`connecting`, overwritten by the welcome's live roster), so the pill lands at its
+right width when the board mounts, no count guessed from a list row.
 
-The timer's self-owned glass carve-out (the SLICE 2 redesign; supersedes the
-"bare insert, no animation" arrival finding above for the TIME PILL only). The Q3
-rig finding: `.sharedBackgroundVisibility(.hidden)` suppresses an item's system
-capsule WHILE THE ITEM STAYS PRESENT (the yield already uses it; here it is the
-escape hatch). One item, the arriving one, owns its glass so its arrival can ride
-the chrome spring: the time pill's item PERMANENTLY suppresses the system capsule
-(BarItemGlass.timePillBackgroundHidden, never gated on handoff) and the pill
-content carries ITS OWN real glass (`.glassEffect(.regular)` in a capsule on 26 via
-ChromeGlassSurface, the blur material below; the pre-#140 register recovered
-whole: horizontal padding 12, pillHeight, the capsule contentShape). The arrival is
-then fully ours: content and glass fade and settle in together on the chrome spring
-(`.crossyChrome`, opacity plus a slight scale settle reads as materialize), and no
-frame is ever empty glass because the glass RIDES THE CONTENT (the presence-not-
-content capsule the bare-insert finding feared is gone: there is no system capsule
-to stand hollow). Reduce Motion holds the pill arrived from the first frame, so it
-snaps in with no animation. The yield simplifies for this item: opacity 0 hides
-glass and content together, no capsule to suppress separately (the back button and
-the Menus keep the #149 arrangement, system glass suppressed only on the yield).
-The pill's reported frame is unchanged (the facts card's rest), and register parity
-was rig-checked against the system-glass share and players items on both grounds:
-the self-owned capsule reads as the bar's register (tint, blur, stroke); the owner
-judges the final register on device. Recorded for history: the bare-insert finding
-stands for a hypothetical system-capsule pill, but the shipping time pill owns its
-glass, so it materializes rather than popping.
+The timer's self-owned glass carve-out, REVERTED 2026-07-12 (owner device finding:
+the wrap). A brief experiment gave the time pill its OWN glass inside the bar item
+(its own horizontal padding 12, pillHeight frame, ChromeGlassSurface, a scale
+settle) and permanently suppressed the item's system capsule, so its arrival could
+ride the chrome spring as a materialize. Inside a WIDTH-CONSTRAINED bar item that
+own-padding wrapped the clock to two lines where the system capsule never did (the
+longest content, the reconnect "Back in Ns" label plus clock, was the tell). So the
+pill goes back to the bare SYSTEM CAPSULE: the plain button carries the content and
+the nav bar draws the glass and sizes the capsule on its own pass, no wrap. Its
+arrival is the bare insert on the welcome beat, one beat alongside share and players
+(above). The handoff suppression is the real fix and STAYS: when the facts card
+opens (or an eclipse) the pill's content goes to opacity 0 and its shared background
+hides in lockstep (`sharedBackgroundVisibility(.hidden)` while handed off,
+BarItemGlass.backgroundHidden), so no hollow capsule floats where the pill stood.
+Every glass bar item (the pill, the back button, the Menus) now rides that ONE rule:
+system glass, visible at rest, suppressed only on the yield.
 
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
