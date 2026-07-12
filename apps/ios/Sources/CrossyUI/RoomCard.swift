@@ -10,6 +10,35 @@
 import CrossyDesign
 import SwiftUI
 
+/// One member as the room layer reads it, plain data (the RosterMember pattern:
+/// CrossyUI names its own types, protocol twins stay in their ring, AD-2). The
+/// composition root maps a `GET /games` row's member stack here, so the room-open
+/// chrome and a future card stack can be born true at tap time (PROTOCOL.md §12)
+/// without a second fetch.
+public struct RoomCardMember: Equatable, Sendable {
+    public let userId: String
+    /// The resolved display name, never empty on a current server (a nameless mirror
+    /// reads "former participant" server-side, the same fallback the live roster shows).
+    public let name: String
+    /// The opaque server-resolved avatar URL, nil when the server has none (PROTOCOL.md
+    /// §4 fallback rule: the colored initial is always the floor). No default, the
+    /// RosterMember lesson: a construction site must decide the avatar explicitly.
+    public let avatarUrl: String?
+    public let isHost: Bool
+    /// True for a spectator seat, so the standing solvers-only filters apply from the
+    /// seat alone (a guest seats spectator; there is no guest flag on the wire, §12).
+    public let isSpectator: Bool
+
+    public init(userId: String, name: String, avatarUrl: String?, isHost: Bool, isSpectator: Bool)
+    {
+        self.userId = userId
+        self.name = name
+        self.avatarUrl = avatarUrl
+        self.isHost = isHost
+        self.isSpectator = isSpectator
+    }
+}
+
 /// A room as the card renders it, plain data (the RosterMember pattern: CrossyUI
 /// names its own types, protocol twins stay in their ring, AD-2). The composition
 /// root maps `GET /games` rows here.
@@ -41,6 +70,13 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// INV-6-safe (a bare timestamp, never a cell value). Kept off the card face; it feeds
     /// ordering.
     public let lastActivityAt: String?
+    /// The room's full membership as display identity, join-ordered (first joiner first,
+    /// PROTOCOL.md §12), so the arrival layer can seed the room-open chrome true at tap
+    /// time. Empty when the server predates the row stack (§14) or in fixtures that carry
+    /// none; `memberCount` stays the honest total either way. Not yet rendered on the card
+    /// face: the identity-true stack and the open choreography are a deliberate later
+    /// slice, judged on device.
+    public let members: [RoomCardMember]
 
     public var id: String { gameId }
 
@@ -51,7 +87,10 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     public init(
         gameId: String, name: String?, puzzleTitle: String?,
         rows: Int, cols: Int, memberCount: Int, createdBy: String,
-        createdAt: String, completedAt: String?, lastActivityAt: String?
+        createdAt: String, completedAt: String?, lastActivityAt: String?,
+        // No default: a construction site must decide the stack explicitly (the
+        // RosterMember avatar lesson; a silent [] shipped the island without avatars).
+        members: [RoomCardMember]
     ) {
         self.gameId = gameId
         self.name = name
@@ -63,6 +102,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.createdAt = createdAt
         self.completedAt = completedAt
         self.lastActivityAt = lastActivityAt
+        self.members = members
     }
 
     /// The headline: the game's own name when it has one, else the puzzle title,

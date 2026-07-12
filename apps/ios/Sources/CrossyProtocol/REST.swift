@@ -302,14 +302,74 @@ public struct GameSummary: Sendable, Equatable, Codable {
         }
     }
 
+    /// One member on a row (§12): display identity only, the §4 participant's naming.
+    /// `name` is the server-resolved display name and never null on the wire (a nameless
+    /// mirror reads "former participant" server-side, the same fallback the live roster
+    /// shows, DESIGN.md §8). `avatarUrl` is the same opaque nullable field as §4: the
+    /// current server writes a mirror NULL as an explicit JSON null, so encode writes
+    /// the key back (null included) to keep the fixture round trip wire-honest, and
+    /// decode also tolerates an absent key (§14); both read as none. `role` is the
+    /// member's seat, so the standing solvers-only filters apply from it alone (a guest
+    /// seats spectator; there is NO guest flag on the wire, §12).
+    public struct Member: Sendable, Equatable, Codable {
+        public let userId: String
+        public let name: String
+        public let avatarUrl: String?
+        public let role: Role
+
+        public init(userId: String, name: String, avatarUrl: String?, role: Role) {
+            self.userId = userId
+            self.name = name
+            self.avatarUrl = avatarUrl
+            self.role = role
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case userId
+            case name
+            case avatarUrl
+            case role
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            userId = try container.decode(String.self, forKey: .userId)
+            name = try container.decode(String.self, forKey: .name)
+            avatarUrl = try container.decodeIfPresent(String.self, forKey: .avatarUrl)
+            role = try container.decode(Role.self, forKey: .role)
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(userId, forKey: .userId)
+            try container.encode(name, forKey: .name)
+            // Explicit null when nil: the server always writes the key (jsonb_build_object),
+            // so the fixture's explicit nulls survive the lossless round trip.
+            try container.encode(avatarUrl, forKey: .avatarUrl)
+            try container.encode(role, forKey: .role)
+        }
+    }
+
     public let gameId: String
     public let name: String?
     /// The caller's own role in this game.
     public let role: Role
     public let createdAt: String
     public let createdBy: String
-    /// Total members (all roles), for the list card.
+    /// Total members (all roles), for the list card; equals `members.count` on a current
+    /// server (an older one omits `members`, which reads empty while the count stays true).
     public let memberCount: Int
+    /// The full membership as display identity, join-ordered (first joiner first, ties by
+    /// userId; §12), so the room-open chrome and the card's stack can be born true at tap
+    /// time without a second fetch. Additive and optional on the wire (§14): decoded with
+    /// `decodeIfPresent` so an older server that omits it reads as empty, mirroring how
+    /// `completedAt`/`lastActivityAt` tolerate absence.
+    public let members: [Member]
+    /// The game's invite code (§12), on every row under exactly the game view's member-only
+    /// rule: the list is member-scoped, so every row's reader is a member. Additive and
+    /// optional on the wire (§14): an older server omits it, which reads as none; nil
+    /// re-encodes as absent, never null (the server never sends a null code).
+    public let inviteCode: String?
     /// When the game completed (ISO 8601), or nil while it is ongoing AND nil for an abandoned
     /// game, which never completed (§12). Read from the session-owned `game_state.completed_at`
     /// under a SELECT-only read grant, never a cell value or a solution: it is a bare timestamp,
@@ -334,6 +394,8 @@ public struct GameSummary: Sendable, Equatable, Codable {
         createdAt: String,
         createdBy: String,
         memberCount: Int,
+        members: [Member],
+        inviteCode: String?,
         completedAt: String?,
         lastActivityAt: String?,
         puzzle: PuzzleRef
@@ -344,6 +406,8 @@ public struct GameSummary: Sendable, Equatable, Codable {
         self.createdAt = createdAt
         self.createdBy = createdBy
         self.memberCount = memberCount
+        self.members = members
+        self.inviteCode = inviteCode
         self.completedAt = completedAt
         self.lastActivityAt = lastActivityAt
         self.puzzle = puzzle
@@ -356,6 +420,8 @@ public struct GameSummary: Sendable, Equatable, Codable {
         case createdAt
         case createdBy
         case memberCount
+        case members
+        case inviteCode
         case completedAt
         case lastActivityAt
         case puzzle
@@ -369,6 +435,10 @@ public struct GameSummary: Sendable, Equatable, Codable {
         createdAt = try container.decode(String.self, forKey: .createdAt)
         createdBy = try container.decode(String.self, forKey: .createdBy)
         memberCount = try container.decode(Int.self, forKey: .memberCount)
+        // Optional and additive (§14): an older server omits the stack, which reads as empty.
+        members = try container.decodeIfPresent([Member].self, forKey: .members) ?? []
+        // Optional and additive (§14): an older server omits the code, which reads as none.
+        inviteCode = try container.decodeIfPresent(String.self, forKey: .inviteCode)
         // Optional and additive (§14): a server that omits it, or sends null, reads as ongoing.
         completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
         // Optional and additive (§14): a server that omits it, or sends null, reads as unplayed.
@@ -384,6 +454,9 @@ public struct GameSummary: Sendable, Equatable, Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(createdBy, forKey: .createdBy)
         try container.encode(memberCount, forKey: .memberCount)
+        try container.encode(members, forKey: .members)
+        // Absent when nil, never null: the server either sends the code or omits the key.
+        try container.encodeIfPresent(inviteCode, forKey: .inviteCode)
         try container.encode(completedAt, forKey: .completedAt)
         try container.encode(lastActivityAt, forKey: .lastActivityAt)
         try container.encode(puzzle, forKey: .puzzle)

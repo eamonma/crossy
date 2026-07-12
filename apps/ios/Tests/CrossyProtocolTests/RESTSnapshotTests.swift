@@ -150,6 +150,51 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertNil(decoded.games[0].completedAt, "an omitted completedAt reads as ongoing")
     }
 
+    func test_gamesListCarriesTheRowMemberStackAndInviteCode_PROTOCOL12() throws {
+        // §12: each row carries its full membership as display identity {userId, name,
+        // avatarUrl, role}, join-ordered (first joiner first) and consistent with
+        // memberCount, plus the game's inviteCode under the view's member-only rule (the
+        // list is member-scoped by construction, so the code travels no wider).
+        let list = try assertLosslessRoundTrip(GamesListResponse.self, .rest, "games-list")
+        XCTAssertEqual(list.games[0].members.count, list.games[0].memberCount)
+        XCTAssertEqual(
+            list.games[0].members[0],
+            GameSummary.Member(
+                userId: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+                name: "Ana",
+                avatarUrl: "https://cdn.example/avatars/ana.png",
+                role: .host),
+            "the first joiner (the creator) leads the join-ordered stack")
+        XCTAssertNil(
+            list.games[0].members[1].avatarUrl,
+            "a mirror NULL arrives as an explicit null and reads as none (§4 fallback rule)")
+        // The solvers/spectators fact rides `role` alone: a guest seats spectator and
+        // there is NO guest flag on the wire (§12).
+        XCTAssertEqual(list.games[0].members[2].role, .spectator)
+        XCTAssertEqual(list.games[0].inviteCode, "BQ7XKM2A")
+        XCTAssertEqual(list.games[1].members.count, list.games[1].memberCount)
+        XCTAssertEqual(list.games[1].inviteCode, "JW3PZQ9K")
+        // One identity, one mirror value: the same member reads the same name and avatar
+        // on every row (the §12 no-drift rule).
+        XCTAssertEqual(list.games[1].members[0].name, list.games[0].members[0].name)
+        XCTAssertEqual(list.games[1].members[0].avatarUrl, list.games[0].members[0].avatarUrl)
+    }
+
+    func test_gamesListDecodesAnOlderServerThatOmitsMembersAndInviteCode_PROTOCOL14() throws {
+        // §14 additive tolerance, the completedAt pattern: a server predating the member
+        // stack omits both fields; the twin reads an empty stack and no code, failing no
+        // decode (absent members is empty, absent inviteCode is none, §12).
+        let legacy = Data(
+            #"""
+            {"games":[{"gameId":"g","name":null,"role":"solver","createdAt":"2026-07-01T00:00:00.000Z","createdBy":"u","memberCount":2,"completedAt":null,"lastActivityAt":null,"puzzle":{"puzzleId":"p","rows":15,"cols":15,"title":null}}],"nextBefore":null}
+            """#.utf8)
+        let decoded = try JSONDecoder().decode(GamesListResponse.self, from: legacy)
+        XCTAssertEqual(decoded.games[0].members, [], "an omitted stack reads as empty")
+        XCTAssertNil(decoded.games[0].inviteCode, "an omitted code reads as none")
+        // memberCount stays true even while the stack is absent (the older-server split).
+        XCTAssertEqual(decoded.games[0].memberCount, 2)
+    }
+
     func test_gamesListPresentNullCursorMeansExhaustedNotAbsent() throws {
         // A present-null nextBefore (list exhausted) must be distinguishable from an absent key
         // (older server): the client stops on the former and falls back on the latter (§12, §14).

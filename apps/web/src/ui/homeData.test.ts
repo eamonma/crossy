@@ -10,6 +10,7 @@ import {
   geometry,
   isCompleted,
   lastTouched,
+  membersOf,
   partitionBySolved,
   puzzleTitle,
   relativeTime,
@@ -119,6 +120,39 @@ describe("isCompleted", () => {
     expect(isCompleted(game({ completedAt: "2026-07-08T10:00:00Z" }))).toBe(
       true,
     );
+  });
+});
+
+describe("membersOf (the row member stack, PROTOCOL section 12/14)", () => {
+  it("returns the row's members as sent: display identity, join-ordered by the server", () => {
+    const g = game({
+      memberCount: 2,
+      members: [
+        {
+          userId: "u1",
+          name: "Ana",
+          avatarUrl: "https://cdn.example/a.png",
+          role: "host",
+        },
+        // A guest seats spectator; there is no guest flag on the wire (section 12), and a
+        // memberless mirror avatar arrives as a first-class null (section 4 fallback rule).
+        { userId: "u2", name: "Guest", avatarUrl: null, role: "spectator" },
+      ],
+    });
+    expect(membersOf(g)).toHaveLength(2);
+    expect(membersOf(g)[0]).toEqual({
+      userId: "u1",
+      name: "Ana",
+      avatarUrl: "https://cdn.example/a.png",
+      role: "host",
+    });
+    expect(membersOf(g)[1]?.role).toBe("spectator");
+  });
+  it("reads an absent members field as empty (older server, PROTOCOL section 14)", () => {
+    // game() builds a row without `members`, exactly what a pre-stack server sends.
+    const g = game();
+    expect(g.members).toBeUndefined();
+    expect(membersOf(g)).toEqual([]);
   });
 });
 
