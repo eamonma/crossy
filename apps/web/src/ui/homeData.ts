@@ -62,27 +62,43 @@ export function lastTouched(g: GameSummary): string {
 }
 
 /**
- * Order rooms most-recently-active first, matching the server's within-page order (PROTOCOL
- * section 12): a played game (non-null lastActivityAt) outranks an unplayed one, ties and unplayed
- * games fall back to createdAt, then gameId, so the order is total and stable. The server already
- * sends the page in this order; sorting again on the client keeps rendering correct even if pages
- * are ever merged, and it never fights the server since the rule is the same. Pure and
- * non-mutating (returns a new array).
+ * Order rooms by when they were last touched, most recent first, matching the server's within-page
+ * order (PROTOCOL section 12). The sort key is COALESCE(lastActivityAt, createdAt), the same key
+ * lastTouched() already returns for display: creating a room is its first activity, so a freshly
+ * created unplayed game sorts by its createdAt (at the top of a fresh page), not below every played
+ * game. Ties on the coalesced key fall back to createdAt, then gameId, so the order is total and
+ * stable. The server already sends the page in this order; sorting again on the client keeps
+ * rendering correct even if pages are ever merged, and it never fights the server since the rule is
+ * the same. Pure and non-mutating (returns a new array).
  */
 export function sortByActivity(games: readonly GameSummary[]): GameSummary[] {
   return [...games].sort((a, b) => {
-    const activeA = a.lastActivityAt;
-    const activeB = b.lastActivityAt;
-    if (activeA !== activeB) {
-      if (activeA === null) return 1; // unplayed sorts after played
-      if (activeB === null) return -1;
-      const d = Date.parse(activeB) - Date.parse(activeA);
-      if (d !== 0) return d; // more recent first
-    }
+    // COALESCE(lastActivityAt, createdAt), the same key lastTouched() reads for display.
+    const keyDelta = Date.parse(lastTouched(b)) - Date.parse(lastTouched(a));
+    if (keyDelta !== 0) return keyDelta; // more recently touched first
     const createdDelta = Date.parse(b.createdAt) - Date.parse(a.createdAt);
     if (createdDelta !== 0) return createdDelta;
     return a.gameId < b.gameId ? 1 : a.gameId > b.gameId ? -1 : 0;
   });
+}
+
+/**
+ * Split rooms into the two shelves the home and the sidebar render (Home.tsx GamesList, AppShell
+ * RecentGames): live rooms lead, solved rooms gather trailing. The partition PRESERVES the input
+ * order within each group and never re-sorts, so a caller's activity order carries through. When
+ * nothing is solved the `solved` group is empty and the caller draws no trailing header. The iOS
+ * twin is RoomCardModel.shelved. Pure and non-mutating.
+ */
+export function partitionBySolved(games: readonly GameSummary[]): {
+  live: GameSummary[];
+  solved: GameSummary[];
+} {
+  const live: GameSummary[] = [];
+  const solved: GameSummary[] = [];
+  for (const g of games) {
+    (isCompleted(g) ? solved : live).push(g);
+  }
+  return { live, solved };
 }
 
 /** Detected puzzle features, the flags GET /puzzles returns (no solution content). */

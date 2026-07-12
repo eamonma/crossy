@@ -125,6 +125,31 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertEqual(list.nextBefore, "2026-07-07T09:30:00.000Z")
     }
 
+    func test_gamesListCarriesCompletionThroughCompletedAt_PROTOCOL12() throws {
+        // §12: GET /games reports completion through `completedAt`, the ISO time a game finished,
+        // null while ongoing (and null for an abandoned game). The fixture pins both branches
+        // wire-honestly: the first row is solved, its completedAt equal to its lastActivityAt
+        // (the completing entry IS the newest board event), the second is ongoing and unplayed
+        // (both null). Solved-but-unplayed can never occur on the wire (completion requires
+        // board events), so the fixture never shows it.
+        let list = try assertLosslessRoundTrip(GamesListResponse.self, .rest, "games-list")
+        XCTAssertEqual(
+            list.games[0].completedAt, "2026-07-09T18:24:03.000Z",
+            "a solved game carries its ISO completion time")
+        XCTAssertNil(list.games[1].completedAt, "an ongoing game has null completion")
+    }
+
+    func test_gamesListDecodesAnOlderServerThatOmitsCompletedAt_PROTOCOL14() throws {
+        // §14 additive tolerance, mirroring lastActivityAt: a server predating the completion
+        // read omits `completedAt`; the twin decodes it as nil (reads as ongoing, §12).
+        let legacy = Data(
+            #"""
+            {"games":[{"gameId":"g","name":null,"role":"solver","createdAt":"2026-07-01T00:00:00.000Z","createdBy":"u","memberCount":2,"lastActivityAt":null,"puzzle":{"puzzleId":"p","rows":15,"cols":15,"title":null}}],"nextBefore":null}
+            """#.utf8)
+        let decoded = try JSONDecoder().decode(GamesListResponse.self, from: legacy)
+        XCTAssertNil(decoded.games[0].completedAt, "an omitted completedAt reads as ongoing")
+    }
+
     func test_gamesListPresentNullCursorMeansExhaustedNotAbsent() throws {
         // A present-null nextBefore (list exhausted) must be distinguishable from an absent key
         // (older server): the client stops on the former and falls back on the latter (§12, §14).

@@ -32,6 +32,7 @@ import {
   geometry,
   isCompleted,
   lastTouched,
+  partitionBySolved,
   puzzleTitle,
   relativeTime,
   sortByActivity,
@@ -339,9 +340,7 @@ function GamesList({
   onOpen: (gameId: string) => void;
 }) {
   const now = new Date();
-  const ordered = sortByActivity(games);
-  const live = ordered.filter((g) => !isCompleted(g));
-  const solved = ordered.filter((g) => isCompleted(g));
+  const { live, solved } = partitionBySolved(sortByActivity(games));
   return (
     <div className="flex flex-col gap-8 px-4 pt-4">
       {live.length > 0 && <RoomGrid games={live} now={now} onOpen={onOpen} />}

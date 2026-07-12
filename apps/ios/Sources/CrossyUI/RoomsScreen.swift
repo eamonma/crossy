@@ -124,24 +124,53 @@ public struct RoomsScreen: View {
                     stateLine(ArrivalCopy.roomsEmpty)
                 }
 
-                ForEach(rooms) { room in
-                    Button {
-                        onOpenRoom(room)
-                    } label: {
-                        RoomCard(model: room, ground: ground)
-                    }
-                    .buttonStyle(.plain)
-                    .onAppear {
-                        if room.id == rooms.last?.id {
-                            Task { await loadMore() }
-                        }
-                    }
+                // The web's shelf grammar (Home.tsx GamesList): live rooms lead with NO header,
+                // then, only when any exist, a quiet "Solved" section gathers the finished rooms so
+                // the shelf reads current up top. Partition at render time off the ONE appended
+                // `rooms` array (the pure helper), never a second paging list: pages are
+                // createdAt-bounded and appended, so a solved room from a deeper page lands after
+                // the earlier solved rooms within this trailing section (§12 pagination stability).
+                let shelved = RoomCardModel.shelved(rooms)
+                ForEach(shelved.live) { room in roomButton(room) }
+
+                if !shelved.solved.isEmpty {
+                    sectionHeader(ArrivalCopy.roomsSolvedSection)
+                    ForEach(shelved.solved) { room in roomButton(room) }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
         .refreshable { await reload() }
+    }
+
+    /// One room card as a plain tappable row. The load-more trigger fires on the LAST card of the
+    /// raw appended `rooms` array (not the visually last, which the solved section may reorder), so
+    /// paging stays keyed to the source of truth and never fires twice for one page.
+    private func roomButton(_ room: RoomCardModel) -> some View {
+        Button {
+            onOpenRoom(room)
+        } label: {
+            RoomCard(model: room, ground: ground)
+        }
+        .buttonStyle(.plain)
+        .onAppear {
+            if room.id == rooms.last?.id {
+                Task { await loadMore() }
+            }
+        }
+    }
+
+    /// The trailing shelf's quiet caps label: the app's chrome-achromatic label vocabulary
+    /// (ClueChrome's browser sections), small and tracked, the ground's number ink. Never loud;
+    /// the lifecycle fact is the section's to tell, not a chip on the card.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(verbatim: title.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(1.2)
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+            .padding(.top, 14)
+            .padding(.bottom, 2)
     }
 
     private func stateLine(_ sentence: String) -> some View {

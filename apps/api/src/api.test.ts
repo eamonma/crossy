@@ -1713,25 +1713,51 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     );
   });
 
-  it("sorts played games ahead of unplayed ones within a page (PROTOCOL.md §12)", async () => {
-    // A played game outranks every unplayed game in its page even when the unplayed game was
-    // created later: activity beats creation, and null activity sorts last.
+  it("sorts by activity when it is more recent than a rival's creation (PROTOCOL.md §12)", async () => {
+    // A played game outranks a rival created before its last touch: the coalesce key COALESCE(
+    // lastActivityAt, createdAt) puts the recent activity ahead of the older creation time.
     const sub = randomUUID();
     const caller = await auth.mintUpgraded({ sub });
     const puzzleId = await ingestFixture(caller);
-    const { gameId: unplayedNew } = await createGame(caller, puzzleId);
+    const { gameId: unplayedOld } = await createGame(caller, puzzleId);
     const { gameId: playedOld } = await createGame(caller, puzzleId);
     await setGameCreatedAt(playedOld, "2026-02-01T00:00:00.000Z");
-    await setGameCreatedAt(unplayedNew, "2026-02-09T00:00:00.000Z");
-    // The old game has recent activity; the newer game has none.
+    await setGameCreatedAt(unplayedOld, "2026-02-09T00:00:00.000Z");
+    // The old game has recent activity, later than the rival's creation.
     await seedCellEvent(playedOld, sub, 1, "2026-06-01T12:00:00.000Z");
 
     const { games } = (await get("/games", caller).then((r) =>
       r.json(),
     )) as GamesList;
-    expect(games.map((g) => g.gameId)).toEqual([playedOld, unplayedNew]);
+    expect(games.map((g) => g.gameId)).toEqual([playedOld, unplayedOld]);
     expect(
-      games.find((g) => g.gameId === unplayedNew)!.lastActivityAt,
+      games.find((g) => g.gameId === unplayedOld)!.lastActivityAt,
+    ).toBeNull();
+  });
+
+  it("sorts a freshly created unplayed game above an older game with older activity (coalesce rule; PROTOCOL.md §12)", async () => {
+    // Owner ruling: creating a room is its first activity, so the sort key is COALESCE(
+    // lastActivityAt, createdAt). A brand-new unplayed game (recent createdAt, no events) must
+    // outrank an older game whose last activity predates that creation, NOT sort below it.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: playedOld } = await createGame(caller, puzzleId);
+    const { gameId: freshUnplayed } = await createGame(caller, puzzleId);
+    await setGameCreatedAt(playedOld, "2026-02-01T00:00:00.000Z");
+    // The fresh game is created AFTER the old game's last activity.
+    await setGameCreatedAt(freshUnplayed, "2026-06-10T00:00:00.000Z");
+    await seedCellEvent(playedOld, sub, 1, "2026-06-01T12:00:00.000Z");
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    // Coalesce: freshUnplayed keys on its createdAt (2026-06-10), which is newer than
+    // playedOld's activity (2026-06-01), so the fresh room leads.
+    expect(games.map((g) => g.gameId)).toEqual([freshUnplayed, playedOld]);
+    // The wire shape is unchanged: an unplayed game still reports null activity.
+    expect(
+      games.find((g) => g.gameId === freshUnplayed)!.lastActivityAt,
     ).toBeNull();
   });
 

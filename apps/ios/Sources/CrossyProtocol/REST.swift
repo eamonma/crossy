@@ -310,11 +310,20 @@ public struct GameSummary: Sendable, Equatable, Codable {
     public let createdBy: String
     /// Total members (all roles), for the list card.
     public let memberCount: Int
+    /// When the game completed (ISO 8601), or nil while it is ongoing AND nil for an abandoned
+    /// game, which never completed (§12). Read from the session-owned `game_state.completed_at`
+    /// under a SELECT-only read grant, never a cell value or a solution: it is a bare timestamp,
+    /// so INV-6 is untouched. The one lifecycle fact the home needs today; a full lifecycle
+    /// `status` enum is a later additive extension. Additive and optional on the wire (§14):
+    /// decoded with `decodeIfPresent` so an older server that omits it still decodes (nil =
+    /// ongoing).
+    public let completedAt: String?
     /// The game's last activity: the newest board event's ISO 8601 timestamp, or nil when no one
     /// has played yet (§12). `MAX(cell_events.at)` read server-side under a SELECT-only grant,
-    /// never a cell value or a solution (INV-6-safe). The list arrives ordered by this field,
-    /// most recent first. Additive and optional on the wire (§14): decoded with
-    /// `decodeIfPresent` so an older server that omits it still decodes (nil = unplayed).
+    /// never a cell value or a solution (INV-6-safe). The list arrives ordered by
+    /// `COALESCE(lastActivityAt, createdAt)`, most recent first, so an unplayed game orders by its
+    /// creation time rather than sorting last. Additive and optional on the wire (§14): decoded
+    /// with `decodeIfPresent` so an older server that omits it still decodes (nil = unplayed).
     public let lastActivityAt: String?
     public let puzzle: PuzzleRef
 
@@ -325,6 +334,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         createdAt: String,
         createdBy: String,
         memberCount: Int,
+        completedAt: String?,
         lastActivityAt: String?,
         puzzle: PuzzleRef
     ) {
@@ -334,6 +344,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         self.createdAt = createdAt
         self.createdBy = createdBy
         self.memberCount = memberCount
+        self.completedAt = completedAt
         self.lastActivityAt = lastActivityAt
         self.puzzle = puzzle
     }
@@ -345,6 +356,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         case createdAt
         case createdBy
         case memberCount
+        case completedAt
         case lastActivityAt
         case puzzle
     }
@@ -357,6 +369,8 @@ public struct GameSummary: Sendable, Equatable, Codable {
         createdAt = try container.decode(String.self, forKey: .createdAt)
         createdBy = try container.decode(String.self, forKey: .createdBy)
         memberCount = try container.decode(Int.self, forKey: .memberCount)
+        // Optional and additive (§14): a server that omits it, or sends null, reads as ongoing.
+        completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
         // Optional and additive (§14): a server that omits it, or sends null, reads as unplayed.
         lastActivityAt = try container.decodeIfPresent(String.self, forKey: .lastActivityAt)
         puzzle = try container.decode(PuzzleRef.self, forKey: .puzzle)
@@ -370,6 +384,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(createdBy, forKey: .createdBy)
         try container.encode(memberCount, forKey: .memberCount)
+        try container.encode(completedAt, forKey: .completedAt)
         try container.encode(lastActivityAt, forKey: .lastActivityAt)
         try container.encode(puzzle, forKey: .puzzle)
     }

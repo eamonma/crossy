@@ -1,8 +1,11 @@
 // One room card (EXPERIENCE.md §3 Rooms): geometry fingerprint, member dots, puzzle
-// title, optional game name. Cards sell people, not progress: no lifecycle chip (the
-// endpoint deliberately carries none, PROTOCOL.md §12) and no fill fraction. The
-// card is paper, not glass (DESIGN.md §1: glass is what you hold, and a scrolling
-// list is content); people are the only color on it.
+// title, optional game name. Cards sell people, not progress: no fill fraction, and no
+// lifecycle chip on the card face. The endpoint DOES carry a lifecycle fact
+// (`completedAt`, PROTOCOL.md §12, the completed read expand), but a solved room's
+// quiet is the section's to tell, not a chip's: the Rooms screen gathers solved rooms
+// into a trailing "Solved" shelf and dims their silhouette, so the card stays about
+// people. The card is paper, not glass (DESIGN.md §1: glass is what you hold, and a
+// scrolling list is content); people are the only color on it.
 
 import CrossyDesign
 import SwiftUI
@@ -25,18 +28,30 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// When the room was created (ISO 8601), the fallback sort key for a room no one
     /// has played yet (§12). Kept off the card face; it feeds ordering only.
     public let createdAt: String
+    /// When the room completed (ISO 8601), or nil while it is ongoing AND nil for an
+    /// abandoned room, which never completed (§12, the completed read expand). The one
+    /// lifecycle fact the home reads: a non-nil value gathers the room into the trailing
+    /// "Solved" shelf. INV-6-safe (a bare timestamp, never a cell value). Kept off the
+    /// card face; the section tells the story.
+    public let completedAt: String?
     /// The room's last activity (ISO 8601), or nil when no one has played yet: the
-    /// newest board event's time, `MAX(cell_events.at)` server-side (§12). It is the
-    /// key the rooms list orders on, most recent first; a played room leads. INV-6-safe
-    /// (a bare timestamp, never a cell value). Kept off the card face; it feeds ordering.
+    /// newest board event's time, `MAX(cell_events.at)` server-side (§12). The rooms list
+    /// orders on `lastActivityAt ?? createdAt` (COALESCE), most recent first, so a fresh
+    /// unplayed room keys on its creation time and is not banished below every played room.
+    /// INV-6-safe (a bare timestamp, never a cell value). Kept off the card face; it feeds
+    /// ordering.
     public let lastActivityAt: String?
 
     public var id: String { gameId }
 
+    /// True when the room has a completion time: the fact the trailing "Solved" shelf
+    /// gathers on (§12). Null (ongoing, or an abandoned room) reads as not solved.
+    public var isSolved: Bool { completedAt != nil }
+
     public init(
         gameId: String, name: String?, puzzleTitle: String?,
         rows: Int, cols: Int, memberCount: Int, createdBy: String,
-        createdAt: String, lastActivityAt: String?
+        createdAt: String, completedAt: String?, lastActivityAt: String?
     ) {
         self.gameId = gameId
         self.name = name
@@ -46,6 +61,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.memberCount = memberCount
         self.createdBy = createdBy
         self.createdAt = createdAt
+        self.completedAt = completedAt
         self.lastActivityAt = lastActivityAt
     }
 
@@ -65,29 +81,48 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         return puzzleTitle
     }
 
-    /// Order rooms most-recently-active first, matching the server's within-page order
-    /// (PROTOCOL.md §12): a played room (non-nil `lastActivityAt`) outranks an unplayed
-    /// one, ties and unplayed rooms fall back to `createdAt`, then `gameId`, so the order
-    /// is total and stable. The server already sends the page in this order; sorting again
-    /// keeps the list correct across merged pages and never fights the server since the
+    /// Order rooms by when they were last touched, most recent first, matching the server's
+    /// within-page order (PROTOCOL.md §12). The sort key is `lastActivityAt ?? createdAt`
+    /// (COALESCE): creating a room is its first activity, so a freshly created unplayed room
+    /// sorts by its `createdAt`, right where a room played at that instant would sit, not below
+    /// every played room. Ties on the coalesced key fall back to `createdAt`, then `gameId`, so
+    /// the order is total and stable. The server already sends the page in this order; sorting
+    /// again keeps the list correct across merged pages and never fights the server since the
     /// rule is identical. Timestamps are ISO 8601 UTC with the same server format, so a
     /// lexicographic compare is chronological (no date parsing in the view layer). Pure and
     /// non-mutating.
     public static func orderedByActivity(_ rooms: [RoomCardModel]) -> [RoomCardModel] {
         rooms.sorted { a, b in
-            switch (a.lastActivityAt, b.lastActivityAt) {
-            case let (lhs?, rhs?):
-                if lhs != rhs { return lhs > rhs }  // more recent first
-            case (nil, _?):
-                return false  // an unplayed room sorts after a played one
-            case (_?, nil):
-                return true  // a played room sorts before an unplayed one
-            case (nil, nil):
-                break  // both unplayed: fall through to createdAt
-            }
+            // COALESCE(lastActivityAt, createdAt): a never-played room keys on its creation time.
+            let keyA = a.lastActivityAt ?? a.createdAt
+            let keyB = b.lastActivityAt ?? b.createdAt
+            if keyA != keyB { return keyA > keyB }  // more recently touched first
             if a.createdAt != b.createdAt { return a.createdAt > b.createdAt }
             return a.gameId > b.gameId
         }
+    }
+
+    /// Split rooms into the two shelves the Rooms screen renders (the web's grammar,
+    /// Home.tsx GamesList): live rooms lead, solved rooms gather trailing. The partition
+    /// PRESERVES the input order within each group and never re-sorts, so the caller's
+    /// activity order carries through and appended pages stay stable (§12 pagination:
+    /// pages are createdAt-bounded and appended, never globally re-sorted, so a solved
+    /// room from page 2 lands after page 1's solved rooms). When nothing is solved the
+    /// `solved` group is empty and the screen draws no trailing header. Pure and
+    /// non-mutating.
+    public static func shelved(
+        _ rooms: [RoomCardModel]
+    ) -> (live: [RoomCardModel], solved: [RoomCardModel]) {
+        var live: [RoomCardModel] = []
+        var solved: [RoomCardModel] = []
+        for room in rooms {
+            if room.isSolved {
+                solved.append(room)
+            } else {
+                live.append(room)
+            }
+        }
+        return (live, solved)
     }
 }
 
@@ -109,6 +144,13 @@ public struct RoomCard: View {
     private let model: RoomCardModel
     private let ground: GridGround
 
+    /// How much the silhouette dims for a solved room: a quiet muted-silhouette echo of the
+    /// web's `Silhouette muted` (Home.tsx), the smallest honest signal that a room is done,
+    /// so the trailing "Solved" section reads finished without a loud badge. Only the
+    /// fingerprint dims; the headline and people stay full ink. A first pass for the owner's
+    /// device eye, tuned by one constant.
+    public static let solvedFingerprintOpacity: Double = 0.45
+
     public init(model: RoomCardModel, ground: GridGround) {
         self.model = model
         self.ground = ground
@@ -118,6 +160,7 @@ public struct RoomCard: View {
         HStack(spacing: 14) {
             GeometryFingerprintView(rows: model.rows, cols: model.cols, ground: ground)
                 .frame(width: 52, height: 52)
+                .opacity(model.isSolved ? Self.solvedFingerprintOpacity : 1)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: model.headline)

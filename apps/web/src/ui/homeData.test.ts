@@ -10,6 +10,7 @@ import {
   geometry,
   isCompleted,
   lastTouched,
+  partitionBySolved,
   puzzleTitle,
   relativeTime,
   shortDate,
@@ -152,7 +153,7 @@ describe("sortByActivity (matches the server's within-page order, PROTOCOL secti
       "a",
     ]);
   });
-  it("sorts a played game ahead of an unplayed one, whatever the createdAt", () => {
+  it("sorts a played game ahead of a rival created before its last touch", () => {
     const played = game({
       gameId: "played",
       createdAt: "2026-01-01T00:00:00Z",
@@ -163,10 +164,29 @@ describe("sortByActivity (matches the server's within-page order, PROTOCOL secti
       createdAt: "2026-05-01T00:00:00Z",
       lastActivityAt: null,
     });
+    // Coalesce keys: played on 2026-06-01, unplayed on its createdAt 2026-05-01, so played leads.
     expect(sortByActivity([unplayed, played]).map((g) => g.gameId)).toEqual([
       "played",
       "unplayed",
     ]);
+  });
+  it("sorts a freshly created unplayed game above an older game with older activity (coalesce rule)", () => {
+    // Owner ruling: creating a room is its first activity, so the key is COALESCE(lastActivityAt,
+    // createdAt). A fresh unplayed game (recent createdAt, no play) outranks an older game whose
+    // last activity predates that creation, rather than sorting below it.
+    const played = game({
+      gameId: "played",
+      createdAt: "2026-01-01T00:00:00Z",
+      lastActivityAt: "2026-06-01T00:00:00Z",
+    });
+    const freshUnplayed = game({
+      gameId: "fresh",
+      createdAt: "2026-06-10T00:00:00Z",
+      lastActivityAt: null,
+    });
+    expect(
+      sortByActivity([played, freshUnplayed]).map((g) => g.gameId),
+    ).toEqual(["fresh", "played"]);
   });
   it("orders unplayed games by createdAt, newest first", () => {
     const older = game({
@@ -191,6 +211,48 @@ describe("sortByActivity (matches the server's within-page order, PROTOCOL secti
     ];
     const before = input.map((g) => g.gameId);
     sortByActivity(input);
+    expect(input.map((g) => g.gameId)).toEqual(before);
+  });
+});
+
+describe("partitionBySolved (the shelf's live/solved split, PROTOCOL section 12)", () => {
+  it("splits live from solved, preserving order within each group", () => {
+    const live1 = game({ gameId: "l1", completedAt: null });
+    const solved1 = game({ gameId: "s1", completedAt: "2026-07-08T00:00:00Z" });
+    const live2 = game({ gameId: "l2", completedAt: null });
+    const solved2 = game({ gameId: "s2", completedAt: "2026-07-09T00:00:00Z" });
+    const { live, solved } = partitionBySolved([
+      live1,
+      solved1,
+      live2,
+      solved2,
+    ]);
+    expect(live.map((g) => g.gameId)).toEqual(["l1", "l2"]);
+    expect(solved.map((g) => g.gameId)).toEqual(["s1", "s2"]);
+  });
+  it("gives an empty solved group when nothing is solved (no empty header)", () => {
+    const { live, solved } = partitionBySolved([
+      game({ gameId: "a", completedAt: null }),
+      game({ gameId: "b", completedAt: null }),
+    ]);
+    expect(live.map((g) => g.gameId)).toEqual(["a", "b"]);
+    expect(solved).toEqual([]);
+  });
+  it("gives an empty live group when everything is solved", () => {
+    const { live, solved } = partitionBySolved([
+      game({ gameId: "a", completedAt: "2026-07-08T00:00:00Z" }),
+      game({ gameId: "b", completedAt: "2026-07-09T00:00:00Z" }),
+    ]);
+    expect(live).toEqual([]);
+    expect(solved.map((g) => g.gameId)).toEqual(["a", "b"]);
+  });
+  it("does not mutate its input", () => {
+    const input = [
+      game({ gameId: "a", completedAt: "2026-07-08T00:00:00Z" }),
+      game({ gameId: "b", completedAt: null }),
+    ];
+    const before = input.map((g) => g.gameId);
+    partitionBySolved(input);
     expect(input.map((g) => g.gameId)).toEqual(before);
   });
 });

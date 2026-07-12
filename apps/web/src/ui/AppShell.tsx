@@ -1,10 +1,11 @@
 // The signed-in shell: one sidebar around one content frame, the claude.ai shape on the v2
 // language. Pinned on top: the wordmark (home), New game (the one accent action), and
-// Puzzles (the library). The middle is the recent-games list straight off GET /games, one
-// quiet line per game, newest first. A finished game (completedAt present, read from the
-// session-owned game_state under the API's read grant, DESIGN.md section 9) wears a small,
-// muted check ahead of its name; ongoing games carry nothing, so the list stays calm. The
-// user card holds the bottom.
+// Puzzles (the library). The middle is the recent-games list off GET /games: live games
+// first, ordered by when they were last touched (COALESCE(lastActivityAt, createdAt), the
+// same coalesce rule the shelf uses), a small muted check ahead of any finished one; then a
+// collapsed "Solved" disclosure gathers the finished games out of the main flow (completedAt
+// present, read from the session-owned game_state under the API's read grant, DESIGN.md
+// section 9), so the recents read current. The user card holds the bottom.
 //
 // Collapse model: shadcn's Sidebar gives the icon rail, cmd+B, and the mobile Sheet; this
 // shell controls `open`. Default is per surface (expanded at home, collapsed in a game, so
@@ -21,9 +22,11 @@
 // The brand block and user card below are shaped for that: the mark, the trigger, and
 // the avatar are single persistent elements (focus survives a toggle), and wide content
 // is pinned to the expanded width so nothing reflows or re-truncates mid-flight.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   DesktopIcon,
   ExitIcon,
   FileTextIcon,
@@ -46,7 +49,13 @@ import {
 import { Divider, Logo } from "./primitives";
 import { useTheme } from "./useTheme";
 import type { Resource } from "./useResource";
-import { compactTime, gameTitle, isCompleted } from "./homeData";
+import {
+  compactTime,
+  gameTitle,
+  isCompleted,
+  partitionBySolved,
+  sortByActivity,
+} from "./homeData";
 import type { GameSummary } from "./homeData";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -370,35 +379,135 @@ function RecentGames({
     );
   }
   return (
+    <RecentGamesList
+      games={games.data}
+      activeGameId={activeGameId}
+      onOpen={onOpen}
+      now={now}
+    />
+  );
+}
+
+/**
+ * The ready sidebar list: live games first, ordered by the coalesce rule (sortByActivity), then a
+ * collapsed "Solved" disclosure that gathers finished games out of the main flow so the recents
+ * read current. The section defaults collapsed, but opens when the active game (the aria-current
+ * row) is itself solved, so a completed game a person is inside never vanishes; a manual toggle
+ * wins after that. When nothing is solved there is no disclosure row at all (the shelf's
+ * no-empty-header rule). The per-row check icon is redundant inside a labeled section, so solved
+ * rows there drop it; row content is otherwise identical.
+ */
+function RecentGamesList({
+  games,
+  activeGameId,
+  onOpen,
+  now,
+}: {
+  games: readonly GameSummary[];
+  activeGameId: string | null;
+  onOpen: (gameId: string) => void;
+  now: Date;
+}) {
+  const { live, solved } = partitionBySolved(sortByActivity(games));
+  const activeIsSolved = solved.some((g) => g.gameId === activeGameId);
+  // Default collapsed, but reveal the section whenever the active game moves into it (so an
+  // aria-current row is never invisible). The shell persists across navigation, so this must
+  // track the transition, not just mount state. The effect only ever opens; a manual collapse
+  // afterwards stands until the active game changes into the section again.
+  const [expanded, setExpanded] = useState(activeIsSolved);
+  useEffect(() => {
+    if (activeIsSolved) setExpanded(true);
+  }, [activeIsSolved, activeGameId]);
+
+  return (
     <SidebarMenu className="gap-0.5">
-      {games.data.map((g) => {
-        const title = gameTitle(g, now);
-        const active = g.gameId === activeGameId;
-        const done = isCompleted(g);
-        return (
-          <SidebarMenuItem key={g.gameId}>
-            <SidebarMenuButton
-              onClick={() => onOpen(g.gameId)}
-              isActive={active}
-              aria-current={active ? "page" : undefined}
-              title={done ? `${title} (completed)` : title}
-              className="font-normal text-text-muted data-active:font-normal"
+      {live.map((g) => (
+        <RecentGameRow
+          key={g.gameId}
+          game={g}
+          active={g.gameId === activeGameId}
+          showCheck
+          onOpen={onOpen}
+          now={now}
+        />
+      ))}
+
+      {solved.length > 0 && (
+        <>
+          <SidebarMenuItem>
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className="flex w-full items-center gap-1.5 px-2 py-1.5 text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-subtle hover:text-text-muted"
             >
-              {done && (
-                <CheckIcon
-                  aria-label="Completed"
-                  className="size-3.5 shrink-0 text-text-subtle"
-                />
+              {expanded ? (
+                <ChevronDownIcon className="size-3.5 shrink-0" />
+              ) : (
+                <ChevronRightIcon className="size-3.5 shrink-0" />
               )}
-              <span className="min-w-0 flex-1 truncate">{title}</span>
-              <span className="shrink-0 font-mono text-1 tabular-nums text-text-subtle">
-                {compactTime(g.createdAt, now)}
+              <span>Solved</span>
+              <span aria-hidden className="font-mono tabular-nums">
+                · {solved.length}
               </span>
-            </SidebarMenuButton>
+            </button>
           </SidebarMenuItem>
-        );
-      })}
+          {expanded &&
+            solved.map((g) => (
+              <RecentGameRow
+                key={g.gameId}
+                game={g}
+                active={g.gameId === activeGameId}
+                showCheck={false}
+                onOpen={onOpen}
+                now={now}
+              />
+            ))}
+        </>
+      )}
     </SidebarMenu>
+  );
+}
+
+/** One recent-game row. `showCheck` carries the muted completion check only where it is not
+ * already implied by a labeled section (live rows keep it; rows inside the Solved section drop
+ * it). Row content is otherwise identical in both places. */
+function RecentGameRow({
+  game,
+  active,
+  showCheck,
+  onOpen,
+  now,
+}: {
+  game: GameSummary;
+  active: boolean;
+  showCheck: boolean;
+  onOpen: (gameId: string) => void;
+  now: Date;
+}) {
+  const title = gameTitle(game, now);
+  const done = isCompleted(game);
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={() => onOpen(game.gameId)}
+        isActive={active}
+        aria-current={active ? "page" : undefined}
+        title={done ? `${title} (completed)` : title}
+        className="font-normal text-text-muted data-active:font-normal"
+      >
+        {done && showCheck && (
+          <CheckIcon
+            aria-label="Completed"
+            className="size-3.5 shrink-0 text-text-subtle"
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <span className="shrink-0 font-mono text-1 tabular-nums text-text-subtle">
+          {compactTime(game.createdAt, now)}
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
