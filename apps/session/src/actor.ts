@@ -110,6 +110,21 @@ export class GameActor {
   private readonly flushIntervalMs: number;
 
   /**
+   * When the actor last lost its final socket (or hydration time, for an actor that has
+   * never held one); null while any socket is attached. The passivation sweep (DESIGN.md
+   * §6) reads this through `idleMillis` to find eviction candidates.
+   */
+  private idleSince: Date | null;
+
+  /**
+   * Set by the registry at the moment it drops this actor (DESIGN.md §6). An evicted
+   * actor refuses new attachments, so a handshake that resolved it just before eviction
+   * re-resolves and hydrates a fresh actor from the flushed row instead of writing
+   * through a ghost the registry no longer knows (INV-7 single writer).
+   */
+  private evicted = false;
+
+  /**
    * The Live Activity push emitter (PROTOCOL.md "Live Activity push"). Fire-and-forget: the actor
    * calls it after a broadcast and never awaits it, so a slow or down APNs cannot back-pressure the
    * hot path. Defaults to the inert no-op emitter, so an actor built without one (every existing
@@ -140,6 +155,7 @@ export class GameActor {
     this.roomName = hydrated.roomName;
     this.recentCommandIds = [...hydrated.recentCommandIds];
     this.stats = hydrated.stats;
+    this.idleSince = now();
     this.flushEventThreshold =
       options.flushEventThreshold ?? FLUSH_EVENT_THRESHOLD;
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
@@ -168,15 +184,22 @@ export class GameActor {
   }
 
   /**
-   * Register a live socket. Returns `true` when this is the user's FIRST live socket on the
-   * game, so the caller broadcasts `playerConnected` to the others (PROTOCOL.md §6, §9). A
-   * second socket for the same user returns `false`: no connect notice (presence keys on the
-   * first/last socket per user, not per socket).
+   * Register a live socket. `attached: false` means the registry evicted this actor between
+   * the handshake resolving it and the attach: the caller must re-resolve through the
+   * registry, which hydrates a fresh actor from the flushed row (DESIGN.md §6, INV-7).
+   * `firstForUser` is `true` when this is the user's FIRST live socket on the game, so the
+   * caller broadcasts `playerConnected` to the others (PROTOCOL.md §6, §9). A second socket
+   * for the same user gets `false`: no connect notice (presence keys on the first/last
+   * socket per user, not per socket).
    */
-  addConnection(connection: Connection): boolean {
+  addConnection(
+    connection: Connection,
+  ): { attached: false } | { attached: true; firstForUser: boolean } {
+    if (this.evicted) return { attached: false };
     const first = !this.hasUserConnection(connection.userId);
     this.connections.add(connection);
-    return first;
+    this.idleSince = null;
+    return { attached: true, firstForUser: first };
   }
 
   /**
@@ -188,11 +211,36 @@ export class GameActor {
   removeConnection(connection: Connection): boolean {
     const existed = this.connections.delete(connection);
     if (!existed) return false;
+    if (this.connections.size === 0) this.idleSince = this.now();
     const last = !this.hasUserConnection(connection.userId);
     // The user's cursor is presence, tied to their liveness: drop it on the last socket so the
     // next snapshot and the `playerDisconnected` agree the departed user has no cursor (§9).
     if (last) this.cursors.delete(connection.userId);
     return last;
+  }
+
+  /**
+   * Milliseconds since the actor lost its final socket (or since hydration, for one that
+   * never held a socket); `null` while any socket is attached. The passivation sweep
+   * compares this against its idle window (DESIGN.md §6).
+   */
+  idleMillis(now: Date): number | null {
+    if (this.idleSince === null) return null;
+    return now.getTime() - this.idleSince.getTime();
+  }
+
+  /** Live socket count, for the registry's post-drain eviction recheck (DESIGN.md §6). */
+  get connectionCount(): number {
+    return this.connections.size;
+  }
+
+  /**
+   * Mark this actor dropped by the registry (DESIGN.md §6). Called synchronously with the
+   * registry map delete, after a successful drain, so no await separates the mark from the
+   * moment the registry stops handing this actor out. From here every attach is refused.
+   */
+  markEvicted(): void {
+    this.evicted = true;
   }
 
   /** Whether the user still holds any live socket (the first/last-socket presence pivot). */
@@ -231,6 +279,7 @@ export class GameActor {
       conn.close?.(1008, "kicked");
       this.connections.delete(conn);
     }
+    if (held && this.connections.size === 0) this.idleSince = this.now();
     // A kicked user leaves no presence behind (§9): drop their cursor so no snapshot carries it.
     this.cursors.delete(userId);
     // Live Activity (PROTOCOL.md "Live Activity push"): the kicked member's own tokens get an

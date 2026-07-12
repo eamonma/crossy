@@ -1031,6 +1031,127 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
   });
 });
 
+describe("passivation: idle actors drain and evict (DESIGN.md §6)", () => {
+  /** Poll until the server's cached actor count reaches `target` (or fail loudly). */
+  async function waitForActorCount(
+    srv: SessionServer,
+    target: number,
+  ): Promise<void> {
+    for (let i = 0; i < 200; i++) {
+      if (srv.liveActorCount() === target) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(
+      `liveActorCount never reached ${target} (at ${srv.liveActorCount()})`,
+    );
+  }
+
+  it("drains the unflushed tail on eviction, and a reconnect rehydrates the exact board (INV-5, DESIGN.md §6)", async () => {
+    // Flush thresholds set unreachably high, so ONLY the passivation drain can persist
+    // the typed letters: an eviction that skipped the drain would lose them (INV-5).
+    const idleServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushEventThreshold: 1000, flushIntervalMs: 600_000 },
+      passivateAfterMs: 50,
+      passivateSweepIntervalMs: 25,
+    });
+    try {
+      const userId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [{ userId, role: "solver" }],
+      });
+      const { client } = await connectAndHelloOn(idleServer, gameId, userId);
+      client.sendJson(placeLetter(0, "A"));
+      client.sendJson(placeLetter(1, "B"));
+      await client.waitForCount("cellSet", 2);
+      client.close();
+
+      // The sweep drains then evicts once the idle window passes (map goes empty).
+      await waitForActorCount(idleServer, 0);
+      const state = await loadGameState(adminPool, gameId);
+      expect(state?.lastSeq).toBe(2);
+
+      // The same server rehydrates on the next connect: the board is exact (INV-5).
+      const revisit = await connectAndHelloOn(idleServer, gameId, userId);
+      const board = (
+        revisit.welcome as unknown as {
+          board: { seq: number; cells: { v: string | null }[] };
+        }
+      ).board;
+      expect(board.seq).toBe(2);
+      expect(board.cells[0]?.v).toBe("A");
+      expect(board.cells[1]?.v).toBe("B");
+      revisit.client.close();
+    } finally {
+      await idleServer.close();
+    }
+  });
+
+  it("never evicts an actor holding a live socket (DESIGN.md §6)", async () => {
+    const idleServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      passivateAfterMs: 50,
+      passivateSweepIntervalMs: 25,
+    });
+    try {
+      const userId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [{ userId, role: "solver" }],
+      });
+      const { client } = await connectAndHelloOn(idleServer, gameId, userId);
+      // Many sweep ticks and idle windows pass; the attached socket pins the actor.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(idleServer.liveActorCount()).toBe(1);
+      client.close();
+    } finally {
+      await idleServer.close();
+    }
+  });
+
+  it("a passivated completed game still serves its stats on the next visit (PROTOCOL.md §4; INV-5)", async () => {
+    const idleServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      passivateAfterMs: 50,
+      passivateSweepIntervalMs: 25,
+    });
+    try {
+      const userId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [{ userId, role: "solver" }],
+      });
+      const { client } = await connectAndHelloOn(idleServer, gameId, userId);
+      client.sendJson(placeLetter(0, "A"));
+      client.sendJson(placeLetter(1, "B"));
+      client.sendJson(placeLetter(2, "C"));
+      const completed = (await client.waitForType(
+        "gameCompleted",
+      )) as unknown as { stats: Record<string, unknown> };
+      client.close();
+
+      // Same server, no restart: the sweep evicts the terminal actor, and the next
+      // visit's rehydrated welcome still carries the flushed stats (PROTOCOL.md §4).
+      await waitForActorCount(idleServer, 0);
+      const revisit = await connectAndHelloOn(idleServer, gameId, userId);
+      const board = (
+        revisit.welcome as unknown as {
+          board: { status: string; stats: Record<string, unknown> | null };
+        }
+      ).board;
+      expect(board.status).toBe("completed");
+      expect(board.stats).toEqual(completed.stats);
+      revisit.client.close();
+    } finally {
+      await idleServer.close();
+    }
+  });
+});
+
 describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-7, INV-4)", () => {
   // Read the stored game_state row exactly as Postgres holds it, so a test can assert the
   // guarded fields (board, status, last_seq) are byte-identical after a rejected flush.
