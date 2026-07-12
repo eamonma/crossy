@@ -1,13 +1,14 @@
 // Content script, Guardian crossword pages only (manifest matches). Deliberately dumb
 // (D21): confirm the page, locate the embedded document, hand it to the popup verbatim.
-// It never transforms the document and never talks to the network.
+// It never transforms the document and never talks to the network. (The NYT and
+// AmuseLabs adapters have their own content scripts; this one is Guardian's.)
 
 import { isGuardianCrosswordPage } from "./guardian/detect";
 import {
   CROSSWORD_ISLAND_SELECTOR,
   parseCrosswordIslandProps,
 } from "./guardian/extract";
-import { EXTRACT_REQUEST } from "./messaging";
+import { EXTRACT_REQUEST, respondWith } from "./messaging";
 import type { ExtractRequest, ExtractResponse } from "./messaging";
 
 chrome.runtime.onMessage.addListener(
@@ -25,7 +26,10 @@ chrome.runtime.onMessage.addListener(
 
     const island = document.querySelector(CROSSWORD_ISLAND_SELECTOR);
     sendResponse(
-      parseCrosswordIslandProps(island ? island.getAttribute("props") : null),
+      respondWith(
+        "guardian",
+        parseCrosswordIslandProps(island ? island.getAttribute("props") : null),
+      ),
     );
   },
 );

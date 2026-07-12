@@ -8,12 +8,10 @@
 // checks below stop at "an object", the form PROTOCOL.md section 12 pins for the
 // `guardian` envelope. Translation, validation, and rejection are the server ACL's job.
 
+import type { ExtractResult } from "../extract-result";
+
 /** The island that carries the crossword document in its `props` attribute. */
 export const CROSSWORD_ISLAND_SELECTOR = 'gu-island[name="CrosswordComponent"]';
-
-export type ExtractResult =
-  | { readonly ok: true; readonly document: unknown }
-  | { readonly ok: false; readonly reason: string };
 
 /**
  * Parse a `props` attribute value (as the DOM returns it, entities already decoded)

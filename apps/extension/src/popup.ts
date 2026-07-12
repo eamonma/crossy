@@ -4,7 +4,7 @@
 // code and message verbatim (PROTOCOL.md section 12).
 
 import { postPuzzle } from "./api";
-import { buildGuardianEnvelope } from "./envelope";
+import { buildEnvelope } from "./envelope";
 import { EXTRACT_REQUEST } from "./messaging";
 import type { ExtractResponse } from "./messaging";
 import { ensureOriginPermission, loadSettings } from "./settings";
@@ -67,7 +67,7 @@ async function init(): Promise<void> {
         outcome = await postPuzzle(
           settings.apiBaseUrl,
           settings.token,
-          buildGuardianEnvelope(extraction.document),
+          buildEnvelope(extraction.format, extraction.document),
         );
       } catch {
         resultEl.textContent = `NETWORK: could not reach ${settings.apiBaseUrl}`;
