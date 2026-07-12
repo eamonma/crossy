@@ -72,6 +72,25 @@ function displayNameOf(user: User): string {
   return "Player";
 }
 
+/**
+ * The user's own profile picture from provider metadata, or null. Discord ships `avatar_url`;
+ * Apple ships no picture, so this is null there. Guests never carry one. Exported so the
+ * extraction is unit-testable next to displayNameOf. Only a non-empty http(s) URL counts; any
+ * other shape falls back to null so the chrome shows the initial rather than a broken image.
+ */
+export function avatarUrlOf(user: User): string | null {
+  if (user.is_anonymous === true) return null;
+  const meta = user.user_metadata as Record<string, unknown>;
+  for (const key of ["avatar_url", "picture"]) {
+    const value = meta[key];
+    if (typeof value === "string") {
+      const url = value.trim();
+      if (url.startsWith("https://") || url.startsWith("http://")) return url;
+    }
+  }
+  return null;
+}
+
 function toSession(session: Session | null): IdentitySession | null {
   if (session === null) return null;
   const user = session.user;
@@ -79,6 +98,7 @@ function toSession(session: Session | null): IdentitySession | null {
     userId: user.id,
     displayName: displayNameOf(user),
     isAnonymous: user.is_anonymous === true,
+    avatarUrl: avatarUrlOf(user),
   };
 }
 

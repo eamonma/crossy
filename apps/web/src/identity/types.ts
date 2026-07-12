@@ -10,6 +10,13 @@ export interface IdentitySession {
   displayName: string;
   /** True for an anonymous guest (DESIGN.md section 8). */
   isAnonymous: boolean;
+  /**
+   * The signed-in user's own profile picture (the Discord or Apple avatar carried in the OAuth
+   * user_metadata), or null. It lives in the port so the chrome can reserve the avatar box and
+   * lay the image over the initial the moment it resolves, never reflowing the chip once it
+   * lands (the same cure as #93). Null for guests and providers that ship no picture.
+   */
+  avatarUrl: string | null;
 }
 
 /**

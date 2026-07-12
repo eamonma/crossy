@@ -16,12 +16,14 @@ const ACCOUNT: IdentitySession = {
   userId: "u1",
   displayName: "Ada",
   isAnonymous: false,
+  avatarUrl: null,
 };
 
 const GUEST: IdentitySession = {
   userId: "g1",
   displayName: "Guest",
   isAnonymous: true,
+  avatarUrl: null,
 };
 
 function makeIdentity(initial: IdentitySession | null = null): {
