@@ -217,10 +217,12 @@ struct ClueChrome: View {
             .padding(.vertical, 8)
             .background(
                 // Achromatic emphasis (DESIGN.md §3): the current word leans on
-                // weight and a quiet ink wash, the crossing word on half of one.
+                // weight and a quiet ink wash, the crossing word on half of one,
+                // and a clue the current one names on a fainter rung still.
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color(rgb: ground.tokens.ink).opacity(
-                        row.isCurrent ? 0.10 : row.isCrossing ? 0.05 : 0))
+                        row.isCurrent
+                            ? 0.10 : row.isCrossing ? 0.05 : row.isReferenced ? 0.03 : 0))
                     .padding(.horizontal, 8)
             )
             .opacity(row.isDimmed ? 0.4 : 1)
