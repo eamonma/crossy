@@ -1,10 +1,11 @@
-# Extension auth: its own Supabase session
+# Crossy extension design
 
-Status: adopted (owner ruling, 2026-07-12). This replaces the earlier
-`externally_connectable` pairing proposal, recorded under Rejected below. The
-paste-token dev surface is gone.
+Auth: adopted (owner ruling, 2026-07-12); it replaced the earlier
+`externally_connectable` pairing proposal, recorded under Rejected below, and
+the paste-token dev surface is gone. Play surface: designed 2026-07-12, lands
+with Wave 6.4.
 
-## The design
+## The auth design
 
 The extension is a first-class Supabase auth client with its own session, not a
 borrower of the web app's. Sign-in runs OAuth through the browser identity API,
@@ -44,6 +45,42 @@ extension's session dies; the web app and other devices stay signed in.
 domain carry the Supabase ref-domain issuer
 (`https://qvnvokstvbarsxhufrja.supabase.co/auth/v1`). The extension never decodes
 or validates claims, issuer included; it stores tokens and presents them.
+
+**Silent sign-in.** If you are already signed into the web app, the extension signs
+itself in with no click. The mechanism shares no tokens. It leans on the OAuth
+provider (Discord primary) still holding a live session in the browser: the extension
+runs its OWN normal PKCE flow with `interactive: false`, which completes with no
+visible window when that provider session exists. On success the extension gets its
+own independent, properly-rotating session, exactly as the interactive flow does; the
+two flows run the same authorize URL, the same code exchange, the same atomic persist,
+differing only in the `interactive` flag. On failure (no live provider session) it
+stays signed out silently. This is safe because the extension is signed out when the
+silent attempt runs: a failure has nothing to lose, so it never signs out and never
+raises an error, unlike a refresh failure on an existing session. The attempt is
+single-flighted and stands down while an interactive sign-in is in flight or a session
+already exists, so at most one OAuth flow ever races to persist. Discord only; Apple
+rarely keeps a silent session and its button stays.
+
+Two triggers fire it. The popup, opening signed out, asks the worker for a silent
+sign-in behind a quiet "checking" state and time-boxes the wait, dropping to the
+provider buttons on failure or timeout; this needs no extra permission and works on
+both browsers. The crossy.party content script is the automatic half: at
+`document_idle` it makes one best-effort read of `window.localStorage` for a
+supabase-js `sb-*-auth-token` entry with a live `expires_at`, and if present asks the
+worker to attempt a silent sign-in (only when the extension is itself signed out). The
+only thing that crosses to the worker is a boolean "web session present" signal; the
+script never reads, forwards, or logs the web app's tokens. The coupling to
+supabase-js's storage layout is deliberately loose: if the key format changes or
+nothing matches, it does nothing and the popup trigger still covers the case. On
+Firefox this content script's host permission is opt-in (all host permissions are, so
+the user grants site access from the extensions button), so the automatic half
+degrades to the popup trigger there.
+
+This is web-to-extension only. Extension-to-web is deliberately not done: pushing the
+extension's session back into the web origin would mean injecting tokens into
+crossy.party's storage and sharing a refresh token across the two contexts, which
+trips Supabase's rotation reuse detection. The independent-session property is the
+whole point; a shared refresh token would break it.
 
 ## Baked defaults
 
@@ -101,10 +138,13 @@ as event pages via exactly that key. One manifest cannot serve both. The
 committed manifest and `dist/` are the Chrome form (`service_worker` only,
 pinned by `manifest.test.ts`); `build:firefox` emits `dist-firefox/` with the
 background swapped to `scripts` (`scripts/build-firefox.mjs`). The
-`browser ?? chrome` shim in the code is unaffected either way. The mirror
-warning is expected: Firefox flags the Chrome-only `key` property as an
-unexpected manifest key and ignores it, exactly as Chrome does with the
-`gecko` block.
+`browser ?? chrome` shim in the code is unaffected either way. That transform
+also drops the top-level `key` from the Firefox build: it pins the Chrome
+unpacked dev id and means nothing to Firefox, which logged "Reading manifest:
+Warning processing key" and ignored it. Stripping it stops the warning; the
+Chrome `dist/` keeps `key` (both pinned by `manifest.test.ts`). The reverse
+still holds, harmlessly: Chrome logs an unrecognized-key warning for the
+`gecko` block and ignores it.
 
 Two more Firefox laws, both observed on the first temporary load (2026-07-12):
 `permissions.request` must be reached synchronously from the user input
@@ -122,6 +162,40 @@ The owner must add the identity redirect URLs to the Supabase auth URL allowlist
 - Firefox: `https://a9cefb33c7f1e3c38f826caa8834a8fc2b0fddd7.extensions.allizom.org/`
   (the host is the SHA-1 hex of the gecko id; confirm with
   `browser.identity.getRedirectURL()` in the extension console)
+
+## Play surface (Wave 6.4)
+
+The extension's job ends at ingest; play belongs to the web app (root DESIGN.md
+section 7, D22). "Play in Crossy" anywhere in the extension means: extract,
+POST /puzzles, open a new tab at the web app's play intent for the returned
+puzzle id. Room creation UX exists once.
+
+Two surfaces, one flow:
+
+- **Popup, the invariant path.** The primary action on any supported page. It
+  works wherever an adapter works, including inside AmuseLabs embeds, whatever
+  the pill's state, site toggles, or a publisher redesign have done.
+  Add-to-library stays as the quieter secondary action.
+- **Inline pill, an enhancement.** Guardian and NYT top-level pages only.
+  Shadow root (no CSS bleed in either direction), mounted adjacent to the
+  puzzle, re-mounted via MutationObserver when the SPA re-renders, and shown
+  only after the adapter produced a successful extraction, so the button never
+  appears on a page we cannot ingest. Per-site toggle, default on. No publisher
+  trademarks. AmuseLabs embeds are excluded: the content script lives inside
+  the publisher's iframe, and a Crossy button there renders inside their
+  player.
+
+Permissions: content scripts cannot call `permissions.request`, and a
+background request relayed from a page click carries no gesture in Firefox. So
+the sign-in click requests every origin the product needs in one call (auth and
+API bases; `requestOriginPermissions` already takes a list), and the pill never
+prompts. If the API origin is missing at pill-click time anyway, the pill
+defers to the popup path instead of failing silently.
+
+Visual design: popup, options, and pill get a design pass to the product's
+language (the iOS and web direction; the current popup is dev scaffolding, not
+a spec). Icons (16/32/48/128) come from the committed CROSSY icon-generator
+precedent and land with this pass.
 
 ## Open questions
 

@@ -94,14 +94,22 @@ enum RoomMapping {
             numbers: GridPuzzle.numbering(from: starts))
 
         let book = ClueBook(
-            across: across.map {
-                ClueEntry(number: $0.number, text: $0.text, cells: $0.cellIndices, isAcross: true)
-            },
-            down: down.map {
-                ClueEntry(number: $0.number, text: $0.text, cells: $0.cellIndices, isAcross: false)
-            })
+            across: across.map { entry($0, isAcross: true) },
+            down: down.map { entry($0, isAcross: false) })
 
         return (grid, book)
+    }
+
+    /// One wire clue to its render entry, threading the clue-formatting runs through
+    /// (owner ruling 2026-07-12). The wire `ClueRun`s map to CrossyUI's `ClueTextRun`s,
+    /// unknown style strings dropped by `ClueTextRun(text:wireStyles:)` (forward
+    /// compatibility). A clue with no runs keeps `runs: nil`, so its bar and browser rows
+    /// render plain, exactly as before this wave. The runs' text concatenates to `$0.text`
+    /// (the server's guarantee), so `text` stays the fallback the entry always carries.
+    private static func entry(_ clue: Clue, isAcross: Bool) -> ClueEntry {
+        ClueEntry(
+            number: clue.number, text: clue.text, cells: clue.cellIndices, isAcross: isAcross,
+            runs: clue.runs?.map { ClueTextRun(text: $0.t, wireStyles: $0.s) })
     }
 
     /// The WebSocket dial URL for this game (PROTOCOL.md §2:

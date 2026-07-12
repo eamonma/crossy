@@ -444,6 +444,58 @@ describe("POST /puzzles ingestion ACL (ROADMAP Phase 3 Track C, G1; SP5; INV-6)"
     });
   });
 
+  it("captures clue markup as runs at ingest and passes them through the ClientPuzzle view (owner ruling 2026-07-12; INV-6)", async () => {
+    // A styled clue carries {text, runs}; a plain clue stays a bare string. Prove the runs survive
+    // the jsonb store AND the ClientPuzzle projection (toClientPuzzle keeps every PuzzleBase field),
+    // and that INV-6 is untouched (no solution key rides the runs-bearing view).
+    const token = await auth.mintUpgraded();
+    const doc = {
+      size: { rows: 2, cols: 2 },
+      grid: ["H", "I", "O", "N"],
+      clues: {
+        across: ["1. plain opener", "3. <b>bold</b> basics"],
+        down: ["1. up top", "2. H<sub>2</sub>O beside"],
+      },
+    };
+    const res = await postJson("/puzzles", token, doc);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      puzzleId: string;
+      puzzle: { clues: { across: unknown[]; down: unknown[] } };
+    };
+    // The ClientPuzzle view (the POST response `puzzle`) carries runs on the styled clues only.
+    expect(hasKeyDeep(body.puzzle, "solution")).toBe(false);
+    expect(body.puzzle.clues.across).toEqual([
+      { number: 1, text: "plain opener", cellIndices: [0, 1] },
+      {
+        number: 3,
+        text: "bold basics",
+        cellIndices: [2, 3],
+        runs: [{ t: "bold", s: ["b"] }, { t: " basics" }],
+      },
+    ]);
+    expect(body.puzzle.clues.down).toEqual([
+      { number: 1, text: "up top", cellIndices: [0, 2] },
+      {
+        number: 2,
+        text: "H2O beside",
+        cellIndices: [1, 3],
+        runs: [{ t: "H" }, { t: "2", s: ["sub"] }, { t: "O beside" }],
+      },
+    ]);
+    // The stored server model carries the same runs (jsonb round-trip) alongside the solution.
+    const { rows } = await adminPool.query(
+      "select data from puzzles where puzzle_id = $1",
+      [body.puzzleId],
+    );
+    expect(rows[0].data.clues.across[1]).toEqual({
+      number: 3,
+      text: "bold basics",
+      cellIndices: [2, 3],
+      runs: [{ t: "bold", s: ["b"] }, { t: " basics" }],
+    });
+  });
+
   it("rejects an oversize grid as OVERSIZE_GRID (SP5 25x25 cap; INV-6)", async () => {
     const token = await auth.mintUpgraded();
     const res = await postJson("/puzzles", token, {

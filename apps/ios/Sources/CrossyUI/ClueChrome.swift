@@ -207,7 +207,12 @@ struct ClueChrome: View {
                     .monospacedDigit()
                     .foregroundStyle(Color(rgb: ground.tokens.number))
                     .frame(width: 26, alignment: .trailing)
-                Text(verbatim: row.clue.text)
+                // Styled clue prose when the clue carries runs, plain otherwise
+                // (byte-identical to the old verbatim). The base size and weight match
+                // the .font below, so italic and bold stay relative to this row's font
+                // and sub/sup shrink within it; sub/sup line-height containment lives in
+                // the mapper, so a tight list row never grows.
+                Text(clueProse: row.clue, size: 14, weight: row.isCurrent ? .semibold : .regular)
                     .font(.system(size: 14, weight: row.isCurrent ? .semibold : .regular))
                     .foregroundStyle(Color(rgb: ground.tokens.ink))
                     .multilineTextAlignment(.leading)
@@ -405,7 +410,12 @@ struct ClueBarLabel: View {
                     .tracking(0.8)
                     .monospacedDigit()
                     .foregroundStyle(Color(rgb: ground.tokens.number))
-                Text(verbatim: current.text)
+                // Styled clue prose when the clue carries runs, plain otherwise
+                // (byte-identical to the old verbatim). Base size and weight match the
+                // .font below, so the bar's medium weight and 15 pt family carry through
+                // every run; sub/sup stay inside the line box so the three-line cap and
+                // the bar's borrowed height are unaffected.
+                Text(clueProse: current, size: 15, weight: .medium)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color(rgb: ground.tokens.ink))
                     .lineLimit(ChromeLayout.clueLineCap)

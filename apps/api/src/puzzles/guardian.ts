@@ -23,21 +23,23 @@
 // by none is a block. Numbering is then derived from that grid's geometry (deriveWordRuns),
 // never trusted from the document, matching the xwordinfo boundary; the document's `number` and
 // `humanNumber` influence nothing. Clue text is taken verbatim from each entry (a real Guardian
-// continuation carries its own "See 19"); only a continuation with no clue text gets the
-// synthesized "See <n>" built from the head slot's grid-derived number.
+// continuation carries its own "See 19") and translated through the shared markup seam
+// (clue-runs.ts), so its `{text, runs}` is captured like every other format; only a continuation
+// whose clue PROJECTS TO EMPTY gets the synthesized "See <n>" built from the head's grid number.
 import { asciiUppercase } from "@crossy/protocol";
 import type { ServerPuzzle, Solution } from "@crossy/protocol";
 import {
+  buildRunClue,
   checkDimensions,
   checkSolutionGrid,
-  decodeEntities,
   deriveWordRuns,
   isObject,
   isPositiveInt,
   readMetadata,
   reject,
 } from "./ingest";
-import type { IngestResult, PuzzleFeatures, WordRun } from "./ingest";
+import type { IngestResult, PuzzleFeatures, RunClue, WordRun } from "./ingest";
+import { parseClueRuns } from "./clue-runs";
 
 /** One structurally validated entry, positions already flattened to a start cell index. */
 interface GuardianEntry {
@@ -302,21 +304,26 @@ export function translateGuardian(body: unknown): IngestResult {
   }
 
   // Clue text: every slot uses the document's own clue text verbatim (extraction fidelity:
-  // real Guardian continuations carry their own "See 19" text). Only a continuation whose clue
-  // is absent, non-string, or empty gets the synthesized "See <n>", where n is the head slot's
-  // grid-derived number, never the document's numbering. Text is entity-decoded like the
-  // xwordinfo boundary; Guardian clues carry no number prefix to strip.
-  const clueText = (e: GuardianEntry): string => {
-    const own = e.clue.trim();
-    if (e.headId === e.id || own !== "") return decodeEntities(own);
-    return `See ${numberById.get(e.headId)}`;
+  // real Guardian continuations carry their own "See 19" text), translated through the shared
+  // markup seam (clue-runs.ts) so Guardian clues capture <i>/<b>/<sub>/<sup> as runs like every
+  // other format. Only a continuation whose clue PROJECTS TO EMPTY (absent, non-string, blank, or
+  // markup-only, so the plain projection is "") gets the synthesized "See <n>", where n is the
+  // head slot's grid-derived number, never the document's numbering. Emptiness is judged on the
+  // projected text, not the raw string, so a `<i></i>`-only continuation still synthesizes.
+  // Guardian clues carry no number prefix to strip.
+  const rawClue = (e: GuardianEntry): string => {
+    if (e.headId === e.id) return e.clue;
+    // A continuation with no own text (its projection is empty) synthesizes "See <n>".
+    if (parseClueRuns(e.clue).text === "")
+      return `See ${numberById.get(e.headId)}`;
+    return e.clue;
   };
-  const buildClues = (list: { run: WordRun; entry: GuardianEntry }[]) =>
-    list.map(({ run, entry }) => ({
-      number: run.number,
-      text: clueText(entry),
-      cellIndices: run.cells,
-    }));
+  const buildClues = (
+    list: { run: WordRun; entry: GuardianEntry }[],
+  ): RunClue[] =>
+    list.map(({ run, entry }) =>
+      buildRunClue(run.number, rawClue(entry), run.cells),
+    );
 
   const puzzle: ServerPuzzle = {
     rows,

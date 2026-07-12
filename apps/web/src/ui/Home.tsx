@@ -12,19 +12,22 @@
 // `/puzzles` is the hybrid gallery: the few most recent uploads as larger silhouette cards, the
 // deeper archive as the existing tight index rows below (date-led, byline, size). Every entry
 // starts a fresh game (POST /games), the replay-without-reupload path. The /new dropzone is a
-// separate decision and is not absorbed here.
+// separate decision and is not absorbed here. `?play=<puzzleId>` is the extension's post-ingest
+// play intent (D22): the named puzzle leads the library preselected, one explicit click starts
+// the room, and the param is consumed once (playIntent.ts) so a refresh never re-fires it.
 //
 // Titles and authors come off the API where ingestion parsed them; nothing here invents a
 // lifecycle status, because status is session-owned and the API reports only completion
 // (DESIGN.md section 9). Both reads are solution-free (INV-6). Fetch shapes and the pure
 // formatters live in homeData; the silhouette is the artwork, typography does the rest.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PlusIcon } from "@radix-ui/react-icons";
 import type { IdentitySession } from "../identity";
 import { cx, CapsLabel, Divider } from "./primitives";
 import { Silhouette } from "./Silhouette";
 import { useResource } from "./useResource";
 import type { Resource } from "./useResource";
+import { resolvePlayIntent, strippedPlaySearch } from "./playIntent";
 import {
   featureLabels,
   fetchPuzzles,
@@ -49,6 +52,7 @@ export type HomeSurface = "games" | "puzzles";
 
 export function Home({
   surface,
+  playIntent = null,
   apiBase,
   getToken,
   session,
@@ -59,6 +63,9 @@ export function Home({
   onCreate,
 }: {
   surface: HomeSurface;
+  /** The pending play intent (`?play=<puzzleId>`, D22): the library puzzle to preselect for
+   * room creation. Consumed once by the puzzles panel; null on a plain library visit. */
+  playIntent?: string | null;
   apiBase: string;
   getToken: TokenSource;
   session: IdentitySession | null;
@@ -89,6 +96,7 @@ export function Home({
             />
           ) : (
             <PuzzlesPanel
+              playIntent={playIntent}
               apiBase={apiBase}
               getToken={getToken}
               onNewGame={onStartGame}
@@ -357,21 +365,39 @@ function GamesList({
 /* ---- Puzzles: the library ---- */
 
 function PuzzlesPanel({
+  playIntent,
   apiBase,
   getToken,
   onNewGame,
   onCreate,
 }: {
+  /** The pending play intent's puzzle id (D22), or null on a plain library visit. */
+  playIntent: string | null;
   apiBase: string;
   getToken: TokenSource;
   onNewGame: (gameId: string, code: string) => void;
   onCreate: () => void;
 }) {
   const [starting, setStarting] = useState<string | null>(null);
+  // The intent is consumed into state at mount and the `?play=` param is stripped below, so a
+  // refresh or a copied address never reopens the flow; dismissing it clears the state copy.
+  const [intent, setIntent] = useState(playIntent);
   const [state, reload] = useResource<PuzzleSummary[]>(
     () => fetchPuzzles(apiBase, getToken),
     [apiBase, getToken],
   );
+
+  useEffect(() => {
+    const cleaned = strippedPlaySearch(window.location.search);
+    if (cleaned === null) return;
+    window.history.replaceState(
+      {},
+      "",
+      `${window.location.pathname}${cleaned}`,
+    );
+  }, []);
+
+  const resolution = resolvePlayIntent(intent, state);
 
   async function start(p: PuzzleSummary): Promise<void> {
     setStarting(p.puzzleId);
@@ -399,6 +425,17 @@ function PuzzlesPanel({
       {state.phase === "error" && (
         <PanelError label="We couldn't load your puzzles." onRetry={reload} />
       )}
+      {resolution.kind === "found" && (
+        <PlayIntentLead
+          puzzle={resolution.puzzle}
+          starting={starting === resolution.puzzle.puzzleId}
+          onStart={start}
+          onDismiss={() => setIntent(null)}
+        />
+      )}
+      {resolution.kind === "unknown" && (
+        <PlayIntentMiss onDismiss={() => setIntent(null)} />
+      )}
       {state.phase === "ready" &&
         (state.data.length === 0 ? (
           <PanelEmpty
@@ -414,6 +451,75 @@ function PuzzlesPanel({
           />
         ))}
     </PanelShell>
+  );
+}
+
+/**
+ * The play intent's landing (D22): the extension ingests, opens `/puzzles?play=<id>`, and the
+ * named puzzle waits here preselected above the library. The one action is the same New game
+ * click every row has; landing on the URL never creates anything by itself.
+ */
+function PlayIntentLead({
+  puzzle,
+  starting,
+  onStart,
+  onDismiss,
+}: {
+  puzzle: PuzzleSummary;
+  starting: boolean;
+  onStart: (p: PuzzleSummary) => void;
+  onDismiss: () => void;
+}) {
+  const features = featureLabels(puzzle.features);
+  const facts = [
+    ...(puzzle.author !== null && puzzle.author.trim() !== ""
+      ? [puzzle.author]
+      : []),
+    geometry(puzzle.cols, puzzle.rows),
+    ...(features.length > 0 ? [features.join(" · ")] : []),
+  ].join(" · ");
+  return (
+    <section className="flex flex-col gap-3 px-4 pt-4">
+      <CapsLabel className="text-text-subtle">Ready to play</CapsLabel>
+      <div className="flex flex-wrap items-center gap-4 rounded-4 border border-border bg-panel px-4 py-3">
+        <Silhouette mask={puzzle.mask} className="h-auto w-14 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-3 font-medium text-text">
+            {puzzleTitle(puzzle)}
+          </div>
+          <div className="mt-0.5 truncate text-1 text-text-muted">{facts}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={onDismiss}>
+            Not now
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            disabled={starting}
+            onClick={() => onStart(puzzle)}
+          >
+            {starting ? "Starting..." : "New game"}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The intent named a puzzle this account does not have (foreign, deleted, or a stale link):
+ * say so calmly above the library and leave everything else usable. */
+function PlayIntentMiss({ onDismiss }: { onDismiss: () => void }) {
+  return (
+    <div className="mx-4 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-3 border border-border bg-sand-2 px-4 py-3">
+      <p className="m-0 text-2 text-text-muted">
+        That puzzle isn't in your library. If you just added it, check that
+        you're signed in to the same account.
+      </p>
+      <Button variant="ghost" size="sm" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </div>
   );
 }
 

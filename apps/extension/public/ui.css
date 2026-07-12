@@ -1,0 +1,331 @@
+/*
+ * Crossy extension chrome: the popup and the options page. Tokens mirror the web's
+ * Sand neutral + one Gold accent (apps/web/src/styles.css); dark rides
+ * prefers-color-scheme, and the HTML ships both mark treatments for ui.css to swap.
+ * No webfonts here: the popup must paint instantly and offline, so type is the
+ * system grotesque and the wordmark is the committed Harfang outlines.
+ */
+
+:root {
+  color-scheme: light dark;
+  --bg: #fdfdfc; /* sand-1 */
+  --text: #21201c; /* sand-12 */
+  --text-muted: #63635e; /* sand-11 */
+  --text-subtle: #82827c; /* sand-10 */
+  --border: #dad9d6; /* sand-6 */
+  --border-strong: #cfceca; /* sand-7 */
+  --wash: #f1f0ef; /* sand-3: quiet hover */
+  --gold: #978365; /* gold-9, the single accent */
+  --gold-hover: #8c7a5e; /* gold-10 */
+  --gold-text: #71624b; /* gold-11: links */
+  --ring: #b9a88d; /* gold-8 */
+  --ring-halo: #e1dccf; /* gold-5 */
+  --danger: #ce2c31; /* red-11 */
+}
+
+.mark-plate {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111110;
+    --text: #eeeeec;
+    --text-muted: #b5b3ad;
+    --text-subtle: #7c7b74;
+    --border: #3b3a37;
+    --border-strong: #494844;
+    --wash: #222221;
+    --gold: #978365;
+    --gold-hover: #a89873;
+    --gold-text: #cbb990;
+    --ring: #5c5741;
+    --ring-halo: #333026;
+    --danger: #ff9592;
+  }
+
+  .mark-ink {
+    display: none;
+  }
+
+  .mark-plate {
+    display: inline;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.lockup .mark {
+  width: 24px;
+  height: 24px;
+  display: block;
+  flex: none;
+}
+
+.lockup .wordmark {
+  width: 53px;
+  height: 24px;
+  display: block;
+}
+
+button {
+  appearance: none;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+button.primary {
+  background: var(--gold);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--gold-hover);
+}
+
+button.quiet {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+button.quiet:hover:not(:disabled) {
+  background: var(--wash);
+}
+
+button.linklike {
+  font-size: inherit;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 2px;
+}
+
+button.linklike:hover:not(:disabled) {
+  color: var(--text);
+}
+
+a {
+  color: var(--gold-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ---- Popup ---- */
+
+body.popup {
+  width: 320px;
+}
+
+body.popup main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+}
+
+body.popup #status {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+body.popup #actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+body.popup #actions:empty {
+  display: none;
+}
+
+body.popup #actions button {
+  width: 100%;
+  height: 36px;
+  padding: 0 16px;
+}
+
+body.popup #result {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+body.popup #result.error {
+  color: var(--danger);
+}
+
+body.popup #result:empty {
+  display: none;
+}
+
+/* The identity footer: quiet, under its own hairline; absent when signed out. */
+body.popup #identity {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+body.popup #identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.popup #identity button {
+  flex: none;
+  font-size: 12px;
+}
+
+body.popup #identity:empty {
+  display: none;
+}
+
+/* ---- Options ---- */
+
+body.options main {
+  max-width: 440px;
+  padding: 48px 32px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+body.options .lede {
+  margin: 0;
+  color: var(--text-muted);
+  max-width: 40ch;
+}
+
+body.options section {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The web's caps micro-label (ACROSS / DOWN), reused as the section heading. */
+body.options h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+body.options .field-row {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+body.options label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+body.options input {
+  font: inherit;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+
+body.options input::placeholder {
+  color: var(--text-subtle);
+}
+
+body.options input:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px var(--ring),
+    0 0 0 2px var(--ring-halo);
+}
+
+body.options .check-row {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.options .check-row input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+  accent-color: var(--gold);
+}
+
+body.options .buttons {
+  margin: 8px 0 0;
+  display: flex;
+  gap: 8px;
+}
+
+body.options .buttons button {
+  height: 32px;
+  padding: 0 14px;
+}
+
+body.options #status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+body.options #status:empty {
+  display: none;
+}

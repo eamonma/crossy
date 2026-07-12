@@ -19,14 +19,16 @@ vectors/
     navigation/
     completion/
     client-store/
+    clue-runs/
 ```
 
 - One JSON file per behavior cluster, kebab-case basename, `.json` extension. Each
   file is a bare JSON array of cases, UTF-8, prettier-formatted.
 - The directory name is the family. Runners MUST fail on a family they do not
-  recognize; skipping silently is forbidden. All five families from PROTOCOL.md §13
-  are registered. `client-store` is a _foreign_ family (see below): the engine runner
-  discovers and shape-validates it but never executes it.
+  recognize; skipping silently is forbidden. The five families from PROTOCOL.md §13
+  plus `clue-runs` (PROTOCOL.md §12) are registered. `client-store` and `clue-runs`
+  are _foreign_ families (see below): the engine runner discovers and shape-validates
+  them but never executes them.
 - On a protocol version bump the outgoing suite is frozen under `frozen/vN-1/` and
   stays in CI (PROTOCOL.md §14).
 
@@ -274,11 +276,13 @@ reducer never emits (PROTOCOL.md §10, §13; DESIGN.md §3). Shape:
 
 ## Foreign families
 
-Most families bind to `packages/engine`. `client-store` does not: its consumer is the
-web client's store (Wave 2.1d) and later the iOS store, never the engine. So the
-engine runner treats it as _foreign_: it discovers and shape-validates the cases
-(hard passes, no silent skip, no unknown-family failure) but never executes them.
-Execution lives in `apps/web`'s and the iOS suites, which import the same JSON files.
+Most families bind to `packages/engine`. Two do not. `client-store`'s consumer is the
+web client's store (Wave 2.1d) and later the iOS store; `clue-runs`' consumer is the
+clue-run parser and renderer in `apps/web` and iOS (PROTOCOL.md §12). Neither's consumer
+is the engine, so the engine runner treats both as _foreign_: it discovers and
+shape-validates the cases (hard passes, no silent skip, no unknown-family failure) but
+never executes them. Execution lives in `apps/web`'s and the iOS suites, which import
+the same JSON files.
 
 The mechanism is `packages/engine/vectors.skip.json`. It has two disjoint buckets:
 
@@ -408,3 +412,38 @@ Findings, unresolved and deliberately not baked in:
 - `gameCompleted`/`gameAbandoned` are left to the completion family and actor
   integration; the store applies them as ordinary sequenced events, with no overlay or
   reconciliation subtlety to pin here.
+
+## Clue-runs cases
+
+The clue-runs family pins the vendor-HTML-to-`{text, runs}` normalization (PROTOCOL.md
+§12): the plain projection and the structured runs a clue string produces at ingestion.
+It is foreign to the engine (its consumer is the clue-run parser and renderer in
+`apps/web` and iOS); the engine runner shape-validates it but never executes it. Shape:
+
+```json
+{
+  "name": "law 7: <i> maps to style \"i\"",
+  "given": { "raw": "See <i>Rocky</i> for one" },
+  "then": {
+    "text": "See Rocky for one",
+    "runs": [{ "t": "See " }, { "t": "Rocky", "s": ["i"] }, { "t": " for one" }]
+  }
+}
+```
+
+- `given.raw` is the raw clue string as the outlet delivered it, markup and entities
+  intact.
+- `then.text` is the canonical plain projection (PROTOCOL.md §12 law 6): tags parsed
+  out, entities decoded, Unicode whitespace collapsed to single ASCII spaces, trimmed.
+- `then.runs` is the minimal structured form and is **omitted when the whole clue is
+  plain** (law 2), so a case whose `then` has only `text` asserts an unstyled clue.
+  Each run is `{ t, s? }`: `t` is non-empty (law 3); `s`, when present, is a non-empty,
+  duplicate-free style array over `"i"`, `"b"`, `"sub"`, `"sup"`, ordered `b`, `i`,
+  `sub`, `sup` (laws 3, 4). Adjacent runs with equal style sets are merged (law 5).
+- Cases cite the PROTOCOL.md §12 law they defend in their `name`, so coverage of the
+  canonical-form laws is greppable, the way the other families cite their invariant.
+
+The malformed-tag rule these vectors pin (PROTOCOL.md §12 law 12) is forgiving and
+deterministic: an unclosed whitelist tag styles through the end of the string, and a
+stray closing tag with no matching opener is dropped. Both shapes appear in
+`malformed.json`.

@@ -25,5 +25,7 @@ python3 ../generate.py   # the canonical logo generator -> icon-light.svg + icon
 - `render.sh` rasterizes the SVGs into the PNGs Xcode's `AppIcon.appiconset`
   requires; `tinted.png` is the grayscale of the dark appearance (iOS applies the
   user's tint).
+- `render-extension.sh` rasterizes the same light art into the browser
+  extension's manifest icons (`apps/extension/public/icons/`, 16/32/48/128).
 
 Requires `python3` + Pillow and macOS `qlmanage`.

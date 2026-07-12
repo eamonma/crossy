@@ -1,0 +1,58 @@
+[
+  {
+    "name": "law 6: a named entity is decoded in the plain text (&amp; becomes &)",
+    "given": { "raw": "Salt &amp; pepper" },
+    "then": { "text": "Salt & pepper" }
+  },
+  {
+    "name": "law 6: an accented named entity is decoded (&eacute; becomes e-acute)",
+    "given": { "raw": "Caf&eacute; au lait" },
+    "then": { "text": "Café au lait" }
+  },
+  {
+    "name": "law 6: a decimal numeric reference is decoded (&#233; becomes e-acute)",
+    "given": { "raw": "Caf&#233;" },
+    "then": { "text": "Café" }
+  },
+  {
+    "name": "law 6: a hexadecimal numeric reference is decoded (&#xE9; becomes e-acute)",
+    "given": { "raw": "Caf&#xE9;" },
+    "then": { "text": "Café" }
+  },
+  {
+    "name": "law 6: a decoded entity inside a styled span is carried by the run's text",
+    "given": { "raw": "<i>Salt &amp; pepper</i>" },
+    "then": {
+      "text": "Salt & pepper",
+      "runs": [{ "t": "Salt & pepper", "s": ["i"] }]
+    }
+  },
+  {
+    "name": "law 8: &lt;i&gt; is parsed before decoding, so it is literal visible text, never formatting",
+    "given": { "raw": "The tag &lt;i&gt; italicizes" },
+    "then": { "text": "The tag <i> italicizes" }
+  },
+  {
+    "name": "law 8: an entity-escaped tag stays literal even next to a real tag that does style",
+    "given": { "raw": "<i>real</i> vs &lt;i&gt;literal&lt;/i&gt;" },
+    "then": {
+      "text": "real vs <i>literal</i>",
+      "runs": [{ "t": "real", "s": ["i"] }, { "t": " vs <i>literal</i>" }]
+    }
+  },
+  {
+    "name": "law 8: a literal 3 < 4 is preserved, the < is not a tag start",
+    "given": { "raw": "True: 3 < 4" },
+    "then": { "text": "True: 3 < 4" }
+  },
+  {
+    "name": "law 8: an entity-escaped 3 &lt; 4 decodes to the literal comparison, not a tag",
+    "given": { "raw": "True: 3 &lt; 4" },
+    "then": { "text": "True: 3 < 4" }
+  },
+  {
+    "name": "laws 6/10: &nbsp; decodes to a space and collapses with adjacent whitespace",
+    "given": { "raw": "Two&nbsp; words" },
+    "then": { "text": "Two words" }
+  }
+]

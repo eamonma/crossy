@@ -1,0 +1,45 @@
+[
+  {
+    "name": "law 7: an unknown tag contributes no style but keeps its content (span with class stripped)",
+    "given": {
+      "raw": "A <span class=\"answer\" style=\"color:red\">plain</span> word"
+    },
+    "then": { "text": "A plain word" }
+  },
+  {
+    "name": "law 7: attributes on a whitelist tag are ignored, the style still applies",
+    "given": { "raw": "<i class=\"foo\" data-x='1'>Styled</i> anyway" },
+    "then": {
+      "text": "Styled anyway",
+      "runs": [{ "t": "Styled", "s": ["i"] }, { "t": " anyway" }]
+    }
+  },
+  {
+    "name": "law 7: <br> becomes a single space",
+    "given": { "raw": "Line one<br>line two" },
+    "then": { "text": "Line one line two" }
+  },
+  {
+    "name": "law 7: self-closing <br/> becomes a single space",
+    "given": { "raw": "Line one<br/>line two" },
+    "then": { "text": "Line one line two" }
+  },
+  {
+    "name": "law 7: uppercase <BR> becomes a single space (tag names match case-insensitively)",
+    "given": { "raw": "Line one<BR>line two" },
+    "then": { "text": "Line one line two" }
+  },
+  {
+    "name": "law 7: <br> inside a styled span keeps the span's style on the joined space",
+    "given": { "raw": "<i>up<br>down</i>" },
+    "then": {
+      "text": "up down",
+      "runs": [{ "t": "up down", "s": ["i"] }]
+    }
+  },
+  {
+    "name": "laws 2/6: a markup-only clue projects to empty text and no runs",
+    "given": { "raw": "<b></b>" },
+    "then": { "text": "" }
+  }
+]

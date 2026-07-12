@@ -1,0 +1,94 @@
+[
+  {
+    "name": "law 2: a plain clue omits runs entirely, text is the raw string",
+    "given": { "raw": "Capital of France" },
+    "then": { "text": "Capital of France" }
+  },
+  {
+    "name": "law 7: <i> maps to style \"i\"",
+    "given": { "raw": "See <i>Rocky</i> for one" },
+    "then": {
+      "text": "See Rocky for one",
+      "runs": [
+        { "t": "See " },
+        { "t": "Rocky", "s": ["i"] },
+        { "t": " for one" }
+      ]
+    }
+  },
+  {
+    "name": "law 7: <em> maps to style \"i\", the same as <i>",
+    "given": { "raw": "<em>Hamlet</em> soliloquy opener" },
+    "then": {
+      "text": "Hamlet soliloquy opener",
+      "runs": [{ "t": "Hamlet", "s": ["i"] }, { "t": " soliloquy opener" }]
+    }
+  },
+  {
+    "name": "law 7: <b> maps to style \"b\"",
+    "given": { "raw": "<b>Bold</b> as brass" },
+    "then": {
+      "text": "Bold as brass",
+      "runs": [{ "t": "Bold", "s": ["b"] }, { "t": " as brass" }]
+    }
+  },
+  {
+    "name": "law 7: <strong> maps to style \"b\", the same as <b>",
+    "given": { "raw": "Not to be taken <strong>lightly</strong>" },
+    "then": {
+      "text": "Not to be taken lightly",
+      "runs": [{ "t": "Not to be taken " }, { "t": "lightly", "s": ["b"] }]
+    }
+  },
+  {
+    "name": "law 7: <sub> maps to style \"sub\"",
+    "given": { "raw": "The 2 in H<sub>2</sub>O" },
+    "then": {
+      "text": "The 2 in H2O",
+      "runs": [{ "t": "The 2 in H" }, { "t": "2", "s": ["sub"] }, { "t": "O" }]
+    }
+  },
+  {
+    "name": "law 7: <sup> maps to style \"sup\"",
+    "given": { "raw": "The exponent in E=mc<sup>2</sup>" },
+    "then": {
+      "text": "The exponent in E=mc2",
+      "runs": [{ "t": "The exponent in E=mc" }, { "t": "2", "s": ["sup"] }]
+    }
+  },
+  {
+    "name": "law 9: nested <b><i>x</i></b> flattens to the style set [\"b\",\"i\"]",
+    "given": { "raw": "<b><i>Both</i></b> at once" },
+    "then": {
+      "text": "Both at once",
+      "runs": [{ "t": "Both", "s": ["b", "i"] }, { "t": " at once" }]
+    }
+  },
+  {
+    "name": "law 4: style order inside s is fixed b,i,sub,sup regardless of nesting order",
+    "given": { "raw": "<i><b>Order</b></i> is normalized" },
+    "then": {
+      "text": "Order is normalized",
+      "runs": [{ "t": "Order", "s": ["b", "i"] }, { "t": " is normalized" }]
+    }
+  },
+  {
+    "name": "law 5: adjacent runs with identical style sets are merged into one",
+    "given": { "raw": "<i>Ad</i><i>jacent</i> italics merge" },
+    "then": {
+      "text": "Adjacent italics merge",
+      "runs": [{ "t": "Adjacent", "s": ["i"] }, { "t": " italics merge" }]
+    }
+  },
+  {
+    "name": "law 5: adjacent runs with different style sets are kept separate",
+    "given": { "raw": "<i>one</i><b>two</b>" },
+    "then": {
+      "text": "onetwo",
+      "runs": [
+        { "t": "one", "s": ["i"] },
+        { "t": "two", "s": ["b"] }
+      ]
+    }
+  }
+]

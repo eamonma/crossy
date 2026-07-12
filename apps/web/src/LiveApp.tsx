@@ -31,7 +31,7 @@ import {
   resolveInviteField,
 } from "./domain/invite";
 import { isAppleMobile } from "./lib/platform";
-import type { Clue, Puzzle } from "./domain/types";
+import type { Clue, ClueRun, Puzzle } from "./domain/types";
 import {
   cellClick,
   clueClick,
@@ -54,6 +54,7 @@ import {
   clueOn,
 } from "./ui/Clues";
 import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
+import { useNavPrefs } from "./ui/useNavPrefs";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
 import { parseClueRefs, referencedCells } from "./ui/clueRefs";
@@ -74,11 +75,14 @@ import { homeHref, togglePartyHref } from "./nav";
 
 type Role = "host" | "solver" | "spectator";
 
-/** A structured clue on the ClientPuzzle (PROTOCOL puzzle model): number, prose, cell run. */
+/** A structured clue on the ClientPuzzle (PROTOCOL puzzle model): number, prose, cell run. `runs`
+ * is the optional styled form of `text` (italic, bold, sub/sup); its `t` concatenation equals
+ * `text`, so `text` stays the plain fallback and older payloads (no `runs`) render as before. */
 interface ClientClue {
   number: number;
   text: string;
   cellIndices: readonly number[];
+  runs?: readonly ClueRun[];
 }
 
 /** The solution-stripped puzzle facts the game view carries (ClientPuzzle, PROTOCOL.md §12). */
@@ -115,18 +119,24 @@ function toPuzzle(cp: ClientPuzzleView): Puzzle {
     cp.rows,
     blocks,
   );
-  const textOf = (
+  const clueOf = (
     list: readonly ClientClue[] | undefined,
     number: number,
-  ): string | undefined => list?.find((c) => c.number === number)?.text;
+  ): ClientClue | undefined => list?.find((c) => c.number === number);
 
+  // Attach the payload's prose to the geometry-derived clue: plain `text` always, and the
+  // optional styled `runs` beside it when present. Absent both (demo boards, or a clue the
+  // payload lacks) leaves the clue untouched, so those paths render exactly as before.
   const withText = (
     clues: Clue[],
     list: readonly ClientClue[] | undefined,
   ): Clue[] =>
     clues.map((c) => {
-      const text = textOf(list, c.number);
-      return text === undefined ? c : { ...c, text };
+      const found = clueOf(list, c.number);
+      if (found === undefined) return c;
+      return found.runs === undefined
+        ? { ...c, text: found.text }
+        : { ...c, text: found.text, runs: found.runs };
     });
 
   return {
@@ -661,6 +671,9 @@ function LiveGame({
   const [signingIn, setSigningIn] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dismissedCompletion, setDismissedCompletion] = useState(false);
+  // Personal navigation prefs (settings slice 1): read the shared client-local choice so a
+  // change in Settings steers the cursor live, no reload. Defaults reproduce today's behavior.
+  const { prefs: navPrefs } = useNavPrefs();
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
   // Cursor relay throttle (PROTOCOL.md §9): a leading send plus one coalesced trailing send,
@@ -838,7 +851,11 @@ function LiveGame({
       // `connecting` (defense in depth), but swallowing the key here keeps the selection
       // from advancing over a board that has no authoritative state yet.
       if (isSpectator || awaitingFirstSync) return false;
-      const effect = keyEffect({ grid, filled, selection, frozen }, key, shift);
+      const effect = keyEffect(
+        { grid, filled, selection, frozen, prefs: navPrefs },
+        key,
+        shift,
+      );
       if (effect === null) return false;
       for (const mutation of effect.mutations) {
         if (mutation.type === "placeLetter") {
@@ -850,7 +867,16 @@ function LiveGame({
       setSelection(effect.selection);
       return true;
     },
-    [isSpectator, awaitingFirstSync, grid, filled, selection, frozen, store],
+    [
+      isSpectator,
+      awaitingFirstSync,
+      grid,
+      filled,
+      selection,
+      frozen,
+      navPrefs,
+      store,
+    ],
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {

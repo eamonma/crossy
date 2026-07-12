@@ -65,9 +65,14 @@ final class RealRoom {
     private let sessionBaseURL: URL
     private let tokenProvider: any BearerTokenProviding
     private let api: CrossyAPIClient
+    /// The person's typing settings, read fresh on every keystroke (personal-settings
+    /// slice 1), so a change in Settings reaches this open room live. The default keeps
+    /// the pre-slice behavior for the harness composition, which sets none.
+    private let navigationPrefs: () -> BoardNavigation.NavigationPrefs
 
     /// The harness composition: every fact including the token is injected
-    /// (RoomConfig, the CROSSY_IT_* pattern).
+    /// (RoomConfig, the CROSSY_IT_* pattern). No settings surface, so the pre-slice
+    /// default prefs stand.
     convenience init(config: RoomConfig) {
         self.init(
             apiBaseURL: config.apiBaseURL,
@@ -90,22 +95,27 @@ final class RealRoom {
     /// nil and keep the one-beat arrival (the whole trailing cluster on the welcome's
     /// beat). REST remains the authority and overwrites both when it lands (seedRoster
     /// gates to `connecting`; `inviteCode` is reassigned in run() below).
+    /// `navigationPrefs` is the person's live typing settings (slice 1); the default
+    /// keeps the pre-slice behavior for callers that pass none.
     init(
         apiBaseURL: URL,
         sessionBaseURL: URL,
         gameId: String,
         tokenProvider: any BearerTokenProviding,
-        seed: RoomArrivalSeed? = nil
+        seed: RoomArrivalSeed? = nil,
+        navigationPrefs: @escaping () -> BoardNavigation.NavigationPrefs = { .default }
     ) {
         self.gameId = gameId
         self.sessionBaseURL = sessionBaseURL
         self.tokenProvider = tokenProvider
+        self.navigationPrefs = navigationPrefs
         let placeholder = GridPuzzle(rows: 1, cols: 1, blocks: [])
         puzzle = placeholder
         clues = .empty
         roomName = ""
         api = CrossyAPIClient(baseURL: apiBaseURL, tokenProvider: tokenProvider)
-        selection = SelectionModel(store: store, puzzle: placeholder)
+        selection = SelectionModel(
+            store: store, puzzle: placeholder, navigationPrefs: navigationPrefs)
 
         // The seeded birth (DESIGN.md §4, §12). The store's roster takes the card's
         // true members (name/avatarUrl/role carried from the wire, each not-yet-heard-
@@ -149,6 +159,9 @@ final class RealRoom {
         clues = mapped.clues
         roomName = view.name ?? ""
         inviteCode = view.inviteCode
+        // Re-target the ONE model in place (the one-host arrival, DESIGN.md §4):
+        // the view's @State pin holds this instance, and its navigationPrefs
+        // closure reads live prefs, so nothing needs rebuilding.
         selection.retarget(puzzle: mapped.puzzle)
         // Seed the players pill with the REST roster before the first frame renders,
         // so the pill stands at its true width instead of a lone placeholder puck that

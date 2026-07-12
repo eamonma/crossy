@@ -15,8 +15,10 @@
 // at this boundary is uniform: for every OPTIONAL field, `null` reads exactly like absent. Barred
 // grids (`bbars` / `rbars`) are a known-incompatible flag and reject, because edge bars move word
 // boundaries and would silently misplace clue cells (DESIGN.md section 7, PROTOCOL.md section 12).
-// Clue text is decoded from the standard HTML entities so it renders as plain text downstream,
-// this being the one place the external format is ever translated (DESIGN.md section 7, D13).
+// Clue markup is CAPTURED as structured runs here (owner ruling 2026-07-12; see clue-runs.ts), the
+// one place the external format is ever translated (DESIGN.md section 7, D13): each clue carries a
+// plain `text` projection and, when styled, a `runs` decomposition. Formatting is never stripped
+// and never sent as raw HTML on the wire; runs are clue prose, so INV-6 is untouched.
 //
 // Check order is fixed and documented on `translateXwordInfo` so the same bad puzzle always
 // yields the same code (deterministic, total).
@@ -24,9 +26,45 @@
 // With the multi-format registry (PROTOCOL.md section 12, D21) this file also exports the
 // shared pieces every translator uses so the named rejections apply uniformly across formats:
 // the dimension cap and per-cell domain checks (`checkDimensions`, `checkSolutionGrid`),
-// grid-derived numbering (`deriveWordRuns`), entity decoding, and metadata reading.
+// grid-derived numbering (`deriveWordRuns`), the clue-markup translator seam (`buildRunClue`,
+// from clue-runs.ts), and metadata reading. Entity decoding lives in the leaf entities.ts so both
+// this boundary and clue-runs.ts can share it without a dependency cycle.
 import { asciiUppercase } from "@crossy/protocol";
 import type { ServerPuzzle, Solution, Clue } from "@crossy/protocol";
+import { decodeEntities } from "./entities";
+import { parseClueRuns } from "./clue-runs";
+import type { ClueRun } from "./clue-runs";
+
+/**
+ * A clue as ingestion builds it: the protocol `Clue` plus the additive `runs` from the clue-markup
+ * translator (owner ruling 2026-07-12). It is a local structural widening because the shared
+ * protocol `Clue` type does not yet carry `runs`; the orchestrator reconciles this by adding
+ * `runs?: readonly ClueRun[]` to `Clue`/`ClientClue` in packages/protocol, after which this alias
+ * collapses to `Clue`. `runs` is present only when the clue is styled (clue-runs.ts law 2), so an
+ * all-plain clue is byte-identical to the protocol `Clue` and rides the wire as a bare string.
+ * INV-6 is untouched: `runs` is clue prose, never solution data, and it projects through
+ * `toClientPuzzle` by construction like every other `PuzzleBase` field.
+ */
+export type RunClue = Clue & { readonly runs?: readonly ClueRun[] };
+
+/**
+ * Attach the clue-markup translator's output to a grid-derived clue slot. `parseClueRuns` returns
+ * the plain `text` projection and, only when styled, the `runs` decomposition (clue-runs.ts). The
+ * `runs` field is spread conditionally so it is genuinely ABSENT for a plain clue, never present as
+ * `undefined` (the workspace runs `exactOptionalPropertyTypes`, so an explicit `undefined` would
+ * be a distinct, wrong shape). Every translator builds its clues through here, so the markup rule
+ * is applied identically across formats (PROTOCOL.md section 12).
+ */
+export function buildRunClue(
+  number: number,
+  rawClueText: string,
+  cellIndices: readonly number[],
+): RunClue {
+  const { text, runs } = parseClueRuns(rawClueText);
+  return runs === undefined
+    ? { number, text, cellIndices }
+    : { number, text, cellIndices, runs };
+}
 
 /** DESIGN.md section 7 / D13: a grid may be at most 25 cells in either dimension. */
 const MAX_DIMENSION = 25;
@@ -44,22 +82,6 @@ const BLOCK_TOKEN = ".";
 const ENTERABLE_FIRST_CHAR = /[A-Z0-9]/;
 /** A clue is `"<number>. <text>"`; the number is derived from the grid, not trusted (SP5). */
 const CLUE_PREFIX = /^\s*(\d+)[.:]?\s*/;
-
-/**
- * The named HTML entities ingestion decodes in clue text. NYT-via-XWord-Info clue strings
- * routinely carry these; the client renders clue text as plain text (DESIGN.md section 10), so an
- * undecoded entity would display literally. Apostrophes usually arrive as the numeric `&#39;`,
- * handled by the numeric branch below; `apos` covers the named spelling for the same character.
- */
-const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-};
-/** One entity token: a decimal `&#NN;`, a hex `&#xNN;`, or a named run like `&amp;`. */
-const ENTITY = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g;
 
 /**
  * The stable machine-readable rejection codes ingestion can emit. Every member is also an
@@ -193,29 +215,6 @@ export function deriveWordRuns(
 }
 
 /**
- * Decode the standard HTML entities in one left-to-right pass, so `&amp;lt;` decodes to the
- * literal `&lt;` and never doubly to `<`. Unknown named entities and out-of-range or surrogate
- * numeric references are left verbatim; only a recognized entity is rewritten, and tags such as
- * `<i>` are untouched (DESIGN.md section 7 accepts HTML clue text).
- */
-export function decodeEntities(text: string): string {
-  if (!text.includes("&")) return text;
-  return text.replace(ENTITY, (match, token: string) => {
-    if (token.charAt(0) === "#") {
-      const isHex = token.charAt(1) === "x" || token.charAt(1) === "X";
-      const code = isHex
-        ? Number.parseInt(token.slice(2), 16)
-        : Number.parseInt(token.slice(1), 10);
-      if (!Number.isInteger(code) || code < 1 || code > 0x10ffff) return match;
-      if (code >= 0xd800 && code <= 0xdfff) return match; // lone surrogate
-      return String.fromCodePoint(code);
-    }
-    const named = NAMED_ENTITIES[token];
-    return named === undefined ? match : named;
-  });
-}
-
-/**
  * Read one optional display-metadata string (title or author) from the document. The rule is
  * uniform with the boundary's other optional fields: absent or `null` reads as absent (real NYT
  * exports ship `title: null` / `author: null`, see the corpus fixtures). A present but non-string
@@ -233,16 +232,18 @@ export function readMetadata(raw: unknown): string | null {
   return decoded.slice(0, MAX_METADATA_LENGTH);
 }
 
-/** Split `"17. Some clue"` into its number (for ambiguity detection) and its display text. */
-function parseClue(raw: string): { number: number | null; text: string } {
+/**
+ * Split `"17. Some clue"` into its number (for ambiguity detection) and the RAW clue remainder
+ * (markup and entities intact). Only the leading `"<number>. "` prefix is removed; the remainder is
+ * handed on untouched so `buildRunClue` can parse tags off it before decoding entities (clue-runs.ts
+ * law 8). The old seam entity-decoded here; that now happens per run inside the markup translator.
+ */
+function parseClue(raw: string): { number: number | null; raw: string } {
   const m = CLUE_PREFIX.exec(raw);
   if (m && m[1] !== undefined) {
-    return {
-      number: Number(m[1]),
-      text: decodeEntities(raw.slice(m[0].length).trim()),
-    };
+    return { number: Number(m[1]), raw: raw.slice(m[0].length) };
   }
-  return { number: null, text: decodeEntities(raw.trim()) };
+  return { number: null, raw };
 }
 
 /** True if any number appears more than once (the Schroedinger / one-slot-two-clues signal). */
@@ -510,14 +511,12 @@ export function translateXwordInfo(body: unknown): IngestResult {
     );
   }
   const buildClues = (
-    parsed: readonly { text: string }[],
+    parsed: readonly { raw: string }[],
     wordRuns: readonly WordRun[],
-  ): Clue[] =>
-    wordRuns.map((run, idx) => ({
-      number: run.number,
-      text: parsed[idx]!.text,
-      cellIndices: run.cells,
-    }));
+  ): RunClue[] =>
+    wordRuns.map((run, idx) =>
+      buildRunClue(run.number, parsed[idx]!.raw, run.cells),
+    );
 
   const shade = body["shadecircles"] === true;
   const shadedCircles = shade ? circleIndices : [];

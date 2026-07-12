@@ -8,6 +8,7 @@ import {
   homeHref,
   parseRoute,
   partyHref,
+  playHref,
   preservedParams,
   puzzlesHref,
   settingsHref,
@@ -53,6 +54,20 @@ describe("parseRoute (paths select the surface)", () => {
       kind: "game",
       gameId: "g-1",
     });
+  });
+
+  it("carries the play intent from ?play= on the puzzles route, and only when non-empty", () => {
+    expect(parseRoute("/puzzles", p("?play=p-1"))).toEqual({
+      kind: "puzzles",
+      play: "p-1",
+    });
+    expect(parseRoute("/", p("?puzzles=1&play=p-1"))).toEqual({
+      kind: "puzzles",
+      play: "p-1",
+    });
+    // A plain library link carries no play key, so the existing surface is untouched.
+    expect(parseRoute("/puzzles", p(""))).toEqual({ kind: "puzzles" });
+    expect(parseRoute("/puzzles", p("?play="))).toEqual({ kind: "puzzles" });
   });
 
   it("flags the projector screen from ?party=1 on the path or a legacy URL, and only then", () => {
@@ -108,6 +123,21 @@ describe("href builders (dev/smoke overrides survive every in-app link)", () => 
     expect(url.searchParams.get("ws")).toBe("ws://s");
     expect(url.searchParams.get("token")).toBe("T");
     expect(url.searchParams.get("code")).toBe("ABCD2345");
+  });
+
+  it("builds the play intent as /puzzles?play=<id>, origin plus the puzzle id alone (D22)", () => {
+    // The shape the extension mints after an ingest: no other inputs needed.
+    expect(playHref("p-1", p(""))).toBe("/puzzles?play=p-1");
+    const url = new URL(playHref("p-1", overrides), "http://x");
+    expect(url.pathname).toBe("/puzzles");
+    expect(url.searchParams.get("play")).toBe("p-1");
+    expect(url.searchParams.get("token")).toBe("T");
+    expect(url.searchParams.get("code")).toBeNull();
+    // Round-trips back to the puzzles route with the intent in hand.
+    expect(parseRoute(url.pathname, url.searchParams)).toEqual({
+      kind: "puzzles",
+      play: "p-1",
+    });
   });
 
   it("builds the projector link as the game URL plus party=1", () => {
@@ -170,6 +200,12 @@ describe("canonicalHref (one-time redirect of legacy URLs to the path form)", ()
   it("maps ?puzzles=1 and ?create=1 to their paths", () => {
     expect(canonicalHref("/", p("?puzzles=1"))).toBe("/puzzles");
     expect(canonicalHref("/", p("?create=1"))).toBe("/new");
+  });
+
+  it("keeps the play intent when canonicalizing a legacy ?puzzles=1 link", () => {
+    expect(canonicalHref("/", p("?puzzles=1&play=p-1"))).toBe(
+      "/puzzles?play=p-1",
+    );
   });
 
   it("keeps the projector flag when canonicalizing a legacy ?game= link", () => {

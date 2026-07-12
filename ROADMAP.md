@@ -896,7 +896,23 @@ the library. **Exit: a Guardian puzzle solved in a Crossy room, extension-ingest
 NYT and AmuseLabs adapters on x3/x4. **Exit: the owner ingests the day's NYT puzzle
 from nytimes.com and solves it in a room.**
 
-### Wave 6.4 — packaging (owner-held gates)
+### Wave 6.4 — product surface (design pass + inline play)
+
+Precedes packaging: store listings capture this UI. Decisions in DESIGN.md §7 (D22)
+and apps/extension/DESIGN.md (play surface). The design language is the product's
+(the iOS and web direction), not the current web UI verbatim; the owner reviews
+screenshots before merge.
+
+| Track | Work                                                                                                                                                                                                                                                  | Unblocks |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| y1    | Web play intent: a deep link carrying a library puzzle id opens room creation on crossy.party; route pinned in-track, the extension builds it from one constant                                                                                       | y2, y3   |
+| y2    | Extension design pass: popup primary action becomes "Play in Crossy" (ingest + open the play intent; add-to-library stays), options page, icons 16/32/48/128 from the committed generator; permissions ride sign-in (one request: auth + API origins) | 6.5      |
+| y3    | Inline "Play in Crossy" pill on Guardian + NYT top-level pages: shadow root, MutationObserver re-mount, rendered only after a successful extraction, per-site toggle, no publisher trademarks; AmuseLabs embeds excluded (D22)                        | —        |
+
+**Exit: from a Guardian or NYT page, one click on the pill lands the owner in a
+Crossy room with that puzzle; the popup does the same everywhere adapters work.**
+
+### Wave 6.5 — packaging (owner-held gates)
 
 Chrome + Firefox store packaging, privacy policy, listing copy (no publisher
 trademarks). Store accounts and submissions are owner actions. **Exit: installable

@@ -529,14 +529,93 @@ describe("ingestion ACL: HTML entity decoding in clue text (DESIGN.md section 7,
     expect(firstAcross("&amp;lt;")).toBe("&lt;");
   });
 
-  it("leaves tags, unknown entities, and bare ampersands untouched (DESIGN.md section 7 accepts HTML)", () => {
-    expect(firstAcross("<i>emphasis</i>")).toBe("<i>emphasis</i>");
-    expect(firstAcross("dash &mdash; here")).toBe("dash &mdash; here");
+  it("projects a whitelist tag out of the plain text, capturing it as a run instead (owner ruling 2026-07-12)", () => {
+    // The plain projection drops the markup (the tag is captured in `runs`, asserted in
+    // clue-runs.test.ts and the xwordinfo runs test below); unknown entities and bare ampersands
+    // still survive verbatim in the projection, while known names (the Latin-1 and typographic
+    // table in entities.ts) decode.
+    expect(firstAcross("<i>emphasis</i>")).toBe("emphasis");
+    expect(firstAcross("dash &mdash; here")).toBe("dash — here");
+    expect(firstAcross("&notaname; stays")).toBe("&notaname; stays");
     expect(firstAcross("Q&A session")).toBe("Q&A session");
   });
 
   it("leaves out-of-range numeric references verbatim (total, never a crash)", () => {
     expect(firstAcross("&#x110000;")).toBe("&#x110000;");
     expect(firstAcross("&#0;")).toBe("&#0;");
+  });
+});
+
+describe("ingestion ACL: clue markup is captured as runs at the seam (owner ruling 2026-07-12)", () => {
+  // Prove the shared clue-markup translator is wired onto the built xwordinfo clue: the number
+  // prefix is stripped first, then the raw remainder is translated to {text, runs}. The full law
+  // matrix lives in clue-runs.test.ts; these assert the seam carries runs through THIS translator.
+  const firstAcross = (acrossFirst: string) =>
+    accept({
+      ...base(),
+      clues: {
+        across: [`1. ${acrossFirst}`, "3. plain"],
+        down: ["1. up top", "2. and beside"],
+      },
+    }).puzzle.clues.across[0]!;
+
+  it("captures <i> as an italic run after stripping the number prefix", () => {
+    expect(firstAcross("<i>emphasis</i>")).toEqual({
+      number: 1,
+      text: "emphasis",
+      cellIndices: [0, 1],
+      runs: [{ t: "emphasis", s: ["i"] }],
+    });
+  });
+
+  it("omits runs entirely for a plain clue (byte-identical to the pre-markup shape, law 2)", () => {
+    const clue = firstAcross("just plain words");
+    expect(clue).toEqual({
+      number: 1,
+      text: "just plain words",
+      cellIndices: [0, 1],
+    });
+    expect(clue).not.toHaveProperty("runs");
+  });
+
+  it("keeps a starred clue's leading asterisk verbatim (law 11)", () => {
+    expect(firstAcross("*Like this clue's answer").text).toBe(
+      "*Like this clue's answer",
+    );
+    expect(firstAcross("*Like this clue's answer")).not.toHaveProperty("runs");
+  });
+
+  it("treats &lt;i&gt; as literal text, never formatting (order law 8)", () => {
+    expect(firstAcross("&lt;i&gt;x&lt;/i&gt;")).toEqual({
+      number: 1,
+      text: "<i>x</i>",
+      cellIndices: [0, 1],
+    });
+  });
+
+  it("preserves 3 < 4 as literal angle-bracket prose (order law 8)", () => {
+    expect(firstAcross("3 < 4").text).toBe("3 < 4");
+  });
+
+  it("decodes &nbsp; to whitespace and collapses it (law 6)", () => {
+    expect(firstAcross("a&nbsp;&nbsp;b").text).toBe("a b");
+  });
+
+  it("flattens nested <b><i> to a two-style run and merges adjacent same-style runs (laws 9, 5)", () => {
+    expect(firstAcross("<b>x</b><b>y</b> <sup>z</sup>")).toEqual({
+      number: 1,
+      text: "xy z",
+      cellIndices: [0, 1],
+      runs: [{ t: "xy", s: ["b"] }, { t: " " }, { t: "z", s: ["sup"] }],
+    });
+  });
+
+  it("styles through the end of the string for an unclosed tag (malformed law 12)", () => {
+    expect(firstAcross("plain <b>bold to end")).toEqual({
+      number: 1,
+      text: "plain bold to end",
+      cellIndices: [0, 1],
+      runs: [{ t: "plain " }, { t: "bold to end", s: ["b"] }],
+    });
   });
 });
