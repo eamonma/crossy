@@ -139,7 +139,7 @@ export class GameActor {
     this.abandonedAt = hydrated.abandonedAt;
     this.roomName = hydrated.roomName;
     this.recentCommandIds = [...hydrated.recentCommandIds];
-    this.stats = null;
+    this.stats = hydrated.stats;
     this.flushEventThreshold =
       options.flushEventThreshold ?? FLUSH_EVENT_THRESHOLD;
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;

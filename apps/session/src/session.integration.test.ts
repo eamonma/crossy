@@ -987,6 +987,48 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
     expect(ev.rows).toHaveLength(0);
     expect(await loadGameState(adminPool, gameId)).toBeNull();
   });
+
+  it("serves the persisted completion stats after a restart rehydrates the actor (PROTOCOL.md §4; INV-5)", async () => {
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+    });
+
+    // Complete the game on the shared server; the terminal flush commits the stats
+    // before this broadcast arrives (INV-3).
+    const { client } = await connectAndHello(gameId, userId);
+    client.sendJson(placeLetter(0, "A"));
+    client.sendJson(placeLetter(1, "B"));
+    client.sendJson(placeLetter(2, "C"));
+    const completed = (await client.waitForType(
+      "gameCompleted",
+    )) as unknown as {
+      stats: Record<string, unknown>;
+    };
+    client.close();
+
+    // A fresh server over the same pool is the deploy/passivation case: its registry
+    // holds no live actor, so this welcome comes from a rehydrated one. PROTOCOL.md §4:
+    // a completed snapshot's stats are non-null, and they must be the flushed ones.
+    const restarted = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+    });
+    try {
+      const revisit = await connectAndHelloOn(restarted, gameId, userId);
+      const board = (
+        revisit.welcome as unknown as {
+          board: { status: string; stats: Record<string, unknown> | null };
+        }
+      ).board;
+      expect(board.status).toBe("completed");
+      expect(board.stats).toEqual(completed.stats);
+      revisit.client.close();
+    } finally {
+      await restarted.close();
+    }
+  });
 });
 
 describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-7, INV-4)", () => {
