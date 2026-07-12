@@ -31,9 +31,9 @@ public struct WelcomeScreen: View {
     }
 
     private let state: WelcomeState
-    private let privacyURL: URL
     private let onContinueApple: () -> Void
     private let onContinueDiscord: () -> Void
+    private let onOpenLegal: (LegalPage) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var typedCells = 0
@@ -43,14 +43,14 @@ public struct WelcomeScreen: View {
 
     public init(
         state: WelcomeState,
-        privacyURL: URL,
         onContinueApple: @escaping () -> Void,
-        onContinueDiscord: @escaping () -> Void
+        onContinueDiscord: @escaping () -> Void,
+        onOpenLegal: @escaping (LegalPage) -> Void
     ) {
         self.state = state
-        self.privacyURL = privacyURL
         self.onContinueApple = onContinueApple
         self.onContinueDiscord = onContinueDiscord
+        self.onOpenLegal = onOpenLegal
     }
 
     private var ground: GridGround {
@@ -138,23 +138,38 @@ public struct WelcomeScreen: View {
                     label: ArrivalCopy.continueWithDiscord,
                     action: onContinueDiscord)
             }
-            privacyLink
+            legalFooter
         }
         .onChange(of: state) { _, newState in
             if newState != .authenticating { pending = nil }
         }
     }
 
-    /// A quiet legal affordance, visible before any sign-in intent: opens the live
-    /// policy in the system browser (Link, not a sheet — a person leaving to read it
-    /// should keep Safari's own back button, not a dead-end presentation).
-    private var privacyLink: some View {
-        Link(destination: privacyURL) {
-            Text(verbatim: ArrivalCopy.privacyPolicy)
+    /// The quiet legal pair, visible before any sign-in intent. Buttons, not Links:
+    /// each reports its page through onOpenLegal and the composition root presents
+    /// an in-app Safari sheet, which keeps the person in the flow (App Review
+    /// guideline 5.1.1 expects the policy reachable without leaving the app) and is
+    /// no dead end (the system sheet carries its own Done button and Safari chrome).
+    private var legalFooter: some View {
+        HStack(spacing: 6) {
+            legalButton(ArrivalCopy.privacyPolicy, page: .privacy)
+            Text(verbatim: "·")
+                .font(.system(size: 12))
+                .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.7))
+            legalButton(ArrivalCopy.termsOfService, page: .terms)
+        }
+        .padding(.top, 2)
+    }
+
+    private func legalButton(_ label: String, page: LegalPage) -> some View {
+        Button {
+            onOpenLegal(page)
+        } label: {
+            Text(verbatim: label)
                 .font(.system(size: 12))
                 .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.7))
         }
-        .padding(.top, 2)
+        .buttonStyle(.plain)
     }
 
     /// One glass capsule per provider. The spinner shows only on the button that fired;
@@ -203,24 +218,20 @@ public struct WelcomeScreen: View {
     }
 }
 
-private let previewPrivacyURL = URL(string: "https://crossy.party/privacy")!
-
 #Preview("Welcome, Studio") {
     WelcomeScreen(
-        state: .ready, privacyURL: previewPrivacyURL, onContinueApple: {},
-        onContinueDiscord: {})
+        state: .ready, onContinueApple: {}, onContinueDiscord: {}, onOpenLegal: { _ in })
 }
 
 #Preview("Welcome, authenticating, Studio") {
     WelcomeScreen(
-        state: .authenticating, privacyURL: previewPrivacyURL, onContinueApple: {},
-        onContinueDiscord: {})
+        state: .authenticating, onContinueApple: {}, onContinueDiscord: {},
+        onOpenLegal: { _ in })
 }
 
 #Preview("Welcome, failed, Observatory") {
     WelcomeScreen(
-        state: .failed, privacyURL: previewPrivacyURL, onContinueApple: {},
-        onContinueDiscord: {}
+        state: .failed, onContinueApple: {}, onContinueDiscord: {}, onOpenLegal: { _ in }
     )
     .preferredColorScheme(.dark)
 }

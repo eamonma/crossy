@@ -64,6 +64,11 @@ struct ArrivalRootView: View {
     /// away. Empty for a hand-tapped Join, which gets the camera-first panel.
     @State private var deepLinkPrefill = ""
     @State private var tab: ShellTab = .launchSelection
+    /// The legal page a footer button staged (Welcome and Settings each present
+    /// from their own context): one Safari sheet per context, the URL resolved
+    /// from the model's web-origin facts.
+    @State private var welcomeLegal: LegalSheetItem?
+    @State private var settingsLegal: LegalSheetItem?
     @Namespace private var joinZoom
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
@@ -80,10 +85,14 @@ struct ArrivalRootView: View {
             } else {
                 WelcomeScreen(
                     state: model.welcomeState,
-                    privacyURL: model.privacyURL,
                     onContinueApple: { Task { await model.session.signInWithApple() } },
-                    onContinueDiscord: { Task { await model.session.signIn() } }
+                    onContinueDiscord: { Task { await model.session.signIn() } },
+                    onOpenLegal: { welcomeLegal = legalItem(for: $0) }
                 )
+                .sheet(item: $welcomeLegal) { item in
+                    SafariSheet(url: item.url)
+                        .ignoresSafeArea()
+                }
             }
         }
         .sheet(isPresented: $showJoin) {
@@ -264,15 +273,28 @@ struct ArrivalRootView: View {
             SettingsScreen(
                 identity: identity,
                 versionLabel: model.versionLabel,
-                privacyURL: model.privacyURL,
                 onSignOut: {
                     Task { await model.session.signOut() }
                 },
                 onDeleteAccount: {
                     await model.session.deleteAccount()
-                })
+                },
+                onOpenLegal: { settingsLegal = legalItem(for: $0) })
+                .sheet(item: $settingsLegal) { item in
+                    SafariSheet(url: item.url)
+                        .ignoresSafeArea()
+                }
         } else {
             Color(rgb: ground.tokens.canvas).ignoresSafeArea()
+        }
+    }
+
+    /// Map a screen's legal intent to the model's URL (the screens hold no URLs,
+    /// AD-2); the item's identity is that URL.
+    private func legalItem(for page: LegalPage) -> LegalSheetItem {
+        switch page {
+        case .privacy: LegalSheetItem(url: model.privacyURL)
+        case .terms: LegalSheetItem(url: model.termsURL)
         }
     }
 

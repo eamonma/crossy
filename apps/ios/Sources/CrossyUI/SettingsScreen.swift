@@ -66,12 +66,13 @@ public struct SettingsScreen: View {
     /// A quiet version footer when the composition root supplies one (e.g. "1.0 (12)"),
     /// nil in previews and where the bundle carries none.
     private let versionLabel: String?
-    /// Where the Privacy Policy row opens (the live /privacy page on the web origin).
-    private let privacyURL: URL
     private let onSignOut: () -> Void
     /// Delete the account; nil means success (the parent lands at Welcome), a failure
     /// carries the stable code the inline sentence keys on.
     private let onDeleteAccount: () async -> ArrivalFailure?
+    /// Open a legal page (the WelcomeScreen grammar): the screen signals intent, the
+    /// composition root maps it to the live page and presents the Safari sheet.
+    private let onOpenLegal: (LegalPage) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var confirmingDelete = false
@@ -86,15 +87,15 @@ public struct SettingsScreen: View {
     public init(
         identity: AccountIdentity,
         versionLabel: String? = nil,
-        privacyURL: URL,
         onSignOut: @escaping () -> Void,
-        onDeleteAccount: @escaping () async -> ArrivalFailure?
+        onDeleteAccount: @escaping () async -> ArrivalFailure?,
+        onOpenLegal: @escaping (LegalPage) -> Void
     ) {
         self.identity = identity
         self.versionLabel = versionLabel
-        self.privacyURL = privacyURL
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
+        self.onOpenLegal = onOpenLegal
     }
 
     private var ground: GridGround {
@@ -122,7 +123,7 @@ public struct SettingsScreen: View {
             actions
                 .padding(.horizontal, 24)
 
-            privacyRow
+            legalRow
                 .padding(.top, 14)
 
             versionFooter
@@ -227,15 +228,30 @@ public struct SettingsScreen: View {
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
     }
 
-    /// The fourth row: a quiet link out to the live policy, standing apart from the
-    /// two capsule actions so it never reads as a fourth account intent (Link, not a
-    /// sheet — Safari's own chrome and back button, the WelcomeScreen precedent).
-    private var privacyRow: some View {
-        Link(destination: privacyURL) {
-            Text(verbatim: ArrivalCopy.privacyPolicy)
+    /// The fourth row: the quiet legal pair, standing apart from the two capsule
+    /// actions so it never reads as another account intent. Buttons, not Links: the
+    /// composition root presents an in-app Safari sheet (the WelcomeScreen grammar),
+    /// which keeps the person in the flow (App Review guideline 5.1.1) and is no
+    /// dead end (the system sheet carries its own Done button and Safari chrome).
+    private var legalRow: some View {
+        HStack(spacing: 6) {
+            legalButton(ArrivalCopy.privacyPolicy, page: .privacy)
+            Text(verbatim: "·")
+                .font(.system(size: 14))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+            legalButton(ArrivalCopy.termsOfService, page: .terms)
+        }
+    }
+
+    private func legalButton(_ label: String, page: LegalPage) -> some View {
+        Button {
+            onOpenLegal(page)
+        } label: {
+            Text(verbatim: label)
                 .font(.system(size: 14))
                 .foregroundStyle(Color(rgb: ground.tokens.number))
         }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -259,8 +275,6 @@ public struct SettingsScreen: View {
     }
 }
 
-private let previewPrivacyURL = URL(string: "https://crossy.party/privacy")!
-
 #Preview("Account, Studio") {
     if #available(iOS 17.0, macOS 14.0, *) {
         SettingsScreen(
@@ -269,9 +283,9 @@ private let previewPrivacyURL = URL(string: "https://crossy.party/privacy")!
                 displayName: "Ada Lovelace",
                 providerLabel: ArrivalCopy.providerDiscord),
             versionLabel: "1.0 (12)",
-            privacyURL: previewPrivacyURL,
             onSignOut: {},
-            onDeleteAccount: { nil })
+            onDeleteAccount: { nil },
+            onOpenLegal: { _ in })
     }
 }
 
@@ -283,8 +297,8 @@ private let previewPrivacyURL = URL(string: "https://crossy.party/privacy")!
                 displayName: nil,
                 providerLabel: ArrivalCopy.providerApple),
             versionLabel: "1.0 (12)",
-            privacyURL: previewPrivacyURL,
             onSignOut: {},
-            onDeleteAccount: { ArrivalFailure(code: nil) })
+            onDeleteAccount: { ArrivalFailure(code: nil) },
+            onOpenLegal: { _ in })
     }
 }
