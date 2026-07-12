@@ -14,11 +14,38 @@
 //
 // DAILY UNVERIFIED: only the free mini endpoint was probed (served HTML). A signed-in
 // subscriber's cookies authorize the daily fetch, but that path is unconfirmed here.
+//
+// This script also runs the extraction once at document_idle to gate the inline
+// pill (D22): the pill mounts only when this page can actually ingest. Top-level
+// pages only; the AmuseLabs frame script never grows pill logic.
 
 import { EXTRACT_REQUEST, respondWith } from "../messaging";
 import type { ExtractRequest, ExtractResponse } from "../messaging";
+import { maybeMountPill } from "../pill/mount";
 import { isNytCrosswordGamePage, nytPuzzleEndpoint } from "./detect";
 import { parseNytPuzzle } from "./extract";
+
+async function extract(): Promise<ExtractResponse> {
+  if (!isNytCrosswordGamePage(location.href)) {
+    return { ok: false, reason: "not a NYT crossword game page" };
+  }
+  const endpoint = nytPuzzleEndpoint(location.href);
+  if (endpoint === null) {
+    return { ok: false, reason: "unsupported NYT crossword URL" };
+  }
+  try {
+    const response = await fetch(endpoint, { credentials: "same-origin" });
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: `could not read the NYT puzzle (${response.status})`,
+      };
+    }
+    return respondWith("nyt", parseNytPuzzle(await response.text()));
+  } catch {
+    return { ok: false, reason: "could not reach the NYT puzzle" };
+  }
+}
 
 chrome.runtime.onMessage.addListener(
   (
@@ -27,32 +54,9 @@ chrome.runtime.onMessage.addListener(
     sendResponse: (response: ExtractResponse) => void,
   ): boolean | undefined => {
     if ((message as ExtractRequest | null)?.type !== EXTRACT_REQUEST) return;
-
-    if (!isNytCrosswordGamePage(location.href)) {
-      sendResponse({ ok: false, reason: "not a NYT crossword game page" });
-      return;
-    }
-    const endpoint = nytPuzzleEndpoint(location.href);
-    if (endpoint === null) {
-      sendResponse({ ok: false, reason: "unsupported NYT crossword URL" });
-      return;
-    }
-
-    void (async () => {
-      try {
-        const response = await fetch(endpoint, { credentials: "same-origin" });
-        if (!response.ok) {
-          sendResponse({
-            ok: false,
-            reason: `could not read the NYT puzzle (${response.status})`,
-          });
-          return;
-        }
-        sendResponse(respondWith("nyt", parseNytPuzzle(await response.text())));
-      } catch {
-        sendResponse({ ok: false, reason: "could not reach the NYT puzzle" });
-      }
-    })();
+    void extract().then(sendResponse);
     return true; // keep the reply channel open for the async fetch
   },
 );
+
+void maybeMountPill("nyt", extract);

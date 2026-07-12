@@ -293,6 +293,22 @@ body.options input:focus-visible {
     0 0 0 2px var(--ring-halo);
 }
 
+body.options .check-row {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+body.options .check-row input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+  accent-color: var(--gold);
+}
+
 body.options .buttons {
   margin: 8px 0 0;
   display: flex;

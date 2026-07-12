@@ -15,11 +15,22 @@ const manifest = JSON.parse(
   background: unknown;
   icons: unknown;
   action: { default_icon: unknown };
+  content_scripts: ReadonlyArray<{
+    js: readonly string[];
+    all_frames?: boolean;
+  }>;
 };
 
 describe("manifest", () => {
   it("keeps the Chrome-loadable MV3 background form, service worker only", () => {
     expect(manifest.background).toEqual({ service_worker: "background.js" });
+  });
+
+  it("keeps pill surfaces top-level: only the AmuseLabs frame adapter runs all_frames (D22)", () => {
+    const byEntry = new Map(manifest.content_scripts.map((s) => [s.js[0], s]));
+    expect(byEntry.get("content.js")?.all_frames).toBeUndefined();
+    expect(byEntry.get("nyt/content.js")?.all_frames).toBeUndefined();
+    expect(byEntry.get("amuselabs/content.js")?.all_frames).toBe(true);
   });
 
   it("ships the four icon sizes, committed and rendered from the app-icon source", () => {
