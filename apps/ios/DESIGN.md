@@ -276,6 +276,13 @@ cluster. Scope: the Rooms tab and the room only; the Puzzles tab keeps its hidde
 bar and hand-set title for now (a follow-up moves it to the same grammar). Below
 26 the bar items render as the system's plain material (the one-fallback rule),
 and the macOS test host (14) gates the 26-only API exactly as RoomBar/KeyDeck do.
+Width finding (device rig-check 2026-07-11): a bar item HARD-SNAPS its width when
+its content changes size (a joiner's puck, the reconnect label, the terminal
+seal), because the nav bar lays out its item slots in its own UIKit pass and never
+joins our SwiftUI transaction, so `withAnimation(.crossyChrome)` around a
+width-driving value does not make the bar breathe; the room seeds its true roster
+and keeps the first-connect pill terse so the open frame carries no snap, and the
+residual snaps are honest, each marking a real change.
 
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
