@@ -4,6 +4,7 @@
 // optional host permission for each overridden origin (on demand, inside the click
 // gesture, never at install).
 
+import { loadPillDisabled, setPillDisabled } from "./pill/toggle";
 import {
   clearOverrides,
   DEFAULT_API_BASE,
@@ -86,3 +87,27 @@ resetEl.addEventListener("click", () => {
 });
 
 void init();
+
+// ---- Pill visibility (src/pill/toggle.ts) ----
+// Kept apart from the advanced overrides: these save on change and need no host
+// permission, so none of the gesture choreography above applies.
+
+const pillGuardianEl = document.getElementById(
+  "pillGuardian",
+) as HTMLInputElement;
+const pillNytEl = document.getElementById("pillNyt") as HTMLInputElement;
+
+async function initPillToggles(): Promise<void> {
+  const disabled = await loadPillDisabled();
+  pillGuardianEl.checked = disabled.guardian !== true;
+  pillNytEl.checked = disabled.nyt !== true;
+}
+
+pillGuardianEl.addEventListener("change", () => {
+  void setPillDisabled("guardian", !pillGuardianEl.checked);
+});
+pillNytEl.addEventListener("change", () => {
+  void setPillDisabled("nyt", !pillNytEl.checked);
+});
+
+void initPillToggles();

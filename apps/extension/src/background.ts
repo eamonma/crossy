@@ -2,8 +2,10 @@
 // window takes focus, so launchWebAuthFlow cannot live there), owns every refresh
 // (single-flight, so rotation never races between contexts), and keeps the session
 // fresh across MV3 teardowns with chrome.alarms plus an on-demand check when the
-// popup asks for a token.
+// popup asks for a token. It also answers the inline pill's play request (D22):
+// token, POST, new tab, all things a content script cannot do itself.
 
+import { postPuzzle } from "./api";
 import type { Provider } from "./auth/flow";
 import { buildAuthorizeUrl, extractCode } from "./auth/flow";
 import type { AuthTarget } from "./auth/gotrue";
@@ -24,6 +26,10 @@ import {
   loadSession,
   saveSession,
 } from "./auth/store";
+import { buildEnvelope } from "./envelope";
+import { PLAY_REQUEST } from "./pill/messages";
+import type { PlayReply, PlayRequest } from "./pill/messages";
+import { handlePlayRequest } from "./pill/play-handler";
 import { loadBases } from "./settings";
 
 // Firefox exposes the promise-based API on `browser`; Chrome promisifies `chrome`
@@ -155,8 +161,29 @@ async function freshAccessToken(): Promise<TokenReply> {
   };
 }
 
+// The pill's play click, end to end (src/pill/play-handler.ts holds the decision
+// tree). No permission request here: the worker has no user gesture, so a missing
+// API-origin grant defers the solver to the popup instead.
+async function playFromPill(request: PlayRequest): Promise<PlayReply> {
+  const bases = await loadBases();
+  return handlePlayRequest(buildEnvelope(request.format, request.document), {
+    apiBaseUrl: bases.apiBaseUrl,
+    containsOrigins: (origins) =>
+      ext.permissions.contains({ origins: [...origins] }),
+    freshAccessToken,
+    postPuzzle,
+    openTab: async (url) => {
+      await ext.tabs.create({ url });
+    },
+  });
+}
+
 ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const type = (message as { type?: unknown } | null)?.type;
+  if (type === PLAY_REQUEST) {
+    void playFromPill(message as PlayRequest).then(sendResponse);
+    return true;
+  }
   if (type === AUTH_SIGN_IN) {
     const { provider } = message as { provider: Provider };
     void signIn(provider).then(sendResponse);
