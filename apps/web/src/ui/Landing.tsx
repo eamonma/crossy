@@ -26,27 +26,27 @@ export function Landing({
       <TopBar identity={identity} config={config} />
       <main className="flex-1 grid place-items-center p-4 py-8 sm:py-12">
         {/* The ticket. Two stubs held by a perforation; every arrival screen is a variant of
-            this one object. It stacks to a single column below sm, where the perforation turns
-            horizontal so the pitch still sits above the action. */}
+            this one object. From sm up the perforation is a vertical dashed rule with a round
+            notch punched at each end. Stacked below sm, the seam is a dashed rule between the
+            two halves (the pitch's bottom border, so it sits at the real content boundary, never
+            a guessed percentage); the notches would land mid-card there, so they are desktop only. */}
         <div className="relative w-full max-w-[56rem] overflow-hidden rounded-6 border border-border-strong bg-panel shadow-xl grid grid-cols-1 sm:grid-cols-[1.15fr_0.85fr]">
-          {/* The perforation: a dashed rule with a round notch punched at each end, so the two
-              halves read as one tearable ticket. Horizontal while stacked, vertical from sm up.
-              The notches are filled with the page background to read as holes cut through. */}
           <span
             aria-hidden
-            className="pointer-events-none absolute left-0 right-0 top-[42%] border-t border-dashed border-border-dashed sm:left-[57.5%] sm:right-auto sm:top-0 sm:bottom-0 sm:border-t-0 sm:border-l"
+            className="pointer-events-none absolute hidden sm:block sm:left-[57.5%] sm:top-0 sm:bottom-0 sm:border-l sm:border-dashed sm:border-border-dashed"
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border-strong bg-background left-0 top-[42%] sm:left-[57.5%] sm:top-0"
+            className="pointer-events-none absolute hidden size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border-strong bg-background sm:block sm:left-[57.5%] sm:top-0"
           />
           <span
             aria-hidden
-            className="pointer-events-none absolute size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border-strong bg-background left-full top-[42%] sm:left-[57.5%] sm:top-full"
+            className="pointer-events-none absolute hidden size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-border-strong bg-background sm:block sm:left-[57.5%] sm:top-full"
           />
 
-          {/* The stub: the pitch, printed on the gold-cream feature face. */}
-          <section className="flex flex-col justify-center bg-panel-feature p-7 sm:p-9">
+          {/* The stub: the pitch, printed on the gold-cream feature face. Its dashed bottom border
+              is the seam while stacked; it drops from sm up, where the vertical perforation takes over. */}
+          <section className="flex flex-col justify-center border-b border-dashed border-border-dashed bg-panel-feature p-7 sm:border-b-0 sm:p-9">
             <CapsLabel className="font-mono text-text-accent">
               A collaborative crossword
             </CapsLabel>
