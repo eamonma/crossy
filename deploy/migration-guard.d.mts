@@ -12,6 +12,21 @@ export interface Violation {
   rules: string[];
 }
 
+export interface JournalEntry {
+  idx: number;
+  version: string;
+  when: number;
+  tag: string;
+  breakpoints: boolean;
+}
+
+export interface JournalOrderViolation {
+  tag: string;
+  when: number;
+  prevTag: string;
+  prevWhen: number;
+}
+
 export declare const DEFAULT_MIGRATIONS_DIR: string;
 export declare const DENY_RULES: readonly DenyRule[];
 export declare const ALLOWLIST: Map<string, string>;
@@ -19,3 +34,5 @@ export declare const ALLOWLIST: Map<string, string>;
 export declare function stripNoise(sql: string): string;
 export declare function scanSql(sql: string): string[];
 export declare function scanMigrations(dir?: string): Violation[];
+export declare function readJournalEntries(dir?: string): JournalEntry[];
+export declare function scanJournalOrder(dir?: string): JournalOrderViolation[];

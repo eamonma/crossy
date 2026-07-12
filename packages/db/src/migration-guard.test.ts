@@ -10,13 +10,14 @@
  * The guard is plain node and lives outside this package; it is imported here because the
  * migrations it guards live in this package, so packages/db's vitest suite is its natural home.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ALLOWLIST,
   DEFAULT_MIGRATIONS_DIR,
+  scanJournalOrder,
   scanMigrations,
   scanSql,
   stripNoise,
@@ -145,5 +146,58 @@ describe("guard scans the folder and honors the allowlist (INV-7; DESIGN.md sect
   it("ignores non-.sql files in the folder", () => {
     writeFileSync(join(dir, "_journal.json"), '{ "note": "DROP TABLE x" }');
     expect(scanMigrations(dir)).toEqual([]);
+  });
+});
+
+describe("guard enforces a strictly increasing journal (drizzle skips-by-timestamp; DESIGN.md section 9)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "migration-guard-journal-"));
+    mkdirSync(join(dir, "meta"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function writeJournal(whens: number[]): void {
+    const entries = whens.map((when, idx) => ({
+      idx,
+      version: "7",
+      when,
+      tag: `${String(idx).padStart(4, "0")}_m`,
+      breakpoints: true,
+    }));
+    writeFileSync(
+      join(dir, "meta", "_journal.json"),
+      JSON.stringify({ version: "7", dialect: "postgresql", entries }),
+    );
+  }
+
+  it("passes the real committed journal (its `when` values strictly increase by idx)", () => {
+    // The whole point of the fix: a later-idx migration stamped at or below an earlier one is
+    // silently skipped on production, so the committed journal must stay monotonic.
+    expect(scanJournalOrder(DEFAULT_MIGRATIONS_DIR)).toEqual([]);
+  });
+
+  it("flags a later migration stamped BELOW an earlier one (the production-skip hazard)", () => {
+    writeJournal([100, 200, 150]); // idx 2 (when 150) sits under idx 1 (when 200)
+    expect(scanJournalOrder(dir)).toEqual([
+      { tag: "0002_m", when: 150, prevTag: "0001_m", prevWhen: 200 },
+    ]);
+  });
+
+  it("flags an equal timestamp too (drizzle applies only on strictly greater)", () => {
+    writeJournal([100, 200, 200]);
+    expect(scanJournalOrder(dir)).toEqual([
+      { tag: "0002_m", when: 200, prevTag: "0001_m", prevWhen: 200 },
+    ]);
+  });
+
+  it("returns [] when the folder has no journal (nothing to check)", () => {
+    // The deny-list folder-scan tests use bare temp dirs; the journal check must not throw.
+    rmSync(join(dir, "meta"), { recursive: true, force: true });
+    expect(scanJournalOrder(dir)).toEqual([]);
   });
 });
