@@ -3,7 +3,8 @@
 // adapter's contract (publishable key as the key param, guest gating, captcha threading, token
 // freshness, OAuth redirect) without a vendor or a socket.
 import { describe, expect, it, vi } from "vitest";
-import { createSupabaseIdentity } from "./supabaseAdapter";
+import type { User } from "@supabase/supabase-js";
+import { avatarUrlOf, createSupabaseIdentity } from "./supabaseAdapter";
 import type { SupabaseIdentityDeps } from "./supabaseAdapter";
 
 type AuthChangeCb = (event: string, session: unknown) => void;
@@ -256,6 +257,7 @@ describe("supabase identity adapter", () => {
       userId: "u9",
       displayName: "Ada Lovelace",
       isAnonymous: false,
+      avatarUrl: null,
     });
     const seen = vi.fn();
     identity.onChange(seen);
@@ -268,6 +270,7 @@ describe("supabase identity adapter", () => {
         userId: "u9",
         displayName: "Guest",
         isAnonymous: true,
+        avatarUrl: null,
       },
       "signed_in",
     );
@@ -295,6 +298,7 @@ describe("supabase identity adapter", () => {
       userId: "u-apple",
       displayName: "Player",
       isAnonymous: false,
+      avatarUrl: null,
     });
   });
 
@@ -336,6 +340,7 @@ describe("supabase identity adapter", () => {
         userId: "u1",
         displayName: "Ada Lovelace",
         isAnonymous: false,
+        avatarUrl: null,
       },
       "signed_in",
     );
@@ -353,6 +358,7 @@ describe("supabase identity adapter", () => {
         userId: "u1",
         displayName: "Ada Lovelace",
         isAnonymous: false,
+        avatarUrl: null,
       },
       "restored",
     );
@@ -403,8 +409,54 @@ describe("supabase identity adapter", () => {
         userId: "u2",
         displayName: "Ada Lovelace",
         isAnonymous: false,
+        avatarUrl: null,
       },
       "signed_in",
     );
+  });
+
+  // The user's own profile picture: extracted for the chrome so the auth chip can lay the
+  // image over the initial in a reserved box (the #93 cure), never reflowing when it lands.
+  describe("avatarUrlOf", () => {
+    it("reads a Discord avatar_url from user_metadata", () => {
+      const user = fakeUser({
+        user_metadata: {
+          full_name: "Ada",
+          avatar_url: "https://cdn.discordapp.com/avatars/1/abc.png",
+        },
+      });
+      expect(avatarUrlOf(user as unknown as User)).toBe(
+        "https://cdn.discordapp.com/avatars/1/abc.png",
+      );
+    });
+
+    it("falls back to the 'picture' key when avatar_url is absent", () => {
+      const user = fakeUser({
+        user_metadata: { picture: "https://example.com/me.jpg" },
+      });
+      expect(avatarUrlOf(user as unknown as User)).toBe(
+        "https://example.com/me.jpg",
+      );
+    });
+
+    it("is null when no picture metadata is present (Apple ships none)", () => {
+      const user = fakeUser({ user_metadata: { full_name: "Ada" } });
+      expect(avatarUrlOf(user as unknown as User)).toBeNull();
+    });
+
+    it("is null for a guest even if metadata carries a stray url", () => {
+      const user = fakeUser({
+        is_anonymous: true,
+        user_metadata: { avatar_url: "https://example.com/ghost.png" },
+      });
+      expect(avatarUrlOf(user as unknown as User)).toBeNull();
+    });
+
+    it("rejects a non-http value so the chrome shows the initial, not a broken image", () => {
+      const user = fakeUser({
+        user_metadata: { avatar_url: "javascript:alert(1)" },
+      });
+      expect(avatarUrlOf(user as unknown as User)).toBeNull();
+    });
   });
 });

@@ -10,6 +10,7 @@ import { ExitIcon, PersonIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
 import type { Identity, IdentitySession } from "../identity";
 import { Divider } from "./primitives";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -189,9 +190,17 @@ export function AuthBar({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size="sm" className="pl-1.5">
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gold-4 text-gold-11 text-1 font-medium">
-            {session.displayName.slice(0, 1).toUpperCase()}
-          </span>
+          {/* Reserved-box avatar: the fixed 20px Root holds the space, and the picture (when
+              present) lays over the initial via the #93 overlay, so the chip never reflows when
+              the image resolves after hydration. A null URL or a load error keeps the initial. */}
+          <Avatar className="size-5">
+            {session.avatarUrl !== null && (
+              <AvatarImage src={session.avatarUrl} alt="" />
+            )}
+            <AvatarFallback className="bg-gold-4 text-gold-11 text-1 font-medium">
+              {session.displayName.slice(0, 1).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
           <span className="max-w-[10ch] truncate">{session.displayName}</span>
         </Button>
       </DropdownMenuTrigger>

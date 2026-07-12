@@ -22,12 +22,14 @@ const GUEST_SESSION: IdentitySession = {
   userId: "mock-guest",
   displayName: "Guest",
   isAnonymous: true,
+  avatarUrl: null,
 };
 
 const ACCOUNT_SESSION: IdentitySession = {
   userId: "mock-account",
   displayName: "Mock Player",
   isAnonymous: false,
+  avatarUrl: null,
 };
 
 export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
