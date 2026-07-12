@@ -1,0 +1,194 @@
+/*
+ * Crossy tokens, lifted verbatim from apps/web/src/styles.css (light theme) so these
+ * mockups paint in the real material: Sand neutral, Gold accent, the type scale, the
+ * board-paint custom properties the SVG renderer reads directly. No Tailwind here; the
+ * mockups use these variables straight, which is enough to read as Crossy.
+ */
+:root {
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-0: 0.6875rem;
+  --text-1: 0.75rem;
+  --text-2: 0.875rem;
+  --text-3: 1rem;
+  --text-5: 1.25rem;
+  --text-6: 1.5rem;
+  --text-7: 1.75rem;
+  --text-8: 2.1875rem;
+  --text-9: 3.75rem;
+  --tracking-caps: 0.06em;
+
+  /* Sand */
+  --color-sand-1: #fdfdfc;
+  --color-sand-2: #f9f9f8;
+  --color-sand-3: #f1f0ef;
+  --color-sand-4: #e9e8e6;
+  --color-sand-5: #e2e1de;
+  --color-sand-6: #dad9d6;
+  --color-sand-7: #cfceca;
+  --color-sand-8: #bcbbb5;
+  --color-sand-9: #8d8d86;
+  --color-sand-10: #82827c;
+  --color-sand-11: #63635e;
+  --color-sand-12: #21201c;
+  --color-sand-25: #ffffff;
+
+  /* Gold */
+  --color-gold-2: #faf9f2;
+  --color-gold-3: #f2f0e7;
+  --color-gold-5: #e1dccf;
+  --color-gold-6: #d8d0bf;
+  --color-gold-7: #cbc0a8;
+  --color-gold-8: #b9a88d;
+  --color-gold-9: #978365;
+  --color-gold-11: #71624b;
+  --color-gold-12: #3b352b;
+  --color-gold-25: #fbfaf4;
+
+  --color-green-11: #218358;
+
+  /* semantic */
+  --color-background: var(--color-sand-2);
+  --color-panel: var(--color-sand-25);
+  --color-panel-feature: var(--color-gold-25);
+  --color-text: var(--color-sand-12);
+  --color-text-muted: var(--color-sand-11);
+  --color-text-subtle: var(--color-sand-10);
+  --color-text-accent: var(--color-gold-11);
+  --color-border: var(--color-sand-6);
+  --color-border-strong: var(--color-sand-7);
+  --color-border-dashed: var(--color-sand-8);
+
+  --radius-2: 4px;
+  --radius-3: 6px;
+  --radius-4: 8px;
+  --radius-5: 12px;
+  --radius-6: 16px;
+
+  --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+  --shadow-md:
+    0 2px 4px -1px rgb(30 27 20 / 0.06), 0 4px 10px -2px rgb(30 27 20 / 0.08);
+  --shadow-lg:
+    0 8px 24px -6px rgb(30 27 20 / 0.14), 0 2px 6px -2px rgb(30 27 20 / 0.08);
+  --shadow-xl:
+    0 16px 48px -12px rgb(30 27 20 / 0.22), 0 4px 12px -4px rgb(30 27 20 / 0.1);
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* board-paint tokens (SVG reads these directly) */
+  --cell-block: var(--color-sand-12);
+  --cell-default: var(--color-sand-1);
+  --stroke: var(--color-sand-6);
+  --board-frame: rgba(0, 0, 0, 0.15);
+  --clue-number: var(--color-sand-11);
+  --letter: var(--color-sand-12);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+}
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-3);
+  line-height: 1.625rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  margin: 0;
+}
+
+.board {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.board text {
+  user-select: none;
+}
+
+.caps {
+  font-size: var(--text-1);
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+/* ledger: who filled how much */
+.ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ledger-row {
+  display: grid;
+  grid-template-columns: 14px auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.ledger-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.ledger-name {
+  font-size: var(--text-2);
+  font-weight: 500;
+  color: var(--color-text);
+}
+.ledger-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-sand-4);
+  overflow: hidden;
+}
+.ledger-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+.ledger-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-2);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+  text-align: right;
+}
+.ledger-compact .ledger-name {
+  font-size: var(--text-1);
+}
+
+/* avatar stack (matches primitives AvatarStack: colored initial pucks, panel ring) */
+.stack {
+  display: flex;
+}
+.stack .puck {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: var(--text-1);
+  font-weight: 700;
+  box-shadow: 0 0 0 2px var(--color-panel);
+  margin-left: -8px;
+}
+.stack .puck:first-child {
+  margin-left: 0;
+}
