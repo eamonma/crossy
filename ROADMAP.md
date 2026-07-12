@@ -866,3 +866,38 @@ styling, highlight precedence), not just mechanics. Spec them per platform first
 - **M7**: OG preview images (geometry only, never fills), passivation tuning, presence
   colors everywhere, nightly simulation runs. **Exit: a link pasted in Discord unfurls
   with the grid image.**
+
+## Phase 6 — Extension ingest (post-M5 wave)
+
+Design landed: DESIGN.md §7 (extraction-only posture, D21) and PROTOCOL.md §12 (the
+`{format, document}` envelope, `UNKNOWN_FORMAT`, `SOLUTION_MISSING`). The point is
+legal posture: the user extracts from a page they already have access to, in their
+own browser; the server never contacts publishers (D21). Tests before implementation
+per track; translator fixtures are synthetic, never real outlet content.
+
+### Wave 6.1 — server tracks (x1 first; x2–x4 parallel after it)
+
+| Track | Work                                                                                                                                                                             | Unblocks   |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| x1    | Envelope dispatch on `POST /puzzles`: deterministic form selection, `UNKNOWN_FORMAT` + `SOLUTION_MISSING` in `http/errors.ts`, `source.format`; legacy bare body byte-compatible | x2–x4, 6.2 |
+| x2    | `guardian` translator + synthetic fixtures (tests first)                                                                                                                         | 6.2 e2e    |
+| x3    | `amuselabs` translator (server-side blob decode) + fixtures                                                                                                                      | 6.3        |
+| x4    | `nyt` translator + fixtures                                                                                                                                                      | 6.3        |
+
+### Wave 6.2 — extension scaffold + first adapter
+
+`apps/extension`: MV3 scaffold (TypeScript, no framework until it hurts), the pairing
+handshake with the web app (bearer; pin the mechanism, DESIGN.md §15), and the
+Guardian adapter end to end: detect page, extract, post envelope, puzzle appears in
+the library. **Exit: a Guardian puzzle solved in a Crossy room, extension-ingested.**
+
+### Wave 6.3 — remaining adapters
+
+NYT and AmuseLabs adapters on x3/x4. **Exit: the owner ingests the day's NYT puzzle
+from nytimes.com and solves it in a room.**
+
+### Wave 6.4 — packaging (owner-held gates)
+
+Chrome + Firefox store packaging, privacy policy, listing copy (no publisher
+trademarks). Store accounts and submissions are owner actions. **Exit: installable
+from both stores.**

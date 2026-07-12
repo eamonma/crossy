@@ -241,7 +241,7 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 
 | Route                                 | Who                                     | Behavior                                                                                                                       |
 | ------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `POST /puzzles`                       | full account                            | ingest XWord Info JSON (body or URL); returns the puzzle view, or a named rejection (barred, diagramless, uniclue, over 25x25, degenerate/zero playable cells, unsolvable/non-enterable solution cell) |
+| `POST /puzzles`                       | full account                            | ingest a puzzle document: a bare XWord Info JSON body (the legacy form), or the multi-format envelope `{format, document}` (below); returns the puzzle view, or a named rejection (barred, diagramless, uniclue, over 25x25, degenerate/zero playable cells, unsolvable/non-enterable solution cell) |
 | `GET /puzzles`                        | authenticated (own uploads)             | the caller's uploaded puzzles, newest first; per puzzle `{puzzleId, createdAt, rows, cols, features, title, author, mask}` (`title`/`author` are display metadata, null when absent; `mask` is the black-square silhouette, pattern only), no solution (INV-6); `limit` (default 50, max 100) + `createdAt`-cursor `before` pagination |
 | `POST /games`                         | full account                            | `{puzzleId, name?}` creates a game; `name` is an optional display label (trimmed, capped at 80 chars, absent/empty is unnamed); returns the game, its invite code, and the `name` |
 | `GET /games`                          | any authenticated user, guests included | the caller's games (membership join), most-recently-active first within the page; per game `{gameId, name, role, createdAt, createdBy, memberCount, completedAt, lastActivityAt, puzzle:{puzzleId, rows, cols, title, mask}}` (`puzzle.title` is display metadata, null when absent; `puzzle.mask` is the black-square silhouette, pattern only; `completedAt` is the ISO completion time, null while ongoing and null for an abandoned game; `lastActivityAt` is the ISO time of the game's newest board event, null for a game no one has played yet), no board (game_state is session-owned, DESIGN.md section 9); `limit` (default 50, max 100) + `createdAt`-cursor `before` pagination, with a server-computed `nextBefore` on the response |
@@ -302,6 +302,24 @@ Puzzle ingestion (`POST /puzzles`) rejects an unacceptable puzzle with a named r
 | `DIAGRAMLESS`        | 422  | a diagramless puzzle, a known-incompatible flag v4 does not support (DESIGN.md section 7, D13)                                                                   |
 
 Barred and uniclue puzzles (section 12 table; DESIGN.md section 7) belong to the same reason-per-rejection contract but ship no code: SP5 records no JSON field or flag that identifies either, so there is nothing to trigger on (DESIGN.md section 15). Asymmetric grids and unchecked cells are valid puzzles and are never rejected (SP5).
+
+**Multi-format ingestion (the `{format, document}` envelope).** Lands with the extension-ingest wave (ROADMAP Phase 6; DESIGN.md section 7, D21). `POST /puzzles` accepts a second body form, an envelope `{format, document}`: `format` names a registry entry below, and `document` is the raw outlet payload exactly as extracted from a page the user had open, untransformed (the extension is deliberately dumb; DESIGN.md section 7). Dispatch is deterministic and never guesses: a JSON object carrying both a string `format` and a `document` key is the envelope; a body without a `format` key is a bare XWord Info document (the legacy form, equivalent to `format: "xwordinfo"`); a body with `format` but no `document`, or a non-string `format`, is `VALIDATION`.
+
+| format      | document                                                                                                         |
+| ----------- | ---------------------------------------------------------------------------------------------------------------- |
+| `xwordinfo` | object: the XWord Info JSON export (the same document the legacy bare body carries)                              |
+| `nyt`       | object: the NYT v6 puzzle JSON as present in the nytimes.com puzzle page                                          |
+| `guardian`  | object: the Guardian crossword JSON embedded in its puzzle page                                                   |
+| `amuselabs` | string: the encoded AmuseLabs (PuzzleMe) blob as found in the page; decoding is translation and happens server-side, in the ACL |
+
+Every translator lands on the same internal `ServerPuzzle` and the same domain checks, so the named rejections above apply to every format uniformly and the response shape (the `ClientPuzzle` view, INV-6) does not vary by format. Two codes join the REST vocabulary with this envelope:
+
+| code               | HTTP | meaning                                                                                                                                                       |
+| ------------------ | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UNKNOWN_FORMAT`   | 400  | the envelope names a format not in the registry (typically an extension newer than the server); the message names the format and never echoes the document      |
+| `SOLUTION_MISSING` | 422  | the document is well-formed but carries no complete solution grid (for example a Guardian payload with `solutionAvailable: false`); v1 requires solutions at ingest so server-side check and completion work unchanged (D11, INV-6) |
+
+Registry names are stable identifiers, never parsed for meaning; outlet format drift is absorbed inside the named translator, so the external format is still parsed exactly once, at the boundary (DESIGN.md section 7, D13). The registry is open-ended: a future format (for example binary `.puz`, carried base64 in `document`) joins by adding a translator, a name, and its fixtures, never by widening an existing translator.
 
 ## 12a. Live Activity push
 
