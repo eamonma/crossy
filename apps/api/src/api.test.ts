@@ -747,6 +747,90 @@ describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21;
     });
     await expectRejectionNoLeak(res, 422, "SOLUTION_MISSING", "TAG");
   });
+
+  // A synthetic NYT v6 3x3 (never real NYT content, DESIGN.md §7): the same CAT/DOG grid in the
+  // v6 body shape. Blocks are the empty object `{}` (the reference's falsy rule); cells are
+  // row-major; clue entries carry the covered cell indices and capitalized directions.
+  const nytClue = (cells: number[], direction: string, plain: string) => ({
+    cells,
+    direction,
+    label: "99",
+    text: [{ plain }],
+  });
+  const nytDoc = () => ({
+    body: [
+      {
+        cells: [
+          { answer: "C", label: "1" },
+          { answer: "A" },
+          { answer: "T", label: "2" },
+          { answer: "U" },
+          {},
+          { answer: "A" },
+          { answer: "D", label: "3" },
+          { answer: "O" },
+          { answer: "G" },
+        ] as Record<string, unknown>[],
+        clues: [
+          nytClue([0, 1, 2], "Across", "Feline (3)"),
+          nytClue([6, 7, 8], "Across", "Canine (3)"),
+          nytClue([0, 3, 6], "Down", "Chewed morsel (3)"),
+          nytClue([2, 5, 8], "Down", "Label (3)"),
+        ],
+        dimensions: { width: 3, height: 3 },
+      },
+    ],
+    constructors: ["Synthia Synthetic"],
+    publicationDate: "2026-01-01",
+  });
+
+  it("ingests a nyt envelope: v6 body translated, ClientPuzzle view, source format (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "nyt",
+      document: nytDoc(),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      puzzleId: string;
+      puzzle: Record<string, unknown>;
+    };
+    expect(hasKeyDeep(body.puzzle, "solution")).toBe(false);
+    expect(body.puzzle.blocks).toEqual([4]);
+    expect(await storedSource(body.puzzleId)).toEqual({
+      kind: "upload",
+      format: "nyt",
+    });
+    const { rows } = await adminPool.query(
+      "select data from puzzles where puzzle_id = $1",
+      [body.puzzleId],
+    );
+    expect(rows[0].data.solution).toEqual([
+      "C",
+      "A",
+      "T",
+      "U",
+      null,
+      "A",
+      "D",
+      "O",
+      "G",
+    ]);
+  });
+
+  it("rejects a stripped nyt payload (no answers) as SOLUTION_MISSING 422, no leak (INV-6, D11)", async () => {
+    const token = await auth.mintUpgraded();
+    const doc = nytDoc();
+    // The unauthenticated shape: one answer survives as the planted marker, the next playable
+    // cell is stripped to its label, which trips the code; the marker must never echo.
+    doc.body[0]!.cells[0] = { answer: "MARKERWORD", label: "1" };
+    doc.body[0]!.cells[1] = { label: "" };
+    const res = await postJson("/puzzles", token, {
+      format: "nyt",
+      document: doc,
+    });
+    await expectRejectionNoLeak(res, 422, "SOLUTION_MISSING", "MARKERWORD");
+  });
 });
 
 describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
