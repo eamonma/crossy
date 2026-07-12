@@ -1,0 +1,17 @@
+[
+  {
+    "name": "SCHEME 1: A first-correct at seq 5, B clears at seq 20, C re-corrects at seq 40; owner stays A, NOT C",
+    "intent": "This is THE case that pins scheme 1 (first-ever-correct) against scheme 2 (last-correct). Once the FIRST matching writer is assigned, no later clear or re-correction by anyone moves the owner. A scheme-2 reading would report C; scheme 1 reports A. owners are userIds only (INV-6).",
+    "given": {
+      "solution": [[7, "D"]],
+      "events": [
+        { "seq": 5, "cell": 7, "userId": "A", "value": "D" },
+        { "seq": 20, "cell": 7, "userId": "B", "value": null },
+        { "seq": 40, "cell": 7, "userId": "C", "value": "D" }
+      ]
+    },
+    "then": {
+      "owners": { "7": "A" }
+    }
+  }
+]

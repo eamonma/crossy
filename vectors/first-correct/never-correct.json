@@ -1,0 +1,17 @@
+[
+  {
+    "name": "a cell that only ever receives non-matching values (a partial, abandoned solve) is absent from the map",
+    "intent": "A cell is in the map only if some event was correct. None of Z, Q, or the clear satisfy matches(solution[0], value), so cell 0 never goes correct and never appears. A clear (value null) is never correct. owners are userIds only (INV-6).",
+    "given": {
+      "solution": [[0, "A"]],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "Z" },
+        { "seq": 2, "cell": 0, "userId": "u2", "value": "Q" },
+        { "seq": 3, "cell": 0, "userId": "u3", "value": null }
+      ]
+    },
+    "then": {
+      "owners": {}
+    }
+  }
+]
