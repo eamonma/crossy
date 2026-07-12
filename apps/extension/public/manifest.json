@@ -4,6 +4,12 @@
   "version": "0.0.1",
   "description": "Add the crossword on the page you are reading to your Crossy library.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlbNQ7gBPgOrAW9ESSKOANFLQWrz3gcmqsQWN+DOB+W/Bsuxt+n22EsGeakOEhAzUwc03gXW9GrTfwlwJ94ZGKyWQRCErzQdLqo5jRBl7iJktgFhbhEBcb3L81x6pr/3/eE3NH7zCgt+CMPJG6j7pzSoxXR+ZXo/QdC9/1LLZ2Z8HF6Xu7YQ1Ht4vJOZdBdjPSJnY6uF0TwvzS2QfdBa6HEGefakK+8qhTiSisey2VZRCnXj79WmZWPJb10E6rRwbBuexf0DctohaZ7LjyGc67XZ8PBoNcIgstr46tAXmF7WirvpQG/zWd+4E/9fXahQSRO+M/s6ZJsVmeEbcmCLx1QIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": ["activeTab", "storage", "identity", "alarms"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
   "background": {
@@ -35,7 +41,13 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Add to Crossy"
+    "default_title": "Add to Crossy",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
   },
   "options_ui": {
     "page": "options.html"

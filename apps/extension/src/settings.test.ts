@@ -3,7 +3,7 @@
 // a request reached past an await: "permissions.request may only be called
 // from a user input handler" (observed on a real load, 2026-07-12).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requestOriginPermissions } from "./settings";
+import { playIntentUrl, requestOriginPermissions } from "./settings";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -33,5 +33,16 @@ describe("requestOriginPermissions", () => {
     expect(calls).toEqual([
       { origins: ["https://rest.crossy.party/*", "http://localhost/*"] },
     ]);
+  });
+});
+
+describe("playIntentUrl", () => {
+  it("targets the web app's play intent and URL-encodes the id", () => {
+    expect(playIntentUrl("p_01ABC")).toBe(
+      "https://crossy.party/puzzles?play=p_01ABC",
+    );
+    expect(playIntentUrl("a/b&c")).toBe(
+      "https://crossy.party/puzzles?play=a%2Fb%26c",
+    );
   });
 });
