@@ -44,6 +44,31 @@ enum RoomMapping {
         }
     }
 
+    /// The TAPPED CARD's member stack as the store's roster seed (the seeded-birth
+    /// rule, DESIGN.md §4, §12): a card-tap arrival records the row's true members and
+    /// seeds the store at construction, BEFORE the REST fetch, so the players pill
+    /// stands identity-true from the push's first frame and the goo plays on live
+    /// data. Unlike the REST-view seed above, the list row carries the resolved
+    /// `name`, so this seed carries the TRUE display name (and avatarUrl and role) from
+    /// the wire, not a blank waiting for the welcome. Liveness is still the socket's to
+    /// report, so each seeded participant holds `connected: false` (not-yet-heard-from,
+    /// the same register an away member carries); the `welcome` stays the authority and
+    /// rebuilds `participants` wholesale when it lands, and GameStore.seedRoster gates
+    /// to `connecting`, so this can never overwrite real presence. `color` is blank (the
+    /// list row carries no roster color; GridPresence.rosterColor's hash fallback
+    /// resolves a stable per-user color from the id, so a seeded puck is never
+    /// colorless). The role folds back from the card's two flags: host, then spectator,
+    /// else solver, so the solvers-only pill filter (RosterList.cluster) applies to the
+    /// seed identically and a spectator seat seeds the store but never widens the pill.
+    static func roster(cardMembers: [RoomCardMember]) -> [Participant] {
+        cardMembers.map { member in
+            let role: Role = member.isHost ? .host : (member.isSpectator ? .spectator : .solver)
+            return Participant(
+                userId: member.userId, displayName: member.name,
+                avatarUrl: member.avatarUrl, color: "", role: role, connected: false)
+        }
+    }
+
     /// The ClientPuzzle mapping proper. Clue numbering derives from the clue starts
     /// the document already carries (each clue's first cell numbers, and an across and
     /// a down clue starting in the same cell share the number by crossword

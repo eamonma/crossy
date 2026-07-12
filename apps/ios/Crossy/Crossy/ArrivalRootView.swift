@@ -86,6 +86,16 @@ struct ArrivalRootView: View {
     /// with the paths. NOTE: Puzzles-tab pushes stay default (no zoom) in this PR;
     /// the puzzle card as a zoom source is a follow-up.
     @State private var roomZoomSourceID: String?
+    /// The tapped card's true facts, recorded beside the path at tap time (the
+    /// seeded-birth rule, DESIGN.md §4, §12), keyed by gameId exactly as
+    /// `roomZoomSourceID` is: a card tap records its member stack and invite code, so
+    /// the pushed room is born identity-true and the goo plays on live data. A deep
+    /// link or a code-join records nothing (no card), so its room reads nil here and
+    /// keeps the one-beat arrival. Cleared on sign-out with the paths and the zoom
+    /// source (the room's card is gone). Keyed rather than single-slotted because two
+    /// pushes can be staged in the two navigating tabs, and a stale seed must never
+    /// dress the wrong room.
+    @State private var roomSeeds: [String: RoomArrivalSeed] = [:]
     /// A code-join staged for after the sheet melts back into the Join capsule
     /// (slice 2): join success dismisses the sheet, and the room pushes only when
     /// the sheet's dismissal completes (the sheet's .onDisappear), so the read is
@@ -158,9 +168,11 @@ struct ArrivalRootView: View {
                 path.removeAll()
                 puzzlesPath.removeAll()
                 showJoin = false
-                // The Rooms path is empty now, so the zoom source and a staged join
-                // are stale: clear them with the paths (the room's card is gone).
+                // The Rooms path is empty now, so the zoom source, the recorded seeds,
+                // and a staged join are stale: clear them with the paths (the room's
+                // card is gone).
                 roomZoomSourceID = nil
+                roomSeeds.removeAll()
                 pendingJoinGameId = nil
             }
         }
@@ -211,6 +223,14 @@ struct ArrivalRootView: View {
                             // and pours back into it on the pop (native continuity,
                             // DESIGN.md §4). The id matches the card's stamp exactly.
                             roomZoomSourceID = RoomZoomSource.sourceID(for: room.gameId)
+                            // Record the card's true facts beside the path (the
+                            // seeded-birth rule, DESIGN.md §4, §12): its member stack
+                            // and invite code seed the room identity-true, so the
+                            // players and share pills stand from the push's first
+                            // frame and the goo plays on live data. Keyed by gameId,
+                            // read at construction, cleared on sign-out.
+                            roomSeeds[room.gameId] = RoomArrivalSeed(
+                                members: room.members, inviteCode: room.inviteCode)
                             path.append(roomRoute(for: room.gameId))
                         },
                         onJoinWithCode: { showJoin = true },
@@ -393,7 +413,13 @@ struct ArrivalRootView: View {
                         apiBaseURL: facts.apiBaseURL,
                         sessionBaseURL: facts.sessionBaseURL,
                         gameId: gameId,
-                        tokenProvider: model.session.tokenProvider),
+                        tokenProvider: model.session.tokenProvider,
+                        // The tapped card's seed (the seeded-birth rule, DESIGN.md §4,
+                        // §12), recorded at tap time and keyed by gameId. nil for a
+                        // deep link or a code-join (no card), which keeps the one-beat
+                        // arrival. RealRoom seeds the store's roster and the share
+                        // payload from it before the REST fetch.
+                        seed: roomSeeds[gameId]),
                     onBack: pop,
                     onExit: pop
                 )

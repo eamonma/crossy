@@ -57,6 +57,12 @@ struct ContentView: View {
             // first-frame top against the live top so a capture proves the board never
             // moved when the pill arrived. Evidence only.
             PillArrivalLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-seededBirthLab") {
+            // The seeded-birth rig (SeededBirthLab.swift, DESIGN.md §4, §12): stands the
+            // withholding room's seeded bar (back + identity-true players + share, the
+            // guest-spectator filtered, the timer welcome-gated), so the seeded frame
+            // the live goo grows from is capturable offline. Evidence only.
+            SeededBirthLab()
         } else if let config = RoomConfig.resolve() {
             // The room's top chrome is the system nav bar's items now (the
             // toolbar-adoption ruling, DESIGN.md §4), and toolbar items render
@@ -188,24 +194,68 @@ struct RealRoomView: View {
         colorScheme == .dark ? .observatory : .studio
     }
 
+    /// The withholding bar's seeded trailing cluster (the seeded-birth rule, DESIGN.md
+    /// §4, §12), or nil when the room was not born with a seed (a deep link or a
+    /// code-join), which keeps the withholding bar back-only. Built from the SEEDED
+    /// store: `room.store.participants` are the card's members (seeded at construction,
+    /// still standing pre-welcome), mapped to RosterMember through the SAME field map
+    /// SolveScreen and the island use, so the withholding pill renders through the exact
+    /// same RosterMenu → RosterList.cluster path the live pill uses (solvers-only, so a
+    /// seeded spectator seeds the store but never widens the pill). The share payload is
+    /// built from the seeded invite code exactly as SolveScreen's is (ShareInvite.url),
+    /// so the withholding share pill and the live one carry the same URL. The action
+    /// closures match SolveScreen's (copy/share through ShareInvite, kick through the
+    /// room); onJoinIn stays the SolveScreen default (the spectator seat-change is not
+    /// wired in the live room yet). The full bar stands the same two items in the same
+    /// placements when SolveScreen mounts still pre-welcome, so identity holds across
+    /// the swap and only the timer inserts later.
+    private var openingSeed: RoomOpeningSeed? {
+        guard room.chrome.seeded else { return nil }
+        let members = room.store.participants.map {
+            RosterMember(
+                userId: $0.userId, displayName: $0.displayName, wireColor: $0.color,
+                avatarUrl: $0.avatarUrl,
+                isHost: $0.role == .host, isSpectator: $0.role == .spectator,
+                connected: $0.connected)
+        }
+        let shareUrl = ShareInvite.url(gameId: room.gameId, code: room.inviteCode)
+        return RoomOpeningSeed(
+            members: members,
+            selfUserId: room.store.selfUserId,
+            shareCode: room.inviteCode,
+            shareUrlString: shareUrl?.absoluteString,
+            onKick: { userId in room.kick(userId: userId) },
+            onCopyShareLink: {
+                if let shareUrl { UIPasteboard.general.string = shareUrl.absoluteString }
+            },
+            onShareInvite: { shareURL = shareUrl })
+    }
+
     var body: some View {
         Group {
             if let fatal = room.fatal {
                 // The failure branch keeps a way out (DESIGN.md §4, the live-data birth
                 // rule): OUR back button stands so a room that cannot open is never a
-                // dead end.
+                // dead end. A seeded room stands its identity-true players and share
+                // pills here too (the goo has something to land on even when the room
+                // then fails); the timer stays welcome-gated, so it never appears.
                 RoomOpenFailure(message: fatal, dark: colorScheme == .dark)
                     .modifier(
-                        RoomOpeningToolbarHost(ground: ground, onBack: onBack))
+                        RoomOpeningToolbarHost(
+                            ground: ground, seed: openingSeed, onBack: onBack))
             } else if !ready {
                 // The bar is born with the push (DESIGN.md §4, the live-data birth
                 // rule): the withholding room carries OUR back button even before the
                 // board, so the #132 zoom push goos it in place instead of the way out
-                // popping at REST-mount. The trailing cluster arrives together on the
-                // welcome's beat once SolveScreen mounts (SLICE B, one arrival beat).
+                // popping at REST-mount. When the room was born with a seed (a card-tap
+                // arrival, §12), the identity-true players and share pills stand here
+                // from the push's first frame, so the goo plays on live data; the timer
+                // stays welcome-gated and joins when SolveScreen mounts and the welcome
+                // lands (one arrival beat). An unseeded room is back-only here.
                 RoomOpening(dark: colorScheme == .dark)
                     .modifier(
-                        RoomOpeningToolbarHost(ground: ground, onBack: onBack))
+                        RoomOpeningToolbarHost(
+                            ground: ground, seed: openingSeed, onBack: onBack))
             } else {
                 SolveScreen(
                     store: room.store,

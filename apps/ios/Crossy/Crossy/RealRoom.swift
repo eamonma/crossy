@@ -72,19 +72,25 @@ final class RealRoom {
     }
 
     /// The arrival composition (I3): the token rides a provider so REST and every
-    /// socket redial resolve it fresh (a silent refresh mid-solve just works). The
-    /// withholding room stands its back button from the push's first frame; the whole
-    /// trailing cluster (players, share, timer) arrives together on the welcome's beat
-    /// (DESIGN.md §4, one arrival beat). The pre-REST count-seed retired 2026-07-12: a
-    /// card's memberCount counted everyone but the pill cluster is solvers-only, so the
-    /// placeholder count was wrong by construction, and the hollow pucks read as an
-    /// empty capsule on device. The REST roster still seeds the store in run() below
-    /// (identity-true), so the pill lands at its right width when the board mounts.
+    /// socket redial resolve it fresh (a silent refresh mid-solve just works). A
+    /// `seed` (the seeded-birth rule, DESIGN.md §4, §12) is the TAPPED CARD's true
+    /// facts, recorded at tap time: its member stack seeds the store's roster and its
+    /// invite code seeds the share payload, both BEFORE the REST fetch, so the players
+    /// and share pills stand identity-true from the push's first frame and the goo
+    /// plays on live data. This supersedes the retired count-seed (a card's memberCount
+    /// counted everyone but the pill cluster is solvers-only, so the placeholder count
+    /// was wrong by construction, and the hollow pucks read as an empty capsule): the
+    /// seed is now the real member stack, roles included, so the solvers-only filter
+    /// applies to it identically. Deep links and code-joins have no card, so they pass
+    /// nil and keep the one-beat arrival (the whole trailing cluster on the welcome's
+    /// beat). REST remains the authority and overwrites both when it lands (seedRoster
+    /// gates to `connecting`; `inviteCode` is reassigned in run() below).
     init(
         apiBaseURL: URL,
         sessionBaseURL: URL,
         gameId: String,
-        tokenProvider: any BearerTokenProviding
+        tokenProvider: any BearerTokenProviding,
+        seed: RoomArrivalSeed? = nil
     ) {
         self.gameId = gameId
         self.sessionBaseURL = sessionBaseURL
@@ -95,6 +101,20 @@ final class RealRoom {
         roomName = ""
         api = CrossyAPIClient(baseURL: apiBaseURL, tokenProvider: tokenProvider)
         selection = SelectionModel(store: store, puzzle: placeholder)
+
+        // The seeded birth (DESIGN.md §4, §12). The store's roster takes the card's
+        // true members (name/avatarUrl/role carried from the wire, each not-yet-heard-
+        // from at `connected: false`), gated to `connecting` so the welcome always
+        // wins; the share payload takes the card's invite code (REST reassigns it in
+        // run()); and the chrome learns it was seeded, so ClusterPresence stands the
+        // players and share pills pre-welcome (the timer stays welcome-gated). An
+        // unseeded room leaves all three at their defaults (empty roster, nil code,
+        // seeded false), the one-beat fallback.
+        if let seed {
+            store.seedRoster(RoomMapping.roster(cardMembers: seed.members))
+            inviteCode = seed.inviteCode
+            chrome.seeded = true
+        }
 
         // The kicked terminal is the composition root's flag (I2d): the store hands the
         // notice off here (it carries no seq, PROTOCOL.md §6), and the root raises the
@@ -253,4 +273,17 @@ extension RealRoom: LiveActivityTokenSink {
 struct FixedBearerToken: BearerTokenProviding {
     let token: String
     func currentToken() async throws -> String { token }
+}
+
+/// The tapped card's true facts, recorded beside the navigation path at tap time (the
+/// seeded-birth rule, DESIGN.md §4, §12), so the room is born identity-true before the
+/// #132 zoom push and the goo plays on live data. The card's full member stack (roles
+/// included, so the solvers-only pill filter applies identically) and its member-only
+/// invite code (so the share payload exists pre-REST). Deep links and code-joins have
+/// no card and record nothing; REST is the authority and overwrites both when it lands.
+/// The arrival layer keys these by gameId beside `roomZoomSourceID` and clears them on
+/// sign-out, the same lifecycle.
+struct RoomArrivalSeed {
+    let members: [RoomCardMember]
+    let inviteCode: String?
 }

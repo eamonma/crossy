@@ -168,7 +168,13 @@ struct RealRooms: RoomsProviding {
                                     avatarUrl: member.avatarUrl,
                                     isHost: member.role == .host,
                                     isSpectator: member.role == .spectator)
-                            })
+                            },
+                            // The member-only invite code (PROTOCOL.md section 12): the
+                            // seeded-birth share pill is born from it, so the share
+                            // payload exists pre-REST. Nil from an older server (section
+                            // 14) leaves the seeded room shareless until REST lands the
+                            // code, the same as an unseeded arrival.
+                            inviteCode: summary.inviteCode)
                     },
                     nextBefore: page.nextBefore))
         } catch {
@@ -345,7 +351,10 @@ struct FixtureRooms: RoomsProviding {
                             RoomCardMember(
                                 userId: "guest-1", name: "Guest", avatarUrl: nil,
                                 isHost: false, isSpectator: true),
-                        ]),
+                        ],
+                        // A believable code so the seeded share pill has a live payload
+                        // in the fixture walk (the goo capture shows a working share).
+                        inviteCode: "TUESDAY1"),
                     // One solved room, so the trailing "Solved" section is judgeable in the
                     // fixture walk (-i3Fixture -i3SignedIn): a real completedAt gathers it into
                     // the shelf and dims its silhouette. The others stay live above it.
@@ -363,7 +372,8 @@ struct FixtureRooms: RoomsProviding {
                             RoomCardMember(
                                 userId: "you", name: "You", avatarUrl: nil,
                                 isHost: false, isSpectator: false),
-                        ]),
+                        ],
+                        inviteCode: "SATURDAY"),
                     RoomCardModel(
                         gameId: "fixture-stumper", name: "Sunday call",
                         puzzleTitle: "The Stumper", rows: 21, cols: 21,
@@ -390,7 +400,8 @@ struct FixtureRooms: RoomsProviding {
                             RoomCardMember(
                                 userId: "guest-2", name: "Guest", avatarUrl: nil,
                                 isHost: false, isSpectator: true),
-                        ]),
+                        ],
+                        inviteCode: "STUMPER7"),
                 ],
                 nextBefore: nil))
     }
