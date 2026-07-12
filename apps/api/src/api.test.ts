@@ -25,6 +25,7 @@ import { buildApp } from "./app";
 import { createDb } from "./db/client";
 import {
   STARTER_GAME_NAME,
+  STARTER_PUZZLE_FEATURES,
   STARTER_PUZZLE_TITLE,
 } from "./starter/starter-puzzle";
 import type {
@@ -2563,10 +2564,14 @@ describe("signup starter seed (DESIGN.md §8; INV-6 no-solution-leak; INV-7 user
       headers: { authorization: `Bearer ${token}` },
     });
     const list = (await listRes.json()) as {
-      puzzles: { title: string | null }[];
+      puzzles: { title: string | null; features: unknown }[];
     };
     expect(list.puzzles).toHaveLength(1);
     expect(list.puzzles[0]!.title).toBe(STARTER_PUZZLE_TITLE);
+    // The seed states the starter's real flags; it never leans on a column default.
+    // `GET /puzzles` returns `features` verbatim and the iOS twin decodes all three
+    // keys as required, so an empty object here fails the caller's whole puzzles page.
+    expect(list.puzzles[0]!.features).toEqual(STARTER_PUZZLE_FEATURES);
   });
 
   it("never seeds a guest: no game and no owned puzzle (DESIGN.md §8)", async () => {

@@ -15,10 +15,24 @@
 //   S O U N D
 //   T R E E #
 import type { ServerPuzzle, Solution } from "@crossy/protocol";
+import type { PuzzleFeatures } from "../puzzles/ingest";
 
 /** Display metadata for the signed-in home list and the facts card. Not a solution (INV-6). */
 export const STARTER_PUZZLE_TITLE = "Warm-up";
 export const STARTER_PUZZLE_AUTHOR = "Crossy";
+
+/**
+ * The starter's feature flags, stated next to the grid they describe (one circled cell, no
+ * rebus). Ingested puzzles get these from detection (puzzles/ingest); the starter bypasses
+ * ingestion, so the seed must write them itself: `GET /puzzles` returns `features` verbatim
+ * and the iOS twin (CrossyProtocol.PuzzleFeatures) decodes all three keys as required, so an
+ * empty object poisons the caller's whole puzzles page.
+ */
+export const STARTER_PUZZLE_FEATURES: PuzzleFeatures = {
+  rebus: false,
+  circles: true,
+  shadedCircles: false,
+};
 
 /** The room name the seeded game carries, so it reads as the starter in the games list. */
 export const STARTER_GAME_NAME = "Your first puzzle";

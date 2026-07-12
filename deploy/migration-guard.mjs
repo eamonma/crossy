@@ -120,6 +120,17 @@ export const ALLOWLIST = new Map([
       "privilege for its ON CONFLICT DO UPDATE upsert on the token registry. Reviewed as " +
       "expand-only 2026-07-11.",
   ],
+  [
+    "0009_starter_features_backfill.sql",
+    "Data-only backfill, deliberately riding the pipeline. The signup starter seed inserted " +
+      "the starter puzzle without `features`, landing rows on the column default '{}'::jsonb, " +
+      "which the iOS features twin cannot decode (it fails the caller's whole GET /puzzles " +
+      "page). The UPDATE rewrites `features` on exactly those rows: `features = '{}'` plus the " +
+      "starter's title/author, a predicate no ingested puzzle matches (ingestion always writes " +
+      "detected features). A handful of rows, equality predicates, idempotent, no DDL, no lock " +
+      "hazard. The schema is untouched; dropping the now-unused default is a separate " +
+      "contract-phase migration. Reviewed 2026-07-11.",
+  ],
 ]);
 
 /**
