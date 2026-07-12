@@ -8,6 +8,54 @@
 // browser's rows (both directions sectioned, current word pinned at the top,
 // filled words quietly de-emphasized, EXPERIENCE.md clue browser).
 
+/// One styled span of a clue's prose, the UI-ring twin of the wire `ClueRun` (the
+/// composition root maps CrossyProtocol's runs into these, AD-2: CrossyUI never imports
+/// CrossyProtocol). Text plus the styles that wrap it; `ClueTextRuns.attributed` turns a
+/// list of these into an `AttributedString` for any surface's font.
+public struct ClueTextRun: Sendable, Equatable {
+    public let text: String
+    public let styles: [ClueTextStyle]
+
+    public init(text: String, styles: [ClueTextStyle] = []) {
+        self.text = text
+        self.styles = styles
+    }
+}
+
+/// A clue-prose style. The wire's four strings ("i","b","sub","sup") map here at the
+/// composition root; an unknown wire string is dropped (forward compatibility), so this
+/// closed set is exactly what the mapper can render.
+public enum ClueTextStyle: Sendable, Equatable {
+    case italic
+    case bold
+    case subscript_
+    case superscript_
+
+    /// One wire style string to its case, or nil for an unknown string (forward
+    /// compatibility: a newer server's style is dropped, never a decode failure). The
+    /// composition root maps the wire `ClueRun`'s `s` through this, keeping CrossyUI free
+    /// of CrossyProtocol (AD-2) while pinning the drop rule in the tested view ring.
+    public init?(wire: String) {
+        switch wire {
+        case "i": self = .italic
+        case "b": self = .bold
+        case "sub": self = .subscript_
+        case "sup": self = .superscript_
+        default: return nil
+        }
+    }
+}
+
+extension ClueTextRun {
+    /// A run from a wire run's parts: its text and its raw style strings, unknown strings
+    /// dropped (`ClueTextStyle.init(wire:)`). The composition root calls this per run so
+    /// the CrossyProtocol-to-CrossyUI translation carries no CrossyProtocol type into this
+    /// ring (AD-2), and the unknown-style drop is a pure, tested view-ring function.
+    public init(text: String, wireStyles: [String]) {
+        self.init(text: text, styles: wireStyles.compactMap(ClueTextStyle.init(wire:)))
+    }
+}
+
 /// One clue as the room renders it. No answer field on either side of the split.
 public struct ClueEntry: Sendable, Equatable, Identifiable {
     public let number: Int
@@ -15,12 +63,20 @@ public struct ClueEntry: Sendable, Equatable, Identifiable {
     /// The word's cells in reading order; the jump target is the first.
     public let cells: [Int]
     public let isAcross: Bool
+    /// The styled spelling of `text`, or nil for a plain clue (absent runs, or a puzzle
+    /// stored before the clue-formatting wave). When present the runs' text concatenates
+    /// to `text` (the server's guarantee), so `text` is always the exact fallback and the
+    /// value accessibility, cross-references, and any plain render keep reading.
+    public let runs: [ClueTextRun]?
 
-    public init(number: Int, text: String, cells: [Int], isAcross: Bool) {
+    public init(
+        number: Int, text: String, cells: [Int], isAcross: Bool, runs: [ClueTextRun]? = nil
+    ) {
         self.number = number
         self.text = text
         self.cells = cells
         self.isAcross = isAcross
+        self.runs = runs
     }
 
     /// Stable identity across the two axes ("12A" / "12D").
