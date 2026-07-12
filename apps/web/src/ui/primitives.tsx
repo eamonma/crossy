@@ -62,6 +62,9 @@ export function CapsLabel({
 
 export interface StackMember {
   userId: string;
+  /** The full display name, for anywhere the member is named: the roster rows, the kick
+   * confirm, the chip tooltip. The stack's chip itself renders only `initial`. */
+  name: string;
   initial: string;
   /**
    * The opaque avatar URL, or null (PROTOCOL.md §4). When present the chip renders the image; while
@@ -108,7 +111,7 @@ export function AvatarStack({
           <Avatar
             key={m.userId}
             size="sm"
-            title={m.initial}
+            title={m.name}
             className={cx("ring-2 ring-panel", !m.connected && "opacity-55")}
           >
             {m.avatarUrl !== null && <AvatarImage src={m.avatarUrl} alt="" />}
