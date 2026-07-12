@@ -296,6 +296,53 @@ final class GameStoreTests: XCTestCase {
         XCTAssertEqual(store.participants.map(\.userId), ["u1"])
     }
 
+    // MARK: - Seeding the pre-welcome roster (the players pill's first frame; §4, §9)
+
+    // The REST roster seeds the pill at its true count before the first frame, so the
+    // players pill never renders a lone placeholder puck that snaps wide when the
+    // welcome lands (owner device finding 2026-07-11). The seed is the ROSTER, not
+    // presence: each member holds the not-yet-heard-from liveness the welcome already
+    // speaks (connected: false), no new state invented (PROTOCOL.md §9).
+    func test_seedRosterSetsTheRosterNotYetHeardFromBeforeTheWelcome_PROTOCOL9() {
+        let store = GameStore()
+        XCTAssertEqual(store.sync, .connecting)
+        store.seedRoster([
+            Participant(userId: "u1", displayName: "", color: "", role: .host, connected: false),
+            Participant(userId: "u2", displayName: "", color: "", role: .solver, connected: false),
+        ])
+        XCTAssertEqual(store.participants.map(\.userId), ["u1", "u2"])
+        XCTAssertEqual(
+            store.participants.map(\.connected), [false, false],
+            "REST members are the roster, not presence: liveness is the socket's to report")
+    }
+
+    // The welcome stays the authority: it rebuilds participants wholesale with the real
+    // displayName, color, and true liveness, overwriting the blank seed (PROTOCOL.md §7).
+    func test_welcomeRebuildsTheSeededRosterWholesale_PROTOCOL7() {
+        let store = GameStore()
+        store.seedRoster([
+            Participant(userId: "u1", displayName: "", color: "", role: .host, connected: false)
+        ])
+        let live = Participant(
+            userId: "u1", displayName: "Ada", color: "#7F77DD", role: .host, connected: true)
+        store.receive(welcome(board(participants: [live])))
+        XCTAssertEqual(store.participants, [live], "the welcome is the roster's authority")
+    }
+
+    // The seed is a pre-handshake courtesy only: once a live roster exists (past the
+    // welcome), a stray re-seed can never overwrite real presence with connected:false.
+    func test_seedRosterIsRefusedAfterTheWelcome_PROTOCOL7() {
+        let live = Participant(
+            userId: "u1", displayName: "Ada", color: "#7F77DD", role: .host, connected: true)
+        let (store, _) = makeLiveStore(board(participants: [live]))
+        store.seedRoster([
+            Participant(userId: "u1", displayName: "", color: "", role: .host, connected: false)
+        ])
+        XCTAssertEqual(
+            store.participants, [live],
+            "a seed after the welcome cannot demote the live roster to not-yet-heard-from")
+    }
+
     func test_cursorNoticeUpdatesRenderOnlyPresence_PROTOCOL9() {
         let (store, _) = makeLiveStore()
         store.receive(.cursor(CursorMessage(userId: "u2", cell: 17, direction: .across)))

@@ -50,9 +50,21 @@ struct ContentView: View {
             // from the foreground, no APNs. Evidence only.
             IslandLab()
         } else if let config = RoomConfig.resolve() {
-            RealRoomView(room: RealRoom(config: config))
+            // The room's top chrome is the system nav bar's items now (the
+            // toolbar-adoption ruling, DESIGN.md §4), and toolbar items render
+            // only inside a navigation container: the standalone compositions
+            // wrap in a stack wearing the same bar chrome as the pushed room,
+            // so the harness and the evidence rigs keep the whole chrome.
+            // Nothing pushes here; back keeps its standalone no-op.
+            NavigationStack {
+                RealRoomView(room: RealRoom(config: config))
+                    .modifier(RoomNavBarChrome())
+            }
         } else if wantsDemoRoom {
-            DemoRoomView()
+            NavigationStack {
+                DemoRoomView()
+                    .modifier(RoomNavBarChrome())
+            }
         } else {
             ArrivalRootView()
         }

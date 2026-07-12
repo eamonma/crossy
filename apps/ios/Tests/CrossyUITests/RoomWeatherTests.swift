@@ -39,12 +39,31 @@ final class RoomWeatherTests: XCTestCase {
         XCTAssertEqual(weather.label, "Reconnecting")
     }
 
-    func test_connecting_dimsWithoutACountdown_preWelcomeIsNotAReconnect() {
+    // The FIRST connect is the terse, quiet register (redesign 2026-07-11, DESIGN.md
+    // §8: the room's law is a hush, never a spinner). A reconnect names itself and
+    // counts down because a person LOST something mid-solve; a first join has lost
+    // nothing, so the pill carries no word and no countdown, only the dimmed dot beside
+    // the clock. The board still dims (honestly not live yet), but the pill stays quiet,
+    // so its width never snaps narrow when the welcome lands.
+    func test_connecting_isTheTerseQuietRegister_noWordNoCountdown_design8() {
         let weather = RoomWeather.from(sync: .connecting)
         XCTAssertEqual(weather.dot, .dimmed)
         XCTAssertTrue(weather.boardDimmed)
-        XCTAssertFalse(weather.showsCountdown)
-        XCTAssertEqual(weather.label, "Connecting")
+        XCTAssertFalse(weather.showsCountdown, "a first join has lost nothing to count toward")
+        XCTAssertNil(weather.label, "the terse first-connect pill carries no status word")
+    }
+
+    // A first connect and a reconnect diverge honestly: only the reconnect names itself
+    // and counts down (the pill's width change on reconnect is then a real event, not a
+    // first-frame guess). The distinction is pinned so the two registers never re-merge.
+    func test_firstConnectAndReconnectDivergeOnTheWordAndTheCountdown_design8() {
+        let first = RoomWeather.from(sync: .connecting)
+        let again = RoomWeather.from(sync: .reconnecting)
+        XCTAssertNil(first.label)
+        XCTAssertFalse(first.showsCountdown)
+        XCTAssertEqual(again.label, "Reconnecting")
+        XCTAssertTrue(again.showsCountdown)
+        XCTAssertEqual(first.dot, again.dot, "both are the dimmed dot; the word is the difference")
     }
 
     func test_countdownSeconds_ceilsAndFloorsAtZero() {

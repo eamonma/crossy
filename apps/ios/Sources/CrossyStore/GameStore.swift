@@ -220,6 +220,23 @@ public final class GameStore {
         cursors[userId] = nil
     }
 
+    /// Seed the roster from the REST game view before the first `welcome` lands, so
+    /// the players pill renders its true width on frame one instead of a single
+    /// placeholder puck that snaps wide when the socket answers (owner device finding
+    /// 2026-07-11). The REST view carries the ROSTER (who is a member), not presence
+    /// (who is live on the socket), so each seeded participant holds the not-yet-heard-
+    /// from liveness state the welcome already speaks: `connected: false`, the same
+    /// register an away member or a `playerDisconnected` carries. No new liveness state
+    /// is invented; membership and liveness stay the two facts the wire already
+    /// distinguishes (PROTOCOL.md §4, §9). Gated to `connecting`: the seed is a
+    /// pre-handshake courtesy only, so a snapshot re-seed after a live roster exists can
+    /// never overwrite real presence with `connected: false`. The `welcome` stays the
+    /// authority and rebuilds `participants` wholesale when it lands (`applySnapshot`).
+    public func seedRoster(_ roster: [Participant]) {
+        guard sync == .connecting else { return }
+        participants = roster
+    }
+
     /// Liveness ping (PROTOCOL.md §5, §9). The adapter owns the 15 s timer
     /// (`ReconnectPolicy.heartbeatIntervalSeconds`); emitting through the store keeps
     /// one ordered outbound path. Meaningless before the first welcome, so gated like

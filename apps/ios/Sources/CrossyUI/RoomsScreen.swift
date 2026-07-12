@@ -113,44 +113,44 @@ public struct RoomsScreen: View {
 
     public var body: some View {
         content
-            // The Join affordance stands over the top-trailing corner, aligned
-            // with the "Rooms" title: a small glass capsule, the arrival grammar
-            // (DESIGN.md §4). It never scrolls; it is chrome.
-            .overlay(alignment: .topTrailing) { joinAffordance }
             .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+            // Join rides the system nav bar's trailing item now (the
+            // toolbar-adoption ruling, DESIGN.md §4): the item goos into the
+            // room's trailing cluster across the #132 zoom push. The screen
+            // keeps its in-content 32pt "Rooms" title (the owner's typographic
+            // voice); the composition root leaves the bar visible and
+            // title-less. Below iOS 18 (and the macOS test host) the toolbar
+            // still hosts the button, plainly, no zoom (§4 one-fallback rule).
+            .toolbar { joinToolbarItem }
             .task { await reload() }
     }
 
-    /// Join, top-trailing: the glyph says the camera is welcome, the word says
-    /// what happens. The capsule is the join panel's zoom source, so the glass
-    /// sheet grows out of it (arrival notes, DESIGN.md §4).
-    private var joinAffordance: some View {
-        Button(action: onJoinWithCode) {
-            HStack(spacing: 6) {
-                Image(systemName: "qrcode.viewfinder")
-                    .font(.system(size: 16, weight: .semibold))
-                Text(verbatim: ArrivalCopy.joinAffordance)
-                    .font(.system(size: 15, weight: .semibold))
+    /// Join as a trailing nav-bar item (the toolbar-adoption ruling, DESIGN.md
+    /// §4). SP-i6 finding: a `Label` in a 26 bar item renders icon-only, so the
+    /// content is an explicit HStack (glyph + Text) to keep the word, matching
+    /// the retired capsule's register (the owner's device eye confirms the
+    /// register). The item wears BOTH zoom stamps the retired capsule did: the
+    /// join sheet's source (the sheet grows out of it) and the room push's (a
+    /// code-join grows the room from this same item after the sheet melts back
+    /// into it, slice 2). The glass is the system's on 26, the plain bar
+    /// material below (§4 one-fallback rule); the item never draws its own
+    /// ChromeGlassSurface, which would stand glass the bar does not know.
+    @ToolbarContentBuilder
+    private var joinToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: BarPlacement.trailing) {
+            Button(action: onJoinWithCode) {
+                HStack(spacing: 6) {
+                    Image(systemName: "qrcode.viewfinder")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(verbatim: ArrivalCopy.joinAffordance)
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(Color(rgb: ground.tokens.ink))
             }
-            .foregroundStyle(Color(rgb: ground.tokens.ink))
-            .padding(.horizontal, 16)
-            .frame(height: 40)
-            // The whole capsule takes the tap (the WelcomeScreen finding).
-            .contentShape(Capsule())
+            .modifier(JoinSheetSourceMark(source: joinSheetSource))
+            .modifier(JoinCapsuleRoomSourceMark(source: roomZoomSource))
+            .accessibilityLabel(Text(verbatim: ArrivalCopy.joinTitle))
         }
-        .buttonStyle(.plain)
-        .modifier(ChromeGlassSurface(cornerRadius: 20))
-        // The capsule wears TWO zoom sources: the join sheet's (the sheet grows out
-        // of the capsule) and the room push's (a code-join grows the room from this
-        // same capsule after the sheet melts back into it, slice 2, DESIGN.md §4).
-        // The ids are distinct (RoomZoomSourceTests pins that), and the second stamp
-        // wraps the first in the modifier chain, so both name the same capsule
-        // geometry without contesting one id.
-        .modifier(JoinSheetSourceMark(source: joinSheetSource))
-        .modifier(JoinCapsuleRoomSourceMark(source: roomZoomSource))
-        .padding(.trailing, 20)
-        .padding(.top, 12)
-        .accessibilityLabel(ArrivalCopy.joinTitle)
     }
 
     @ViewBuilder

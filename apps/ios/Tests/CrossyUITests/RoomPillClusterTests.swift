@@ -1,28 +1,23 @@
 import CoreGraphics
+import CrossyStore
 import XCTest
 
 @testable import CrossyUI
 
 // The room bar's pill cluster (apps/ios/DESIGN.md §4, owner ruling 2026-07-10:
-// a cluster of glass pills, not one bar). The geometry a view positions by is
-// pure math pinned here: the pills' capsule register, and the one number that
-// keeps them three separate objects on iOS 26+, the GlassEffectContainer
-// spacing held below the metaball fuse (SP-i1, DESIGN.md §10).
+// a cluster of glass pills, not one bar). Since the toolbar-adoption ruling
+// (2026-07-11, SP-i6, Route 1) the cluster IS the system nav bar's item set on
+// the Rooms→room seam, so the hand-drawn container's blend spacing retired (the
+// system owns item spacing, a ToolbarSpacer splits the pill from the Menus).
+// What remains pure and pinned is the register the fallback labels still keep,
+// the facts card's morph rest, and the eclipse geometry.
 
 final class RoomPillClusterTests: XCTestCase {
-    // SP-i1's caution (DESIGN.md §10): container spacing metaball-fuses
-    // adjacent glass; 24 melted the deck's keys at 6 pt gaps, and the deck's 6
-    // is the hardware-proven discrete value. The cluster's blend must never
-    // exceed that proof, and must stay below the cluster's own gap so pills
-    // sit farther apart than the blend can reach.
-    func test_clusterBlend_staysBelowTheMetaballFuse_SPi1() {
-        XCTAssertLessThanOrEqual(ChromeLayout.pillClusterBlend, DeckLayout.keySpacing)
-        XCTAssertLessThan(ChromeLayout.pillClusterBlend, ChromeLayout.pillGap)
-    }
-
     // The compact-toolbar register: pills stand smaller than a standing bar,
     // and their corner radius is the capsule's, half the height, so the pill
     // shares the capsule geometry the island condenses into (DESIGN.md §8).
+    // Still the register the below-26 Menu labels render in (the §4 fallback);
+    // on 26 the system bar shapes its own items.
     func test_pillIsACapsuleInTheSmallStandingRegister_section4() {
         XCTAssertEqual(ChromeLayout.pillCornerRadius, ChromeLayout.pillHeight / 2)
         XCTAssertLessThan(ChromeLayout.pillHeight, ChromeLayout.barHeight)
@@ -69,6 +64,32 @@ final class RoomPillClusterTests: XCTestCase {
         let clampedCard = CGRect(x: 80, y: 10, width: 280, height: 112)
         XCTAssertTrue(PanelEclipse.eclipses(panel: reachingCard, pill: backButton))
         XCTAssertFalse(PanelEclipse.eclipses(panel: clampedCard, pill: backButton))
+    }
+}
+
+// The time pill's presence in the bar (DESIGN.md §4 toolbar amendment): the pill
+// ARRIVES when the room is live, so the open frame's trailing cluster is share +
+// players only (both width-stable) and the pill's arrival is an honest bar-item
+// insertion, not the slot settling after the #132 zoom push. Pure on the store's
+// sync state (the honest existing fact, GameStore's SyncState), the
+// RoomWeather.from(sync:) discipline.
+
+final class TimePillPresenceTests: XCTestCase {
+    // Before the first welcome the store is `connecting` (no board truth yet):
+    // the pill is absent, so the open cluster is share + players only and no slot
+    // resolves its width after the zoom push.
+    func test_beforeTheWelcome_theTimePillIsAbsent_section4() {
+        XCTAssertFalse(TimePillPresence.isLive(sync: .connecting))
+    }
+
+    // The welcome flips sync off `connecting` and the pill materializes into the
+    // bar as its own insertion. Every post-welcome state has a board, so the pill
+    // stands through live, resyncing, and a reconnect alike (a terminal room's
+    // sealed pill arrives the same way, on its welcome's beat).
+    func test_onceLive_theTimePillArrives_section4() {
+        XCTAssertTrue(TimePillPresence.isLive(sync: .live))
+        XCTAssertTrue(TimePillPresence.isLive(sync: .resyncing))
+        XCTAssertTrue(TimePillPresence.isLive(sync: .reconnecting))
     }
 }
 

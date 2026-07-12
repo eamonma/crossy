@@ -15,6 +15,7 @@
 //
 
 import CrossyProtocol
+import CrossyStore
 import CrossyUI
 import Foundation
 
@@ -22,6 +23,25 @@ enum RoomMapping {
     /// Map a `GameView`'s solution-stripped puzzle to the room's render shapes.
     static func map(_ view: GameView) -> (puzzle: GridPuzzle, clues: ClueBook) {
         map(view.puzzle)
+    }
+
+    /// The REST view's membership as the store's roster seed (the app target owns the
+    /// protocol-to-store translation, AD-2). The view carries the ROSTER, not presence:
+    /// a `Member` names who belongs (`userId`, `role`, `avatarUrl`), but liveness is the
+    /// socket's to report, so each seeded participant holds the not-yet-heard-from state
+    /// (`connected: false`) until the `welcome` speaks the live roster (GameStore
+    /// .seedRoster). The `displayName` and `color` the wire's `Participant` carries are
+    /// the welcome's to supply (the REST membership row does not carry them); the seed
+    /// leaves them blank, so a puck stands at true count and register from frame one and
+    /// its initial and color land the instant the welcome rebuilds the roster. An empty
+    /// wire color still resolves to a stable per-user color (GridPresence.rosterColor's
+    /// hash fallback), so a seeded puck is never colorless.
+    static func roster(_ view: GameView) -> [Participant] {
+        view.members.map {
+            Participant(
+                userId: $0.userId, displayName: "", avatarUrl: $0.avatarUrl,
+                color: "", role: $0.role, connected: false)
+        }
     }
 
     /// The ClientPuzzle mapping proper. Clue numbering derives from the clue starts

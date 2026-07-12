@@ -57,7 +57,18 @@ public struct SolveScreen: View {
     @State private var completion = CompletionModel()
     @State private var terminalPourBack = TerminalPourBackGate()
     @State private var hapticFold = SolveHapticFold()
+    /// Room-space frames reported inside the room hierarchy (the board, the clue
+    /// slot). The bar items report globally and merge in through `chromeFrames`
+    /// below (the toolbar-adoption ruling, DESIGN.md §4).
     @State private var frames: [ChromePiece: CGRect] = [:]
+    /// The bar items' GLOBAL frames (back button, time pill): the toolbar lives
+    /// outside the room's coordinate space, so these convert into room space
+    /// against `roomOrigin` (BarItemFrames). The facts card's rest and the
+    /// eclipse test read the converted values through `chromeFrames`.
+    @State private var barItemFrames: [ChromePiece: CGRect] = [:]
+    /// The room's own global origin, for the conversion above. nil until the
+    /// room lays out; the morph geometry withholds until then.
+    @State private var roomOrigin: CGPoint?
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
     /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
@@ -196,65 +207,15 @@ public struct SolveScreen: View {
                 ConfettiOverlay(field: confettiField, startedAt: confettiStart)
             }
 
-            // The room bar floats over the board, its own glass layer (the
-            // full-bleed ruling): layout above never moves the board below.
-            VStack(spacing: 0) {
-                RoomBar(
-                    ground: ground,
-                    weather: weather,
-                    reconnectRetryAt: chrome.reconnectRetryAt,
-                    firstFillAt: store.firstFillAt,
-                    // The clock freezes at either terminal instant: completion
-                    // freezes it by design (ID-2), and an abandoned room is
-                    // terminal and quiet (EXPERIENCE.md), so its clock stops at
-                    // the abandonment rather than ticking over a dead board.
-                    completedAt: store.completedAt ?? store.abandonedAt,
-                    members: members,
-                    // A pill hands off when its own panel opens, and when any
-                    // open panel eclipses it (PanelEclipse: buried glass
-                    // refracts through a panel's surface).
-                    backHandedOff: pillEclipsed(.backButton),
-                    timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
-                    hasShare: shareable != nil,
-                    onBack: onBack,
-                    // One mechanism for both moments (redesign 2026-07-11,
-                    // retiring the mid-solve popover): the tap inflates the
-                    // pill into the facts card, mid-solve with the §12
-                    // operations, at completion the stats card (ID-2).
-                    onTapTimePill: { openFacts() },
-                    // The share surface ships as the native menu (owner
-                    // ruling 2026-07-11): the share pill is a Menu label, so
-                    // the bar carries its payload and intents (the code for
-                    // the titled section, the link the QR row and copy row
-                    // carry, and the app-target seams).
-                    shareCode: shareable?.code,
-                    shareUrlString: shareable?.url.absoluteString,
-                    onCopyShareLink: onCopyShareLink,
-                    onShareInvite: onShareInvite,
-                    status: status,
-                    selfUserId: store.selfUserId,
-                    onJoinIn: onJoinIn,
-                    onKick: onKick,
-                    onGoTo: { member in
-                        guard let cursor = member.cursor else { return }
-                        dismissTransients()
-                        model.jump(
-                            to: GridSelection(cell: cursor.cell, isAcross: cursor.isAcross))
-                    }
-                )
-                .reportChromeFrame(.roomBar)
-                // Transient panels yield to intent (DESIGN.md §4): a touch on
-                // the bar outside its pills dismisses too. A plain tap cannot
-                // double-fire an opening pill: the pills' buttons outrank it,
-                // and a handed-off pill drops hit-testing so its ghost area
-                // lands here instead of re-summoning.
-                .contentShape(Rectangle())
-                .onTapGesture { dismissTransients() }
-                .padding(.horizontal, ChromeLayout.inset)
-                .padding(.top, 6)
-
-                Spacer(minLength: 0)
-            }
+            // The room's top chrome is the system navigation bar's items now
+            // (the toolbar-adoption ruling, DESIGN.md §4): the pieces goo into
+            // the Rooms Join item across the #132 zoom push. The hand-drawn
+            // overlay retired; the toolbar is attached at the bottom of `room`
+            // (`.modifier(RoomToolbarHost(...))`), because ToolbarContent binds
+            // to the navigation container, not this ZStack. No cluster
+            // tap-catcher is needed here: the bar items report frames globally
+            // and the room's base layer already yields any outside touch
+            // (dismissTransients).
 
             if let morph = meltMorph {
                 ClueChrome(
@@ -317,7 +278,84 @@ public struct SolveScreen: View {
             // the roster menu does.
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
+        // The room's global origin, for converting the bar items' global frames
+        // into room space (the toolbar-adoption ruling, DESIGN.md §4). Read off
+        // the same ZStack the coordinate space is named on, so the origin IS the
+        // room space's zero.
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: RoomOriginKey.self, value: proxy.frame(in: .global).origin)
+            }
+        )
         .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
+        // The bar items report through a closure (RoomBarInputs.reportFrame), not
+        // a preference: a preference set inside a ToolbarItem never crosses the
+        // UIKit nav-bar boundary (the integration trap, DESIGN.md §4). The room
+        // origin is reported inside THIS hierarchy, so it stays a preference.
+        .onPreferenceChange(RoomOriginKey.self) { roomOrigin = $0 }
+        // The room's top chrome as the system nav bar's items (the
+        // toolbar-adoption ruling, DESIGN.md §4). Attached here so the content
+        // binds to the navigation container; the composition root leaves the bar
+        // visible, title-less, and the system back hidden. On 26 the RoomToolbar
+        // carries the ToolbarSpacer split; below 26 (and the macOS test host) the
+        // fallback carries the same pieces plainly (the §4 one-fallback rule).
+        .modifier(
+            RoomToolbarHost(
+                inputs: RoomBarInputs(
+                    ground: ground,
+                    weather: weather,
+                    reconnectRetryAt: chrome.reconnectRetryAt,
+                    firstFillAt: store.firstFillAt,
+                    // The clock freezes at either terminal instant: completion
+                    // freezes it by design (ID-2), and an abandoned room is
+                    // terminal and quiet (EXPERIENCE.md), so its clock stops at
+                    // the abandonment rather than ticking over a dead board.
+                    completedAt: store.completedAt ?? store.abandonedAt,
+                    members: members,
+                    // A pill hands off when its own panel opens, and when any
+                    // open panel eclipses it (PanelEclipse: buried glass
+                    // refracts through a panel's surface).
+                    backHandedOff: pillEclipsed(.backButton),
+                    timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
+                    // The time pill arrives when the room is live (DESIGN.md §4
+                    // toolbar amendment): before the first welcome the store is
+                    // `connecting`, so the pill is absent and the open cluster is
+                    // share + players only, both width-stable; the welcome flips
+                    // sync and the pill materializes as its own bar insertion. A
+                    // terminal room's sealed pill arrives the same way, on its
+                    // welcome's beat (TimePillPresence, the honest sync fact).
+                    showsTimePill: TimePillPresence.isLive(sync: store.sync),
+                    hasShare: shareable != nil,
+                    onBack: onBack,
+                    // One mechanism for both moments (redesign 2026-07-11): the
+                    // tap inflates the pill into the facts card, mid-solve with
+                    // the §12 operations, at completion the stats card (ID-2).
+                    onTapTimePill: { openFacts() },
+                    // The share surface ships as the native menu (owner ruling
+                    // 2026-07-11): the code for the titled section, the link the
+                    // QR and copy rows carry, and the app-target seams.
+                    shareCode: shareable?.code,
+                    shareUrlString: shareable?.url.absoluteString,
+                    onCopyShareLink: onCopyShareLink,
+                    onShareInvite: onShareInvite,
+                    status: status,
+                    selfUserId: store.selfUserId,
+                    onJoinIn: onJoinIn,
+                    onKick: onKick,
+                    onGoTo: { member in
+                        guard let cursor = member.cursor else { return }
+                        dismissTransients()
+                        model.jump(
+                            to: GridSelection(
+                                cell: cursor.cell, isAcross: cursor.isAcross))
+                    },
+                    // The bar items hand their global frames here, escaping the
+                    // toolbar's preference boundary (the integration trap): the
+                    // facts card's rest and the eclipse test read the converted
+                    // values through `chromeFrames`.
+                    reportFrame: { piece, global in barItemFrames[piece] = global }))
+        )
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
         // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
         // flag through the environment; below iOS 26 the fallback stays inert.
@@ -384,10 +422,10 @@ public struct SolveScreen: View {
                 crossReference: clues.cells(of: referencedIds),
                 mosaicStartedAt: completion.mosaicStartedAt,
                 occlusion: .standing(
-                    board: frames[.board], roomBar: frames[.roomBar]),
+                    board: chromeFrames[.board], roomBar: chromeFrames[.roomBar]),
                 keepClear: .keepClear(
-                    board: frames[.board], roomBar: frames[.roomBar],
-                    clueSlot: frames[.clueBarSlot]),
+                    board: chromeFrames[.board], roomBar: chromeFrames[.roomBar],
+                    clueSlot: chromeFrames[.clueBarSlot]),
                 // A swipe never becomes a tap, so the yield law needs
                 // its own hook here (DESIGN.md §4): panels pour back,
                 // the swipe still navigates.
@@ -442,6 +480,40 @@ public struct SolveScreen: View {
     }
 
     // MARK: - Derived render inputs
+
+    /// The one frame map the room's geometry reads (the toolbar-adoption ruling,
+    /// DESIGN.md §4). The room-space frames (the board, the clue slot) merge with
+    /// the bar items' global frames converted into room space (the back button,
+    /// the time pill), plus a synthesized `roomBar` frame for the occlusion clamp
+    /// and the facts-card span. Withheld pieces (not yet measured) stay absent,
+    /// and the morphs withhold until the geometry is real, exactly as before.
+    private var chromeFrames: [ChromePiece: CGRect] {
+        var merged = frames
+        let converted = BarItemFrames.inRoomSpace(barItemFrames, roomOrigin: roomOrigin)
+        merged.merge(converted) { _, bar in bar }
+        if let bar = synthesizedRoomBar(from: merged) {
+            merged[.roomBar] = bar
+        }
+        return merged
+    }
+
+    /// The synthesized `roomBar` frame (the toolbar-adoption ruling): with the
+    /// hand-drawn bar retired, the bar's room-space rect is derived from the bar
+    /// items' converted frames. It spans the board's width (inset like every
+    /// chrome piece) at the pills' vertical row, so `standing.top` measures from
+    /// the board's bled top edge down to the bar's bottom exactly as the reported
+    /// bar did, and the facts card clamps leftward within it. nil until the time
+    /// pill's frame lands, so the morph geometry withholds cleanly.
+    private func synthesizedRoomBar(from merged: [ChromePiece: CGRect]) -> CGRect? {
+        guard let pill = merged[.timePill], let board = merged[.board] else { return nil }
+        let minX = board.minX + ChromeLayout.inset
+        let maxX = board.maxX - ChromeLayout.inset
+        // Include the back button's extent when present, so a card clamped to the
+        // bar never overruns the leading edge and the top inset covers both rows.
+        let top = min(pill.minY, merged[.backButton]?.minY ?? pill.minY)
+        let bottom = max(pill.maxY, merged[.backButton]?.maxY ?? pill.maxY)
+        return CGRect(x: minX, y: top, width: max(0, maxX - minX), height: bottom - top)
+    }
 
     /// The store's status as render data (the RosterMember pattern: protocol
     /// types stay in their ring, AD-2).
@@ -500,7 +572,8 @@ public struct SolveScreen: View {
     /// layouts it can reach the back button, which then hands off
     /// (PanelEclipse).
     private var factsMorph: GlassMorph? {
-        guard let pill = frames[.timePill], let roomBar = frames[.roomBar]
+        let f = chromeFrames
+        guard let pill = f[.timePill], let roomBar = f[.roomBar]
         else { return nil }
         let width = min(roomBar.width, FactsCardLayout.panelMaxWidth)
         let height = FactsCardLayout.panelHeight(
@@ -635,7 +708,8 @@ public struct SolveScreen: View {
     /// under the room bar, bottom edge anchored, so the surface never overlaps
     /// the deck or the room bar (glass never stacks, DESIGN.md §4).
     private var meltMorph: GlassMorph? {
-        guard let rest = frames[.clueBarSlot], let roomBar = frames[.roomBar],
+        let f = chromeFrames
+        guard let rest = f[.clueBarSlot], let roomBar = f[.roomBar],
             rest.height > 0
         else { return nil }
         let top = roomBar.maxY + ChromeLayout.panelTopGap
@@ -663,7 +737,7 @@ public struct SolveScreen: View {
     /// Whether any open panel eclipses a standing pill's reported frame
     /// (PanelEclipse, DESIGN.md §4).
     private func pillEclipsed(_ piece: ChromePiece) -> Bool {
-        guard let pill = frames[piece] else { return false }
+        guard let pill = chromeFrames[piece] else { return false }
         return openPanelFrames.contains { PanelEclipse.eclipses(panel: $0, pill: pill) }
     }
 

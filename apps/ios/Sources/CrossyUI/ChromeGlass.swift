@@ -35,17 +35,16 @@ enum ChromeLayout {
     static let clueChevronWidth: CGFloat = 36
     /// The room bar's pills (owner ruling 2026-07-10: a cluster of glass pills,
     /// not one bar): the compact-toolbar register, smaller than a standing bar.
+    /// Still the register the below-26 Menu labels render in (RosterMenu /
+    /// ShareMenuPill fallback material); on 26 the system bar shapes its own items.
     static let pillHeight: CGFloat = 44
     /// A capsule's radius at pill height.
     static var pillCornerRadius: CGFloat { pillHeight / 2 }
-    /// Air between pills in the cluster.
-    static let pillGap: CGFloat = 8
-    /// The cluster's GlassEffectContainer spacing. SP-i1's caution (DESIGN.md
-    /// §10): container spacing metaball-fuses adjacent glass, and 24 melted the
-    /// deck's keys into wavy rows. The deck's 6 is the hardware-proven discrete
-    /// value at 6 pt gaps; the pills sit farther apart than the keys did, so 6
-    /// keeps the cluster three separate objects at rest.
-    static let pillClusterBlend: CGFloat = 6
+    // pillGap and pillClusterBlend retired with the hand-drawn cluster (the
+    // toolbar-adoption ruling, DESIGN.md §4): the system nav bar owns the item
+    // spacing now, and a ToolbarSpacer splits each trailing pill. The metaball
+    // facts card keeps its own container spacing (MetaballRecipe), which was
+    // never the cluster's blend.
     /// Open panels (the browser, the roster).
     static let panelCornerRadius: CGFloat = 24
     /// Air between the room bar and an open panel's top edge.
@@ -211,5 +210,70 @@ extension View {
                     key: ChromeFramesKey.self,
                     value: [piece: proxy.frame(in: .named(ChromeLayout.roomSpace))])
             })
+    }
+
+    /// Report a system-bar item's GLOBAL frame through an ACTION CLOSURE (the
+    /// toolbar-adoption ruling, DESIGN.md §4). A ToolbarItem is hosted by UIKit's
+    /// navigation bar, a hierarchy apart from the room's, so a SwiftUI preference
+    /// set inside the item never flows back to the room's preference chain (the
+    /// integration trap: the first cut used a preference and the facts card never
+    /// opened, the pill's frame never arriving). `.onGeometryChange`'s action runs
+    /// regardless of preference propagation, so the item hands its global frame
+    /// straight to the solve screen's sink, which converts it into room space
+    /// against the room's own global origin (BarItemFrames.inRoomSpace). The facts
+    /// card still launches from the pill's true frame, only measured differently.
+    /// `.onGeometryChange` is iOS 18 / macOS 15; the macOS test host (14) and any
+    /// older floor take the inert path (the room never renders on macOS; tests are
+    /// pure), the KeyDeck gating discipline.
+    @ViewBuilder
+    func reportBarItemFrame(
+        _ piece: ChromePiece, into sink: @escaping (ChromePiece, CGRect) -> Void
+    ) -> some View {
+        #if os(iOS)
+            if #available(iOS 18.0, *) {
+                onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .global)
+                } action: { newFrame in
+                    sink(piece, newFrame)
+                }
+            } else {
+                self
+            }
+        #else
+            self
+        #endif
+    }
+}
+
+/// Converts the bar items' global frames into the room's coordinate space (the
+/// toolbar-adoption ruling, DESIGN.md §4). Pure so it is pinned in tests: the
+/// facts card's rest geometry depends on it, so a wrong offset would launch the
+/// card from the wrong place. A nil room origin (not yet measured) yields
+/// nothing, so the morph withholds until the geometry is real.
+enum BarItemFrames {
+    /// One item's global frame minus the room's global origin. The room space's
+    /// origin IS the room ZStack's global frame origin (the coordinate space is
+    /// named on that ZStack), so subtracting it maps global → room space.
+    static func inRoomSpace(_ global: CGRect, roomOrigin: CGPoint) -> CGRect {
+        global.offsetBy(dx: -roomOrigin.x, dy: -roomOrigin.y)
+    }
+
+    /// Convert a whole set of bar-item globals into room space at once.
+    static func inRoomSpace(_ globals: [ChromePiece: CGRect], roomOrigin: CGPoint?)
+        -> [ChromePiece: CGRect]
+    {
+        guard let roomOrigin else { return [:] }
+        return globals.mapValues { inRoomSpace($0, roomOrigin: roomOrigin) }
+    }
+}
+
+/// The room's own global origin, reported so the bar items' global frames convert
+/// into room space. A preference (reported inside the room hierarchy, so it does
+/// cross back, unlike the toolbar items): one value, not a per-piece map.
+struct RoomOriginKey: PreferenceKey {
+    static let defaultValue: CGPoint? = nil
+
+    static func reduce(value: inout CGPoint?, nextValue: () -> CGPoint?) {
+        if let next = nextValue() { value = next }
     }
 }
