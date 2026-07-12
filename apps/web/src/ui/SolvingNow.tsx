@@ -96,6 +96,65 @@ function WatchingLine({ watching }: { watching: readonly string[] }) {
   );
 }
 
+/**
+ * The block's pre-welcome stand-in (LiveApp: REST has landed, the socket is still
+ * connecting): the same chrome at the same row heights, sized from REST membership, so
+ * the welcome swaps people into a frame that is already standing instead of shoving the
+ * clue lists down (or, in the ultra dock, shoving the axes sideways). Membership is the
+ * only pre-welcome truth: roles predict the rows, connectedness arrives with the
+ * welcome, so a room whose other members are all offline over-reserves and releases the
+ * space at the welcome, the rarer path. Renders nothing for a solo room and honors the
+ * persisted collapse, exactly like the real block.
+ */
+export function SolvingNowPlaceholder({
+  solverRows,
+  watching,
+}: {
+  /** Solver rows if every member connects: host and solver members, GROUP_PAST-capped. */
+  solverRows: number;
+  /** True when other members are spectators (reserves the watching line). */
+  watching: boolean;
+}) {
+  const [collapsed] = useState(readCollapsed);
+  if (solverRows === 0 && !watching) return null;
+  return (
+    <div aria-hidden className="border-b border-dashed border-border-dashed">
+      <div className="flex items-center gap-2 px-4 py-1">
+        <CapsLabel className="text-text">Solving now</CapsLabel>
+        {collapsed && (
+          <span className="flex -space-x-1.5">
+            {Array.from({ length: Math.min(solverRows, 5) }).map((_, i) => (
+              <span
+                key={i}
+                className="skeleton skeleton-shimmer h-5 w-5 shrink-0 rounded-full ring-2 ring-panel"
+              />
+            ))}
+          </span>
+        )}
+        {/* The collapse chevron's footprint (icon-xs), inert until the block is real. */}
+        <span className="ml-auto flex size-[1.25rem] items-center justify-center text-text-subtle">
+          {collapsed ? <ChevronDownIcon /> : <ChevronUpIcon />}
+        </span>
+      </div>
+      {!collapsed && (
+        <div className="flex flex-col gap-0.5 px-4 pb-2">
+          {Array.from({ length: solverRows }).map((_, i) => (
+            <div key={i} className="flex items-center gap-2 min-w-0">
+              <span className="skeleton skeleton-shimmer h-5 w-5 shrink-0 rounded-full" />
+              <span className="skeleton skeleton-shimmer h-3.5 w-24 rounded-1" />
+              {/* A real text-2 line box, so this row stands exactly a solver row tall. */}
+              <span className="text-2 font-semibold">{"\u00A0"}</span>
+            </div>
+          ))}
+          {watching && (
+            <div className="pl-7 text-1 text-text-subtle">{"\u00A0"}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SolvingNow({
   roster,
   onGoTo,
