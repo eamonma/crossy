@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  A partial Info.plist: GENERATE_INFOPLIST_FILE stays on and merges the synthesized keys
+	  (bundle id, version, scene manifest, the INFOPLIST_KEY_* settings) on top of this file.
+	  The one key the generator cannot express is CFBundleURLTypes, so it lives here alone.
+
+	  Registering crossy:// publicly lets the web invite gate's "Open in the Crossy app" button
+	  hand a signed-out invitee into the app when a Universal Link cannot fire (a same-domain
+	  Safari tap, an in-app browser). CrossyApp.onOpenURL digests crossy://game/<id>?code=... the
+	  same way the QR and Universal Link paths do. Sign in with Apple is untouched: it runs over
+	  ASWebAuthenticationSession, which owns the crossy://auth/callback hop for the session's
+	  duration whether or not the scheme is registered, and onOpenURL ignores the auth host.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.eamonma.Crossy.invite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>crossy</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

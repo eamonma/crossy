@@ -451,6 +451,7 @@
 				DEVELOPMENT_TEAM = MTF6T25BP8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Crossy/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Crossy uses the camera to scan a room's invite code.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
@@ -488,6 +489,7 @@
 				DEVELOPMENT_TEAM = MTF6T25BP8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Crossy/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Crossy uses the camera to scan a room's invite code.";
 				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
