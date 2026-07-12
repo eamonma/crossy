@@ -1,7 +1,7 @@
 // Share/invite fallback logic (ROADMAP Phase 4 stopgap retirement). The API value is preferred
 // and the URL query param is the expand/contract fallback, so old invite links keep working.
 import { describe, expect, it } from "vitest";
-import { buildShareUrl, resolveInviteField } from "./invite";
+import { buildAppLink, buildShareUrl, resolveInviteField } from "./invite";
 
 describe("resolveInviteField (URL param fallback for the API fields)", () => {
   it("prefers the API value when present", () => {
@@ -41,5 +41,29 @@ describe("buildShareUrl (share popover no longer needs ?code= in the current URL
 
   it("returns null when there is no code to share (popover shows its fallback message)", () => {
     expect(buildShareUrl({ ...base, code: null, name: "Named" })).toBeNull();
+  });
+});
+
+describe("buildAppLink (crossy:// handoff for the signed-out iOS invite gate)", () => {
+  it("mirrors the web link under the custom scheme so the app parser reads the code", () => {
+    expect(buildAppLink({ gameId: "g-1", code: "ABCD2345", name: null })).toBe(
+      "crossy://game/g-1?code=ABCD2345",
+    );
+  });
+
+  it("appends the name, URL-encoded, exactly like the web link", () => {
+    expect(
+      buildAppLink({
+        gameId: "g-1",
+        code: "ABCD2345",
+        name: "Sunday themeless",
+      }),
+    ).toBe("crossy://game/g-1?code=ABCD2345&name=Sunday%20themeless");
+  });
+
+  it("returns null when there is no code, so the gate offers no dead deep link", () => {
+    expect(
+      buildAppLink({ gameId: "g-1", code: null, name: "Named" }),
+    ).toBeNull();
   });
 });

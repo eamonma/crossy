@@ -47,6 +47,19 @@ struct CrossyApp: App {
                     else { return }
                     pendingInvite.code = code
                 }
+                // Custom scheme (crossy://game/<id>?code=...): the web invite gate's "Open in the
+                // Crossy app" button, for taps that never became a Universal Link (a same-domain
+                // Safari tap, an in-app browser). It digests through the exact same parser as the
+                // QR and Universal Link paths, so the arrival flow honors it identically. The auth
+                // host is the sign-in session's own callback (ASWebAuthenticationSession owns it),
+                // so it is skipped here; the guard also fends off the theoretical case where the OS
+                // routes that callback to onOpenURL instead of the session.
+                .onOpenURL { url in
+                    guard url.host != "auth",
+                        let code = InviteScan.code(fromPayload: url.absoluteString)
+                    else { return }
+                    pendingInvite.code = code
+                }
         }
     }
 }

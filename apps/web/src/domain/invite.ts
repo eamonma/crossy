@@ -38,3 +38,23 @@ export function buildShareUrl(args: {
   const base = `${origin}/game/${encodeURIComponent(gameId)}?code=${code}`;
   return name === null ? base : `${base}&name=${encodeURIComponent(name)}`;
 }
+
+/**
+ * Build the `crossy://` deep link that hands a signed-out invitee straight into the iOS app,
+ * bypassing web sign-in. Universal Links already open the app from a QR or a Messages tap, but
+ * they refuse to fire for a same-domain Safari tap or from an in-app browser (Discord), which is
+ * exactly where an invitee lands on the web. A custom scheme can be invoked from a button on that
+ * page, so the invite gate offers it. The shape mirrors the web link (`/game/<id>?code=...`); the
+ * app digests it through the same parser as a scanned QR (iOS InviteScan, the `?code=` branch).
+ * A null code means the app has nothing to join, so there is no link to offer.
+ */
+export function buildAppLink(args: {
+  gameId: string;
+  code: string | null;
+  name: string | null;
+}): string | null {
+  const { gameId, code, name } = args;
+  if (code === null) return null;
+  const base = `crossy://game/${encodeURIComponent(gameId)}?code=${code}`;
+  return name === null ? base : `${base}&name=${encodeURIComponent(name)}`;
+}

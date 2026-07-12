@@ -25,7 +25,12 @@ import { tabTarget } from "@crossy/engine";
 import { connectToGame } from "./net/connect";
 import type { GameConnection } from "./net/connect";
 import { computeLayout } from "./domain/layout";
-import { buildShareUrl, resolveInviteField } from "./domain/invite";
+import {
+  buildAppLink,
+  buildShareUrl,
+  resolveInviteField,
+} from "./domain/invite";
+import { isAppleMobile } from "./lib/platform";
 import type { Clue, Puzzle } from "./domain/types";
 import {
   cellClick,
@@ -355,6 +360,18 @@ export function LiveApp({
     return <LoadingGameShell inShell={inShell} />;
   }
   if (state.phase === "needs-auth") {
+    // A signed-out invitee on iOS may already have the app. Universal Links do not fire for a
+    // same-domain Safari tap or an in-app browser (Discord), which is exactly where this page
+    // loads, so offer the crossy:// handoff as a button: one tap into the app, where Sign in with
+    // Apple is native and the invite survives it (iOS ArrivalRootView). Everyone else signs in on
+    // the web below. Null off iOS or without a code, so no dead deep link is ever rendered.
+    const appLink = isAppleMobile(navigator.userAgent, navigator.maxTouchPoints)
+      ? buildAppLink({
+          gameId,
+          code: params.get("code"),
+          name: params.get("name"),
+        })
+      : null;
     return (
       <GateLayout
         identity={identity}
@@ -380,6 +397,26 @@ export function LiveApp({
           <Divider className="m-0" />
           <div className="bg-panel px-6 py-5">
             <div className="mx-auto max-w-[18rem]">
+              {appLink !== null && (
+                <div className="mb-4 flex flex-col gap-2.5">
+                  <Button
+                    asChild
+                    variant="secondary"
+                    size="lg"
+                    className="w-full"
+                  >
+                    <a href={appLink}>Open in the Crossy app</a>
+                  </Button>
+                  {/* The system's dashed rule carries the fork: open the app, or sign in here. */}
+                  <div className="flex items-center gap-3" aria-hidden>
+                    <Divider className="m-0 flex-1" />
+                    <span className="text-1 text-text-subtle">
+                      or sign in on the web
+                    </span>
+                    <Divider className="m-0 flex-1" />
+                  </div>
+                </div>
+              )}
               <SignInButtons
                 identity={identity}
                 config={config}
