@@ -1,9 +1,10 @@
-// Puzzle catalog routes (PROTOCOL.md §12, DESIGN.md §7). `POST /puzzles` ingests XWord Info JSON
-// through the anti-corruption layer (ingest.ts) and returns the puzzle VIEW: typed `ClientPuzzle`,
-// so the stored solution never appears in the response (INV-6, structural, not a runtime strip).
-// A malformed or unacceptable puzzle returns one named rejection code; the code is chosen by the
-// ACL's fixed check order, and the response body carries no solution content on any path. Full
-// accounts only.
+// Puzzle catalog routes (PROTOCOL.md §12, DESIGN.md §7). `POST /puzzles` ingests a puzzle
+// document, either the legacy bare XWord Info body or the `{format, document}` envelope, through
+// the anti-corruption layer (dispatch.ts picks the translator) and returns the puzzle VIEW: typed
+// `ClientPuzzle`, so the stored solution never appears in the response (INV-6, structural, not a
+// runtime strip). A malformed or unacceptable puzzle returns one named rejection code; the code
+// is chosen by the dispatch rules and the ACL's fixed check order, and the response body carries
+// no solution or document content on any path. Full accounts only.
 import { Hono } from "hono";
 import { and, desc, eq, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
@@ -13,7 +14,7 @@ import type { AppDeps, ApiEnv } from "../context";
 import { fail } from "../http/errors";
 import { parseBefore, parseLimit } from "../http/pagination";
 import { authMiddleware } from "../auth/middleware";
-import { translateXwordInfo } from "./ingest";
+import { dispatchIngest } from "./dispatch";
 
 /** The `POST /puzzles` response. `puzzle` is `ClientPuzzle`: no solution field, structurally. */
 interface PuzzleView {
@@ -69,22 +70,25 @@ export function puzzleRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "VALIDATION", "request body must be JSON");
     }
 
-    const parsed = translateXwordInfo(body);
+    const parsed = dispatchIngest(body);
     if (!parsed.ok) {
-      // One named rejection with a stable code; the message never echoes solution content.
+      // One named rejection with a stable code; the message never echoes solution or
+      // document content (INV-6 discipline, PROTOCOL.md §12).
       return fail(c, parsed.code, parsed.message);
     }
 
     // Store the internal ServerPuzzle (solutions included) plus its detected features,
     // server-side only. The client view drops the solution by type (INV-6). `createdBy`
     // records the uploader (the JIT-upserted caller) so `GET /puzzles` can list their own
-    // uploads; it does not change this endpoint's response shape.
+    // uploads; it does not change this endpoint's response shape. `source.format` records
+    // the registry format on every ingest path, legacy included (DESIGN.md §7: a debugging
+    // fact, not behavior).
     const inserted = await deps.db
       .insert(schema.puzzles)
       .values({
         data: parsed.puzzle,
         features: parsed.features,
-        source: { kind: "upload" },
+        source: { kind: "upload", format: parsed.format },
         createdBy: identity.userId,
         // Display metadata parsed at the boundary; null when the document carried none. Stored
         // in dedicated columns, never in `data`, so no solution rides along (INV-6).
