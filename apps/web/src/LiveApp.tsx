@@ -433,8 +433,7 @@ export function LiveApp({
               <SignInButtons
                 identity={identity}
                 config={config}
-                discordLabel="Sign in with Discord"
-                appleLabel="Sign in with Apple"
+                verb="Sign in"
                 allowGuest={state.invited}
               />
             </div>
@@ -529,6 +528,7 @@ function GateLayout({
         identity={identity}
         config={config}
         onHome={() => navigate("/")}
+        onSignIn={() => navigate("/")}
       />
       <main className="flex-1 px-4 py-6 flex items-center justify-center">
         <div className="w-full max-w-[28rem] pb-9">{children}</div>

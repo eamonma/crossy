@@ -1,14 +1,17 @@
-// Auth surface (Track B). Discord and Apple OAuth are the live paths; anonymous guests exist
+// Auth surface (Track B). OAuth providers are the live account paths; anonymous guests exist
 // behind config.guestsEnabled (gated by Turnstile) and light up with the flag without ever
-// blocking on it. Email gets no surface, ever (product decision). The supabase vendor stays
+// blocking on it. Email gets no surface today (product decision). The supabase vendor stays
 // behind the Identity port; this file only consumes it.
 //
-// Two exports: SignInButtons (the prominent gate control) and AuthBar (the slim top-bar chip
-// that shows the signed-in name plus a sign-out menu, or a compact sign-in button).
+// Two exports: SignInButtons (the prominent gate control, its provider buttons rendered from
+// one data-driven list so the landing and the invite gates can never diverge) and AuthBar (the
+// slim top-bar affordance: the signed-in name plus a sign-out menu, or a single "Sign in" link
+// that routes to the landing, where the provider choice is presented in full).
 import { useEffect, useState } from "react";
+import type { ComponentType } from "react";
 import { ExitIcon, PersonIcon } from "@radix-ui/react-icons";
 import type { AppConfig } from "../config/config";
-import type { Identity, IdentitySession } from "../identity";
+import type { Identity, IdentitySession, SignInProvider } from "../identity";
 import { Divider } from "./primitives";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -55,41 +58,65 @@ function AppleMark({ className }: { className?: string }) {
 }
 
 /**
- * The prominent sign-in control, for the landing gate and invite gates. Apple leads and Discord
- * follows, mirroring the iOS Welcome screen's precedent; the guest path (Turnstile-gated)
- * appears only when the flag and site key are both set, and a refusal renders as one calm
- * sentence, never a thrown error or an error code.
+ * The account providers, one ordered source of truth. Both the landing tray and every invite
+ * gate render their buttons from this list, so they can never drift apart, and adding a provider
+ * later (Google, a magic link, a passkey) is one entry here plus the matching `SignInProvider`
+ * union member and adapter mapping, with no layout rewrite. `id` is the typed provider the port
+ * signs in with (`identity.signInWithProvider(id)`); `order` is ascending, Apple first so its
+ * button stays at least as prominent as any other, per Apple's own guidelines. `label` reads
+ * "Sign in with X"; a caller may still override the verb per surface.
+ */
+interface ProviderSpec {
+  readonly id: SignInProvider;
+  readonly name: string;
+  readonly icon: ComponentType<{ className?: string }>;
+  readonly order: number;
+}
+
+const PROVIDERS: readonly ProviderSpec[] = [
+  { id: "apple", name: "Apple", icon: AppleMark, order: 1 },
+  { id: "discord", name: "Discord", icon: DiscordMark, order: 2 },
+];
+
+/** The providers in presentation order (ascending `order`); Apple leads. */
+const orderedProviders: readonly ProviderSpec[] = [...PROVIDERS].sort(
+  (a, b) => a.order - b.order,
+);
+
+/**
+ * The prominent sign-in control, for the landing tray and the invite gates. The provider buttons
+ * come from the one `PROVIDERS` list (Apple leads); the guest path (Turnstile-gated) appears
+ * only when the flag and site key are both set, and a refusal renders as one calm sentence,
+ * never a thrown error or an error code.
  *
  * `allowGuest` lets a caller suppress the guest path even when it is otherwise ready. The
  * invite gate uses it when no code is present: a guest without an invite would sign in
- * anonymously only to hit a 403 dead end, so we offer Discord alone there (DESIGN.md §8).
+ * anonymously only to hit a 403 dead end, so we offer the account providers alone there
+ * (DESIGN.md §8). The landing suppresses it too: a cold arrival has no room to watch yet.
+ *
+ * `verb` sets the button wording ("Sign in with X" on the landing and gates, "Continue with X"
+ * where a surface prefers it), applied uniformly to every provider so the list stays the sole
+ * shape.
  */
 export function SignInButtons({
   identity,
   config,
-  discordLabel = "Continue with Discord",
-  appleLabel = "Continue with Apple",
+  verb = "Continue",
   allowGuest = true,
 }: {
   identity: Identity;
   config: AppConfig;
-  discordLabel?: string;
-  appleLabel?: string;
+  verb?: string;
   allowGuest?: boolean;
 }) {
   const [notice, setNotice] = useState<string | null>(null);
 
-  function onDiscord(): void {
+  function onProvider(provider: ProviderSpec): void {
     setNotice(null);
-    void identity.signInWithProvider("discord").catch(() => {
-      setNotice("Discord sign-in didn't go through. Give it another try.");
-    });
-  }
-
-  function onApple(): void {
-    setNotice(null);
-    void identity.signInWithProvider("apple").catch(() => {
-      setNotice("Apple sign-in didn't go through. Give it another try.");
+    void identity.signInWithProvider(provider.id).catch(() => {
+      setNotice(
+        `${provider.name} sign-in didn't go through. Give it another try.`,
+      );
     });
   }
 
@@ -99,19 +126,21 @@ export function SignInButtons({
 
   return (
     <div className="flex flex-col gap-2.5">
-      <Button variant="default" size="lg" onClick={onApple} className="w-full">
-        <AppleMark />
-        {appleLabel}
-      </Button>
-      <Button
-        variant="default"
-        size="lg"
-        onClick={onDiscord}
-        className="w-full"
-      >
-        <DiscordMark />
-        {discordLabel}
-      </Button>
+      {orderedProviders.map((provider) => {
+        const Icon = provider.icon;
+        return (
+          <Button
+            key={provider.id}
+            variant="default"
+            size="lg"
+            onClick={() => onProvider(provider)}
+            className="w-full"
+          >
+            <Icon />
+            {verb} with {provider.name}
+          </Button>
+        );
+      })}
       {guestReady && turnstileSiteKey !== undefined && (
         <>
           {/* The system's dashed rule carries the fork in the road; "or" sits in it. */}
@@ -137,52 +166,34 @@ export function SignInButtons({
 }
 
 /**
- * The slim top-bar auth chip. Discord-only: the guest path needs room for the Turnstile
- * widget, so it lives on the prominent gate (SignInButtons) and not in this compact chip.
- * config is accepted for a stable call signature across every caller, unused here today.
+ * The slim top-bar auth affordance. Signed in it is the avatar chip and its sign-out menu.
+ * Signed out it never presents the providers: the choice lives in one place, the landing tray,
+ * so the bar carries at most a single "Sign in" text link that routes there (`onSignIn`). A
+ * caller that omits `onSignIn` hides the affordance outright; the landing does this, since the
+ * page itself is the sign-in and a header link back to it would be circular. This keeps the bar
+ * a single control no matter how many providers ship. `config` is accepted for a stable call
+ * signature across every caller, unused here today.
  */
 export function AuthBar({
   identity,
+  onSignIn,
 }: {
   identity: Identity;
   config: AppConfig;
+  onSignIn?: () => void;
 }) {
   const [session, setSession] = useState<IdentitySession | null>(() =>
     identity.getSession(),
   );
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => identity.onChange(setSession), [identity]);
 
-  function onDiscord(): void {
-    setNotice(null);
-    void identity.signInWithProvider("discord").catch(() => {
-      setNotice("Sign-in didn't go through.");
-    });
-  }
-
-  function onApple(): void {
-    setNotice(null);
-    void identity.signInWithProvider("apple").catch(() => {
-      setNotice("Sign-in didn't go through.");
-    });
-  }
-
   if (session === null) {
+    if (onSignIn === undefined) return null;
     return (
-      <div className="flex items-center gap-3">
-        <Button variant="secondary" size="sm" onClick={onDiscord}>
-          <DiscordMark />
-          Sign in
-        </Button>
-        <Button variant="secondary" size="sm" onClick={onApple}>
-          <AppleMark />
-          Apple
-        </Button>
-        {notice !== null && (
-          <span className="text-1 text-danger-text">{notice}</span>
-        )}
-      </div>
+      <Button variant="link" size="sm" onClick={onSignIn}>
+        Sign in
+      </Button>
     );
   }
 

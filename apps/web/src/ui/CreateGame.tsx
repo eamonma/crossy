@@ -141,6 +141,7 @@ export function CreateGame({
         identity={identity}
         config={config}
         onHome={() => navigate(homeHref(params))}
+        onSignIn={() => navigate("/")}
       />
       <main className="flex-1 px-4 py-6 flex items-center justify-center">
         <div className="w-full max-w-[28rem] pb-9">{card}</div>
@@ -171,8 +172,7 @@ function CreateGate({
         <SignInButtons
           identity={identity}
           config={config}
-          discordLabel="Sign in with Discord"
-          appleLabel="Sign in with Apple"
+          verb="Sign in"
           allowGuest={false}
         />
       </div>
