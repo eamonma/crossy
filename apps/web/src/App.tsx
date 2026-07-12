@@ -42,6 +42,7 @@ import { fetchGames } from "./ui/homeData";
 import type { GameSummary } from "./ui/homeData";
 import { Button } from "@/components/ui/button";
 import { ThemeProvider } from "./ui/useTheme";
+import { NavPrefsProvider, useNavPrefs } from "./ui/useNavPrefs";
 import { LiveApp } from "./LiveApp";
 import type { AppConfig } from "./config/config";
 import type { Identity } from "./identity";
@@ -63,7 +64,9 @@ export function App({
 }) {
   return (
     <ThemeProvider>
-      <Router config={config} identity={identity} />
+      <NavPrefsProvider>
+        <Router config={config} identity={identity} />
+      </NavPrefsProvider>
     </ThemeProvider>
   );
 }
@@ -280,6 +283,9 @@ function DemoApp({
     new Map(),
   );
   const [dismissedCompletion, setDismissedCompletion] = useState(false);
+  // Personal navigation prefs (settings slice 1): the demo board honors the same client-local
+  // choice as the live game so the two input routes never drift.
+  const { prefs: navPrefs } = useNavPrefs();
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
 
@@ -387,7 +393,7 @@ function DemoApp({
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const effect = keyEffect(
-      { grid, filled, selection, frozen },
+      { grid, filled, selection, frozen, prefs: navPrefs },
       e.key,
       e.shiftKey,
     );
