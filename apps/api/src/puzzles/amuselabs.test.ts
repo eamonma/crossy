@@ -169,6 +169,19 @@ describe("amuselabs translator: happy path (PROTOCOL.md section 12; DESIGN.md se
     expect(r.puzzle.clues.across[0]?.text).toBe("Rock & roll cat (3)");
   });
 
+  it("strips HTML tags from clue text through the shared seam (DESIGN.md section 7, D13)", () => {
+    const d = doc();
+    (d["placedWords"] as Record<string, unknown>[])[0] = pw(
+      "<b>Rock</b> &amp; roll<br/>cat (3)",
+      true,
+      0,
+      0,
+    );
+    const r = accept(encodePlain(d));
+    // Tags removed, <br/> to a space, entity decoded after the strip.
+    expect(r.puzzle.clues.across[0]?.text).toBe("Rock & roll cat (3)");
+  });
+
   it("reads title and author via readMetadata semantics (decoded, trimmed, absent reads null)", () => {
     const d = doc();
     d["title"] = "  A &amp; B  ";

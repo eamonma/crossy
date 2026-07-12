@@ -3,9 +3,10 @@
  *
  * `translateXwordInfo` is pure (no IO, no DB), so these run with no infrastructure. They pin the
  * XWord Info -> ServerPuzzle translation, every named rejection, the ASCII-only charset rule
- * (INV-1), first-character acceptance (D12), and the fixed check order that makes the same bad
- * puzzle yield the same code. The HTTP wiring and the INV-6 no-leak backstop on every rejection
- * path live in api.test.ts, driven as the crossy_api role.
+ * (INV-1), first-character acceptance (D12), clue-text normalization (HTML tags stripped, then
+ * entities decoded, so a clue renders as plain text; DESIGN.md section 7, D13), and the fixed
+ * check order that makes the same bad puzzle yield the same code. The HTTP wiring and the INV-6
+ * no-leak backstop on every rejection path live in api.test.ts, driven as the crossy_api role.
  *
  * Test names cite the named rejection or invariant they defend so coverage is greppable.
  */
@@ -529,8 +530,7 @@ describe("ingestion ACL: HTML entity decoding in clue text (DESIGN.md section 7,
     expect(firstAcross("&amp;lt;")).toBe("&lt;");
   });
 
-  it("leaves tags, unknown entities, and bare ampersands untouched (DESIGN.md section 7 accepts HTML)", () => {
-    expect(firstAcross("<i>emphasis</i>")).toBe("<i>emphasis</i>");
+  it("leaves unknown entities and bare ampersands untouched (DESIGN.md section 7)", () => {
     expect(firstAcross("dash &mdash; here")).toBe("dash &mdash; here");
     expect(firstAcross("Q&A session")).toBe("Q&A session");
   });
@@ -538,5 +538,67 @@ describe("ingestion ACL: HTML entity decoding in clue text (DESIGN.md section 7,
   it("leaves out-of-range numeric references verbatim (total, never a crash)", () => {
     expect(firstAcross("&#x110000;")).toBe("&#x110000;");
     expect(firstAcross("&#0;")).toBe("&#0;");
+  });
+});
+
+describe("ingestion ACL: HTML tags stripped from clue text (DESIGN.md section 7, D13; owner ruling)", () => {
+  const firstAcross = (acrossFirst: string): string =>
+    accept({
+      ...base(),
+      clues: {
+        across: [`1. ${acrossFirst}`, "3. plain"],
+        down: ["1. up top", "2. and beside"],
+      },
+    }).puzzle.clues.across[0]!.text;
+
+  it("strips a simple italic tag pair, keeping the wrapped text (clue renders as plain text)", () => {
+    expect(firstAcross("<i>emphasis</i>")).toBe("emphasis");
+    expect(firstAcross("<b>bold</b> and <em>stress</em>")).toBe(
+      "bold and stress",
+    );
+  });
+
+  it("strips nested tags entirely (DESIGN.md section 10: clue text is plain text)", () => {
+    expect(firstAcross("<b><i>both</i></b>")).toBe("both");
+    expect(firstAcross("H<sub>2</sub>O and E=mc<sup>2</sup>")).toBe(
+      "H2O and E=mc2",
+    );
+  });
+
+  it("strips tags carrying attributes without eating the clue (real markup has attributes)", () => {
+    expect(firstAcross('a <span class="hl">styled</span> word')).toBe(
+      "a styled word",
+    );
+    expect(firstAcross('<font color="red">red</font>')).toBe("red");
+  });
+
+  it("strips self-closing tags (the trailing slash form is still a tag)", () => {
+    expect(firstAcross("line<br/>break")).toBe("line break");
+    expect(firstAcross("an <img/> image")).toBe("an image");
+  });
+
+  it("maps every <br> variant to a single space, collapsing the surrounding whitespace", () => {
+    expect(firstAcross("a<br>b")).toBe("a b");
+    expect(firstAcross("a <br /> b")).toBe("a b");
+    expect(firstAcross("a<BR>b")).toBe("a b");
+  });
+
+  it("strips tags BEFORE decoding entities, so an escaped &lt;i&gt; survives as visible <i>", () => {
+    // The literal escaped text is not yet a tag when the strip runs; decoding it afterward yields
+    // a visible "<i>" the strip never sees. Decoding first would manufacture a tag to delete.
+    expect(firstAcross("the tag &lt;i&gt; means italics")).toBe(
+      "the tag <i> means italics",
+    );
+  });
+
+  it("keeps angle-bracket math prose that is not a tag (3 < 4 must survive, INV: no false strip)", () => {
+    expect(firstAcross("prove 3 < 4")).toBe("prove 3 < 4");
+    expect(firstAcross("a < b > c")).toBe("a < b > c");
+    expect(firstAcross("x <5 always")).toBe("x <5 always");
+  });
+
+  it("collapses the whitespace a stripped tag leaves behind, then trims", () => {
+    expect(firstAcross("word   <i></i>   spacing")).toBe("word spacing");
+    expect(firstAcross("  <i>lead</i>  ")).toBe("lead");
   });
 });

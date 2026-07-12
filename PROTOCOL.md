@@ -321,6 +321,8 @@ Every translator lands on the same internal `ServerPuzzle` and the same domain c
 
 Registry names are stable identifiers, never parsed for meaning; outlet format drift is absorbed inside the named translator, so the external format is still parsed exactly once, at the boundary (DESIGN.md section 7, D13). The registry is open-ended: a future format (for example binary `.puz`, carried base64 in `document`) joins by adding a translator, a name, and its fixtures, never by widening an existing translator.
 
+**Clue text is plain text.** Ingestion normalizes every clue to plain text at the boundary, uniformly across formats: it strips HTML tags (`<i>`, `<em>`, `<b>`, `<sub>`, `<sup>`, and the like), maps each `<br>` variant to a space, then decodes the standard HTML entities, collapses the resulting whitespace, and trims. Stripping runs before decoding, so an escaped `&lt;i&gt;` decodes to a visible `<i>` rather than a tag that vanishes; angle-bracket prose that is not a tag (`3 < 4`) is preserved. Both clients render a clue as plain text (DESIGN.md section 10) and MUST NOT interpret markup: the normalization lives at ingest, never at serve time or in a client.
+
 ## 12a. Live Activity push
 
 The iOS app starts a Live Activity locally when it backgrounds an ongoing room. The server keeps that activity current by pushing a new content-state to it over APNs, and ends it when the game reaches a terminal state. This is a server-to-device push channel, separate from the gameplay WebSocket (which carries only the live session) and from the REST core (which owns everything else). The two REST endpoints below register and unregister the per-activity update tokens the push channel needs.

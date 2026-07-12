@@ -30,10 +30,10 @@ import type { ServerPuzzle, Solution } from "@crossy/protocol";
 import {
   checkDimensions,
   checkSolutionGrid,
-  decodeEntities,
   deriveWordRuns,
   isObject,
   isPositiveInt,
+  normalizeClueText,
   readMetadata,
   reject,
 } from "./ingest";
@@ -304,11 +304,13 @@ export function translateGuardian(body: unknown): IngestResult {
   // Clue text: every slot uses the document's own clue text verbatim (extraction fidelity:
   // real Guardian continuations carry their own "See 19" text). Only a continuation whose clue
   // is absent, non-string, or empty gets the synthesized "See <n>", where n is the head slot's
-  // grid-derived number, never the document's numbering. Text is entity-decoded like the
-  // xwordinfo boundary; Guardian clues carry no number prefix to strip.
+  // grid-derived number, never the document's numbering. Text is tag-stripped and entity-decoded
+  // like the xwordinfo boundary (normalizeClueText); Guardian clues carry no number prefix to
+  // strip. Emptiness is judged after normalization, so a continuation whose clue is only markup
+  // still falls back to the synthesized "See <n>".
   const clueText = (e: GuardianEntry): string => {
-    const own = e.clue.trim();
-    if (e.headId === e.id || own !== "") return decodeEntities(own);
+    const own = normalizeClueText(e.clue);
+    if (e.headId === e.id || own !== "") return own;
     return `See ${numberById.get(e.headId)}`;
   };
   const buildClues = (list: { run: WordRun; entry: GuardianEntry }[]) =>

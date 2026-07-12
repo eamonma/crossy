@@ -185,6 +185,15 @@ describe("guardian translator: happy path (PROTOCOL.md section 12; DESIGN.md sec
     expect(r.puzzle.clues.across[0]?.text).toBe("Rock & roll cat (3)");
   });
 
+  it("strips HTML tags from clue text through the shared seam (DESIGN.md section 7, D13)", () => {
+    const doc = base();
+    (doc["entries"] as Record<string, unknown>[])[0]!["clue"] =
+      "<i>Rock</i> &amp; roll<br>cat (3)";
+    const r = accept(doc);
+    // Tags removed, <br> to a space, entity decoded after the strip.
+    expect(r.puzzle.clues.across[0]?.text).toBe("Rock & roll cat (3)");
+  });
+
   it("ignores unknown fields and separatorLocations (display-only in the outlet)", () => {
     const doc = base();
     (doc["entries"] as Record<string, unknown>[])[0]!["separatorLocations"] = {

@@ -37,10 +37,10 @@ import type { ServerPuzzle, Solution } from "@crossy/protocol";
 import {
   checkDimensions,
   checkSolutionGrid,
-  decodeEntities,
   deriveWordRuns,
   isObject,
   isPositiveInt,
+  normalizeClueText,
   readMetadata,
   reject,
 } from "./ingest";
@@ -387,7 +387,7 @@ export function translateAmuseLabs(body: unknown): IngestResult {
       if (word === undefined) return null;
       clues.push({
         number: run.number,
-        text: decodeEntities(word.clue.trim()),
+        text: normalizeClueText(word.clue),
         cellIndices: run.cells,
       });
     }

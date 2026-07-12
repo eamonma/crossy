@@ -130,6 +130,22 @@ describe("nyt translator: happy path (PROTOCOL.md section 12; DESIGN.md section 
     expect(accept(d).puzzle.clues.across[0]?.text).toBe("Rock & roll cat (3)");
   });
 
+  it("strips HTML tags from text[0].plain through the shared seam (DESIGN.md section 7, D13)", () => {
+    const d = doc();
+    const clues = (d["body"] as Record<string, unknown>[])[0]![
+      "clues"
+    ] as Record<string, unknown>[];
+    clues[0] = clue(
+      [0, 1, 2],
+      "Across",
+      "<i>Feline</i>, when 3 &lt; 4<br/>(3)",
+    );
+    // Tags removed, <br/> to a space, &lt; decoded to a visible < after the strip.
+    expect(accept(d).puzzle.clues.across[0]?.text).toBe(
+      "Feline, when 3 < 4 (3)",
+    );
+  });
+
   it("reads a missing text[0].plain leniently as empty text (the reference's or-empty rule)", () => {
     const d = doc();
     const clues = (d["body"] as Record<string, unknown>[])[0]![

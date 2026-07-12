@@ -31,10 +31,10 @@ import type { ServerPuzzle, Solution } from "@crossy/protocol";
 import {
   checkDimensions,
   checkSolutionGrid,
-  decodeEntities,
   deriveWordRuns,
   isObject,
   isPositiveInt,
+  normalizeClueText,
   readMetadata,
   reject,
 } from "./ingest";
@@ -295,7 +295,7 @@ export function translateNyt(body: unknown): IngestResult {
       if (clue === null) return null;
       built.push({
         number: run.number,
-        text: decodeEntities(clue.text.trim()),
+        text: normalizeClueText(clue.text),
         cellIndices: run.cells,
       });
     }

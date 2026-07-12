@@ -15,8 +15,11 @@
 // at this boundary is uniform: for every OPTIONAL field, `null` reads exactly like absent. Barred
 // grids (`bbars` / `rbars`) are a known-incompatible flag and reject, because edge bars move word
 // boundaries and would silently misplace clue cells (DESIGN.md section 7, PROTOCOL.md section 12).
-// Clue text is decoded from the standard HTML entities so it renders as plain text downstream,
-// this being the one place the external format is ever translated (DESIGN.md section 7, D13).
+// Clue text is normalized to plain text here: HTML tags are stripped and the standard HTML
+// entities decoded, in that order, so it renders as plain text downstream (both clients render a
+// clue as plain text, DESIGN.md section 10). This is the one place the external format is ever
+// translated (DESIGN.md section 7, D13); the strip lives at ingest, never at serve time or in a
+// client, and every format's translator funnels its clue text through the same seam.
 //
 // Check order is fixed and documented on `translateXwordInfo` so the same bad puzzle always
 // yields the same code (deterministic, total).
@@ -60,6 +63,22 @@ const NAMED_ENTITIES: Record<string, string> = {
 };
 /** One entity token: a decimal `&#NN;`, a hex `&#xNN;`, or a named run like `&amp;`. */
 const ENTITY = /&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+/**
+ * A line break in clue markup (`<br>`, `<br/>`, `<br />`, any casing), matched before the general
+ * tag strip so it collapses to a space rather than joining the words on either side.
+ */
+const BR_TAG = /<br\s*\/?>/gi;
+/**
+ * One HTML tag: `<`, an optional closing slash, a tag NAME that must start with an ASCII letter,
+ * then any run of non-angle-bracket characters (attributes, an optional self-closing slash), then
+ * `>`. Requiring a letter immediately after the optional slash is what keeps angle-bracket prose
+ * intact: `3 < 4` and `a < b > c` have a space or digit after `<`, so neither is a tag. The inner
+ * class forbids `<` and `>`, so a stray `>` never lets a match span two pieces of real text.
+ */
+const HTML_TAG = /<\/?[a-zA-Z][^<>]*>/g;
+/** A run of whitespace, collapsed to one space after tags are removed. */
+const WHITESPACE_RUN = /\s+/g;
 
 /**
  * The stable machine-readable rejection codes ingestion can emit. Every member is also an
@@ -195,8 +214,9 @@ export function deriveWordRuns(
 /**
  * Decode the standard HTML entities in one left-to-right pass, so `&amp;lt;` decodes to the
  * literal `&lt;` and never doubly to `<`. Unknown named entities and out-of-range or surrogate
- * numeric references are left verbatim; only a recognized entity is rewritten, and tags such as
- * `<i>` are untouched (DESIGN.md section 7 accepts HTML clue text).
+ * numeric references are left verbatim; only a recognized entity is rewritten. This is the entity
+ * pass only: tags are removed separately by `stripTags`, which runs first (see `normalizeClueText`
+ * for the order and why it matters).
  */
 export function decodeEntities(text: string): string {
   if (!text.includes("&")) return text;
@@ -213,6 +233,32 @@ export function decodeEntities(text: string): string {
     const named = NAMED_ENTITIES[token];
     return named === undefined ? match : named;
   });
+}
+
+/**
+ * Strip HTML tags from clue text, mapping every `<br>` variant to a single space first so a line
+ * break separates its neighbors rather than fusing them. Only real tags are removed (see
+ * `HTML_TAG`): angle-bracket prose like `3 < 4` survives untouched. Runs before entity decode so
+ * an escaped `&lt;i&gt;` decodes afterward to a visible `<i>` and is not eaten (order matters, see
+ * `normalizeClueText`).
+ */
+export function stripTags(text: string): string {
+  if (!text.includes("<")) return text;
+  return text.replace(BR_TAG, " ").replace(HTML_TAG, "");
+}
+
+/**
+ * Normalize one clue string to plain text: strip tags, then decode entities, then collapse the
+ * whitespace tags left behind and trim (DESIGN.md section 7, D13). The order is load-bearing.
+ * Tags are stripped BEFORE entities are decoded, so a clue carrying the escaped text `&lt;i&gt;`
+ * survives the strip (it is not yet a tag) and decodes to a visible `<i>`; decoding first would
+ * turn it into a real `<i>` the strip would then delete. Whitespace is collapsed only after both
+ * passes, so a removed `<br>` and any surrounding spaces fold to one space. Every translator in
+ * the registry funnels its clue text through this one seam, so the strip applies uniformly across
+ * formats (PROTOCOL.md section 12).
+ */
+export function normalizeClueText(text: string): string {
+  return decodeEntities(stripTags(text)).replace(WHITESPACE_RUN, " ").trim();
 }
 
 /**
@@ -239,10 +285,10 @@ function parseClue(raw: string): { number: number | null; text: string } {
   if (m && m[1] !== undefined) {
     return {
       number: Number(m[1]),
-      text: decodeEntities(raw.slice(m[0].length).trim()),
+      text: normalizeClueText(raw.slice(m[0].length)),
     };
   }
-  return { number: null, text: decodeEntities(raw.trim()) };
+  return { number: null, text: normalizeClueText(raw) };
 }
 
 /** True if any number appears more than once (the Schroedinger / one-slot-two-clues signal). */
