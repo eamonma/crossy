@@ -105,6 +105,18 @@ final class DemoRoom {
         clues = fixture.clues
         transport = LoopbackTransport(welcome: fixture.welcome)
         selection = SelectionModel(store: store, puzzle: puzzle)
+        // Seed the players pill before the first frame, exactly as RealRoom seeds from
+        // the REST view: the fixture welcome's board is the demo's roster, so map its
+        // members to the not-yet-heard-from register (`connected: false`) and let the
+        // welcome (the loopback yields it ~400 ms later) rebuild the live roster. The
+        // rigs then render the pill at its true width from frame one, the same fix real
+        // rooms get (GameStore.seedRoster; the RealRoom seed comment).
+        store.seedRoster(
+            fixture.welcome.board.participants.map {
+                Participant(
+                    userId: $0.userId, displayName: "", avatarUrl: $0.avatarUrl,
+                    color: "", role: $0.role, connected: false)
+            })
     }
 
     /// Connect (the welcome arrives through the stream like every other frame) and

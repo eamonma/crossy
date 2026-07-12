@@ -118,6 +118,13 @@ final class RealRoom {
         roomName = view.name ?? ""
         inviteCode = view.inviteCode
         selection = SelectionModel(store: store, puzzle: mapped.puzzle)
+        // Seed the players pill with the REST roster before the first frame renders,
+        // so the pill stands at its true width instead of a lone placeholder puck that
+        // snaps wide when the `welcome` lands (owner device finding 2026-07-11). The
+        // members are the roster, not presence: each seeds not-yet-heard-from
+        // (`connected: false`), and the store gates the seed to `connecting` so a later
+        // snapshot's real presence always wins (RoomMapping.roster, GameStore.seedRoster).
+        store.seedRoster(RoomMapping.roster(view))
         onReady()
 
         guard let wsURL = RoomMapping.socketURL(from: view, sessionBaseURL: sessionBaseURL)
