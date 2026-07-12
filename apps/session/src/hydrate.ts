@@ -6,6 +6,7 @@
 // server-side for the comparator, never on any outbound frame (INV-6).
 
 import type { BoardState, Cell, Grid } from "@crossy/engine";
+import type { Stats } from "@crossy/protocol";
 
 /** The engine's comparator input: cell index to its full solution string. */
 export type EngineSolution = ReadonlyMap<number, string>;
@@ -50,6 +51,13 @@ export interface HydratedGame {
    * only, never solution-bearing (INV-6).
    */
   readonly roomName: string | null;
+  /**
+   * The persisted completion stats, non-null only for a completed game (PROTOCOL.md §4).
+   * Carried through so a rehydrated terminal actor serves the same snapshot it flushed
+   * (INV-5): the stats were computed once, inside the terminal flush transaction, and
+   * must survive passivation like every other snapshot fact.
+   */
+  readonly stats: Stats | null;
 }
 
 /** Parse the puzzle snapshot into the engine grid and the comparator's solution map. */
@@ -109,5 +117,9 @@ export function hydrateGame(
     abandonedAt: state?.abandonedAt ?? null,
     recentCommandIds: state?.recentCommandIds ?? [],
     roomName,
+    // The single writer serialized this from a Stats at the terminal flush (INV-7), so
+    // the cast mirrors the one on the write side (actor snapshotForFlush). The repo maps
+    // an empty `{}` (an ongoing game's row) to null before it reaches here.
+    stats: (state?.stats as Stats | null) ?? null,
   };
 }
