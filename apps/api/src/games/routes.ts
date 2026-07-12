@@ -192,12 +192,14 @@ interface GameView {
  *
  * `lastActivityAt` is `MAX(cell_events.at)` for the game, read from the session-owned event log
  * under the API's SELECT-only grant (migration 0008); it is null for a game no one has played. The
- * page is ORDERED by it (most recent first, unplayed games last), so the home reads by activity,
- * not creation. The read is a bare timestamp aggregate, never a cell `value`, so no solution leaves
- * the server (INV-6), and it is read only, so the session stays the single writer (INV-7). The page
- * is still SELECTED and paginated by `createdAt` (see the handler): activity moves, so ordering the
- * whole paginated set by it would be unstable; the stable `createdAt` cursor bounds the page and
- * activity reorders only the rows within it (PROTOCOL.md §12).
+ * page is ORDERED by `COALESCE(lastActivityAt, createdAt)` DESC (creating a room is its first
+ * activity, so a fresh unplayed game sorts by its creation time, not below every played game), so
+ * the home reads by when a room was last touched, not by creation. The read is a bare timestamp
+ * aggregate, never a cell `value`, so no solution leaves the server (INV-6), and it is read only,
+ * so the session stays the single writer (INV-7). The page is still SELECTED and paginated by
+ * `createdAt` (see the handler): activity moves, so ordering the whole paginated set by it would be
+ * unstable; the stable `createdAt` cursor bounds the page and the coalesced key reorders only the
+ * rows within it (PROTOCOL.md §12).
  *
  * `puzzle` carries only INV-6-safe geometry (rows, cols) projected out of `puzzle_snapshot` in
  * SQL; the snapshot jsonb, which holds the solution, is never selected whole. `puzzle.title` is
@@ -227,9 +229,10 @@ interface GameSummary {
   /**
    * The game's last activity: `MAX(cell_events.at)` (PROTOCOL.md §12), null for a game no one has
    * played yet. Read from the session-owned event log under the API's SELECT-only grant (migration
-   * 0008); never written by the API (INV-7). The list page is ordered by this field, most recent
-   * first; a null (unplayed) game sorts after every played game, then by `createdAt`. It is a bare
-   * timestamp aggregate, never a cell value, so no solution leaves the server (INV-6).
+   * 0008); never written by the API (INV-7). The list page is ordered by `COALESCE(lastActivityAt,
+   * createdAt)` DESC, so an unplayed game sorts by its creation time (creating a room is its first
+   * activity), not below every played game. It is a bare timestamp aggregate, never a cell value,
+   * so no solution leaves the server (INV-6).
    */
   readonly lastActivityAt: string | null;
   readonly puzzle: {
@@ -244,29 +247,26 @@ interface GameSummary {
 }
 
 /**
- * Order one page of `GET /games` rows by most recent activity, most recent first (PROTOCOL.md §12).
- * A played game (`lastActivityAt` non-null) always outranks an unplayed one; two played games
- * compare by `lastActivityAt` DESC; unplayed games (and activity ties) fall back to `createdAt`
- * DESC, then `gameId` DESC. That fallback chain matches the SQL selection tiebreak, so the whole
- * ordering is total and deterministic. Timestamps are ISO 8601 UTC strings; compared by parsed
- * epoch so a differing fractional-second precision cannot mis-sort (a lexicographic compare would).
+ * Order one page of `GET /games` rows by when the game was last touched, most recent first
+ * (PROTOCOL.md §12). The sort key is `COALESCE(lastActivityAt, createdAt)`: creating a room is its
+ * first activity, so a freshly created game with no events yet sorts by its `createdAt`, right
+ * where a room played at that same instant would sit, rather than below every played game. Ties on
+ * the coalesced key fall back to `createdAt` DESC, then `gameId` DESC. That fallback chain matches
+ * the SQL selection tiebreak, so the whole ordering is total and deterministic. Timestamps are ISO
+ * 8601 UTC strings; compared by parsed epoch so a differing fractional-second precision cannot
+ * mis-sort (a lexicographic compare would). The wire shape is unchanged: `lastActivityAt` stays
+ * null for an unplayed game, and only this ordering coalesces it to `createdAt`.
  *
  * This reorders only the rows already SELECTED into the page by the stable `createdAt` cursor, so
  * it never touches pagination continuity: the moving activity key reshuffles within a page but
  * cannot move a game across page boundaries (PROTOCOL.md §12).
  */
 function orderByActivity(a: GameSummary, b: GameSummary): number {
-  const activityA =
-    a.lastActivityAt === null ? null : Date.parse(a.lastActivityAt);
-  const activityB =
-    b.lastActivityAt === null ? null : Date.parse(b.lastActivityAt);
-  if (activityA !== activityB) {
-    // A played game (non-null) sorts before an unplayed one (null sorts last).
-    if (activityA === null) return 1;
-    if (activityB === null) return -1;
-    return activityB - activityA; // more recent first
-  }
-  // Equal activity (both null, or the same timestamp): fall back to createdAt DESC, then gameId.
+  // COALESCE(lastActivityAt, createdAt): a never-played game keys on its creation time.
+  const keyA = Date.parse(a.lastActivityAt ?? a.createdAt);
+  const keyB = Date.parse(b.lastActivityAt ?? b.createdAt);
+  if (keyA !== keyB) return keyB - keyA; // more recently touched first
+  // Tie on the coalesced key: fall back to createdAt DESC, then gameId DESC.
   const createdA = Date.parse(a.createdAt);
   const createdB = Date.parse(b.createdAt);
   if (createdA !== createdB) return createdB - createdA;
@@ -464,11 +464,12 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       },
     }));
 
-    // Reorder THIS page (only) by activity for display, most recent first. A played game
-    // (non-null `lastActivityAt`) outranks every unplayed one; ties and unplayed games fall back
-    // to `createdAt` DESC, then `gameId` DESC, so the order is total and deterministic and matches
-    // the SQL selection tiebreak. The cursor was already fixed from the selection order above, so
-    // this reorder never affects pagination continuity (PROTOCOL.md §12).
+    // Reorder THIS page (only) by display key `COALESCE(lastActivityAt, createdAt)` DESC, most
+    // recent first; a fresh unplayed game keys on its createdAt (creating a room is its first
+    // activity), so it is not banished below every played game. Ties fall back to `createdAt` DESC,
+    // then `gameId` DESC, so the order is total and deterministic and matches the SQL selection
+    // tiebreak. The cursor was already fixed from the selection order above, so this reorder never
+    // affects pagination continuity (PROTOCOL.md §12).
     games.sort(orderByActivity);
 
     return c.json({ games, nextBefore });
