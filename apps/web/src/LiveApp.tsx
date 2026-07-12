@@ -54,6 +54,7 @@ import {
   clueOn,
 } from "./ui/Clues";
 import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
+import { useNavPrefs } from "./ui/useNavPrefs";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
 import { parseClueRefs, referencedCells } from "./ui/clueRefs";
@@ -661,6 +662,9 @@ function LiveGame({
   const [signingIn, setSigningIn] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dismissedCompletion, setDismissedCompletion] = useState(false);
+  // Personal navigation prefs (settings slice 1): read the shared client-local choice so a
+  // change in Settings steers the cursor live, no reload. Defaults reproduce today's behavior.
+  const { prefs: navPrefs } = useNavPrefs();
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
   // Cursor relay throttle (PROTOCOL.md §9): a leading send plus one coalesced trailing send,
@@ -838,7 +842,11 @@ function LiveGame({
       // `connecting` (defense in depth), but swallowing the key here keeps the selection
       // from advancing over a board that has no authoritative state yet.
       if (isSpectator || awaitingFirstSync) return false;
-      const effect = keyEffect({ grid, filled, selection, frozen }, key, shift);
+      const effect = keyEffect(
+        { grid, filled, selection, frozen, prefs: navPrefs },
+        key,
+        shift,
+      );
       if (effect === null) return false;
       for (const mutation of effect.mutations) {
         if (mutation.type === "placeLetter") {
@@ -850,7 +858,16 @@ function LiveGame({
       setSelection(effect.selection);
       return true;
     },
-    [isSpectator, awaitingFirstSync, grid, filled, selection, frozen, store],
+    [
+      isSpectator,
+      awaitingFirstSync,
+      grid,
+      filled,
+      selection,
+      frozen,
+      navPrefs,
+      store,
+    ],
   );
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {

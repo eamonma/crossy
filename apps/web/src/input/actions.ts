@@ -3,13 +3,13 @@
 // plus mutations out. Every cursor move goes through packages/engine's navigation
 // ops, so the input layer cannot drift from the navigation vectors (the throwaway
 // playground module this replaces is deleted).
-import {
-  backspaceTarget,
-  getNextCell,
-  tabTarget,
-  typingAdvance,
-} from "@crossy/engine";
+import { backspaceTarget, getNextCell, tabTarget } from "@crossy/engine";
 import type { Direction, Grid, Toward } from "@crossy/engine";
+import {
+  DEFAULT_NAV_PREFS,
+  type NavPrefs,
+  typingAdvanceWithPrefs,
+} from "./prefs";
 
 export interface Selection {
   readonly cell: number;
@@ -37,6 +37,10 @@ export interface InputEnv {
   /** True after completed or abandoned: navigation stays live, mutation freezes
    * locally and never reaches the wire (ROADMAP 2.1d terminal-state rule). */
   readonly frozen: boolean;
+  /** Personal navigation prefs (settings slice 1). Optional so callers that predate the
+   * prefs keep today's behavior: absent means DEFAULT_NAV_PREFS, which reproduces the
+   * engine's vector-pinned typingAdvance exactly. Prefs live in the app, never the engine. */
+  readonly prefs?: NavPrefs;
 }
 
 const ASCII_LETTER_OR_DIGIT = /^[A-Z0-9]$/;
@@ -116,14 +120,22 @@ export function keyEffect(
       const value = asciiUpper(key);
       if (!ASCII_LETTER_OR_DIGIT.test(value)) return null;
       if (env.frozen) return refused(env);
-      // The typing op: filled-skip inside the word against the board after this
-      // keystroke, wrap to the word's first empty cell, else stay on the last
-      // (typing-advance.json, full-word-asymmetry.json).
+      // The typing op, steered by the personal nav prefs (settings slice 1): filled-skip
+      // inside the word against the board after this keystroke, then the chosen end-of-word
+      // behavior (wrap to first blank or advance to the next clue). Defaults reproduce the
+      // engine's vector-pinned typingAdvance (typing-advance.json, full-word-asymmetry.json).
+      // A next-clue jump can cross axes, so we take the direction the advance reports.
       const filledAfter = new Set(filled);
       filledAfter.add(cell);
-      const next = typingAdvance(grid, direction, cell, filledAfter);
+      const next = typingAdvanceWithPrefs(
+        grid,
+        direction,
+        cell,
+        filledAfter,
+        env.prefs ?? DEFAULT_NAV_PREFS,
+      );
       return {
-        selection: { cell: next, direction },
+        selection: { cell: next.cell, direction: next.direction },
         mutations: [{ type: "placeLetter", cell, value }],
       };
     }
