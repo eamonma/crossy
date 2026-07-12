@@ -63,15 +63,14 @@ final class BarItemFramesTests: XCTestCase {
     }
 }
 
-// The synthesized roomBar rect (DESIGN.md §4 toolbar amendment; the standing-inset
-// law, DESIGN.md §2). The hand-drawn bar retired, so the bar's room-space rect is
-// derived from the bar items' frames and feeds the camera's standing top inset and
-// the clue-bar melt. The vertical band is anchored on the BACK BUTTON, which stands
-// in the bar row from frame one (never gated on the welcome), so the band is
-// identical before and after the time pill arrives: the board cannot move by even a
-// point when the pill materializes (the owner device regression, 2026-07-12, where
-// the grid dropped as the pill loaded). Pure, so the "board never moves" contract
-// is pinned here.
+// The synthesized roomBar rect (DESIGN.md §4 toolbar amendment). The hand-drawn bar
+// retired, so the bar's room-space rect is derived from the bar items' frames and
+// feeds the FACTS CARD's horizontal span and the CLUE-BAR MELT's geometry (both
+// post-welcome, when the frames are live). Since SLICE C the BOARD's standing
+// occlusion no longer reads this rect at all (it is constant-built, tested below),
+// so this rect exists only for the two morphs. The vertical band is anchored on the
+// BACK BUTTON, which stands in the bar row from frame one, so the span is identical
+// before and after the time pill arrives; the pill never widens it. Pure, pinned.
 
 final class SynthesizedRoomBarTests: XCTestCase {
     private let inset: CGFloat = 12
@@ -82,49 +81,30 @@ final class SynthesizedRoomBarTests: XCTestCase {
     private let back = CGRect(x: 12, y: 60, width: 44, height: 44)
     private let pill = CGRect(x: 297, y: 58, width: 84, height: 48)
 
-    // Pre-welcome: the time pill's item is absent (TimePillPresence), but the back
-    // button stands, so the rect STILL synthesizes and the standing inset exists
-    // from frame one. The empty-pre-welcome hole (rect nil, top inset 0, board
-    // higher) is closed (§2: the board fits under a bar that is there from frame
-    // one).
-    func test_synthesizesFromTheBackButtonAlone_beforeTheWelcome_section2() {
+    // The rect synthesizes from the back button alone (pre-welcome, the pill's item
+    // absent, ClusterPresence): the span the facts card and the melt read exists
+    // from frame one. The band IS the back button's row; the x-extent is board-inset.
+    func test_synthesizesFromTheBackButtonAlone_section4() {
         let merged: [ChromePiece: CGRect] = [.backButton: back, .board: board]
         let rect = BarItemFrames.synthesizedRoomBar(from: merged, inset: inset)
         XCTAssertNotNil(rect)
-        // The band IS the back button's row; the x-extent is board-inset.
         XCTAssertEqual(rect, CGRect(x: 12, y: 60, width: 393 - 24, height: 44))
     }
 
-    // The board must not move on the welcome beat: the vertical band (minY, maxY)
-    // is IDENTICAL with and without the pill's frame, even though the pill here is
-    // taller and lower than the back circle. Only the anchor's row sets the band;
-    // the pill never widens it (§2: constant-built insets, now pill-arrival-proof).
-    func test_theVerticalBandHolds_acrossTheTimePillsArrival_section2() {
+    // The morphs' span does not shift on the welcome beat: the rect is IDENTICAL
+    // with and without the pill's frame, even though the pill here is taller and
+    // lower than the back circle. Only the anchor's row sets the band; the pill
+    // never widens it (§4: the card and melt read a stable span across the arrival).
+    func test_theBandHolds_acrossTheTimePillsArrival_section4() {
         let before = BarItemFrames.synthesizedRoomBar(
             from: [.backButton: back, .board: board], inset: inset)
         let after = BarItemFrames.synthesizedRoomBar(
             from: [.backButton: back, .timePill: pill, .board: board], inset: inset)
         XCTAssertNotNil(before)
         XCTAssertNotNil(after)
-        // The band the camera reads (minY..maxY) is unchanged: the grid holds still.
-        XCTAssertEqual(before?.minY, after?.minY)
-        XCTAssertEqual(before?.maxY, after?.maxY)
-        // And the rect is wholly identical: the pill contributes nothing here (x is
-        // board-derived), so the whole geometry is stable across the arrival.
+        // Wholly identical: the pill contributes nothing (x is board-derived), so the
+        // card and melt span is stable across the arrival.
         XCTAssertEqual(before, after)
-    }
-
-    // The standing top inset the camera clamps against is therefore the same before
-    // and after the pill arrives, so the board's fit does not change (§2, the law
-    // this fix defends): a direct read through GridOcclusion.standing.
-    func test_theStandingTopInsetHolds_acrossTheArrival_section2() {
-        let before = BarItemFrames.synthesizedRoomBar(
-            from: [.backButton: back, .board: board], inset: inset)
-        let after = BarItemFrames.synthesizedRoomBar(
-            from: [.backButton: back, .timePill: pill, .board: board], inset: inset)
-        XCTAssertEqual(
-            GridOcclusion.standing(board: board, roomBar: before).top,
-            GridOcclusion.standing(board: board, roomBar: after).top)
     }
 
     // Defensive fallback: if only the pill's frame is present (the back button
@@ -145,5 +125,57 @@ final class SynthesizedRoomBarTests: XCTestCase {
         XCTAssertNil(
             BarItemFrames.synthesizedRoomBar(from: [.backButton: back], inset: inset))
         XCTAssertNil(BarItemFrames.synthesizedRoomBar(from: [:], inset: inset))
+    }
+}
+
+// The BOARD's constant-built standing occlusion (DESIGN.md §2, the standing-inset
+// law; SLICE C). The grid's standing top inset is the room container's system-bar
+// height (its top safe-area inset, the band the full-bleed board bleeds under),
+// NEVER a reported bar-item frame. So the grid's top edge is at its final position
+// on its first rendered frame and never moves when the pill arrives (the owner
+// device regression, 2026-07-12, where the grid loaded high and DROPPED as the pill
+// materialized, closed at the root). Pure, so the "board never moves" contract is
+// pinned on the constant itself, independent of any bar geometry.
+
+final class ConstantBoardInsetTests: XCTestCase {
+    private let board = CGRect(x: 0, y: 0, width: 393, height: 500)
+
+    // The standing top inset IS the passed constant (the container's system-bar
+    // height), clamped non-negative. No bar-item frame enters the derivation, so no
+    // welcome-gated frame can change it (§2, the law this fix defends).
+    func test_theStandingTopInsetIsTheConstant_section2() {
+        XCTAssertEqual(GridOcclusion.standing(board: board, topInset: 59).top, 59)
+        // Clamped: a stray negative never lifts the board past its top edge.
+        XCTAssertEqual(GridOcclusion.standing(board: board, topInset: -8).top, 0)
+    }
+
+    // The board's fit does not change across the pill's arrival BY CONSTRUCTION: the
+    // inset is a constant the bar items never feed, so the same container height
+    // yields the same inset whether the pill is absent (pre-welcome) or present
+    // (post-welcome). The occlusion cannot even SEE the pill (§2, SLICE C).
+    func test_theStandingTopInsetHoldsAcrossTheArrival_section2() {
+        // The container's top inset is fixed layout; the pill arriving changes no
+        // input here (there is no roomBar parameter to move).
+        let preWelcome = GridOcclusion.standing(board: board, topInset: 59).top
+        let postWelcome = GridOcclusion.standing(board: board, topInset: 59).top
+        XCTAssertEqual(preWelcome, postWelcome)
+    }
+
+    // No board yields the empty occlusion, so the camera clamps against nothing until
+    // the board lands (the withhold-until-real discipline, DESIGN.md §2).
+    func test_withholdsUntilTheBoardLands_section2() {
+        XCTAssertEqual(GridOcclusion.standing(board: nil, topInset: 59), .none)
+    }
+
+    // keepClear rides the SAME constant top (never a reported frame), so the follow's
+    // ceiling holds still across the arrival; the bottom still rescues an occluded
+    // cell from a wrapped clue's live slot (§2).
+    func test_keepClearRidesTheConstantTop_section2() {
+        let clueSlot = CGRect(x: 12, y: 430, width: 369, height: 40)
+        let keepClear = GridOcclusion.keepClear(
+            board: board, topInset: 59, clueSlot: clueSlot)
+        XCTAssertEqual(keepClear.top, 59)
+        // The bottom escapes the live slot plus feather, not just the standing bottom.
+        XCTAssertGreaterThan(keepClear.bottom, GridOcclusion.standing(board: board, topInset: 59).bottom)
     }
 }

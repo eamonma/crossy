@@ -51,6 +51,12 @@ struct ContentView: View {
             // The island rendering rig (IslandLab.swift): a real Live Activity stepped
             // from the foreground, no APNs. Evidence only.
             IslandLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-pillArrivalLab") {
+            // The constant-built board inset's live-timing rig (PillArrivalLab.swift,
+            // DESIGN.md §2, SLICE C): delays the board and the welcome, pins the grid's
+            // first-frame top against the live top so a capture proves the board never
+            // moved when the pill arrived. Evidence only.
+            PillArrivalLab()
         } else if let config = RoomConfig.resolve() {
             // The room's top chrome is the system nav bar's items now (the
             // toolbar-adoption ruling, DESIGN.md §4), and toolbar items render

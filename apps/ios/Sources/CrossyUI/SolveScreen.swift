@@ -69,6 +69,16 @@ public struct SolveScreen: View {
     /// The room's own global origin, for the conversion above. nil until the
     /// room lays out; the morph geometry withholds until then.
     @State private var roomOrigin: CGPoint?
+    /// The room container's top safe-area inset: the system bar's standing height
+    /// (the band the full-bleed board bleeds under), read off the room's own
+    /// container, not any bar item's reported frame (DESIGN.md §2, the constant-
+    /// built board inset, SLICE C). This is the grid's STANDING top occlusion, so
+    /// the board's top edge is at its final position on frame one and never moves
+    /// when the pill arrives. Seeded 0; the container reports it before the first
+    /// paint (it is layout, not a welcome-gated bar item), so the grid never sits
+    /// high waiting for it. The facts card and the clue-bar melt still read the
+    /// reported bar-item frames (post-welcome, live); only the board goes constant.
+    @State private var roomTopInset: CGFloat = 0
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
     /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
@@ -278,6 +288,17 @@ public struct SolveScreen: View {
             // the roster menu does.
         }
         .coordinateSpace(name: ChromeLayout.roomSpace)
+        // The room container's top safe-area inset: the system bar's standing
+        // height, the band the full-bleed board bleeds under (DESIGN.md §2, the
+        // constant-built board inset, SLICE C). Read off the room's OWN container
+        // here (the ZStack under the visible, transparent nav bar), so the grid's
+        // standing top occlusion is layout truth, not a welcome-gated bar item's
+        // reported frame. The container reports this before the first paint, so the
+        // board's top edge is final on frame one and never moves when the pill
+        // arrives. `.onGeometryChange` is iOS 18 / macOS 15; older floors and the
+        // macOS test host (14) keep the 0 seed (the room never renders on macOS;
+        // tests read the pure GridOcclusion seam directly).
+        .modifier(RoomTopInsetReader { roomTopInset = $0 })
         // The room's global origin, for converting the bar items' global frames
         // into room space (the toolbar-adoption ruling, DESIGN.md §4). Read off
         // the same ZStack the coordinate space is named on, so the origin IS the
@@ -422,10 +443,15 @@ public struct SolveScreen: View {
                 // selection, kept next to those derivations.
                 crossReference: clues.cells(of: referencedIds),
                 mosaicStartedAt: completion.mosaicStartedAt,
+                // The BOARD's standing occlusion is constant-built (DESIGN.md §2,
+                // SLICE C): the top inset is the room container's system-bar height
+                // (roomTopInset, read off the room's own container), never the
+                // synthesized bar-item frame, so the grid's top edge is final on
+                // frame one and does not move when the pill arrives.
                 occlusion: .standing(
-                    board: chromeFrames[.board], roomBar: chromeFrames[.roomBar]),
+                    board: chromeFrames[.board], topInset: roomTopInset),
                 keepClear: .keepClear(
-                    board: chromeFrames[.board], roomBar: chromeFrames[.roomBar],
+                    board: chromeFrames[.board], topInset: roomTopInset,
                     clueSlot: chromeFrames[.clueBarSlot]),
                 // A swipe never becomes a tap, so the yield law needs
                 // its own hook here (DESIGN.md §4): panels pour back,
@@ -485,9 +511,13 @@ public struct SolveScreen: View {
     /// The one frame map the room's geometry reads (the toolbar-adoption ruling,
     /// DESIGN.md §4). The room-space frames (the board, the clue slot) merge with
     /// the bar items' global frames converted into room space (the back button,
-    /// the time pill), plus a synthesized `roomBar` frame for the occlusion clamp
-    /// and the facts-card span. Withheld pieces (not yet measured) stay absent,
-    /// and the morphs withhold until the geometry is real, exactly as before.
+    /// the time pill), plus a synthesized `roomBar` frame for the FACTS CARD's span
+    /// and the CLUE-BAR MELT's rest (both post-welcome, when the frames are live).
+    /// The BOARD's standing occlusion no longer reads this map at all (SLICE C): its
+    /// top inset is the room container's constant-built system-bar height
+    /// (roomTopInset), so the grid never waits on a reported frame. Withheld pieces
+    /// (not yet measured) stay absent, and the card and melt withhold until the
+    /// geometry is real, exactly as before.
     private var chromeFrames: [ChromePiece: CGRect] {
         var merged = frames
         let converted = BarItemFrames.inRoomSpace(barItemFrames, roomOrigin: roomOrigin)
@@ -498,12 +528,14 @@ public struct SolveScreen: View {
         return merged
     }
 
-    /// The synthesized `roomBar` frame (the toolbar-adoption ruling; the pure seam
-    /// is BarItemFrames.synthesizedRoomBar, tested against §2 and §4). Anchored on
-    /// the back button, which stands in the bar row from frame one, so the band
-    /// holds identical before and after the time pill arrives and the board never
-    /// moves on the welcome beat (§2). The morphs withhold until the anchor and the
-    /// board land.
+    /// The synthesized `roomBar` frame for the FACTS CARD's horizontal span and the
+    /// CLUE-BAR MELT's geometry (the toolbar-adoption ruling; the pure seam is
+    /// BarItemFrames.synthesizedRoomBar). Anchored on the back button, which stands
+    /// in the bar row from frame one, so the span holds identical before and after
+    /// the time pill arrives. The board's standing inset is constant-built and does
+    /// NOT read this (SLICE C, §2); the card and melt read it only post-welcome,
+    /// when their own reported frames (the pill, the clue slot) are live too, so a
+    /// pre-welcome value never launches either morph.
     private func synthesizedRoomBar(from merged: [ChromePiece: CGRect]) -> CGRect? {
         BarItemFrames.synthesizedRoomBar(from: merged, inset: ChromeLayout.inset)
     }

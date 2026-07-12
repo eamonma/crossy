@@ -468,33 +468,33 @@ final class GridCameraTests: XCTestCase {
             "already at the standing pin: the grown bar moves nothing")
     }
 
-    func test_occlusion_standingMapsChromeFramesToInsets() {
-        // The board bleeds above the room space (negative minY); the standing
-        // bottom is the constant one-line bar plus feather, never the live slot.
+    func test_occlusion_standingUsesTheConstantTopInset() {
+        // The standing top is the container's system-bar height, passed as a
+        // constant (SLICE C, §2): never a reported bar-item frame. The bottom is
+        // the constant one-line bar plus feather, never the live slot.
         let board = CGRect(x: 0, y: -59, width: 393, height: 703)
-        let roomBar = CGRect(x: 12, y: 6, width: 369, height: 44)
-        let standing = GridOcclusion.standing(board: board, roomBar: roomBar)
-        XCTAssertEqual(standing.top, 50 - (-59))
+        let standing = GridOcclusion.standing(board: board, topInset: 59)
+        XCTAssertEqual(standing.top, 59)
         XCTAssertEqual(standing.bottom, ChromeLayout.barHeight + ClueFeather.extent)
-        XCTAssertEqual(GridOcclusion.standing(board: nil, roomBar: roomBar), .none)
+        XCTAssertEqual(GridOcclusion.standing(board: nil, topInset: 59), .none)
     }
 
     func test_occlusion_keepClearRidesTheLiveSlotAndNeverShrinksBelowStanding() {
         let board = CGRect(x: 0, y: -59, width: 393, height: 703)
-        let roomBar = CGRect(x: 12, y: 6, width: 369, height: 44)
+        let topInset: CGFloat = 59
         // A three-line slot, 86 tall, bottom pinned to the board's floor.
         let grownSlot = CGRect(x: 12, y: 703 - 59 - 86, width: 369, height: 86)
         let grown = GridOcclusion.keepClear(
-            board: board, roomBar: roomBar, clueSlot: grownSlot)
+            board: board, topInset: topInset, clueSlot: grownSlot)
         XCTAssertEqual(grown.bottom, 86 + ClueFeather.extent)
-        XCTAssertEqual(grown.top, GridOcclusion.standing(board: board, roomBar: roomBar).top)
+        XCTAssertEqual(grown.top, GridOcclusion.standing(board: board, topInset: topInset).top)
         // A one-line slot never reports less than the standing inset.
         let oneLine = CGRect(
             x: 12, y: 703 - 59 - ChromeLayout.barHeight,
             width: 369, height: ChromeLayout.barHeight)
         XCTAssertEqual(
-            GridOcclusion.keepClear(board: board, roomBar: roomBar, clueSlot: oneLine),
-            GridOcclusion.standing(board: board, roomBar: roomBar))
+            GridOcclusion.keepClear(board: board, topInset: topInset, clueSlot: oneLine),
+            GridOcclusion.standing(board: board, topInset: topInset))
     }
 
     func test_panned_translatesAndClamps() {
