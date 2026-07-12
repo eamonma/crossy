@@ -204,13 +204,7 @@ function Router({
   }
 
   if (!signedIn) {
-    return (
-      <Landing
-        identity={identity}
-        config={config}
-        onCreate={() => navigate(createHref(params))}
-      />
-    );
+    return <Landing identity={identity} config={config} />;
   }
 
   return shell(

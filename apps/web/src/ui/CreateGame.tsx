@@ -162,8 +162,8 @@ function CreateGate({
     <DialogCard>
       <DialogHeader title="Create a game">
         {guest
-          ? "You're here as a guest, and guests can watch but not host. Sign in to create games of your own."
-          : "Upload a puzzle, share one link, and solve it together. Hosting takes an account."}
+          ? "Guests can watch but not host. Sign in to create your own games."
+          : "Upload a puzzle and share the link. Hosting takes an account."}
       </DialogHeader>
       {/* Guest sign-in is a dead end here (guests can't create), so the gate offers
           the account providers alone. */}
@@ -171,8 +171,7 @@ function CreateGate({
         <SignInButtons
           identity={identity}
           config={config}
-          discordLabel="Sign in with Discord"
-          appleLabel="Sign in with Apple"
+          verb="Sign in"
           allowGuest={false}
         />
       </div>

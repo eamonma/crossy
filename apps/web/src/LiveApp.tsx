@@ -433,8 +433,7 @@ export function LiveApp({
               <SignInButtons
                 identity={identity}
                 config={config}
-                discordLabel="Sign in with Discord"
-                appleLabel="Sign in with Apple"
+                verb="Sign in"
                 allowGuest={state.invited}
               />
             </div>

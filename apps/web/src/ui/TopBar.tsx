@@ -63,6 +63,8 @@ export function TopBar({
             Privacy Policy
           </a>
           <ThemeToggle />
+          {/* Signed in, the avatar menu; signed out, nothing, since every signed-out surface
+              carries its own inline sign-in. */}
           <AuthBar identity={identity} config={config} />
         </div>
       </div>
