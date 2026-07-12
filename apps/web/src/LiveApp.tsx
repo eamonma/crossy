@@ -56,7 +56,7 @@ import {
 import { SolvingNow } from "./ui/SolvingNow";
 import { buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
-import { parseClueRefs } from "./ui/clueRefs";
+import { parseClueRefs, referencedCells } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
@@ -929,6 +929,13 @@ function LiveGame({
     return marks;
   }, [activeClue, puzzle]);
 
+  // The board half of the reference cue: the same existence-filtered keys, resolved to the cells
+  // those clues cover so CrosswordGrid can paint them faintly (DESIGN.md section 10).
+  const referencedCellSet = useMemo(
+    () => referencedCells(referenced, puzzle.acrossClues, puzzle.downClues),
+    [referenced, puzzle],
+  );
+
   const elapsed = useElapsedSeconds(store.firstFillAt, store.completedAt);
   // `name` and `code` are API-preferred with a URL-param fallback (resolved in the loader), so
   // the title and the share popover work without the current URL carrying `?name=`/`?code=`.
@@ -1039,6 +1046,7 @@ function LiveGame({
                   selection={selection}
                   presence={presence}
                   flashes={flashes}
+                  xref={referencedCellSet}
                   onCellClick={onCellClick}
                   onFlashEnd={onFlashEnd}
                 />

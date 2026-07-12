@@ -12,6 +12,9 @@ import type { Puzzle } from "../domain/types";
 
 const CELL = 36;
 
+// A stable default for the optional xref prop, so read-only surfaces (party view, demo) omit it.
+const EMPTY: ReadonlySet<number> = new Set();
+
 /** A teammate rendered in a cell: cursor arrow, avatar, and flash all use their color. */
 export interface PresenceEntry {
   userId: string;
@@ -39,22 +42,29 @@ interface Props {
   fills: ReadonlyMap<number, string>;
   presence: ReadonlyMap<number, readonly PresenceEntry[]>;
   flashes: ReadonlyMap<number, FlashEntry>;
+  /** Cells of the clues the active clue references, painted faintly (DESIGN.md section 10).
+   * Empty on read-only surfaces that carry no active clue (party view, demo). */
+  xref?: ReadonlySet<number>;
   onCellClick: (cell: number) => void;
   onFlashEnd: (cell: number, nonce: number) => void;
 }
 
 // Background precedence (SP6, DESIGN.md section 10):
 // black square > current cell > check/cross-reference > active word > teammate-here > default.
+// The cross-reference slot is live: a referenced cell outranks the active word, so where a
+// referenced word crosses the active one the crossing cell paints xref, not word.
 function cellRole(
   cell: number,
   puzzle: Puzzle,
   selection: Selection | null,
   activeWord: ReadonlySet<number>,
   teammateCells: ReadonlySet<number>,
+  xref: ReadonlySet<number>,
 ): string {
   if (puzzle.blocks.has(cell)) return "block";
   if (cell === selection?.cell) return "current";
   if (puzzle.wrong.has(cell)) return "wrong";
+  if (xref.has(cell)) return "xref";
   if (activeWord.has(cell)) return "word";
   if (teammateCells.has(cell)) return "teammate";
   return "default";
@@ -82,6 +92,7 @@ export function CrosswordGrid({
   selection,
   presence,
   flashes,
+  xref = EMPTY,
   onCellClick,
   onFlashEnd,
 }: Props) {
@@ -95,7 +106,14 @@ export function CrosswordGrid({
     const x = (cell % cols) * CELL;
     const y = Math.floor(cell / cols) * CELL;
     const isBlock = puzzle.blocks.has(cell);
-    const role = cellRole(cell, puzzle, selection, activeWord, teammateCells);
+    const role = cellRole(
+      cell,
+      puzzle,
+      selection,
+      activeWord,
+      teammateCells,
+      xref,
+    );
     const number = puzzle.numbers.get(cell);
     const value = fills.get(cell);
     const here = presence.get(cell) ?? [];

@@ -9,6 +9,7 @@
 // run and pair each with that word. A direction word ends its run, so "17-Across and 3-Down"
 // splits into two runs and yields one entry per axis.
 import type { Direction } from "@crossy/engine";
+import type { Clue } from "../domain/types";
 
 export interface ClueRef {
   readonly number: number;
@@ -51,4 +52,29 @@ export function parseClueRefs(text: string | undefined): ClueRef[] {
     }
   }
   return refs;
+}
+
+/**
+ * The cells a set of referenced clues covers, unioned across both axes. `keys` is the call site's
+ * already existence-filtered set of `${direction}-${number}` marks, so a key naming a clue this
+ * puzzle lacks simply matches nothing and contributes no cells. Same key scheme the presence map
+ * and clue rail use, so a clue looks itself up in O(1).
+ */
+export function referencedCells(
+  keys: ReadonlySet<string>,
+  acrossClues: readonly Clue[],
+  downClues: readonly Clue[],
+): Set<number> {
+  const cells = new Set<number>();
+  for (const clue of acrossClues) {
+    if (keys.has(`across-${clue.number}`)) {
+      for (const cell of clue.cells) cells.add(cell);
+    }
+  }
+  for (const clue of downClues) {
+    if (keys.has(`down-${clue.number}`)) {
+      for (const cell of clue.cells) cells.add(cell);
+    }
+  }
+  return cells;
 }

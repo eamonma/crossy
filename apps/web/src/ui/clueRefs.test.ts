@@ -5,7 +5,8 @@
 // so they yield nothing. Existence is not this module's job; the call site filters against the
 // real clue list, so a parsed ref for a clue that does not exist is correct behavior here.
 import { describe, expect, it } from "vitest";
-import { parseClueRefs } from "./clueRefs";
+import type { Clue } from "../domain/types";
+import { parseClueRefs, referencedCells } from "./clueRefs";
 
 describe("parseClueRefs", () => {
   it("reads a hyphenated single ref", () => {
@@ -123,5 +124,35 @@ describe("parseClueRefs", () => {
 
   it("returns [] for prose with no reference at all", () => {
     expect(parseClueRefs("Capital of France")).toEqual([]);
+  });
+});
+
+// referencedCells turns the call site's existence-filtered key set into the cells to paint. The
+// keys are already `${direction}-${number}` and already trimmed to entries this puzzle has, so
+// the union is the whole job: gather the cells of every clue whose key is in the set.
+describe("referencedCells", () => {
+  const across: Clue[] = [
+    { number: 1, direction: "across", cells: [0, 1, 2] },
+    { number: 5, direction: "across", cells: [10, 11] },
+  ];
+  const down: Clue[] = [
+    { number: 1, direction: "down", cells: [0, 3, 6] },
+    { number: 2, direction: "down", cells: [1, 4] },
+  ];
+
+  it("unions the cells of referenced clues across both axes", () => {
+    const keys = new Set(["across-5", "down-1"]);
+    expect(referencedCells(keys, across, down)).toEqual(
+      new Set([10, 11, 0, 3, 6]),
+    );
+  });
+
+  it("contributes nothing for a key that names no existing clue", () => {
+    const keys = new Set(["across-1", "down-9"]);
+    expect(referencedCells(keys, across, down)).toEqual(new Set([0, 1, 2]));
+  });
+
+  it("returns an empty set for an empty key set", () => {
+    expect(referencedCells(new Set(), across, down)).toEqual(new Set());
   });
 });
