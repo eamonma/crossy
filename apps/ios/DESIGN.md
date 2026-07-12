@@ -282,7 +282,16 @@ seal), because the nav bar lays out its item slots in its own UIKit pass and nev
 joins our SwiftUI transaction, so `withAnimation(.crossyChrome)` around a
 width-driving value does not make the bar breathe; the room seeds its true roster
 and keeps the first-connect pill terse so the open frame carries no snap, and the
-residual snaps are honest, each marking a real change.
+residual snaps are honest, each marking a real change. Arrival finding (device
+2026-07-11): the time pill arrives when the room is live, so the open frame's
+cluster is width-stable (share + players only, both stable from frame one) and
+the pill's arrival is an honest bar-item insertion on the welcome's beat
+(TimePillPresence keys on the store's sync state; a terminal room's sealed pill
+arrives the same way). Recorded, not fixed (device 2026-07-11): the facts-card
+metaball from the bar-hosted pill is broken, the departing stub lives in our
+GlassEffectContainer and the pill's glass in the system bar's, and two containers
+cannot blend, so the goo departs orphaned; the facts-card presentation awaits an
+owner redesign and the morph code is untouched.
 
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels

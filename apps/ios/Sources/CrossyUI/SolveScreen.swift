@@ -318,6 +318,14 @@ public struct SolveScreen: View {
                     // refracts through a panel's surface).
                     backHandedOff: pillEclipsed(.backButton),
                     timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
+                    // The time pill arrives when the room is live (DESIGN.md §4
+                    // toolbar amendment): before the first welcome the store is
+                    // `connecting`, so the pill is absent and the open cluster is
+                    // share + players only, both width-stable; the welcome flips
+                    // sync and the pill materializes as its own bar insertion. A
+                    // terminal room's sealed pill arrives the same way, on its
+                    // welcome's beat (TimePillPresence, the honest sync fact).
+                    showsTimePill: TimePillPresence.isLive(sync: store.sync),
                     hasShare: shareable != nil,
                     onBack: onBack,
                     // One mechanism for both moments (redesign 2026-07-11): the

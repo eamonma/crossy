@@ -1,4 +1,5 @@
 import CoreGraphics
+import CrossyStore
 import XCTest
 
 @testable import CrossyUI
@@ -63,6 +64,32 @@ final class RoomPillClusterTests: XCTestCase {
         let clampedCard = CGRect(x: 80, y: 10, width: 280, height: 112)
         XCTAssertTrue(PanelEclipse.eclipses(panel: reachingCard, pill: backButton))
         XCTAssertFalse(PanelEclipse.eclipses(panel: clampedCard, pill: backButton))
+    }
+}
+
+// The time pill's presence in the bar (DESIGN.md §4 toolbar amendment): the pill
+// ARRIVES when the room is live, so the open frame's trailing cluster is share +
+// players only (both width-stable) and the pill's arrival is an honest bar-item
+// insertion, not the slot settling after the #132 zoom push. Pure on the store's
+// sync state (the honest existing fact, GameStore's SyncState), the
+// RoomWeather.from(sync:) discipline.
+
+final class TimePillPresenceTests: XCTestCase {
+    // Before the first welcome the store is `connecting` (no board truth yet):
+    // the pill is absent, so the open cluster is share + players only and no slot
+    // resolves its width after the zoom push.
+    func test_beforeTheWelcome_theTimePillIsAbsent_section4() {
+        XCTAssertFalse(TimePillPresence.isLive(sync: .connecting))
+    }
+
+    // The welcome flips sync off `connecting` and the pill materializes into the
+    // bar as its own insertion. Every post-welcome state has a board, so the pill
+    // stands through live, resyncing, and a reconnect alike (a terminal room's
+    // sealed pill arrives the same way, on its welcome's beat).
+    func test_onceLive_theTimePillArrives_section4() {
+        XCTAssertTrue(TimePillPresence.isLive(sync: .live))
+        XCTAssertTrue(TimePillPresence.isLive(sync: .resyncing))
+        XCTAssertTrue(TimePillPresence.isLive(sync: .reconnecting))
     }
 }
 
