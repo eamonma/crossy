@@ -37,6 +37,11 @@
       "js": ["amuselabs/content.js"],
       "all_frames": true,
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://crossy.party/*"],
+      "js": ["web-signal/content.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {

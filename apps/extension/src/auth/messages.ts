@@ -6,6 +6,7 @@
 import type { Provider } from "./flow";
 
 export const AUTH_SIGN_IN = "crossy/auth/sign-in" as const;
+export const AUTH_SILENT_SIGN_IN = "crossy/auth/silent-sign-in" as const;
 export const AUTH_SIGN_OUT = "crossy/auth/sign-out" as const;
 export const AUTH_TOKEN = "crossy/auth/token" as const;
 
@@ -16,6 +17,23 @@ export interface SignInRequest {
 
 export type SignInReply =
   { readonly ok: true } | { readonly ok: false; readonly reason: string };
+
+/**
+ * Ask the worker to sign in without any UI, riding a live provider session in the
+ * browser (interactive:false). Sent by the popup when it opens signed out and by the
+ * crossy.party content script when the web app is signed in. No provider field: the
+ * silent path tries the primary provider (Discord) only.
+ */
+export interface SilentSignInRequest {
+  readonly type: typeof AUTH_SILENT_SIGN_IN;
+}
+
+/**
+ * The silent attempt only ever succeeds or quietly fails. "failed" is not an error to
+ * surface: the extension was signed out before the attempt and stays signed out, with
+ * nothing lost. There is no reason string because there is nothing to show.
+ */
+export type SilentSignInReply = { readonly ok: true } | { readonly ok: false };
 
 export interface SignOutRequest {
   readonly type: typeof AUTH_SIGN_OUT;

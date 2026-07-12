@@ -7,9 +7,19 @@
 
 import { postPuzzle } from "./api";
 import type { Provider } from "./auth/flow";
-import type { SignInReply, TokenReply } from "./auth/messages";
-import { AUTH_SIGN_IN, AUTH_SIGN_OUT, AUTH_TOKEN } from "./auth/messages";
+import type {
+  SignInReply,
+  SilentSignInReply,
+  TokenReply,
+} from "./auth/messages";
+import {
+  AUTH_SIGN_IN,
+  AUTH_SIGN_OUT,
+  AUTH_SILENT_SIGN_IN,
+  AUTH_TOKEN,
+} from "./auth/messages";
 import { chromeLocalArea, loadSession, SESSION_KEY } from "./auth/store";
+import { silentSignInThenRender } from "./popup-silent";
 import { buildEnvelope } from "./envelope";
 import { EXTRACT_REQUEST } from "./messaging";
 import type { ExtractResponse } from "./messaging";
@@ -39,9 +49,21 @@ const PROVIDERS: ReadonlyArray<{
   { provider: "apple", label: "Sign in with Apple", tone: "quiet" },
 ];
 
+// The silent attempt is time-boxed in the popup too, so a hung worker request still
+// drops to the provider buttons promptly rather than sitting on the checking state.
+const SILENT_TIMEOUT_MS = 4000;
+
 function showResult(text: string, isError: boolean): void {
   resultEl.classList.toggle("error", isError);
   resultEl.textContent = text;
+}
+
+/** The quiet transient state while a silent sign-in runs: status text, no buttons. */
+function renderChecking(): void {
+  identityEl.textContent = "";
+  statusEl.textContent = "Checking your Crossy sign-in...";
+  showResult("", false);
+  actionsEl.replaceChildren();
 }
 
 async function extractFromActiveTab(): Promise<ExtractResponse | null> {
@@ -254,22 +276,48 @@ async function renderSignedIn(who: {
   renderIngest(extraction);
 }
 
+// Set while a silent attempt runs so the storage.onChanged listener does not re-enter
+// init and double-render underneath it; the silent flow calls init itself on success.
+let silentInFlight = false;
+
 async function init(): Promise<void> {
   bases = await loadBases();
   const session = await loadSession(chromeLocalArea());
-  if (session === null) {
-    renderSignedOut();
+  if (session !== null) {
+    await renderSignedIn({
+      displayName: session.displayName,
+      email: session.email,
+    });
     return;
   }
-  await renderSignedIn({
-    displayName: session.displayName,
-    email: session.email,
+  // Signed out: try a silent sign-in before committing to the buttons. On success
+  // the worker has persisted a session and onSignedIn re-runs init into signed-in;
+  // on failure or timeout onSignedOut paints the normal provider buttons.
+  silentInFlight = true;
+  await silentSignInThenRender({
+    requestSilent: () =>
+      chrome.runtime.sendMessage({
+        type: AUTH_SILENT_SIGN_IN,
+      }) as Promise<SilentSignInReply>,
+    showChecking: renderChecking,
+    onSignedIn: () => {
+      silentInFlight = false;
+      void init();
+    },
+    onSignedOut: () => {
+      silentInFlight = false;
+      renderSignedOut();
+    },
+    timeoutMs: SILENT_TIMEOUT_MS,
   });
 }
 
 // Re-render if the session lands or leaves while the popup is open (sign-in
-// completing on platforms that keep the popup alive, sign-out elsewhere).
+// completing on platforms that keep the popup alive, sign-out elsewhere). While a
+// silent attempt runs, the session it persists is the attempt's own business: it
+// calls init itself on success, so skip re-entry here to avoid a double render.
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (silentInFlight) return;
   if (areaName === "local" && SESSION_KEY in changes) void init();
 });
 
