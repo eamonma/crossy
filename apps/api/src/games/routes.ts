@@ -50,6 +50,13 @@ function normalizeGameName(
   return { ok: true, name: trimmed.slice(0, MAX_GAME_NAME) };
 }
 
+/**
+ * The wire fallback for a member whose mirror row holds no display name (DESIGN.md §8): the
+ * same string the session's participant payload sends (apps/session/src/server.ts), so the REST
+ * member stack and the live roster read one value and cannot drift (PROTOCOL.md §4, §12).
+ */
+const FORMER_PARTICIPANT = "former participant";
+
 /** A game's host row plus the caller's role in it, resolved in one read pair. */
 interface GameAccess {
   readonly createdBy: string;
@@ -218,8 +225,26 @@ interface GameSummary {
   readonly role: Role;
   readonly createdAt: string;
   readonly createdBy: string;
-  /** Total members (all roles), for the list card. */
+  /** Total members (all roles), for the list card; equals `members.length`. */
   readonly memberCount: number;
+  /**
+   * The full membership as display identity (PROTOCOL.md §12), ordered by join time ascending
+   * (the first joiner leads, ties by userId), so the order is total and deterministic and a
+   * client can open the room chrome or paint the card's avatar stack true without a second
+   * fetch. `name` is the §4 display name resolved at the identity mirror, never null on the
+   * wire (a null mirror reads as the same "former participant" the session sends, DESIGN.md
+   * §8); `avatarUrl` is the same opaque nullable field as §4, never an email (INV-6 spirit);
+   * `role` carries the solvers/spectators fact (a guest seats spectator; no guest flag on the
+   * wire), so clients can apply the standing solvers-only display filters.
+   */
+  readonly members: readonly GameSummaryMember[];
+  /**
+   * The game's invite code, on every row under exactly the game view's rule (PROTOCOL.md §12):
+   * members only, any role, since every member joined via it. The list is member-scoped by
+   * construction (the membership join below), so a row structurally cannot reach a non-member
+   * and the code never travels wider than `GET /games/{id}` already sends it.
+   */
+  readonly inviteCode: string;
   /**
    * When the game completed (the derived-timer end anchor, DESIGN.md §2), null while ongoing and
    * null for an abandoned game. Read from the session-owned `game_state` under the API's SELECT
@@ -244,6 +269,16 @@ interface GameSummary {
     /** The black-square silhouette, pattern only (PROTOCOL.md §12). No solution content. */
     readonly mask: Mask;
   };
+}
+
+/** One member on a `GET /games` row: display identity only (PROTOCOL.md §12). */
+interface GameSummaryMember {
+  readonly userId: string;
+  /** The resolved §4 display name; never null on the wire (the tombstone fallback applies). */
+  readonly name: string;
+  /** The opaque nullable avatar URL (PROTOCOL.md §4, §12); never an email (INV-6 spirit). */
+  readonly avatarUrl: string | null;
+  readonly role: Role;
 }
 
 /**
@@ -380,6 +415,11 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     // `lastActivityAt` is `MAX(cell_events.at)` for the game, a correlated subquery under the API's
     // SELECT grant on cell_events (migration 0008); it reads only the timestamp, never a cell
     // `value` (INV-6), and never writes (INV-7). Null for a game with no events.
+    // `members` is the row's member stack (PROTOCOL.md §12): one correlated jsonb_agg per row (the
+    // memberCount shape, not an N+1 and not a second round trip), joining the API-owned users
+    // mirror for the resolved display name and avatar, ordered by join time (first joiner first,
+    // ties by user_id) so the order is total and deterministic. It selects display columns only:
+    // never an email (the mirror stores none), never solution content (INV-6 untouched).
     // SELECTION order and cursor are `createdAt` DESC (with `gameId` as a deterministic tiebreaker
     // for shared timestamps), which the LIMIT slices into a stable page; the activity reorder for
     // display happens after, in JS, over exactly this page's rows.
@@ -389,6 +429,10 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         name: schema.games.name,
         createdAt: schema.games.createdAt,
         createdBy: schema.games.createdBy,
+        // Member-only by construction: every selected row is a game the caller belongs to (the
+        // membership WHERE below), the exact visibility rule GET /games/{id} applies to its own
+        // inviteCode (PROTOCOL.md §12), so this reaches no one the view would refuse.
+        inviteCode: schema.games.inviteCode,
         puzzleId: schema.games.puzzleId,
         role: schema.memberships.role,
         puzzleRows: sql<number>`(${schema.games.puzzleSnapshot} ->> 'rows')::int`,
@@ -406,6 +450,19 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
           string | null
         >`(select to_char((max(ce."at") at time zone 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') from "cell_events" ce where ce."game_id" = ${schema.games.gameId})`,
         memberCount: sql<number>`(select count(*)::int from "memberships" mc where mc."game_id" = ${schema.games.gameId})`,
+        // The member stack (see the comment above). coalesce folds the impossible empty case
+        // (the caller is always a member) to [] rather than SQL NULL, keeping the type honest.
+        // The name coalesce is the §4 tombstone fallback, bound as a parameter, not inlined.
+        members: sql<GameSummaryMember[]>`(
+          select coalesce(jsonb_agg(jsonb_build_object(
+            'userId', ms."user_id",
+            'name', coalesce(us."display_name", ${FORMER_PARTICIPANT}),
+            'avatarUrl', us."avatar",
+            'role', ms."role"
+          ) order by ms."joined_at", ms."user_id"), '[]'::jsonb)
+          from "memberships" ms
+          join "users" us on us."user_id" = ms."user_id"
+          where ms."game_id" = ${schema.games.gameId})`,
       })
       .from(schema.memberships)
       .innerJoin(
@@ -444,6 +501,9 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       createdAt: r.createdAt.toISOString(),
       createdBy: r.createdBy,
       memberCount: r.memberCount,
+      // The join-ordered member stack and the member-only invite code (PROTOCOL.md §12).
+      members: r.members,
+      inviteCode: r.inviteCode,
       // `completed_at` is null while ongoing, and null when no game_state row exists yet (the
       // left join): both read as "not done" on the home. Present only for a completed game.
       completedAt: r.completedAt === null ? null : r.completedAt.toISOString(),
