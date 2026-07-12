@@ -201,9 +201,12 @@ final class RealRoom {
 
     /// The room has no surfaced REST error path yet (a reported gap for this
     /// slice; EXPERIENCE.md §4 wants one sentence per code). Until it lands, a
-    /// failed operation logs and no-ops rather than papering the board.
+    /// failed operation logs in debug builds and no-ops rather than papering
+    /// the board; release builds stay silent.
     private func logRESTGap(_ operation: String, _ error: any Error) {
-        print("[RealRoom] \(operation) failed: \(describe(error))")
+        #if DEBUG
+            print("[RealRoom] \(operation) failed: \(describe(error))")
+        #endif
     }
 
     private func describe(_ error: any Error) -> String {
