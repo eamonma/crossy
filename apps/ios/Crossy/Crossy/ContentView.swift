@@ -94,7 +94,7 @@ struct DemoRoomView: View {
             // build (ShareInvite.url), so the whole surface is judgeable with
             // no network.
             shareUrl: ShareInvite.url(
-                gameId: room.gameId, code: room.inviteCode, name: room.roomName),
+                gameId: room.gameId, code: room.inviteCode),
             model: room.selection,
             chrome: room.chrome,
             avatarCache: avatarCache,
@@ -104,7 +104,7 @@ struct DemoRoomView: View {
             // is device-judgeable over the fixture URL.
             onCopyShareLink: {
                 if let url = ShareInvite.url(
-                    gameId: room.gameId, code: room.inviteCode, name: room.roomName)
+                    gameId: room.gameId, code: room.inviteCode)
                 {
                     UIPasteboard.general.string = url.absoluteString
                 }
@@ -115,7 +115,7 @@ struct DemoRoomView: View {
             // device-judgeable offline.
             onShareInvite: {
                 shareURL = ShareInvite.url(
-                    gameId: room.gameId, code: room.inviteCode, name: room.roomName)
+                    gameId: room.gameId, code: room.inviteCode)
             },
             onEndGame: {},
             onKick: { _ in }
@@ -182,8 +182,7 @@ struct RealRoomView: View {
                     // sheet encodes, the Copy link row writes, and the sheet
                     // sends.
                     shareUrl: ShareInvite.url(
-                        gameId: room.gameId, code: room.inviteCode,
-                        name: room.roomName),
+                        gameId: room.gameId, code: room.inviteCode),
                     model: room.selection,
                     chrome: room.chrome,
                     avatarCache: avatarCache,
@@ -196,8 +195,7 @@ struct RealRoomView: View {
                     // copy-code row retired for the share menu).
                     onCopyShareLink: {
                         if let url = ShareInvite.url(
-                            gameId: room.gameId, code: room.inviteCode,
-                            name: room.roomName)
+                            gameId: room.gameId, code: room.inviteCode)
                         {
                             UIPasteboard.general.string = url.absoluteString
                         }
@@ -208,8 +206,7 @@ struct RealRoomView: View {
                     // encodes, never re-derived differently.
                     onShareInvite: {
                         shareURL = ShareInvite.url(
-                            gameId: room.gameId, code: room.inviteCode,
-                            name: room.roomName)
+                            gameId: room.gameId, code: room.inviteCode)
                     },
                     onEndGame: { room.endGame() },
                     onKick: { userId in room.kick(userId: userId) }

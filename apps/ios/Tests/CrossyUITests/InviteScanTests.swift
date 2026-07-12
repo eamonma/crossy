@@ -13,7 +13,8 @@ final class InviteScanTests: XCTestCase {
         XCTAssertEqual(InviteScan.code(fromPayload: "AB23CD45"), "AB23CD45")
         XCTAssertEqual(InviteScan.code(fromPayload: "AB23-CD45"), "AB23CD45")
         XCTAssertEqual(InviteScan.code(fromPayload: " AB23 CD45 \n"), "AB23CD45")
-        // The projector's share link (apps/web buildShareUrl), name riding along.
+        // An old named share link still in the wild (links are code-only now):
+        // the extra param never confuses the digest.
         XCTAssertEqual(
             InviteScan.code(
                 fromPayload: "https://crossy.app/game/g-1?code=AB23CD45&name=Tuesday%20evening"),

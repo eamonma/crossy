@@ -61,7 +61,8 @@ final class InviteQRTests: XCTestCase {
             ])
     }
 
-    // The named share link, URL-encoded exactly as buildShareUrl mints it.
+    // A legacy named link (minted before links went code-only): no longer the
+    // shape ShareInvite mints, kept as the encoder's version-5 vector.
     func test_shareLinkNamed_matchesTheWebGeneratorModuleForModule() throws {
         let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.party/game/g-1?code=ABCD2345&name=Sunday%20themeless"))
         XCTAssertEqual(matrix.version, 5)
@@ -110,7 +111,8 @@ final class InviteQRTests: XCTestCase {
             ])
     }
 
-    // A production-shaped link: UUID game id plus an encoded room name.
+    // A legacy production-shaped link (UUID game id plus the encoded room name
+    // links used to carry), kept as the encoder's version-6 vector.
     func test_shareLinkProduction_matchesTheWebGeneratorModuleForModule() throws {
         let matrix = try XCTUnwrap(InviteQR.matrix(for: "https://crossy.party/game/2f6e0a1c-8b7d-4d2e-9c3a-5b1f0e7a6d94?code=TIDECOVE&name=Tuesday%20evening"))
         XCTAssertEqual(matrix.version, 6)

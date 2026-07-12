@@ -369,7 +369,6 @@ export function LiveApp({
       ? buildAppLink({
           gameId,
           code: params.get("code"),
-          name: params.get("name"),
         })
       : null;
     return (
@@ -944,7 +943,6 @@ function LiveGame({
     origin: window.location.origin,
     gameId,
     code,
-    name,
   });
 
   const completed = store.status === "completed" && !dismissedCompletion;

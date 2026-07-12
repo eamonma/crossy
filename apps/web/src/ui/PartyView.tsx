@@ -194,9 +194,8 @@ export function PartyView({
         origin: window.location.origin,
         gameId,
         code,
-        name,
       }),
-    [gameId, code, name],
+    [gameId, code],
   );
   const qrMarkup = useMemo(
     () =>
