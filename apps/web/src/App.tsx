@@ -213,6 +213,11 @@ function Router({
   return shell(
     <Home
       surface={route.kind === "puzzles" ? "puzzles" : "games"}
+      // The extension's post-ingest play intent (D22): `/puzzles?play=<id>` preselects that
+      // library puzzle for room creation. Signed out, this branch is never reached (the landing
+      // renders instead) and the OAuth redirect preserves the path and query, so the intent
+      // fires after sign-in.
+      playIntent={route.kind === "puzzles" ? (route.play ?? null) : null}
       apiBase={apiBase}
       getToken={getToken}
       session={identity.getSession()}
