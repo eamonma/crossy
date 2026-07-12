@@ -127,13 +127,16 @@ final class RESTSnapshotTests: XCTestCase {
 
     func test_gamesListCarriesCompletionThroughCompletedAt_PROTOCOL12() throws {
         // §12: GET /games reports completion through `completedAt`, the ISO time a game finished,
-        // null while ongoing (and null for an abandoned game). The fixture pins both branches:
-        // the first row is ongoing (null), the second is solved (a real timestamp).
+        // null while ongoing (and null for an abandoned game). The fixture pins both branches
+        // wire-honestly: the first row is solved, its completedAt equal to its lastActivityAt
+        // (the completing entry IS the newest board event), the second is ongoing and unplayed
+        // (both null). Solved-but-unplayed can never occur on the wire (completion requires
+        // board events), so the fixture never shows it.
         let list = try assertLosslessRoundTrip(GamesListResponse.self, .rest, "games-list")
-        XCTAssertNil(list.games[0].completedAt, "an ongoing game has null completion")
         XCTAssertEqual(
-            list.games[1].completedAt, "2026-07-08T20:11:47.000Z",
+            list.games[0].completedAt, "2026-07-09T18:24:03.000Z",
             "a solved game carries its ISO completion time")
+        XCTAssertNil(list.games[1].completedAt, "an ongoing game has null completion")
     }
 
     func test_gamesListDecodesAnOlderServerThatOmitsCompletedAt_PROTOCOL14() throws {

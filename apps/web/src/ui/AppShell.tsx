@@ -22,7 +22,7 @@
 // The brand block and user card below are shaped for that: the mark, the trigger, and
 // the avatar are single persistent elements (focus survives a toggle), and wide content
 // is pinned to the expanded width so nothing reflows or re-truncates mid-flight.
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -410,9 +410,14 @@ function RecentGamesList({
 }) {
   const { live, solved } = partitionBySolved(sortByActivity(games));
   const activeIsSolved = solved.some((g) => g.gameId === activeGameId);
-  // Default collapsed, but reveal the section when the active game hides inside it (so an
-  // aria-current row is never invisible). The user's manual toggle wins after that.
+  // Default collapsed, but reveal the section whenever the active game moves into it (so an
+  // aria-current row is never invisible). The shell persists across navigation, so this must
+  // track the transition, not just mount state. The effect only ever opens; a manual collapse
+  // afterwards stands until the active game changes into the section again.
   const [expanded, setExpanded] = useState(activeIsSolved);
+  useEffect(() => {
+    if (activeIsSolved) setExpanded(true);
+  }, [activeIsSolved, activeGameId]);
 
   return (
     <SidebarMenu className="gap-0.5">
