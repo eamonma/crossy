@@ -144,10 +144,12 @@ describe("nyt translator: happy path (PROTOCOL.md section 12; DESIGN.md section 
     expect(accept(d).puzzle.clues.across[0]?.text).toBe("");
   });
 
-  it("joins constructors as the byline and reads absent title as null (readMetadata semantics)", () => {
+  it("joins constructors as the byline; an empty title falls back to the publicationDate name", () => {
     const one = accept(doc());
     expect(one.author).toBe("Synthia Synthetic");
-    expect(one.title).toBeNull();
+    // doc() carries publicationDate 2026-01-01 (a Thursday) and no title, so the daily is named
+    // from the date rather than reaching clients as "Untitled".
+    expect(one.title).toBe("Thursday, January 1, 2026");
     const two = accept({ ...doc(), constructors: ["Ada A.", "Babbage B."] });
     expect(two.author).toBe("Ada A. and Babbage B.");
     const three = accept({
@@ -159,6 +161,33 @@ describe("nyt translator: happy path (PROTOCOL.md section 12; DESIGN.md section 
     expect(three.title).toBe("SYNTHETIC SUNDAY & CO");
     // Malformed constructors read as no author, never a rejection (display metadata).
     expect(accept({ ...doc(), constructors: "Synthia" }).author).toBeNull();
+  });
+
+  it("names a titleless daily from publicationDate; an explicit title still wins", () => {
+    // Weekday + long date, no outlet prefix. 2026-07-12 is a Sunday.
+    expect(accept({ ...doc(), publicationDate: "2026-07-12" }).title).toBe(
+      "Sunday, July 12, 2026",
+    );
+    // A present title is authoritative; the date is only the fallback.
+    expect(
+      accept({
+        ...doc(),
+        title: "Themeless Thursday",
+        publicationDate: "2026-07-12",
+      }).title,
+    ).toBe("Themeless Thursday");
+    // No title and no usable date reads as null (clients keep their "Untitled" fallback): a
+    // missing, malformed, or impossible date never invents a name and never rejects the puzzle.
+    const noDate = doc();
+    delete noDate["publicationDate"];
+    expect(accept(noDate).title).toBeNull();
+    expect(
+      accept({ ...doc(), publicationDate: "07/12/2026" }).title,
+    ).toBeNull();
+    expect(
+      accept({ ...doc(), publicationDate: "2026-02-30" }).title,
+    ).toBeNull();
+    expect(accept({ ...doc(), publicationDate: 20260712 }).title).toBeNull();
   });
 
   it("accepts a multi-character answer as a rebus under the shared cap", () => {
@@ -190,7 +219,7 @@ describe("nyt translator: happy path (PROTOCOL.md section 12; DESIGN.md section 
     expect(accept(doc()).puzzle.circles).toEqual([]);
   });
 
-  it("ignores clueLists, editor, publicationDate, copyright, and unknown fields", () => {
+  it("ignores clueLists, editor, copyright, and unknown fields (none reach the grid)", () => {
     const r = accept({ ...doc(), subcategory: 0, extra: true });
     expect(r.puzzle.solution).toEqual(SOLVED);
   });

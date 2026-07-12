@@ -43,6 +43,35 @@ import type { IngestResult, PuzzleFeatures, RunClue, WordRun } from "./ingest";
 /** The one cell `type` value that means a plain cell (reference default when absent). */
 const PLAIN_CELL_TYPE = 1;
 
+/**
+ * Fixed English names for the synthesized daily title. Hardcoded, never `toLocaleDateString`:
+ * the formatted string must be deterministic across servers and locales (INV-1's spirit for
+ * display metadata), and a crossword audience reads dates in this one form.
+ */
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+
 /** One structurally validated clue entry: its slot cells and its raw display text. */
 interface NytClue {
   readonly direction: "across" | "down";
@@ -103,6 +132,38 @@ function readConstructors(raw: unknown): string | null {
       ? `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]!}`
       : names.join(" and ");
   return readMetadata(joined);
+}
+
+/**
+ * Synthesize a human daily title from the document's `publicationDate` when the title is empty.
+ * NYT dailies ship no `title`, so every daily would otherwise reach clients as "Untitled"; the
+ * reference falls back to the print date, and this names the puzzle once at ingest so every
+ * client shows the same real name. The format is weekday + long date, no outlet prefix ("Sunday,
+ * July 12, 2026") -- the weekday carries real signal for a crossword audience (Monday easy,
+ * Saturday hard, Sunday big).
+ *
+ * `publicationDate` is the v6 `YYYY-MM-DD` string. It is parsed strictly and validated by
+ * round-trip (a rolled-over date like `2026-02-30` is rejected), then formatted from `Date.UTC`
+ * -- constructed from explicit components, so no ambient clock and no timezone drift. Anything
+ * malformed, absent, or non-string reads as no title (null), the pre-existing "Untitled"
+ * behavior: naming is display metadata and never rejects the puzzle.
+ */
+function synthesizeDateTitle(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return `${WEEKDAYS[date.getUTCDay()]}, ${MONTHS[month - 1]} ${day}, ${year}`;
 }
 
 /**
@@ -324,10 +385,12 @@ export function translateNyt(body: unknown): IngestResult {
     shadedCircles: false,
   };
 
-  // Display metadata, parsed last: never affects acceptance or the chosen code. Dailies
-  // usually carry no title (the reference falls back to the print date, a client concern);
-  // the byline is the joined `constructors` list. `editor` and `publicationDate` are unread.
-  const title = readMetadata(body["title"]);
+  // Display metadata, parsed last: never affects acceptance or the chosen code. Dailies usually
+  // carry no title, so an empty title falls back to a date name synthesized from
+  // `publicationDate` (the reference's print-date fallback, done once here so every client shows
+  // a real name). The byline is the joined `constructors` list. `editor` is unread.
+  const title =
+    readMetadata(body["title"]) ?? synthesizeDateTitle(body["publicationDate"]);
   const author = readConstructors(body["constructors"]);
 
   return { ok: true, puzzle, features, title, author };
