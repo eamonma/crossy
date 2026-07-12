@@ -50,9 +50,9 @@ struct ContentView: View {
             // from the foreground, no APNs. Evidence only.
             IslandLab()
         } else if ProcessInfo.processInfo.arguments.contains("-gooLab") {
-            // The persistent-chrome-layer goo rig (GooLab.swift, SP-i6): the
-            // Join capsule melting into the room header cluster across a route
-            // change, A|B|C|D by the next arg. Evidence only.
+            // The goo rig (GooLab.swift, SP-i6): the Join capsule melting into
+            // the room header pills across a route change, A|B|C|D|E by the
+            // next arg (E is the system-toolbar route). Evidence only.
             GooLab()
         } else if let config = RoomConfig.resolve() {
             RealRoomView(room: RealRoom(config: config))

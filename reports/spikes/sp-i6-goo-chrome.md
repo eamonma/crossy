@@ -1,188 +1,230 @@
-# SP-i6: the persistent-chrome-layer goo
+# SP-i6: the goo across the room-open seam
 
 Ran 2026-07-11 against Xcode 26.5 (iOS 26.5 SDK), iPhone 17 simulator (iOS 26.5),
 and installed on the owner's iPhone 17 Pro Max as `com.eamonma.Crossy`. Lab lives
-on branch `ios/goo-lab` (never merges, the ClueFitLab pattern). Four variants
-route off `-gooLab A|B|C|D`, wired like `-morphLab` in `ContentView`. The lab
-touches no production screen: four new files (`GooLab*.swift`) plus the one
+on branch `ios/goo-lab` (never merges, the ClueFitLab pattern). Five variants
+route off `-gooLab A|B|C|D|E`, wired like `-morphLab` in `ContentView`. The lab
+touches no production screen: five new files (`GooLab*.swift`) plus the one
 launch-arg route and the analytics-quiet list.
 
-## The question
+## The question, and the owner's clarified grammar
 
-The owner's goal, verbatim intent: gooey Liquid Glass morphing of the Rooms
-screen's Join capsule melting into the room header's pill cluster (back button +
-time pill) when a room opens. The goo is Apple's glass shader blending two
-shapes' fields (the Mail-menu finding, DESIGN.md §4), which only happens between
-SIBLINGS of ONE `GlassEffectContainer` in ONE hierarchy. A room open is a
-NavigationStack push, so the two production screens live in two hierarchies and
-cannot goo today.
+The original ask: gooey Liquid Glass morphing of the Rooms screen's Join capsule
+melting into the room header's pills when a room opens. The goo is Apple's glass
+shader blending two shapes' fields (the Mail-menu finding, DESIGN.md §4), which
+only happens between SIBLINGS of ONE `GlassEffectContainer` in ONE hierarchy. A
+room open is a NavigationStack push, so the production screens cannot goo today.
 
-The candidate this spike tests: a PERSISTENT CHROME LAYER mounted ABOVE the
-screen swap, owning both endpoint shapes in one container, swapping its children
-when the route changes so the system melts one into the other. This is the
-ratified tap-open exception (DESIGN.md §4, 2026-07-11): the facts card already
-rides the system's metaball materialize on 26+; SP-i1's `glassEffectID` ban is
-scoped to DRAG-scrubbed morphs, and a navigation tap is not a scrub.
+Clarified the same evening, and it reframes the spike. The owner's reference is
+MAIL'S TOOLBAR TRANSITION: home has Edit top-right; pushing into a mailbox, the
+top-right becomes Select + "..." as two separate pills, and Edit goos into those
+two SAME SIDE, IN PLACE. One shape splitting into shapes where it stands, no
+cross-screen travel. Two consequences:
 
-## The four variants
+- Variant B's screen-width flight is moot for the ask (kept in the lab for the
+  record).
+- The load-bearing observation: Mail achieves this ACROSS A PUSH because
+  Edit/Select/"..." are system toolbar items in the navigation bar, chrome that
+  persists across the push, whose items the system morphs on iOS 26. Crossy
+  hides the system nav bar on every screen and hand-draws its top chrome, which
+  is why we never see this for free. That suggests a far cheaper route than the
+  hand-built persistent chrome layer: adopt real ToolbarItems for top chrome and
+  let NavigationStack do the morph. Variant E proves or kills that route.
 
-- **A, near swap.** One `GlassEffectContainer`; a tap swaps a fake rooms list
-  for a fake room underneath while, inside the container, the Join child is
-  removed and the back-pill + time-pill children are inserted. Two toggles:
-  `matchedGeometry` vs `materialize`, and container spacing 6 (the cluster's
-  real blend) vs 40 (MetaballRecipe's fuse spacing). Does a swap between two
-  shapes near each other goo, or crossfade?
-- **B, traveling melt.** The capsule TRAVELS a screen-width, from Join's
-  top-trailing spot to the back button's top-leading spot, while the time pill
-  materializes out of it mid-flight. Two mechanisms A/B'd: a persistent single
-  glass surface whose frame+radius interpolate (the SP-i1 law extended to a tap,
-  using CrossyUI's `GlassMorph`), vs a `glassEffectID` matched swap across the
-  same travel (allowed here: tap-driven, never scrubbed). Which reads as
-  Mail-quality goo?
-- **C, distance law.** Two glass shapes in one container; the right shape's
-  edge-gap is a slider (0..220 pt) and the container spacing is a stepper
-  (6/12/24/40/80). A "melt near" button animates the pair together so the fuse
-  forms/breaks in motion. Where does the metaball stop bridging and degrade to a
-  crossfade?
-- **D, real-seam rehearsal.** The same chrome layer mounted OVER an ACTUAL
-  NavigationStack push (a fixture list pushing a fixture room). The chrome swap
-  is keyed on the real navigation state (`path` empty vs not) and animates on the
-  chrome spring, so a back-swipe commit (which fires outside a tap transaction)
-  still animates. `navigationTransition(.zoom)` (PR #132's mechanism) toggles ON
-  and OFF underneath.
+## The five variants
 
-## What rendered (simulator + device install)
-
-All four render on the iPhone 17 sim (iOS 26.5) with no crash, and all four
-install and launch on the owner's phone. The sim renders the glass field-blend
-LINEARLY and lies about goo (the standing MorphLab/MeltLab caveat), so the sim
-confirms only geometry and lifecycle:
-
-- A: the fake Rooms list on paper with the production Join capsule
-  (qrcode.viewfinder + "Join", height 40, corner 20) standing top-trailing; the
-  HUD ribbon reads the live mechanism and its toggles.
-- B: same Rooms endpoint; ribbon carries the mechanism (persistent / matched-ID)
-  and the swept spacing.
-- C: two glass circles at the swept gap, the gap slider and spacing steppers
-  live. At gap 40 / spacing 40 the sim shows two discrete pills (no neck), as
-  expected: the metaball bridge is a device-only render.
-- D: the "Rooms (real push)" NavigationStack list with the persistent
-  chrome-layer Join capsule floating ABOVE it (proving the layer sits outside
-  the stack and does not push with the screen), plus the zoom toggle.
+- **A, the in-place trailing split** (rebuilt, see the device finding below).
+  Join top-trailing; a tap swaps the paper underneath while the arriving TIME
+  PILL + CIRCULAR GLYPH (the Select + "..." analog) stand WHERE THE CAPSULE
+  STOOD, footprints overlapping (the Mail-button rule). Built on the production
+  metaball recipe already ratified on device for the facts card
+  (PillInflation.swift / MetaballPanelSurface): one `GlassEffectContainer` at
+  MetaballRecipe's fuse spacing (40), unique `glassEffectID`s in one namespace,
+  conditional children swapped inside `withAnimation(.smooth)` at Mail's timing
+  (0.35 open / 0.18 close), NO `glassEffectTransition` modifier. Ribbon toggles:
+  production recipe vs `+ .materialize`, spacing 40 vs 6. The back button
+  appears separately at leading, outside the goo.
+- **B, the traveling melt.** The capsule travels a screen-width while the time
+  pill materializes mid-flight; persistent single surface vs `glassEffectID`
+  matched swap. Moot for the clarified ask; recorded for the distance law.
+- **C, the distance law.** Two glass shapes, swept edge-gap (0..220 pt slider)
+  and container spacing (6/12/24/40/80), a "melt near" animator. Where does the
+  metaball stop bridging?
+- **D, the real-seam rehearsal.** The hand-built persistent chrome layer over an
+  actual NavigationStack push, swap keyed on the path commit,
+  `navigationTransition(.zoom)` ON/OFF, back-swipe against the commit-driven
+  swap.
+- **E, the system-toolbar route.** A real NavigationStack with the system bar
+  VISIBLE (this variant only). Screen 1: one trailing ToolbarItem carrying a
+  Join-like item (the Edit analog). Screen 2 (pushed): two trailing items, a
+  time-pill and a circular ellipsis glyph, split by `ToolbarSpacer(.fixed)` so
+  they read as separate glass pills like Mail's. A "match" toggle adds
+  `matchedTransitionSource` on the Join item + `navigationTransition(.zoom)` on
+  the destination for the recorded contrast. `-gooLabAutoPush` scripts the push
+  for capture.
 
 ## Findings
 
-### The architecture holds (mechanism)
+### Variant A, round one: the device killed the screen-width swap
 
-The persistent-chrome-layer idea is sound as SwiftUI: a `GlassEffectContainer`
-mounted as an overlay above the screen swap does own both endpoint shapes in one
-hierarchy, and its children can be swapped on a route change while the paper
-below cuts hard. In variant D this composes with a real `NavigationStack`: the
-chrome layer lives outside the stack, observes `path`, and never pushes with the
-pushed screen. This is the whole trick, and it works structurally. The remaining
-question is purely felt: does the SYSTEM blend the fields into Mail-quality goo,
-or does it crossfade-and-jump? That is device-only and the owner's to rule.
+The first cut placed the Join capsule top-trailing and the arriving cluster
+top-leading, siblings a screen-width apart in one container. Owner device
+report: "literally no effect", the swap snaps. Diagnosis: at that distance the
+two shapes' fields can never overlap, so there is nothing for the shader to
+blend and the ID swap just pops (SP-i1's snap, reproduced by hand). This is the
+distance law's field confirmation: goo needs overlapping or near-overlapping
+footprints, and no container spacing rescues a screen-width gap. It also
+contradicted the clarified grammar outright. The rebuild is the in-place
+trailing split above.
 
-### The distance law (what to expect, device-confirmed by the owner)
+### Variant A, rebuilt: the metaball works in place (sim evidence)
 
-SP-i1 / §10 pinned the STANDING fuse: container spacing 24 fused adjacent deck
-keys into wavy rows; the cluster's 6 keeps three pills separate at rest. The
-mechanism is a metaball field: two glass shapes bridge when the gap between their
-edges is within roughly the container's `spacing`, and the bridge thins to
-nothing past it. Variant C sweeps exactly this for a TRAVELING pair. The
-prediction the owner confirms or corrects on device: fusion is a function of
-edge-gap vs spacing; when edge-gap exceeds ~spacing the field cannot span and the
-pair reads as two objects (a crossfade, not a melt). If that holds, the
-Join-to-cluster travel (a full screen-width, ~250 pt) is FAR past any sane
-container spacing, so the traveling melt (B) can only goo at its ENDS (Join
-departing, cluster arriving) and must cross the middle as a moving crisp surface
-(persistent) or a crossfade (matched-ID) — the metaball cannot bridge the whole
-trip. This is the load-bearing finding for the production decision.
+With overlapping footprints on the production recipe, the iPhone 17 sim
+captured the blend mid-swap at x8 slow motion (`-gooLabSlow`, capture-only):
+the time pill and the ellipsis glyph bridged by a visible FUSED NECK, one wavy
+surface mid-flight, while the paper crossfades underneath (`sim-A3-mid20.png`).
+This is the first time this lab series has seen the metaball render mid-swap in
+the simulator at all; the felt quality still needs the owner's fingers (the sim
+renders the blend linearly), but structurally the in-place split goos.
 
-### The back-swipe (variant D, expected behavior)
+One more finding with production consequence: AT REST the arriving pair stays
+fused. At container spacing 40 with the production 8 pt pill gap, the time pill
+and glyph stand as one blob with a neck after the swap settles
+(`sim-A3-post.png`), exactly SP-i1's standing-fuse caution (spacing 24 fused
+the deck keys). The swap wants the fuse spacing; the rest state wants the
+cluster blend (6). A production wiring would have to settle the container's
+spacing down after the transition (or re-parent the pills to the standing
+cluster's container once the swap lands), or accept the union at rest. The
+ribbon's spacing toggle shows both states.
 
-The chrome swap is COMMIT-driven: it fires when `path` actually changes, which for
-a swipe-to-pop is at the gesture's release/cancel, not continuously under the
-finger. So the cluster should HOLD through the interactive scrub and pour back to
-Join only when the pop commits, riding the pop like the tab bar rather than
-scrubbing with the finger. A cancelled back-swipe should leave the cluster
-untouched (the path never changed). The owner records on device whether it reads
-clean or flickers mid-scrub; the animation is on the chrome spring so a
-commit outside a tap transaction still animates rather than snapping.
+### Variant E: the system does the Mail grammar for free (structurally)
+
+The rig renders and pushes on the sim. The settled pushed state is exactly the
+target grammar (`sim-E-post.png`): the system back button as a circular glass
+pill top-leading, the inline title, and TWO separate trailing glass items (time
+pill + ellipsis circle) split by `ToolbarSpacer(.fixed)`.
+
+The mid-push frame (`sim-E2-mid16.png`) is the load-bearing evidence: while the
+two screens slide underneath, the toolbar items DO NOT slide with them. They
+live in the bar's own persistent layer and transition IN PLACE: the back
+button's glass circle materializes at leading with its chevron not yet
+resolved, and the trailing item's glyph dissolves through blur at its spot
+(Mail's signature from the frame study: content gone through blur while the
+glass anchors). The system runs the same persistent-chrome-layer architecture
+variants A-D hand-build, natively, keyed to the push. No matching API was
+needed for this: the DEFAULT transition does it. The `matchedTransitionSource`
++ zoom toggle exists for the recorded contrast; the expectation (it zooms the
+whole screen out of the item, not item-to-item) matches the arrival-notes
+finding and is the owner's to confirm on device.
+
+Two implementation notes recorded from the sim run:
+
+- A `Label` in a 26 nav-bar item renders ICON-ONLY, even with
+  `.labelStyle(.titleAndIcon)`. Mail's Edit is a text-only item. A Join item
+  that should read as a text pill must be `Text` (or accept the glyph circle,
+  which is arguably the better Join anyway, the camera glyph).
+- Whether the item transition is the full metaball (fields fusing) or a
+  blur-dissolve-in-place is a device call: the sim's linear rendering cannot
+  distinguish them. What is settled structurally: same side, in place, in the
+  bar's persistent layer, across a real push.
+
+The back-swipe question (does the system scrub the item morph under the
+finger?) cannot be exercised in the sim (no touch injection); the ribbon
+prompts the owner to swipe back slowly on device. If the system scrubs the goo,
+that beats anything hand-built and decides the architecture.
+
+### The distance law (variant C, prediction + the A confirmation)
+
+SP-i1 / §10 pinned the STANDING fuse (spacing 24 fused the deck keys; the
+cluster's 6 keeps pills separate). Variant C sweeps edge-gap vs spacing for a
+traveling pair; variant A's round one confirmed the far end by hand (a
+screen-width gap cannot goo at any sane spacing) and round two the near end
+(overlapping footprints goo at 40, and stay fused at rest at an 8 pt gap). The
+exact break point between is C's slider, the owner's to read on device.
+
+### The hand-built chrome layer (variant D) still stands, now as the fallback
+
+D proved the overlay architecture composes with a real push (the chrome layer
+sits outside the stack, observes `path`, never pushes with the screen; the
+commit-driven swap should hold through an interactive back-swipe and pour back
+on the pop commit). With E on the table, D is the fallback if the system
+toolbar's constraints prove unacceptable, not the first choice.
 
 ## Verdict (owner's, on his fingers)
 
-The goo quality is device-only and the owner rules it. Walk the variants in this
-order:
+Walk these two first; B stays only for the record:
 
-1. `-gooLab A` (live on the phone now). Tap the paper. Toggle `matched` vs
-   `materialize` and `spacing 6` vs `40`. This is the gentlest, most
-   production-shaped test: two shapes a screen-width apart in one container. If
-   THIS gooes at spacing 40 / matchedGeometry, the near-swap architecture is
-   enough and B's travel is unnecessary theater.
-2. `-gooLab C`. Sweep the gap slider with each spacing. Find the exact point the
-   neck breaks. That number is the law that decides whether B can ever goo across
-   the room-open distance.
-3. `-gooLab B`. Feel persistent vs matched-ID across the full travel. If C says
-   the fuse cannot span the distance, B's honest best is a clean traveling
-   surface (persistent) with goo only at the ends, which may or may not beat A.
-4. `-gooLab D`. The real seam. Tap a card (real push), swipe back, toggle zoom.
-   Watch whether the chrome swap composes with the zoom or fights it, and whether
-   the back-swipe holds-then-commits as designed.
+1. `-gooLab A`. Tap the paper. The in-place trailing split on the shipping
+   recipe. Flip `production (shipping)` vs `materialize`, `spacing 40` vs `6`
+   (6 shows the discrete rest state, 40 the fused one).
+2. `-gooLab E`. Tap a room card (real push), watch the trailing items morph in
+   the bar, then SWIPE BACK SLOWLY: if the system scrubs the item goo under the
+   finger, the architecture question is answered. Flip `match` for the zoom
+   contrast.
+3. `-gooLab C` for the fuse-break number; `-gooLab D` for the hand-built
+   fallback's feel; `-gooLab B` only for the record.
 
-## Cost, if the persistent-chrome-layer wins
+## Cost, by route
 
-Wiring this into production is not free. What it would take:
+**Route 1, the system toolbar (E; the cheap one if it goos).** Un-hide the nav
+bar and move the top chrome into ToolbarItems: Join top-trailing on Rooms, the
+room's pills as the room screen's items. What it collides with:
 
-- **RoomBar ownership moves up.** Today `RoomBar` (the cluster) lives inside the
-  room's own hierarchy (SolveScreen), and `RoomsScreen` owns the Join capsule
-  independently. For them to share one container the chrome must be hoisted OUT of
-  both screens into a persistent layer above the NavigationStack (a shell-level
-  overlay owning both endpoint shapes, swapping on `path`). That is a real
-  restructure of who renders the room bar: the room no longer draws its own top
-  chrome, the shell does, and the room reads the chrome's state instead of owning
-  it. Every RoomBar input (weather, clock, members, handoffs) has to thread up to
-  the shell.
-- **The full-bleed ruling still binds.** DESIGN.md §2: the board is full-bleed
-  and the room bar floats over it. A shell-level chrome layer floating over the
-  board is compatible with that, but the camera's standing insets
-  (`GridOcclusion.standing`) are computed from the room bar's reported frame; if
-  the bar moves to the shell, the frame plumbing (`reportChromeFrame`,
-  `ChromeFramesKey`) has to cross the shell/room boundary, which today it does not.
-- **Per-room closures.** The cluster's live intents (onBack, onTapTimePill,
-  onKick, onGoTo, share) are per-room and rebind on every room open. A persistent
-  chrome layer that outlives the room has to re-point those closures at the
-  current room on each push and clear them on pop, or it fires stale intents. This
-  is the sharpest correctness risk of the whole architecture: a persistent surface
-  holding a closure into a room that has been popped.
-- **The players/share pills stay outside.** The cluster in the container is back
-  button + time pill only (a Menu breaks a container morph on 26.1, the RosterMenu
-  discipline). The traveling/near morph therefore only ever fuses those two; the
-  Menu-bearing pills materialize beside the arrived cluster, never through the
-  goo. The lab already models this (endpoint = back + time).
+- The screens draw their own large titles today (Rooms' hand-set 32 pt bold;
+  the room has no title at all). Adopting the bar means adopting
+  `navigationTitle` / letting the system own that strip, or hiding the title
+  while keeping items, and the hand-drawn look must survive the trade.
+- The full-bleed ruling (§2): the board runs to the screen's top edge and the
+  room bar FLOATS over it. A system nav bar wants to own the top strip; on 26
+  the bar's glass items float over content with `scrollEdgeEffectStyle`, so
+  full-bleed may survive, but the camera's standing insets
+  (`GridOcclusion.standing`) would have to read the bar's height instead of the
+  reported RoomBar frame.
+- The RoomBar cluster rules: the players and share pills are Menu labels that
+  must stand OUTSIDE any GlassEffectContainer (the 26.1 break). As ToolbarItems
+  they'd live in the system's container instead; whether a Menu-bearing item
+  breaks the system bar's own morph on 26.1 is an unanswered question this lab
+  did not reach, and it gates the route.
+- The time pill's facts-card morph (PillInflation) rests on the pill's reported
+  frame; a toolbar item's frame is the system's, so the metaball facts card
+  would need its rest geometry from the item (readable via onGeometryChange,
+  but it is new plumbing).
 
-The honest read: the mechanism is real and composes with the real push, but the
-production wiring is a shell-level chrome hoist with live per-room closure
-rebinding, which is a meaningful restructure of RoomBar ownership. Worth it only
-if the owner's fingers say the goo is materially better than the current hard
-push, and only for the near-swap (A) or end-gooed-travel (B) that the distance
-law actually permits. If A gooes at spacing 40, that is the cheapest win; if
-nothing gooes across the distance, the current push stands and this spike closes
-the question by ruling the goo out, not in.
+**Route 2, the hand-built persistent chrome layer (A + D; the expensive one).**
+Hoist RoomBar out of both screens into a shell-level overlay owning both
+endpoint shapes, swapping on `path`: a real restructure (every RoomBar input
+threads up to the shell), the frame plumbing crosses the shell/room boundary,
+and per-room closures must rebind on every push/pop (the sharpest correctness
+risk: a persistent surface holding a closure into a popped room). Plus the
+rest-state fusion finding: the swap container's 40 must settle to the cluster's
+6 after landing.
+
+The honest read: E's structural result says the system already runs the
+persistent-chrome architecture natively, so if its goo passes the owner's
+fingers on device, Route 1 wins on cost and on grammar (it is literally Mail's
+mechanism). Route 2 stays viable if the toolbar's constraints (titles,
+full-bleed insets, the Menu question) refuse the trade.
 
 ## Device install
 
-Succeeded. `com.eamonma.Crossy` is on the iPhone 17 Pro Max, launched on
-`-gooLab A` for the owner. Relaunch other variants with
+The first install run did not stick (the owner walked the variants and got the
+real app; the orchestrator reinstalled from the branch and it routes fine now).
+Installs are the orchestrator's after review. Launch:
 `xcrun devicectl device process launch --terminate-existing --device
-83D7B168-D3E8-5666-963E-AA4C6763EB54 com.eamonma.Crossy -- -gooLab B` (note the
-`--` before the app arg; B|C|D swap the letter).
+83D7B168-D3E8-5666-963E-AA4C6763EB54 com.eamonma.Crossy -- -gooLab A` (the `--`
+before the app arg; A|B|C|D|E swap the letter; `-gooLabAutoPush`,
+`-gooLabAutoFire`, `-gooLabSlow` are capture-only scripting).
 
 ## Evidence (scratchpad, never committed)
 
-Simulator render confirmations under the session scratchpad `goo-shots/`:
-`sim-A2.png` (Rooms + Join, ribbon), `sim-B2.png` (traveling-melt ribbon),
-`sim-C2.png` (two glass circles + gap/spacing controls), `sim-D2.png`
-(real-push list + floating chrome-layer Join + zoom toggle). The goo itself does
-not photograph from the sim (it renders linearly there); the felt verdict is the
-owner's on device.
+Under the session scratchpad `goo-shots/`:
+
+- `sim-A3-pre.png` / `sim-A3-mid20.png` / `sim-A3-post.png`: the rebuilt
+  in-place split at rest, MID-SWAP WITH THE FUSED NECK (x8 slow motion), and
+  the settled state showing the rest fusion at spacing 40.
+- `sim-E2-pre.png` / `sim-E2-mid16.png` / `sim-E-post.png`: the system-toolbar
+  rig at rest (the icon-only Label finding visible), MID-PUSH with the bar
+  items transitioning in place while the screens slide, and the settled pushed
+  grammar (back circle + title + two trailing pills).
+- `sim-B2.png`, `sim-C2.png`, `sim-D2.png`: render confirmations for the other
+  variants.

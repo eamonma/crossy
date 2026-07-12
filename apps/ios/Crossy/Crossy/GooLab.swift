@@ -19,12 +19,15 @@
 //  glassEffectID ban is scoped to DRAG-scrubbed morphs, and a navigation tap
 //  is not a scrub.
 //
-//  Four variants, one selector (-gooLab A|B|C|D), routed like -morphLab:
+//  Five variants, one selector (-gooLab A|B|C|D|E), routed like -morphLab:
 //
-//  A  the near swap. One GlassEffectContainer; a tap swaps a fake rooms list
-//     for a fake room underneath while, inside the container, the Join-capsule
-//     child is removed and the back-pill + time-pill children are inserted.
-//     matchedGeometry vs materialize, a toggle. Do near shapes goo?
+//  A  the in-place trailing split (rebuilt 2026-07-11 after the owner's device
+//     report: the first cut's endpoints stood a screen-width apart, no field
+//     overlap, and the swap snapped, the distance law confirmed by hand). Join
+//     top-trailing; the arriving time pill + glyph stand WHERE THE CAPSULE
+//     STOOD, footprints overlapping (the Mail-button rule), on the production
+//     metaball recipe (PillInflation: container spacing 40, unique IDs, no
+//     transition modifier, Mail's timing). A toggle contrasts .materialize.
 //  B  the traveling melt. The capsule TRAVELS from Join's top-trailing spot to
 //     the back button's top-leading spot while the time pill materializes out
 //     of it mid-flight. Two mechanisms A/B'd: one persistent glass element
@@ -41,8 +44,19 @@
 //     at the transition's start). navigationTransition(.zoom) ON and OFF
 //     underneath (PR #132's mechanism); an interactive back-swipe against the
 //     commit-driven chrome swap.
+//  E  the system-toolbar route (the owner's clarified grammar, 2026-07-11
+//     evening: Mail's Edit goos into Select + "..." SAME SIDE, IN PLACE,
+//     across a push, because those are system nav-bar items that persist
+//     through it; Crossy hides the bar and hand-draws chrome, so it never
+//     sees this for free). A real NavigationStack with the system bar
+//     VISIBLE, Join as a trailing ToolbarItem, the pushed room carrying two
+//     trailing items split by ToolbarSpacer. If the system morphs the items
+//     on its own, the production route is adopting real ToolbarItems, far
+//     cheaper than the persistent overlay layer A-D rehearse. B's
+//     cross-screen travel is moot for the clarified ask; it stays for the
+//     record.
 //
-//  All four are TAP-driven, so SP-i1's melt law (finger writes raw progress)
+//  All variants are TAP-driven, so SP-i1's melt law (finger writes raw progress)
 //  does not govern them; the system owns the blend. Verdicts come from the
 //  DEVICE only: the simulator renders the glass blend linearly and lies about
 //  goo (MorphLab's standing caveat). Evidence only; nothing in the room
@@ -128,6 +142,7 @@ enum GooVariant: String, CaseIterable, Identifiable {
     case b = "B"
     case c = "C"
     case d = "D"
+    case e = "E"
 
     var id: String { rawValue }
 
@@ -155,6 +170,7 @@ struct GooLab: View {
             case .b: TravelingMeltLab()
             case .c: DistanceLawLab()
             case .d: RealSeamLab()
+            case .e: SystemToolbarLab()
             }
         }
         .background(GooPaper().ignoresSafeArea())
