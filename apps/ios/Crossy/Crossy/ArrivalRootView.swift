@@ -9,10 +9,13 @@
 //  floor, never a hand-built imitation (DESIGN.md §4). Join with a code opens a
 //  glass sheet that flows out of the button (arrival notes, DESIGN.md §4); a joined
 //  or tapped room pushes inside the Rooms tab and hides the bar — the board and
-//  deck own the whole screen (the full-bleed ruling). Join success dismisses the
-//  sheet and makes the room the only pushed element, so back from the room lands on
-//  Rooms, never on a stale code field. The kicked exit (SolveScreen onExit) pops
-//  home the same way.
+//  deck own the whole screen (the full-bleed ruling). A tapped room card grows the
+//  room out of that card via the system zoom navigation transition, and the pop
+//  pours it back into the card (native continuity, DESIGN.md §4). Join success
+//  sequences the same read: the sheet melts back into the Join capsule first, then
+//  the room grows out of the capsule; the room is still the only pushed element, so
+//  back from the room lands on Rooms, never on a stale code field. The kicked exit
+//  (SolveScreen onExit) pops home the same way.
 //
 
 import CrossyDesign
@@ -69,7 +72,29 @@ struct ArrivalRootView: View {
     /// from the model's web-origin facts.
     @State private var welcomeLegal: LegalSheetItem?
     @State private var settingsLegal: LegalSheetItem?
+    /// The source id that initiated the room currently being pushed (native
+    /// continuity, DESIGN.md §4): a tapped card's per-room id, or the Join capsule's
+    /// id on a code-join. The room destination zooms from this source, so the room
+    /// grows out of the surface it was launched from and pours back into it on the
+    /// pop. Deliberately NOT cleared when the push completes: the pop needs it to
+    /// pour the room back into its card. It clears only when the path empties (the
+    /// .onChange below) or on sign-out (the paths clear there too). A deep-link push
+    /// leaves it nil: no visible source on screen, so the room takes the default
+    /// push. NOTE: Puzzles-tab pushes stay default (no zoom) in this PR; the puzzle
+    /// card as a zoom source is a follow-up.
+    @State private var roomZoomSourceID: String?
+    /// A code-join staged for after the sheet melts back into the Join capsule
+    /// (slice 2): join success dismisses the sheet, and the room pushes only when
+    /// the sheet's dismissal completes (the sheet's .onDisappear), so the read is
+    /// the sheet pouring into the capsule, then the room growing out of it.
+    @State private var pendingJoinGameId: String?
     @Namespace private var joinZoom
+    /// The room push's zoom namespace, distinct from the join sheet's: room cards
+    /// and the Join capsule stamp themselves as sources here, and the room
+    /// destination zooms from the matching source. The namespace lives here, not in
+    /// RoomsScreen, because the push lives in this hierarchy (AD-2, mirroring the
+    /// join sheet's namespace ownership).
+    @Namespace private var roomZoom
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
@@ -130,12 +155,24 @@ struct ArrivalRootView: View {
                 path.removeAll()
                 puzzlesPath.removeAll()
                 showJoin = false
+                // The Rooms path is empty now, so the zoom source and a staged join
+                // are stale: clear them with the paths (the room's card is gone).
+                roomZoomSourceID = nil
+                pendingJoinGameId = nil
             }
         }
         // The pre-fill is a one-shot for a failed deep link; a later hand-tapped
         // Join must open the camera-first panel, never a stale code.
         .onChange(of: showJoin) { _, open in
             if !open { deepLinkPrefill = "" }
+        }
+        // The zoom source outlives the push on purpose: the pop needs it to pour the
+        // room back into its card (native continuity, DESIGN.md §4). Clear it only
+        // when the Rooms path empties, so a later default push (a deep link) never
+        // inherits a stale source. Keyed off emptiness, not attached to the room, so
+        // it survives the pop transaction and clears once the room is gone.
+        .onChange(of: path.isEmpty) { _, empty in
+            if empty { roomZoomSourceID = nil }
         }
     }
 
@@ -152,6 +189,10 @@ struct ArrivalRootView: View {
             switch await model.rooms.join(code: code) {
             case .success(let gameId):
                 showJoin = false
+                // A deep link has no visible source on screen (the Join capsule may
+                // never have shown, and no card was tapped), so the room takes the
+                // default push: name no zoom source (native continuity, DESIGN.md §4).
+                roomZoomSourceID = nil
                 path = [roomRoute(for: gameId)]
             case .failure:
                 deepLinkPrefill = code
@@ -169,13 +210,30 @@ struct ArrivalRootView: View {
                 NavigationStack(path: $path) {
                     RoomsScreen(
                         loadPage: { before in await model.rooms.loadPage(before: before) },
-                        onOpenRoom: { room in path.append(roomRoute(for: room.gameId)) },
+                        onOpenRoom: { room in
+                            // The tapped card is the push's zoom source: name it
+                            // BEFORE appending, so the room grows out of this card
+                            // and pours back into it on the pop (native continuity,
+                            // DESIGN.md §4). The id matches the card's stamp exactly.
+                            roomZoomSourceID = RoomZoomSource.sourceID(for: room.gameId)
+                            path.append(roomRoute(for: room.gameId))
+                        },
                         onJoinWithCode: { showJoin = true },
-                        joinSheetSource: JoinSheetSource(namespace: joinZoom)
+                        joinSheetSource: JoinSheetSource(namespace: joinZoom),
+                        roomZoomSource: RoomZoomSource(namespace: roomZoom)
                     )
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: ArrivalRoute.self) { route in
+                        // Only the Rooms tab zooms: the room grows out of the card
+                        // (or the Join capsule) that launched it. The zoom is applied
+                        // here, at the Rooms call site, so a Puzzles-tab push (the
+                        // shared destination reused there) never inherits a Rooms
+                        // source id (native continuity, DESIGN.md §4). A nil id (a
+                        // deep-link push) skips the zoom for a default push.
                         destination(route, pop: { path.removeAll() })
+                            .roomZoom(
+                                from: RoomZoomSource(namespace: roomZoom),
+                                sourceID: roomZoomSourceID)
                     }
                 }
                 // The room owns the whole screen (the full-bleed ruling), so the bar
@@ -236,8 +294,14 @@ struct ArrivalRootView: View {
             onJoin: { code in
                 switch await model.rooms.join(code: code) {
                 case .success(let gameId):
+                    // Sequence the continuity (slice 2, DESIGN.md §4): dismiss the
+                    // sheet first so it melts back into the Join capsule, and stage
+                    // the room. The room pushes only when the dismissal completes
+                    // (the .onDisappear below), growing out of that same capsule.
+                    // Setting both in one beat would push while the sheet is still
+                    // mid-dismiss, and the room would jolt over the melting sheet.
+                    pendingJoinGameId = gameId
                     showJoin = false
-                    path = [roomRoute(for: gameId)]
                     return nil
                 case .failure(let failure):
                     return failure
@@ -253,6 +317,17 @@ struct ArrivalRootView: View {
         // here, where the sheet is presented.
         .presentationDragIndicator(.visible)
         .joinSheetZoom(from: JoinSheetSource(namespace: joinZoom))
+        // The dismissal's completion hook (slice 2): when the sheet has fully melted
+        // back into the Join capsule, push the staged room so it grows out of that
+        // same capsule (native continuity, DESIGN.md §4). Naming the capsule as the
+        // zoom source pairs the push to the capsule the sheet just poured into. A
+        // hand dismiss (no join) stages nothing, so this is a no-op there.
+        .onDisappear {
+            guard let gameId = pendingJoinGameId else { return }
+            pendingJoinGameId = nil
+            roomZoomSourceID = RoomZoomSource.joinCapsuleID
+            path = [roomRoute(for: gameId)]
+        }
         .task {
             // The pre-filled failure card scans nothing, so it never probes the
             // camera (no permission prompt on a tapped link).
