@@ -45,6 +45,11 @@ final class EndpointTests: XCTestCase {
         XCTAssertEqual(page.rows[0].memberCount, 3)
         XCTAssertEqual(page.rows[0].puzzle.title, "Themeless Saturday")
         XCTAssertNil(page.rows[1].name)
+        // The row member stack and the member-only invite code ride the same decode
+        // (section 12); the stack is consistent with the count.
+        XCTAssertEqual(page.rows[0].members.count, 3)
+        XCTAssertEqual(page.rows[0].members[0].name, "Ana")
+        XCTAssertEqual(page.rows[0].inviteCode, "BQ7XKM2A")
     }
 
     func test_listPuzzles_sendsABearerGETAndDecodesINV6SafeGeometry() async throws {

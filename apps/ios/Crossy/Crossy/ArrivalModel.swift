@@ -155,7 +155,20 @@ struct RealRooms: RoomsProviding {
                             createdBy: summary.createdBy,
                             createdAt: summary.createdAt,
                             completedAt: summary.completedAt,
-                            lastActivityAt: summary.lastActivityAt)
+                            lastActivityAt: summary.lastActivityAt,
+                            // The row's member stack, digested to the UI's own shape
+                            // (PROTOCOL.md section 12): identity as the server resolved
+                            // it, the seat folded to the two flags the room layer reads.
+                            // Empty from an older server (section 14); memberCount stays
+                            // the honest total either way.
+                            members: summary.members.map { member in
+                                RoomCardMember(
+                                    userId: member.userId,
+                                    name: member.name,
+                                    avatarUrl: member.avatarUrl,
+                                    isHost: member.role == .host,
+                                    isSpectator: member.role == .spectator)
+                            })
                     },
                     nextBefore: page.nextBefore))
         } catch {
@@ -309,6 +322,9 @@ struct FixtureRooms: RoomsProviding {
         guard before == nil else {
             return .success(RoomsPage(rooms: [], nextBefore: nil))
         }
+        // Member stacks mirror each room's memberCount (the wire consistency PROTOCOL.md
+        // section 12 pins). Avatar URLs stay nil: the fixture walk is no-network, and nil
+        // is the honest first-class value the initial-puck fallback renders.
         return .success(
             RoomsPage(
                 rooms: [
@@ -318,7 +334,18 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 3, createdBy: "you",
                         createdAt: "2026-07-06T19:00:00.000Z",
                         completedAt: nil,
-                        lastActivityAt: "2026-07-09T21:14:00.000Z"),
+                        lastActivityAt: "2026-07-09T21:14:00.000Z",
+                        members: [
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: true, isSpectator: false),
+                            RoomCardMember(
+                                userId: "bee", name: "Bee", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "guest-1", name: "Guest", avatarUrl: nil,
+                                isHost: false, isSpectator: true),
+                        ]),
                     // One solved room, so the trailing "Solved" section is judgeable in the
                     // fixture walk (-i3Fixture -i3SignedIn): a real completedAt gathers it into
                     // the shelf and dims its silhouette. The others stay live above it.
@@ -328,14 +355,42 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 2, createdBy: "bee",
                         createdAt: "2026-07-04T11:00:00.000Z",
                         completedAt: "2026-07-08T15:07:00.000Z",
-                        lastActivityAt: "2026-07-08T15:02:00.000Z"),
+                        lastActivityAt: "2026-07-08T15:02:00.000Z",
+                        members: [
+                            RoomCardMember(
+                                userId: "bee", name: "Bee", avatarUrl: nil,
+                                isHost: true, isSpectator: false),
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                        ]),
                     RoomCardModel(
                         gameId: "fixture-stumper", name: "Sunday call",
                         puzzleTitle: "The Stumper", rows: 21, cols: 21,
                         memberCount: 6, createdBy: "ada",
                         createdAt: "2026-07-05T09:00:00.000Z",
                         completedAt: nil,
-                        lastActivityAt: nil),
+                        lastActivityAt: nil,
+                        members: [
+                            RoomCardMember(
+                                userId: "ada", name: "Ada", avatarUrl: nil,
+                                isHost: true, isSpectator: false),
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "bee", name: "Bee", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "june", name: "June", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "rosei", name: "R. Osei", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "guest-2", name: "Guest", avatarUrl: nil,
+                                isHost: false, isSpectator: true),
+                        ]),
                 ],
                 nextBefore: nil))
     }

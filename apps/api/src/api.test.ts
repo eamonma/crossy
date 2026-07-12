@@ -1911,6 +1911,13 @@ interface GamesList {
     createdAt: string;
     createdBy: string;
     memberCount: number;
+    members: {
+      userId: string;
+      name: string;
+      avatarUrl: string | null;
+      role: string;
+    }[];
+    inviteCode: string;
     completedAt: string | null;
     lastActivityAt: string | null;
     puzzle: {
@@ -2015,6 +2022,137 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     // A full account joining now seats solver directly (owner decision 2026-07-10).
     expect(byId.get(joined)!.role).toBe("solver");
     expect(byId.get(joined)!.memberCount).toBe(2); // host plus the caller who joined
+  });
+
+  it("carries each row's member stack {userId, name, avatarUrl, role}, join-ordered and consistent with memberCount (PROTOCOL.md §12)", async () => {
+    // The row member stack: the full membership as display identity, the §4 participant's
+    // resolution (name and avatar from the identity mirror), so the room-open chrome and the
+    // card's avatar stack read true at tap time without a second fetch.
+    const hostSub = randomUUID();
+    const host = await auth.mintUpgraded({
+      sub: hostSub,
+      userMetadata: {
+        full_name: "Ada",
+        avatar_url: "https://cdn.discordapp.com/avatars/a.png",
+      },
+    });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const solverSub = randomUUID();
+    const solver = await auth.mintUpgraded({
+      sub: solverSub,
+      userMetadata: { full_name: "Bo" },
+    });
+    await join(gameId, solver, inviteCode);
+    const guestSub = randomUUID();
+    const guest = await auth.mintAnonymous({ sub: guestSub });
+    await join(gameId, guest, inviteCode);
+
+    const { games } = (await get("/games", host).then((r) =>
+      r.json(),
+    )) as GamesList;
+    const row = games.find((g) => g.gameId === gameId)!;
+    // The stack is the whole membership: consistent with the count, never a sample.
+    expect(row.members).toHaveLength(row.memberCount);
+    expect(row.members).toHaveLength(3);
+    // Join-ordered, first joiner first: the host's membership is born with the game.
+    expect(row.members.map((m) => m.userId)).toEqual([
+      hostSub,
+      solverSub,
+      guestSub,
+    ]);
+    const byUser = new Map(row.members.map((m) => [m.userId, m]));
+    // The resolved §4 display identity, mirrored from users (name and avatar cannot drift
+    // from the live roster's, which reads the same row).
+    expect(byUser.get(hostSub)).toEqual({
+      userId: hostSub,
+      name: "Ada",
+      avatarUrl: "https://cdn.discordapp.com/avatars/a.png",
+      role: "host",
+    });
+    expect(byUser.get(solverSub)!.name).toBe("Bo");
+    expect(byUser.get(solverSub)!.avatarUrl).toBeNull(); // no avatar, no email: first-class null
+    expect(byUser.get(solverSub)!.role).toBe("solver");
+    // The solvers/spectators fact rides `role`; a guest seats spectator and there is NO guest
+    // flag on the wire (§12), so the standing solvers-only filters apply from `role` alone.
+    expect(byUser.get(guestSub)!.role).toBe("spectator");
+    expect(byUser.get(guestSub)!.name).toBe("Guest"); // the mirror's anonymous display name
+    expect(row.members.every((m) => !("isAnonymous" in m))).toBe(true);
+  });
+
+  it("falls back to the §4 former-participant name where the mirror holds none (PROTOCOL.md §12; DESIGN.md §8)", async () => {
+    // A full account whose token carries no metadata name mirrors display_name NULL. The wire
+    // name is never null: the row sends the same fallback the session's participant payload
+    // sends, so the two surfaces read one value.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub }); // no userMetadata: displayName null
+    const puzzleId = await ingestFixture(caller);
+    const { gameId } = await createGame(caller, puzzleId);
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    const row = games.find((g) => g.gameId === gameId)!;
+    expect(row.members).toEqual([
+      {
+        userId: sub,
+        name: "former participant",
+        avatarUrl: null,
+        role: "host",
+      },
+    ]);
+  });
+
+  it("never leaks an email through the member stack; a Gravatar avatarUrl arrives resolved (INV-6 spirit)", async () => {
+    // Email-only identity: the port derives the Gravatar URL server-side and the mirror stores
+    // only the resolved URL, so the list (like the view) can never surface the email.
+    const sub = randomUUID();
+    const caller = await auth.mintUpgraded({ sub, email: "ada@example.com" });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId } = await createGame(caller, puzzleId);
+
+    const res = await get("/games", caller);
+    const raw = await res.text();
+    expect(raw).not.toContain("ada@example.com");
+    const { games } = JSON.parse(raw) as GamesList;
+    const member = games
+      .find((g) => g.gameId === gameId)!
+      .members.find((m) => m.userId === sub);
+    expect(member?.avatarUrl).toMatch(
+      /^https:\/\/www\.gravatar\.com\/avatar\/[0-9a-f]{32}\?d=404$/,
+    );
+  });
+
+  it("carries the row's inviteCode to every member under the view's member-only rule (PROTOCOL.md §12)", async () => {
+    // The list is member-scoped by construction (the membership join), so each row's reader is
+    // a member: exactly the GET /games/{id} rule, never wider. Any role qualifies, a guest
+    // spectator included, since every member joined via the code.
+    const host = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    const guest = await auth.mintAnonymous({ sub: randomUUID() });
+    await join(gameId, guest, inviteCode);
+
+    const hostList = (await get("/games", host).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(hostList.games.find((g) => g.gameId === gameId)!.inviteCode).toBe(
+      inviteCode,
+    );
+    const guestList = (await get("/games", guest).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(guestList.games.find((g) => g.gameId === gameId)!.inviteCode).toBe(
+      inviteCode,
+    );
+    // A non-member never receives the row at all (the visibility test above), so there is no
+    // wider path to the code: the stranger's list simply has no such game.
+    const stranger = await auth.mintUpgraded({ sub: randomUUID() });
+    const strangerList = (await get("/games", stranger).then((r) =>
+      r.json(),
+    )) as GamesList;
+    expect(strangerList.games.map((g) => g.gameId)).not.toContain(gameId);
   });
 
   it("orders unplayed games newest-createdAt first (no activity yet; PROTOCOL.md §12)", async () => {
