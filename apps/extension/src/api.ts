@@ -5,10 +5,16 @@
 import type { ClientPuzzle } from "@crossy/protocol";
 import type { Envelope } from "./envelope";
 
-/** The `POST /puzzles` 201 body: the API's PuzzleView. */
+/**
+ * The `POST /puzzles` success body: the API's PuzzleView. A fresh insert is `201`; a re-post the
+ * caller already uploaded is `200` with the same shape plus `duplicate: true` (dedup, D23). The
+ * extension is why dedup exists (it re-posts today's puzzle on every visit), so it dedups silently:
+ * it keys success on `puzzleId` and treats `200` and `201` identically, ignoring `duplicate`.
+ */
 interface PuzzleView {
   readonly puzzleId: string;
   readonly puzzle: ClientPuzzle;
+  readonly duplicate?: true;
 }
 
 export type IngestOutcome =
@@ -36,7 +42,10 @@ export async function postPuzzle(
     // Non-JSON body; fall through to the status-only outcome.
   }
 
-  if (response.status === 201 && body !== null) {
+  // 201 fresh insert or 200 duplicate: both carry the PuzzleView, so a re-post of a puzzle the
+  // user already has lands silently on the existing row (D23). Keying on puzzleId means a client
+  // that ignores the `duplicate` marker loses nothing.
+  if ((response.status === 201 || response.status === 200) && body !== null) {
     return { ok: true, puzzleId: (body as PuzzleView).puzzleId };
   }
 
