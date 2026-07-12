@@ -1,9 +1,25 @@
 # Served by nginxinc/nginx-unprivileged. ${PORT} is filled by the image's envsubst
 # entrypoint at container start; $uri and friends are nginx runtime variables and are
 # left untouched (envsubst only substitutes names present in the environment).
+
+# The retired domain. crossy.me stayed attached through the crossy.party cutover, still
+# serving an app that CORS now locks out of REST; anything arriving under the old name
+# moves permanently to the same path on the new one. Railway's edge terminates TLS, so
+# this block matches on the Host header alone. When the crossy.me domains detach from
+# Railway this block goes with them.
 server {
     listen       ${PORT};
     listen       [::]:${PORT};
+    server_name  crossy.me www.crossy.me;
+    return 301 https://crossy.party$request_uri;
+}
+
+# default_server carries every other Host (crossy.party, the up.railway.app domain,
+# health probes): "_" is a never-matching placeholder name, not a wildcard, so without
+# the marker nginx would fall back to the first block above and redirect everything.
+server {
+    listen       ${PORT} default_server;
+    listen       [::]:${PORT} default_server;
     server_name  _;
 
     root   /usr/share/nginx/html;
