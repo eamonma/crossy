@@ -5,6 +5,9 @@ dist-firefox/
 coverage/
 *.tsbuildinfo
 
+# Extension store-upload zips (build output of `pnpm --filter @crossy/extension package`)
+apps/extension/artifacts/
+
 # env
 .env
 .env.*
