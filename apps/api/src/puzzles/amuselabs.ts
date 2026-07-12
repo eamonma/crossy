@@ -35,16 +35,16 @@ import { Buffer } from "node:buffer";
 import { asciiUppercase } from "@crossy/protocol";
 import type { ServerPuzzle, Solution } from "@crossy/protocol";
 import {
+  buildRunClue,
   checkDimensions,
   checkSolutionGrid,
-  decodeEntities,
   deriveWordRuns,
   isObject,
   isPositiveInt,
   readMetadata,
   reject,
 } from "./ingest";
-import type { IngestResult, PuzzleFeatures, WordRun } from "./ingest";
+import type { IngestResult, PuzzleFeatures, RunClue, WordRun } from "./ingest";
 
 /** PuzzleMe marks a block with a NUL character in the box (xword-dl reference). */
 const BLOCK_TOKEN = "\u0000";
@@ -380,16 +380,14 @@ export function translateAmuseLabs(body: unknown): IngestResult {
   const buildClues = (
     direction: "across" | "down",
     wordRuns: readonly WordRun[],
-  ) => {
-    const clues = [];
+  ): RunClue[] | null => {
+    const clues: RunClue[] = [];
     for (const run of wordRuns) {
       const word = bySlot.get(`${direction}:${run.cells[0]}`);
       if (word === undefined) return null;
-      clues.push({
-        number: run.number,
-        text: decodeEntities(word.clue.trim()),
-        cellIndices: run.cells,
-      });
+      // Funnel the raw clue through the shared markup seam so PuzzleMe clues capture their
+      // {text, runs} uniformly (clue-runs.ts); entities decode there too.
+      clues.push(buildRunClue(run.number, word.clue, run.cells));
     }
     return clues;
   };
