@@ -20,6 +20,7 @@ import type { IngestErrorCode, IngestResult, PuzzleFeatures } from "./ingest";
 import { translateGuardian } from "./guardian";
 import { translateAmuseLabs } from "./amuselabs";
 import { translateNyt } from "./nyt";
+import { translatePuz } from "./puz";
 
 /** A registered translator: one raw outlet document in, one IngestResult out (DESIGN.md 7). */
 type Translator = (document: unknown) => IngestResult;
@@ -34,6 +35,7 @@ const REGISTRY: ReadonlyMap<string, Translator> = new Map<string, Translator>([
   ["guardian", translateGuardian],
   ["amuselabs", translateAmuseLabs],
   ["nyt", translateNyt],
+  ["puz", translatePuz],
 ]);
 
 /** The legacy bare body is exactly `format: "xwordinfo"` (PROTOCOL.md section 12). */

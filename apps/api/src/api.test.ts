@@ -568,7 +568,7 @@ describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21;
   it("rejects an unknown format as UNKNOWN_FORMAT 400, naming the format, never the document (INV-6)", async () => {
     const token = await auth.mintUpgraded();
     const res = await postJson("/puzzles", token, {
-      format: "puz",
+      format: "nonesuch",
       document: { grid: [MARKER], answer: MARKER },
     });
     await expectRejectionNoLeak(res, 400, "UNKNOWN_FORMAT", MARKER);
@@ -830,6 +830,149 @@ describe("POST /puzzles envelope dispatch (PROTOCOL.md §12; DESIGN.md §7, D21;
       document: doc,
     });
     await expectRejectionNoLeak(res, 422, "SOLUTION_MISSING", "MARKERWORD");
+  });
+
+  // A synthetic `.puz` (Across Lite) file, built BYTE BY BYTE with real checksums (never a
+  // captured real puzzle, DESIGN.md §7): the same CAT/DOG 3x3 grid. `.puz` is binary, so the
+  // envelope document is standard base64 of the file bytes (PROTOCOL.md §12); the extension never
+  // decodes it. This tiny builder mirrors the unit-test builder just enough for the golden path.
+  const puzChecksum = (bytes: Buffer, seed = 0): number => {
+    let sum = seed & 0xffff;
+    for (const b of bytes) {
+      sum = (sum >>> 1) | ((sum & 1) << 15);
+      sum = (sum + b) & 0xffff;
+    }
+    return sum;
+  };
+  const puzTextChecksum = (
+    seed: number,
+    strings: {
+      title: string;
+      author: string;
+      copyright: string;
+      clues: string[];
+    },
+  ): number => {
+    let sum = seed;
+    const withNul = (s: string): void => {
+      if (s === "") return;
+      sum = puzChecksum(
+        Buffer.concat([Buffer.from(s, "latin1"), Buffer.from([0])]),
+        sum,
+      );
+    };
+    withNul(strings.title);
+    withNul(strings.author);
+    withNul(strings.copyright);
+    for (const c of strings.clues)
+      sum = puzChecksum(Buffer.from(c, "latin1"), sum);
+    withNul(""); // empty notepad
+    return sum;
+  };
+  const buildPuzBase64 = (): string => {
+    const grid = "CATU.ADOG"; // CAT / U#A / DOG
+    const clues = [
+      "Feline (3)",
+      "Chewed morsel (3)",
+      "Label (3)",
+      "Canine (3)",
+    ];
+    const strings = {
+      title: "Synthetic Puzzle",
+      author: "Synthia",
+      copyright: "(c) 2026",
+      clues,
+    };
+    const solution = Buffer.from(grid, "latin1");
+    const player = Buffer.from(
+      grid
+        .split("")
+        .map((c) => (c === "." ? "." : "-"))
+        .join(""),
+      "latin1",
+    );
+    const stringBlock = Buffer.concat([
+      Buffer.from(`${strings.title}\0`, "latin1"),
+      Buffer.from(`${strings.author}\0`, "latin1"),
+      Buffer.from(`${strings.copyright}\0`, "latin1"),
+      ...clues.map((c) => Buffer.from(`${c}\0`, "latin1")),
+      Buffer.from("\0", "latin1"), // empty notepad
+    ]);
+    const header = Buffer.alloc(0x34);
+    header.write("ACROSS&DOWN\0", 0x02, "latin1");
+    header.write("1.3\0", 0x18, "latin1");
+    header.writeUInt8(3, 0x2c);
+    header.writeUInt8(3, 0x2d);
+    header.writeUInt16LE(clues.length, 0x2e);
+    header.writeUInt16LE(0x0001, 0x30);
+    const cib = puzChecksum(header.subarray(0x2c, 0x34));
+    header.writeUInt16LE(cib, 0x0e);
+    let global = puzChecksum(solution, cib);
+    global = puzChecksum(player, global);
+    global = puzTextChecksum(global, strings);
+    header.writeUInt16LE(global, 0x00);
+    const partials = [
+      cib,
+      puzChecksum(solution),
+      puzChecksum(player),
+      puzTextChecksum(0, strings),
+    ];
+    const mask = "ICHEATED";
+    for (let i = 0; i < 4; i += 1) {
+      header.writeUInt8((partials[i]! & 0xff) ^ mask.charCodeAt(i), 0x10 + i);
+      header.writeUInt8(
+        ((partials[i]! >> 8) & 0xff) ^ mask.charCodeAt(i + 4),
+        0x14 + i,
+      );
+    }
+    return Buffer.concat([header, solution, player, stringBlock]).toString(
+      "base64",
+    );
+  };
+
+  it("ingests a puz envelope: base64 file decoded server-side, ClientPuzzle view, source format (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const res = await postJson("/puzzles", token, {
+      format: "puz",
+      document: buildPuzBase64(),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as {
+      puzzleId: string;
+      puzzle: Record<string, unknown>;
+    };
+    expect(hasKeyDeep(body.puzzle, "solution")).toBe(false);
+    expect(body.puzzle.blocks).toEqual([4]);
+    expect(await storedSource(body.puzzleId)).toEqual({
+      kind: "upload",
+      format: "puz",
+    });
+    const { rows } = await adminPool.query(
+      "select data from puzzles where puzzle_id = $1",
+      [body.puzzleId],
+    );
+    expect(rows[0].data.solution).toEqual([
+      "C",
+      "A",
+      "T",
+      "U",
+      null,
+      "A",
+      "D",
+      "O",
+      "G",
+    ]);
+  });
+
+  it("rejects a corrupt puz file (a flipped grid byte) as VALIDATION 400, no leak (INV-6)", async () => {
+    const token = await auth.mintUpgraded();
+    const bytes = Buffer.from(buildPuzBase64(), "base64");
+    bytes[0x34] = 0x58; // flip the first solution cell without recomputing the checksum
+    const res = await postJson("/puzzles", token, {
+      format: "puz",
+      document: bytes.toString("base64"),
+    });
+    await expectRejectionNoLeak(res, 400, "VALIDATION");
   });
 });
 
