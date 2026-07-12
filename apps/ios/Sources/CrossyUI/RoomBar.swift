@@ -345,7 +345,8 @@ struct RoomTimePill: View {
         .opacity(handedOff ? 0 : 1)
         // The yield includes touch (DESIGN.md §4: transient panels yield to
         // intent): a tap on the handed-off pill's ghost is a touch outside the
-        // panel, so it falls to the bar's dismiss layer instead of the button.
+        // panel, so it falls through to the room's dismiss layer instead of
+        // the button (the bar's own catcher retired with the overlay).
         .allowsHitTesting(!handedOff)
         .reportBarItemFrame(.timePill, into: reportFrame)
     }

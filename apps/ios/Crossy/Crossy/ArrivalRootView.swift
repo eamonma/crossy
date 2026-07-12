@@ -421,8 +421,11 @@ struct ArrivalRootView: View {
 /// out (onBack/kicked-exit semantics), and the bar transparent so it floats over
 /// the board rather than owning a strip. SolveScreen supplies the items through
 /// `.toolbar`; this only sets the container's disposition. The floor is iOS 18,
-/// and every API here lives at 18 or has an inert older path.
-private struct RoomNavBarChrome: ViewModifier {
+/// and every API here lives at 18 or has an inert older path. Internal, not
+/// private: ContentView's standalone room compositions (the harness, -i2*,
+/// -demoRoom) wrap in their own NavigationStack and wear this same chrome, so
+/// the rigs render the identical bar the pushed room does.
+struct RoomNavBarChrome: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationTitle("")
