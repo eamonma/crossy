@@ -74,4 +74,60 @@ final class ClueBookTests: XCTestCase {
         let empty = ClueEntry(number: 9, text: "Ghost", cells: [], isAcross: true)
         XCTAssertFalse(ClueBrowserList.isFilled(empty, filled: []))
     }
+
+    // Cross-references (mirror of the web's LiveApp memo, ~L915): the current clue's
+    // text is parsed, filtered to entries that actually exist in this book, and the
+    // current clue itself excluded, so a self-reference or a reference to a clue this
+    // grid lacks never lights a row.
+    private let refBook = ClueBook(
+        across: [
+            // 1-Across names 2-Down (exists) and 9-Down (does not) and itself (1-Across).
+            ClueEntry(
+                number: 1, text: "With 2-Down and 9-Down; see 1-Across",
+                cells: [0, 1, 2], isAcross: true),
+            ClueEntry(number: 4, text: "Second across", cells: [5, 6], isAcross: true),
+        ],
+        down: [
+            ClueEntry(number: 1, text: "First down", cells: [0, 3], isAcross: false),
+            ClueEntry(number: 2, text: "Second down", cells: [1, 4], isAcross: false),
+        ])
+
+    func test_referencedIds_filtersToExistingEntriesAndDropsSelf_webLiveAppMemo() {
+        let current = refBook.across[0]  // 1-Across
+        let ids = refBook.referencedIds(for: current)
+        // 2-Down exists and is named; 9-Down is named but absent; 1-Across is self.
+        XCTAssertEqual(ids, ["2D"])
+    }
+
+    func test_referencedIds_isEmptyForNilOrAReferenceLessClue() {
+        XCTAssertEqual(refBook.referencedIds(for: nil), [])
+        XCTAssertEqual(refBook.referencedIds(for: refBook.across[1]), [])
+    }
+
+    func test_referencedCells_unionsTheReferencedEntriesCells() {
+        let current = refBook.across[0]  // references 2-Down at cells [1, 4]
+        XCTAssertEqual(refBook.referencedCells(for: current), [1, 4])
+        XCTAssertEqual(refBook.referencedCells(for: nil), [])
+    }
+
+    func test_rows_markReferencedWords_currentWins() {
+        let current = refBook.across[0]  // 1-Across, references 2-Down
+        let referenced = refBook.referencedIds(for: current)
+        let selection = GridSelection(cell: 0, isAcross: true)  // on 1-Across
+        let down = ClueBrowserList.rows(
+            refBook.down, selection: selection, filled: [], referenced: referenced)
+        // 2-Down is referenced by the current clue.
+        XCTAssertTrue(down[1].isReferenced)
+        XCTAssertFalse(down[0].isReferenced)
+    }
+
+    func test_rows_aCurrentRowIsNeverAlsoReferenced_currentWins() {
+        // Selection on 1-Across; feed 1-Across's own id into the referenced set to
+        // prove current wins even if a set ever carried the current clue.
+        let selection = GridSelection(cell: 0, isAcross: true)
+        let across = ClueBrowserList.rows(
+            refBook.across, selection: selection, filled: [], referenced: ["1A"])
+        XCTAssertTrue(across[0].isCurrent)
+        XCTAssertFalse(across[0].isReferenced, "the current word never doubles as referenced")
+    }
 }

@@ -53,6 +53,35 @@ public struct ClueBook: Sendable, Equatable {
         guard let selection else { return nil }
         return clue(at: selection.cell, isAcross: selection.isAcross)
     }
+
+    /// The entry ids the `current` clue cross-references ("With 2-Down", "17, 20, and
+    /// 49 across"), filtered to entries that actually exist in this book and with the
+    /// current clue itself excluded (mirror of the web's LiveApp memo, ~L915). The
+    /// parser reads intent only; here we keep just the references that land on a real
+    /// row, so a self-reference or a reference to a clue this grid lacks never lights
+    /// anything. Empty for a nil current or a clue that names no entry.
+    public func referencedIds(for current: ClueEntry?) -> Set<String> {
+        guard let current else { return [] }
+        let existing = Set(across.map(\.id)).union(down.map(\.id))
+        var ids: Set<String> = []
+        for ref in parseClueRefs(current.text) {
+            let id = "\(ref.number)\(ref.isAcross ? "A" : "D")"
+            if id != current.id, existing.contains(id) { ids.insert(id) }
+        }
+        return ids
+    }
+
+    /// The union of the referenced entries' cells, for the board's faint tint. Every
+    /// cell of every clue the `current` clue references, relative to that selection.
+    public func referencedCells(for current: ClueEntry?) -> Set<Int> {
+        let ids = referencedIds(for: current)
+        guard !ids.isEmpty else { return [] }
+        var cells: Set<Int> = []
+        for entry in across + down where ids.contains(entry.id) {
+            cells.formUnion(entry.cells)
+        }
+        return cells
+    }
 }
 
 /// The browser's list, derived per render: sections, the pinned current word, and
@@ -70,14 +99,22 @@ public enum ClueBrowserList {
         /// Every cell renders non-null (INV-10 composite): quietly de-emphasized,
         /// unless it is the current or crossing word, which never dim.
         public let isDimmed: Bool
+        /// The current clue's text names this one ("With 27-Down", "See 42-Across"):
+        /// a faint highlight relative to the selection. Never both current and
+        /// referenced; current wins.
+        public let isReferenced: Bool
 
         public var id: String { clue.id }
 
-        public init(clue: ClueEntry, isCurrent: Bool, isCrossing: Bool, isDimmed: Bool) {
+        public init(
+            clue: ClueEntry, isCurrent: Bool, isCrossing: Bool, isDimmed: Bool,
+            isReferenced: Bool = false
+        ) {
             self.clue = clue
             self.isCurrent = isCurrent
             self.isCrossing = isCrossing
             self.isDimmed = isDimmed
+            self.isReferenced = isReferenced
         }
     }
 
@@ -86,16 +123,22 @@ public enum ClueBrowserList {
         !clue.cells.isEmpty && clue.cells.allSatisfy(filled.contains)
     }
 
-    /// One direction's rows against the selection and the rendered fill set.
+    /// One direction's rows against the selection, the rendered fill set, and the ids
+    /// the current clue cross-references (ClueBook.referencedIds). A row is never both
+    /// current and referenced; current wins.
     public static func rows(
-        _ clues: [ClueEntry], selection: GridSelection?, filled: Set<Int>
+        _ clues: [ClueEntry], selection: GridSelection?, filled: Set<Int>,
+        referenced: Set<String> = []
     ) -> [Row] {
         clues.map { clue in
             let onWord = selection.map { clue.cells.contains($0.cell) } ?? false
             let isCurrent = onWord && selection?.isAcross == clue.isAcross
             let isCrossing = onWord && !isCurrent
             let dimmed = !isCurrent && !isCrossing && isFilled(clue, filled: filled)
-            return Row(clue: clue, isCurrent: isCurrent, isCrossing: isCrossing, isDimmed: dimmed)
+            let isReferenced = !isCurrent && referenced.contains(clue.id)
+            return Row(
+                clue: clue, isCurrent: isCurrent, isCrossing: isCrossing, isDimmed: dimmed,
+                isReferenced: isReferenced)
         }
     }
 
