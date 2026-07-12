@@ -1,0 +1,80 @@
+[
+  {
+    "name": "SKELETON pending D23: same grid, different clue prose, one digest",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "clues": {
+        "across": [{ "number": 1, "text": "Feline", "cellIndices": [0, 1, 2] }]
+      }
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "clues": {
+        "across": [
+          {
+            "number": 1,
+            "text": "House pet, informally",
+            "cellIndices": [0, 1, 2]
+          }
+        ]
+      }
+    },
+    "sameDigest": true
+  },
+  {
+    "name": "SKELETON pending D23: same grid, circles differ, one digest (circles excluded from canon)",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "circles": []
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"],
+      "circles": [0, 4, 8]
+    },
+    "sameDigest": true
+  },
+  {
+    "name": "SKELETON pending D23: one letter differs, distinct digest",
+    "a": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"]
+    },
+    "b": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["B", "A", "T", "A", "R", "E", "T", "E", "A"]
+    },
+    "sameDigest": false
+  },
+  {
+    "name": "SKELETON pending D23: transposed grid is a distinct puzzle (rows/cols in the canon)",
+    "a": {
+      "rows": 1,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T"]
+    },
+    "b": {
+      "rows": 3,
+      "cols": 1,
+      "blocks": [],
+      "solution": ["C", "A", "T"]
+    },
+    "sameDigest": false
+  }
+]

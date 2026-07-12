@@ -1,0 +1,32 @@
+[
+  {
+    "name": "SKELETON pending D23: 3x3 open grid reduces to a canonical string",
+    "puzzle": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["C", "A", "T", "A", "R", "E", "T", "E", "A"]
+    },
+    "canon": "TODO: pinned by the implementation PR once D23 fixes the canon grammar"
+  },
+  {
+    "name": "SKELETON pending D23: blocks are a sorted set, order does not change the canon",
+    "puzzle": {
+      "rows": 3,
+      "cols": 3,
+      "blocks": [4, 0],
+      "solution": [null, "A", "T", "A", null, "E", "T", "E", "A"]
+    },
+    "canon": "TODO: same canon as the [0, 4] ordering of the same puzzle"
+  },
+  {
+    "name": "SKELETON pending D23: a rebus cell keeps its multi-character answer in the canon",
+    "puzzle": {
+      "rows": 1,
+      "cols": 3,
+      "blocks": [],
+      "solution": ["ONE", "T", "O"]
+    },
+    "canon": "TODO"
+  }
+]
