@@ -262,9 +262,11 @@ public struct SolveScreen: View {
                     morph: morph,
                     current: clues.current(for: model.selection),
                     acrossRows: ClueBrowserList.rows(
-                        clues.across, selection: model.selection, filled: filledCells),
+                        clues.across, selection: model.selection, filled: filledCells,
+                        referenced: referencedIds),
                     downRows: ClueBrowserList.rows(
-                        clues.down, selection: model.selection, filled: filledCells),
+                        clues.down, selection: model.selection, filled: filledCells,
+                        referenced: referencedIds),
                     glintMarks: glintMarks,
                     chrome: chrome,
                     onDismissTransients: dismissTransients,
@@ -374,6 +376,12 @@ public struct SolveScreen: View {
             CrossyGridView(
                 store: store, puzzle: puzzle, ground: ground,
                 selection: model.selection,
+                // The cells the current clue names get a faint tint relative to the
+                // selection: the same referencedIds that light the browser rows below,
+                // mapped to their cells, so board and browser never disagree on what
+                // the current clue names. A pure function of the same clue book and
+                // selection, kept next to those derivations.
+                crossReference: clues.cells(of: referencedIds),
                 mosaicStartedAt: completion.mosaicStartedAt,
                 occlusion: .standing(
                     board: frames[.board], roomBar: frames[.roomBar]),
@@ -573,6 +581,15 @@ public struct SolveScreen: View {
     /// de-emphasis rule.
     private var filledCells: Set<Int> {
         Set((0..<puzzle.cellCount).filter { store.renderValue($0) != nil })
+    }
+
+    /// The entry ids the current clue cross-references, filtered to real rows and
+    /// self-excluded (ClueBook.referencedIds, the web's LiveApp memo). One parse feeds
+    /// both the browser's faint row wash and the board's referencedCells tint, so the
+    /// two never disagree on what the current clue names. A pure function of the clue
+    /// book and the selection, exactly like filledCells above it.
+    private var referencedIds: Set<String> {
+        clues.referencedIds(for: clues.current(for: model.selection))
     }
 
     /// The confetti's palette: the room's writers in their roster colors (the

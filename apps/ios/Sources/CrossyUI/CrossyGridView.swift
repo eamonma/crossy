@@ -24,6 +24,10 @@ public struct CrossyGridView: View {
     private let puzzle: GridPuzzle
     private let ground: GridGround
     private let selection: GridSelection?
+    /// The cells the current clue cross-references, faintly tinted relative to the
+    /// selection (ClueBook.referencedCells). Empty by default: a caller without clue
+    /// text passes nothing and the board tints no cross-reference.
+    private let crossReference: Set<Int>
     private let mosaicStartedAt: TimeInterval?
     /// The standing chrome's cover over the full-bleed board (the clamp's
     /// scroll-inset window): constant under clue growth by construction, so the
@@ -66,6 +70,7 @@ public struct CrossyGridView: View {
         puzzle: GridPuzzle,
         ground: GridGround,
         selection: GridSelection?,
+        crossReference: Set<Int> = [],
         initialCamera: GridCamera? = nil,
         mosaicStartedAt: TimeInterval? = nil,
         occlusion: GridOcclusion = .none,
@@ -77,6 +82,7 @@ public struct CrossyGridView: View {
         self.puzzle = puzzle
         self.ground = ground
         self.selection = selection
+        self.crossReference = crossReference
         self.mosaicStartedAt = mosaicStartedAt
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
@@ -96,7 +102,8 @@ public struct CrossyGridView: View {
                     viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
                     occlusion: occlusion)
             let frame = GridFrame(
-                store: store, puzzle: puzzle, selection: selection, ground: ground)
+                store: store, puzzle: puzzle, selection: selection, ground: ground,
+                crossReference: crossReference)
             // The mosaic snapshot (DESIGN.md §8): palette from the sequenced event
             // log's writer attribution, ID-1 gated inside GridMosaic. Snapshotted
             // in body like GridFrame so @Observable registers the reads.
@@ -317,6 +324,10 @@ extension CrossyGridView {
         static let currentAlpha: Double = 0.32
         static let wordAlpha: Double = 0.14
         static let teammateAlpha: Double = 0.12
+        /// Half the active-word wash: the cross-reference mark exists only relative to
+        /// your selection, so it speaks the selection's color, quieter than the word
+        /// you are on (owner will tune on device).
+        static let crossReferenceAlpha: Double = 0.07
     }
 
     /// Everything below draws from plain values. `nonisolated`: the Canvas renderer
@@ -368,6 +379,11 @@ extension CrossyGridView {
                     context.fill(
                         Path(rect),
                         with: .color(Color(rgb: frame.cursorTint).opacity(Paint.currentAlpha)))
+                case .crossReference:
+                    context.fill(
+                        Path(rect),
+                        with: .color(
+                            Color(rgb: frame.cursorTint).opacity(Paint.crossReferenceAlpha)))
                 case .activeWord:
                     context.fill(
                         Path(rect),
@@ -609,7 +625,10 @@ extension GridFrame {
     /// state painted with the overlay; presence and identity come from the same
     /// snapshot). Runs in body so @Observable registers every read.
     @MainActor
-    public init(store: GameStore, puzzle: GridPuzzle, selection: GridSelection?, ground: GridGround) {
+    public init(
+        store: GameStore, puzzle: GridPuzzle, selection: GridSelection?, ground: GridGround,
+        crossReference: Set<Int> = []
+    ) {
         var values: [Int: String] = [:]
         for cell in 0..<puzzle.cellCount {
             if let value = store.renderValue(cell) { values[cell] = value }
@@ -628,7 +647,8 @@ extension GridFrame {
                     isSpectator: $0.role == .spectator)
             },
             selfUserId: store.selfUserId,
-            ground: ground)
+            ground: ground,
+            crossReference: crossReference)
     }
 }
 
