@@ -3,7 +3,7 @@
 // rejection comes back {error, message}; both are surfaced verbatim, never rewritten.
 
 import type { ClientPuzzle } from "@crossy/protocol";
-import type { GuardianEnvelope } from "./envelope";
+import type { Envelope } from "./envelope";
 
 /** The `POST /puzzles` 201 body: the API's PuzzleView. */
 interface PuzzleView {
@@ -18,7 +18,7 @@ export type IngestOutcome =
 export async function postPuzzle(
   apiBaseUrl: string,
   token: string,
-  envelope: GuardianEnvelope,
+  envelope: Envelope,
 ): Promise<IngestOutcome> {
   const response = await fetch(`${apiBaseUrl}/puzzles`, {
     method: "POST",

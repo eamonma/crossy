@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/content.ts src/popup.ts src/options.ts --bundle --format=iife --outdir=dist --log-level=warning && cp public/manifest.json public/popup.html public/options.html dist/",
+    "build": "esbuild src/content.ts src/nyt/content.ts src/amuselabs/content.ts src/popup.ts src/options.ts --bundle --format=iife --outbase=src --outdir=dist --log-level=warning && cp public/manifest.json public/popup.html public/options.html dist/",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

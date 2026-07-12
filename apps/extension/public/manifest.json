@@ -13,6 +13,20 @@
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.nytimes.com/crosswords/game/*"],
+      "js": ["nyt/content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*.amuselabs.com/pmm/crossword*",
+        "https://*.amuselabs.com/*/crossword*"
+      ],
+      "js": ["amuselabs/content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
     }
   ],
   "action": {
