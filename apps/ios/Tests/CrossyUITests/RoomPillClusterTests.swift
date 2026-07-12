@@ -67,29 +67,30 @@ final class RoomPillClusterTests: XCTestCase {
     }
 }
 
-// The time pill's presence in the bar (DESIGN.md §4 toolbar amendment): the pill
-// ARRIVES when the room is live, so the open frame's trailing cluster is share +
-// players only (both width-stable) and the pill's arrival is an honest bar-item
-// insertion, not the slot settling after the #132 zoom push. Pure on the store's
-// sync state (the honest existing fact, GameStore's SyncState), the
-// RoomWeather.from(sync:) discipline.
+// The trailing cluster's presence in the bar (DESIGN.md §4 toolbar amendment,
+// SLICE B: one arrival beat): share, players, and timer ALL arrive together when
+// the room is live, so pre-welcome the bar is back-only and the whole cluster is
+// an honest bar-item insertion on the welcome's beat, not slots settling on
+// different beats after the #132 zoom push. Pure on the store's sync state (the
+// honest existing fact, GameStore's SyncState), the RoomWeather.from(sync:)
+// discipline. Share keeps its own payload gate on top (tested at the bar).
 
-final class TimePillPresenceTests: XCTestCase {
+final class ClusterPresenceTests: XCTestCase {
     // Before the first welcome the store is `connecting` (no board truth yet):
-    // the pill is absent, so the open cluster is share + players only and no slot
-    // resolves its width after the zoom push.
-    func test_beforeTheWelcome_theTimePillIsAbsent_section4() {
-        XCTAssertFalse(TimePillPresence.isLive(sync: .connecting))
+    // the whole cluster is absent, so the withholding bar is back-only and no
+    // slot resolves its width after the zoom push.
+    func test_beforeTheWelcome_theClusterIsAbsent_section4() {
+        XCTAssertFalse(ClusterPresence.isLive(sync: .connecting))
     }
 
-    // The welcome flips sync off `connecting` and the pill materializes into the
-    // bar as its own insertion. Every post-welcome state has a board, so the pill
-    // stands through live, resyncing, and a reconnect alike (a terminal room's
-    // sealed pill arrives the same way, on its welcome's beat).
-    func test_onceLive_theTimePillArrives_section4() {
-        XCTAssertTrue(TimePillPresence.isLive(sync: .live))
-        XCTAssertTrue(TimePillPresence.isLive(sync: .resyncing))
-        XCTAssertTrue(TimePillPresence.isLive(sync: .reconnecting))
+    // The welcome flips sync off `connecting` and the whole cluster materializes
+    // into the bar as its own insertions, together. Every post-welcome state has a
+    // board, so the cluster stands through live, resyncing, and a reconnect alike
+    // (a terminal room's sealed cluster arrives the same way, on its welcome's beat).
+    func test_onceLive_theClusterArrives_section4() {
+        XCTAssertTrue(ClusterPresence.isLive(sync: .live))
+        XCTAssertTrue(ClusterPresence.isLive(sync: .resyncing))
+        XCTAssertTrue(ClusterPresence.isLive(sync: .reconnecting))
     }
 }
 

@@ -39,23 +39,24 @@ import CrossyDesign
 import CrossyStore
 import SwiftUI
 
-/// Whether the time pill stands in the bar yet (DESIGN.md §4 toolbar amendment):
-/// the pill ARRIVES once the room is live. Before the first `welcome` lands the
-/// store is `connecting`, so the trailing cluster is share + players only, both
-/// width-stable from the open frame; the welcome flips `sync` off `connecting`
-/// and the pill materializes as its own bar-item insertion, so the open frame's
-/// cluster no longer settles its slots after the #132 zoom push. The insert
-/// itself carries NO animation (device rig 2026-07-12: the nav bar's slot pass is
-/// UIKit's own and joins no SwiftUI transaction, so the pill just appears); a
-/// content-only fade was weighed and rejected, because the system draws the glass
-/// capsule from the item's mere presence, not its content (the empty-capsule
-/// finding), so fading the content in would reveal it inside an already-standing
-/// EMPTY capsule, the one thing §4 forbids. The honest arrival is the bare insert.
-/// A terminal room's sealed pill arrives the same way, on its welcome's beat: any
-/// state but `connecting` means a welcome landed and a board exists. Pure so a
-/// test pins it, the RoomWeather.from(sync:) discipline.
+/// Whether the trailing cluster stands in the bar yet (DESIGN.md §4 toolbar
+/// amendment, SLICE B: one arrival beat). ALL of it (share, players, timer)
+/// ARRIVES on the welcome's beat, together. Before the first `welcome` lands the
+/// store is `connecting`, so the trailing cluster is absent and the withholding
+/// bar is back-only; the welcome flips `sync` off `connecting` and the whole
+/// cluster materializes as its own bar-item insertions, everything true at once
+/// (the solver-filtered members, the invite payload, the ticking clock), so the
+/// open frame's cluster never settles its slots after the #132 zoom push and no
+/// item pops on a different beat. The insert itself carries NO animation (device
+/// rig 2026-07-12: the nav bar's slot pass is UIKit's own and joins no SwiftUI
+/// transaction, so the items just appear). A terminal room's sealed cluster
+/// arrives the same way, on its welcome's beat: any state but `connecting` means a
+/// welcome landed and a board exists. Pure so a test pins it, the
+/// RoomWeather.from(sync:) discipline. Share keeps its OWN payload gate on top
+/// (the invite code, never a dead control); this is the one presence rule beneath
+/// all three.
 @available(iOS 17.0, macOS 14.0, *)
-enum TimePillPresence {
+enum ClusterPresence {
     /// True once the first welcome has landed (the room is live). Keyed on the
     /// store's honest existing fact (`connecting` is the only pre-welcome state,
     /// GameStore's SyncState), never a new flag.
@@ -163,11 +164,12 @@ struct RoomBarInputs {
     let members: [RosterMember]
     let backHandedOff: Bool
     let timeHandedOff: Bool
-    /// Whether the time pill stands in the bar yet (TimePillPresence, DESIGN.md
-    /// §4 toolbar amendment): false before the first welcome, so the open frame's
-    /// trailing cluster is share + players only and the pill arrives as its own
-    /// insertion when the room goes live.
-    let showsTimePill: Bool
+    /// Whether the whole trailing cluster stands in the bar yet (ClusterPresence,
+    /// DESIGN.md §4 toolbar amendment, SLICE B): false before the first welcome, so
+    /// the withholding bar is back-only, and share, players, and timer all arrive
+    /// together on the welcome's beat (one arrival beat). Share keeps `hasShare` on
+    /// top for its own payload gate.
+    let showsCluster: Bool
     let hasShare: Bool
     let onBack: () -> Void
     let onTapTimePill: () -> Void
@@ -220,13 +222,13 @@ struct RoomBarInputs {
             .sharedBackgroundVisibility(
                 BarItemGlass.backgroundHidden(handedOff: inputs.backHandedOff)
                     ? .hidden : .automatic)
-            // The time pill ARRIVES once the room is live (DESIGN.md §4 toolbar
-            // amendment): before the first welcome the trailing cluster is share
-            // + players only, both width-stable from the open frame, so the pill's
-            // insertion carries no slot snap after the #132 zoom push. Its trailing
-            // spacer rides with it (a spacer splits two pills; without the pill
-            // there is nothing to split from).
-            if inputs.showsTimePill {
+            // The trailing cluster ARRIVES together once the room is live (DESIGN.md
+            // §4 toolbar amendment, SLICE B: one arrival beat). Before the first
+            // welcome the bar is back-only; the welcome flips sync and the whole
+            // cluster (timer, share, players) materializes on the same beat, each
+            // everything true at once. Sharing one presence gate means no item pops
+            // on a different beat, the staggered sequence the owner saw retired.
+            if inputs.showsCluster {
                 ToolbarItem(placement: .topBarTrailing) {
                     RoomTimePill(
                         ground: inputs.ground, weather: inputs.weather,
@@ -235,38 +237,42 @@ struct RoomBarInputs {
                         status: inputs.status, handedOff: inputs.timeHandedOff,
                         onTap: inputs.onTapTimePill, reportFrame: inputs.reportFrame)
                 }
-                // The timer's self-owned glass carve-out (DESIGN.md §4, the SLICE 2
-                // redesign): the pill's item PERMANENTLY suppresses the system capsule
-                // and its content carries ITS OWN real glass, so the arrival rides the
-                // chrome spring as a materialize (opacity + a slight scale settle) with
-                // no frame ever empty glass. The item stays present, so its frame keeps
-                // reporting (the facts card's rest, the pour-back's read). The yield is
-                // just opacity 0 on the content now (glass and content together), no
-                // separate capsule to suppress. Hidden ALWAYS, never gated on handoff.
+                // The time pill hands off (facts card open, or an eclipse) with no
+                // hollow capsule: the shared background hides exactly while the item
+                // is handed off, so the yield leaves no empty glass and the item
+                // stays present for its frame to keep reporting (the facts card's
+                // rest, the pour-back's read). The #149 arrangement, one rule with
+                // the back button and the Menus.
                 .sharedBackgroundVisibility(
-                    BarItemGlass.timePillBackgroundHidden ? .hidden : .automatic)
+                    BarItemGlass.backgroundHidden(handedOff: inputs.timeHandedOff)
+                        ? .hidden : .automatic)
                 // A fixed spacer between every trailing pill so the cluster reads
                 // as SEPARATE glass pills, not one fused "..." capsule (the
                 // room-bar cluster law, DESIGN.md §4: back / time / share /
                 // players, each its own object). One spacer per gap.
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-            if inputs.hasShare, let code = inputs.shareCode,
-                let url = inputs.shareUrlString
-            {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ShareMenuPill(
-                        ground: inputs.ground, code: code, urlString: url,
-                        onCopyLink: inputs.onCopyShareLink,
-                        onShare: inputs.onShareInvite)
+                // Share keeps its OWN payload gate on top of the cluster presence
+                // (never a dead control): the Menu's rows bake the invite code, so
+                // the item stands only once the code and link exist. On the welcome
+                // beat the code is already in hand (GET /games/{id}), so share arrives
+                // with the cluster; a room with no shareable never stands it.
+                if inputs.hasShare, let code = inputs.shareCode,
+                    let url = inputs.shareUrlString
+                {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ShareMenuPill(
+                            ground: inputs.ground, code: code, urlString: url,
+                            onCopyLink: inputs.onCopyShareLink,
+                            onShare: inputs.onShareInvite)
+                    }
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                RosterMenu(
-                    ground: inputs.ground, members: inputs.members,
-                    selfUserId: inputs.selfUserId, onJoinIn: inputs.onJoinIn,
-                    onKick: inputs.onKick, onGoTo: inputs.onGoTo)
+                ToolbarItem(placement: .topBarTrailing) {
+                    RosterMenu(
+                        ground: inputs.ground, members: inputs.members,
+                        selfUserId: inputs.selfUserId, onJoinIn: inputs.onJoinIn,
+                        onKick: inputs.onKick, onGoTo: inputs.onGoTo)
+                }
             }
         }
     }
@@ -288,11 +294,12 @@ struct RoomToolbarFallback: ToolbarContent {
                 ground: inputs.ground, handedOff: inputs.backHandedOff,
                 onBack: inputs.onBack, reportFrame: inputs.reportFrame)
         }
-        // The time pill arrives on the welcome's beat here too (DESIGN.md §4
-        // toolbar amendment): before the room is live the fallback bar carries
-        // back + the Menus only. The bar's own item insertion is the system's,
-        // Reduce Motion included.
-        if inputs.showsTimePill {
+        // The trailing cluster arrives together on the welcome's beat here too
+        // (DESIGN.md §4 toolbar amendment, SLICE B): before the room is live the
+        // fallback bar is back-only, and timer, share, and players insert together
+        // when sync flips. The bar's own item insertion is the system's, Reduce
+        // Motion included.
+        if inputs.showsCluster {
             ToolbarItem(placement: BarPlacement.trailing) {
                 RoomTimePill(
                     ground: inputs.ground, weather: inputs.weather,
@@ -301,22 +308,22 @@ struct RoomToolbarFallback: ToolbarContent {
                     status: inputs.status, handedOff: inputs.timeHandedOff,
                     onTap: inputs.onTapTimePill, reportFrame: inputs.reportFrame)
             }
-        }
-        if inputs.hasShare, let code = inputs.shareCode,
-            let url = inputs.shareUrlString
-        {
-            ToolbarItem(placement: BarPlacement.trailing) {
-                ShareMenuPill(
-                    ground: inputs.ground, code: code, urlString: url,
-                    onCopyLink: inputs.onCopyShareLink,
-                    onShare: inputs.onShareInvite)
+            if inputs.hasShare, let code = inputs.shareCode,
+                let url = inputs.shareUrlString
+            {
+                ToolbarItem(placement: BarPlacement.trailing) {
+                    ShareMenuPill(
+                        ground: inputs.ground, code: code, urlString: url,
+                        onCopyLink: inputs.onCopyShareLink,
+                        onShare: inputs.onShareInvite)
+                }
             }
-        }
-        ToolbarItem(placement: BarPlacement.trailing) {
-            RosterMenu(
-                ground: inputs.ground, members: inputs.members,
-                selfUserId: inputs.selfUserId, onJoinIn: inputs.onJoinIn,
-                onKick: inputs.onKick, onGoTo: inputs.onGoTo)
+            ToolbarItem(placement: BarPlacement.trailing) {
+                RosterMenu(
+                    ground: inputs.ground, members: inputs.members,
+                    selfUserId: inputs.selfUserId, onJoinIn: inputs.onJoinIn,
+                    onKick: inputs.onKick, onGoTo: inputs.onGoTo)
+            }
         }
     }
 }
