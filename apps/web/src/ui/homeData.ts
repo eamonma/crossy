@@ -14,6 +14,21 @@ import type { Mask } from "@crossy/protocol";
 export type Role = "host" | "solver" | "spectator";
 
 /**
+ * One member on a GET /games row (PROTOCOL section 12): display identity only. `name` is the
+ * resolved display name the live roster shows, never null on the wire (a nameless mirror reads
+ * "former participant" server-side, the same section 4 fallback). `avatarUrl` is the same opaque
+ * nullable field the participant carries (PROTOCOL section 4): render the image when present,
+ * fall back to the initial when null. `role` is the member's seat, so the standing solvers-only
+ * display filters apply; a guest seats spectator and there is no guest flag on the wire.
+ */
+export interface GameMember {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
+  role: Role;
+}
+
+/**
  * One row of GET /games. The list arrives most-recently-active first within the page; completedAt
  * marks a finished game, lastActivityAt is the newest board event (null when no one has played).
  */
@@ -24,6 +39,20 @@ export interface GameSummary {
   createdAt: string;
   createdBy: string;
   memberCount: number;
+  /**
+   * The full membership as display identity, join-ordered (first joiner first; PROTOCOL section
+   * 12), so the home can render identity-true avatar stacks without a second fetch. Additive
+   * (section 14): an older server omits it, so read through membersOf(), which folds absent to
+   * empty rather than leaking undefined into a render.
+   */
+  members?: GameMember[];
+  /**
+   * The game's invite code, under exactly the game view's member-only rule (PROTOCOL section
+   * 12): the list is member-scoped, so every row's reader is a member and the code travels no
+   * wider than GET /games/{id} already sends it. Additive (section 14): an older server omits
+   * it, which reads as none.
+   */
+  inviteCode?: string;
   /**
    * When the game completed (ISO), or null while ongoing (also null for an abandoned game, which
    * never completed). Read from the session-owned game_state, never a solution (INV-6-safe).
@@ -49,6 +78,14 @@ export interface GameSummary {
 /** True when a game has finished (a non-null completion timestamp); the sidebar marks these. */
 export function isCompleted(g: GameSummary): boolean {
   return g.completedAt !== null;
+}
+
+/**
+ * A row's member stack, absent-tolerant (PROTOCOL section 14): an older server omits `members`,
+ * which reads as empty. Every consumer goes through here so the fallback lives once.
+ */
+export function membersOf(g: GameSummary): GameMember[] {
+  return g.members ?? [];
 }
 
 /**
