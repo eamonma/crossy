@@ -9,30 +9,29 @@ import {
   STARTER_GAME_NAME,
   STARTER_PUZZLE,
   STARTER_PUZZLE_AUTHOR,
-  STARTER_PUZZLE_ID,
   STARTER_PUZZLE_TITLE,
 } from "./starter-puzzle";
 
 /**
- * Ensure the shared starter puzzle exists (idempotent by its fixed id), then create the user's
- * own solo game hosting it. The seeded game is a normal game: it shows up in the caller's
- * `GET /games`, and its view projects `ClientPuzzle` geometry out of the snapshot with no
- * solution (INV-6). Guests are never seeded: the caller gates on `isAnonymous`, and a guest
- * cannot hold host anyway (DESIGN.md §8).
+ * Mint the user their OWN copy of the starter puzzle (`created_by = them`, so it lists in their
+ * owned puzzles), then create the solo game they host on it. The seeded game is a normal game:
+ * it shows up in the caller's `GET /games`, and its view projects `ClientPuzzle` geometry out of
+ * the snapshot with no solution (INV-6). Guests are never seeded: the caller gates on
+ * `isAnonymous`, and a guest cannot hold host anyway (DESIGN.md §8).
  */
 export async function seedStarterGame(db: Db, userId: string): Promise<void> {
-  await db
+  const [puzzle] = await db
     .insert(schema.puzzles)
     .values({
-      puzzleId: STARTER_PUZZLE_ID,
       data: STARTER_PUZZLE,
       title: STARTER_PUZZLE_TITLE,
       author: STARTER_PUZZLE_AUTHOR,
+      createdBy: userId,
     })
-    .onConflictDoNothing({ target: schema.puzzles.puzzleId });
+    .returning({ puzzleId: schema.puzzles.puzzleId });
   await createGameWithHost(
     db,
-    STARTER_PUZZLE_ID,
+    puzzle!.puzzleId,
     STARTER_PUZZLE,
     userId,
     STARTER_GAME_NAME,
