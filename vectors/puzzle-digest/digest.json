@@ -1,0 +1,14 @@
+[
+  {
+    "name": "SKELETON pending D23: canonical string hashes to a stable digest",
+    "canon": "TODO: the canonical string from canon.json for the 3x3 open grid",
+    "algorithm": "sha256",
+    "digest": "TODO: hex digest, filled by the implementation PR"
+  },
+  {
+    "name": "SKELETON pending D23: lowercase input folds to the same digest (INV-1, ASCII-only)",
+    "canon": "TODO: same canonical string as the uppercase case, since ingest ASCII-uppercases",
+    "algorithm": "sha256",
+    "digest": "TODO: identical to the uppercase case's digest"
+  }
+]
