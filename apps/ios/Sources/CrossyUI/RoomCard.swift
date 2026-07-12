@@ -144,6 +144,13 @@ public struct RoomCard: View {
     private let model: RoomCardModel
     private let ground: GridGround
 
+    /// How much the silhouette dims for a solved room: a quiet muted-silhouette echo of the
+    /// web's `Silhouette muted` (Home.tsx), the smallest honest signal that a room is done,
+    /// so the trailing "Solved" section reads finished without a loud badge. Only the
+    /// fingerprint dims; the headline and people stay full ink. A first pass for the owner's
+    /// device eye, tuned by one constant.
+    public static let solvedFingerprintOpacity: Double = 0.45
+
     public init(model: RoomCardModel, ground: GridGround) {
         self.model = model
         self.ground = ground
@@ -153,6 +160,7 @@ public struct RoomCard: View {
         HStack(spacing: 14) {
             GeometryFingerprintView(rows: model.rows, cols: model.cols, ground: ground)
                 .frame(width: 52, height: 52)
+                .opacity(model.isSolved ? Self.solvedFingerprintOpacity : 1)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: model.headline)

@@ -16,6 +16,8 @@ final class ArrivalCopyTests: XCTestCase {
             ArrivalCopy.sentence(forCode: "DENIED"),
             "The host removed you from this room.")
         XCTAssertEqual(ArrivalCopy.roomsTitle, "Rooms")
+        // The trailing shelf's quiet caps label, the same word the web shelf uses (Home.tsx).
+        XCTAssertEqual(ArrivalCopy.roomsSolvedSection, "Solved")
         XCTAssertEqual(ArrivalCopy.joinAffordance, "Join")
         XCTAssertEqual(ArrivalCopy.joinTitle, "Join a room")
         XCTAssertEqual(ArrivalCopy.continueWithDiscord, "Continue with Discord")

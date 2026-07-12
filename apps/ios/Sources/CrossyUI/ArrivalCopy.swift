@@ -58,6 +58,10 @@ public enum ArrivalCopy {
     /// The empty state is an invitation, not a void: one line, then the standing
     /// actions carry the rest.
     public static let roomsEmpty = "No rooms yet. Join a friend's room with a code."
+    /// The quiet caps label over the trailing shelf that gathers finished rooms, so the
+    /// live rooms stay current up top (the web's grammar, Home.tsx). The same word the web
+    /// shelf uses. Rendered only when at least one room is solved.
+    public static let roomsSolvedSection = "Solved"
 
     // MARK: - Join (the top affordance and its camera-first panel)
 
