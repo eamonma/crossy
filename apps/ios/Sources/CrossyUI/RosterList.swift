@@ -94,6 +94,35 @@ public enum RosterList {
         }
     }
 
+    /// The presence split for the roster menu (PROTOCOL.md §4: each participant carries
+    /// `connected`; no wire change): the people here now lead, the away members gather below.
+    /// Each side keeps `ordered`'s rule (byte order by name then id, INV-1), so the split only
+    /// groups, never reshuffles. The viewer is always here: a self row can echo `connected:
+    /// false` mid-reconnect, but the person reading the roster is present by definition, the same
+    /// rule the web twin (partitionRoster) holds.
+    ///
+    /// A disconnected spectator drops out of both sides: a guest seats as a spectator
+    /// (PROTOCOL.md §12), and an away guest is neither here nor a lingering away ghost, matching
+    /// the cluster's playing-only rule and the web AvatarStack display rule. A connected
+    /// spectator stays in the here section, where their quiet Watching word still names them.
+    public static func sections(
+        _ members: [RosterMember], selfUserId: String?
+    ) -> (here: [RosterMember], away: [RosterMember]) {
+        var here: [RosterMember] = []
+        var away: [RosterMember] = []
+        for member in ordered(members) {
+            let isSelf = selfUserId != nil && member.userId == selfUserId
+            if member.connected || isSelf {
+                here.append(member)
+            } else if !member.isSpectator {
+                // Away only when they hold a seat that persists (host or solver); a disconnected
+                // guest-spectator drops entirely so no permanent away ghost stands.
+                away.append(member)
+            }
+        }
+        return (here, away)
+    }
+
     /// The cluster (owner ruling 2026-07-10): only the people who are playing,
     /// host or solver, never a spectator. Guests always seat as spectators
     /// (PROTOCOL.md §12), so guests leave the top bar without any wire change,

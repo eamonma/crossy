@@ -162,4 +162,87 @@ final class RosterListTests: XCTestCase {
         let target = member("bee", host: true, cursor: RosterCursor(cell: 0, isAcross: false))
         XCTAssertTrue(RosterList.canJump(target))
     }
+
+    // The presence split for the roster menu (PROTOCOL.md §4: `connected` on every participant,
+    // no wire change). The here section leads, away gathers below; each side keeps `ordered`'s
+    // byte order (INV-1), so the split groups without reshuffling.
+    func test_sections_hereLeadsAndAwayGathers_orderPreserved() {
+        let members = [
+            member("ada", connected: false),
+            member("you", name: "You"),
+            member("zoe", connected: false),
+            member("bee", name: "Bee"),
+        ]
+        let split = RosterList.sections(members, selfUserId: "you")
+        // Here: byte order Bee before You; away: byte order Ada before Zoe.
+        XCTAssertEqual(split.here.map(\.userId), ["bee", "you"])
+        XCTAssertEqual(split.away.map(\.userId), ["ada", "zoe"])
+    }
+
+    // The viewer is present by definition: a self row echoing connected:false mid-reconnect still
+    // sits in the here section, never the away one. The web twin (partitionRoster) holds the same.
+    func test_sections_selfIsAlwaysHereEvenWhenFlaggedAway() {
+        let members = [
+            member("you", name: "You", connected: false),
+            member("bee", name: "Bee"),
+        ]
+        let split = RosterList.sections(members, selfUserId: "you")
+        XCTAssertEqual(split.here.map(\.userId), ["bee", "you"])
+        XCTAssertTrue(split.away.isEmpty)
+    }
+
+    // Host markers survive the split in either section: the row still carries isHost, so the
+    // menu's kick gating and the subtitle read the same before and after grouping.
+    func test_sections_hostMarkerPreservedInEitherSection() {
+        let members = [
+            member("here", name: "Here", host: true),
+            member("gone", name: "Gone", connected: false, host: true),
+        ]
+        let split = RosterList.sections(members, selfUserId: "someone-else")
+        XCTAssertTrue(split.here.first?.isHost ?? false)
+        XCTAssertTrue(split.away.first?.isHost ?? false)
+    }
+
+    // A member moves sections live as their connected flag flips: the same input, one flag apart,
+    // lands them here then away. The menu re-derives on every render, so a disconnect moves them.
+    func test_sections_memberMovesSectionsAsConnectedFlips() {
+        let connected = [member("bee")]
+        let disconnected = [member("bee", connected: false)]
+        XCTAssertEqual(
+            RosterList.sections(connected, selfUserId: "you").here.map(\.userId), ["bee"])
+        XCTAssertTrue(RosterList.sections(connected, selfUserId: "you").away.isEmpty)
+        XCTAssertEqual(
+            RosterList.sections(disconnected, selfUserId: "you").away.map(\.userId), ["bee"])
+        XCTAssertTrue(RosterList.sections(disconnected, selfUserId: "you").here.isEmpty)
+    }
+
+    // Empty away section when everyone is here: the menu skips the Away header entirely, so no
+    // ghost header stands over an empty group.
+    func test_sections_awayIsEmptyWhenEveryoneIsHere() {
+        let members = [member("you", host: true), member("bee")]
+        XCTAssertTrue(RosterList.sections(members, selfUserId: "you").away.isEmpty)
+    }
+
+    // A disconnected spectator drops out of both sections (PROTOCOL.md §12: guests seat as
+    // spectators): an away guest is neither here nor a lingering away ghost, matching the
+    // cluster's playing-only rule. A connected spectator stays in the here section.
+    func test_sections_disconnectedSpectatorDropsFromBothSides() {
+        let members = [
+            member("you", host: true),
+            member("guest", connected: false, spectator: true),
+        ]
+        let split = RosterList.sections(members, selfUserId: "you")
+        XCTAssertEqual(split.here.map(\.userId), ["you"])
+        XCTAssertTrue(split.away.isEmpty)
+    }
+
+    func test_sections_connectedSpectatorStaysHere() {
+        let members = [
+            member("you", host: true),
+            member("watcher", spectator: true),
+        ]
+        let split = RosterList.sections(members, selfUserId: "you")
+        XCTAssertEqual(split.here.map(\.userId), ["watcher", "you"])
+        XCTAssertTrue(split.away.isEmpty)
+    }
 }
