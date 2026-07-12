@@ -16,13 +16,15 @@ import Foundation
 /// `clientStore` is the fifth PROTOCOL.md §13 family; its directory is `client-store` (the
 /// raw value). It is foreign to the engine (the manifest's `foreign` bucket): discovered
 /// and shape-validated here, executed by apps/web + the iOS store, never bound to
-/// CrossyEngine (vectors/README.md).
+/// CrossyEngine (vectors/README.md). `clueRuns` (directory `clue-runs`) is likewise foreign:
+/// its consumer is the clue-run parser and renderer in apps/web and iOS (PROTOCOL.md §12).
 enum VectorFamily: String, CaseIterable, Sendable {
     case reducer
     case comparator
     case navigation
     case completion
     case clientStore = "client-store"
+    case clueRuns = "clue-runs"
 }
 
 /// Locates the shared vector tree and this package's skip manifest from the compiled-in

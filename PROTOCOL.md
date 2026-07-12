@@ -256,6 +256,38 @@ The WebSocket carries gameplay only. Everything else is REST on the core API, be
 
 Puzzle views are typed `ClientPuzzle`, a type with no solution field, including none embedded in clue structures, so stripping is structural, not runtime (DESIGN.md INV-6).
 
+**Clue markup (`runs`).** Vendor clues carry inline markup: an italicized cited work, a subscript in a formula, a bolded word. Crossy renders this as structured runs, never as raw HTML on the wire and never by stripping the markup away. A `Clue` therefore gains one optional additive field, `runs`, alongside its existing `text`:
+
+```json
+{
+  "number": 17,
+  "text": "See Rocky for one",
+  "cellIndices": [34, 35, 36],
+  "runs": [
+    { "t": "See " },
+    { "t": "Rocky", "s": ["i"] },
+    { "t": " for one" }
+  ]
+}
+```
+
+A `run` is `{ "t": string, "s"?: Style[] }`, where `Style` is one of `"i"`, `"b"`, `"sub"`, `"sup"`. `text` stays the canonical plain projection, and `runs` is the same clue re-expressed as an ordered list of styled spans. The projection and the runs are derived from the vendor string at ingestion (DESIGN.md section 7), pinned by the conformance vectors (section 13, `clue-runs`), and normalized by these laws:
+
+1. **Plain projection.** The concatenation of every run's `t`, in order, equals `text` exactly. A client that ignores `runs` and renders `text` shows the same characters a run-aware client shows unstyled.
+2. **Omitted when unstyled.** `runs` is absent from the clue entirely when the whole clue is plain. It is never an all-plain `runs` array standing in for its own `text`.
+3. **Minimal runs.** No run has an empty `t`. `s` is omitted rather than present-and-empty, and lists no duplicate style.
+4. **Fixed style order.** Styles inside one `s` are ordered `"b"`, `"i"`, `"sub"`, `"sup"`, so a style set has exactly one serialization.
+5. **Adjacent merge.** Adjacent runs with identical style sets are merged, so the run list is the shortest that expresses the styling.
+6. **Normalized text.** `text` is the plain string after markup is parsed out, entities are decoded, Unicode whitespace is collapsed to single ASCII spaces, and the result is trimmed.
+7. **Vocabulary.** `<i>` and `<em>` map to `"i"`; `<b>` and `<strong>` to `"b"`; `<sub>` to `"sub"`; `<sup>` to `"sup"`. Tag names match case-insensitively (ASCII-only, INV-1). Any other tag contributes no style, but its text content is kept. A `<br>` in any form (`<br>`, `<br/>`, `<BR>`) becomes a single space.
+8. **Parse before decode.** Tags are recognized on the raw string before entities are decoded. An entity-escaped tag such as `&lt;i&gt;` is therefore literal visible text, never formatting, and a literal `3 < 4` is preserved (the `<` is not a tag start, so nothing is consumed).
+9. **Nesting flattens.** Nested markup flattens to a style set: `<b><i>x</i></b>` yields one run with `s` `["b", "i"]`.
+10. **Whitespace on the projection.** Whitespace collapse operates on the projection, across run boundaries. A collapsed run of whitespace carries the styles of its first whitespace character. A run left empty by collapse or by the outer trim is dropped (which can, by law 2, drop `runs` entirely if what remains is plain).
+11. **Literals pass through.** Every literal character survives untouched, notably the leading `*` of the starred-clue convention (`*Like this clue's answer`).
+12. **Malformed markup is forgiving and deterministic.** An unclosed whitelist tag styles through the end of the string. A stray closing tag with no matching opener is dropped. These are the only two malformed shapes, and both are pinned by vectors so the two ports cannot diverge.
+
+The field is additive and follows expand/contract (section 14): it bumps no version. A client without `runs` support renders `text`, which remains the canonical plain projection (law 1), so it loses only the styling, never a character. A client MUST NOT parse markup out of `text`: `text` is already plain by law 6, and any markup a clue carries is expressed only through `runs`. `runs` carries no solution content (it restyles the same clue text, INV-6 untouched), so it lives on the shared clue shape and crosses to the client on `ClientPuzzle` like the rest of the clue.
+
 The two list endpoints (`GET /games`, `GET /puzzles`) back the signed-in home. Both are cursor-paginated, never offset: a `limit` clamped to `[1, 100]` (default 50) and an optional `before`, an ISO 8601 `createdAt` the page filters strictly before (`created_at < before`). A present but unparseable `before` is `VALIDATION` (400). Both carry only INV-6-safe puzzle geometry (rows, cols) projected server-side, never the solution-bearing snapshot. Visibility is scoped to the caller: `GET /games` returns only games the caller is a member of (any role, guests included), and `GET /puzzles` returns only puzzles the caller uploaded. `GET /games` reports completion through `completedAt`, the ISO time a game finished, null while it is ongoing and null for an abandoned game (which never completed, so it never stamped a completion time). `completedAt` is read from the session-owned `game_state.completed_at` under the core API's SELECT-only read grant on `game_state` (the planned read expand, DESIGN.md section 9); the grant is read only, so single-writer holds (INV-7 governs writes, not reads), and the API selects only that terminal timestamp, never the board. A game whose `game_state` row does not exist yet (created but never connected, so the actor has not materialized it) reads as ongoing, `completedAt` null, via a left join. A full lifecycle `status` enum (ongoing, completed, abandoned) that also distinguishes abandonment remains a later additive extension, landing with the Archive module's broader read models; `completedAt` is the one lifecycle fact the home needs today, and it never carries a solution (it is a bare timestamp, INV-6 untouched).
 
 **Activity ordering and the pagination contract (`GET /games`).** The home wants its rooms in the order people last touched them, not the order they were created. `GET /games` therefore carries `lastActivityAt`, the ISO time of a game's newest board event, and orders each returned page by when the game was last touched, most recent first. The sort key is `COALESCE(lastActivityAt, createdAt)`: creating a room is its first activity, so a freshly created game with no events yet sorts by its `createdAt`, right where a room played at that same instant would sit (at the top of a fresh page, not banished below every played game). `lastActivityAt` is `MAX(cell_events.at)` for the game, read from the session-owned event log under the core API's SELECT-only read grant on `cell_events` (migration 0008, the next step of the planned read expand DESIGN.md section 9 records); the grant is read only, so single-writer holds (INV-7 governs writes, not reads), and the API selects only the aggregated timestamp, never a cell `value` or the board, so no solution content leaves the server (a bare `MAX(at)` is INV-6-safe, the same shape as the `completedAt` read). `lastActivityAt` still comes back null on the wire for a game with no events yet (the shape does not change, so a client can still tell "active X ago" from "started X ago"); only the ordering coalesces it to `createdAt`. Two games that share a coalesced key break the tie by `createdAt` descending, then `gameId`, so the order is total and deterministic.
@@ -477,6 +509,8 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) and
 **Completion matrix vectors** (reducer cases plus actor integration): repeated completion attempts yield exactly one `gameCompleted`; a filled-but-wrong board emits nothing and stays `ongoing`; **a full-but-wrong board made correct by an in-place overwrite (no change to `filledCount`) completes exactly once**; two players filling the last two cells concurrently yield exactly one completion; any mutation after completion is rejected; a client disconnected across the completion learns of it from the snapshot.
 
 **Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `error`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells, and where a case pins it the store's derived `firstFillAt` (the timer origin the first fill's `cellSet` carries on the delta path, section 6). A non-fatal `error` is in scope because it is what clears the immortal overlay (section 8), the case this family must cover. These pin the duplicated web + iOS reconciliation logic (overlay clear on echo, gap-to-sync re-send, rollback) where drift is most expensive, and cover the immortal-overlay case in section 8.
+
+**Clue-runs vectors** (`clue-runs` family): given a raw vendor-HTML clue string, assert the normalized `{text, runs}` the section 12 laws produce. Each case cites the law it defends. Like `client-store`, this is a _foreign_ family: its consumer is the clue-run parser and renderer in `apps/web` and iOS, not `packages/engine`, so the engine runner shape-validates it but never executes it. The cluster covers each style in the vocabulary, nesting-to-set flattening, adjacent merge, unknown-tag stripping, the `<br>` forms, entity decoding and the parse-before-decode order law, whitespace collapse across a style boundary, trimming an emptied run, the starred-clue literal, the markup-only clue, and the two malformed-tag shapes (section 12 law 12).
 
 ## 14. Versioning
 

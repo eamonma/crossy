@@ -1,0 +1,31 @@
+[
+  {
+    "name": "law 12: an unclosed whitelist tag styles through the end of the string",
+    "given": { "raw": "Start <i>then italic to the end" },
+    "then": {
+      "text": "Start then italic to the end",
+      "runs": [{ "t": "Start " }, { "t": "then italic to the end", "s": ["i"] }]
+    }
+  },
+  {
+    "name": "law 12: a stray closing tag with no matching opener is dropped, its neighbours stay plain",
+    "given": { "raw": "No opener here</i> though" },
+    "then": { "text": "No opener here though" }
+  },
+  {
+    "name": "law 12: an unclosed inner tag under an open outer tag styles the tail with both styles",
+    "given": { "raw": "<b>bold <i>and italic to the end" },
+    "then": {
+      "text": "bold and italic to the end",
+      "runs": [
+        { "t": "bold ", "s": ["b"] },
+        { "t": "and italic to the end", "s": ["b", "i"] }
+      ]
+    }
+  },
+  {
+    "name": "law 12: a stray close for an unknown tag is dropped like any unknown tag",
+    "given": { "raw": "Text</span> continues" },
+    "then": { "text": "Text continues" }
+  }
+]

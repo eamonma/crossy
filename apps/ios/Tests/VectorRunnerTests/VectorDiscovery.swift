@@ -164,6 +164,9 @@ func shapeProblems(for file: DiscoveredFile) -> [String] {
         case .clientStore:
             return try decoder.decode([ClientStoreCase].self, from: file.data)
                 .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
+        case .clueRuns:
+            return try decoder.decode([ClueRunsCase].self, from: file.data)
+                .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
         }
     } catch {
         return ["does not decode to the \(file.family.rawValue) shape: \(describeDecodingError(error))"]

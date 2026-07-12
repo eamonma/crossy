@@ -405,3 +405,88 @@ struct RenderMap: Decodable {
         keys = collected
     }
 }
+
+// MARK: - Clue runs
+
+/// The clue-style vocabulary, in the fixed order runs' `s` must follow (PROTOCOL.md §12, law 4).
+/// An array (not a Set) keeps the order pin and the problem message legible.
+let clueStyleOrder: [String] = ["b", "i", "sub", "sup"]
+
+/// Clue-runs cases map a vendor-HTML clue string to `{ text, runs? }` (PROTOCOL.md §12). This
+/// family is foreign to the engine (the manifest's `foreign` bucket): the runner shape-validates
+/// it here but never executes it; its consumer is the clue-run parser and renderer in apps/web and
+/// iOS, not CrossyEngine. `given.raw` is the raw clue string, `then.text` the canonical plain
+/// projection, and `then.runs` the minimal structured form, present only when the clue is styled.
+struct ClueRunsCase: Decodable {
+    let name: String
+    let given: ClueRunsGiven
+    let then: ClueRunsOutcome
+
+    var label: String { name }
+
+    func shapeProblems() -> [String] {
+        var problems: [String] = []
+        if let runs = then.runs {
+            // law 2: runs is present only when the clue is styled, so it is never an empty array.
+            if runs.isEmpty {
+                problems.append("then.runs: non-empty array when present (law 2)")
+            }
+            for (index, run) in runs.enumerated() {
+                problems += run.shapeProblems(at: "then.runs[\(index)]")
+            }
+        }
+        return problems
+    }
+}
+
+/// The raw vendor-HTML clue string, the sole input.
+struct ClueRunsGiven: Decodable {
+    let raw: String
+}
+
+/// The canonical projection: `text` (always) plus `runs` (only when styled, law 2). Decoding
+/// `runs` as an optional array of `ClueRun` rejects a non-object entry straight from the bytes.
+struct ClueRunsOutcome: Decodable {
+    let text: String
+    let runs: [ClueRun]?
+}
+
+/// One run: `t` (non-empty text, law 3) and optional `s` (the style set, fixed order b,i,sub,sup
+/// with no duplicates, laws 3-4). Codable pins the value types; `shapeProblems` adds the emptiness,
+/// vocabulary, order, and uniqueness constraints, mirroring the TS `clueRunProblems` check.
+struct ClueRun: Decodable {
+    let t: String
+    let s: [String]?
+
+    func shapeProblems(at where_: String) -> [String] {
+        var problems: [String] = []
+        if t.isEmpty {
+            problems.append("\(where_).t: non-empty string required (law 3)")
+        }
+        guard let styles = s else { return problems }
+        if styles.isEmpty {
+            problems.append("\(where_).s: non-empty array of styles when present (law 3)")
+            return problems
+        }
+        var lastRank = -1
+        var seen: Set<String> = []
+        for style in styles {
+            if let rank = clueStyleOrder.firstIndex(of: style) {
+                if rank <= lastRank {
+                    problems.append(
+                        "\(where_).s: styles must be unique and ordered b,i,sub,sup (law 4), got \"\(style)\"")
+                } else {
+                    lastRank = rank
+                }
+            } else {
+                problems.append(
+                    "\(where_).s: unknown style \"\(style)\"; one of \(clueStyleOrder.joined(separator: ", "))")
+            }
+            if seen.contains(style) {
+                problems.append("\(where_).s: duplicate style \"\(style)\" (law 3)")
+            }
+            seen.insert(style)
+        }
+        return problems
+    }
+}
