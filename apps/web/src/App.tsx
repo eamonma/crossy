@@ -362,6 +362,7 @@ function DemoApp({
     void version;
     return store.participants.map((p) => ({
       userId: p.userId,
+      name: p.displayName,
       initial: p.displayName.charAt(0) || "?",
       avatarUrl: p.avatarUrl,
       color: p.color,

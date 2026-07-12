@@ -376,7 +376,7 @@ function RosterPopover({
                 </AvatarFallback>
               </Avatar>
               <span className="min-w-0 flex-1 truncate text-2 text-text">
-                {m.userId === selfId ? "You" : m.initial}
+                {m.userId === selfId ? "You" : m.name}
               </span>
               {m.userId !== selfId && (
                 <Button
@@ -409,7 +409,7 @@ function RosterPopover({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove {target?.initial} from the room?</DialogTitle>
+            <DialogTitle>Remove {target?.name} from the room?</DialogTitle>
             <DialogDescription>
               They lose their seat and can&apos;t rejoin with this code.
             </DialogDescription>
