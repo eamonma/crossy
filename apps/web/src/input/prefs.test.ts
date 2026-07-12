@@ -179,11 +179,13 @@ describe("rule endOfWord next-clue: completing the word advances to the next clu
     expect(out.direction).toBe("down");
   });
 
-  it("next-clue: word-end with a blank still behind does NOT advance (stays on the last cell)", () => {
-    // skip OFF lets the cursor reach the last cell with a blank behind; the word is not complete.
+  it("next-clue: word-end with a blank still behind STILL advances (NYT move-to-next-word; iOS twin parity)", () => {
+    // skip OFF lets the cursor reach the last cell with a blank behind; the word is not
+    // complete, and next-clue advances anyway. Never wrapping back is the point of the
+    // setting, and the iOS twin (CrossyEngine typingAdvance, .nextClue) does exactly this.
     const fills = filled(15, 17, 19); // blanks 16, 18 remain
     const out = advance(19, "across", fills, SKIP_OFF_NEXT_CLUE);
-    expect(out).toEqual({ cell: 19, direction: "across" });
+    expect(out.cell).not.toBe(19);
   });
 });
 

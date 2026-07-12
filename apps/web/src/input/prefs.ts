@@ -59,22 +59,21 @@ export interface Advance {
  *  - On reaching the word's end (no empty cell ahead under ON, or the last cell under OFF):
  *      endOfWord "first-blank": if a blank remains in the word, jump back to its FIRST blank.
  *        If the word is full, stay on the last cell. This is exactly today's web behavior.
- *      endOfWord "next-clue": if the word is now complete, advance to the next clue (the Tab
- *        traversal). If a blank remains, stay on the last cell (next-clue only fires on
- *        completion; the solver keeps working the word).
+ *      endOfWord "next-clue": advance to the next clue (the Tab traversal), blanks behind or
+ *        not. The NYT "move to next word" rule: the point of the setting is that the cursor
+ *        never wraps back. The iOS twin (CrossyEngine typingAdvance, .nextClue) matches.
  *
  * With the defaults (skipFilledInWord ON + endOfWord "first-blank") this is byte-identical to
  * the engine's vector-pinned typingAdvance: next empty ahead, else first blank behind, else
- * stay on the full word's last cell. Only "next-clue" introduces motion the engine never had
- * (a full word jumps to the next clue instead of staying put). See prefs.test.ts.
+ * stay on the full word's last cell. Only "next-clue" introduces motion the engine never had.
+ * See prefs.test.ts.
  *
- * DEVIATION FROM PINNED SPEC (flagged for the orchestrator): the spec's "first-blank" says a
- * FULL word should "advance to the next clue exactly like next-clue". Today's web (the engine's
- * typingAdvance, locked by vectors/v1/navigation/full-word-asymmetry.json: typing the last cell
- * of a full word STAYS on it) does not. Since the task makes "defaults reproduce today exactly,
- * zero change" the hard constraint, "first-blank" here keeps the stay-put on a full word, and
- * the full-word-advance behavior is the distinguishing job of "next-clue". A user only gets the
- * jump-to-next-clue-on-completion by explicitly choosing "next-clue".
+ * SPEC RESOLUTION (twin-reconciled): the wave spec's "first-blank" said a FULL word should
+ * "advance to the next clue exactly like next-clue". Today's behavior in both ports (the
+ * engines' typingAdvance, locked by vectors/v1/navigation/full-word-asymmetry.json: typing the
+ * last cell of a full word STAYS on it) does not, and vectors win. So "first-blank" keeps the
+ * stay-put on a full word, and every advance-to-next-clue behavior is "next-clue"'s job,
+ * explicit opt-in only. Both ports implement this identically.
  */
 export function typingAdvanceWithPrefs(
   grid: Grid,
@@ -98,17 +97,16 @@ export function typingAdvanceWithPrefs(
   }
 
   // Reached the end of the word (nothing empty ahead under ON, or the last cell under OFF).
-  const firstBlank = firstBlankInWord(start, end, stride, filled);
-
   if (prefs.endOfWord === "next-clue") {
-    // Advance to the next clue the moment the word completes; otherwise stay on the last cell
-    // so the solver keeps filling the blanks behind the cursor.
-    if (firstBlank === null) return nextClue(grid, direction, from, filled);
-    return here(end, direction);
+    // Advance to the next clue, blanks behind or not: the NYT "move to next word" rule, the
+    // point of the setting being that the cursor never wraps back. The iOS twin implements
+    // exactly this (CrossyEngine typingAdvance, .nextClue arm).
+    return nextClue(grid, direction, from, filled);
   }
 
   // endOfWord === "first-blank" (today's behavior): jump back to the word's first remaining
   // blank; a full word stays on its last cell (byte-identical to the engine's typingAdvance).
+  const firstBlank = firstBlankInWord(start, end, stride, filled);
   if (firstBlank !== null) return here(firstBlank, direction);
   return here(end, direction);
 }
