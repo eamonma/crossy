@@ -342,7 +342,7 @@ Barred and uniclue puzzles (section 12 table; DESIGN.md section 7) belong to the
 | `xwordinfo` | object: the XWord Info JSON export (the same document the legacy bare body carries)                              |
 | `nyt`       | object: the NYT v6 puzzle JSON as present in the nytimes.com puzzle page                                          |
 | `guardian`  | object: the Guardian crossword JSON embedded in its puzzle page                                                   |
-| `amuselabs` | string: the encoded AmuseLabs (PuzzleMe) blob as found in the page; decoding is translation and happens server-side, in the ACL |
+| `amuselabs` | string: the encoded AmuseLabs (PuzzleMe) blob as found in the page; decoding is translation and happens server-side, in the ACL. Or object: the page's own decoded puzzle document, captured in the frame when the blob's encoding is not one the ACL decodes; it enters the same validation a decoded blob does |
 
 Every translator lands on the same internal `ServerPuzzle` and the same domain checks, so the named rejections above apply to every format uniformly and the response shape (the `ClientPuzzle` view, INV-6) does not vary by format. Two codes join the REST vocabulary with this envelope:
 

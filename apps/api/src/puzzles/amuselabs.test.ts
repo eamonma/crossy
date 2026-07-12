@@ -4,7 +4,10 @@
  * pin the server-side blob decode (plain base64 and the embedded-key scramble, xword-dl's cases
  * 1 and 2; the keyless case 3 is a named VALIDATION), the column-major box orientation
  * (box[col][row], reference-pinned), grid-derived numbering, the SOLUTION_MISSING contract for
- * empty cells, and that the shared domain checks apply identically to this format.
+ * empty cells, and that the shared domain checks apply identically to this format. They also
+ * pin the second document form (PROTOCOL.md section 12): the page's own decoded puzzle object,
+ * captured in the frame, enters the same validation with no decode step and exactly the same
+ * strictness.
  *
  * Every fixture is SYNTHETIC (DESIGN.md section 7 firm rule): hand-written documents in the
  * PuzzleMe shape, encoded here in the test itself, never real AmuseLabs puzzle content. The
@@ -278,11 +281,50 @@ describe("amuselabs translator: undecodable blobs are VALIDATION, never heuristi
     expectReject(encodePlain([doc()]), "VALIDATION");
     expectReject(encodePlain(null), "VALIDATION");
   });
+});
 
-  it("rejects a non-string document as VALIDATION (the envelope carries the raw blob string)", () => {
-    expectReject(doc(), "VALIDATION");
-    expectReject(42, "VALIDATION");
-    expectReject(null, "VALIDATION");
+describe("amuselabs translator: the decoded-object form (PROTOCOL.md section 12; D21)", () => {
+  it("accepts the page's decoded puzzle object and matches the equivalent encoded blob exactly", () => {
+    const fromObject = accept(doc());
+    const fromBlob = accept(encodePlain(doc()));
+    expect(fromObject.puzzle).toEqual(fromBlob.puzzle);
+    expect(fromObject.features).toEqual(fromBlob.features);
+    expect(fromObject.title).toBe(fromBlob.title);
+    expect(fromObject.author).toBe(fromBlob.author);
+  });
+
+  it("rejects an object form missing its box as VALIDATION (same strictness as a decoded blob)", () => {
+    const d = doc();
+    delete d["box"];
+    expectReject(d, "VALIDATION");
+  });
+
+  it("rejects object-form malformed placedWords with the blob path's codes", () => {
+    expectReject({ ...doc(), placedWords: "none" }, "VALIDATION");
+    const d = doc();
+    (d["placedWords"] as Record<string, unknown>[])[0] = { x: 0 };
+    expectReject(d, "VALIDATION");
+  });
+
+  it("rejects an object form whose box does not match w and h as VALIDATION", () => {
+    expectReject({ ...doc(), w: 4 }, "VALIDATION");
+    const d = doc();
+    (d["box"] as string[][])[0] = ["C", "U"];
+    expectReject(d, "VALIDATION");
+  });
+
+  it("runs the shared domain checks on the object form (OVERSIZE_GRID, SOLUTION_MISSING)", () => {
+    expectReject({ ...doc(), w: 26 }, "OVERSIZE_GRID");
+    const d = doc();
+    (d["box"] as string[][])[0]![0] = "";
+    expectReject(d, "SOLUTION_MISSING");
+  });
+
+  it("rejects a document that is neither a string nor an object as one stable, content-free VALIDATION (INV-6)", () => {
+    const messages = [42, null, true, undefined, [doc()]].map((body) =>
+      expectReject(body, "VALIDATION"),
+    );
+    expect(new Set(messages).size).toBe(1);
   });
 });
 

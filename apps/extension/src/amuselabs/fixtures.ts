@@ -24,3 +24,19 @@ export const syntheticParamsPage =
 
 /** The classic form: an inline script assigning window.rawc. */
 export const classicRawcScript = `  window.rawc = '${SYNTHETIC_RAWC}';\n  window.puzzleEnv = {};`;
+
+/**
+ * A synthetic decoded PuzzleMe document, as the MAIN-world capture (page-capture.ts)
+ * hands it over. Invented content, never a real outlet puzzle (DESIGN.md section 7).
+ */
+export function syntheticCapturedDoc(): Record<string, unknown> {
+  return {
+    title: "Synthetic Captured No 1",
+    w: 2,
+    h: 1,
+    box: [["C"], ["Y"]],
+    placedWords: [
+      { clue: { clue: "Two letters (2)" }, acrossNotDown: true, x: 0, y: 0 },
+    ],
+  };
+}

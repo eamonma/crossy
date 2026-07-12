@@ -8,8 +8,10 @@
 //      script text (a script-tag read; no main-world injection).
 //
 // Both are located, not decoded (D21, extraction-only). PROTOCOL.md section 12 pins the
-// `amuselabs` document as the raw encoded STRING exactly as found; decoding it (trivial
-// in JS) is the server ACL's job, so the blob is handed on verbatim.
+// `amuselabs` document as the raw encoded string exactly as found, or the page's own
+// decoded puzzle object when the MAIN-world capture delivered one (capture.ts; the newer
+// keyless builds no server decode can chase). Decoding a blob stays the server ACL's job,
+// so a located blob is handed on verbatim.
 
 import type { ExtractResult } from "../extract-result";
 
@@ -53,4 +55,23 @@ export function extractRawcAssignment(
     }
   }
   return { ok: false, reason: "no PuzzleMe rawc found on this page" };
+}
+
+/**
+ * The one extraction reply: the page's own decoded document when the MAIN-world
+ * capture delivered one, else the located rawc blob (params tag first, then the
+ * classic assignment, its script texts read lazily). The reply's document is
+ * therefore an object (captured decode) or a string (raw blob); the server's
+ * amuselabs translator accepts both forms (PROTOCOL.md section 12).
+ */
+export function extractAmuseDocument(
+  captured: Record<string, unknown> | null,
+  paramsJson: string | null,
+  readScriptTexts: () => readonly string[],
+): ExtractResult {
+  if (captured !== null) return { ok: true, document: captured };
+  const fromParams = parseAmuseParams(paramsJson);
+  if (fromParams.ok) return fromParams;
+  const classic = extractRawcAssignment(readScriptTexts());
+  return classic.ok ? classic : fromParams;
 }
