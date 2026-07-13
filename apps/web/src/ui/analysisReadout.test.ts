@@ -19,6 +19,7 @@ import {
   xToTimeSeconds,
   type RibbonBox,
 } from "./analysisReadout";
+import { identityColor } from "./identityRoster";
 
 const INDIGO = "#3e63dd";
 const RED = "#e5484d";
@@ -121,18 +122,24 @@ describe("legendSolvers (mosaic colors, self as You, non-owners dropped)", () =>
       bundle({ owners: { 0: "a", 1: "me", 2: "b" } }),
       members,
       "me",
+      false,
     );
     expect(rows[0]).toEqual({
       userId: "me",
       name: "You",
-      color: INDIGO,
+      color: identityColor(INDIGO, false),
       self: true,
     });
     expect(rows.map((r) => r.name)).toEqual(["You", "Mara", "Jia"]);
   });
 
   it("drops a member who owns no square, so the legend names only colors on the board", () => {
-    const rows = legendSolvers(bundle({ owners: { 0: "a" } }), members, "me");
+    const rows = legendSolvers(
+      bundle({ owners: { 0: "a" } }),
+      members,
+      "me",
+      false,
+    );
     expect(rows.map((r) => r.userId)).toEqual(["a"]);
   });
 });

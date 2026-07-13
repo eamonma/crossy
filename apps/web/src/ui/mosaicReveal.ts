@@ -146,8 +146,10 @@ export const PEAK_HOLD_MS = 1050;
 export const JITTER_MS = 130;
 /** The wash's quieter re-sweep spread once the peak lets go, ms. */
 export const SETTLE_SPREAD_MS = 260;
-/** The tint the owner color drops to under the glyph in the settled wash (never a slab). */
-export const WASH_ALPHA = 0.34;
+/** The tint the owner color drops to under the glyph in the settled wash (never a slab). Matched to
+ * iOS's GridMosaic.washAlpha (apps/ios CompletionMoment.swift) so the mosaic reads at the same weight
+ * on both platforms now that the owner colors are the shared identity palette. */
+export const WASH_ALPHA = 0.3;
 
 /**
  * A cell's bloom delay, ms: its anti-diagonal distance over the board's span, scaled to the

@@ -29,6 +29,7 @@ import {
   nameOf,
 } from "./analysisReadout";
 import { MomentumRibbon } from "./MomentumRibbon";
+import { useTheme } from "./useTheme";
 import { Button } from "@/components/ui/button";
 
 /** The replay transport wired into the panel: the shared clock's current head, whether it is
@@ -120,11 +121,14 @@ export function AnalysisPanel({
    * dock). Absent on the phone sheet, which covers the board, so the ribbon shows no playhead. */
   replay?: ReplayControls | undefined;
 }) {
-  const roster = useMemo(() => rosterOf(members), [members]);
+  // The ground the identity palette resolves against: the mosaic, the legend, and the moment dots all
+  // read the same theme so they paint one player one color (and match iOS). Rebuilds on a theme flip.
+  const isDark = useTheme().theme === "dark";
+  const roster = useMemo(() => rosterOf(members, isDark), [members, isDark]);
   const summary = useMemo(() => analysisSummary(bundle), [bundle]);
   const legend = useMemo(
-    () => legendSolvers(bundle, members, selfId),
-    [bundle, members, selfId],
+    () => legendSolvers(bundle, members, selfId, isDark),
+    [bundle, members, selfId, isDark],
   );
 
   const { firstToFall, lastSquare } = bundle.moments;

@@ -27,6 +27,7 @@ import {
   type BearerSource,
   type WriterSource,
 } from "./completionAttribution";
+import { useTheme } from "./useTheme";
 
 /** The live attribution source, present only in LiveApp (the demo has no backend). */
 export interface AttributionSource {
@@ -218,9 +219,11 @@ export function CompletedMosaic({
 }) {
   const cellCount = puzzle.cols * puzzle.rows;
   const ownerMap = useAttributionOwnerMap({ store, cellCount, source });
-  // Memoized on members so a store-version bump (which rebuilds the members array) does not hand the
-  // mosaic a fresh roster identity every render, which would rebuild its `cells` memo needlessly.
-  const roster = useMemo(() => rosterOf(members), [members]);
+  // Memoized on members (and the ground) so a store-version bump (which rebuilds the members array)
+  // does not hand the mosaic a fresh roster identity every render, which would rebuild its `cells`
+  // memo needlessly. `isDark` picks the identity palette's ground variant so the board matches iOS.
+  const isDark = useTheme().theme === "dark";
+  const roster = useMemo(() => rosterOf(members, isDark), [members, isDark]);
   return (
     <CompletedMosaicBoard
       puzzle={puzzle}

@@ -23,6 +23,7 @@
 //     bundle; momentum/moments are typed but unused here (the Analysis tab consumes them next).
 import type { StackMember } from "./primitives";
 import type { OwnerMap, Roster } from "./mosaicReveal";
+import { identityColor } from "./identityRoster";
 
 /** A minimal read surface over the store, so this stays testable without a real GameStore. */
 export interface WriterSource {
@@ -64,11 +65,20 @@ export function lastWriterOwnerMap(
  * The roster the owner ids resolve through, built from the exact StackMember list the
  * CompletionOverlay renders (celebrationPalette reads the same array). Keyed by userId with only
  * the color, since color is all the mosaic is load-bearing on. Every writer id the store reports
- * resolves here to that player's presence hue, so the mosaic and the overlay's avatar stack agree.
+ * resolves here to that player's identity color, so the mosaic and the overlay's avatar stack agree.
+ *
+ * The member's raw wire color (an FNV-1a hash, apps/session color.ts) is resolved through the shared
+ * identity palette (DESIGN.md §8, identityRoster.ts) to the ground-matched hex the board paints, so
+ * a player reads as the same curated color here that they wear on iOS. `isDark` picks the light or
+ * dark variant; the caller reads it from the theme (useTheme) and rebuilds when it flips.
  */
-export function rosterOf(members: readonly StackMember[]): Roster {
+export function rosterOf(
+  members: readonly StackMember[],
+  isDark: boolean,
+): Roster {
   const roster: Record<string, { color: string }> = {};
-  for (const m of members) roster[m.userId] = { color: m.color };
+  for (const m of members)
+    roster[m.userId] = { color: identityColor(m.color, isDark) };
   return roster;
 }
 

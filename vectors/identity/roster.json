@@ -1,0 +1,47 @@
+{
+  "purpose": "The cross-client player identity palette (DESIGN.md §8). The server ships each player a stable wire color (#RRGGBB, apps/session color.ts colorForUser: an FNV-1a hash of the userId). A client does not paint that raw hash; it buckets the wire color to a slot via (value % 12) and paints the slot's light- or dark-ground variant. Frozen here so web (apps/web identityRoster.ts), push (apps/session push/roster.ts), and iOS (apps/ios IdentityRoster.swift) render the same player the same color. The dark column is the one apps/session already ships; the light column is iOS's, adopted here as the shared source.",
+  "slots": [
+    { "slot": 0, "name": "violet", "light": "#6F66D4", "dark": "#9D95FF" },
+    { "slot": 1, "name": "poppy", "light": "#DE5722", "dark": "#FF7A50" },
+    { "slot": 2, "name": "teal", "light": "#17917F", "dark": "#3BC7B4" },
+    { "slot": 3, "name": "magenta", "light": "#C2497D", "dark": "#E06B9E" },
+    { "slot": 4, "name": "ochre", "light": "#C98A1B", "dark": "#E0A93E" },
+    { "slot": 5, "name": "cobalt", "light": "#3D6BD6", "dark": "#6E93E8" },
+    { "slot": 6, "name": "moss", "light": "#6B8F3C", "dark": "#90B45E" },
+    { "slot": 7, "name": "rust", "light": "#B0503C", "dark": "#D97862" },
+    { "slot": 8, "name": "plum", "light": "#8A4E9E", "dark": "#B278C6" },
+    { "slot": 9, "name": "cyan", "light": "#2596A8", "dark": "#4FBCCE" },
+    { "slot": 10, "name": "coral", "light": "#E06A5A", "dark": "#F4917F" },
+    { "slot": 11, "name": "slate", "light": "#5E6B8C", "dark": "#8C99BA" }
+  ],
+  "slotForWireColor": [
+    {
+      "intent": "the low three bytes taken mod 12; #000000 is slot 0",
+      "wire": "#000000",
+      "slot": 0
+    },
+    {
+      "intent": "11 mod 12 is 11, the last slot",
+      "wire": "#00000B",
+      "slot": 11
+    },
+    { "intent": "12 mod 12 wraps back to 0", "wire": "#00000C", "slot": 0 },
+    { "intent": "0x11 = 17, 17 mod 12 = 5", "wire": "#000011", "slot": 5 },
+    {
+      "intent": "the all-ones wire color, 0xFFFFFF mod 12 = 3",
+      "wire": "#FFFFFF",
+      "slot": 3
+    },
+    {
+      "intent": "a mid-range hash, 0xABCDEF mod 12 = 3",
+      "wire": "#ABCDEF",
+      "slot": 3
+    },
+    { "intent": "another, 0x123456 mod 12 = 6", "wire": "#123456", "slot": 6 },
+    {
+      "intent": "a roster hex does not round-trip to its own slot; #9D95FF (slot 0's dark) buckets to 3",
+      "wire": "#9D95FF",
+      "slot": 3
+    }
+  ]
+}

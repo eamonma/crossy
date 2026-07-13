@@ -16,6 +16,7 @@ import {
   rosterOf,
   shouldBloomOnCompletion,
 } from "./completionAttribution";
+import { identityColor } from "./identityRoster";
 
 /** A completed board with the given cells (v, by), the rest empty. */
 function completedBoard(
@@ -83,11 +84,11 @@ describe("rosterOf (mosaic and overlay agree on each player's color)", () => {
       member("u-mara", "#3e63dd"),
       member("u-ivo", "#e5484d"),
     ];
-    const roster = rosterOf(members);
-    // The mosaic resolves an owner id to exactly the presence hue the AvatarStack shows, so the two
-    // surfaces cannot paint one player two colors.
-    expect(roster["u-mara"]?.color).toBe("#3e63dd");
-    expect(roster["u-ivo"]?.color).toBe("#e5484d");
+    const roster = rosterOf(members, false);
+    // The mosaic resolves an owner id through the shared identity palette (DESIGN.md §8) to the same
+    // ground-matched hex the legend and iOS paint, so the surfaces cannot paint one player two colors.
+    expect(roster["u-mara"]?.color).toBe(identityColor("#3e63dd", false));
+    expect(roster["u-ivo"]?.color).toBe(identityColor("#e5484d", false));
   });
 });
 
