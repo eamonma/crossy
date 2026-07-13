@@ -25,12 +25,18 @@ final class InviteScanTests: XCTestCase {
             "AB23CD45")
         // The §12 unfurl link, the one public route.
         XCTAssertEqual(InviteScan.code(fromPayload: "https://crossy.app/g/AB23CD45"), "AB23CD45")
+        // The canonical short link the web app emits: a single path segment that
+        // IS the code (host-agnostic, like the /g/ branch).
+        XCTAssertEqual(InviteScan.code(fromPayload: "https://crossy.ing/AB23CD45"), "AB23CD45")
     }
 
     func test_casingIsBytewiseASCII_INV1() {
         XCTAssertEqual(InviteScan.code(fromPayload: "ab23cd45"), "AB23CD45")
         XCTAssertEqual(
             InviteScan.code(fromPayload: "https://crossy.app/g/ab23cd45"), "AB23CD45")
+        // The short link's segment normalizes too: a lowercased host path joins.
+        XCTAssertEqual(
+            InviteScan.code(fromPayload: "https://crossy.ing/ab23cd45"), "AB23CD45")
     }
 
     func test_proseAndForeignPayloadsNeverConjureACode() {
@@ -45,5 +51,8 @@ final class InviteScanTests: XCTestCase {
         // A /g/ path whose tail only shrinks to eight after dropping glyphs (0, 1,
         // I, O can appear in no code) is not an invite.
         XCTAssertNil(InviteScan.code(fromPayload: "https://crossy.app/g/AB23CD450"))
+        // A single-segment path that is NOT a code is a plain route, not a short
+        // link: the short-link branch is shape-gated, never a catch-all.
+        XCTAssertNil(InviteScan.code(fromPayload: "https://crossy.party/puzzles"))
     }
 }
