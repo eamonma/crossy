@@ -201,10 +201,10 @@ public struct RoomsScreen: View {
                 let featured = Array(shelved.live.prefix(Self.featuredCount))
                 let restLive = Array(shelved.live.dropFirst(Self.featuredCount))
 
-                if featured.count == 1 {
-                    // One live room stands full-width, not a lonely half of a 2x2.
-                    roomTap(featured[0]) { FeaturedRoomCard(model: featured[0], ground: ground) }
-                } else if !featured.isEmpty {
+                if !featured.isEmpty {
+                    // The featured wall keeps its grid cell size no matter the count: a single
+                    // live room sits in the first cell at the same face as a full 2x2, never
+                    // ballooning to a lone full-width hero.
                     LazyVGrid(columns: Self.featuredColumns, spacing: 12) {
                         ForEach(featured) { room in
                             roomTap(room) { FeaturedRoomCard(model: room, ground: ground) }
