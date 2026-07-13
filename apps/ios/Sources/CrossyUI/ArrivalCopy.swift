@@ -103,6 +103,10 @@ public enum ArrivalCopy {
     /// live rooms stay current up top (the web's grammar, Home.tsx). The same word the web
     /// shelf uses. Rendered only when at least one room is solved.
     public static let roomsSolvedSection = "Solved"
+    /// The quiet caps label over the trailing shelf that gathers host-ended rooms, below the
+    /// "Solved" shelf (the web's grammar, Home.tsx). The same word the web shelf uses.
+    /// Rendered only when at least one room was abandoned.
+    public static let roomsEndedSection = "Ended"
 
     // MARK: - Join (the top affordance and its camera-first panel)
 

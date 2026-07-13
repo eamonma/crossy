@@ -33,9 +33,10 @@ import {
   fetchPuzzles,
   gameTitle,
   geometry,
+  isAbandoned,
   isCompleted,
   lastTouched,
-  partitionBySolved,
+  partitionRooms,
   puzzleTitle,
   relativeTime,
   sortByActivity,
@@ -251,7 +252,9 @@ function GamesPanel({
 /**
  * One room as a physical object: the puzzle's silhouette is the card's material, the name and
  * facts sit beside it. The whole card opens the game. A completed room reads quietly done, the
- * silhouette dimmed and a small "Solved" caption in place of the started line, no loud badge.
+ * silhouette dimmed and a small "Solved" caption in place of the started line, no loud badge. A
+ * host-ended room reads the same quiet way, its caption "Ended" instead: both terminal, both out
+ * of the live flow, distinguished only by the caption and their trailing section.
  */
 function RoomCard({
   game,
@@ -264,18 +267,28 @@ function RoomCard({
 }) {
   const title = gameTitle(game, now);
   const done = isCompleted(game);
+  const ended = isAbandoned(game);
+  // Both terminal states dim the silhouette and drop the activity line; the two are mutually
+  // exclusive (PROTOCOL §12), so at most one is true.
+  const terminal = done || ended;
   return (
     <button
       type="button"
       onClick={() => onOpen(game.gameId)}
-      aria-label={done ? `Open ${title} (solved)` : `Open ${title}`}
+      aria-label={
+        done
+          ? `Open ${title} (solved)`
+          : ended
+            ? `Open ${title} (ended)`
+            : `Open ${title}`
+      }
       className="group flex w-full flex-col overflow-hidden rounded-4 border border-border bg-panel text-left transition-colors hover:border-border-strong focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
     >
       {/* The silhouette fills the card's top: the face you recognize before the name. */}
       <span className="block border-b border-border bg-sand-2 p-4">
         <Silhouette
           mask={game.puzzle.mask}
-          muted={done}
+          muted={terminal}
           className="mx-auto h-auto w-full max-w-[8rem]"
         />
       </span>
@@ -294,6 +307,10 @@ function RoomCard({
           {done ? (
             <span className="text-text-subtle">
               {players(game.memberCount)} · Solved
+            </span>
+          ) : ended ? (
+            <span className="text-text-subtle">
+              {players(game.memberCount)} · Ended
             </span>
           ) : game.lastActivityAt !== null ? (
             // A played game reads by when it was last touched, the activity the list orders on.
@@ -334,11 +351,11 @@ function RoomGrid({
 }
 
 /**
- * The shelf: live rooms first as silhouette cards, then a trailing "Solved" section that gathers
- * the finished rooms so the shelf reads calm and current at the top. Ordering inside each group is
- * most-recently-active first (sortByActivity), the same order the API sends, so the room you last
- * touched leads. When nothing is solved, the trailing section simply does not render, so an
- * all-live shelf carries no empty header.
+ * The shelf: live rooms first as silhouette cards, then a trailing "Solved" section, then an
+ * "Ended" section for host-ended rooms, each gathering its terminal rooms so the shelf reads calm
+ * and current at the top. Ordering inside each group is most-recently-active first (sortByActivity),
+ * the same order the API sends, so the room you last touched leads. An empty group renders no
+ * section, so an all-live shelf carries no trailing headers.
  */
 function GamesList({
   games,
@@ -348,7 +365,7 @@ function GamesList({
   onOpen: (gameId: string) => void;
 }) {
   const now = new Date();
-  const { live, solved } = partitionBySolved(sortByActivity(games));
+  const { live, solved, ended } = partitionRooms(sortByActivity(games));
   return (
     <div className="flex flex-col gap-8 px-4 pt-4">
       {live.length > 0 && <RoomGrid games={live} now={now} onOpen={onOpen} />}
@@ -356,6 +373,12 @@ function GamesList({
         <section className="flex flex-col gap-4">
           <CapsLabel className="text-text-subtle">Solved</CapsLabel>
           <RoomGrid games={solved} now={now} onOpen={onOpen} />
+        </section>
+      )}
+      {ended.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <CapsLabel className="text-text-subtle">Ended</CapsLabel>
+          <RoomGrid games={ended} now={now} onOpen={onOpen} />
         </section>
       )}
     </div>

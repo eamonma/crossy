@@ -254,6 +254,15 @@ interface GameSummary {
    */
   readonly completedAt: string | null;
   /**
+   * When a host ended the game (`game_state.abandoned_at`, DESIGN.md §6), null unless it was
+   * abandoned. The twin terminal timestamp to `completedAt`, and mutually exclusive with it: a
+   * terminal game is completed or abandoned, never both (INV-4). A non-null value is the fact a
+   * client shelves an ended game on, out of the live shelf it would otherwise sit in (both
+   * timestamps null reads ongoing). Read from the session-owned `game_state` under the API's SELECT
+   * grant (migration 0005), a bare timestamp so INV-6 is untouched; never written by the API (INV-7).
+   */
+  readonly abandonedAt: string | null;
+  /**
    * The game's last activity: `MAX(cell_events.at)` (PROTOCOL.md §12), null for a game no one has
    * played yet. Read from the session-owned event log under the API's SELECT-only grant (migration
    * 0008); never written by the API (INV-7). The list page is ordered by `COALESCE(lastActivityAt,
@@ -462,6 +471,11 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         puzzleBlocks: sql<number[]>`${schema.games.puzzleSnapshot} -> 'blocks'`,
         puzzleTitle: schema.puzzles.title,
         completedAt: schema.gameState.completedAt,
+        // The twin terminal timestamp, read from the same session-owned game_state row under the
+        // same SELECT grant (migration 0005): null unless a host ended the game, and mutually
+        // exclusive with completed_at (INV-4). Only the two terminal timestamps are selected, never
+        // the board or status enum. A bare timestamp, so INV-6 is untouched.
+        abandonedAt: schema.gameState.abandonedAt,
         // MAX(at) as an ISO 8601 UTC string, formatted in SQL so it matches Date.toISOString()
         // exactly (millisecond precision, trailing `Z`). A scalar aggregate subquery loses the
         // timestamptz OID node-postgres needs to auto-parse it to a Date, so it would otherwise
@@ -529,6 +543,9 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       // `completed_at` is null while ongoing, and null when no game_state row exists yet (the
       // left join): both read as "not done" on the home. Present only for a completed game.
       completedAt: r.completedAt === null ? null : r.completedAt.toISOString(),
+      // `abandoned_at` is null while ongoing, null when no game_state row exists yet (the left
+      // join), and set only when a host ended the game: the fact the ended shelf gathers on.
+      abandonedAt: r.abandonedAt === null ? null : r.abandonedAt.toISOString(),
       // `MAX(cell_events.at)` as an ISO 8601 UTC string (formatted in SQL), null for an unplayed
       // game. Drives the activity reorder below.
       lastActivityAt: r.lastActivityAt,

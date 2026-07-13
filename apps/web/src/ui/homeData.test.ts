@@ -9,10 +9,11 @@ import {
   fetchGames,
   gameTitle,
   geometry,
+  isAbandoned,
   isCompleted,
   lastTouched,
   membersOf,
-  partitionBySolved,
+  partitionRooms,
   puzzleTitle,
   relativeTime,
   shortDate,
@@ -45,6 +46,7 @@ function game(over: Partial<GameSummary> = {}): GameSummary {
     createdBy: "u1",
     memberCount: 1,
     completedAt: null,
+    abandonedAt: null,
     lastActivityAt: null,
     puzzle: { puzzleId: "p1", rows: 15, cols: 15, title: null, mask: PLAIN_15 },
     ...over,
@@ -250,44 +252,63 @@ describe("sortByActivity (matches the server's within-page order, PROTOCOL secti
   });
 });
 
-describe("partitionBySolved (the shelf's live/solved split, PROTOCOL section 12)", () => {
-  it("splits live from solved, preserving order within each group", () => {
-    const live1 = game({ gameId: "l1", completedAt: null });
+describe("isAbandoned (the ended-shelf predicate, PROTOCOL section 12)", () => {
+  it("is true only for a game with a non-null abandonedAt, and never overlaps isCompleted", () => {
+    const ended = game({ abandonedAt: "2026-07-08T00:00:00Z" });
+    const solved = game({ completedAt: "2026-07-08T00:00:00Z" });
+    const live = game({});
+    expect(isAbandoned(ended)).toBe(true);
+    expect(isCompleted(ended)).toBe(false);
+    expect(isAbandoned(solved)).toBe(false);
+    expect(isAbandoned(live)).toBe(false);
+  });
+});
+
+describe("partitionRooms (the shelf's live/solved/ended split, PROTOCOL section 12)", () => {
+  it("splits live, solved, and host-ended, preserving order within each group", () => {
+    const live1 = game({ gameId: "l1" });
     const solved1 = game({ gameId: "s1", completedAt: "2026-07-08T00:00:00Z" });
-    const live2 = game({ gameId: "l2", completedAt: null });
+    const ended1 = game({ gameId: "e1", abandonedAt: "2026-07-08T06:00:00Z" });
+    const live2 = game({ gameId: "l2" });
     const solved2 = game({ gameId: "s2", completedAt: "2026-07-09T00:00:00Z" });
-    const { live, solved } = partitionBySolved([
+    const ended2 = game({ gameId: "e2", abandonedAt: "2026-07-09T06:00:00Z" });
+    const { live, solved, ended } = partitionRooms([
       live1,
       solved1,
+      ended1,
       live2,
       solved2,
+      ended2,
     ]);
     expect(live.map((g) => g.gameId)).toEqual(["l1", "l2"]);
     expect(solved.map((g) => g.gameId)).toEqual(["s1", "s2"]);
+    expect(ended.map((g) => g.gameId)).toEqual(["e1", "e2"]);
   });
-  it("gives an empty solved group when nothing is solved (no empty header)", () => {
-    const { live, solved } = partitionBySolved([
-      game({ gameId: "a", completedAt: null }),
-      game({ gameId: "b", completedAt: null }),
+  it("keeps an abandoned game out of the live shelf (the fix: it is ended, not live)", () => {
+    const { live, solved, ended } = partitionRooms([
+      game({ gameId: "a", abandonedAt: "2026-07-08T00:00:00Z" }),
+    ]);
+    expect(live).toEqual([]);
+    expect(solved).toEqual([]);
+    expect(ended.map((g) => g.gameId)).toEqual(["a"]);
+  });
+  it("gives empty terminal groups when everything is live (no empty headers)", () => {
+    const { live, solved, ended } = partitionRooms([
+      game({ gameId: "a" }),
+      game({ gameId: "b" }),
     ]);
     expect(live.map((g) => g.gameId)).toEqual(["a", "b"]);
     expect(solved).toEqual([]);
-  });
-  it("gives an empty live group when everything is solved", () => {
-    const { live, solved } = partitionBySolved([
-      game({ gameId: "a", completedAt: "2026-07-08T00:00:00Z" }),
-      game({ gameId: "b", completedAt: "2026-07-09T00:00:00Z" }),
-    ]);
-    expect(live).toEqual([]);
-    expect(solved.map((g) => g.gameId)).toEqual(["a", "b"]);
+    expect(ended).toEqual([]);
   });
   it("does not mutate its input", () => {
     const input = [
       game({ gameId: "a", completedAt: "2026-07-08T00:00:00Z" }),
-      game({ gameId: "b", completedAt: null }),
+      game({ gameId: "b", abandonedAt: "2026-07-08T00:00:00Z" }),
+      game({ gameId: "c" }),
     ];
     const before = input.map((g) => g.gameId);
-    partitionBySolved(input);
+    partitionRooms(input);
     expect(input.map((g) => g.gameId)).toEqual(before);
   });
 });

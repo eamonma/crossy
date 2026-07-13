@@ -52,8 +52,9 @@ import type { Resource } from "./useResource";
 import {
   compactTime,
   gameTitle,
+  isAbandoned,
   isCompleted,
-  partitionBySolved,
+  partitionRooms,
   sortByActivity,
 } from "./homeData";
 import type { GameSummary } from "./homeData";
@@ -390,12 +391,13 @@ function RecentGames({
 
 /**
  * The ready sidebar list: live games first, ordered by the coalesce rule (sortByActivity), then a
- * collapsed "Solved" disclosure that gathers finished games out of the main flow so the recents
- * read current. The section defaults collapsed, but opens when the active game (the aria-current
- * row) is itself solved, so a completed game a person is inside never vanishes; a manual toggle
- * wins after that. When nothing is solved there is no disclosure row at all (the shelf's
- * no-empty-header rule). The per-row check icon is redundant inside a labeled section, so solved
- * rows there drop it; row content is otherwise identical.
+ * collapsed "Solved" disclosure, then an "Ended" one for host-ended games, each gathering its
+ * terminal games out of the main flow so the recents read current. A game is classified by its
+ * mutually exclusive terminal timestamps (PROTOCOL §12): completed into Solved, abandoned into
+ * Ended, neither stays live. Each disclosure defaults collapsed but opens when the active game
+ * (the aria-current row) is inside it, so a terminal game a person is inside never vanishes; a
+ * manual toggle wins after that. An empty group renders no disclosure at all (the shelf's
+ * no-empty-header rule).
  */
 function RecentGamesList({
   games,
@@ -408,17 +410,7 @@ function RecentGamesList({
   onOpen: (gameId: string) => void;
   now: Date;
 }) {
-  const { live, solved } = partitionBySolved(sortByActivity(games));
-  const activeIsSolved = solved.some((g) => g.gameId === activeGameId);
-  // Default collapsed, but reveal the section whenever the active game moves into it (so an
-  // aria-current row is never invisible). The shell persists across navigation, so this must
-  // track the transition, not just mount state. The effect only ever opens; a manual collapse
-  // afterwards stands until the active game changes into the section again.
-  const [expanded, setExpanded] = useState(activeIsSolved);
-  useEffect(() => {
-    if (activeIsSolved) setExpanded(true);
-  }, [activeIsSolved, activeGameId]);
-
+  const { live, solved, ended } = partitionRooms(sortByActivity(games));
   return (
     <SidebarMenu className="gap-0.5">
       {live.map((g) => (
@@ -432,40 +424,85 @@ function RecentGamesList({
         />
       ))}
 
-      {solved.length > 0 && (
-        <>
-          <SidebarMenuItem>
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              aria-expanded={expanded}
-              className="flex w-full items-center gap-1.5 px-2 py-1.5 text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-subtle hover:text-text-muted"
-            >
-              {expanded ? (
-                <ChevronDownIcon className="size-3.5 shrink-0" />
-              ) : (
-                <ChevronRightIcon className="size-3.5 shrink-0" />
-              )}
-              <span>Solved</span>
-              <span aria-hidden className="font-mono tabular-nums">
-                · {solved.length}
-              </span>
-            </button>
-          </SidebarMenuItem>
-          {expanded &&
-            solved.map((g) => (
-              <RecentGameRow
-                key={g.gameId}
-                game={g}
-                active={g.gameId === activeGameId}
-                showCheck={false}
-                onOpen={onOpen}
-                now={now}
-              />
-            ))}
-        </>
-      )}
+      <CollapsedShelf
+        label="Solved"
+        games={solved}
+        activeGameId={activeGameId}
+        onOpen={onOpen}
+        now={now}
+      />
+      <CollapsedShelf
+        label="Ended"
+        games={ended}
+        activeGameId={activeGameId}
+        onOpen={onOpen}
+        now={now}
+      />
     </SidebarMenu>
+  );
+}
+
+/**
+ * A collapsed disclosure of terminal games (Solved or Ended), the sidebar's trailing-shelf shape
+ * shared by both terminal groups. Defaults collapsed, but reveals whenever the active game moves
+ * into it (so an aria-current row is never invisible); the shell persists across navigation, so
+ * this tracks the transition, not just mount. The effect only ever opens; a manual collapse
+ * afterwards stands until the active game changes into the shelf again. Renders nothing when the
+ * group is empty (the no-empty-header rule). The per-row check icon is redundant inside a labeled
+ * section, so rows here drop it (showCheck={false}); row content is otherwise identical.
+ */
+function CollapsedShelf({
+  label,
+  games,
+  activeGameId,
+  onOpen,
+  now,
+}: {
+  label: string;
+  games: readonly GameSummary[];
+  activeGameId: string | null;
+  onOpen: (gameId: string) => void;
+  now: Date;
+}) {
+  const activeInside = games.some((g) => g.gameId === activeGameId);
+  const [expanded, setExpanded] = useState(activeInside);
+  useEffect(() => {
+    if (activeInside) setExpanded(true);
+  }, [activeInside, activeGameId]);
+
+  if (games.length === 0) return null;
+  return (
+    <>
+      <SidebarMenuItem>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className="flex w-full items-center gap-1.5 px-2 py-1.5 text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-text-subtle hover:text-text-muted"
+        >
+          {expanded ? (
+            <ChevronDownIcon className="size-3.5 shrink-0" />
+          ) : (
+            <ChevronRightIcon className="size-3.5 shrink-0" />
+          )}
+          <span>{label}</span>
+          <span aria-hidden className="font-mono tabular-nums">
+            · {games.length}
+          </span>
+        </button>
+      </SidebarMenuItem>
+      {expanded &&
+        games.map((g) => (
+          <RecentGameRow
+            key={g.gameId}
+            game={g}
+            active={g.gameId === activeGameId}
+            showCheck={false}
+            onOpen={onOpen}
+            now={now}
+          />
+        ))}
+    </>
   );
 }
 
@@ -487,13 +524,16 @@ function RecentGameRow({
 }) {
   const title = gameTitle(game, now);
   const done = isCompleted(game);
+  const ended = isAbandoned(game);
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         onClick={() => onOpen(game.gameId)}
         isActive={active}
         aria-current={active ? "page" : undefined}
-        title={done ? `${title} (completed)` : title}
+        title={
+          done ? `${title} (completed)` : ended ? `${title} (ended)` : title
+        }
         className="font-normal text-text-muted data-active:font-normal"
       >
         {done && showCheck && (
