@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crossy for iPhone</title>
+    <meta
+      name="description"
+      content="The Crossy iPhone app is in beta. Solve the crossword together, live."
+    />
+    <link rel="canonical" href="https://crossy.party/ios" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://crossy.party/ios" />
+    <meta property="og:title" content="Crossy for iPhone" />
+    <meta
+      property="og:description"
+      content="The Crossy iPhone app is in beta. Solve the crossword together, live."
+    />
+    <meta property="og:image" content="https://crossy.party/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Pick the platform before first paint, no flash. iPadOS 13+ reports as
+         MacIntel, so the touch check catches iPads. With no JS (or a crawler),
+         no attribute is set and the desktop QR shows as the fallback. -->
+    <script>
+      (function () {
+        var ua = navigator.userAgent || "";
+        var iOS =
+          /iPad|iPhone|iPod/.test(ua) ||
+          (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+        var android = /Android/.test(ua);
+        document.documentElement.setAttribute(
+          "data-platform",
+          iOS ? "ios" : android ? "android" : "desktop",
+        );
+      })();
+    </script>
+    <!-- Display serif (Harfang Pro), same Typekit kit the app shell loads. -->
+    <link rel="stylesheet" href="https://use.typekit.net/ckp4hdg.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Schibsted+Grotesk:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #fdfdfc;
+        --surface: #f9f9f8;
+        --ink: #21201c;
+        --muted: #63635e;
+        --rule: #e2e1de;
+        --accent: #978365;
+        --accent-hover: #8c7a5e;
+        --on-accent: #ffffff;
+        --font-display: "harfang-pro", "Newsreader", Georgia, serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1a1917;
+          --surface: #211f1c;
+          --ink: #f1f0ef;
+          --muted: #a1a099;
+          --rule: #35332f;
+          --accent-hover: #a89873;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        overflow-x: hidden;
+      }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--font-sans);
+        font-size: 1.0625rem;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .top {
+        padding: 1.75rem 1.75rem 0;
+      }
+      .home {
+        font-weight: 500;
+        color: var(--ink);
+        text-decoration: none;
+      }
+      .home:hover {
+        opacity: 0.6;
+      }
+      main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        /* stretch, not center: centering a flex column shrink-wraps each child to
+           its unwrapped width, so long text would overflow instead of wrapping.
+           Children fill the column; text-align centers their contents. */
+        align-items: stretch;
+        justify-content: center;
+        text-align: center;
+        gap: 2rem;
+        width: 100%;
+        max-width: 30rem;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 4rem;
+      }
+      .head h1 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: clamp(2.25rem, 8vw, 3.75rem);
+        line-height: 1.02;
+        letter-spacing: -0.02em;
+        text-wrap: balance;
+        overflow-wrap: break-word;
+        margin: 0 0 0.9rem;
+      }
+      .head p {
+        font-size: 1.1875rem;
+        color: var(--muted);
+        text-wrap: balance;
+        margin: 0;
+      }
+      .when-ios,
+      .when-android {
+        display: none;
+      }
+      [data-platform="ios"] .when-desktop,
+      [data-platform="android"] .when-desktop {
+        display: none;
+      }
+      [data-platform="ios"] .when-ios,
+      [data-platform="android"] .when-android {
+        display: block;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.85rem 1.6rem;
+        border-radius: 0.625rem;
+        background: var(--accent);
+        color: var(--on-accent);
+        font: 500 1.0625rem/1 var(--font-sans);
+        text-decoration: none;
+        transition:
+          background-color 120ms ease,
+          transform 80ms ease;
+      }
+      .btn:hover {
+        background: var(--accent-hover);
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .hint {
+        margin: 0.9rem 0 0;
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+      /* QR stays dark-on-white in both schemes so it always scans; the white
+         card supplies the quiet zone. */
+      .qr {
+        display: inline-flex;
+        padding: 0.9rem;
+        background: #ffffff;
+        border: 1px solid var(--rule);
+        border-radius: 1.1rem;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+      }
+      .qr img {
+        display: block;
+        width: 172px;
+        height: 172px;
+      }
+      .cap {
+        margin: 1rem 0 0;
+        color: var(--ink);
+      }
+      .weblink {
+        display: inline-block;
+        margin-top: 1rem;
+        color: var(--ink);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        text-decoration-color: var(--rule);
+      }
+      .weblink:hover {
+        text-decoration-color: var(--muted);
+      }
+      footer {
+        padding: 1.5rem;
+        text-align: center;
+        font-size: 0.875rem;
+        color: var(--muted);
+      }
+      footer a {
+        color: var(--muted);
+        text-decoration: none;
+      }
+      footer a:hover {
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top"><a class="home" href="/">← Crossy</a></div>
+
+    <main>
+      <div class="head">
+        <h1>Crossy for iPhone</h1>
+        <p>Solve the crossword together, live. Now in beta.</p>
+      </div>
+
+      <div class="when-ios">
+        <a class="btn" href="https://testflight.apple.com/join/yMB29jXc"
+          >Join the beta</a
+        >
+        <p class="hint">Opens in TestFlight.</p>
+      </div>
+
+      <div class="when-desktop">
+        <span class="qr">
+          <img
+            src="/ios-qr.svg"
+            width="172"
+            height="172"
+            alt="QR code to crossy.party/ios"
+          />
+        </span>
+        <p class="cap">Point your iPhone camera here.</p>
+      </div>
+
+      <div class="when-android">
+        <p class="cap">The app is iPhone only, for now.</p>
+        <a class="weblink" href="/">Play on the web</a>
+      </div>
+    </main>
+
+    <footer>
+      <a href="/terms">Terms</a> &nbsp;·&nbsp; <a href="/privacy">Privacy</a>
+    </footer>
+  </body>
+</html>

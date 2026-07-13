@@ -82,6 +82,17 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    # The iOS install page (public/ios.html): the shareable crossy.party/ios link that
+    # promotes the TestFlight beta. Same static-page pattern as /terms and /privacy so it
+    # loads with JavaScript off (the page's platform detection is a progressive layer over
+    # a working desktop-QR fallback). The QR image ships in public/ios-qr.svg and is served
+    # by the SPA try_files below as image/svg+xml. Not cached hard: the invite can rotate.
+    location = /ios {
+        default_type text/html;
+        try_files /ios.html =404;
+        add_header Cache-Control "no-cache";
+    }
+
     # SPA shell. The client routes by path (/game/<id>, /puzzles, /new; legacy ?game= links
     # redirect client-side), so deep links MUST fall back to the single index.html here; a
     # 404 on /game/<id> would break every invite link. Optional ?api=/?token= overrides ride
