@@ -49,8 +49,8 @@ public enum ArrivalCopy {
     public static let signInUnconfigured = "This build isn't set up for sign-in yet."
     /// The quiet legal pair shown before sign-in and again inside Settings; each
     /// opens its live page (/privacy, /terms) in an in-app Safari sheet.
-    public static let privacyPolicy = "Privacy Policy"
-    public static let termsOfService = "Terms of Service"
+    public static let privacyPolicy = "Privacy"
+    public static let termsOfService = "Terms"
 
     // MARK: - Rooms (lexicon: home is Rooms)
 

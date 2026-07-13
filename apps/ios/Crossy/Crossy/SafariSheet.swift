@@ -2,7 +2,7 @@
 //  SafariSheet.swift
 //  Crossy
 //
-//  The in-app reader for the legal pages (Privacy Policy, Terms of Service).
+//  The in-app reader for the legal pages (Privacy, Terms).
 //  CrossyUI reports the intent (the footer buttons' onOpenLegal) as a plain
 //  closure and stays free of UIKit (AD-2: the app target owns the view
 //  controller, the ShareSheet/CameraScan precedent); this file maps that
