@@ -378,7 +378,10 @@ private struct EmailFlowView: View {
     @State private var phase: Phase = .address
     @State private var errorText: String?
     @State private var resendRemaining = 0
+    /// The wall-clock deadline the cooldown counts down to (see startResendCooldown).
+    @State private var resendUntil: Date?
     @FocusState private var focus: Field?
+    @Environment(\.scenePhase) private var scenePhase
 
     private enum Field {
         case email
@@ -410,6 +413,12 @@ private struct EmailFlowView: View {
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
         #endif
+        .onChange(of: scenePhase) { _, newPhase in
+            // The cooldown deadline is wall-clock, so recompute on foreground: a
+            // countdown that elapsed while the app was backgrounded shows as cleared
+            // right away instead of resuming from where it froze.
+            if newPhase == .active { refreshResendRemaining() }
+        }
     }
 
     // MARK: - Address pane
@@ -591,14 +600,26 @@ private struct EmailFlowView: View {
         }
     }
 
+    /// Anchor the cooldown to a wall-clock deadline so backgrounding the app never
+    /// freezes it: the per-second tick and a return to the foreground both recompute
+    /// the remaining seconds from `resendUntil` rather than decrementing a counter.
     private func startResendCooldown() {
-        resendRemaining = Self.resendCooldown
+        resendUntil = Date().addingTimeInterval(Double(Self.resendCooldown))
+        refreshResendRemaining()
         Task {
             while resendRemaining > 0 {
                 try? await Task.sleep(for: .seconds(1))
-                if resendRemaining > 0 { resendRemaining -= 1 }
+                refreshResendRemaining()
             }
         }
+    }
+
+    private func refreshResendRemaining() {
+        guard let until = resendUntil else {
+            resendRemaining = 0
+            return
+        }
+        resendRemaining = max(0, Int(until.timeIntervalSinceNow.rounded(.up)))
     }
 }
 
