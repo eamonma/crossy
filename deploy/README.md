@@ -348,14 +348,14 @@ Read read-only on 2026-07-13 from the Management API,
 `GET https://api.supabase.com/v1/projects/qvnvokstvbarsxhufrja/config/auth` (project `Crossy`,
 `us-east-1`; org plan `pro`).
 
-| Setting                                  | Management API field                    | Value | Meaning                                        |
-| ---------------------------------------- | --------------------------------------- | ----- | ---------------------------------------------- |
-| Access token (JWT) expiry                | `jwt_exp`                               | 3600  | 1 hour access-token lifetime                   |
-| Refresh token rotation                   | `refresh_token_rotation_enabled`        | true  | rotate on every refresh; reuse-detection armed |
-| Refresh token reuse interval             | `security_refresh_token_reuse_interval` | 10    | 10s grace window to replay the prior token     |
-| Session time-box                         | `sessions_timebox`                      | 0     | disabled (no forced max session length)        |
-| Inactivity timeout                       | `sessions_inactivity_timeout`           | 0     | disabled (no logout on inactivity)             |
-| Single session per user                  | `sessions_single_per_user`              | false | a new sign-in does not evict other sessions    |
+| Setting                      | Management API field                    | Value | Meaning                                        |
+| ---------------------------- | --------------------------------------- | ----- | ---------------------------------------------- |
+| Access token (JWT) expiry    | `jwt_exp`                               | 3600  | 1 hour access-token lifetime                   |
+| Refresh token rotation       | `refresh_token_rotation_enabled`        | true  | rotate on every refresh; reuse-detection armed |
+| Refresh token reuse interval | `security_refresh_token_reuse_interval` | 10    | 10s grace window to replay the prior token     |
+| Session time-box             | `sessions_timebox`                      | 0     | disabled (no forced max session length)        |
+| Inactivity timeout           | `sessions_inactivity_timeout`           | 0     | disabled (no logout on inactivity)             |
+| Single session per user      | `sessions_single_per_user`              | false | a new sign-in does not evict other sessions    |
 
 The dashboard toggle "Detect and revoke potentially compromised refresh tokens" is the rotation
 feature above: with `refresh_token_rotation_enabled = true`, a rotated-out refresh token presented
