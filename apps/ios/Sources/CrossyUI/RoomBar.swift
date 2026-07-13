@@ -26,14 +26,13 @@
 // shape must not preclude that). Chrome carries no color of its own (§3); the
 // pucks are the people.
 //
-// The facts card launches from the time pill's REPORTED frame and the pill
-// yields (timeHandedOff) for the card's life; a bar-hosted item reports its
-// GLOBAL frame (reportBarItemFrame, an action closure that escapes the toolbar's
-// preference boundary), which the solve screen converts into the room's
-// coordinate space, because a ToolbarItem lives outside that space (the
-// integration trap, DESIGN.md §4 toolbar amendment). MetaballPanelSurface is
-// self-contained, so it does not share a container with the bar-hosted pill; the
-// pill only reports accurately and yields while the card is open.
+// The facts surface is a system sheet now (2026-07-12): a tap on the pill
+// presents it, the pill stays standing behind the dimmed sheet (no handoff), and
+// the morph that once launched from the pill's reported frame retired. The pill
+// still reports its GLOBAL frame (reportBarItemFrame, an action closure that
+// escapes the toolbar's preference boundary), which the solve screen converts
+// into the room's coordinate space for the melt, because a ToolbarItem lives
+// outside that space (the integration trap, DESIGN.md §4 toolbar amendment).
 
 import CrossyDesign
 import CrossyStore
@@ -644,10 +643,10 @@ struct RoomBackButton: View {
 /// terminal status the vital signs stand down: a completed room seals the pill
 /// with a quiet check beside the frozen clock, an abandoned room keeps the
 /// frozen clock alone. The swap is a crossfade on the chrome spring, no
-/// overshoot (§7); Reduce Motion cuts. Always tappable: the time pill is the
-/// room's facts (owner ruling 2026-07-10), so a tap inflates it into the facts
-/// card in every state. As a bar item it reports its global frame
-/// (reportBarItemFrame), the facts card's rest geometry.
+/// overshoot (§7); Reduce Motion cuts. The time pill is the room's facts (owner
+/// ruling 2026-07-10): a tap mid-solve presents the facts sheet (SolveScreen
+/// gates it to `ongoing`, so a tap on a sealed terminal pill does nothing). As a
+/// bar item it reports its global frame (reportBarItemFrame).
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 struct RoomTimePill: View {
@@ -689,6 +688,7 @@ struct RoomTimePill: View {
                 )
                 .font(.system(size: 13, weight: .medium))
                 .monospacedDigit()
+                .lineLimit(1)
                 .foregroundStyle(Color(rgb: ground.tokens.number))
             }
             // The one implicit animation here, keyed on the register alone
@@ -699,6 +699,15 @@ struct RoomTimePill: View {
             // our transaction (the toolbar amendment's width-snap finding,
             // DESIGN.md §4), so no width-driving value is wrapped here.
             .animation(reduceMotion ? nil : .crossyChrome, value: register)
+            // Fill the system glass capsule so the WHOLE pill is the tap target,
+            // not just the digits (owner device finding 2026-07-12: the pill
+            // read as needing a precise hit). A `.plain` button hit-tests its
+            // label, so the label carries the capsule's height and a little
+            // breathing width; contentShape makes that padded frame the hit
+            // shape. The digits stay centered inside it.
+            .frame(minHeight: ChromeLayout.pillHeight)
+            .padding(.horizontal, 8)
+            .contentShape(.capsule)
         }
         // The pill is a bare system-capsule bar item again (SLICE D, 2026-07-12):
         // the self-owned glass carve-out (its own padding + frame +

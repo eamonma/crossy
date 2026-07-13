@@ -91,6 +91,10 @@ public struct SolveScreen: View {
     /// high waiting for it. The facts card and the clue-bar melt still read the
     /// reported bar-item frames (post-welcome, live); only the board goes constant.
     @State private var roomTopInset: CGFloat = 0
+    /// The facts surface: a system sheet out of the time pill (2026-07-12,
+    /// replacing the inflate-from-the-pill morph). A mid-solve surface only, so
+    /// openFacts gates it to `ongoing` and a terminal transition dismisses it.
+    @State private var factsPresented = false
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
     /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
@@ -310,32 +314,13 @@ public struct SolveScreen: View {
             // presentation out of the players pill (RosterMenu), so the system
             // owns its stage, its dismissal, and its stacking.
 
-            // The room-facts card (owner ruling 2026-07-10: the time pill is
-            // the room's facts): the time pill, inflated. Mid-solve it carries
-            // the crossword's facts and the host's end-game (redesign
-            // 2026-07-11, one mechanism for both moments; copy invite code
-            // moved to the share menu); at completion it is the stats card
-            // (ID-2; DESIGN.md §4 morph grammar). On iOS 26+ the tap open
-            // rides the system metaball materialize (owner ruling 2026-07-11);
-            // below 26 the clean frame-interpolation melt. Any outside touch
-            // pours it back and lands, no scrim, one glass layer.
-            if chrome.isFactsOpen, let morph = factsMorph {
-                RoomFactsPanel(
-                    ground: ground,
-                    morph: morph,
-                    content: factsContent,
-                    operations: factsPanelOperations,
-                    solveTimeSeconds: store.stats?.solveTimeSeconds,
-                    firstFillAt: store.firstFillAt,
-                    completedAt: store.completedAt ?? store.abandonedAt,
-                    chrome: chrome,
-                    // The end-game's terminal transition pours the room's
-                    // transients back anyway; the card closes as it acts.
-                    onEndGame: {
-                        onEndGame()
-                        chrome.settleFacts(open: false, animated: !reduceMotion)
-                    })
-            }
+            // The room-facts surface is a system sheet now (owner ruling
+            // 2026-07-12: the time pill's tap presents RoomFactsSheet, the
+            // ShareQRSheet register, replacing the inflate-from-the-pill morph
+            // the owner read as ad-hoc goo). Presented as a `.sheet` off the
+            // room container below, so like the roster and share menus the
+            // system owns its stage, its dismissal, and its stacking; nothing
+            // custom stands here.
 
             // The share surface is a system Menu now (owner ruling
             // 2026-07-11), presented out of the share pill in the bar
@@ -394,11 +379,12 @@ public struct SolveScreen: View {
                     // the abandonment rather than ticking over a dead board.
                     completedAt: store.completedAt ?? store.abandonedAt,
                     members: members,
-                    // A pill hands off when its own panel opens, and when any
-                    // open panel eclipses it (PanelEclipse: buried glass
-                    // refracts through a panel's surface).
-                    backHandedOff: pillEclipsed(.backButton),
-                    timeHandedOff: chrome.isFactsOpen || pillEclipsed(.timePill),
+                    // No custom panel stands over the bar anymore (the facts
+                    // card became a system sheet, which dims the room rather
+                    // than burying a pill in our glass), so no pill is ever
+                    // eclipsed: both stand for the sheet's life.
+                    backHandedOff: false,
+                    timeHandedOff: false,
                     // Each trailing piece gates per the seeded-birth rule (DESIGN.md
                     // §4 toolbar amendment, §12): the timer waits for the welcome on
                     // both paths (its clock needs the welcome), while the players and
@@ -415,9 +401,9 @@ public struct SolveScreen: View {
                         sync: barSync, seeded: chrome.seeded),
                     hasShare: shareable != nil,
                     onBack: onBack,
-                    // One mechanism for both moments (redesign 2026-07-11): the
-                    // tap inflates the pill into the facts card, mid-solve with
-                    // the §12 operations, at completion the stats card (ID-2).
+                    // The tap presents the facts sheet (2026-07-12), mid-solve
+                    // only: openFacts gates the summon to `ongoing`, so a tap on
+                    // a sealed terminal pill does nothing.
                     onTapTimePill: { openFacts() },
                     // The share surface ships as the native menu (owner ruling
                     // 2026-07-11): the code for the titled section, the link the
@@ -439,11 +425,28 @@ public struct SolveScreen: View {
                     },
                     // The bar items hand their global frames here, escaping the
                     // toolbar's preference boundary (the integration trap): the
-                    // facts card's rest and the eclipse test read the converted
-                    // values through `chromeFrames`.
+                    // melt reads the converted values through `chromeFrames`.
                     reportFrame: { piece, global in barItemFrames[piece] = global }))
         )
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+        // The facts sheet (owner ruling 2026-07-12): the time pill's tap presents
+        // it, the ShareQRSheet register. A mid-solve surface only, so openFacts
+        // gates the summon to `ongoing` and a terminal transition dismisses it.
+        .sheet(isPresented: $factsPresented) {
+            RoomFactsSheet(
+                ground: ground,
+                content: factsContent,
+                operations: factsPanelOperations,
+                solveTimeSeconds: store.stats?.solveTimeSeconds,
+                firstFillAt: store.firstFillAt,
+                completedAt: store.completedAt ?? store.abandonedAt,
+                // The abandon's terminal transition dismisses the sheet through
+                // observeRoomState anyway; closing here too keeps it prompt.
+                onEndGame: {
+                    onEndGame()
+                    factsPresented = false
+                })
+        }
         // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
         // flag through the environment; below iOS 26 the fallback stays inert.
         .environment(\.chromeClarified, completion.isClarityBeat)
@@ -459,13 +462,13 @@ public struct SolveScreen: View {
         // observers can fire in either order or collapse into one
         // (SolveHapticFold derives whose hand moved from the delta).
         .onChange(of: filledCells) { _, _ in observeHaptics() }
-        // The gate's one firing (INV-3) carries the one-shot riders: the §7
-        // completion pattern, and the card's arrival with the celebration
-        // (owner ruling 2026-07-10), never the muteable mosaic clock (ID-1).
+        // The gate's one firing (INV-3) carries the §7 completion haptic. The
+        // facts surface no longer auto-summons at completion (owner ruling
+        // 2026-07-12: not at game end): the pill seals and stands as the record,
+        // and post-game stats move to the clue-panel analysis surface.
         .onChange(of: completion.celebrationFiredAt) { _, fired in
             guard fired != nil else { return }
             SolveHaptics.shared.play(.completion)
-            openFacts()
         }
         // The celebration derives from store TRANSITIONS, observed here and
         // seeded once on appear, never from render (INV-3; the gate is the
@@ -653,50 +656,23 @@ public struct SolveScreen: View {
         return (shareUrl, inviteCode)
     }
 
-    /// The facts morph: rest is the TIME PILL's reported frame (the card is
-    /// the pill, inflated; DESIGN.md §4). Open grows leftward over the pill's
-    /// own footprint, top and trailing edges shared (the Mail-button rule,
-    /// owner ruling 2026-07-10: a panel covers the pill it grew from, never
-    /// hangs beside it), sized by FactsCardLayout's fixed slots (the operation
-    /// rows included, mid-solve) and clamped inside the bar's span; on narrow
-    /// layouts it can reach the back button, which then hands off
-    /// (PanelEclipse).
-    private var factsMorph: GlassMorph? {
-        let f = chromeFrames
-        guard let pill = f[.timePill], let roomBar = f[.roomBar]
-        else { return nil }
-        let width = min(roomBar.width, FactsCardLayout.panelMaxWidth)
-        let height = FactsCardLayout.panelHeight(
-            hasDetail: factsContent.detail != nil,
-            operationRows: factsPanelOperations.rowCount)
-        return GlassMorph(
-            rest: pill,
-            open: CGRect(
-                x: max(roomBar.minX, min(pill.maxX, roomBar.maxX) - width),
-                y: pill.minY,
-                width: width, height: height),
-            restCornerRadius: pill.height / 2,
-            openCornerRadius: ChromeLayout.panelCornerRadius)
-    }
-
     private func observeRoomState() {
         // The room's own moments yield like any touch (DESIGN.md §4): the one
-        // observed transition into a terminal status pours back the melt, and
-        // on completion the stats card then owns the stage. A fold, not a
-        // render fact, so a reconnect into an already-terminal room never
-        // replays the pour-back. (An open roster menu is the system's; it
-        // holds until a touch, which is how Mail behaves too.)
+        // observed transition into a terminal status pours back the melt and
+        // dismisses the facts sheet. A fold, not a render fact, so a reconnect
+        // into an already-terminal room never replays the pour-back. (An open
+        // roster menu is the system's; it holds until a touch, which is how
+        // Mail behaves too.)
         if terminalPourBack.observe(roomStatus) {
             // Never rip the melt from a live finger (SP-i1: the finger owns
             // progress): a melt mid-drag when the room turns terminal stays
             // with the finger, and the release settles it as usual.
             chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-            // An open mid-solve facts card pours back with the melt: its
-            // operations just died with the room, and its open height is about
-            // to change. Completion re-summons the card as the stats card from
-            // fresh geometry (the celebration's rider below); an abandonment
-            // leaves the room quiet.
-            chrome.settleFacts(open: false, animated: !reduceMotion)
+            // An open mid-solve facts sheet dismisses when the room turns
+            // terminal: its operations just died with the room, and the facts
+            // surface is not shown at game end (owner ruling 2026-07-12). The
+            // sealed pill stands as the record instead.
+            factsPresented = false
             // The share menu is the system's now: it dismisses on any touch,
             // Mail's own behavior, so there is nothing here to pour back.
         }
@@ -815,44 +791,25 @@ public struct SolveScreen: View {
 
     // MARK: - Intents
 
-    /// The open custom panels' frames (the facts card), for the eclipse test.
-    /// The roster and the share menu are system presentations: they never
-    /// stand glass of ours over the bar.
-    private var openPanelFrames: [CGRect] {
-        var panels: [CGRect] = []
-        if chrome.isFactsOpen, let morph = factsMorph { panels.append(morph.open) }
-        return panels
-    }
-
-    /// Whether any open panel eclipses a standing pill's reported frame
-    /// (PanelEclipse, DESIGN.md §4).
-    private func pillEclipsed(_ piece: ChromePiece) -> Bool {
-        guard let pill = chromeFrames[piece] else { return false }
-        return openPanelFrames.contains { PanelEclipse.eclipses(panel: $0, pill: pill) }
-    }
-
-    /// The one dismissal path (DESIGN.md §4: transient panels yield to
-    /// intent). A touch outside an open card dismisses it and still lands,
-    /// so every outside surface routes here before its own action. The
-    /// melt is not a tap-away transient (a gesture owns it); it pours back
-    /// only when another panel opens or the room turns terminal. The roster
-    /// menu dismisses itself: the system swallows the outside touch, Mail's
-    /// own behavior.
+    /// The one dismissal seam (DESIGN.md §4: transient surfaces yield to
+    /// intent). It dismisses the facts sheet, so every outside surface routes
+    /// here before its own action; in practice the sheet dims the room and
+    /// dismisses itself on an outside touch, so this only closes it for the
+    /// callers that act without a preceding touch (a swipe, a jump). The melt is
+    /// not a tap-away transient (a gesture owns it): it pours back only when
+    /// another surface opens or the room turns terminal.
     private func dismissTransients() {
-        if chrome.isFactsOpen {
-            chrome.settleFacts(open: false, animated: !reduceMotion)
-        }
+        factsPresented = false
     }
 
-    /// The facts card's summon, one mechanism for both moments (redesign
-    /// 2026-07-11: the pill inflates into the card, mid-solve or terminal).
-    /// The pill's tap and the celebration's auto-summon both land here; a
-    /// tap-opened morph animates on the chrome spring's walk, and no animation
-    /// ever writes the drag-scrubbed melt (SP-i1), which pours back first so
-    /// the two surfaces never stand together.
+    /// The facts sheet's summon (2026-07-12: the pill's tap presents
+    /// RoomFactsSheet). A mid-solve surface only: a tap on a sealed terminal
+    /// pill does nothing (owner ruling: not at game end). The drag-scrubbed melt
+    /// pours back first (SP-i1) so the two surfaces never stand together.
     private func openFacts() {
+        guard roomStatus == .ongoing else { return }
         chrome.pourBackMeltUnlessDragging(animated: !reduceMotion)
-        chrome.settleFacts(open: true, animated: !reduceMotion)
+        factsPresented = true
     }
 
     /// The cursor relay (deferred from I2b): every selection change goes to the
