@@ -23,7 +23,7 @@ import {
   notifyLiveActivityRegistered,
   notifyMembership,
 } from "../identity/notify";
-import { firstCorrectOwners, toAttributionView } from "../archive/attribution";
+import { gameAnalysis } from "../archive/analysis";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -702,12 +702,14 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     return c.json(view);
   });
 
-  // GET /games/{id}/attribution: the post-game first-correct owner map (design/post-game/
-  // FIRST-CORRECT.md, the Archive read model, DESIGN.md §7, §9). Tier 1: `{ owners: { [cell]:
-  // userId } }`, who FIRST placed the correct value in each cell, computed on read from the
-  // event log (no cache, no new column). The response carries userIds only, so it is INV-6-safe
-  // by construction (the client already holds the roster from the game view; this never repeats
-  // names or colors).
+  // GET /games/{id}/analysis: the post-game analysis bundle (design/post-game/ANALYSIS.md, the
+  // Archive read model, DESIGN.md §7, §9). The whole completed surface in one fetch: `owners`
+  // (the mosaic's first-correct map), `momentum` (the room's tempo), and `moments` (the three
+  // named beats), all computed on read from the event log over one seq-ordered trace. This
+  // REPLACES /attribution (a breaking replace: the attribution mount was never released). The
+  // response carries userIds, cells, and numbers only, so it is INV-6-safe by construction, the
+  // tier-1.5 profile: timing on top of attribution, never a letter (the client already holds the
+  // roster from the game view; this never repeats names or colors).
   //
   // Auth is the game-view path's, reused verbatim: a viewer who can see the room. The invite code
   // and the puzzle are not part of this payload, so there is nothing member-only to protect beyond
@@ -715,11 +717,11 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
   // one invented.
   //
   // Gated to COMPLETED games only, returning GAME_NOT_FOUND (404) and computing nothing otherwise.
-  // The owner map for an ONGOING game leaks solving progress (which cells are locked in correct is
-  // a heat map of what the room has finished), and an ABANDONED-game recap is a deferred product
+  // The trace for an ONGOING game leaks solving progress (which cells are locked in correct is a
+  // heat map of what the room has finished), and an ABANDONED-game recap is a deferred product
   // decision. A completed game is immutable (INV-4: terminal status, append-only log frozen), so
-  // this read is stable: compute it at any later time and get the same map.
-  app.get("/:id/attribution", async (c) => {
+  // this read is stable: compute it at any later time and get the same bundle.
+  app.get("/:id/analysis", async (c) => {
     const identity = c.get("identity");
     const gameId = c.req.param("id");
     if (!UUID.test(gameId)) {
@@ -754,17 +756,18 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "GAME_NOT_FOUND", "no such completed game");
     }
 
-    // The game exists and is completed; compute the owner map on read. `firstCorrectOwners`
+    // The game exists and is completed; compute the analysis bundle on read. `gameAnalysis`
     // returns null only for an unknown gameId, which the membership gate already excluded, so a
     // null here is an internal inconsistency; treat it as not found rather than 500 a member.
-    const owners = await firstCorrectOwners(deps.db, gameId);
-    if (owners === null) {
+    const view = await gameAnalysis(deps.db, gameId);
+    if (view === null) {
       return fail(c, "GAME_NOT_FOUND", "no such game");
     }
 
-    // INV-6: the response is the owner map only (userIds), serialized through a type that has no
-    // field for a solution value or a raw event, so no solution content can ride this payload.
-    return c.json(toAttributionView(owners));
+    // INV-6: the response is the analysis bundle (userIds, cells, times), serialized through a
+    // type that has no field for a solution value or a raw event, so no solution content can ride
+    // this payload.
+    return c.json(view);
   });
 
   // POST /games/{id}/role: self-upgrade spectator to solver (PROTOCOL.md §12, DESIGN.md §8).

@@ -15,11 +15,12 @@
 //   - rosterOf: the id -> { color } roster the mosaic resolves through, built from the SAME
 //     StackMember list the CompletionOverlay uses (store.participants), so the mosaic and the
 //     overlay never derive two different colors for one player.
-//   - fetchAttributionOnce / ...WithRetry: the GET /games/{id}/attribution read, typed to userIds
+//   - fetchAttributionOnce / ...WithRetry: the GET /games/{id}/analysis read, typed to userIds
 //     only (INV-6), with the completion-race retry the endpoint needs (the client can see
 //     `completed` over the socket a beat before the session flushes completed_at to Postgres, so
 //     the endpoint 404s briefly). It reuses the app's authenticated request path (a TokenSource,
-//     the same bearer the home fetchers resolve).
+//     the same bearer the home fetchers resolve). The mosaic reads only `owners` from the richer
+//     bundle; momentum/moments are typed but unused here (the Analysis tab consumes them next).
 import type { StackMember } from "./primitives";
 import type { OwnerMap, Roster } from "./mosaicReveal";
 
@@ -71,11 +72,24 @@ export function rosterOf(members: readonly StackMember[]): Roster {
   return roster;
 }
 
-/** The attribution wire payload (apps/api archive/attribution.ts AttributionView): userIds only,
- * cell index (a string key, JSON has no numeric keys) -> the owning userId. No solution field
- * exists on this type, so INV-6 rides the shape, not a runtime strip. */
-export interface AttributionResponse {
+/** The analysis wire payload (apps/api archive/analysis.ts AnalysisView): the whole completed
+ * surface in one fetch. `owners` is the mosaic's first-correct map (cell index, a string key since
+ * JSON has no numeric keys, -> the owning userId); `momentum` and `moments` are the tab's readings.
+ * Every field carries userIds, cells, and numbers only, so INV-6 rides the shape, not a runtime
+ * strip. This mount is load-bearing on `owners` alone; the momentum/moments fields are typed here
+ * so the shape is complete, but the Analysis tab (a later PR) is what renders them. */
+export interface AnalysisResponse {
   readonly owners: Record<number, string>;
+  readonly momentum: { durationSeconds: number; samples: number[] };
+  readonly moments: {
+    firstToFall: { cell: number; userId: string; atSeconds: number } | null;
+    lastSquare: { cell: number; userId: string; atSeconds: number } | null;
+    turningPoint: {
+      stallSeconds: number;
+      breakSeconds: number;
+      burst: number;
+    } | null;
+  };
 }
 
 /** A token resolver, the same shape homeData.ts's fetchers take (refreshed per call, null when
@@ -83,11 +97,12 @@ export interface AttributionResponse {
 export type BearerSource = () => Promise<string | null>;
 
 /**
- * One attempt at GET /games/{id}/attribution. Returns the owner map as an `OwnerMap` (cell ->
+ * One attempt at GET /games/{id}/analysis. Returns the owner map as an `OwnerMap` (cell ->
  * userId, numeric keys parsed back from the JSON string keys) on 200; null on any non-200 (the
- * 404 the completion race produces, or an auth blip). Never throws for a network error either:
- * this is a best-effort enhancement over the last-writer paint, so a failure is a silent null,
- * never an error surfaced to a player who just finished a puzzle.
+ * 404 the completion race produces, or an auth blip). Reads only `owners` from the richer bundle;
+ * the mosaic needs nothing more. Never throws for a network error either: this is a best-effort
+ * enhancement over the last-writer paint, so a failure is a silent null, never an error surfaced
+ * to a player who just finished a puzzle.
  */
 export async function fetchAttributionOnce(
   apiBase: string,
@@ -97,11 +112,11 @@ export async function fetchAttributionOnce(
   try {
     const token = await getToken();
     if (token === null) return null;
-    const res = await fetch(`${apiBase}/games/${gameId}/attribution`, {
+    const res = await fetch(`${apiBase}/games/${gameId}/analysis`, {
       headers: { authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
-    const body = (await res.json()) as AttributionResponse;
+    const body = (await res.json()) as AnalysisResponse;
     const owners = body.owners ?? {};
     const map: Record<number, string> = {};
     // JSON object keys are strings; the wire stringifies the numeric cell index, so read it back

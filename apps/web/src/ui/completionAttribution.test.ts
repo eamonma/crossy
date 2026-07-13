@@ -101,7 +101,7 @@ describe("shouldBloomOnCompletion (edge-trigger, ongoing -> completed only)", ()
   });
 });
 
-describe("fetchAttributionOnce (GET /games/:id/attribution, INV-6 userIds only)", () => {
+describe("fetchAttributionOnce (GET /games/:id/analysis, reads owners; INV-6 userIds only)", () => {
   const token = () => Promise.resolve<string | null>("tok");
 
   it("parses the wire owners (string cell keys) back into a numeric-keyed owner map", async () => {
@@ -113,8 +113,8 @@ describe("fetchAttributionOnce (GET /games/:id/attribution, INV-6 userIds only)"
       const map = await fetchAttributionOnce("https://api", "g1", token);
       expect(map).toEqual({ 0: "u-a", 5: "u-b", 12: "u-a" });
     });
-    // The call hit the attribution endpoint with the bearer resolved fresh.
-    expect(fetchStub.calls[0]?.url).toBe("https://api/games/g1/attribution");
+    // The call hit the analysis endpoint with the bearer resolved fresh.
+    expect(fetchStub.calls[0]?.url).toBe("https://api/games/g1/analysis");
     expect(fetchStub.calls[0]?.auth).toBe("Bearer tok");
   });
 
