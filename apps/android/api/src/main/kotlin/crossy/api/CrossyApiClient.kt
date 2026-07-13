@@ -28,18 +28,21 @@ import crossy.protocol.GameView
 import crossy.protocol.GamesListResponse
 import crossy.protocol.JoinGameRequest
 import crossy.protocol.KickResponse
+import crossy.protocol.MeResponse
 import crossy.protocol.ProtocolJson
 import crossy.protocol.PuzzleSummary
 import crossy.protocol.PuzzleView
 import crossy.protocol.PuzzlesListResponse
 import crossy.protocol.Role
 import crossy.protocol.RoleChangeRequest
+import crossy.protocol.UpdateDisplayNameRequest
 import kotlinx.serialization.DeserializationStrategy
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.io.IOException
 
 /**
@@ -183,6 +186,31 @@ public class CrossyApiClient(
     public suspend fun deleteAccount(): DeleteAccountResponse =
         send(Endpoint("DELETE", listOf("account")), DeleteAccountResponse.serializer())
 
+    // MARK: - Self display identity (§12: GET /me, PATCH /me)
+
+    /** `GET /me`: the caller's own display identity, the read the onboarding trigger confirms against
+     *  and Settings loads from (docs/design/name-onboarding §7.1). Works with zero games.
+     *  `displayName` may be null (the one place null crosses the wire, so a client can detect a
+     *  nameless account); `needsName` is the server-computed trigger. Twin of iOS `getMe()`. */
+    public suspend fun me(): MeResponse =
+        send(Endpoint("GET", listOf("me")), MeResponse.serializer())
+
+    /** `PATCH /me`: set the caller's own display name (§7.2). The name is sent verbatim; the server
+     *  canonicalizes (NFC, trim, collapse) and validates (§5) and returns the canonical stored value,
+     *  so the client adopts exactly what the server kept. A well-formed name that violates a rule
+     *  throws [CrossyApiError.Api] with a `NAME_*` code (422); a spent write window throws
+     *  [CrossyApiError.RateLimited] carrying the `Retry-After` delay (429). Twin of iOS
+     *  `updateDisplayName(_:)`. */
+    public suspend fun updateDisplayName(name: String): MeResponse =
+        send(
+            Endpoint(
+                "PATCH",
+                listOf("me"),
+                body = encode(UpdateDisplayNameRequest.serializer(), UpdateDisplayNameRequest(name)),
+            ),
+            MeResponse.serializer(),
+        )
+
     // MARK: - Request plumbing
 
     private class Endpoint(
@@ -191,6 +219,11 @@ public class CrossyApiClient(
         val query: List<Pair<String, String>> = emptyList(),
         val body: ByteArray? = null,
     )
+
+    /** One raw trip: the body, the HTTP status, and the parsed Retry-After delay (only meaningful on
+     *  a 429). Threaded so `outcome` can lift a 429 into [CrossyApiError.RateLimited] with the header
+     *  the UI honors (R4), while every other status reads body and status alone. */
+    private class RawResponse(val body: ByteArray, val status: Int, val retryAfterSeconds: Double?)
 
     private fun <T> encode(serializer: kotlinx.serialization.SerializationStrategy<T>, value: T): ByteArray =
         ProtocolJson.encodeToString(serializer, value).encodeToByteArray()
@@ -244,7 +277,7 @@ public class CrossyApiClient(
         }
 
         val first = roundTrip(endpoint, token)
-        if (first.second != 401) return outcome(first)
+        if (first.status != 401) return outcome(first)
 
         // One reactive refresh: replay the request with a freshly minted token. If the refresh
         // throws (terminal sign-out, or transient weather rethrown), do not loop; surface the
@@ -258,9 +291,10 @@ public class CrossyApiClient(
         return outcome(roundTrip(endpoint, refreshed))
     }
 
-    /** One request build and issue with the given bearer, returning the raw body and the HTTP
-     *  status for the caller to split on. Transport weather throws here as [CrossyApiError.Transport]. */
-    private suspend fun roundTrip(endpoint: Endpoint, bearer: String): Pair<ByteArray, Int> {
+    /** One request build and issue with the given bearer, returning the raw body, HTTP status, and
+     *  parsed Retry-After for the caller to split on. Transport weather throws here as
+     *  [CrossyApiError.Transport]. */
+    private suspend fun roundTrip(endpoint: Endpoint, bearer: String): RawResponse {
         val requestBody = when {
             endpoint.body != null -> endpoint.body.toRequestBody(JSON_MEDIA_TYPE)
             // OkHttp requires a body for POST/PUT; a bodiless POST (abandon) sends an empty one with
@@ -280,20 +314,36 @@ public class CrossyApiClient(
         } catch (e: IOException) {
             throw CrossyApiError.Transport(e)
         }
-        return response.use { (it.body?.bytes() ?: ByteArray(0)) to it.code }
+        return response.use {
+            RawResponse(
+                body = it.body?.bytes() ?: ByteArray(0),
+                status = it.code,
+                retryAfterSeconds = retryAfterSeconds(it),
+            )
+        }
     }
 
+    /** The `Retry-After` header as a seconds delay, null when absent or not a plain integer/decimal
+     *  count. The API sends the delta-seconds form; an HTTP-date form is not parsed here (it never
+     *  arrives from this API), so it degrades to null rather than guessing a clock. Twin of iOS
+     *  `retryAfterSeconds`. */
+    private fun retryAfterSeconds(response: Response): Double? =
+        response.header("Retry-After")?.trim()?.toDoubleOrNull()
+
     /** The status split: a 2xx returns its body and status; a non-2xx throws the typed §12 envelope,
-     *  keyed on the stable code. The envelope's `error` stays a plain string, so a code outside
-     *  today's vocabulary still decodes and surfaces typed (degraded, never crashed). */
-    private fun outcome(trip: Pair<ByteArray, Int>): Pair<ByteArray, Int> {
-        val (data, status) = trip
-        if (status in 200..299) return trip
+     *  keyed on the stable code. A 429 lifts into [CrossyApiError.RateLimited] so the UI can honor
+     *  the Retry-After header (R4); the delay lives in the header, not the body, so every other
+     *  non-2xx stays the plain typed envelope (mirrors the iOS 429 branch). The envelope's `error`
+     *  stays a plain string, so a code outside today's vocabulary still decodes and surfaces typed
+     *  (degraded, never crashed). */
+    private fun outcome(raw: RawResponse): Pair<ByteArray, Int> {
+        if (raw.status in 200..299) return raw.body to raw.status
         val envelope = try {
-            ProtocolJson.decodeFromString(APIErrorEnvelope.serializer(), data.decodeToString())
+            ProtocolJson.decodeFromString(APIErrorEnvelope.serializer(), raw.body.decodeToString())
         } catch (e: Exception) {
-            throw CrossyApiError.InvalidResponse(status)
+            throw CrossyApiError.InvalidResponse(raw.status)
         }
-        throw CrossyApiError.Api(status, envelope)
+        if (raw.status == 429) throw CrossyApiError.RateLimited(raw.retryAfterSeconds, envelope)
+        throw CrossyApiError.Api(raw.status, envelope)
     }
 }

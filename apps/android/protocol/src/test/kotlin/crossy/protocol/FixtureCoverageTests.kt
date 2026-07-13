@@ -29,6 +29,7 @@ class FixtureCoverageTests {
         "kick-response", "abandon-response", "game-view",
         "analysis-view", "analysis-view-null-moments",
         "delete-account-response",
+        "me-response",
     )
 
     @Test
