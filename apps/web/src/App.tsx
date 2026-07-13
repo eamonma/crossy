@@ -30,6 +30,7 @@ import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { CompletionOverlay } from "./ui/Completion";
+import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import type { StackMember } from "./ui/primitives";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
@@ -291,6 +292,12 @@ function DemoApp({
   const puzzle = board.puzzle;
   const grid = useMemo(() => gridOf(boardId), [boardId]);
   const frozen = store.status !== "ongoing";
+  const boardCompleted = store.status === "completed";
+  // Edge-trigger the bloom on the ongoing -> completed transition, latched on this persistent
+  // DemoApp (the mosaic mounts only once completed). "Reset board" unmounts and remounts the
+  // session-scoped surface via a fresh key path, so the arc re-arms on the next completion; a
+  // reload straight onto a completed demo would land on the settled wash, matching the live rule.
+  const bloomOnCompletion = useCompletionBloomEdge(boardCompleted);
 
   // "Reset board" re-arms the completion overlay, so the demo can replay it.
   useEffect(() => {
@@ -376,6 +383,27 @@ function DemoApp({
       role: p.role,
     }));
   }, [store, version]);
+
+  // Mosaic-only roster augmentation, demo surface only: the demo boards are pre-seeded with cells
+  // whose last writer is the synthetic "seed" id (fakeSession seedCells), which is not a real
+  // participant. Giving it a house-gold color lets the demo's last-writer bloom actually paint the
+  // solved board, so the `?demo=1` preview shows real color. This never touches the overlay's own
+  // `members` (its avatar stack stays the real participants); it feeds only the mosaic's roster.
+  const mosaicMembers: StackMember[] = useMemo(
+    () => [
+      ...members,
+      {
+        userId: "seed",
+        name: "Seed",
+        initial: "S",
+        avatarUrl: null,
+        color: "#b9a88d", // gold-8, the house warm midpoint (celebrationPalette's anchor)
+        connected: false,
+        role: "solver",
+      },
+    ],
+    [members],
+  );
 
   function switchBoard(id: string): void {
     session.dispose();
@@ -513,37 +541,49 @@ function DemoApp({
         )}
       </div>
 
-      <div
-        className="board-wrap outline-none max-w-[620px] mx-auto"
-        ref={gridRef}
-        tabIndex={0}
-        onKeyDown={onKeyDown}
-        aria-label="Crossword grid. Arrow keys move, letters fill, Tab jumps clues."
-      >
-        <CrosswordGrid
-          puzzle={puzzle}
-          fills={fills}
-          selection={selection}
-          presence={presence}
-          flashes={flashes}
-          onCellClick={onCellClick}
-          onFlashEnd={onFlashEnd}
-        />
-      </div>
+      {boardCompleted ? (
+        // The same shared completed-state treatment LiveApp mounts: the contribution mosaic in
+        // place of the interactive grid, so `?demo=1` is a faithful, screenshottable preview of the
+        // live bloom. The demo has no backend, so no `source`: the owner map is last-writer only,
+        // resolved through mosaicMembers (which colors the seeded cells so the preview paints).
+        <div
+          className="board-wrap max-w-[620px] mx-auto"
+          aria-label="Solved crossword grid"
+        >
+          <CompletedMosaic
+            store={store}
+            puzzle={puzzle}
+            letters={fills}
+            members={mosaicMembers}
+            bloom={bloomOnCompletion}
+          />
+        </div>
+      ) : (
+        <div
+          className="board-wrap outline-none max-w-[620px] mx-auto"
+          ref={gridRef}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          aria-label="Crossword grid. Arrow keys move, letters fill, Tab jumps clues."
+        >
+          <CrosswordGrid
+            puzzle={puzzle}
+            fills={fills}
+            selection={selection}
+            presence={presence}
+            flashes={flashes}
+            onCellClick={onCellClick}
+            onFlashEnd={onFlashEnd}
+          />
+        </div>
+      )}
 
       {store.status === "completed" && !dismissedCompletion && (
-        // Ultimate mount for the contribution mosaic: when this overlay is dismissed, the plain
-        // solved board sits behind it. The mosaic reveal is a treatment of that board, so it
-        // belongs here (and in LiveApp's twin `completed` branch), with the caller deriving the
-        // owner map from the store's last-writer `by` via `store.writerOf(cell)`:
-        //   const ownerMap: Record<number, string> = {};
-        //   for (let c = 0; c < cols * rows; c += 1) {
-        //     const by = store.writerOf(c);
-        //     if (by !== null) ownerMap[c] = by;
-        //   }
-        // Left out of the live flow for now: that surface is entangled with the
-        // `dismissedCompletion` dance and the confetti motion. The self-contained component and
-        // its full demo live below (MosaicDemo); the report flags the seam.
+        // The completion card, layered over the mosaic board above exactly as in LiveApp: the
+        // solved board is now the contribution mosaic (CompletedMosaic, the board swap above), so
+        // dismissing this overlay leaves the player on the settled wash. The confetti and the
+        // summary card are unchanged; the bloom happens on the board layer beneath. The full static
+        // dial and plate still live below (MosaicDemo) for reviewing the frames in isolation.
         <CompletionOverlay
           stats={store.stats}
           fallbackSeconds={0}
