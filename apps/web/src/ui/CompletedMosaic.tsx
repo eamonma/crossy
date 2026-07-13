@@ -6,7 +6,7 @@
 //
 // Two things this file owns that the pure core (completionAttribution.ts) cannot:
 //   - useAttributionOwnerMap: the owner-map source. It paints instantly from LAST-WRITER
-//     (store.writerOf), then, live only, fetches GET /games/{id}/attribution and swaps to the
+//     (store.writerOf), then, live only, fetches GET /games/{id}/analysis (reading its owner map)
 //     first-correct map when it resolves (a re-render; the board is already the mosaic, colors just
 //     correct to the true attribution). It handles the completion race by retrying a few times.
 //   - the edge-trigger: the bloom plays ONCE, on the ongoing -> completed transition observed in

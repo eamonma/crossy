@@ -3305,19 +3305,23 @@ describe("signup starter seed (DESIGN.md §8; INV-6 no-solution-leak; INV-7 user
 });
 
 // ------------------------------------------------------------------------------------------
-// GET /games/{id}/attribution: the Archive first-correct owner map (design/post-game/
-// FIRST-CORRECT.md PR5; DESIGN.md §7, §9). Reads the session-owned cell_events log under the
-// API's SELECT grant, lifts the Solution from the game's puzzle_snapshot, runs the engine's
-// firstCorrect projection, and serves the owner map (userIds only) for completed games only.
+// GET /games/{id}/analysis: the Archive post-game analysis bundle (design/post-game/ANALYSIS.md;
+// DESIGN.md §7, §9). Reads the session-owned cell_events log (now including `at`) under the API's
+// SELECT grant, lifts the Solution from the game's puzzle_snapshot, runs the engine's solveTrace /
+// momentum / moments over one trace, and serves the bundle (owners + momentum + moments, userIds /
+// cells / numbers only) for completed games only. Replaces /attribution.
 // ------------------------------------------------------------------------------------------
 
 /**
  * Append a board event with an explicit `cell` and `value` through the superuser fixture, standing
  * in for the session (the single writer of cell_events, DESIGN.md §9). Unlike `seedCellEvent` (cell
- * 0, throwaway `A`, used for the list's MAX(at) ordering), the attribution read joins the value and
+ * 0, throwaway `A`, used for the list's MAX(at) ordering), the analysis read joins the value and
  * cell against the solution, so a test must place real letters at real cells. `seq` orders the log
  * and must be unique per game. `value` may be null (a clear), which is never correct (INV-6-safe:
- * the API never emits the value, only the owner it implies).
+ * the API never emits the value, only the owner it implies). `at` is the server timestamp the trace
+ * bins for momentum and scans for moments; it defaults to `now()` (the gate/authz cases do not
+ * care about timing), and the timing cases pass an explicit ISO string so the assertions are
+ * deterministic.
  */
 async function seedAttributionEvent(
   gameId: string,
@@ -3325,20 +3329,31 @@ async function seedAttributionEvent(
   seq: number,
   cell: number,
   value: string | null,
+  at?: string,
 ): Promise<void> {
   await adminPool.query(
     `insert into cell_events (game_id, seq, cell, user_id, value, at)
-       values ($1, $2, $3, $4, $5, now())`,
-    [gameId, seq, cell, userId, value],
+       values ($1, $2, $3, $4, $5, coalesce($6::timestamptz, now()))`,
+    [gameId, seq, cell, userId, value, at ?? null],
   );
 }
 
-/** The attribution wire shape: the owner map alone, cell key (string in JSON) to userId. */
-interface AttributionBody {
+/** The analysis wire shape: the owner map plus the momentum ribbon and the named moments. */
+interface AnalysisBody {
   owners: Record<string, string>;
+  momentum: { durationSeconds: number; samples: number[] };
+  moments: {
+    firstToFall: { cell: number; userId: string; atSeconds: number } | null;
+    lastSquare: { cell: number; userId: string; atSeconds: number } | null;
+    turningPoint: {
+      stallSeconds: number;
+      breakSeconds: number;
+      burst: number;
+    } | null;
+  };
 }
 
-describe("GET /games/{id}/attribution (first-correct Archive read model) (design/post-game/FIRST-CORRECT.md; DESIGN.md §7, §9; INV-6)", () => {
+describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/post-game/ANALYSIS.md; DESIGN.md §7, §9; INV-6)", () => {
   // FIXTURE is a 2x2 all-playable grid with solution ["H","I","O","N"] at cells 0..3.
   it("a completed game yields the first-correct owner map, immune to a later overwrite (scheme 1)", async () => {
     const hostId = randomUUID();
@@ -3364,9 +3379,9 @@ describe("GET /games/{id}/attribution (first-correct Archive read model) (design
     // Gate the game to completed (the session, here the fixture, stamps completed_at).
     await seedGameState(gameId, "2026-06-10T10:00:00.000Z");
 
-    const res = await get(`/games/${gameId}/attribution`, host);
+    const res = await get(`/games/${gameId}/analysis`, host);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as AttributionBody;
+    const body = (await res.json()) as AnalysisBody;
     // First-ever-correct: host owns 0,1,3; mate owns 2. The re-correct of 0 never displaces host.
     expect(body.owners).toEqual({
       "0": hostId,
@@ -3376,17 +3391,144 @@ describe("GET /games/{id}/attribution (first-correct Archive read model) (design
     });
   });
 
-  it("gate: an ongoing game is GAME_NOT_FOUND and computes no owner map (completed-only)", async () => {
+  it("momentum: a multi-timestamp solve returns 40 samples and the solve's duration (design/post-game/ANALYSIS.md pinned semantics)", async () => {
     const hostId = randomUUID();
     const host = await auth.mintUpgraded({ sub: hostId });
     const puzzleId = await ingestFixture(host);
     const { gameId } = await createGame(host, puzzleId);
-    // Events exist and would produce a map, but the game is ongoing (game_state row, no
+
+    // Four first-correct fills spanning a full minute: t0 at :00, tEnd at :60. Duration is 60s and
+    // the ribbon is a fixed 40-sample curve regardless of how many fills there are.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-13T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-13T10:00:20.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-13T10:00:40.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-13T10:01:00.000Z",
+    );
+    await seedGameState(gameId, "2026-06-13T10:01:00.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // Fixed granularity (N = 40): the server ships one shape both surfaces draw, so its length is
+    // invariant. Duration is tEnd - t0 = 60s.
+    expect(body.momentum.samples).toHaveLength(40);
+    expect(body.momentum.durationSeconds).toBe(60);
+    // Peak-normalized: every sample is in [0, 1], and the busiest bucket is exactly 1.
+    for (const s of body.momentum.samples) {
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThanOrEqual(1);
+    }
+    expect(Math.max(...body.momentum.samples)).toBe(1);
+  });
+
+  it("moments: firstToFall, lastSquare, and a turningPoint for a solve with a clear stall (design/post-game/ANALYSIS.md pinned semantics)", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // A solve with a clear stall: cell 0 at t0, cell 1 ten seconds later, then a LONG 100s pause,
+    // then cells 2 and 3 land within a few seconds of each other (the break and its burst). t0 is
+    // the earliest at, so all times report relative to it.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-14T10:00:00.000Z",
+    ); // firstToFall
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      2,
+      1,
+      "I",
+      "2026-06-14T10:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-14T10:01:50.000Z",
+    ); // break (ends the 100s stall)
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      4,
+      3,
+      "N",
+      "2026-06-14T10:01:55.000Z",
+    ); // lastSquare, inside the burst window
+    await seedGameState(gameId, "2026-06-14T10:01:55.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // firstToFall: the earliest at (cell 0, host), atSeconds 0 (t0).
+    expect(body.moments.firstToFall).toEqual({
+      cell: 0,
+      userId: hostId,
+      atSeconds: 0,
+    });
+    // lastSquare: the latest at (cell 3, mate), 115s after t0.
+    expect(body.moments.lastSquare).toEqual({
+      cell: 3,
+      userId: mateId,
+      atSeconds: 115,
+    });
+    // turningPoint: the longest gap is the 100s stall from 10s to 110s; the break is cell 2 at
+    // 110s; the burst counts fills in [110s, 140s], which is cells 2 and 3 -> 2.
+    expect(body.moments.turningPoint).toEqual({
+      stallSeconds: 100,
+      breakSeconds: 110,
+      burst: 2,
+    });
+  });
+
+  it("gate: an ongoing game is GAME_NOT_FOUND and computes no bundle (completed-only)", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+    // Events exist and would produce a bundle, but the game is ongoing (game_state row, no
     // completed_at), so the endpoint must refuse and compute nothing.
     await seedAttributionEvent(gameId, hostId, 1, 0, "H");
     await seedGameState(gameId, null);
 
-    const res = await get(`/games/${gameId}/attribution`, host);
+    const res = await get(`/games/${gameId}/analysis`, host);
     expect(res.status).toBe(404);
     await expectError(res, "GAME_NOT_FOUND");
   });
@@ -3396,12 +3538,12 @@ describe("GET /games/{id}/attribution (first-correct Archive read model) (design
     const puzzleId = await ingestFixture(host);
     const { gameId } = await createGame(host, puzzleId);
     // No seedGameState: the actor never materialized game_state, so the game is not completed.
-    const res = await get(`/games/${gameId}/attribution`, host);
+    const res = await get(`/games/${gameId}/analysis`, host);
     expect(res.status).toBe(404);
     await expectError(res, "GAME_NOT_FOUND");
   });
 
-  it("gate: an abandoned game is GAME_NOT_FOUND and computes no owner map (recap deferred; completed-only)", async () => {
+  it("gate: an abandoned game is GAME_NOT_FOUND and computes no bundle (recap deferred; completed-only)", async () => {
     const hostId = randomUUID();
     const host = await auth.mintUpgraded({ sub: hostId });
     const puzzleId = await ingestFixture(host);
@@ -3415,46 +3557,79 @@ describe("GET /games/{id}/attribution (first-correct Archive read model) (design
       [gameId],
     );
 
-    const res = await get(`/games/${gameId}/attribution`, host);
+    const res = await get(`/games/${gameId}/analysis`, host);
     expect(res.status).toBe(404);
     await expectError(res, "GAME_NOT_FOUND");
   });
 
-  it("INV-6: the completed-game response carries no solution letter, no value, no events anywhere", async () => {
+  it("INV-6: the full bundle (owners + momentum + moments) carries no solution letter, no value, no events anywhere", async () => {
     const hostId = randomUUID();
     const host = await auth.mintUpgraded({ sub: hostId });
     const puzzleId = await ingestFixture(host);
     const { gameId } = await createGame(host, puzzleId);
-    // Plant every solution letter into the log, so if the response ever serialized a value or the
-    // snapshot, one of these letters would surface in the raw JSON text.
-    await seedAttributionEvent(gameId, hostId, 1, 0, "H");
-    await seedAttributionEvent(gameId, hostId, 2, 1, "I");
-    await seedAttributionEvent(gameId, hostId, 3, 2, "O");
-    await seedAttributionEvent(gameId, hostId, 4, 3, "N");
-    await seedGameState(gameId, "2026-06-11T11:00:00.000Z");
+    // Plant every solution letter into the log with distinct timestamps (so momentum and moments
+    // are populated too), so if the response ever serialized a value or the snapshot, one of these
+    // letters would surface in the raw JSON text.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-11T11:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-11T11:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-11T11:00:20.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-11T11:00:30.000Z",
+    );
+    await seedGameState(gameId, "2026-06-11T11:00:30.000Z");
 
-    const res = await get(`/games/${gameId}/attribution`, host);
+    const res = await get(`/games/${gameId}/analysis`, host);
     expect(res.status).toBe(200);
     const text = await res.text();
     const body = JSON.parse(text) as Record<string, unknown>;
-    // The body is the owner map only: userIds, never a solution value or a raw event.
+    // The whole bundle is userIds, cells, and numbers: never a solution value or a raw event.
     expect(hasKeyDeep(body, "solution")).toBe(false);
     expect(hasKeyDeep(body, "value")).toBe(false);
     expect(hasKeyDeep(body, "events")).toBe(false);
     expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
-    // No solution letter rides the wire. The owners map holds userIds (UUIDs) only; a bare grid
-    // letter would only appear if a value or snapshot leaked. Each solution cell is a single
-    // uppercase letter, so scan the raw text for any of them as a whole-token value.
+    // No solution letter rides the wire, not in owners, not in the momentum ribbon, not in the
+    // moments. Each solution cell is a single uppercase letter; a bare letter would only appear if
+    // a value or snapshot leaked, so scan the raw text for any of them as a whole-token value.
     for (const letter of ["H", "I", "O", "N"]) {
       expect(text).not.toContain(`:"${letter}"`);
     }
-    // The owner map is present and correct (host solved every cell).
-    expect((body as unknown as AttributionBody).owners).toEqual({
+    // The bundle is present and correct: the owner map, a full momentum ribbon, and the moments.
+    const analysis = body as unknown as AnalysisBody;
+    expect(analysis.owners).toEqual({
       "0": hostId,
       "1": hostId,
       "2": hostId,
       "3": hostId,
     });
+    expect(analysis.momentum.samples).toHaveLength(40);
+    expect(analysis.moments.firstToFall?.userId).toBe(hostId);
+    expect(analysis.moments.lastSquare?.userId).toBe(hostId);
   });
 
   it("authz: a non-member viewer is refused NOT_PARTICIPANT, the same gate as the game view", async () => {
@@ -3467,13 +3642,13 @@ describe("GET /games/{id}/attribution (first-correct Archive read model) (design
     await seedGameState(gameId, "2026-06-12T12:00:00.000Z");
 
     // A non-member never learns whether the game exists (same as GET /games/{id}): NOT_PARTICIPANT.
-    const res = await get(`/games/${gameId}/attribution`, stranger);
+    const res = await get(`/games/${gameId}/analysis`, stranger);
     expect(res.status).toBe(403);
     await expectError(res, "NOT_PARTICIPANT");
   });
 
   it("authz: an unauthenticated caller is rejected UNAUTHORIZED before any read", async () => {
-    const res = await app.request(`/games/${randomUUID()}/attribution`, {
+    const res = await app.request(`/games/${randomUUID()}/analysis`, {
       method: "GET",
       headers: { "content-type": "application/json" },
     });
