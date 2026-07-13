@@ -63,6 +63,10 @@ import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
 import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
+import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
+import { useGameAnalysis } from "./ui/useGameAnalysis";
+import type { PanelTab } from "./ui/PanelTabs";
+import type { AnalysisTab } from "./ui/Clues";
 import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
 import { Button } from "@/components/ui/button";
@@ -671,6 +675,14 @@ function LiveGame({
   const [signingIn, setSigningIn] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [dismissedCompletion, setDismissedCompletion] = useState(false);
+  // The clue panel's tab, live only once the room is completed. Null while solving (no tab); on the
+  // completion edge it defaults to "analysis" (the solve is the reading that matters now), and the
+  // player can flip to the unchanged Clues in one tap. Held here so the rail, the sheet, and the dock
+  // share one selection across breakpoints.
+  const [panelTab, setPanelTab] = useState<PanelTab>("analysis");
+  // A Replay nonce for the board's mosaic bloom: the Analysis tab's Replay bumps it, re-arming the
+  // reveal arc even on a revisit that settled straight to the wash.
+  const [replayNonce, setReplayNonce] = useState(0);
   // Personal navigation prefs (settings slice 1): read the shared client-local choice so a
   // change in Settings steers the cursor live, no reload. Defaults reproduce today's behavior.
   const { prefs: navPrefs } = useNavPrefs();
@@ -1017,6 +1029,44 @@ function LiveGame({
   const bloomOnCompletion = useCompletionBloomEdge(boardCompleted);
   const goHome = (): void => navigate(homeHref(params));
 
+  // The Analysis tab's data: fetch GET /games/{id}/analysis once the room is completed. The mosaic
+  // already fetches the same (cached) endpoint for its owner map, so this is a cheap cache hit. Gated
+  // on `boardCompleted` (an ongoing game has no analysis, and its trace would leak progress).
+  const analysisSource = useMemo(
+    () => ({ apiBase, gameId, getToken: identity.getAccessToken }),
+    [apiBase, gameId, identity],
+  );
+  const analysis = useGameAnalysis({
+    source: analysisSource,
+    enabled: boardCompleted,
+  });
+
+  // The Analysis panel body: the real panel once the bundle lands, a quiet placeholder while it
+  // loads or when the game has no analysis (a 404). Replay bumps the board's bloom nonce.
+  const analysisContent =
+    analysis.status === "ready" ? (
+      <AnalysisPanel
+        bundle={analysis.bundle}
+        members={members}
+        selfId={ready.selfId}
+        onReplay={() => setReplayNonce((n) => n + 1)}
+        idBase="panel"
+      />
+    ) : (
+      <AnalysisPanelPlaceholder state={analysis.status} />
+    );
+
+  // The tab wiring handed to every clue surface, present only once completed. The clue surfaces are
+  // byte-identical to today while this is undefined.
+  const analysisTab: AnalysisTab | undefined = boardCompleted
+    ? { value: panelTab, onChange: setPanelTab, content: analysisContent }
+    : undefined;
+
+  const openSheetTo = (tab: PanelTab): void => {
+    setPanelTab(tab);
+    setSheetOpen(true);
+  };
+
   // In the shell the desktop toolbar leads with the sidebar trigger, anchored in the panel so
   // toggling never slides the control out from under the cursor (the rail carries no trigger).
   // Phones keep the back chevron because the game is full-bleed there and has no rail. The
@@ -1079,10 +1129,14 @@ function LiveGame({
           />
         )}
 
-        <ClueStrip clue={activeClue} />
+        {/* The desktop clue strip stays only while solving; the completed rail carries the tab
+            header instead, so a duplicate strip would double the panel's header. */}
+        {!boardCompleted && <ClueStrip clue={activeClue} />}
         <ClueBar
           clue={activeClue}
-          onOpen={() => setSheetOpen(true)}
+          completed={boardCompleted}
+          onOpen={() => openSheetTo("clues")}
+          onOpenAnalysis={() => openSheetTo("analysis")}
           onPrev={() => stepClue("backward")}
           onNext={() => stepClue("forward")}
         />
@@ -1116,6 +1170,7 @@ function LiveGame({
                     letters={fills}
                     members={members}
                     bloom={bloomOnCompletion}
+                    replayKey={replayNonce}
                     source={{
                       apiBase,
                       gameId,
@@ -1160,6 +1215,7 @@ function LiveGame({
             presence={presenceByClue}
             referenced={referenced}
             solvingNow={solvingNow}
+            analysisTab={analysisTab}
             onJump={jumpToClue}
           />
 
@@ -1173,6 +1229,7 @@ function LiveGame({
             presence={presenceByClue}
             referenced={referenced}
             solvingNow={solvingNow}
+            analysisTab={analysisTab}
             onJump={jumpToClue}
           />
         </div>
@@ -1211,6 +1268,7 @@ function LiveGame({
         filled={filled}
         presence={presenceByClue}
         referenced={referenced}
+        analysisTab={analysisTab}
         onJump={jumpToClue}
       />
 

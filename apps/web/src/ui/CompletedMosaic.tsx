@@ -121,6 +121,7 @@ export function CompletedMosaicBoard({
   ownerMap,
   roster,
   bloom,
+  replayKey,
   ariaLabel,
 }: {
   puzzle: Puzzle;
@@ -129,15 +130,26 @@ export function CompletedMosaicBoard({
   roster: Roster;
   /** True to play the reveal once (the live completion edge); false to render the settled wash. */
   bloom: boolean;
+  /** A Replay nonce: a change re-arms the reveal arc even on a revisit that would otherwise settle
+   * straight to the wash. 0 (or absent) means no replay has been requested yet. */
+  replayKey?: number | undefined;
   ariaLabel?: string | undefined;
 }) {
+  // Play the reveal on the live completion edge OR whenever Replay has been asked for (replayKey > 0),
+  // so the Replay control re-blooms the settled wash a revisit landed on. replayKey re-arms the arc
+  // (ContributionMosaic keys its effect on it), so each Replay tap plays the sweep again.
+  const play = bloom || (replayKey ?? 0) > 0;
   return (
     <ContributionMosaic
       puzzle={puzzle}
       letters={letters}
       ownerMap={ownerMap}
       roster={roster}
-      behavior={bloom ? { kind: "reveal" } : { kind: "static", state: "wash" }}
+      behavior={
+        play
+          ? { kind: "reveal", replayKey: replayKey ?? 0 }
+          : { kind: "static", state: "wash" }
+      }
       ariaLabel={
         ariaLabel ?? "The solved board, painted by who solved each square"
       }
@@ -162,6 +174,7 @@ export function CompletedMosaic({
   letters,
   members,
   bloom,
+  replayKey,
   source,
   ariaLabel,
 }: {
@@ -171,6 +184,8 @@ export function CompletedMosaic({
   members: readonly StackMember[];
   /** True to play the reveal once (the live completion edge); false for the settled wash. */
   bloom: boolean;
+  /** A Replay nonce from the parent; a change re-blooms the board (the Analysis tab's Replay). */
+  replayKey?: number | undefined;
   source?: AttributionSource | undefined;
   ariaLabel?: string | undefined;
 }) {
@@ -184,6 +199,7 @@ export function CompletedMosaic({
       ownerMap={ownerMap}
       roster={roster}
       bloom={bloom}
+      replayKey={replayKey}
       ariaLabel={ariaLabel}
     />
   );

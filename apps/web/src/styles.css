@@ -686,6 +686,31 @@
   }
 }
 
+/*
+ * Clue panel tab cross-fade (ui/Clues.tsx, once a room is completed). The panel gains a
+ * [Clues | Analysis] header; switching tabs cross-fades ONLY the panel's inner content, on the
+ * app's standard easing at ~190ms, so the board and the panel frame never resize or jump (the
+ * frozen Clues view stays pixel-identical, it only fades). The incoming panel fades up from a
+ * hair of downward offset; reduced motion snaps with no fade. Applied to the panel body that
+ * swaps, keyed so React remounts it and the animation re-arms per switch.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .panel-fade {
+    animation: crossy-panel-fade 190ms var(--ease-standard) both;
+  }
+}
+
+@keyframes crossy-panel-fade {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Bottom-sheet entrance: a quiet rise, 200ms, disabled under reduced motion. */
 @keyframes crossy-sheet-in {
   from {
