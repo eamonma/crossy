@@ -1,8 +1,15 @@
 // The Account screen (roadmap I3: thin settings v1, owner ruling "thin for now").
-// Exactly three things and nothing else: who is signed in (avatar, name, provider),
-// sign out, and a destructive delete with a two-beat confirmation. No theme toggle
-// (ID-3: both grounds ship, system-driven), no notifications. A quiet version footer
-// rides at the bottom.
+// Who is signed in (a paper identity card), the per-device Solving preferences (a
+// second paper card), sign out, and a destructive delete with a two-beat confirmation.
+// No theme toggle (ID-3: both grounds ship, system-driven), no notifications. A quiet
+// legal pair and a version footer close the screen.
+//
+// The surface is a sibling of Rooms and Puzzles: a ScrollView of paper cards on the
+// ground canvas, 16pt inset, a 32pt title, quiet caps section headers. The cards use
+// the exact RoomCard recipe — a rounded rect filled with the `cell` token and hairlined
+// with `gridLine`, so a settings group reads as one crossword cell of paper (DESIGN.md
+// §1: cards are paper/content, glass is chrome you hold). The two standing actions stay
+// glass capsules, because a sign-out and a delete are chrome you hold, not content.
 //
 // AD-2: the screen sees plain data and closures, never CrossyAPI or the auth machine.
 // The composition root maps the session's identity into AccountIdentity and adapts the
@@ -89,6 +96,14 @@ public struct SettingsScreen: View {
     // stay the colored initial (its one puck makes a shared cache unnecessary).
     @State private var avatarCache = AvatarImageCache()
 
+    /// The shared inset and card geometry, so the screen sits as a sibling of Rooms and
+    /// Puzzles (both 16pt) and its cards echo the RoomCard silhouette (corner 16).
+    private enum Layout {
+        static let inset: CGFloat = 16
+        static let cardCorner: CGFloat = 16
+        static let rowPadding: CGFloat = 14
+    }
+
     public init(
         identity: AccountIdentity,
         typingPrefs: NavigationSettingsStore,
@@ -110,38 +125,42 @@ public struct SettingsScreen: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            title
-            identityRow
-                .padding(.top, 28)
-                .padding(.horizontal, 24)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                title
 
-            typingSection
-                .padding(.top, 32)
-                .padding(.horizontal, 24)
+                identityCard
+                    .padding(.top, 12)
 
-            Spacer()
+                sectionHeader(ArrivalCopy.settingsSolvingSection)
+                    .padding(.top, 22)
+                    .padding(.bottom, 8)
+                solvingCard
 
-            if let deleteFailure {
-                Text(verbatim: ArrivalCopy.deleteFailure(forCode: deleteFailure.code))
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(rgb: ground.tokens.number))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 12)
+                actions
+                    .padding(.top, 24)
+
+                if let deleteFailure {
+                    Text(verbatim: ArrivalCopy.deleteFailure(forCode: deleteFailure.code))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(rgb: ground.tokens.number))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 12)
+                }
+
+                legalRow
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 24)
+
+                versionFooter
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 16)
             }
-
-            actions
-                .padding(.horizontal, 24)
-
-            legalRow
-                .padding(.top, 14)
-
-            versionFooter
-                .padding(.top, 20)
-                .padding(.bottom, 20)
+            .padding(.horizontal, Layout.inset)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
         // The identity puck's avatar layer reads its cache here (PROTOCOL.md §4: a
         // null or unresolved url just shows the initial).
@@ -169,12 +188,34 @@ public struct SettingsScreen: View {
             .foregroundStyle(Color(rgb: ground.tokens.ink))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 8)
-            .padding(.horizontal, 24)
     }
 
-    /// The person: their puck (roster vocabulary), the name (or the plain fallback),
-    /// and the provider line beneath. Read from what auth state holds; no wire call.
-    private var identityRow: some View {
+    /// The paper-card background, the RoomCard recipe verbatim: a rounded rect filled
+    /// with the `cell` token and hairlined with `gridLine`, so a settings group reads as
+    /// one crossword cell of paper (DESIGN.md §1). Reused by both cards so they share a
+    /// silhouette with each other and with the room and puzzle cards.
+    private func cardBackground() -> some View {
+        RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous)
+            .fill(Color(rgb: ground.tokens.cell))
+            .overlay(
+                RoundedRectangle(cornerRadius: Layout.cardCorner, style: .continuous)
+                    .strokeBorder(Color(rgb: ground.tokens.gridLine), lineWidth: 1))
+    }
+
+    /// The quiet caps section header, the Rooms/Puzzles recipe (11pt semibold, tracked,
+    /// the ground's number ink), so the three signed-in screens speak one label voice.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(verbatim: title.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(1.2)
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The person: their puck (roster vocabulary), the name (or the plain fallback), and
+    /// the provider line beneath, held in a paper card at the top like a profile header.
+    /// Read from what auth state holds; no wire call.
+    private var identityCard: some View {
         HStack(spacing: 14) {
             RosterPuckView(member: identity.rosterMember, ground: ground, diameter: 52)
             VStack(alignment: .leading, spacing: 3) {
@@ -189,41 +230,35 @@ public struct SettingsScreen: View {
             }
             Spacer(minLength: 0)
         }
+        .padding(Layout.rowPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground())
     }
 
-    /// The typing preferences (personal-settings slice 1): a quiet caps header over two
-    /// native controls, a toggle and a menu picker. Both write straight to the shared
-    /// store, so the open room's cursor follows the change live. The system controls are
-    /// the tap-opened grammar the delete dialog already uses (DESIGN.md §4); no new
-    /// visual language, the label voice and ground tokens are the screen's own.
-    private var typingSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(verbatim: ArrivalCopy.settingsTypingSection)
-                .font(.system(size: 12, weight: .semibold))
-                .textCase(.uppercase)
-                .kerning(0.6)
-                .foregroundStyle(Color(rgb: ground.tokens.number))
-
-            Toggle(isOn: $typingPrefs.skipFilledInWord) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: ArrivalCopy.settingsSkipFilledTitle)
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color(rgb: ground.tokens.ink))
-                    Text(verbatim: ArrivalCopy.settingsSkipFilledSubtitle)
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(rgb: ground.tokens.number))
-                }
+    /// The solving preferences (personal-settings slice 1): two rows in one paper card,
+    /// one grammar — a label and its one-line subtitle on the left, a native control on
+    /// the right — divided by a hairline. Both write straight to the shared store, so the
+    /// open room's cursor follows the change live.
+    private var solvingCard: some View {
+        VStack(spacing: 0) {
+            settingRow(
+                title: ArrivalCopy.settingsSkipFilledTitle,
+                subtitle: ArrivalCopy.settingsSkipFilledSubtitle
+            ) {
+                Toggle("", isOn: $typingPrefs.skipFilledInWord)
+                    .labelsHidden()
+                    .tint(Color(rgb: ground.tokens.ink))
             }
-            .tint(Color(rgb: ground.tokens.ink))
 
-            HStack {
-                Text(verbatim: ArrivalCopy.settingsEndOfWordTitle)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Color(rgb: ground.tokens.ink))
-                Spacer(minLength: 12)
-                // The picker's boolean maps first-blank/next-clue, so the menu carries
-                // the two option labels the copy pins and the store reads them back.
+            rowDivider
+
+            settingRow(
+                title: ArrivalCopy.settingsEndOfWordTitle,
+                subtitle: ArrivalCopy.settingsEndOfWordSubtitle
+            ) {
+                // The picker's boolean maps first-blank/next-clue; the menu carries the
+                // two short option labels the copy pins, so the collapsed value stays a
+                // compact word (the store reads the tag back).
                 Picker(
                     ArrivalCopy.settingsEndOfWordTitle,
                     selection: $typingPrefs.endOfWordIsNextClue
@@ -237,13 +272,48 @@ public struct SettingsScreen: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground())
+    }
+
+    /// One preference row: title over subtitle on the left, the control trailing. The
+    /// control is a @ViewBuilder so a toggle and a menu picker share one row frame and
+    /// read as siblings, which the naked-controls v1 never did.
+    private func settingRow(
+        title: String,
+        subtitle: String,
+        @ViewBuilder control: () -> some View
+    ) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title)
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                Text(verbatim: subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+            }
+            Spacer(minLength: 12)
+            control()
+        }
+        .padding(.horizontal, Layout.rowPadding)
+        .padding(.vertical, 12)
+    }
+
+    /// The hairline between rows: the `gridLine` token, inset to the label's leading edge
+    /// (the iOS separator inset), so the divider reads as a rule inside the cell, not a
+    /// second border.
+    private var rowDivider: some View {
+        Rectangle()
+            .fill(Color(rgb: ground.tokens.gridLine))
+            .frame(height: 1)
+            .padding(.leading, Layout.rowPadding)
     }
 
     /// The two standing actions: sign out (a plain glass capsule) and delete (glass, but
     /// its label carries the destructive tone; the confirmation is the real gate). Both
     /// disable while a delete is in flight.
     private var actions: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             capsuleButton(
                 label: ArrivalCopy.signOutAction,
                 tone: Color(rgb: ground.tokens.ink),
@@ -286,11 +356,11 @@ public struct SettingsScreen: View {
         .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
     }
 
-    /// The fourth row: the quiet legal pair, standing apart from the two capsule
-    /// actions so it never reads as another account intent. Buttons, not Links: the
-    /// composition root presents an in-app Safari sheet (the WelcomeScreen grammar),
-    /// which keeps the person in the flow (App Review guideline 5.1.1) and is no
-    /// dead end (the system sheet carries its own Done button and Safari chrome).
+    /// The quiet legal pair, standing apart from the two capsule actions so it never
+    /// reads as another account intent. Buttons, not Links: the composition root presents
+    /// an in-app Safari sheet (the WelcomeScreen grammar), which keeps the person in the
+    /// flow (App Review guideline 5.1.1) and is no dead end (the system sheet carries its
+    /// own Done button and Safari chrome).
     private var legalRow: some View {
         HStack(spacing: 6) {
             legalButton(ArrivalCopy.privacyPolicy, page: .privacy)
@@ -368,5 +438,6 @@ private func previewTypingPrefs() -> NavigationSettingsStore {
             onSignOut: {},
             onDeleteAccount: { ArrivalFailure(code: nil) },
             onOpenLegal: { _ in })
+        .preferredColorScheme(.dark)
     }
 }
