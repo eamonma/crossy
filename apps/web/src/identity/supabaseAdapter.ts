@@ -270,7 +270,12 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       return { ok: true, session };
     },
     async signOut(): Promise<void> {
-      await supabase.auth.signOut();
+      // Sign out this device only. supabase-js defaults to { scope: "global" }, which
+      // revokes the user's whole refresh-token family and logs the phone and the
+      // extension out at their next refresh (part of the "randomly signed out" reports).
+      // The product decision is device-local: an explicit sign-out-everywhere can arrive
+      // later as its own affordance.
+      await supabase.auth.signOut({ scope: "local" });
     },
     onChange(
       cb: (s: IdentitySession | null, cause: SessionChangeCause) => void,
