@@ -16,6 +16,7 @@
 // Degenerate solves collapse cleanly: a null moment hides its card (never a gap where a third was),
 // an all-zero momentum draws a flat ribbon, and the stat block's time reads a real M:SS, never NaN.
 import { useMemo } from "react";
+import { PauseIcon, PlayIcon } from "@radix-ui/react-icons";
 import type { StackMember } from "./primitives";
 import { CapsLabel, cx, Divider } from "./primitives";
 import { rosterOf } from "./completionAttribution";
@@ -24,9 +25,24 @@ import {
   analysisSummary,
   colorOf,
   legendSolvers,
+  momentumHasSignal,
   nameOf,
 } from "./analysisReadout";
 import { MomentumRibbon } from "./MomentumRibbon";
+import { Button } from "@/components/ui/button";
+
+/** The replay transport wired into the panel: the shared clock's current head, whether it is
+ * running, and the two controls. Optional and inert when absent, so the phone sheet (which cannot
+ * show the board beside the ribbon) renders the panel with no transport. */
+export interface ReplayControls {
+  /** The head in relative seconds, or null when not replaying (board rests on the full mosaic). */
+  readonly time: number | null;
+  readonly playing: boolean;
+  /** The solve's real length, so the transport can hide for a single-instant solve. */
+  readonly durationSeconds: number;
+  onToggle(): void;
+  onSeek(t: number): void;
+}
 
 /** A colored presence dot, the legend's and the moment card's shared marker. Falls back to a neutral
  * sand dot when the id resolves to no color (a member who left the snapshot), never a crash. */
@@ -92,6 +108,7 @@ export function AnalysisPanel({
   selfId,
   idBase,
   className,
+  replay,
 }: {
   bundle: AnalysisResponse;
   members: readonly StackMember[];
@@ -99,6 +116,9 @@ export function AnalysisPanel({
   /** Namespaces the ribbon's gradient def so two instances never collide. */
   idBase: string;
   className?: string;
+  /** The replay transport, present only where the board and ribbon are co-visible (the rail and the
+   * dock). Absent on the phone sheet, which covers the board, so the ribbon shows no playhead. */
+  replay?: ReplayControls | undefined;
 }) {
   const roster = useMemo(() => rosterOf(members), [members]);
   const summary = useMemo(() => analysisSummary(bundle), [bundle]);
@@ -108,6 +128,13 @@ export function AnalysisPanel({
   );
 
   const { firstToFall, lastSquare } = bundle.moments;
+
+  // The transport rides only where there is a solve to replay: a real duration and a shaped series.
+  // A single-instant solve has one instant, so no play button and no scrub (nothing to fill in).
+  const canReplay =
+    replay !== undefined &&
+    replay.durationSeconds > 0 &&
+    momentumHasSignal(bundle.momentum.samples);
 
   // The salient headline the retired completion popup used to carry: time, solvers, squares. Sourced
   // from the bundle (not the wire stats), so the tab and the mosaic can never disagree on the counts.
@@ -164,14 +191,38 @@ export function AnalysisPanel({
         Each square shows who solved it first.
       </p>
 
-      {/* Momentum: the tempo, plus a plain gloss so the shaded pause and the marker read on their own. */}
-      <CapsLabel className="mt-6 mb-2.5 block text-text-subtle">
-        The room's tempo
-      </CapsLabel>
-      <MomentumRibbon bundle={bundle} idBase={idBase} />
+      {/* Momentum: the tempo, plus a plain gloss so the shaded pause and the marker read on their own.
+          Where the board is co-visible (the rail and the dock) the ribbon doubles as a replay
+          transport: a play button and a draggable playhead fill the board in solve order. */}
+      <div className="mt-6 mb-2.5 flex items-center justify-between gap-2">
+        <CapsLabel className="block text-text-subtle">
+          The room's tempo
+        </CapsLabel>
+        {canReplay && replay !== undefined && (
+          <Button
+            variant="secondary"
+            size="icon-sm"
+            onClick={replay.onToggle}
+            aria-label={
+              replay.playing ? "Pause the replay" : "Play the solve replay"
+            }
+          >
+            {replay.playing ? <PauseIcon /> : <PlayIcon />}
+          </Button>
+        )}
+      </div>
+      <MomentumRibbon
+        bundle={bundle}
+        idBase={idBase}
+        durationSeconds={canReplay ? replay!.durationSeconds : 0}
+        replayTime={canReplay ? replay!.time : null}
+        playing={canReplay ? replay!.playing : false}
+        onSeek={canReplay ? replay!.onSeek : undefined}
+      />
       <p className="mt-2 text-1 leading-relaxed text-text-subtle">
         Height tracks solving speed. The shaded span is the room's longest
         pause; the marker is where solving picked back up.
+        {canReplay ? " Play or drag the ribbon to replay the solve." : ""}
       </p>
 
       {/* Moments: only the cards with data. Never a placeholder for the absent unlock. */}

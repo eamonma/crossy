@@ -32,6 +32,9 @@ import {
 
 const CELL = 36;
 
+/** A stable empty reveal map, so a non-replay render never hands the replay effect a fresh identity. */
+const EMPTY_REVEALED: ReadonlyMap<number, number> = new Map();
+
 /** The three frames the reveal moves through, plus `plate` (a static FIELD at fuller saturation
  * for a share/projector still). `plate` keeps the letters hidden like FIELD; it is the peak held
  * still, not a glyph-on-color variant. */
@@ -41,11 +44,21 @@ export type MosaicState = "ink" | "field" | "wash" | "plate";
  * How the mosaic behaves:
  *   - a fixed `state` renders one frame and never animates (the dial thumbnails, the plate).
  *   - `state: "reveal"` runs the arc once on mount (INK -> FIELD -> WASH), honoring reduced motion.
- * `replayKey` re-arms the arc when it changes (a Replay button bumps it).
+ *     `replayKey` re-arms the arc when it changes (a Replay button bumps it).
+ *   - `kind: "replay"` is the time-gated solve replay (REPLAY.md): every cell whose solve time is
+ *     `<= timeSeconds` wears the WASH look, the rest blank, driven by the shared clock. A forward
+ *     crossing fades in over ~250ms; unchanged cells never restart their transition.
  */
 type Behavior =
   | { readonly kind: "static"; readonly state: MosaicState }
-  | { readonly kind: "reveal"; readonly replayKey?: number };
+  | { readonly kind: "reveal"; readonly replayKey?: number }
+  | {
+      readonly kind: "replay";
+      /** Cell index -> its solve time (relative seconds). A cell absent from the map never reveals. */
+      readonly revealedAt: ReadonlyMap<number, number>;
+      /** The playhead: cells solved at or before this time show, the rest are blank. */
+      readonly timeSeconds: number;
+    };
 
 export interface ContributionMosaicProps {
   /** The solved board's geometry and numbering (the same Puzzle the grid renders). */
@@ -150,6 +163,56 @@ export function ContributionMosaic({
   const onBeatRef = useRef(onBeat);
   onBeatRef.current = onBeat;
 
+  // The set of cells shown on the previous replay frame, so a crossing only re-transitions the cells
+  // whose state actually changed (a forward crossing fades in; unchanged cells never restart their
+  // fade). Cleared whenever replay is not the active behavior.
+  const revealedSetRef = useRef<Set<number>>(new Set());
+
+  // The time-gated replay: fill every cell solved at or before the playhead, blank the rest. Keyed
+  // ONLY on the time and the behavior kind, reading cells through cellsRef so an owner-map or roster
+  // identity change never disturbs a frame (the same discipline the bloom effect keeps). The reveal
+  // is imperative through the same per-cell rect/text refs the bloom uses, so it adds no data path.
+  const replayTime = behavior.kind === "replay" ? behavior.timeSeconds : null;
+  const revealedAt =
+    behavior.kind === "replay" ? behavior.revealedAt : EMPTY_REVEALED;
+  const revealedAtRef = useRef(revealedAt);
+  revealedAtRef.current = revealedAt;
+  useEffect(() => {
+    if (behavior.kind !== "replay" || replayTime === null) {
+      revealedSetRef.current = new Set();
+      return;
+    }
+    const cells = cellsRef.current;
+    const at = revealedAtRef.current;
+    const prev = revealedSetRef.current;
+    const next = new Set<number>();
+    const wash = frameStyle("wash");
+    for (const cell of cells) {
+      const t = at.get(cell.index);
+      const shown = t !== undefined && t <= replayTime;
+      if (shown) next.add(cell.index);
+      // Only the cells whose shown-state flipped this frame get a transition; the rest are left
+      // exactly as they were, so a settled cell never restarts its fade as the head sweeps past
+      // later cells. A ~250ms calm fade in the forward direction (the important one); a backward
+      // scrub also fades, which reads fine.
+      if (shown === prev.has(cell.index)) continue;
+      const rect = rectRefs.current.get(cell.index);
+      const text = letterRefs.current.get(cell.index);
+      if (rect) {
+        rect.style.transition = "opacity 250ms ease-out";
+        rect.style.transitionDelay = "0ms";
+        rect.style.opacity = String(shown ? wash.rectOpacity : 0);
+      }
+      if (text) {
+        text.style.transition = "opacity 250ms ease-out";
+        text.style.transitionDelay = "0ms";
+        text.style.fill = wash.letterFill;
+        text.style.opacity = String(shown ? wash.letterOpacity : 0);
+      }
+    }
+    revealedSetRef.current = next;
+  }, [behavior.kind, replayTime]);
+
   // The reveal: apply INK, then bloom each cell to FIELD on its diagonal delay, hold the peak,
   // then settle each cell to WASH. Reduced motion crosses straight to WASH.
   const replayKey =
@@ -223,15 +286,19 @@ export function ContributionMosaic({
   }, [behavior.kind, replayKey, cols, rows]);
 
   const staticFrame = staticState === null ? null : frameStyle(staticState);
-  // In reveal mode the board starts at INK (color hidden, letters shown) so nothing flashes
-  // before the arc arms; the effect then animates it forward. In static mode the chosen frame
-  // is React-driven straight to its opacities.
+  // In reveal mode the board starts at INK (color hidden, letters shown) so nothing flashes before
+  // the arc arms; the effect then animates it forward. In replay mode it starts fully blank (no
+  // color, no letters) so a cell is invisible until the playhead reaches its solve time; the effect
+  // fills it in. In static mode the chosen frame is React-driven straight to its opacities.
+  const isReplay = behavior.kind === "replay";
   const initialRectStyle = staticFrame
     ? { opacity: staticFrame.rectOpacity }
     : { opacity: 0 };
   const initialLetterStyle = staticFrame
     ? { opacity: staticFrame.letterOpacity }
-    : { opacity: 1 };
+    : isReplay
+      ? { opacity: 0 }
+      : { opacity: 1 };
 
   return (
     <svg

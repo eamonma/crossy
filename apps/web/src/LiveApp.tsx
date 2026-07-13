@@ -64,6 +64,7 @@ import { PartyView } from "./ui/PartyView";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
+import { useReplayClock } from "./ui/useReplayClock";
 import type { PanelTab } from "./ui/PanelTabs";
 import type { AnalysisTab } from "./ui/Clues";
 import { TopBar } from "./ui/TopBar";
@@ -1036,8 +1037,25 @@ function LiveGame({
     enabled: boardCompleted,
   });
 
-  // The Analysis panel body: the real panel once the bundle lands, a quiet placeholder while it
-  // loads or when the game has no analysis (a 404).
+  // The solve replay's one clock (REPLAY.md: "one clock, two views"), lifted here so the momentum
+  // ribbon (the playhead, via AnalysisPanel) and the mosaic (the time-gated reveal) move together.
+  // `replay.time` is null when not replaying, so the board rests on the full settled mosaic.
+  const durationSeconds =
+    analysis.status === "ready" ? analysis.bundle.momentum.durationSeconds : 0;
+  const replay = useReplayClock(durationSeconds);
+  const sequence =
+    analysis.status === "ready" ? analysis.bundle.sequence : undefined;
+  // Leaving the mosaic (a flip to Clues, or a new game) clears any replay state, so returning to the
+  // Analysis tab shows the settled wash, never a frozen head and never a re-bloom. The reset is
+  // idempotent, so this is safe to run on every showMosaic change.
+  useEffect(() => {
+    if (!showMosaic) replay.reset();
+  }, [showMosaic, replay]);
+
+  // The Analysis panel body. Two forms of the same panel: the rail and the dock keep the board and
+  // the ribbon co-visible, so they carry the replay transport; the phone bottom sheet covers the
+  // board (a playhead there would drive a board you cannot see, REPLAY.md), so its copy omits the
+  // transport. Both fall back to the same quiet placeholder while the bundle loads or is absent.
   const analysisContent =
     analysis.status === "ready" ? (
       <AnalysisPanel
@@ -1045,15 +1063,37 @@ function LiveGame({
         members={members}
         selfId={ready.selfId}
         idBase="panel"
+        replay={{
+          time: replay.time,
+          playing: replay.playing,
+          durationSeconds,
+          onToggle: replay.toggle,
+          onSeek: replay.seek,
+        }}
+      />
+    ) : (
+      <AnalysisPanelPlaceholder state={analysis.status} />
+    );
+  const analysisContentSheet =
+    analysis.status === "ready" ? (
+      <AnalysisPanel
+        bundle={analysis.bundle}
+        members={members}
+        selfId={ready.selfId}
+        idBase="sheet"
       />
     ) : (
       <AnalysisPanelPlaceholder state={analysis.status} />
     );
 
   // The tab wiring handed to every clue surface, present only once completed. The clue surfaces are
-  // byte-identical to today while this is undefined.
+  // byte-identical to today while this is undefined. The rail and dock get the transport-bearing
+  // body; the sheet gets the transport-free one.
   const analysisTab: AnalysisTab | undefined = boardCompleted
     ? { value: panelTab, onChange: setPanelTab, content: analysisContent }
+    : undefined;
+  const analysisTabSheet: AnalysisTab | undefined = boardCompleted
+    ? { value: panelTab, onChange: setPanelTab, content: analysisContentSheet }
     : undefined;
 
   const openSheetTo = (tab: PanelTab): void => {
@@ -1168,6 +1208,8 @@ function LiveGame({
                     letters={fills}
                     members={members}
                     bloom={bloomOnCompletion}
+                    replayTime={replay.time}
+                    sequence={sequence}
                     source={{
                       apiBase,
                       gameId,
@@ -1268,7 +1310,7 @@ function LiveGame({
         filled={filled}
         presence={presenceByClue}
         referenced={referenced}
-        analysisTab={analysisTab}
+        analysisTab={analysisTabSheet}
         onJump={jumpToClue}
       />
     </div>
