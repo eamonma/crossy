@@ -15,6 +15,7 @@ import crossy.api.InjectedTokenProvider
 import crossy.api.SignedOutError
 import crossy.api.SupabaseAuthClient
 import crossy.api.SupabaseConfig
+import crossy.api.TurnstileMintPolicy
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -38,6 +39,12 @@ object AppConfig {
         apiKey = BuildConfig.SUPABASE_API_KEY,
         issuer = BuildConfig.SUPABASE_ISSUER,
     )
+
+    /** The Cloudflare Turnstile site key the email OTP send mints an invisible token against (public
+     *  by design; #230). Empty means no captcha (the plain send); the default is Cloudflare's
+     *  always-pass test key so the dev stack works out of the box, and the prod key arrives via the
+     *  CI/secret build variant like the other config. */
+    fun turnstileSiteKey(): String = BuildConfig.TURNSTILE_SITE_KEY
 }
 
 /** A bearer provider whose backing swaps at runtime: null before sign-in, the AuthSession after an
@@ -57,6 +64,10 @@ class AppSession(
     val urls: AppUrls,
     supabaseConfig: SupabaseConfig,
     http: OkHttpClient,
+    // The captcha mint policy for the OTP send, null when this build carries no Turnstile site key
+    // (the plain pre-captcha send). Built in the composition root over a WebView-backed minter; the
+    // policy owns the timeout/retry/error mapping and is tested against a fake (TurnstileMintPolicyTests).
+    private val turnstile: TurnstileMintPolicy? = null,
 ) {
     // In-memory for tonight; Keystore-backed EncryptedSharedPreferences is a later track (AD-4).
     private val tokenStore = InMemoryTokenStore()
@@ -90,9 +101,16 @@ class AppSession(
 
     /** Email OTP step one (AAD-3, mirrors #230): ask the server to email a one-time code. No bearer
      *  swap and no phase change yet; the verify step lands the session. Throws through to the host,
-     *  which shows the send-failed copy. */
+     *  which shows the send-failed copy.
+     *
+     *  When this build carries a Turnstile site key, mint an invisible captcha token first (Supabase
+     *  has captcha on project-wide, so a send without one is refused with `captcha_failed`) and nest
+     *  it under gotrue_meta_security.captcha_token. A mint failure throws here, so the host shows the
+     *  calm send-failed copy: never a silent captcha-less send the server would reject. A null policy
+     *  (no site key) sends the plain body, the dev/local posture. Mirrors iOS captchaTokenIfNeeded. */
     suspend fun sendEmailOtp(email: String) {
-        auth.sendEmailOTP(email)
+        val captchaToken = turnstile?.mint()
+        auth.sendEmailOTP(email, captchaToken)
     }
 
     /** Email OTP step two (AAD-3): verify the entered code. Same shape as [signInWithPassword] once

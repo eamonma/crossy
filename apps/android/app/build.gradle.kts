@@ -34,6 +34,15 @@ android {
         buildConfigField("String", "SUPABASE_AUTH_URL", "\"http://10.0.2.2:8792/auth/v1\"")
         buildConfigField("String", "SUPABASE_ISSUER", "\"http://127.0.0.1:8792/auth/v1\"")
         buildConfigField("String", "SUPABASE_API_KEY", "\"sb_publishable_dev_placeholder\"")
+        // The Cloudflare Turnstile site key the email OTP send mints an invisible token against
+        // (Supabase has captcha on project-wide, so a send without one is refused; #230). Public by
+        // design (a site key is meant to be embedded in a page; the secret half lives only in
+        // Supabase's captcha settings). Default is Cloudflare's documented always-pass TEST key, so
+        // the dev stack sends out of the box with no widget to provision (the web/.env.development
+        // posture). The real prod key (iOS committed 0x4AAAAAADyxovx2eQsDvein) arrives via the
+        // CI/secret build variant like the other config above. Empty would mean the plain
+        // pre-captcha send.
+        buildConfigField("String", "TURNSTILE_SITE_KEY", "\"1x00000000000000000000AA\"")
     }
 
     buildFeatures {
