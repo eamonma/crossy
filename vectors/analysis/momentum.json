@@ -1,0 +1,136 @@
+[
+  {
+    "name": "an empty trace is a flat, all-zero tempo of zero duration",
+    "intent": "No fills means no tempo: N=40 zero samples and durationSeconds 0. Guards the max(count)=0 division.",
+    "given": {
+      "trace": []
+    },
+    "then": {
+      "durationSeconds": 0,
+      "samples": [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ]
+    }
+  },
+  {
+    "name": "a single fill lands in bucket 0 and normalizes to 1",
+    "intent": "A single-instant trace (tEnd == t0) puts every fill in bucket 0; peak-normalized that bucket is 1. durationSeconds 0.",
+    "given": {
+      "trace": [
+        {
+          "cell": 5,
+          "userId": "u1",
+          "seq": 1,
+          "at": 1000
+        }
+      ]
+    },
+    "then": {
+      "durationSeconds": 0,
+      "samples": [
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+      ]
+    }
+  },
+  {
+    "name": "two fills at the endpoints land in bucket 0 and bucket 39",
+    "intent": "idx = floor((at - t0)/(tEnd - t0) * (N-1)): at t0 -> 0, at tEnd -> 39. Both hold one, both normalize to 1. Pins bucket-edge arithmetic and durationSeconds = (tEnd - t0)/1000.",
+    "given": {
+      "trace": [
+        {
+          "cell": 0,
+          "userId": "u1",
+          "seq": 1,
+          "at": 0
+        },
+        {
+          "cell": 1,
+          "userId": "u2",
+          "seq": 2,
+          "at": 39000
+        }
+      ]
+    },
+    "then": {
+      "durationSeconds": 39,
+      "samples": [
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+      ]
+    }
+  },
+  {
+    "name": "four evenly spaced fills land one per third, buckets 0, 13, 26, 39",
+    "intent": "at chosen at exact thirds (0, 13000, 26000, 39000) so idx is 0, 13, 26, 39. Each bucket holds one; all normalize to 1. Pins even bucketing across the span.",
+    "given": {
+      "trace": [
+        {
+          "cell": 0,
+          "userId": "u1",
+          "seq": 1,
+          "at": 0
+        },
+        {
+          "cell": 1,
+          "userId": "u2",
+          "seq": 2,
+          "at": 13000
+        },
+        {
+          "cell": 2,
+          "userId": "u3",
+          "seq": 3,
+          "at": 26000
+        },
+        {
+          "cell": 3,
+          "userId": "u1",
+          "seq": 4,
+          "at": 39000
+        }
+      ]
+    },
+    "then": {
+      "durationSeconds": 39,
+      "samples": [
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+      ]
+    }
+  },
+  {
+    "name": "a late burst normalizes the whole curve to the busiest bucket",
+    "intent": "One fill at t0 (bucket 0, count 1) and two at tEnd (bucket 39, count 2). max(count)=2, so bucket 0 is 0.5 and bucket 39 is 1. Pins peak normalization.",
+    "given": {
+      "trace": [
+        {
+          "cell": 0,
+          "userId": "u1",
+          "seq": 1,
+          "at": 0
+        },
+        {
+          "cell": 1,
+          "userId": "u2",
+          "seq": 2,
+          "at": 39000
+        },
+        {
+          "cell": 2,
+          "userId": "u3",
+          "seq": 3,
+          "at": 39000
+        }
+      ]
+    },
+    "then": {
+      "durationSeconds": 39,
+      "samples": [
+        0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+      ]
+    }
+  }
+]

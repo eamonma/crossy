@@ -1,0 +1,62 @@
+[
+  {
+    "name": "one correct write per cell retains its writer, seq, and at, ordered by seq",
+    "intent": "The trace is firstCorrect with timing: each cell's first matching event, as {cell, userId, seq, at}, seq-ordered. INV-6: no value rides the trace.",
+    "given": {
+      "solution": [
+        [0, "A"],
+        [1, "B"]
+      ],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
+        { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 2000 }
+      ]
+    },
+    "then": {
+      "trace": [
+        { "cell": 0, "userId": "u1", "seq": 1, "at": 1000 },
+        { "cell": 1, "userId": "u2", "seq": 2, "at": 2000 }
+      ]
+    }
+  },
+  {
+    "name": "SCHEME 1: A correct at seq 5, B clears at seq 20, C re-corrects at seq 40; entry stays A with A's at",
+    "intent": "The trace inherits first-correct's scheme-1 immunity (FIRST-CORRECT.md): the first matching writer owns the cell AND fixes its timestamp; no later clear or re-correction moves the entry or its at. A last-correct reading would report C at 40000; scheme 1 reports A at 5000.",
+    "given": {
+      "solution": [[7, "D"]],
+      "events": [
+        { "seq": 5, "cell": 7, "userId": "A", "value": "D", "at": 5000 },
+        { "seq": 20, "cell": 7, "userId": "B", "value": null, "at": 20000 },
+        { "seq": 40, "cell": 7, "userId": "C", "value": "D", "at": 40000 }
+      ]
+    },
+    "then": {
+      "trace": [{ "cell": 7, "userId": "A", "seq": 5, "at": 5000 }]
+    }
+  },
+  {
+    "name": "a wrong guess earns no entry; the first CORRECT writer sets the timing",
+    "intent": "Correctness is the engine comparator: a wrong value is skipped, so the trace entry is the first matching write, with that write's seq and at, not the earlier wrong one's.",
+    "given": {
+      "solution": [[0, "A"]],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "Z", "at": 1000 },
+        { "seq": 2, "cell": 0, "userId": "u2", "value": "A", "at": 2000 }
+      ]
+    },
+    "then": {
+      "trace": [{ "cell": 0, "userId": "u2", "seq": 2, "at": 2000 }]
+    }
+  },
+  {
+    "name": "no events yields an empty trace",
+    "intent": "A solve with no writes has no first-correct entries; the trace is empty.",
+    "given": {
+      "solution": [[0, "A"]],
+      "events": []
+    },
+    "then": {
+      "trace": []
+    }
+  }
+]
