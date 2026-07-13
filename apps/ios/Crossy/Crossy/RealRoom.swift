@@ -127,12 +127,15 @@ final class RealRoom {
         // seeded false), the one-beat fallback.
         if let seed {
             store.seedRoster(RoomMapping.roster(cardMembers: seed.members))
-            // A solved card (completedAt present) seeds the store completed before the
-            // socket answers, so its key deck retires from the push's first frame instead
-            // of flashing the deck for the connect beat and dropping it when the welcome
-            // lands (GameStore.seedCompleted, gated to connecting; the welcome overrides).
+            // A terminal card seeds the store terminal before the socket answers, so its
+            // key deck retires from the push's first frame instead of flashing the deck for
+            // the connect beat and dropping it when the welcome lands terminal (gated to
+            // connecting; the welcome overrides). Solved seeds `.completed`, host-ended seeds
+            // `.abandoned`; the two are mutually exclusive, so the branches never both fire.
             if let completedAt = seed.completedAt {
                 store.seedCompleted(at: completedAt)
+            } else if let abandonedAt = seed.abandonedAt {
+                store.seedAbandoned(at: abandonedAt)
             }
             inviteCode = seed.inviteCode
             chrome.seeded = true
@@ -330,4 +333,9 @@ struct RoomArrivalSeed {
     /// never flashes for the connect beat (RealRoom.init, GameStore.seedCompleted). The
     /// welcome stays the authority (applySnapshot); a live room seeds nil and is untouched.
     let completedAt: String?
+    /// The card's abandonment fact (`GET /games` `abandonedAt`, non-nil for a host-ended
+    /// room), the terminal twin of `completedAt`: the store seeds `.abandoned` before the
+    /// socket answers so the key deck never flashes for the connect beat (RealRoom.init,
+    /// GameStore.seedAbandoned). Mutually exclusive with `completedAt`; a live room seeds nil.
+    let abandonedAt: String?
 }

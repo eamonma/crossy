@@ -380,6 +380,40 @@ final class GameStoreTests: XCTestCase {
         XCTAssertNil(store.completedAt)
     }
 
+    // A host-ended card seeds the store abandoned before the socket answers, the terminal
+    // twin of seedCompleted (the seeded-birth rule, DESIGN.md §4, §12), so the key deck
+    // retires from the first frame rather than flashing for the connect beat. INV-4:
+    // abandonment is terminal, so the seed can only agree with the welcome that confirms it.
+    func test_seedAbandonedRetiresTheDeckBeforeTheWelcome_INV4() {
+        let store = GameStore()
+        XCTAssertEqual(store.sync, .connecting)
+        XCTAssertEqual(store.status, .ongoing, "a fresh store is ongoing until seeded or told otherwise")
+        store.seedAbandoned(at: "2026-07-07T18:52:00.000Z")
+        XCTAssertEqual(store.status, .abandoned, "a host-ended card retires the deck pre-welcome")
+        XCTAssertEqual(store.abandonedAt, "2026-07-07T18:52:00.000Z", "the frozen clock reads the seed")
+        XCTAssertNil(store.completedAt, "an abandoned seed never sets completion (the two are exclusive)")
+    }
+
+    // The welcome stays the authority (PROTOCOL.md §7): an abandoned welcome confirms the
+    // seed, and the snapshot overwrites the seeded status wholesale.
+    func test_welcomeConfirmsTheSeededAbandonment_PROTOCOL7() {
+        let store = GameStore()
+        store.seedAbandoned(at: "2026-07-07T18:52:00.000Z")
+        store.receive(welcome(board(status: .abandoned)))
+        XCTAssertEqual(store.status, .abandoned, "the welcome confirms the seed")
+        XCTAssertEqual(store.sync, .live)
+    }
+
+    // The seed is a pre-handshake courtesy only, gated to connecting exactly like
+    // seedCompleted: a stray seedAbandoned after the welcome can never freeze a live room.
+    func test_seedAbandonedIsRefusedAfterTheWelcome_PROTOCOL7() {
+        let (store, _) = makeLiveStore()  // welcome lands ongoing
+        XCTAssertEqual(store.status, .ongoing)
+        store.seedAbandoned(at: "2026-07-07T18:52:00.000Z")
+        XCTAssertEqual(store.status, .ongoing, "a seed after the welcome cannot freeze a live room")
+        XCTAssertNil(store.abandonedAt)
+    }
+
     func test_cursorNoticeUpdatesRenderOnlyPresence_PROTOCOL9() {
         let (store, _) = makeLiveStore()
         store.receive(.cursor(CursorMessage(userId: "u2", cell: 17, direction: .across)))
