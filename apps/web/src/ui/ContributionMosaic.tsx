@@ -139,12 +139,25 @@ export function ContributionMosaic({
   // For a static behavior, the frame is React-driven and needs no imperative pass.
   const staticState = behavior.kind === "static" ? behavior.state : null;
 
+  // The arc reads the current cells and onBeat imperatively through refs, so the reveal effect below
+  // depends ONLY on its trigger (mount + replayKey), never on the identity of cells/roster/letters.
+  // This is the fix for the "blooms twice, with a false start" bug: the attribution fetch swaps the
+  // owner map (a fresh `cells`) and store version bumps rebuild members/roster/letters mid-bloom; when
+  // the effect depended on `cells`, each of those re-armed the whole INK -> FIELD -> WASH sweep. Now
+  // a swap only re-paints the rect fills in place (a plain re-render), and the sweep runs exactly once.
+  const cellsRef = useRef(cells);
+  cellsRef.current = cells;
+  const onBeatRef = useRef(onBeat);
+  onBeatRef.current = onBeat;
+
   // The reveal: apply INK, then bloom each cell to FIELD on its diagonal delay, hold the peak,
   // then settle each cell to WASH. Reduced motion crosses straight to WASH.
   const replayKey =
     behavior.kind === "reveal" ? (behavior.replayKey ?? 0) : null;
   useEffect(() => {
     if (behavior.kind !== "reveal") return;
+    const cells = cellsRef.current;
+    const onBeat = onBeatRef.current;
     // window.setTimeout returns a number in the DOM lib (Completion.tsx's convention); keep the
     // handles as numbers so the cleanup clears them without a NodeJS.Timeout mismatch.
     const timers: number[] = [];
@@ -205,8 +218,9 @@ export function ContributionMosaic({
     return () => {
       for (const t of timers) window.clearTimeout(t);
     };
-    // replayKey re-arms the arc; cells/geometry re-run it too.
-  }, [behavior.kind, replayKey, cells, cols, rows, onBeat]);
+    // Only the trigger re-arms the arc: the first mount and each replayKey bump. cells/onBeat are
+    // read through refs (above), so a mid-bloom owner-map swap or version bump never restarts it.
+  }, [behavior.kind, replayKey, cols, rows]);
 
   const staticFrame = staticState === null ? null : frameStyle(staticState);
   // In reveal mode the board starts at INK (color hidden, letters shown) so nothing flashes

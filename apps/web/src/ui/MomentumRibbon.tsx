@@ -1,7 +1,7 @@
 // The room's tempo, drawn as a smooth ribbon over the 40 peak-normalized momentum samples the wire
 // ships (ANALYSIS.md). A gold area under a gold-11 line (the app's accent, not a chart palette), a
-// quiet baseline, and, when the turning point exists, a shaded stall region closing on "the break"
-// marked at breakSeconds. The math lives in analysisReadout.ts; this only draws it.
+// quiet baseline, and, when the turning point exists, a shaded stall region closing on the "picked
+// up" marker at breakSeconds. The math lives in analysisReadout.ts; this only draws it.
 //
 // Degenerate: an all-zero series (a single-instant solve) draws a flat baseline and no break marker,
 // never a NaN path. The break maps through timeToSampleIndex, the exact inverse of the server's
@@ -74,7 +74,7 @@ export function MomentumRibbon({
       role="img"
       aria-label={
         hasSignal
-          ? "The room's solving tempo over time, with the stall and the break marked"
+          ? "The room's solving tempo over time, with the longest pause shaded and the point where solving picked back up marked"
           : "The room's solving tempo, a quiet flat line for a short solve"
       }
     >
@@ -161,7 +161,7 @@ export function MomentumRibbon({
             fontFamily="var(--font-sans)"
             fontWeight={600}
           >
-            the break
+            picked up
           </text>
         </g>
       )}
@@ -169,7 +169,7 @@ export function MomentumRibbon({
   );
 }
 
-/** Keep the break label inside the box: nudge in from whichever edge it is near. */
+/** Keep the marker label inside the box: nudge in from whichever edge it is near. */
 function clampLabelX(x: number): number {
   if (x > BOX.width - 60) return x - 6;
   return x + 7;

@@ -1,8 +1,8 @@
 // The shared post-game mosaic mount, used by BOTH LiveApp's completed branch and DemoApp's twin,
 // so the `?demo=1` flow is a faithful, screenshottable preview of the live behavior. In the
 // completed state this renders the ContributionMosaic AS the board treatment, in place of the
-// interactive grid (the mosaic renders the solved board itself); the CompletionOverlay layers on
-// top exactly as before. The bloom is a treatment of the same solved board, painted by attribution.
+// interactive grid (the mosaic renders the solved board itself). The bloom is a treatment of the
+// same solved board, painted by attribution.
 //
 // Two things this file owns that the pure core (completionAttribution.ts) cannot:
 //   - useAttributionOwnerMap: the owner-map source. It paints instantly from LAST-WRITER
@@ -13,7 +13,7 @@
 //     THIS session. A reload/revisit into an already-completed game lands on the settled WASH with
 //     no re-bloom. prefers-reduced-motion jumps straight to the wash (the ContributionMosaic reveal
 //     already honors it; the static wash path also skips motion entirely).
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Puzzle } from "../domain/types";
 import { ContributionMosaic } from "./ContributionMosaic";
 import type { StackMember } from "./primitives";
@@ -191,7 +191,9 @@ export function CompletedMosaic({
 }) {
   const cellCount = puzzle.cols * puzzle.rows;
   const ownerMap = useAttributionOwnerMap({ store, cellCount, source });
-  const roster = rosterOf(members);
+  // Memoized on members so a store-version bump (which rebuilds the members array) does not hand the
+  // mosaic a fresh roster identity every render, which would rebuild its `cells` memo needlessly.
+  const roster = useMemo(() => rosterOf(members), [members]);
   return (
     <CompletedMosaicBoard
       puzzle={puzzle}

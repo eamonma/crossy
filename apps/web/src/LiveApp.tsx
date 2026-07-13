@@ -61,7 +61,6 @@ import { parseClueRefs, referencedCells } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
-import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
@@ -674,15 +673,11 @@ function LiveGame({
   const [blockedByAccount, setBlockedByAccount] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [dismissedCompletion, setDismissedCompletion] = useState(false);
   // The clue panel's tab, live only once the room is completed. Null while solving (no tab); on the
   // completion edge it defaults to "analysis" (the solve is the reading that matters now), and the
   // player can flip to the unchanged Clues in one tap. Held here so the rail, the sheet, and the dock
   // share one selection across breakpoints.
   const [panelTab, setPanelTab] = useState<PanelTab>("analysis");
-  // A Replay nonce for the board's mosaic bloom: the Analysis tab's Replay bumps it, re-arming the
-  // reveal arc even on a revisit that settled straight to the wash.
-  const [replayNonce, setReplayNonce] = useState(0);
   // Personal navigation prefs (settings slice 1): read the shared client-local choice so a
   // change in Settings steers the cursor live, no reload. Defaults reproduce today's behavior.
   const { prefs: navPrefs } = useNavPrefs();
@@ -1018,11 +1013,11 @@ function LiveGame({
     code,
   });
 
-  const completed = store.status === "completed" && !dismissedCompletion;
-  // The board's own completed state, independent of whether the summary card is still up: the
-  // mosaic is the board treatment for the whole completed state, so dismissing the card leaves the
-  // player on the settled wash (not back on the frozen interactive grid).
   const boardCompleted = store.status === "completed";
+  // The mosaic is the Analysis tab's board treatment; the Clues tab shows the plain solved board so
+  // reviewing a clue highlights its answer on the grid. The mosaic stays mounted whenever completed
+  // (hidden on the Clues tab), so its bloom plays once on the finish and a tab flip never re-fires it.
+  const showMosaic = boardCompleted && panelTab === "analysis";
   // Edge-trigger the bloom on the ongoing -> completed transition seen in THIS session. Latched on
   // the persistent LiveGame (not the mosaic, which mounts only once completed), so a reload onto an
   // already-completed game lands on the settled wash with no re-bloom.
@@ -1042,14 +1037,13 @@ function LiveGame({
   });
 
   // The Analysis panel body: the real panel once the bundle lands, a quiet placeholder while it
-  // loads or when the game has no analysis (a 404). Replay bumps the board's bloom nonce.
+  // loads or when the game has no analysis (a 404).
   const analysisContent =
     analysis.status === "ready" ? (
       <AnalysisPanel
         bundle={analysis.bundle}
         members={members}
         selfId={ready.selfId}
-        onReplay={() => setReplayNonce((n) => n + 1)}
         idBase="panel"
       />
     ) : (
@@ -1157,20 +1151,23 @@ function LiveGame({
               className="board-fit board-scroll"
               style={{ aspectRatio: `${puzzle.cols} / ${puzzle.rows}` }}
             >
-              {boardCompleted ? (
-                // The completed board's treatment: the contribution mosaic in place of the
-                // interactive grid (the mosaic renders the solved board itself). It blooms once on
-                // the live finish (ink -> field -> wash), painted by first-correct attribution over
-                // a last-writer fallback, then settles; the CompletionOverlay layers on top exactly
-                // as before, and dismissing it leaves the player on this settled wash.
-                <div className="board-wrap" aria-label="Solved crossword grid">
+              {/* The completed board's Analysis treatment: the contribution mosaic in place of the
+                  interactive grid (the mosaic renders the solved board itself). It blooms once on
+                  the live finish (ink -> field -> wash), painted by first-correct attribution over a
+                  last-writer fallback, then settles. It stays MOUNTED whenever the board is completed
+                  and is only hidden on the Clues tab, so switching tabs never re-fires the bloom. */}
+              {boardCompleted && (
+                <div
+                  className="board-wrap"
+                  aria-label="Solved crossword grid"
+                  hidden={!showMosaic}
+                >
                   <CompletedMosaic
                     store={store}
                     puzzle={puzzle}
                     letters={fills}
                     members={members}
                     bloom={bloomOnCompletion}
-                    replayKey={replayNonce}
                     source={{
                       apiBase,
                       gameId,
@@ -1178,7 +1175,10 @@ function LiveGame({
                     }}
                   />
                 </div>
-              ) : (
+              )}
+              {/* The interactive grid: the live board while solving, and the Clues-tab treatment once
+                  completed (frozen, so a clue jump highlights its answer on the plain solved board). */}
+              {!showMosaic && (
                 <div
                   className={`board-wrap outline-none transition-opacity duration-300 motion-reduce:transition-none${
                     awaitingFirstSync ? " opacity-45" : ""
@@ -1271,19 +1271,6 @@ function LiveGame({
         analysisTab={analysisTab}
         onJump={jumpToClue}
       />
-
-      {completed && (
-        <CompletionOverlay
-          stats={store.stats}
-          fallbackSeconds={elapsed}
-          title={title}
-          members={members}
-          selfId={ready.selfId}
-          shareUrl={shareUrl}
-          onDismiss={() => setDismissedCompletion(true)}
-          onHome={goHome}
-        />
-      )}
     </div>
   );
 }
