@@ -67,10 +67,6 @@ struct ClueChrome: View {
     @State private var glint: GlintEvent?
     @State private var glintKey = 0
     @State private var glintSeen: Set<String> = []
-    /// The namespace the Liquid Glass tab selection morphs within (iOS 26): the one
-    /// glass indicator carries a constant id, so moving it between tabs slides the
-    /// glass rather than crossfading (GlassEffectContainer + glassEffectID).
-    @Namespace private var tabGlass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct GlintEvent: Equatable {
@@ -235,117 +231,18 @@ struct ClueChrome: View {
         .accessibilityLabel(Text(verbatim: "See the analysis"))
     }
 
-    /// The Clues/Analysis segmented control, shown once the panel is open. On iOS 26
-    /// the selection is Liquid Glass that morphs between the two tabs (one glass
-    /// capsule, a constant glassEffectID in a GlassEffectContainer, the KeyDeck
-    /// grammar); 18 through 25 wear a filled thumb, the one §4 fallback. The active
-    /// tab writes RoomChromeModel.analysisTab (remembered across a dismiss-and-
-    /// reopen); a quiet gold dot marks Analysis when it is not the tab showing.
-    @ViewBuilder
+    /// The Clues/Analysis segmented control, shown once the panel is open: a single
+    /// Liquid Glass thumb that slides between the tabs (GlassSegmentedTabs, the
+    /// matchedGeometry slide). The active tab writes RoomChromeModel.analysisTab,
+    /// remembered across a dismiss-and-reopen; the gold dot marks Analysis when it
+    /// is not the tab showing.
     private var tabSegment: some View {
-        #if os(iOS)
-            if #available(iOS 26.0, *) {
-                glassTabSegment
-            } else {
-                fallbackTabSegment
-            }
-        #else
-            fallbackTabSegment
-        #endif
-    }
-
-    #if os(iOS)
-        // Two strictly separate layers (owner device finding 2026-07-13): the glass
-        // rides BEHIND, the labels crisp on top, so no text ever sits inside the
-        // glass's frosting. One glass element with a constant id slides between the
-        // two slots, and glassEffectTransition(.matchedGeometry) makes the move the
-        // gooey Liquid Glass morph instead of a crossfade. No .interactive() on the
-        // indicator: the buttons above own the touch, so the glass is decorative
-        // selection state (the Liquid Glass rule).
-        @available(iOS 26.0, *)
-        private var glassTabSegment: some View {
-            GlassEffectContainer(spacing: 8) {
-                ZStack {
-                    HStack(spacing: 6) {
-                        ForEach(AnalysisTab.allCases, id: \.self) { tab in
-                            ZStack {
-                                if chrome.analysisTab == tab {
-                                    Color.clear
-                                        .glassEffect(.regular, in: .capsule)
-                                        .glassEffectID("analysisTabSelection", in: tabGlass)
-                                        .glassEffectTransition(.matchedGeometry)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                    }
-                    HStack(spacing: 6) {
-                        ForEach(AnalysisTab.allCases, id: \.self) { tab in
-                            Button {
-                                withAnimation(.crossyChrome) { chrome.analysisTab = tab }
-                            } label: {
-                                tabLabel(
-                                    tab, title: tab == .clues ? "Clues" : "Analysis",
-                                    selected: chrome.analysisTab == tab)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(
-                                chrome.analysisTab == tab ? [.isSelected] : [])
-                        }
-                    }
-                }
-                .padding(3)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color(rgb: ground.tokens.number).opacity(0.08)))
-            }
-        }
-    #endif
-
-    private var fallbackTabSegment: some View {
-        HStack(spacing: 3) {
-            fallbackTab(.clues, title: "Clues")
-            fallbackTab(.analysis, title: "Analysis")
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Color(rgb: ground.tokens.number).opacity(0.12)))
-    }
-
-    private func fallbackTab(_ tab: AnalysisTab, title: String) -> some View {
-        let selected = chrome.analysisTab == tab
-        return Button {
-            chrome.analysisTab = tab
-        } label: {
-            tabLabel(tab, title: title, selected: selected)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(selected ? Color(rgb: ground.tokens.cell) : .clear))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? [.isSelected] : [])
-    }
-
-    private func tabLabel(_ tab: AnalysisTab, title: String, selected: Bool) -> some View {
-        HStack(spacing: 5) {
-            Text(verbatim: title)
-                .font(.system(size: 13.5, weight: .semibold))
-                .foregroundStyle(
-                    Color(rgb: selected ? ground.tokens.ink : ground.tokens.number))
-            if tab == .analysis, !selected {
-                Circle()
-                    .fill(Color(rgb: AnalysisPalette.gold(ground)))
-                    .frame(width: 6, height: 6)
-            }
-        }
-        .accessibilityLabel(Text(verbatim: title))
+        GlassSegmentedTabs(
+            selection: Binding(
+                get: { chrome.analysisTab },
+                set: { chrome.analysisTab = $0 }),
+            ground: ground,
+            goldDotOn: .analysis)
     }
 
     private func chevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {

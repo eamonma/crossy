@@ -46,6 +46,10 @@ struct ContentView: View {
             // guest-spectator filtered, the timer welcome-gated), so the seeded frame
             // the live goo grows from is capturable offline. Evidence only.
             SeededBirthLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-analysisTabsLab") {
+            // The Liquid Glass Clues/Analysis tab control in isolation
+            // (AnalysisTabsLab), both grounds over a busy field: evidence only.
+            AnalysisTabsLab()
         } else if let config = RoomConfig.resolve() {
             // The room's top chrome is the system nav bar's items now (the
             // toolbar-adoption ruling, DESIGN.md §4), and toolbar items render
