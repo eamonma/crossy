@@ -213,6 +213,13 @@ struct ArrivalRootView: View {
                 // never have shown, and no card was tapped), so the room takes the
                 // default push: name no zoom source (native continuity, DESIGN.md §4).
                 roomZoomSourceID = nil
+                // The room pushes into the Rooms tab's own NavigationStack (`path`),
+                // which the TabView renders only while Rooms is the selected tab. A scan
+                // foregrounds the app wherever it stood: the system Camera's QR banner
+                // opens the link from any tab, commonly Settings or Puzzles. So select
+                // Rooms before the push. Without this the room lands in a hidden stack
+                // and the scan reads as doing nothing (the reported bug).
+                tab = .rooms
                 path = [roomRoute(for: gameId)]
             case .failure:
                 deepLinkPrefill = code
