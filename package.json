@@ -17,6 +17,8 @@
     "dev:stack:reap": "tsx e2e/scripts/dev-stack.ts --reap",
     "test:ios-integration": "tsx apps/ios/scripts/integration.ts",
     "test:ios-integration:reap": "tsx apps/ios/scripts/integration.ts --reap",
+    "test:android-integration": "tsx apps/android/scripts/integration.ts",
+    "test:android-integration:reap": "tsx apps/android/scripts/integration.ts --reap",
     "test:ios-room": "tsx apps/ios/scripts/room.ts",
     "test:ios-room:reap": "tsx apps/ios/scripts/room.ts --reap",
     "format": "prettier --write .",

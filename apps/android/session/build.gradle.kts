@@ -19,4 +19,17 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    // The integration harness (apps/android/scripts/integration.ts) injects CROSSY_IT_* connection
+    // facts; StackIntegrationTests skips without them (assumeTrue). Forward them to the forked test
+    // JVM, and record them as task inputs so a fresh gameId per run defeats the build cache: a
+    // cached unit-only run must never mask the integration pass. Absent (CI, a plain
+    // `:session:test`), the values are empty and the suite skips, so caching is unaffected.
+    listOf("CROSSY_IT_WS_BASE", "CROSSY_IT_GAME_ID", "CROSSY_IT_TOKEN_A", "CROSSY_IT_TOKEN_B")
+        .forEach { key ->
+            val value = System.getenv(key)
+            if (value != null) environment(key, value)
+            inputs.property("it_$key", value ?: "")
+        }
+}
