@@ -24,9 +24,16 @@ import {
   MOMENTUM_SAMPLES,
   moments,
   momentum,
+  solveSequence,
   solveTrace,
 } from "./index";
-import type { Beat, Solution, TraceEntry, TurningPoint } from "./index";
+import type {
+  Beat,
+  SequenceStep,
+  Solution,
+  TraceEntry,
+  TurningPoint,
+} from "./index";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const vectorsRoot = resolve(here, "../../../vectors/analysis");
@@ -65,6 +72,12 @@ interface MomentsCase {
     readonly lastSquare: Beat | null;
     readonly turningPoint: TurningPoint | null;
   };
+}
+
+interface SequenceCase {
+  readonly name: string;
+  readonly given: { readonly trace: TraceEntry[] };
+  readonly then: { readonly sequence: SequenceStep[] };
 }
 
 /** Read one fixture file as a bare array of cases (README.md skipped: prose, not a fixture). */
@@ -107,6 +120,17 @@ describe("moments vectors (vectors/analysis/moments.json)", () => {
   }
 });
 
+describe("solveSequence vectors (vectors/analysis/sequence.json)", () => {
+  for (const c of loadCases<SequenceCase>("sequence.json")) {
+    it(c.name, () => {
+      // INV-6: then.sequence never names a userId or a solution value, so equality proves the
+      // replay's foundation carries cells and relative times only. The case's extra `intent`
+      // field is prose, ignored here.
+      expect(solveSequence(c.given.trace)).toEqual(c.then.sequence);
+    });
+  }
+});
+
 // Targeted assertions naming the invariants they defend, on top of the fixture sweep.
 describe("analysis invariants", () => {
   it("INV-6: the solve trace carries user ids only, never a solution value", () => {
@@ -119,6 +143,22 @@ describe("analysis invariants", () => {
     const fields = trace.flatMap((e) => Object.values(e));
     expect(trace.map((e) => e.userId)).toEqual(["u1"]);
     expect(fields).not.toContain("STAR");
+  });
+
+  it("INV-6: the solve sequence carries cells and relative times only, never a user id or a solution value", () => {
+    // A two-entry trace with a distinct owner per fill. The sequence maps to {cell, atSeconds}
+    // only, so neither user id nor any solution value can surface through the projection.
+    const trace: TraceEntry[] = [
+      { cell: 0, userId: "u1", seq: 1, at: 1000 },
+      { cell: 1, userId: "u2", seq: 2, at: 5000 },
+    ];
+    const values = solveSequence(trace).flatMap((step) => Object.values(step));
+    expect(values).not.toContain("u1");
+    expect(values).not.toContain("u2");
+    expect(solveSequence(trace)).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 4 },
+    ]);
   });
 
   it("INV-1: rebus first-character acceptance enters the trace via matches, ASCII case-insensitively", () => {

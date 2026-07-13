@@ -29,9 +29,16 @@ export {
   MOMENTUM_SAMPLES,
   moments,
   momentum,
+  solveSequence,
   solveTrace,
 } from "./analysis";
-export type { Beat, SolveEvent, TraceEntry, TurningPoint } from "./analysis";
+export type {
+  Beat,
+  SequenceStep,
+  SolveEvent,
+  TraceEntry,
+  TurningPoint,
+} from "./analysis";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,

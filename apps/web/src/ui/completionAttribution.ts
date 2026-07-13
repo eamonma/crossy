@@ -74,10 +74,11 @@ export function rosterOf(members: readonly StackMember[]): Roster {
 
 /** The analysis wire payload (apps/api archive/analysis.ts AnalysisView): the whole completed
  * surface in one fetch. `owners` is the mosaic's first-correct map (cell index, a string key since
- * JSON has no numeric keys, -> the owning userId); `momentum` and `moments` are the tab's readings.
- * Every field carries userIds, cells, and numbers only, so INV-6 rides the shape, not a runtime
- * strip. This mount is load-bearing on `owners` alone; the momentum/moments fields are typed here
- * so the shape is complete, but the Analysis tab (a later PR) is what renders them. */
+ * JSON has no numeric keys, -> the owning userId); `momentum` and `moments` are the tab's readings;
+ * `sequence` is the replay's ordered fills ({cell, atSeconds}, ascending by (at, seq)). Every field
+ * carries userIds, cells, and numbers only, so INV-6 rides the shape, not a runtime strip. This
+ * mount is load-bearing on `owners` alone; the momentum/moments/sequence fields are typed here so
+ * the shape is complete, but the Analysis tab and the replay (a later PR) are what consume them. */
 export interface AnalysisResponse {
   readonly owners: Record<number, string>;
   readonly momentum: { durationSeconds: number; samples: number[] };
@@ -90,6 +91,7 @@ export interface AnalysisResponse {
       burst: number;
     } | null;
   };
+  readonly sequence: { cell: number; atSeconds: number }[];
 }
 
 /** A token resolver, the same shape homeData.ts's fetchers take (refreshed per call, null when
@@ -164,6 +166,7 @@ export async function fetchAnalysisOnce(
         lastSquare: null,
         turningPoint: null,
       },
+      sequence: Array.isArray(body.sequence) ? body.sequence : [],
     };
   } catch {
     return null;

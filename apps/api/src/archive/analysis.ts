@@ -18,7 +18,7 @@
 // letter). Layering: apps/api imports packages/engine and packages/protocol, never the reverse.
 import { asc, eq } from "drizzle-orm";
 import { schema } from "@crossy/db";
-import { momentum, moments, solveTrace } from "@crossy/engine";
+import { momentum, moments, solveSequence, solveTrace } from "@crossy/engine";
 import type { SolveEvent } from "@crossy/engine";
 import { serverPuzzleToSolution } from "@crossy/protocol";
 import type { ServerPuzzle } from "@crossy/protocol";
@@ -28,11 +28,13 @@ import type { Db } from "../db/client";
  * The post-game analysis wire payload (design/post-game/ANALYSIS.md "The wire"): the whole
  * completed surface in one fetch. `owners` is the mosaic's owner map (cell index -> owning
  * userId), the momentum ribbon is the room's tempo (a fixed-length peak-normalized curve plus
- * the solve's duration), and the moments are the three named beats. Every field carries userIds,
- * cells, and numbers only, so it is INV-6-safe by construction: there is no field that can hold a
- * solution value or a raw event, so a leak is a compile error, not a missed runtime strip. The
- * client already holds the roster (names, colors) from the game view's member data, so this never
- * duplicates identity display.
+ * the solve's duration), the moments are the three named beats, and `sequence` is the solve
+ * replay's foundation (the ordered {cell, atSeconds}, ascending by (at, seq), each cell and the
+ * relative second it first went correct; cells and times only, no userId). Every field carries
+ * userIds, cells, and numbers only, so it is INV-6-safe by construction: there is no field that
+ * can hold a solution value or a raw event, so a leak is a compile error, not a missed runtime
+ * strip. The client already holds the roster (names, colors) from the game view's member data, so
+ * this never duplicates identity display.
  */
 export interface AnalysisView {
   readonly owners: Record<number, string>;
@@ -46,6 +48,7 @@ export interface AnalysisView {
       burst: number;
     } | null;
   };
+  readonly sequence: { cell: number; atSeconds: number }[];
 }
 
 /**
@@ -131,6 +134,7 @@ export async function gameAnalysis(
     owners,
     momentum: momentum(trace),
     moments: moments(trace),
+    sequence: solveSequence(trace),
   };
 
   // Cache the frozen bundle (INV-4). Write-once: a completed game's input can never change, so

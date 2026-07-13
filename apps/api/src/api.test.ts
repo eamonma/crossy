@@ -3338,7 +3338,8 @@ async function seedAttributionEvent(
   );
 }
 
-/** The analysis wire shape: the owner map plus the momentum ribbon and the named moments. */
+/** The analysis wire shape: the owner map, the momentum ribbon, the named moments, and the
+ * replay sequence (ordered {cell, atSeconds}, ascending by (at, seq); cells and times only). */
 interface AnalysisBody {
   owners: Record<string, string>;
   momentum: { durationSeconds: number; samples: number[] };
@@ -3351,6 +3352,7 @@ interface AnalysisBody {
       burst: number;
     } | null;
   };
+  sequence: { cell: number; atSeconds: number }[];
 }
 
 describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/post-game/ANALYSIS.md; DESIGN.md §7, §9; INV-6)", () => {
@@ -3446,6 +3448,15 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
       expect(s).toBeLessThanOrEqual(1);
     }
     expect(Math.max(...body.momentum.samples)).toBe(1);
+    // INV-6: the replay sequence rides the same bundle as {cell, atSeconds} only, ascending by
+    // (at, seq), timed from t0. The four fills at :00/:20/:40/:60 land at 0/20/40/60s. No userId
+    // and no solution value can surface, only cells and relative times.
+    expect(body.sequence).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 20 },
+      { cell: 2, atSeconds: 40 },
+      { cell: 3, atSeconds: 60 },
+    ]);
   });
 
   it("moments: firstToFall, lastSquare, and a turningPoint for a solve with a clear stall (design/post-game/ANALYSIS.md pinned semantics)", async () => {

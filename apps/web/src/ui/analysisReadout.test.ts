@@ -31,6 +31,7 @@ function bundle(over: Partial<AnalysisResponse> = {}): AnalysisResponse {
       lastSquare: null,
       turningPoint: null,
     },
+    sequence: over.sequence ?? [],
   };
 }
 
