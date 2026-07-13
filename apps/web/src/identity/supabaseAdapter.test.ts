@@ -20,6 +20,8 @@ interface FakeAuthBehavior {
     error: unknown;
   }>;
   signInWithOAuth?: (arg: unknown) => Promise<{ error: unknown }>;
+  signInWithOtp?: (arg: unknown) => Promise<{ error: unknown }>;
+  verifyOtp?: (arg: unknown) => Promise<{ error: unknown }>;
   signOut?: () => Promise<{ error: unknown }>;
 }
 
@@ -42,6 +44,8 @@ function makeDeps(
     createClient: ReturnType<typeof vi.fn>;
     signInAnonymously: ReturnType<typeof vi.fn>;
     signInWithOAuth: ReturnType<typeof vi.fn>;
+    signInWithOtp: ReturnType<typeof vi.fn>;
+    verifyOtp: ReturnType<typeof vi.fn>;
     refreshSession: ReturnType<typeof vi.fn>;
     signOut: ReturnType<typeof vi.fn>;
   };
@@ -55,6 +59,12 @@ function makeDeps(
   );
   const signInWithOAuth = vi.fn(
     behavior.signInWithOAuth ?? (() => Promise.resolve({ error: null })),
+  );
+  const signInWithOtp = vi.fn(
+    behavior.signInWithOtp ?? (() => Promise.resolve({ error: null })),
+  );
+  const verifyOtp = vi.fn(
+    behavior.verifyOtp ?? (() => Promise.resolve({ error: null })),
   );
   const refreshSession = vi.fn(
     behavior.refreshSession ??
@@ -70,6 +80,8 @@ function makeDeps(
     refreshSession,
     signInAnonymously,
     signInWithOAuth,
+    signInWithOtp,
+    verifyOtp,
     signOut,
     onAuthStateChange: (cb: AuthChangeCb) => {
       authCb = cb;
@@ -98,6 +110,8 @@ function makeDeps(
       createClient,
       signInAnonymously,
       signInWithOAuth,
+      signInWithOtp,
+      verifyOtp,
       refreshSession,
       signOut,
     },
@@ -272,6 +286,18 @@ describe("supabase identity adapter", () => {
     await identity.signInWithProvider("apple");
     expect(calls.signInWithOAuth).toHaveBeenCalledWith({
       provider: "apple",
+      options: { redirectTo: "https://app.test/game/g1?code=ABCD2345" },
+    });
+  });
+
+  it("signInWithProvider('hisbaan') maps to the custom OIDC identifier 'custom:hisbaan'", async () => {
+    // The port names the product provider; the adapter's map is the one place the vendor's custom
+    // OIDC id lives. It rides the standard OAuth redirect path with no special handling.
+    const { deps, calls } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    await identity.signInWithProvider("hisbaan");
+    expect(calls.signInWithOAuth).toHaveBeenCalledWith({
+      provider: "custom:hisbaan",
       options: { redirectTo: "https://app.test/game/g1?code=ABCD2345" },
     });
   });
@@ -467,6 +493,174 @@ describe("supabase identity adapter", () => {
       },
       "signed_in",
     );
+  });
+
+  // Email one-time code and magic link: a send step (no session yet) and two verify steps whose
+  // success flows through the same onAuthStateChange path as OAuth. Provider errors map to the
+  // port's reason enum so every surface renders a typed outcome, never a thrown error.
+  describe("email OTP", () => {
+    it("sendEmailOtp requests a code with shouldCreateUser and the /auth/confirm redirect", async () => {
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.sendEmailOtp("ada@example.com");
+      expect(result).toEqual({ ok: true });
+      // The redirect origin comes from the injected currentUrl (https://app.test here), the same
+      // node-safe source the OAuth redirect uses, with /auth/confirm appended.
+      expect(calls.signInWithOtp).toHaveBeenCalledWith({
+        email: "ada@example.com",
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: "https://app.test/auth/confirm",
+        },
+      });
+    });
+
+    it("sendEmailOtp threads a captcha token into the send when present (captcha_failed cure), alongside the redirect", async () => {
+      // The project's captcha is on: GoTrue rejects /otp with captcha_failed unless the send carries
+      // a Turnstile token. The token rides alongside emailRedirectTo, exactly as the guest path
+      // threads captchaToken into signInAnonymously, so a captcha-protected project accepts the send.
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.sendEmailOtp("ada@example.com", {
+        captchaToken: "turnstile-token",
+      });
+      expect(result).toEqual({ ok: true });
+      expect(calls.signInWithOtp).toHaveBeenCalledWith({
+        email: "ada@example.com",
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: "https://app.test/auth/confirm",
+          captchaToken: "turnstile-token",
+        },
+      });
+    });
+
+    it("sendEmailOtp omits the captcha token when none is given (dev/local send still works)", async () => {
+      // No site key configured, so no token: the options carry only the redirect and shouldCreateUser,
+      // never an undefined captchaToken key, so a project without captcha protection is unaffected.
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      await identity.sendEmailOtp("ada@example.com");
+      expect(calls.signInWithOtp).toHaveBeenCalledWith({
+        email: "ada@example.com",
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: "https://app.test/auth/confirm",
+        },
+      });
+    });
+
+    it("sendEmailOtp maps a rate-limit error to 'rate_limited'", async () => {
+      const { deps } = makeDeps({
+        signInWithOtp: () =>
+          Promise.resolve({
+            error: {
+              message: "email rate limit exceeded",
+              code: "over_email_send_rate_limit",
+              status: 429,
+            },
+          }),
+      });
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.sendEmailOtp("ada@example.com");
+      expect(result).toEqual({
+        ok: false,
+        reason: "rate_limited",
+        message: "email rate limit exceeded",
+      });
+    });
+
+    it("sendEmailOtp maps a status-less vendor error to 'network' (it never reached the server)", async () => {
+      const { deps } = makeDeps({
+        signInWithOtp: () =>
+          Promise.resolve({
+            error: {
+              message: "Failed to fetch",
+              code: undefined,
+              status: undefined,
+            },
+          }),
+      });
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.sendEmailOtp("ada@example.com");
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.reason).toBe("network");
+    });
+
+    it("verifyEmailOtp verifies a typed code with type 'email'; success flows through onChange, not a return", async () => {
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.verifyEmailOtp({
+        email: "ada@example.com",
+        token: "123456",
+      });
+      expect(result).toEqual({ ok: true });
+      expect(calls.verifyOtp).toHaveBeenCalledWith({
+        email: "ada@example.com",
+        token: "123456",
+        type: "email",
+      });
+    });
+
+    it("verifyEmailOtp maps an expired code to 'expired'", async () => {
+      const { deps } = makeDeps({
+        verifyOtp: () =>
+          Promise.resolve({
+            error: {
+              message: "Token has expired or is invalid",
+              code: "otp_expired",
+              status: 403,
+            },
+          }),
+      });
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.verifyEmailOtp({
+        email: "ada@example.com",
+        token: "000000",
+      });
+      expect(result).toEqual({
+        ok: false,
+        reason: "expired",
+        message: "Token has expired or is invalid",
+      });
+    });
+
+    it("verifyEmailLink verifies a magic link by token_hash and type", async () => {
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.verifyEmailLink({
+        tokenHash: "hash-abc",
+        type: "magiclink",
+      });
+      expect(result).toEqual({ ok: true });
+      expect(calls.verifyOtp).toHaveBeenCalledWith({
+        token_hash: "hash-abc",
+        type: "magiclink",
+      });
+    });
+
+    it("verifyEmailLink maps a bad-code error to 'invalid_code'", async () => {
+      const { deps } = makeDeps({
+        verifyOtp: () =>
+          Promise.resolve({
+            error: {
+              message: "invalid credentials",
+              code: "invalid_credentials",
+              status: 400,
+            },
+          }),
+      });
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.verifyEmailLink({
+        tokenHash: "stale",
+        type: "magiclink",
+      });
+      expect(result).toEqual({
+        ok: false,
+        reason: "invalid_code",
+        message: "invalid credentials",
+      });
+    });
   });
 
   // The user's own profile picture: extracted for the chrome so the auth chip can lay the

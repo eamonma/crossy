@@ -59,6 +59,13 @@ struct ArrivalConfig {
     /// the noop (the auth slot's posture exactly). The token is public by design (a
     /// phc_ token is write-only), so it is committed like the publishable key.
     let analytics: AnalyticsConfiguration?
+    /// The Turnstile site key the hidden captcha web view renders (public by design;
+    /// see CrossyConfig.plist). nil when the plist slot is empty: the email leg then
+    /// sends with no captcha token, which the calm send-failure copy states honestly
+    /// if the project has captcha on. Overridable by the CROSSY_IT_TURNSTILE_KEY
+    /// launch/env fact the other keys accept, so a harness build can point the widget
+    /// at a test key (the always-passes 1x000... key) or clear it.
+    let turnstileSiteKey: String?
 
     /// The production web origin, the fallback when no plist/launch-fact value
     /// resolves. Mirrors deploy/README.md's custom-domain cutover table.
@@ -81,6 +88,12 @@ struct ArrivalConfig {
         let webRaw = LaunchFacts.value("CROSSY_IT_WEB_URL") ?? plist["WebOrigin"]
         let webOrigin = webRaw.flatMap { URL(string: $0) } ?? defaultWebOrigin
 
+        // An empty plist slot reads as "no captcha" (nil), not an empty-string key the
+        // widget would choke on: the launch fact already normalizes empty to nil, and
+        // the plist side is normalized here for the same honest posture.
+        let turnstileRaw = LaunchFacts.value("CROSSY_IT_TURNSTILE_KEY") ?? plist["TurnstileSiteKey"]
+        let turnstileSiteKey = (turnstileRaw?.isEmpty == false) ? turnstileRaw : nil
+
         return ArrivalConfig(
             apiBaseURL: apiBaseURL,
             sessionBaseURL: sessionBaseURL,
@@ -91,7 +104,8 @@ struct ArrivalConfig {
                 redirect: redirect),
             analytics: AnalyticsConfiguration(
                 projectToken: plist["PostHogProjectToken"],
-                host: plist["PostHogHost"]))
+                host: plist["PostHogHost"]),
+            turnstileSiteKey: turnstileSiteKey)
     }
 
     private static func plistValues(bundle: Bundle) -> [String: String] {

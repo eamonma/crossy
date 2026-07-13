@@ -462,8 +462,8 @@ export function LiveApp({
             </h1>
             <p className="mx-auto mt-3 mb-0 max-w-[24rem] text-2 text-text-muted text-balance">
               {state.invited
-                ? "Your friends left this puzzle open. Sign in to solve with them, or watch as a guest."
-                : "Sign in to open your game."}
+                ? "Your friends left this puzzle open. Continue to solve with them, or watch as a guest."
+                : "Continue to open your game."}
             </p>
           </div>
           <Divider className="m-0" />
@@ -479,11 +479,11 @@ export function LiveApp({
                   >
                     <a href={appLink}>Open in the Crossy app</a>
                   </Button>
-                  {/* The system's dashed rule carries the fork: open the app, or sign in here. */}
+                  {/* The system's dashed rule carries the fork: open the app, or continue here. */}
                   <div className="flex items-center gap-3" aria-hidden>
                     <Divider className="m-0 flex-1" />
                     <span className="text-1 text-text-subtle">
-                      or sign in on the web
+                      or continue on the web
                     </span>
                     <Divider className="m-0 flex-1" />
                   </div>
@@ -492,7 +492,6 @@ export function LiveApp({
               <SignInButtons
                 identity={identity}
                 config={config}
-                verb="Sign in"
                 allowGuest={state.invited}
               />
             </div>

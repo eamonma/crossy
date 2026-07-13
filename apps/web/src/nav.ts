@@ -25,6 +25,7 @@ export type Route =
   | { readonly kind: "create" }
   | { readonly kind: "settings" }
   | { readonly kind: "game"; readonly gameId: string; readonly party?: boolean }
+  | { readonly kind: "auth-confirm" }
   | { readonly kind: "demo" };
 
 /** The dogfood/dev override params carried across every in-app link. */
@@ -135,6 +136,12 @@ export function parseRoute(pathname: string, params: URLSearchParams): Route {
   if (segments[0] === "puzzles") return puzzlesRoute(params);
   if (segments[0] === "new") return { kind: "create" };
   if (segments[0] === "settings") return { kind: "settings" };
+  // The magic-link landing (`/auth/confirm`): the token_hash and type ride the query string, read
+  // in the view. It renders for signed-out and signed-in alike (a link clicked while already signed
+  // in still lands here), so it is dispatched before the signed-in gate.
+  if (segments[0] === "auth" && segments[1] === "confirm") {
+    return { kind: "auth-confirm" };
+  }
   if (segments[0] === "game" && segments[1] !== undefined) {
     return gameRoute(decodeURIComponent(segments[1]), params);
   }

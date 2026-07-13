@@ -63,7 +63,6 @@ export function Landing({
             <SignInButtons
               identity={identity}
               config={config}
-              verb="Sign in"
               allowGuest={false}
             />
           </section>
