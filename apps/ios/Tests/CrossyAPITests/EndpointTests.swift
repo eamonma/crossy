@@ -94,6 +94,46 @@ final class EndpointTests: XCTestCase {
         XCTAssertFalse(reencoded.contains("solution"))
     }
 
+    // MARK: - Analysis (section 12: GET /games/{id}/analysis)
+
+    func test_getGameAnalysis_carriesTheIdInThePathAndDecodesTheINV6SafeBundle() async throws {
+        try stub(200, fixture: "analysis-view")
+        let view = try await makeStubbedClient().gameAnalysis(gameId)
+
+        let request = try onlyRequest()
+        XCTAssertEqual(request.method, "GET")
+        XCTAssertEqual(request.path, "/games/\(gameId)/analysis")
+        XCTAssertEqual(request.headers["Authorization"], "Bearer test-token")
+        XCTAssertNil(request.body, "a GET carries no body")
+
+        XCTAssertEqual(view.ownersByCell, [0: "host", 1: "host", 2: "mate", 3: "host"])
+        XCTAssertEqual(view.momentum.samples.count, 40)
+        XCTAssertEqual(
+            view.moments.firstToFall,
+            AnalysisView.Beat(cell: 0, userId: "host", atSeconds: 0))
+        // INV-6: the bundle carries userIds and numbers only; nothing re-encoded can be a
+        // solution letter.
+        let reencoded = String(decoding: try JSONEncoder().encode(view), as: UTF8.self)
+        XCTAssertFalse(reencoded.contains("solution"))
+    }
+
+    func test_getGameAnalysis_surfacesA404AsTheTypedGameNotFoundEnvelope() async throws {
+        // Section 12: analysis is completed-only and member-gated, so an ongoing or
+        // abandoned game, the brief completion race, or a non-member answers 404
+        // GAME_NOT_FOUND, surfaced as the typed .api(status: 404, ...) envelope.
+        let body = Data(#"{"error":"GAME_NOT_FOUND","message":"no such completed game"}"#.utf8)
+        StubURLProtocol.install { _ in (404, body) }
+
+        do {
+            _ = try await makeStubbedClient().gameAnalysis(gameId)
+            XCTFail("a 404 must throw")
+        } catch let CrossyAPIError.api(status, envelope) {
+            XCTAssertEqual(status, 404)
+            XCTAssertEqual(envelope.code, .gameNotFound)
+            XCTAssertEqual(envelope.error, "GAME_NOT_FOUND")
+        }
+    }
+
     // MARK: - Creates
 
     func test_createPuzzle_uploadsTheDocumentVerbatimAndDecodesThePuzzleView() async throws {

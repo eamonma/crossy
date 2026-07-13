@@ -284,9 +284,9 @@ public final class CompletionModel {
     public private(set) var isClarityBeat = false
 
     /// The celebration's instant, set on the gate's one firing (INV-3) whatever
-    /// the mosaic switch says: one-shot riders (the §7 completion haptic, the
-    /// stats card's arrival with the celebration, owner ruling 2026-07-10)
-    /// observe this, never the muteable mosaic clock (ID-1).
+    /// the mosaic switch says: one-shot riders observe this (the §7 completion
+    /// haptic, and the confetti below). The analysis panel's summon rides
+    /// `summonToken` instead, after the bloom settles (owner ruling 2026-07-13).
     public private(set) var celebrationFiredAt: TimeInterval?
 
     /// Non-nil while the confetti drifts (owner ask 2026-07-11); the overlay
@@ -296,9 +296,19 @@ public final class CompletionModel {
     /// Reduce Motion, where the drift is skipped whole.
     public private(set) var confettiStartedAt: TimeInterval?
 
+    /// Bumped once when the completion mosaic's settle lands on the live path
+    /// (owner ruling 2026-07-13): the solve screen melts the analysis panel open
+    /// off this, so the panel arrives AFTER the bloom, never during it. Monotonic,
+    /// so a re-render never re-summons.
+    public private(set) var summonToken: Int = 0
+
     @ObservationIgnored private var gate = CelebrationGate()
     @ObservationIgnored private var celebrationTask: Task<Void, Never>?
     @ObservationIgnored private var confettiTask: Task<Void, Never>?
+    /// The mosaic arms exactly once per completion (the ready or the absent
+    /// branch, whichever the solve screen reaches first), so the bloom never
+    /// doubles and the summon fires at most once.
+    @ObservationIgnored private var mosaicArmed = false
 
     public init() {}
 
@@ -311,20 +321,15 @@ public final class CompletionModel {
         status: RoomStatus,
         live: Bool,
         reduceMotion: Bool = false,
-        mosaicEnabled: Bool = AttributionSwitches.completionMosaicEnabled,
         confettiEnabled: Bool = AttributionSwitches.completionConfettiEnabled,
         now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
     ) {
         guard gate.observe(status: status, live: live) else { return }
-        // The stats arrive WITH the celebration (owner ruling 2026-07-10,
-        // amending the earlier settle-then-stats staging): the card morphs
-        // from the clock while the mosaic plays behind it, summoned off this
-        // instant by the solve screen. A muted mosaic (ID-1) reduces the
-        // celebration to the card alone.
         celebrationFiredAt = now
-        // The confetti rides the same instant (owner ask 2026-07-11), skipped
+        // The confetti rides the gate's instant (owner ask 2026-07-11), skipped
         // whole under Reduce Motion; the timed nil unmounts the overlay so the
-        // finished room settles back to paper and glass.
+        // finished room settles back to paper and glass. The haptic rides it too
+        // (the solve screen's onChange). Both are the instant the room lands.
         if confettiEnabled && !reduceMotion {
             confettiStartedAt = now
             confettiTask?.cancel()
@@ -334,7 +339,37 @@ public final class CompletionModel {
                 self?.confettiStartedAt = nil
             }
         }
-        guard mosaicEnabled else { return }
+        // The mosaic no longer starts here (owner ruling 2026-07-13): the bloom
+        // paints FIRST-CORRECT owners, which the GET /analysis fetch carries, not
+        // the live event log's last writer. So the solve screen starts it through
+        // `startMosaic` once the bundle lands (or the last-writer fallback stands
+        // when the fetch is absent). The gate's instant is the haptic and the
+        // confetti; the color comes a beat later, exactly as on the web.
+    }
+
+    /// Start the completion mosaic once its colors are known: tint, hold, settle
+    /// back to ink (MosaicEnvelope). Deferred from the gate on purpose (owner
+    /// ruling 2026-07-13): the bloom is first-correct truth from GET /analysis, so
+    /// it waits for the bundle rather than flashing the live last-writer log; the
+    /// last-writer fallback stands only when the fetch is absent (or no fetch is
+    /// wired). Idempotent (armed once), so the solve screen may call it from either
+    /// the ready or the absent branch without a double bloom. `summonOnSettle` arms
+    /// the one analysis-panel summon for the instant the settle lands (the live
+    /// path); the fallback passes false so a bloom with no bundle never summons.
+    public func startMosaic(
+        summonOnSettle: Bool,
+        reduceMotion: Bool = false,
+        mosaicEnabled: Bool = AttributionSwitches.completionMosaicEnabled,
+        now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
+    ) {
+        guard !mosaicArmed else { return }
+        mosaicArmed = true
+        guard mosaicEnabled else {
+            // Muted mosaic (ID-1): no bloom to wait on, so the summon, if armed,
+            // lands at once rather than never (a muted switch must not swallow it).
+            if summonOnSettle { summonToken += 1 }
+            return
+        }
         mosaicStartedAt = now
         isClarityBeat = !reduceMotion
         celebrationTask?.cancel()
@@ -346,6 +381,9 @@ public final class CompletionModel {
                 for: .seconds(MosaicEnvelope.duration - MosaicEnvelope.clarityDuration))
             guard !Task.isCancelled else { return }
             self?.mosaicStartedAt = nil
+            // The panel arrives after the bloom, never during it (owner ruling
+            // 2026-07-13): the settle landing is the summon's cue on the live path.
+            if summonOnSettle { self?.summonToken += 1 }
         }
     }
 }

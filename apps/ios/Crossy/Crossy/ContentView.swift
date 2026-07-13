@@ -297,7 +297,12 @@ struct RealRoomView: View {
                             gameId: room.gameId, code: room.inviteCode)
                     },
                     onEndGame: { room.endGame() },
-                    onKick: { userId in room.kick(userId: userId) }
+                    onKick: { userId in room.kick(userId: userId) },
+                    // The analysis fetch closes over the REST client and game id here
+                    // (AD-2: CrossyUI stays out of the REST ring); the solve screen
+                    // owns the when (completed) and the retries (owner ruling
+                    // 2026-07-13).
+                    fetchAnalysis: { await room.fetchAnalysis() }
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so

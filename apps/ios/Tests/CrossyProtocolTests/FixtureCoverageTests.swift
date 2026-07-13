@@ -25,6 +25,7 @@ final class FixtureCoverageTests: XCTestCase {
         "create-game-request", "create-game-request-minimal", "create-game-response",
         "games-list", "join-request", "membership-response", "role-request",
         "kick-response", "abandon-response", "game-view",
+        "analysis-view", "analysis-view-null-moments",
         "delete-account-response",
     ]
 

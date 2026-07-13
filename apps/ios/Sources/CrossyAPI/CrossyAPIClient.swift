@@ -131,6 +131,14 @@ public struct CrossyAPIClient: Sendable {
         try await send(Endpoint(method: "GET", path: ["games", gameId]))
     }
 
+    /// `GET /games/{id}/analysis`: the completed-game post-game bundle (first-correct
+    /// owners, momentum, moments; INV-6-safe, userIds and numbers only). Member-gated and
+    /// completed-only; an ongoing or abandoned game, or the brief completion race, answers
+    /// 404 GAME_NOT_FOUND, surfaced as the typed `.api(status: 404, ...)` envelope.
+    public func gameAnalysis(_ gameId: String) async throws -> AnalysisView {
+        try await send(Endpoint(method: "GET", path: ["games", gameId, "analysis"]))
+    }
+
     /// `POST /games/{id}/role`: self role change. The only server-supported transition
     /// is spectator to solver; any other target is refused `VALIDATION`, and a guest is
     /// refused `FULL_ACCOUNT_REQUIRED`.

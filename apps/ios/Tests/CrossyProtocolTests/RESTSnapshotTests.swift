@@ -265,4 +265,68 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertEqual(view.puzzle.shadedCircles, [2], "present shadedCircles survive")
         XCTAssertTrue(view.session.ws.hasPrefix("wss://"), "§2 endpoint shape")
     }
+
+    // MARK: - Analysis (§12: GET /games/{id}/analysis)
+
+    func test_analysisViewRoundTripsWithOwnersMomentumAndMoments() throws {
+        let view = try assertLosslessRoundTrip(AnalysisView.self, .rest, "analysis-view")
+        // The owner map arrives as string cell-index keys; ownersByCell parses them back.
+        XCTAssertEqual(
+            view.ownersByCell,
+            [0: "host", 1: "host", 2: "mate", 3: "host"],
+            "string cell-index keys parse back to the integer-keyed owner map")
+        // The momentum ribbon is always 40 buckets, each peak-normalized into [0, 1].
+        XCTAssertEqual(view.momentum.durationSeconds, 60)
+        XCTAssertEqual(view.momentum.samples.count, 40, "the ribbon is a fixed 40-bucket curve")
+        XCTAssertTrue(
+            view.momentum.samples.allSatisfy { (0...1).contains($0) },
+            "each sample is peak-normalized into [0, 1]")
+        // The three named beats.
+        XCTAssertEqual(
+            view.moments.firstToFall,
+            AnalysisView.Beat(cell: 0, userId: "host", atSeconds: 0))
+        XCTAssertEqual(
+            view.moments.lastSquare,
+            AnalysisView.Beat(cell: 3, userId: "mate", atSeconds: 115))
+        XCTAssertEqual(
+            view.moments.turningPoint,
+            AnalysisView.TurningPoint(stallSeconds: 100, breakSeconds: 110, burst: 2))
+    }
+
+    func test_analysisViewKeepsExplicitNullMomentsAcrossTheRoundTrip() throws {
+        // A solve too short to have a beat carries an explicit JSON null for each moment;
+        // the twin decodes those to nil AND re-encodes the explicit null (not an absent
+        // key), so the round trip is lossless (the fixture pins the nulls).
+        let view = try assertLosslessRoundTrip(
+            AnalysisView.self, .rest, "analysis-view-null-moments")
+        XCTAssertNil(view.moments.firstToFall)
+        XCTAssertNil(view.moments.lastSquare)
+        XCTAssertNil(view.moments.turningPoint)
+        // The nulls are present, not absent: re-encoding emits the keys with null values.
+        let reencoded = try XCTUnwrap(
+            try jsonObject(JSONEncoder().encode(view)) as? [String: Any])
+        let moments = try XCTUnwrap(reencoded["moments"] as? [String: Any])
+        for key in ["firstToFall", "lastSquare", "turningPoint"] {
+            XCTAssertTrue(
+                moments[key] is NSNull,
+                "\(key) re-encodes as an explicit null, not an absent key")
+        }
+    }
+
+    func test_analysisViewCanCarryNoLetter_INV6() throws {
+        // INV-6: the analysis bundle holds userIds, cells, and numbers only, and has
+        // nowhere to put a solution value. Decode a fixture whose owner userIds and cell
+        // count would let a naive projection have carried the solved letters, then re-encode
+        // and assert no letter survives: the type cannot represent one.
+        let view = try assertLosslessRoundTrip(AnalysisView.self, .rest, "analysis-view")
+        let json = String(decoding: try JSONEncoder().encode(view), as: UTF8.self)
+        XCTAssertFalse(json.contains("solution"), "no solution field can exist on the type")
+        // The solved answer of this 4-cell fixture would have been "CATS"; no letter of it,
+        // and no whole word, may appear anywhere in the encoded bundle (INV-6).
+        for letter in ["\"C\"", "\"A\"", "\"T\"", "\"S\"", "CATS"] {
+            XCTAssertFalse(
+                json.contains(letter),
+                "the encoded analysis bundle carries no solution letter (INV-6)")
+        }
+    }
 }

@@ -1,0 +1,303 @@
+// The post-game analysis surface's content (owner ruling 2026-07-13, the approved
+// mock): the same readout the web panel carries, re-set native on the bone/void
+// ground. It rides inside the completed clue chrome's Analysis tab (ClueChrome),
+// so this view is content only, no scroll of its own and no chrome: the "Solved
+// together" eyebrow, the Time/Solvers/Squares trio, the roster legend, the
+// momentum ribbon, and the two moment cards.
+//
+// Everything here is first-correct truth from GET /analysis (RoomAnalysis): the
+// legend and the moments read the owners map's userIds, colored through the same
+// roster seam the avatars and the mosaic use (GridPresence.rosterColor). No solve
+// value is in reach (INV-6): the bundle carries userIds, cells, and numbers only.
+
+import CrossyDesign
+import SwiftUI
+
+@available(iOS 17.0, macOS 14.0, *)
+struct AnalysisPanel: View {
+    let phase: AnalysisModel.Phase
+    /// The room's people, for the legend and the moments' names and colors.
+    let members: [RosterMember]
+    let selfUserId: String?
+    let ground: GridGround
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            switch phase {
+            case .idle, .loading:
+                placeholder("Loading\u{2026}")
+            case .absent:
+                placeholder("Analysis isn\u{2019}t available for this game.")
+            case let .ready(analysis):
+                content(analysis)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 22)
+    }
+
+    // MARK: States
+
+    private func placeholder(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            eyebrow("Solved together")
+            Text(verbatim: text)
+                .font(.system(size: 14))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ analysis: RoomAnalysis) -> some View {
+        eyebrow("Solved together")
+            .padding(.bottom, 12)
+
+        statTrio(analysis)
+
+        let legend = legendRows(analysis)
+        if !legend.isEmpty {
+            FlowLayout(spacing: 14, lineSpacing: 8) {
+                ForEach(legend) { row in
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color(rgb: row.color))
+                            .frame(width: 10, height: 10)
+                        Text(verbatim: row.name)
+                            .font(.system(size: 12.5, weight: row.isSelf ? .semibold : .regular))
+                            .foregroundStyle(
+                                Color(rgb: row.isSelf ? ground.tokens.ink : ground.tokens.number))
+                    }
+                }
+            }
+            .padding(.top, 14)
+            Text(verbatim: "Each square shows who solved it first.")
+                .font(.system(size: 11))
+                .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
+                .padding(.top, 6)
+        }
+
+        // Momentum: the ribbon plus the one line that reads it.
+        capsLabel("Momentum")
+            .padding(.top, 20)
+            .padding(.bottom, 8)
+        MomentumRibbon(
+            momentum: analysis.momentum,
+            turningPoint: analysis.turningPoint,
+            ground: ground)
+        Text(verbatim: momentumCaption(analysis))
+            .font(.system(size: 11))
+            .lineSpacing(1.5)
+            .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
+            .padding(.top, 8)
+
+        // Moments: person only, no times (they degenerate; the first is always 0,
+        // the last always the duration).
+        if analysis.firstToFall != nil || analysis.lastSquare != nil {
+            capsLabel("Moments")
+                .padding(.top, 22)
+                .padding(.bottom, 2)
+            VStack(alignment: .leading, spacing: 0) {
+                if let first = analysis.firstToFall {
+                    momentRow(label: "First square", userId: first.userId)
+                }
+                if analysis.firstToFall != nil, analysis.lastSquare != nil {
+                    Rectangle()
+                        .fill(Color(rgb: ground.tokens.number).opacity(0.18))
+                        .frame(height: 1)
+                }
+                if let last = analysis.lastSquare {
+                    momentRow(label: "Last square", userId: last.userId)
+                }
+            }
+        }
+    }
+
+    // MARK: The stat trio
+
+    private func statTrio(_ analysis: RoomAnalysis) -> some View {
+        let cells: [(label: String, value: String)] = [
+            ("Time", analysis.durationLabel),
+            ("Solvers", String(analysis.solverCount)),
+            ("Squares", String(analysis.entryCount)),
+        ]
+        return HStack(spacing: 0) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
+                if index > 0 {
+                    Rectangle()
+                        .fill(Color(rgb: ground.tokens.number).opacity(0.18))
+                        .frame(width: 1)
+                }
+                VStack(spacing: 5) {
+                    capsLabel(cell.label)
+                    Text(verbatim: cell.value)
+                        .font(.system(size: 21, weight: .regular, design: .monospaced))
+                        .foregroundStyle(Color(rgb: ground.tokens.ink))
+                        .monospacedDigit()
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            }
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(rgb: ground.tokens.number).opacity(0.22), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: Moments
+
+    private func momentRow(label: String, userId: String) -> some View {
+        HStack(spacing: 11) {
+            Circle()
+                .fill(Color(rgb: color(for: userId)))
+                .frame(width: 11, height: 11)
+            VStack(alignment: .leading, spacing: 2) {
+                capsLabel(label)
+                Text(verbatim: name(for: userId))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 11)
+    }
+
+    // MARK: Labels
+
+    private func eyebrow(_ text: String) -> some View {
+        Text(verbatim: text.uppercased())
+            .font(.system(size: 11, weight: .semibold))
+            .tracking(1.4)
+            .foregroundStyle(Color(rgb: AnalysisPalette.goldText(ground)))
+    }
+
+    private func capsLabel(_ text: String) -> some View {
+        Text(verbatim: text.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(1.1)
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+    }
+
+    // MARK: Derivations
+
+    private struct LegendRow: Identifiable {
+        let id: String
+        let name: String
+        let color: CrossyDesign.RGBColor
+        let isSelf: Bool
+    }
+
+    /// The solvers who own at least one square, self first and named "You" (the
+    /// web's legendSolvers). A member who owns nothing is dropped; an owner who is
+    /// no longer in the roster is not invented here (the moments still name them).
+    private func legendRows(_ analysis: RoomAnalysis) -> [LegendRow] {
+        let owners = Set(analysis.owners.values)
+        var rows: [LegendRow] = []
+        for member in members where owners.contains(member.userId) {
+            let isSelf = member.userId == selfUserId
+            let row = LegendRow(
+                id: member.userId,
+                name: isSelf ? "You" : member.displayName,
+                color: color(for: member.userId, wireColor: member.wireColor),
+                isSelf: isSelf)
+            if isSelf {
+                rows.insert(row, at: 0)
+            } else {
+                rows.append(row)
+            }
+        }
+        return rows
+    }
+
+    /// The one line that reads the ribbon, matching the web copy. Falls back to the
+    /// short-solve sentence when there is no pause to shade.
+    private func momentumCaption(_ analysis: RoomAnalysis) -> String {
+        guard analysis.momentum.hasSignal, analysis.turningPoint != nil else {
+            return "Height tracks solving speed over the course of the solve."
+        }
+        return
+            "Height tracks solving speed. The shaded span is the room\u{2019}s longest pause; the marker is where solving picked back up."
+    }
+
+    /// The roster color for a userId, through the same seam the avatars and mosaic
+    /// use: the wire color when the member is known, the userId hash otherwise
+    /// (GridPresence.rosterColor tolerates an empty wire and falls back), then
+    /// paired for this ground.
+    private func color(for userId: String, wireColor: String = "") -> CrossyDesign.RGBColor {
+        let wire =
+            wireColor.isEmpty
+            ? (members.first { $0.userId == userId }?.wireColor ?? "") : wireColor
+        return ground.rosterColor(GridPresence.rosterColor(wireColor: wire, userId: userId))
+    }
+
+    /// A solver's name for the moments: "You", the roster display name, or a plain
+    /// fallback for someone who has left (the wire never hands us a nameless live
+    /// member, but an owner can outlive their roster row).
+    private func name(for userId: String) -> String {
+        if userId == selfUserId { return "You" }
+        return members.first { $0.userId == userId }?.displayName ?? "A solver"
+    }
+}
+
+/// A minimal flow layout (iOS 16+ Layout): lays chips left to right and wraps to a
+/// new line when the next one would overflow the proposed width, the legend's
+/// flex-wrap (the web panel). Small rosters, so a plain greedy pass is enough; no
+/// caching earns its keep here.
+@available(iOS 17.0, macOS 14.0, *)
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    var lineSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        let rows = rows(subviews: subviews, maxWidth: maxWidth)
+        let height =
+            rows.reduce(0) { $0 + $1.height } + lineSpacing * CGFloat(max(0, rows.count - 1))
+        let width = rows.map(\.width).max() ?? 0
+        return CGSize(width: maxWidth.isFinite ? min(width, maxWidth) : width, height: height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()
+    ) {
+        var y = bounds.minY
+        for row in rows(subviews: subviews, maxWidth: bounds.width) {
+            var x = bounds.minX
+            for index in row.items {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(
+                    at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private struct Row {
+        var items: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+    }
+
+    private func rows(subviews: Subviews, maxWidth: CGFloat) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let projected =
+                current.items.isEmpty ? size.width : current.width + spacing + size.width
+            if !current.items.isEmpty, projected > maxWidth {
+                rows.append(current)
+                current = Row(items: [index], width: size.width, height: size.height)
+            } else {
+                current.width = projected
+                current.height = max(current.height, size.height)
+                current.items.append(index)
+            }
+        }
+        if !current.items.isEmpty { rows.append(current) }
+        return rows
+    }
+}
