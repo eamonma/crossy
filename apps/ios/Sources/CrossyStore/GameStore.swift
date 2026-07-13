@@ -237,6 +237,23 @@ public final class GameStore {
         participants = roster
     }
 
+    /// Seed a known-completed status before the socket answers (the seeded-birth rule,
+    /// DESIGN.md §4, §12): the tapped card already carries the room's completion fact
+    /// (`GET /games` `completedAt`), so a solved room retires its key deck from the
+    /// push's first frame instead of flashing the deck for the connect beat and dropping
+    /// it when the welcome lands completed. Gated to `connecting` exactly like
+    /// `seedRoster`: a pre-handshake courtesy the welcome always overrides (applySnapshot
+    /// sets status and completedAt from the board). Completion is terminal and immutable
+    /// (INV-4), so a seeded `.completed` can never contradict the snapshot that confirms
+    /// it. The celebration and pour-back gates never fire on this seed: both require an
+    /// observed ongoing-live board first (CelebrationGate, TerminalPourBackGate), which a
+    /// welcome-into-completed never exposes.
+    public func seedCompleted(at completedAt: String?) {
+        guard sync == .connecting else { return }
+        status = .completed
+        self.completedAt = completedAt
+    }
+
     /// Liveness ping (PROTOCOL.md §5, §9). The adapter owns the 15 s timer
     /// (`ReconnectPolicy.heartbeatIntervalSeconds`); emitting through the store keeps
     /// one ordered outbound path. Meaningless before the first welcome, so gated like

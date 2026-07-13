@@ -343,6 +343,43 @@ final class GameStoreTests: XCTestCase {
             "a seed after the welcome cannot demote the live roster to not-yet-heard-from")
     }
 
+    // A solved card seeds the store completed before the socket answers (the seeded-birth
+    // rule, DESIGN.md §4, §12), so the key deck retires from the first frame rather than
+    // flashing for the connect beat. INV-4: completion is terminal, so the seed can only
+    // agree with the welcome that confirms it.
+    func test_seedCompletedRetiresTheDeckBeforeTheWelcome_INV4() {
+        let store = GameStore()
+        XCTAssertEqual(store.sync, .connecting)
+        XCTAssertEqual(store.status, .ongoing, "a fresh store is ongoing until seeded or told otherwise")
+        store.seedCompleted(at: "2026-07-08T20:11:47.000Z")
+        XCTAssertEqual(store.status, .completed, "a solved card retires the deck pre-welcome")
+        XCTAssertEqual(store.completedAt, "2026-07-08T20:11:47.000Z", "the frozen clock reads the seed")
+        // No live ongoing board was ever observed, so nothing here can arm a celebration
+        // (CelebrationGate) or a pour-back (TerminalPourBackGate); those are the view's to
+        // derive, and both require an ongoing-live observation a welcome-into-completed
+        // never exposes. The store only carries the terminal status forward.
+    }
+
+    // The welcome stays the authority (PROTOCOL.md §7): a completed welcome confirms the
+    // seed, and the snapshot's completedAt overwrites the seeded one wholesale.
+    func test_welcomeConfirmsTheSeededCompletion_PROTOCOL7() {
+        let store = GameStore()
+        store.seedCompleted(at: "2026-07-08T20:11:47.000Z")
+        store.receive(welcome(board(status: .completed)))
+        XCTAssertEqual(store.status, .completed, "the welcome confirms the seed")
+        XCTAssertEqual(store.sync, .live)
+    }
+
+    // The seed is a pre-handshake courtesy only, gated to connecting exactly like
+    // seedRoster: a stray seedCompleted after the welcome can never freeze a live room.
+    func test_seedCompletedIsRefusedAfterTheWelcome_PROTOCOL7() {
+        let (store, _) = makeLiveStore()  // welcome lands ongoing
+        XCTAssertEqual(store.status, .ongoing)
+        store.seedCompleted(at: "2026-07-08T20:11:47.000Z")
+        XCTAssertEqual(store.status, .ongoing, "a seed after the welcome cannot freeze a live room")
+        XCTAssertNil(store.completedAt)
+    }
+
     func test_cursorNoticeUpdatesRenderOnlyPresence_PROTOCOL9() {
         let (store, _) = makeLiveStore()
         store.receive(.cursor(CursorMessage(userId: "u2", cell: 17, direction: .across)))

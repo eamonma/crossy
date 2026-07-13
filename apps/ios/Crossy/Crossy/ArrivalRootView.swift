@@ -243,7 +243,8 @@ struct ArrivalRootView: View {
                             // frame and the goo plays on live data. Keyed by gameId,
                             // read at construction, cleared on sign-out.
                             roomSeeds[room.gameId] = RoomArrivalSeed(
-                                members: room.members, inviteCode: room.inviteCode)
+                                members: room.members, inviteCode: room.inviteCode,
+                                completedAt: room.completedAt)
                             path.append(roomRoute(for: room.gameId))
                         },
                         onJoinWithCode: { showJoin = true },
