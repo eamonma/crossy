@@ -13,3 +13,4 @@ export * from "./live-activity";
 export * from "./errors";
 export * from "./messages";
 export * from "./codec";
+export * from "./display-name";
