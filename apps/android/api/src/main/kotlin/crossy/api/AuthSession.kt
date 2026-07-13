@@ -60,6 +60,50 @@ public class AuthSession(
         }
     }
 
+    // MARK: - Email OTP / magic link (roadmap I3b, mirrors #230)
+
+    /** Step one of the email OTP flow: ask the server to email the code (and the magic link). No
+     *  phase change here; the sign-in screen owns the local sub-state (code entry, resend). The
+     *  error rides straight through so the screen can say what went wrong. `captchaToken` threads a
+     *  Turnstile token when a captcha-on project needs it; null (the local/dev posture) sends the
+     *  plain body. OTP is a new way in, not a new machine. */
+    public suspend fun sendEmailOTP(email: String, captchaToken: String? = null) {
+        client.sendEmailOTP(email, captchaToken)
+    }
+
+    /** Step two of the email OTP flow: verify the entered code. Walks the same machine as the
+     *  password leg (SIGNED_OUT/FAILED -> AUTHENTICATING -> SIGNED_IN on success, -> FAILED on a bad
+     *  code), so routing stays provider-blind and the verified session persists and refreshes on the
+     *  identical path. Unlike the password leg it rethrows on failure, so the screen can render the
+     *  inline reason as well as follow the phase. A second call while one is in flight is the
+     *  machine's illegal SIGN_IN_STARTED and no-ops (the re-entrancy guard). */
+    public suspend fun verifyEmailOTP(email: String, code: String) {
+        if (!machine.apply(AuthEvent.SIGN_IN_STARTED)) return
+        try {
+            val session = client.verifyEmailOTP(email, code, nowSeconds())
+            persist(session)
+            machine.apply(AuthEvent.SIGN_IN_COMPLETED)
+        } catch (e: Throwable) {
+            machine.apply(AuthEvent.SIGN_IN_FAILED)
+            throw e
+        }
+    }
+
+    /** Complete a magic link by its `token_hash` (roadmap I3b). Identical to [verifyEmailOTP] but
+     *  through the link-verify grant; the owner-gated App Links route (PARITY.md) would call this
+     *  once it lands. Drives AUTHENTICATING -> SIGNED_IN, persists, and rethrows on failure. */
+    public suspend fun completeMagicLink(tokenHash: String, type: String) {
+        if (!machine.apply(AuthEvent.SIGN_IN_STARTED)) return
+        try {
+            val session = client.verifyEmailLink(tokenHash, type, nowSeconds())
+            persist(session)
+            machine.apply(AuthEvent.SIGN_IN_COMPLETED)
+        } catch (e: Throwable) {
+            machine.apply(AuthEvent.SIGN_IN_FAILED)
+            throw e
+        }
+    }
+
     /** Sign out: clear the store, drop the session, then revoke best-effort. Local clearing never
      *  waits on the network verdict. */
     public suspend fun signOut() {

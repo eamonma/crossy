@@ -8,6 +8,7 @@
 package crossy.api
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -167,6 +168,128 @@ class SupabaseAuthTests : MockServerTest() {
             REF_ISSUER.startsWith("https://qvnvokstvbarsxhufrja") && dialed.host != "qvnvokstvbarsxhufrja.supabase.co",
             "the dialed origin and the pinned issuer are different hosts by construction",
         )
+    }
+
+    // MARK: - Email OTP / magic link (#230)
+
+    @Test
+    fun sendEmailOTP_postsTheOtpSendWithCreateUserAndNoCaptchaByDefault() = runBlocking {
+        // The send only acknowledges; no session comes back. create_user makes a fresh email a
+        // sign-up, not a dead end. Absent a captcha token the gotrue_meta_security block is omitted
+        // entirely, so the body is byte-identical to a captcha-off project's send.
+        server.enqueue(jsonResponse(200, "{}"))
+
+        authClient().sendEmailOTP("ada@example.test")
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/auth/v1/otp", request.requestUrl?.encodedPath)
+        assertEquals("sb_publishable_test", request.getHeader("apikey"))
+        val body = ProtocolJson.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals("ada@example.test", body["email"]?.jsonPrimitive?.contentOrNull)
+        assertEquals(true, body["create_user"]?.jsonPrimitive?.booleanOrNull)
+        assertNull(body["gotrue_meta_security"], "no captcha token, no captcha block")
+    }
+
+    @Test
+    fun sendEmailOTP_nestsTheCaptchaTokenUnderGotrueMetaSecurityWhenPresent() = runBlocking {
+        // GoTrue reads the Turnstile token from gotrue_meta_security.captcha_token; a captcha-on
+        // project refuses a send without it. The minting web view is a later track, but the wire
+        // hook rides here so it drops in with no change to this leg.
+        server.enqueue(jsonResponse(200, "{}"))
+
+        authClient().sendEmailOTP("ada@example.test", captchaToken = "turnstile-abc")
+
+        val body = ProtocolJson.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val meta = body["gotrue_meta_security"]?.jsonObject
+        assertEquals("turnstile-abc", meta?.get("captcha_token")?.jsonPrimitive?.contentOrNull)
+    }
+
+    @Test
+    fun verifyEmailOTP_postsTheEmailVerifyGrantAndDecodesTheSession() = runBlocking {
+        server.enqueue(jsonResponse(200, grantBody()))
+
+        val session = authClient().verifyEmailOTP("ada@example.test", "123456", nowSeconds = 1_000_000.0)
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/auth/v1/verify", request.requestUrl?.encodedPath)
+        val body = ProtocolJson.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals("email", body["type"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("ada@example.test", body["email"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("123456", body["token"]?.jsonPrimitive?.contentOrNull)
+
+        assertEquals("granted-refresh", session.refreshToken)
+        assertEquals("11111111-2222-3333-4444-555555555555", session.userId)
+    }
+
+    @Test
+    fun verifyEmailOTP_anExpiredCodeIsRefused() = runBlocking {
+        // GoTrue's aged-out-code shape: 403 with error_code otp_expired. A 4xx is Refused, terminal
+        // for this attempt; the screen offers a resend, never a dead stop.
+        server.enqueue(
+            jsonResponse(
+                403,
+                """{"code":403,"error_code":"otp_expired","msg":"Token has expired or is invalid"}""",
+            ),
+        )
+
+        val error = runCatching {
+            authClient().verifyEmailOTP("ada@example.test", "000000", 0.0)
+        }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.Refused)
+        assertEquals(403, (error as SupabaseAuthError.Refused).status)
+    }
+
+    @Test
+    fun verifyEmailOTP_aWrongCodeIsRefused() = runBlocking {
+        // GoTrue does not leak wrong-vs-expired: a never-issued code returns the same 403
+        // otp_expired shape as an aged-out one. Either way the verify is Refused and the user
+        // resends; the coarse taxonomy is the point (one generic "that code didn't work" upstream).
+        server.enqueue(
+            jsonResponse(
+                403,
+                """{"code":403,"error_code":"otp_expired","msg":"Token has expired or is invalid"}""",
+            ),
+        )
+
+        val error = runCatching {
+            authClient().verifyEmailOTP("ada@example.test", "999999", 0.0)
+        }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.Refused)
+        assertEquals(403, (error as SupabaseAuthError.Refused).status)
+    }
+
+    @Test
+    fun verifyEmailLink_postsTheTokenHashVerifyAndDecodesTheSession() = runBlocking {
+        // The magic-link twin: token_hash + the link's own type, decoded to a session on the same
+        // /verify leg. (The deep-link route that would call this is the owner-gated App Links track.)
+        server.enqueue(jsonResponse(200, grantBody()))
+
+        val session = authClient().verifyEmailLink(tokenHash = "hash-xyz", type = "magiclink", nowSeconds = 1_000_000.0)
+
+        val request = server.takeRequest()
+        assertEquals("/auth/v1/verify", request.requestUrl?.encodedPath)
+        val body = ProtocolJson.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals("magiclink", body["type"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("hash-xyz", body["token_hash"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("granted-refresh", session.refreshToken)
+    }
+
+    @Test
+    fun verifyEmailOTP_ridesTheSameIssuerPinAsTheGrants() = runBlocking {
+        // OTP is a new way in, not a new machine: a verified session passes the identical issuer pin
+        // a password grant does, so a token minted under the wrong iss is rejected before it stores.
+        server.enqueue(jsonResponse(200, grantBody(issuer = "https://api.crossy.party/auth/v1")))
+
+        val error = runCatching {
+            authClient(issuer = REF_ISSUER).verifyEmailOTP("ada@example.test", "123456", 0.0)
+        }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.IssuerMismatch)
+        assertEquals("https://api.crossy.party/auth/v1", (error as SupabaseAuthError.IssuerMismatch).actual)
     }
 
     @Test

@@ -28,6 +28,7 @@ import crossy.session.WebSocketTransport
 import crossy.store.GameStore
 import crossy.ui.CreateGameScreen
 import crossy.ui.CrossyTheme
+import crossy.ui.EmailOtpStep
 import crossy.ui.GridGround
 import crossy.ui.JoinCodeScreen
 import crossy.ui.RoomScreen
@@ -107,6 +108,11 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
 private fun SignInHost(session: AppSession, onSignedIn: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // The OTP sub-flow's step and its own busy live here (the host owns the network); the screen is
+    // a pure function of them. Success is observed through the phase the verify drives, exactly as
+    // the password leg is: nothing here reads a verify return to decide sign-in.
+    var otpStep by remember { mutableStateOf<EmailOtpStep>(EmailOtpStep.Closed) }
+    var otpBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     SignInScreen(
         isBusy = busy,
@@ -126,6 +132,49 @@ private fun SignInHost(session: AppSession, onSignedIn: () -> Unit) {
         onDevToken = { token ->
             session.useDevToken(token)
             onSignedIn()
+        },
+        otpStep = otpStep,
+        otpBusy = otpBusy,
+        onEmailStep = { error = null; otpStep = EmailOtpStep.Email(null) },
+        onCancelOtp = { otpStep = EmailOtpStep.Closed },
+        onSendCode = { email ->
+            scope.launch {
+                otpBusy = true
+                val sent = runCatching { session.sendEmailOtp(email) }.isSuccess
+                otpBusy = false
+                otpStep = if (sent) {
+                    EmailOtpStep.Code(email, null)
+                } else {
+                    EmailOtpStep.Email("Couldn't send the code. Check the address and try again.")
+                }
+            }
+        },
+        onResendCode = {
+            val step = otpStep
+            if (step is EmailOtpStep.Code) scope.launch {
+                otpBusy = true
+                // A failed resend keeps the code entry standing (the screen's countdown already
+                // restarted); the user still has the prior code and can retry the send.
+                runCatching { session.sendEmailOtp(step.email) }
+                otpBusy = false
+            }
+        },
+        onVerifyCode = { code ->
+            val step = otpStep
+            if (step is EmailOtpStep.Code) scope.launch {
+                otpBusy = true
+                // AuthSession rethrows a bad code, so either the throw or a false lands the retry copy.
+                val ok = runCatching { session.verifyEmailOtp(step.email, code) }.getOrDefault(false)
+                otpBusy = false
+                if (ok) {
+                    onSignedIn()
+                } else {
+                    otpStep = EmailOtpStep.Code(
+                        step.email,
+                        "That code didn't work. Check it and try again, or resend.",
+                    )
+                }
+            }
         },
     )
 }
