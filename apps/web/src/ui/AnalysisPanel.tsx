@@ -1,21 +1,20 @@
 // The Analysis tab's content: the solve, read back. It renders the bundle GET /games/{id}/analysis
-// ships (owners + momentum + moments) in the app's panel language, matching the ratified mock:
-//   - a caps eyebrow ("SOLVED TOGETHER") over a tabular stat line (duration, solvers, entries)
+// ships (owners + momentum + moments) in the app's panel language:
+//   - a caps eyebrow ("SOLVED TOGETHER") over a three-cell stat block (time, solvers, squares), the
+//     salient headline the retired completion popup used to carry.
 //   - a legend of solvers in the mosaic's exact colors (self reads "You")
-//   - the momentum ribbon with the stall and the break
-//   - two moment cards, "First to fall" and "Last square", each just the author's colored dot and
+//   - the momentum ribbon with a plain gloss of what the shaded pause and the marker mean
+//   - two moment cards, "First square" and "Last square", each just the author's colored dot and
 //     name. Neither shows a time: on real data firstToFall is always at t=0 and lastSquare is always
-//     the full duration (already in the header), so a number there would be meaningless or redundant
-//     (engine analysis.ts, vectors/analysis/moments.json). "The unlock"
-//     is a fast-follow with no v1 data, so it is NOT rendered; the turning point lives on the ribbon
-//     as the break.
-//   - a Replay control that re-blooms the board's mosaic (the caller owns the bloom edge).
+//     the full duration (already in the stat block), so a number there would be meaningless or
+//     redundant (engine analysis.ts, vectors/analysis/moments.json). "The unlock" is a fast-follow
+//     with no v1 data, so it is NOT rendered; the turning point lives on the ribbon as the marker.
 //
 // The one law (ANALYSIS.md): moments may be judged, people are never scored against each other. No
 // leaderboard, no rate, no ranking; a name appears only as the incidental author of a moment.
 //
 // Degenerate solves collapse cleanly: a null moment hides its card (never a gap where a third was),
-// an all-zero momentum draws a flat ribbon, and the summary duration reads a real M:SS, never NaN.
+// an all-zero momentum draws a flat ribbon, and the stat block's time reads a real M:SS, never NaN.
 import { useMemo } from "react";
 import type { StackMember } from "./primitives";
 import { CapsLabel, cx, Divider } from "./primitives";
@@ -91,15 +90,12 @@ export function AnalysisPanel({
   bundle,
   members,
   selfId,
-  onReplay,
   idBase,
   className,
 }: {
   bundle: AnalysisResponse;
   members: readonly StackMember[];
   selfId: string | null;
-  /** Re-trigger the board's mosaic bloom. Absent surfaces (a preview with no board) omit it. */
-  onReplay?: (() => void) | undefined;
   /** Namespaces the ribbon's gradient def so two instances never collide. */
   idBase: string;
   className?: string;
@@ -113,60 +109,70 @@ export function AnalysisPanel({
 
   const { firstToFall, lastSquare } = bundle.moments;
 
+  // The salient headline the retired completion popup used to carry: time, solvers, squares. Sourced
+  // from the bundle (not the wire stats), so the tab and the mosaic can never disagree on the counts.
+  const stats: { key: string; label: string; value: string }[] = [
+    { key: "time", label: "Time", value: summary.durationLabel },
+    { key: "solvers", label: "Solvers", value: String(summary.solverCount) },
+    { key: "squares", label: "Squares", value: String(summary.entryCount) },
+  ];
+
   return (
     <div className={cx("min-h-0 flex-1 overflow-y-auto px-4 py-4", className)}>
-      {/* Eyebrow + the tabular stat line. */}
-      <div className="flex items-baseline justify-between gap-3">
-        <CapsLabel className="text-gold-11">Solved together</CapsLabel>
-        <span className="font-mono text-1 text-text-subtle tabular-nums">
-          {summary.durationLabel} · {summary.solverCount}{" "}
-          {summary.solverCount === 1 ? "solver" : "solvers"} ·{" "}
-          {summary.entryCount} {summary.entryCount === 1 ? "entry" : "entries"}
-        </span>
-      </div>
+      <CapsLabel className="text-gold-11">Solved together</CapsLabel>
 
-      {/* Legend + Replay: the room in the mosaic's colors, and the button to re-bloom the board. */}
-      <div className="mt-3 flex items-start justify-between gap-3">
-        <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 m-0 p-0 list-none">
-          {legend.map((s) => (
-            <li
-              key={s.userId}
-              className="inline-flex items-center gap-1.5 text-2 text-text-muted"
-            >
-              <span
-                aria-hidden
-                className="inline-block h-2.5 w-2.5 shrink-0 rounded-[3px]"
-                style={{ background: s.color }}
-              />
-              <span className={cx(s.self ? "text-text font-medium" : "")}>
-                {s.name}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {onReplay !== undefined && (
-          <button
-            type="button"
-            onClick={onReplay}
+      {/* The stat block: three cells split by the app's dashed rule, big tabular numerals. This is the
+          headline of the tab, so it reads at a glance the way the popup's stat row did. */}
+      <dl className="m-0 mt-3 grid grid-cols-3 overflow-hidden rounded-3 border border-border">
+        {stats.map((cell, i) => (
+          <div
+            key={cell.key}
             className={cx(
-              "shrink-0 whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-1 font-medium text-text",
-              "hover:bg-gold-3 hover:border-focus-ring transition-colors duration-[var(--duration-fast)]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-1",
+              "flex flex-col items-center gap-1 px-2 py-3.5",
+              i > 0 && "border-l border-dashed border-border-dashed",
             )}
           >
-            Replay
-          </button>
-        )}
-      </div>
+            <dt>
+              <CapsLabel className="text-text-subtle">{cell.label}</CapsLabel>
+            </dt>
+            <dd className="m-0 font-mono text-5 text-text tabular-nums">
+              {cell.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Legend: the room in the mosaic's exact colors, so the board's wash is legible by name. */}
+      <ul className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1.5 m-0 p-0 list-none">
+        {legend.map((s) => (
+          <li
+            key={s.userId}
+            className="inline-flex items-center gap-1.5 text-2 text-text-muted"
+          >
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-[3px]"
+              style={{ background: s.color }}
+            />
+            <span className={cx(s.self ? "text-text font-medium" : "")}>
+              {s.name}
+            </span>
+          </li>
+        ))}
+      </ul>
       <p className="mt-2 text-1 leading-relaxed text-text-subtle">
         Each square shows who solved it first.
       </p>
 
-      {/* Momentum. */}
+      {/* Momentum: the tempo, plus a plain gloss so the shaded pause and the marker read on their own. */}
       <CapsLabel className="mt-6 mb-2.5 block text-text-subtle">
         The room's tempo
       </CapsLabel>
       <MomentumRibbon bundle={bundle} idBase={idBase} />
+      <p className="mt-2 text-1 leading-relaxed text-text-subtle">
+        Height tracks solving speed. The shaded span is the room's longest
+        pause; the marker is where solving picked back up.
+      </p>
 
       {/* Moments: only the cards with data. Never a placeholder for the absent unlock. */}
       {(firstToFall !== null || lastSquare !== null) && (
@@ -177,7 +183,7 @@ export function AnalysisPanel({
           <div>
             {firstToFall !== null && (
               <Moment
-                label="First to fall"
+                label="First square"
                 members={members}
                 roster={roster}
                 selfId={selfId}
