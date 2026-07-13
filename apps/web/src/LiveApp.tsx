@@ -533,7 +533,6 @@ export function LiveApp({
       <PartyView
         store={state.ready.connection.store}
         puzzle={state.ready.puzzle}
-        gameId={state.ready.gameId}
         code={state.ready.code}
         name={state.ready.name}
         // Leaving party mode drops ?party=1 and lands back on the interactive game, the exit
@@ -1066,11 +1065,7 @@ function LiveGame({
   // `name` and `code` are API-preferred with a URL-param fallback (resolved in the loader), so
   // the title and the share popover work without the current URL carrying `?name=`/`?code=`.
   const title = name ?? `${puzzle.cols} × ${puzzle.rows}`;
-  const shareUrl = buildShareUrl({
-    origin: window.location.origin,
-    gameId,
-    code,
-  });
+  const shareUrl = buildShareUrl({ code });
 
   const boardCompleted = store.status === "completed";
   // The mosaic is the Analysis tab's board treatment; the Clues tab shows the plain solved board so
