@@ -203,6 +203,15 @@ final class BarItemGlassTests: XCTestCase {
     func test_handedOffPill_hidesItsCapsule_section4() {
         XCTAssertTrue(BarItemGlass.backgroundHidden(handedOff: true))
     }
+
+    // The time pill owns its glass (the self-owned materialize, 2026-07-13): its
+    // system capsule is suppressed ALWAYS, not just on handoff, so the pill's own
+    // ChromeGlassSurface is the only glass and the arrival can materialize with it.
+    // A content-only fade over a live system capsule would flash empty glass a beat
+    // early (the empty-capsule finding, DESIGN.md §4).
+    func test_timePill_alwaysHidesItsSystemCapsule_section4() {
+        XCTAssertTrue(BarItemGlass.timePillBackgroundHidden)
+    }
 }
 
 // The time pill's register (redesign 2026-07-11): the room's vital signs
