@@ -106,17 +106,23 @@ enum ClusterPresence {
 enum BarItemGlass {
     /// True when a system-glass item's shared background must hide (the item is
     /// handed off, so its content is invisible and the capsule would otherwise stand
-    /// empty). EVERY glass bar item rides this one rule now (the time pill, the back
-    /// button, the Menus): their glass is the bar's, visible at rest, suppressed only
-    /// on the yield. The time pill's self-owned glass carve-out retired 2026-07-12
-    /// (SLICE D): inside a width-constrained bar item its own padding + frame +
-    /// ChromeGlassSurface wrapped the clock to two lines where the system capsule
-    /// never did, so the pill went back to the system capsule and its arrival is the
-    /// bare insert on the welcome beat, alongside share and players (SLICE B). The
-    /// handoff suppression is the real fix and stays.
+    /// empty). The back button and the Menus ride this rule: their glass is the bar's,
+    /// visible at rest, suppressed only on the yield.
     static func backgroundHidden(handedOff: Bool) -> Bool {
         handedOff
     }
+
+    /// The time pill's shared background hides ALWAYS (the self-owned glass
+    /// materialize, restored 2026-07-13). The pill carries its OWN glass now
+    /// (ChromeGlassSurface), so the system capsule stays permanently suppressed and
+    /// the pill's glass is the only glass. That is what lets the arrival ride the
+    /// chrome spring: glass and content fade and settle in together (opacity plus a
+    /// slight scale reads as materialize), where a content-only fade over the system
+    /// capsule would flash an empty capsule a beat early (the nav bar draws the
+    /// capsule from the item's presence, not its content, the empty-capsule finding).
+    /// The earlier carve-out (37b9397) reverted for a two-line clock wrap; the wrap is
+    /// closed at the content now (lineLimit(1) + fixedSize), so the self-glass returns.
+    static var timePillBackgroundHidden: Bool { true }
 }
 
 /// The bar's item placements, gated for the macOS test host: `.topBarLeading`
@@ -267,15 +273,16 @@ struct RoomBarInputs {
                         status: inputs.status, handedOff: inputs.timeHandedOff,
                         onTap: inputs.onTapTimePill, reportFrame: inputs.reportFrame)
                 }
-                // The time pill hands off (facts card open, or an eclipse) with no
-                // hollow capsule: the shared background hides exactly while the item
-                // is handed off, so the yield leaves no empty glass and the item
-                // stays present for its frame to keep reporting (the facts card's
-                // rest, the pour-back's read). The #149 arrangement, one rule with
-                // the back button and the Menus.
+                // The time pill owns its glass (the self-owned materialize, restored
+                // 2026-07-13), so the system capsule is PERMANENTLY suppressed: the
+                // pill's own ChromeGlassSurface is the only glass, and the arrival
+                // rides the chrome spring instead of the bar drawing a capsule a beat
+                // early (the empty-capsule finding). The handoff yield is just opacity
+                // 0 on the content now (glass and content together), no separate
+                // capsule to suppress. One item's carve-out; the back button and the
+                // Menus keep the bar's glass (BarItemGlass.backgroundHidden).
                 .sharedBackgroundVisibility(
-                    BarItemGlass.backgroundHidden(handedOff: inputs.timeHandedOff)
-                        ? .hidden : .automatic)
+                    BarItemGlass.timePillBackgroundHidden ? .hidden : .automatic)
                 // A fixed spacer between every trailing pill so the cluster reads
                 // as SEPARATE glass pills, not one fused "..." capsule (the
                 // room-bar cluster law, DESIGN.md §4: back / time / share /
@@ -661,6 +668,13 @@ struct RoomTimePill: View {
     let reportFrame: (ChromePiece, CGRect) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The arrival materialize (the self-owned glass, restored 2026-07-13): false for
+    /// the first frame the pill mounts, flipped true on appear so the content (its own
+    /// glass included) fades and settles in on the chrome spring, opacity plus a slight
+    /// scale reading as materialize. The pill mounts only when the room goes live (the
+    /// timer is welcome-gated, ClusterPresence.showsTimer), so this fires exactly on
+    /// the welcome's beat, once. Reduce Motion nils the animation, so it snaps in.
+    @State private var arrived = false
 
     var body: some View {
         // The 1 Hz timeline drives the clock and the countdown; at rest it is
@@ -699,34 +713,43 @@ struct RoomTimePill: View {
             // our transaction (the toolbar amendment's width-snap finding,
             // DESIGN.md §4), so no width-driving value is wrapped here.
             .animation(reduceMotion ? nil : .crossyChrome, value: register)
-            // Fill the system glass capsule so the WHOLE pill is the tap target,
-            // not just the digits (owner device finding 2026-07-12: the pill
-            // read as needing a precise hit). A `.plain` button hit-tests its
-            // label, so the label carries the capsule's height and a little
-            // breathing width; contentShape makes that padded frame the hit
-            // shape. The digits stay centered inside it.
-            .frame(minHeight: ChromeLayout.pillHeight)
-            .padding(.horizontal, 8)
-            .contentShape(.capsule)
+            // The content demands its ideal single-line width and never wraps (the
+            // wrap guard, 2026-07-13): the self-owned glass gives the pill its own
+            // frame, and the longest content (the reconnect "Back in Ns" label plus
+            // the clock) wrapped to two lines inside the width-constrained bar item
+            // last time (37b9397 reverted for exactly this). fixedSize opts the content
+            // out of the item's width squeeze; lineLimit(1) on both texts is the belt
+            // to its suspenders.
+            .fixedSize(horizontal: true, vertical: false)
+            // The self-owned glass register, recovered from the pre-#140 pill (its
+            // horizontal padding 12, pillHeight, the capsule contentShape): the pill
+            // carries its OWN glass now (ChromeGlassSurface below), because the item's
+            // system capsule is permanently suppressed (timePillBackgroundHidden), so
+            // the arrival rides the content instead of the bar drawing a capsule a beat
+            // early. The whole padded capsule is the tap target (owner device finding
+            // 2026-07-12: the pill read as needing a precise hit).
+            .padding(.horizontal, 12)
+            .frame(height: ChromeLayout.pillHeight)
+            .contentShape(
+                RoundedRectangle(
+                    cornerRadius: ChromeLayout.pillCornerRadius, style: .continuous))
         }
-        // The pill is a bare system-capsule bar item again (SLICE D, 2026-07-12):
-        // the self-owned glass carve-out (its own padding + frame +
-        // ChromeGlassSurface) wrapped the clock to two lines inside a
-        // width-constrained bar item, where the system capsule never did. The
-        // system draws the glass from the item's presence and sizes the capsule to
-        // the content on ITS pass, so the plain button just carries the content and
-        // the nav bar owns the glass and the geometry. The arrival is the bare
-        // insert on the welcome's beat, one beat now alongside share and players
-        // (SLICE B). No scale, no self-glass, no arrival state.
         .buttonStyle(.plain)
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.pillCornerRadius))
         .accessibilityLabel(
             Text(verbatim: register.accessibilityLabel(weather: weatherAccessibilityLabel))
         )
-        // The yield hides the content (the facts card is open, or an eclipse); the
-        // system capsule is suppressed in lockstep at the item's
-        // sharedBackgroundVisibility (BarItemGlass, the #149 handoff fix, kept), so
-        // no hollow capsule floats where the pill stood.
-        .opacity(handedOff ? 0 : 1)
+        // The arrival materialize (the self-owned glass, restored 2026-07-13): content
+        // and its own glass fade and settle in together on the chrome spring, no frame
+        // ever empty glass because the glass rides the content. The yield (facts sheet
+        // open, or an eclipse) is just opacity 0 for this item now: hiding the content
+        // hides its glass with it, and there is no system capsule to leave hollow
+        // (unlike the back button and the Menus). A yielded pill does not re-shrink; it
+        // just fades. Reduce Motion nils the animation, so the pill snaps in arrived.
+        .scaleEffect(arrived ? 1 : 0.92)
+        .opacity(handedOff ? 0 : (arrived ? 1 : 0))
+        .animation(reduceMotion ? nil : .crossyChrome, value: arrived)
+        .onAppear { arrived = true }
         // The yield includes touch (DESIGN.md §4: transient panels yield to
         // intent): a tap on the handed-off pill's ghost is a touch outside the
         // panel, so it falls through to the room's dismiss layer instead of
@@ -751,6 +774,7 @@ struct RoomTimePill: View {
                 Text(verbatim: line)
                     .font(.system(size: 12, weight: .medium))
                     .monospacedDigit()
+                    .lineLimit(1)
                     .foregroundStyle(Color(rgb: ground.tokens.number))
             }
             WeatherDot(register: weather.dot, ground: ground)
