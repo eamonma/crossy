@@ -142,6 +142,75 @@ describe("mock identity adapter", () => {
     expect(seen).toHaveBeenCalledTimes(2);
   });
 
+  // Profile methods (R5): the mock supports the two onboarding surfaces (a nameless permanent
+  // account and a named one) so the dialog and the Settings editor are testable offline.
+  describe("profile (loadProfile, setDisplayName)", () => {
+    const permanent = {
+      userId: "u1",
+      displayName: "",
+      isAnonymous: false,
+      avatarUrl: null,
+    };
+
+    it("loadProfile reports needsName for a nameless permanent account (displayName null on /me)", async () => {
+      const identity = createMockIdentity({
+        initialSession: permanent,
+        meDisplayName: null,
+      });
+      const profile = await identity.loadProfile();
+      expect(profile).toEqual({
+        userId: "u1",
+        displayName: null,
+        isAnonymous: false,
+        avatarUrl: null,
+        needsName: true,
+      });
+    });
+
+    it("loadProfile reports a named account (needsName false)", async () => {
+      const identity = createMockIdentity({
+        initialSession: { ...permanent, displayName: "Ada" },
+        meDisplayName: "Ada",
+      });
+      const profile = await identity.loadProfile();
+      expect(profile.displayName).toBe("Ada");
+      expect(profile.needsName).toBe(false);
+    });
+
+    it("loadProfile throws when signed out (INV-11: the trigger arms only on a real session)", async () => {
+      const identity = createMockIdentity();
+      await expect(identity.loadProfile()).rejects.toThrow();
+    });
+
+    it("setDisplayName canonicalizes, adopts the name into the session, and emits 'refreshed'", async () => {
+      const identity = createMockIdentity({
+        initialSession: permanent,
+        meDisplayName: null,
+      });
+      const seen = vi.fn();
+      identity.onChange(seen);
+      const result = await identity.setDisplayName("  Ada   Lovelace ");
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.profile.displayName).toBe("Ada Lovelace");
+      expect(identity.getSession()?.displayName).toBe("Ada Lovelace");
+      // A subsequent /me now reads named, so onboarding would not re-fire.
+      expect((await identity.loadProfile()).needsName).toBe(false);
+      expect(seen).toHaveBeenLastCalledWith(
+        expect.objectContaining({ displayName: "Ada Lovelace" }),
+        "refreshed",
+      );
+    });
+
+    it("setDisplayName returns NAME_REQUIRED for a whitespace-only draft (a typed reason, not a throw)", async () => {
+      const identity = createMockIdentity({
+        initialSession: permanent,
+        meDisplayName: null,
+      });
+      const result = await identity.setDisplayName("   ");
+      expect(result).toEqual({ ok: false, reason: "NAME_REQUIRED" });
+    });
+  });
+
   it("interactive sign-ins carry the 'signed_in' cause (the mock never restores through onChange)", async () => {
     const identity = createMockIdentity({ guestsEnabled: true });
     const seen = vi.fn();

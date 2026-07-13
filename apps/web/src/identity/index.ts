@@ -10,6 +10,9 @@ export type {
   GuestSignInResult,
   SessionChangeCause,
   SignInProvider,
+  UserProfile,
+  SetDisplayNameReason,
+  SetDisplayNameResult,
 } from "./types";
 export { createIdentity, shouldUseSupabase } from "./createIdentity";
 export { createMockIdentity } from "./mockAdapter";

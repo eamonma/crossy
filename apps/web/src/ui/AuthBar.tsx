@@ -208,7 +208,9 @@ export function AuthBar({
               <AvatarImage src={session.avatarUrl} alt="" />
             )}
             <AvatarFallback className="bg-gold-4 text-gold-11 text-1 font-medium">
-              {session.displayName.slice(0, 1).toUpperCase()}
+              {/* A permanent account renders a neutral initial until GET /me reconciles the
+                  app-DB name (R5): the bootstrap displayName is empty, never a synthesized name. */}
+              {session.displayName.slice(0, 1).toUpperCase() || "·"}
             </AvatarFallback>
           </Avatar>
           <span className="max-w-[10ch] truncate">{session.displayName}</span>

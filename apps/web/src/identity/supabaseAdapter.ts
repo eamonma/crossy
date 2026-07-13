@@ -25,8 +25,12 @@ import type {
   Identity,
   IdentitySession,
   SessionChangeCause,
+  SetDisplayNameResult,
   SignInProvider,
+  UserProfile,
 } from "./types";
+import type { Bearer } from "../net/authedFetch";
+import { getMe, setDisplayName } from "../profile/api";
 
 /** Refresh the token when it has under a minute left, so REST and the WS hello get a fresh one. */
 const REFRESH_THRESHOLD_SEC = 60;
@@ -50,6 +54,9 @@ const APPLE_PRIVATE_RELAY_SUFFIX = "@privaterelay.appleid.com";
 export interface SupabaseIdentityDeps {
   supabaseUrl: string;
   publishableKey: string;
+  /** The core API origin (config.apiBase), where GET /me and PATCH /me live. The adapter reads
+   *  the app-DB display name from here on load (R5) and writes it on setDisplayName. */
+  apiBase: string;
   /** Mirrors config.guestsEnabled: when false, signInGuest fails "guests_disabled" locally. */
   guestsEnabled: boolean;
   /** Injectable for tests so the suite never constructs a real client or hits the network. */
@@ -64,22 +71,39 @@ function defaultCurrentUrl(): { origin: string; pathAndQuery: string } {
   return { origin: loc.origin, pathAndQuery: `${loc.pathname}${loc.search}` };
 }
 
-/** Derive a display name from provider metadata, with sensible fallbacks (DESIGN.md section 8). */
-function displayNameOf(user: User): string {
-  if (user.is_anonymous === true) return "Guest";
+/**
+ * A prefill suggestion derived from provider metadata, or null when none is usable (DESIGN.md
+ * name-onboarding §5, step 1-2). This is NEVER a display value after R5: it seeds the onboarding
+ * field (which the user confirms) and can arm the nameless trigger hint, but the name the chrome
+ * renders is always the app-DB value the adapter loads from GET /me. Order: a token metadata name
+ * if present, else the email local part unless the address is an Apple private relay (whose local
+ * part is random junk). Returns null when neither yields a name; the onboarding component then
+ * falls back to a deterministic generated suggestion (§5 step 3), which lives in the UI.
+ */
+export function suggestedNameOf(user: User): string | null {
   const meta = user.user_metadata as Record<string, unknown>;
   for (const key of ["full_name", "name", "user_name", "preferred_username"]) {
     const value = meta[key];
-    if (typeof value === "string" && value.trim() !== "") return value;
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
   }
   const email = typeof user.email === "string" ? user.email : "";
-  // Apple's identity token carries no name, and its hide-my-email relay local part is random junk,
-  // so skip the local-part fallback for those addresses and let "Player" stand.
   if (!email.endsWith(APPLE_PRIVATE_RELAY_SUFFIX)) {
     const local = email.split("@")[0];
     if (local !== undefined && local !== "") return local;
   }
-  return "Player";
+  return null;
+}
+
+/**
+ * The bootstrap display name a session carries before GET /me reconciles it (R5). An anonymous
+ * guest keeps the "Guest" render label unchanged. A permanent user shows a NEUTRAL PLACEHOLDER
+ * (the empty string, so the chrome's avatar shows a quiet default initial and no synthesized
+ * name), never a metadata-derived name and never the old "Player" literal: the derived value is
+ * only a trigger hint and prefill (suggestedNameOf), never a display source. The adapter replaces
+ * this empty bootstrap with the app-DB name the moment loadProfile() resolves.
+ */
+function bootstrapDisplayName(user: User): string {
+  return user.is_anonymous === true ? "Guest" : "";
 }
 
 /**
@@ -106,9 +130,14 @@ function toSession(session: Session | null): IdentitySession | null {
   const user = session.user;
   return {
     userId: user.id,
-    displayName: displayNameOf(user),
+    // Bootstrap only: the empty placeholder for a permanent user, "Guest" for an anonymous one.
+    // The adapter overwrites this with the app-DB name from GET /me on load (R5).
+    displayName: bootstrapDisplayName(user),
     isAnonymous: user.is_anonymous === true,
     avatarUrl: avatarUrlOf(user),
+    // The prefill suggestion (metadata name or email local part), for onboarding only, never a
+    // display value. A guest never onboards, so it stays null there.
+    nameSuggestion: user.is_anonymous === true ? null : suggestedNameOf(user),
   };
 }
 
@@ -256,6 +285,49 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       return reread.data.session;
     }
     return session;
+  }
+
+  /** Force a token rotation after a server 401 on a token the client thought valid, mirroring
+   *  the public refreshAccessToken method (both feed the same bearer for the /me calls). */
+  async function forceRefresh(): Promise<string | null> {
+    const before =
+      (await supabase.auth.getSession()).data.session?.access_token ?? null;
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error === null && data.session !== null) {
+      return data.session.access_token;
+    }
+    const reread = (await supabase.auth.getSession()).data.session;
+    if (reread !== null && reread.access_token !== before) {
+      return reread.access_token;
+    }
+    return null;
+  }
+
+  // The REST bearer the /me calls ride, the same seam ui/useResource builds from the port for
+  // GET /games: resolve a fresh token per call, force one rotation after a 401. authedFetch does
+  // the reactive refresh-and-retry, so a token the /me server just rejected recovers here for
+  // free and a transient failure is never a sign-out (INV-11).
+  const bearer: Bearer = {
+    getToken: async () => (await freshSession())?.access_token ?? null,
+    refresh: forceRefresh,
+  };
+
+  /**
+   * Reconcile IdentitySession.displayName to the app-DB value (R5): the single point where the
+   * chrome's name becomes the /me truth rather than the empty bootstrap. Only a permanent
+   * account adopts a non-null /me name; an anonymous guest keeps its "Guest" label. When the
+   * name actually changed, notify listeners with "refreshed" so the chrome re-renders (the
+   * identity itself did not change, so identityChanged would not have fired). Returns nothing;
+   * the caller already holds the profile it read.
+   */
+  function adoptProfileName(profile: UserProfile): void {
+    if (current === null) return;
+    if (current.userId !== profile.userId) return;
+    if (profile.isAnonymous) return;
+    const next = profile.displayName;
+    if (next === null || next === current.displayName) return;
+    current = { ...current, displayName: next };
+    for (const cb of listeners) cb(current, "refreshed");
   }
 
   return {
@@ -410,6 +482,22 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
         };
       }
       return { ok: true };
+    },
+    async loadProfile(): Promise<UserProfile> {
+      // GET /me over the shared bearer. On success reconcile the session name to the app-DB
+      // truth (R5) so the chrome renders /me, not the token-metadata derivation. A throw
+      // (transport or non-2xx) propagates to the caller, which retries; it is never a sign-out.
+      const profile = await getMe(deps.apiBase, bearer);
+      adoptProfileName(profile);
+      return profile;
+    },
+    async setDisplayName(name: string): Promise<SetDisplayNameResult> {
+      // PATCH /me and, on success, adopt the canonical name the server returns into the session
+      // (firing onChange("refreshed") so the chrome updates). A failure is a typed reason the
+      // caller renders inline; this method never throws (R4).
+      const result = await setDisplayName(deps.apiBase, bearer, name);
+      if (result.ok) adoptProfileName(result.profile);
+      return result;
     },
     async signOut(): Promise<void> {
       // Sign out this device only. supabase-js defaults to { scope: "global" }, which
