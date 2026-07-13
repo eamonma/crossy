@@ -2,7 +2,7 @@
   "reason": "The Wave A1 Kotlin port bound every engine family (reducer, comparator, navigation, completion) to :engine and drained this list; it stays empty. A non-foreign family reappears here only if its engine binding is intentionally removed, which the per-family guard in engine/src/test then flags. Mirrors apps/ios/vectors.skip.json and packages/engine/vectors.skip.json.",
   "families": [],
   "foreign": {
-    "reason": "A foreign family's consumer is never :engine (PROTOCOL.md §13). client-store's Android consumer will be :store (mirroring the iOS store); clue-runs' consumer is the clue-run parser and renderer in :ui. The runner discovers and shape-validates these vectors but never executes them; execution lives in the consumer's suite. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the per-family rebind that drains `families` must not touch it. Mirrors apps/ios/vectors.skip.json.",
+    "reason": "A foreign family's consumer is never :engine (PROTOCOL.md §13). client-store's Android consumer is :store, whose suite executes every case (mirroring the iOS store); clue-runs' consumer is the clue-run parser and renderer in :ui. The runner discovers and shape-validates these vectors but never executes them; execution lives in the consumer's suite. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the per-family rebind that drains `families` must not touch it. Mirrors apps/ios/vectors.skip.json.",
     "families": ["client-store", "clue-runs"]
   }
 }
