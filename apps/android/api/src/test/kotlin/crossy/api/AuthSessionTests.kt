@@ -73,6 +73,73 @@ class AuthSessionTests : MockServerTest() {
         assertNull(store.read(), "a failed sign-in persists nothing")
     }
 
+    // MARK: - Email OTP / magic link (#230): a new way in, the same machine and token path
+
+    @Test
+    fun verifyEmailOTP_persistsTheSessionAndSignsIn() = runBlocking {
+        server.enqueue(jsonResponse(200, grantBody("verified", "otp-refresh", 4_102_444_800.0)))
+        val (session, store) = makeSession()
+
+        session.verifyEmailOTP("ada@example.test", "123456")
+
+        assertEquals(AuthPhase.SIGNED_IN, session.phase, "SIGNED_OUT -> AUTHENTICATING -> SIGNED_IN")
+        assertEquals("11111111-2222-3333-4444-555555555555", session.userId)
+        assertEquals("otp-refresh", store.read()?.refreshToken, "the verified session persists like a password one")
+        assertTrue(session.currentToken().isNotEmpty(), "the token provider serves it with no further network")
+    }
+
+    @Test
+    fun verifyEmailOTP_aWrongCodeLandsInFailedRethrowsAndWritesNothing() = runBlocking {
+        // GoTrue's bad/expired code shape (403 otp_expired). Unlike the password leg, verify rethrows
+        // so the screen can render the inline reason as well as follow the phase into FAILED.
+        server.enqueue(
+            jsonResponse(403, """{"code":403,"error_code":"otp_expired","msg":"Token has expired or is invalid"}"""),
+        )
+        val (session, store) = makeSession()
+
+        val error = runCatching { session.verifyEmailOTP("ada@example.test", "000000") }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.Refused, "the bad code rethrows, got $error")
+        assertEquals(AuthPhase.FAILED, session.phase)
+        assertNull(store.read(), "a failed verify persists nothing")
+    }
+
+    @Test
+    fun completeMagicLink_persistsTheSessionAndSignsIn() = runBlocking {
+        server.enqueue(jsonResponse(200, grantBody("linked", "link-refresh", 4_102_444_800.0)))
+        val (session, store) = makeSession()
+
+        session.completeMagicLink(tokenHash = "hash-xyz", type = "magiclink")
+
+        assertEquals(AuthPhase.SIGNED_IN, session.phase)
+        assertEquals("link-refresh", store.read()?.refreshToken)
+        assertEquals("/auth/v1/verify", server.takeRequest().requestUrl?.encodedPath)
+    }
+
+    @Test
+    fun aVerifiedOtpSessionRefreshesExactlyLikeAPasswordSession_INV11() = runBlocking {
+        // Sign in through the OTP verify with a token already inside the 60s refresh margin, then let
+        // the token path run: it fires the refresh_token grant and rotates the session, the identical
+        // path a password session rides (currentToken_refreshesSilentlyInsideTheExpiryMargin). OTP is
+        // a new way in, not a new machine, so the session it lands is a password session's twin.
+        val (session, store) = makeSession()
+        server.enqueue(jsonResponse(200, grantBody("verified", "otp-refresh", now + 30)))
+        session.verifyEmailOTP("ada@example.test", "123456")
+        assertEquals(AuthPhase.SIGNED_IN, session.phase)
+        assertEquals("otp-refresh", store.read()?.refreshToken)
+
+        server.enqueue(jsonResponse(200, grantBody("rotated", "next-refresh", now + 3600)))
+        session.currentToken()
+
+        assertEquals(2, server.requestCount, "the /verify, then exactly one refresh grant")
+        server.takeRequest() // the /verify
+        val refresh = server.takeRequest() // the /token refresh
+        assertEquals("/auth/v1/token", refresh.requestUrl?.encodedPath)
+        assertEquals("refresh_token", refresh.requestUrl?.queryParameter("grant_type"), "the OTP session refreshes on the token grant")
+        assertEquals("next-refresh", store.read()?.refreshToken, "the rotated session persisted")
+        assertEquals(AuthPhase.SIGNED_IN, session.phase)
+    }
+
     @Test
     fun restore_readsTheStoreWithoutNetworkAndSignsIn() = runBlocking {
         val store = InMemoryTokenStore().apply { write(storedSession(expiresAt = now + 3600)) }

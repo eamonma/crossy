@@ -28,7 +28,7 @@ owner can do).
 | Join by code                      | shipped       | Short-link paste parsing in-flight                      |
 | Create game                       | shipped       |                                                         |
 | Auth: email/dev-token             | shipped       | AAD-3 v0; in-memory tokens                              |
-| Auth: email OTP / magic link      | in-flight     | Mirrors #230; the right v0 leg                          |
+| Auth: email OTP / magic link      | shipped       | Send + verify code (#230); verifyEmailLink ready, magic-link deep link rides the App Links row |
 | Auth: Google native               | blocked-owner | Console work; PKCE helpers ready                        |
 | Invite short link emit + parse    | in-flight     | PROTOCOL.md §12, mirrors #225/#226                      |
 | App Links for crossy.ing          | blocked-owner | assetlinks.json + Play signing SHA-256                  |

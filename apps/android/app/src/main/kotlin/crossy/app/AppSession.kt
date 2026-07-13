@@ -84,6 +84,24 @@ class AppSession(
         return true
     }
 
+    /** Email OTP step one (AAD-3, mirrors #230): ask the server to email a one-time code. No bearer
+     *  swap and no phase change yet; the verify step lands the session. Throws through to the host,
+     *  which shows the send-failed copy. */
+    suspend fun sendEmailOtp(email: String) {
+        auth.sendEmailOTP(email)
+    }
+
+    /** Email OTP step two (AAD-3): verify the entered code. Same shape as [signInWithPassword] once
+     *  the grant lands: the bearer speaks for the session and the self id is seeded. AuthSession
+     *  rethrows a bad code, so a false return means the machine did not reach SIGNED_IN. */
+    suspend fun verifyEmailOtp(email: String, code: String): Boolean {
+        auth.verifyEmailOTP(email, code)
+        if (auth.phase != AuthPhase.SIGNED_IN) return false
+        bearer.delegate = auth
+        selfUserId = auth.userId
+        return true
+    }
+
     /** The dev-token path (AAD-3): a fixed bearer that never refreshes, so a 401 surfaces as
      *  UNAUTHORIZED rather than looping. */
     fun useDevToken(token: String) {

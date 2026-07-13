@@ -26,6 +26,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -137,6 +138,63 @@ public class SupabaseAuthClient(
         runCatching { httpClient.newCall(request).await().use { } }
     }
 
+    // MARK: - Email OTP / magic link (roadmap I3b, mirrors #230)
+
+    /** `POST {auth}/otp`: ask GoTrue to email a one-time code (and the magic link). No session
+     *  comes back, only a send acknowledgement, so this returns Unit over the same error taxonomy
+     *  as the grants (Refused on a 4xx, weather otherwise). `create_user` mints an account on first
+     *  sight, so a fresh email signs in rather than dead-ending.
+     *
+     *  `captchaToken` rides in `gotrue_meta_security.captcha_token`, the shape GoTrue reads: a
+     *  project with Turnstile on refuses a send without one. Null omits the whole block, so a
+     *  captcha-off build's body is byte-identical to the plain send. Minting the token needs a
+     *  hidden web view (the iOS TurnstileProvider twin), its own later track; the wire hook is here
+     *  so it drops in with no change to this leg. */
+    public suspend fun sendEmailOTP(email: String, captchaToken: String? = null) {
+        post(path = "otp", body = otpBody(email, captchaToken))
+    }
+
+    /** `POST {auth}/verify`: exchange the emailed code for a session (step two of the OTP flow).
+     *  Same decode, issuer pin, and error taxonomy as the token grants, so a verified OTP session
+     *  is indistinguishable from a password one downstream. */
+    public suspend fun verifyEmailOTP(
+        email: String,
+        token: String,
+        nowSeconds: Double,
+    ): SupabaseSession =
+        sessionFrom(
+            post(
+                path = "verify",
+                body = buildJsonObject {
+                    put("type", "email")
+                    put("email", email)
+                    put("token", token)
+                },
+            ),
+            nowSeconds,
+        )
+
+    /** `POST {auth}/verify`: complete a magic link by its `token_hash`. `type` is the link's own
+     *  type (`magiclink`, `email`, ...), passed through verbatim from the callback. Same decode,
+     *  pin, and taxonomy as the code verify. The deep-link route that would call this is the
+     *  owner-gated App Links track (PARITY.md); this REST leg lands here so it drops in with no
+     *  further :api change. */
+    public suspend fun verifyEmailLink(
+        tokenHash: String,
+        type: String,
+        nowSeconds: Double,
+    ): SupabaseSession =
+        sessionFrom(
+            post(
+                path = "verify",
+                body = buildJsonObject {
+                    put("type", type)
+                    put("token_hash", tokenHash)
+                },
+            ),
+            nowSeconds,
+        )
+
     // MARK: - Plumbing
 
     @Serializable
@@ -151,18 +209,43 @@ public class SupabaseAuthClient(
         data class User(val id: String? = null)
     }
 
+    /** The `/otp` send body: the address, `create_user` so a fresh email signs up rather than
+     *  dead-ends, and the captcha envelope only when a token is present (omitted when null, so the
+     *  captcha-off body is byte-identical to the plain send). */
+    private fun otpBody(email: String, captchaToken: String?): JsonObject =
+        buildJsonObject {
+            put("email", email)
+            put("create_user", true)
+            if (captchaToken != null) {
+                putJsonObject("gotrue_meta_security") { put("captcha_token", captchaToken) }
+            }
+        }
+
     private suspend fun grant(
         grantType: String,
         body: JsonObject,
         nowSeconds: Double,
-    ): SupabaseSession {
-        val url = config.authBaseUrl.newBuilder()
-            .addPathSegment("token")
-            .addQueryParameter("grant_type", grantType)
-            .build()
+    ): SupabaseSession =
+        sessionFrom(
+            post(path = "token", query = listOf("grant_type" to grantType), body = body),
+            nowSeconds,
+        )
+
+    /** The shared POST leg for every JSON auth call: the apikey header, the JSON body, and the one
+     *  error taxonomy (Refused on a 4xx grant refusal, InvalidResponse for 5xx and undecodable
+     *  frames, Transport for network weather). Returns the raw 2xx body for the caller to decode, or
+     *  to ignore for the send-only `otp` leg. 408/429 stay in the transient lane: the limiter
+     *  answered, not the grant evaluator. */
+    private suspend fun post(
+        path: String,
+        query: List<Pair<String, String>>? = null,
+        body: JsonObject,
+    ): String {
+        val urlBuilder = config.authBaseUrl.newBuilder().addPathSegment(path)
+        query?.forEach { (name, value) -> urlBuilder.addQueryParameter(name, value) }
         val payload = ProtocolJson.encodeToString(JsonObject.serializer(), body)
         val request = Request.Builder()
-            .url(url)
+            .url(urlBuilder.build())
             .header("apikey", config.apiKey)
             .post(payload.encodeToByteArray().toRequestBody(JSON_MEDIA_TYPE))
             .build()
@@ -183,11 +266,18 @@ public class SupabaseAuthClient(
             }
             throw SupabaseAuthError.InvalidResponse(status)
         }
+        return text
+    }
 
+    /** Decode a token-grant body (the `token` and `verify` legs share it) into a session, then run
+     *  the issuer pin. An undecodable 2xx body is InvalidResponse, the same verdict a malformed
+     *  grant got. Every session this returns has passed the pin, so an OTP-verified session is a
+     *  password session's twin downstream: it refreshes on the identical path. */
+    private fun sessionFrom(text: String, nowSeconds: Double): SupabaseSession {
         val decoded = try {
             ProtocolJson.decodeFromString(TokenResponse.serializer(), text)
         } catch (e: Exception) {
-            throw SupabaseAuthError.InvalidResponse(status)
+            throw SupabaseAuthError.InvalidResponse(null)
         }
         // expires_at when the server sends it, else derived from expires_in against the injected
         // clock (older GoTrue omits the absolute form).
