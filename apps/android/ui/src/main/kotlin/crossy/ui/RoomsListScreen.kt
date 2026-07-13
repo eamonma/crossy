@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import crossy.protocol.GameSummary
+import java.util.Locale
 
 @Composable
 fun RoomsListScreen(
@@ -74,12 +75,48 @@ fun RoomsListScreen(
                     fontSize = 14.sp,
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(games, key = { it.gameId }) { game ->
-                        PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                else -> {
+                    // The web's shelf grammar (Home.tsx GamesList, main 760e6e4): live rooms lead,
+                    // then a quiet "Solved" section, then an "Ended" section for host-ended rooms,
+                    // each gathering its terminal rooms off the one loaded list by the pure helper.
+                    // An empty group draws no header. The featured wall (large silhouette cards up
+                    // top) is a later track, so live rooms stay the compact list here.
+                    val shelves = partitionRooms(games)
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(shelves.live, key = { it.gameId }) { game ->
+                            PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                        }
+                        if (shelves.solved.isNotEmpty()) {
+                            item(key = "section-solved") { SectionHeader("Solved") }
+                            items(shelves.solved, key = { it.gameId }) { game ->
+                                PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                            }
+                        }
+                        if (shelves.ended.isNotEmpty()) {
+                            item(key = "section-ended") { SectionHeader("Ended") }
+                            items(shelves.ended, key = { it.gameId }) { game ->
+                                PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/** A quiet caps label over a trailing shelf (the web's CapsLabel, Home.tsx): the section copy in
+ *  the theme's subtle ink (onSurfaceVariant maps to the :design `number` token) and rendered
+ *  uppercase (ROOT locale: ASCII-only, INV-1-clean), so a "Solved" or "Ended" section reads as a
+ *  divider, never a loud header. Drawn only when its group is non-empty. */
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text.uppercase(Locale.ROOT),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.8.sp,
+        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+    )
 }

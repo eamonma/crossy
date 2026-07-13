@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
@@ -27,6 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import crossy.protocol.GameSummary
 import crossy.protocol.Role
+
+/** How much a terminal room's silhouette dims (iOS RoomCard.solvedFingerprintOpacity, main
+ *  760e6e4): a quiet muted-silhouette echo of the web's `Silhouette muted`, the smallest honest
+ *  signal a room is done. A first pass for the owner's device eye, tuned by one constant. */
+private const val TerminalSilhouetteAlpha = 0.45f
 
 @Composable
 fun PuzzleCard(
@@ -41,7 +47,14 @@ fun PuzzleCard(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Silhouette(game.puzzle.mask, game.puzzle.rows, game.puzzle.cols, ground, Modifier.size(56.dp))
+            // A terminal room (solved or host-ended) dims its silhouette, the smallest honest
+            // signal that it is done so the trailing shelf reads finished without a loud badge (iOS
+            // RoomCard solvedFingerprintOpacity, main 760e6e4). Only the fingerprint dims; the name
+            // and facts stay full ink. Colors are unchanged :design tokens; the dim is a layer alpha.
+            Silhouette(
+                game.puzzle.mask, game.puzzle.rows, game.puzzle.cols, ground,
+                Modifier.size(56.dp).alpha(if (game.isTerminal) TerminalSilhouetteAlpha else 1f),
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     game.name?.takeIf { it.isNotBlank() } ?: game.puzzle.title?.takeIf { it.isNotBlank() } ?: "Untitled room",
@@ -64,7 +77,13 @@ private fun factsLine(game: GameSummary): String {
         Role.SOLVER -> "solver"
         Role.SPECTATOR -> "spectator"
     }
-    val state = if (game.completedAt != null) "solved" else "ongoing"
+    // Solved and host-ended are the two terminal reads, mutually exclusive (§12); everything else
+    // is ongoing. Before 760e6e4 an abandoned room read "ongoing" here (its completedAt is null).
+    val state = when {
+        game.isCompleted -> "solved"
+        game.isAbandoned -> "ended"
+        else -> "ongoing"
+    }
     return "$members · $role · $state"
 }
 

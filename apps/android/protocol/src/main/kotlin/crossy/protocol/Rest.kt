@@ -196,6 +196,16 @@ public data class GameSummary(
      */
     @EncodeDefault(EncodeDefault.Mode.ALWAYS) val completedAt: String? = null,
     /**
+     * When a host ended the game (ISO 8601), or null unless it was abandoned (§12). The twin
+     * terminal timestamp to `completedAt` and mutually exclusive with it (a terminal game is
+     * completed or ended, never both): a non-null value shelves the room as ended rather than
+     * leaving it in the live shelf, both null reads ongoing. Read from the session-owned
+     * `game_state.abandoned_at` under the same SELECT-only grant, a bare timestamp, so INV-6 holds.
+     * Same absent-tolerant decode, explicit-null encode posture as `completedAt` (§14: an older
+     * server that omits it, or sends null, reads as not-ended).
+     */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val abandonedAt: String? = null,
+    /**
      * The game's last activity: the newest board event's ISO 8601 timestamp, or null when no one
      * has played yet (§12). `MAX(cell_events.at)`, an INV-6-safe aggregate. Same absent-tolerant
      * decode, explicit-null encode posture as `completedAt`.
