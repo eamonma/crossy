@@ -1,0 +1,7 @@
+{
+  "type": "error",
+  "code": "INVALID_VALUE",
+  "message": "fails ^[A-Z0-9]{1,10}$",
+  "fatal": false,
+  "commandId": "c1"
+}

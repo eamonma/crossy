@@ -1,0 +1,6 @@
+{
+  "type": "hello",
+  "protocolVersion": 1,
+  "token": "<access JWT>",
+  "resumeFromSeq": 123
+}

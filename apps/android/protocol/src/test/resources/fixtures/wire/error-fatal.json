@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "code": "PROTOCOL_VERSION_UNSUPPORTED",
+  "message": "supported: {1}",
+  "fatal": true
+}

@@ -1,0 +1,13 @@
+{
+  "puzzleId": "3f8c2b1a-9e4d-4f6a-b7c8-2d1e0f9a8b7c",
+  "puzzle": {
+    "rows": 1,
+    "cols": 2,
+    "blocks": [1],
+    "circles": [],
+    "clues": {
+      "across": [{ "number": 1, "text": "Feline pet", "cellIndices": [0] }],
+      "down": []
+    }
+  }
+}
