@@ -333,9 +333,85 @@ link the repo (`railway link -p crossy -e production`), open a shell in the api 
 fetch. Expect `401`: served, private, bearer required (fail-closed). Quoting does not
 survive `railway ssh -- <cmd>`, so run it from the interactive shell.
 
+## Supabase auth session policy (config-as-code)
+
+The auth (GoTrue) session policy decides how long a signed-in web session lasts. It lived
+only in the Supabase dashboard, unversioned. `deploy/supabase-auth.toml` records the audited
+values so a change to session lifetime is a reviewable diff (CLAUDE.md: server config lives in
+the repo; a dashboard-only setting is a defect). The file is a RECORD, not an applier: nothing
+in the pipeline reads or pushes it, and this project is not managed by the Supabase CLI. Editing
+it does not change the server.
+
+### Audited values
+
+Read read-only on 2026-07-13 from the Management API,
+`GET https://api.supabase.com/v1/projects/qvnvokstvbarsxhufrja/config/auth` (project `Crossy`,
+`us-east-1`; org plan `pro`).
+
+| Setting                                  | Management API field                    | Value | Meaning                                        |
+| ---------------------------------------- | --------------------------------------- | ----- | ---------------------------------------------- |
+| Access token (JWT) expiry                | `jwt_exp`                               | 3600  | 1 hour access-token lifetime                   |
+| Refresh token rotation                   | `refresh_token_rotation_enabled`        | true  | rotate on every refresh; reuse-detection armed |
+| Refresh token reuse interval             | `security_refresh_token_reuse_interval` | 10    | 10s grace window to replay the prior token     |
+| Session time-box                         | `sessions_timebox`                      | 0     | disabled (no forced max session length)        |
+| Inactivity timeout                       | `sessions_inactivity_timeout`           | 0     | disabled (no logout on inactivity)             |
+| Single session per user                  | `sessions_single_per_user`              | false | a new sign-in does not evict other sessions    |
+
+The dashboard toggle "Detect and revoke potentially compromised refresh tokens" is the rotation
+feature above: with `refresh_token_rotation_enabled = true`, a rotated-out refresh token presented
+after the reuse window revokes the whole session's token family.
+
+### Assessment against the "signed out on access-token cadence" symptom
+
+The one value that matches the symptom cadence is `jwt_exp = 3600`, and it governs the ACCESS
+token, not the session. A backgrounded tab whose refresh ticker paused lets the access token go
+stale after an hour, but the refresh token is still valid and mints a new session on foreground.
+That is a recoverable client state, not a server logout, and it is what the parallel client tracks
+fix.
+
+Nothing in this policy force-terminates a good session on a schedule: time-box, inactivity timeout,
+and single-session-per-user are all off. So the server is not the cause of a periodic hard logout.
+
+The only server path to a true hard logout (refresh token rejected) is rotation plus reuse
+detection: if two contexts share one refresh token (multi-tab, or a race between a
+visibility-change refresh and a scheduled one) and the loser presents its now-rotated-out token
+more than 10s later, reuse detection revokes the whole family and every tab drops. A paused
+background ticker makes the late replay more likely. Nothing here is pathological: 10s is the
+Supabase default, not an aggressive reuse interval, and no sessions are time-boxed. The fix for
+that race belongs in the client refresher (serialize refreshes, one source of truth for the token
+across tabs), not in loosening reuse detection on the server.
+
+### Recommended values for "sessions last until deliberate sign-out"
+
+The current server config already meets this target and needs no change:
+
+- Refresh token rotation: keep ON. Rotation with reuse detection is the security floor; disabling
+  it would make refresh tokens never expire.
+- Reuse interval: keep 10s (the default). It is a reasonable grace window. Do not shorten it. Only
+  consider raising it (e.g. to 20-30s) if the client keeps tripping reuse revocation after the
+  client-side refresher is serialized, and only as a diagnostic, never below the default.
+- Time-box (`sessions_timebox`): keep 0 (disabled). Any nonzero value forces a hard logout at that
+  interval regardless of activity, which is the opposite of the target.
+- Inactivity timeout (`sessions_inactivity_timeout`): keep 0 (disabled).
+- Single session per user: keep false, so a second tab or device does not evict the first.
+- JWT expiry: 3600 is fine and orthogonal to session length. A shorter value increases refresh
+  frequency (and reuse-race exposure); a longer value widens the window a revoked-but-unexpired
+  access token stays usable. Leave at 3600 unless a separate requirement moves it.
+
+### Change process (what the repo rules imply)
+
+This track is read, record, recommend: no server setting was mutated. To change a value later:
+land the edit to `deploy/supabase-auth.toml` in a reviewed PR (main is golden: PR + green checks,
+squash merge, no direct push), then the owner applies the identical value out of band via the
+Management API `PATCH /v1/projects/<ref>/config/auth` (or the dashboard, Authentication >
+Sessions). There is no pipeline step that applies auth config today; the file and the server are
+kept in sync by that PR-then-owner-apply discipline, the same shape as the rest of `deploy/`.
+
 ## Files
 
 - `provision.sh`: create-only, idempotent Railway bootstrap (`--dry-run` prints the plan).
+- `supabase-auth.toml`: audited record of the Supabase auth session policy (config-as-code; a
+  record, not an applier; see "Supabase auth session policy" above).
 - `migration-guard.mjs`: plain-node expand-only guard run before `migrate.ts` in the pipeline
   (`node deploy/migration-guard.mjs`). Its pure functions are unit-tested in
   `packages/db/src/migration-guard.test.ts` (with the `migration-guard.d.mts` type companion).
