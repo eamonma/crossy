@@ -237,12 +237,10 @@ struct ClueChrome: View {
     /// remembered across a dismiss-and-reopen; the gold dot marks Analysis when it
     /// is not the tab showing.
     private var tabSegment: some View {
-        GlassSegmentedTabs(
+        AnalysisTabPicker(
             selection: Binding(
                 get: { chrome.analysisTab },
-                set: { chrome.analysisTab = $0 }),
-            ground: ground,
-            goldDotOn: .analysis)
+                set: { chrome.analysisTab = $0 }))
     }
 
     private func chevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {

@@ -546,7 +546,13 @@ public struct SolveScreen: View {
     /// clamp (GridOcclusion.standing, constant under clue growth) and the live
     /// slot only rescues the occluded cell (keepClear).
     private func boardArea(weather: RoomWeather) -> some View {
-        ZStack(alignment: .bottom) {
+        // The bar freezes to a fixed single-line height on the completed Analysis
+        // tab (owner ruling 2026-07-13): the door shows no clue, so the slot must not
+        // breathe to the (invisible) clue's wrap. On the Clues tab and mid-solve it
+        // still sizes to the clue.
+        let analysisResting = roomStatus == .completed && chrome.analysisTab == .analysis
+        let restingClue = analysisResting ? nil : clues.current(for: model.selection)
+        return ZStack(alignment: .bottom) {
             CrossyGridView(
                 store: store, puzzle: puzzle, ground: ground,
                 selection: model.selection,
@@ -611,7 +617,7 @@ public struct SolveScreen: View {
             // 2026-07-10); Reduce Motion cuts. Keyed on the clue, so mid-word
             // cursor moves never enter an animated transaction. The feather
             // rides as the slot's background, sized by the same layout.
-            ClueBarSizer(ground: ground, current: clues.current(for: model.selection))
+            ClueBarSizer(ground: ground, current: restingClue)
                 .reportChromeFrame(.clueBarSlot)
                 .padding(.horizontal, ChromeLayout.inset)
                 .background(alignment: .bottom) {
@@ -619,8 +625,8 @@ public struct SolveScreen: View {
                         .padding(.top, -ClueFeather.extent)
                 }
                 .animation(
-                    reduceMotion ? nil : .crossyChrome,
-                    value: clues.current(for: model.selection)?.tag)
+                    reduceMotion || analysisResting ? nil : .crossyChrome,
+                    value: restingClue?.tag)
         }
     }
 

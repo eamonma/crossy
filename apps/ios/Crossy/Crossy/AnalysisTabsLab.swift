@@ -40,8 +40,11 @@ struct AnalysisTabsLab: View {
             Text(verbatim: title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.white)
-            GlassSegmentedTabs(selection: selection, ground: ground, goldDotOn: .analysis)
+            AnalysisTabPicker(selection: selection)
                 .frame(width: 320)
+                // Force each ground's appearance so the system control's light and
+                // dark styling both show over the busy field.
+                .environment(\.colorScheme, ground.isDark ? .dark : .light)
         }
     }
 }
