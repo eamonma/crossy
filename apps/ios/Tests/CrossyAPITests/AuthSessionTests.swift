@@ -306,6 +306,82 @@ final class AuthSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .signedIn)
     }
 
+    func test_refreshedTokenForcesAGrantEvenWhenTheTokenIsNotNearExpiry() async throws {
+        // Unlike currentToken(), refreshedToken() takes no proactive shortcut: it is only
+        // called after a server 401, so it always rotates through the refresh token even
+        // when the local clock still thinks the access token is comfortably valid.
+        let keychain = InMemoryKeychain()
+        let stored = SupabaseSession(
+            accessToken: "stale-access", refreshToken: "stored-refresh",
+            expiresAt: 2_000_000, userId: "u1")  // far outside the 60 s margin
+        try keychain.write(
+            try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        session.restore()
+
+        let token = try await session.refreshedToken()
+
+        XCTAssertEqual(token, "granted-access", "the forced refresh rotated the token")
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.queryValue("grant_type"), "refresh_token")
+        let blob = try XCTUnwrap(try keychain.read(account: AuthSession.keychainAccount))
+        let persisted = try JSONDecoder().decode(SupabaseSession.self, from: blob)
+        XCTAssertEqual(persisted.accessToken, "granted-access", "the rotation persisted")
+    }
+
+    func test_refreshedTokenOnARefusalPurgesAndThrowsSignedOut() async throws {
+        // A terminal refusal is the same honest end as on the proactive path: Keychain
+        // cleared, phase signed out, SignedOutError to the caller.
+        let keychain = InMemoryKeychain()
+        let stored = SupabaseSession(
+            accessToken: "stale-access", refreshToken: "dead-refresh",
+            expiresAt: 2_000_000, userId: "u1")
+        try keychain.write(
+            try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
+        StubURLProtocol.install { _ in (401, Data(#"{"error":"invalid_grant"}"#.utf8)) }
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        session.restore()
+
+        do {
+            _ = try await session.refreshedToken()
+            XCTFail("a dead refresh token cannot produce a bearer")
+        } catch is SignedOutError {
+            // the honest outcome
+        }
+        XCTAssertEqual(session.phase, .signedOut)
+        XCTAssertNil(try keychain.read(account: AuthSession.keychainAccount))
+    }
+
+    func test_refreshedTokenOnNetworkWeatherThrowsRatherThanReturningTheStaleToken() async throws {
+        // The key semantic difference from currentToken(): refreshedToken() is called only
+        // after a server 401, so returning the same rejected stale token is useless. On
+        // transient weather it rethrows so the API client falls back to surfacing the 401.
+        let keychain = InMemoryKeychain()
+        let stored = SupabaseSession(
+            accessToken: "stale-access", refreshToken: "stored-refresh",
+            expiresAt: 2_000_000, userId: "u1")
+        try keychain.write(
+            try JSONEncoder().encode(stored), account: AuthSession.keychainAccount)
+        StubURLProtocol.install { _ in throw URLError(.notConnectedToInternet) }
+        let (session, _, _, _) = makeSession(keychain: keychain)
+        session.restore()
+
+        do {
+            _ = try await session.refreshedToken()
+            XCTFail("transient weather must not hand back the rejected stale token")
+        } catch is SignedOutError {
+            XCTFail("network weather is not a sign-out")
+        } catch {
+            // The underlying error rides through; the session still stands (weather judges
+            // nothing), so a later call can retry.
+            XCTAssertEqual(session.phase, .signedIn)
+            XCTAssertNotNil(
+                try keychain.read(account: AuthSession.keychainAccount),
+                "weather clears nothing")
+        }
+    }
+
     func test_aRateLimitedRefreshIsWeatherNotARefusal() async throws {
         // GoTrue's rate limiter answers 429 without ever judging the grant; the
         // refresh token behind it is still good, so the session must stand exactly

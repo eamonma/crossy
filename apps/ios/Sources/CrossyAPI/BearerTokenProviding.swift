@@ -20,4 +20,21 @@
 public protocol BearerTokenProviding: Sendable {
     /// The token to place in `Authorization: Bearer <token>`, without the scheme prefix.
     func currentToken() async throws -> String
+
+    /// Force a token refresh, ignoring any local not-yet-expired shortcut. The REST client
+    /// calls this after a server 401 on a token the client still thought was valid (clock
+    /// skew, a server-side revocation, a shortened TTL), so the same rejected token is not
+    /// replayed. Throws `SignedOutError` when there is no session to refresh or the refresh
+    /// is terminally refused.
+    func refreshedToken() async throws -> String
+}
+
+@available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
+extension BearerTokenProviding {
+    /// The default forwards to `currentToken()`: a provider that never refreshes (every
+    /// fixture and the injected-token path) simply returns its fixed token again, which is
+    /// correct because it has nothing to rotate. Only `AuthSession` overrides this.
+    public func refreshedToken() async throws -> String {
+        try await currentToken()
+    }
 }

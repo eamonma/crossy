@@ -215,7 +215,44 @@ public final class AuthSession {
         if now().timeIntervalSince1970 < session.expiresAt - Self.refreshMargin {
             return session.accessToken
         }
+        do {
+            return try await performRefresh(session)
+        } catch let transient as TransientRefreshError {
+            // Weather judges nothing: the stored token rides and the API's verdict,
+            // if it comes, is UNAUTHORIZED surfaced through the normal error path.
+            return transient.staleToken
+        }
+    }
 
+    /// Force a refresh through the stored refresh token, with no proactive shortcut. The
+    /// REST client calls this after a server 401 on a token the local clock still thought
+    /// was valid, so replaying the same rejected token is useless: a transient/network
+    /// failure here throws (the client falls back to surfacing the original 401) rather
+    /// than returning the stale token that was just rejected. A terminal refusal still
+    /// ends the session (Keychain cleared, phase signed out).
+    public func refreshedToken() async throws -> String {
+        guard let session = stored else { throw SignedOutError() }
+        do {
+            return try await performRefresh(session)
+        } catch let transient as TransientRefreshError {
+            throw transient.underlying
+        }
+    }
+
+    /// The stale token from a transient refresh failure, so the two callers can differ:
+    /// `currentToken()` returns it (weather is not a sign-out), `refreshedToken()` rethrows
+    /// the underlying error (the stale token was just rejected by the server's 401).
+    private struct TransientRefreshError: Error {
+        let staleToken: String
+        let underlying: any Error
+    }
+
+    /// The shared refresh grant both token entry points ride: run or join the single-flight
+    /// `refreshTask` so a `currentToken()` and a `refreshedToken()` racing never double-spend
+    /// the rotating refresh token. On success persist and return the fresh token; on a
+    /// terminal refusal purge and throw `SignedOutError`; on transient/network weather throw
+    /// `TransientRefreshError` for the caller to resolve.
+    private func performRefresh(_ session: SupabaseSession) async throws -> String {
         let task =
             refreshTask
             ?? Task { [client, now] in
@@ -247,7 +284,7 @@ public final class AuthSession {
             // signed out is the honest answer, never the pre-purge token.
             guard stored != nil else { throw SignedOutError() }
             machine.apply(.refreshFailedTransient)
-            return session.accessToken
+            throw TransientRefreshError(staleToken: session.accessToken, underlying: error)
         }
     }
 
