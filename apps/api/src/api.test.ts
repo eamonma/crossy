@@ -40,6 +40,8 @@ import type {
 const POSTGRES_IMAGE = "postgres:16-alpine";
 const BOOT_TIMEOUT_MS = 180_000;
 const SESSION_WS_BASE = "wss://session.crossy.test";
+const INVITE_HOST = "crossy.ing";
+const WEB_ORIGIN = "https://crossy.party";
 
 // A minimal well-formed XWord Info JSON fixture: a 2x2 all-playable grid. The grid holds the
 // real A-Z solutions, so the stored (server-side) model is valid; the client view must drop them.
@@ -230,6 +232,12 @@ beforeAll(async () => {
     sessionWsBase: SESSION_WS_BASE,
     membershipNotifier,
     vendorIdentity,
+    // The invite host is enabled here so its DB-backed paths (a real code resolving to a game) are
+    // exercised against Postgres. It is host-scoped, so every existing test (which requests a
+    // relative path, host `localhost`) is unaffected; only `http://crossy.ing/...` requests below
+    // reach it.
+    inviteHost: INVITE_HOST,
+    webOrigin: WEB_ORIGIN,
   });
 }, BOOT_TIMEOUT_MS);
 
@@ -1164,6 +1172,60 @@ describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
     const res = await postJson("/games", token, { puzzleId, name: 42 });
     expect(res.status).toBe(400);
     await expectError(res, "VALIDATION");
+  });
+});
+
+describe("invite host GET /{code} (PROTOCOL.md §12 Invite links)", () => {
+  it("302s a real browser navigation to the canonical game view", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(`https://${INVITE_HOST}/${inviteCode}`, {
+      headers: { "sec-fetch-mode": "navigate" },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `${WEB_ORIGIN}/game/${gameId}?code=${inviteCode}`,
+    );
+  });
+
+  it("serves a 200 OpenGraph shell that forwards to the game for a link unfurler (no navigate signal)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(`https://${INVITE_HOST}/${inviteCode}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    // The OG card is present, and the shell forwards a browser onward to the canonical game URL.
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain(`${WEB_ORIGIN}/game/${gameId}?code=${inviteCode}`);
+  });
+
+  it("resolves a lowercase code (INV-1 ASCII-uppercasing), same as join-by-code", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(
+      `https://${INVITE_HOST}/${inviteCode.toLowerCase()}`,
+      { headers: { "sec-fetch-mode": "navigate" } },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `${WEB_ORIGIN}/game/${gameId}?code=${inviteCode}`,
+    );
+  });
+
+  it("bounces a well-formed but unknown code to the web home, not an oracle 404 (INV-6)", async () => {
+    // Shape-valid (8 chars from the alphabet) but not a code this suite minted (a 32^8 space).
+    const res = await app.request(`https://${INVITE_HOST}/ABCD2345`, {
+      headers: { "sec-fetch-mode": "navigate" },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`${WEB_ORIGIN}/`);
   });
 });
 

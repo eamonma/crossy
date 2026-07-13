@@ -90,9 +90,28 @@ export interface AppDeps {
    * (`/.well-known/apple-app-site-association`), so `/g/{code}` links open the iOS app as
    * universal links (apps/ios/ROADMAP.md SP-i4). Omit to serve 404 there: fail closed, no
    * association published. Never hardcoded; the Apple team and app record are owner-held.
-   * The composition root sets it from APPLE_APP_ID.
+   * The composition root sets it from APPLE_APP_ID. The same identifier backs the invite host's
+   * AASA (claiming `/*`) when `inviteHost` is set, so `{invite-host}/{code}` opens the app too.
    */
   readonly appleAppId?: string;
+  /**
+   * The dedicated public host for short invite links (PROTOCOL.md §12 "Invite links"), e.g.
+   * `crossy.ing`. When set (together with `webOrigin`), a request whose hostname matches it is
+   * served by the invite host and nothing else: the AASA claiming `/*`, and `GET /{code}` (an
+   * OpenGraph shell for unfurlers, a `302` to the game view for a browser). Omit to disable; the
+   * core API host is unaffected either way (the guard is host-scoped). Owner-held domain; the
+   * composition root sets it from INVITE_HOST.
+   */
+  readonly inviteHost?: string;
+  /**
+   * The web app origin the invite host redirects a browser to, e.g. `https://crossy.party`. The
+   * `GET /{code}` expander resolves the code and `302`s to `{webOrigin}/game/{gameId}?code={code}`,
+   * where the existing signed-out gate and join flow take over; a malformed or unknown code bounces
+   * to `{webOrigin}/` rather than an oracle 404. The composition root sets it from WEB_ORIGIN,
+   * falling back to CORS_ORIGIN (the SPA origin and the web origin coincide). Required, with
+   * `inviteHost`, for the invite host to activate.
+   */
+  readonly webOrigin?: string;
   /**
    * Seed a solo starter game the first time a full account is seen (auth/middleware), so a
    * fresh signed-in home is never empty (owner decision 2026-07-11). Off unless the composition
