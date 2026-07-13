@@ -219,15 +219,20 @@ public struct CrossyGridView: View {
                     viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
                     occlusion: next)
             }
-            // Camera follow (I2c): a jump that lands the cursor off-screen (a
-            // clue-browser tap, a Tab past the viewport edge) pans the minimal
-            // distance that shows it. Only real jumps move anything: a visible
-            // cursor returns nil from `following`, and a live pinch or drag owns
-            // the camera unchallenged.
+            // Camera follow (I2c): a jump to a new clue (a clue-browser tap, a Tab
+            // past the viewport edge) pans the minimal distance that frames the
+            // whole WORD, not just the landed cell (owner 2026-07-12: advancing a
+            // clue should show the word you are about to solve). A word wider than
+            // the zoomed window keeps the cursor on screen and reveals the word
+            // from there. Only real jumps move anything: a word already framed
+            // returns nil from `following`, and a live pinch or drag owns the
+            // camera unchallenged.
             .onChange(of: selection) { _, next in
                 guard let next, dragBase == nil,
                     let target = camera.following(
-                        cell: next.cell, viewport: viewport,
+                        word: puzzle.wordCells(
+                            through: next.cell, isAcross: next.isAcross),
+                        cursor: next.cell, viewport: viewport,
                         rows: puzzle.rows, cols: puzzle.cols,
                         occlusion: occlusion, keepClear: keepClear)
                 else { return }

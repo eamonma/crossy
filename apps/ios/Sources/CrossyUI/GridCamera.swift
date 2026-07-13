@@ -249,20 +249,77 @@ public struct GridCamera: Equatable, Sendable {
         keepClear: GridOcclusion? = nil
     ) -> GridCamera? {
         guard cell >= 0, cell < rows * cols else { return nil }
-        // The cell's window is the larger cover per edge, so a keep-clear that
-        // lags the standing inset can never open a window the bars still cover.
+        let rect = GridModule.cellRect(cell, cols: cols)
+        return followed(
+            span: rect, cursor: rect, viewport: viewport, rows: rows, cols: cols,
+            margin: margin, occlusion: occlusion, keepClear: keepClear)
+    }
+
+    /// The minimal pan that brings the whole current WORD into the unobstructed
+    /// window when it fits, and otherwise follows the cursor cell alone (owner
+    /// 2026-07-12: advancing a clue should frame the word you are about to solve,
+    /// not just its first cell). `word` is the run through the cursor
+    /// (GridPuzzle.wordCells); its order does not matter, only its lowest and
+    /// highest cell, since a word is a straight line.
+    ///
+    /// Whether to frame the word is decided per axis by whether the word fits the
+    /// window, which depends on word length and zoom, NOT on the cursor. So while
+    /// you type across a word the target holds still (a framed word does not move,
+    /// and a word too wide to frame follows the cursor exactly as
+    /// `following(cell:)` always has): no per-keystroke flip, no spasm. Reduces to
+    /// `following(cell:)` on the cross axis (one cell thick) and for an empty word.
+    /// Scale never changes: follow is a pan.
+    public func following(
+        word: some Sequence<Int>, cursor: Int, viewport: CGSize, rows: Int, cols: Int,
+        margin: CGFloat = GridCamera.followMarginPoints,
+        occlusion: GridOcclusion = .none,
+        keepClear: GridOcclusion? = nil
+    ) -> GridCamera? {
+        guard cursor >= 0, cursor < rows * cols else { return nil }
+        let count = rows * cols
+        // A word is a contiguous run, so its bounding rect spans its lowest and
+        // highest cell index; an empty word (a block or an out-of-range pick)
+        // collapses the span onto the cursor and this becomes the cell follow.
+        var lo = cursor, hi = cursor
+        for c in word where c >= 0 && c < count {
+            lo = min(lo, c)
+            hi = max(hi, c)
+        }
+        let span = GridModule.cellRect(lo, cols: cols)
+            .union(GridModule.cellRect(hi, cols: cols))
+        return followed(
+            span: span, cursor: GridModule.cellRect(cursor, cols: cols),
+            viewport: viewport, rows: rows, cols: cols,
+            margin: margin, occlusion: occlusion, keepClear: keepClear)
+    }
+
+    /// Shared follow solver: pan so `span` (a whole word) enters the window with
+    /// `margin`, falling back per axis to `cursor` (the single cell) when the word
+    /// is too wide for the window. The two rects coincide for the cell follow.
+    /// `keepClear` is the live cover the cursor must escape (the larger cover per
+    /// edge, so a keep-clear lagging the standing inset can never open a window the
+    /// bars still cover); the final clamp rides the standing `occlusion`, so clue
+    /// growth can only rescue the cursor, never shove a pinned board (the
+    /// full-bleed ruling).
+    private func followed(
+        span: CGRect, cursor: CGRect, viewport: CGSize, rows: Int, cols: Int,
+        margin: CGFloat, occlusion: GridOcclusion, keepClear: GridOcclusion?
+    ) -> GridCamera? {
         let live = keepClear ?? occlusion
         let clear = GridOcclusion(
             top: max(live.top, occlusion.top), bottom: max(live.bottom, occlusion.bottom))
-        let rect = GridModule.cellRect(cell, cols: cols)
         let target = GridCamera(
             scale: scale,
             offset: CGPoint(
                 x: Self.followedAxis(
-                    offset.x, cellMin: rect.minX * scale, cellMax: rect.maxX * scale,
+                    offset.x,
+                    spanMin: span.minX * scale, spanMax: span.maxX * scale,
+                    cellMin: cursor.minX * scale, cellMax: cursor.maxX * scale,
                     viewport: viewport.width, margin: margin),
                 y: Self.followedAxis(
-                    offset.y, cellMin: rect.minY * scale, cellMax: rect.maxY * scale,
+                    offset.y,
+                    spanMin: span.minY * scale, spanMax: span.maxY * scale,
+                    cellMin: cursor.minY * scale, cellMax: cursor.maxY * scale,
                     viewport: viewport.height, margin: margin,
                     insetMin: clear.top, insetMax: clear.bottom)))
             .clamped(viewport: viewport, rows: rows, cols: cols, occlusion: occlusion)
@@ -281,24 +338,39 @@ public struct GridCamera: Equatable, Sendable {
                 y: offset.y + (other.offset.y - offset.y) * t))
     }
 
-    /// One axis of the minimal pan: shift only as far as the near edge demands.
-    /// `cellMin`/`cellMax` are the cell's bounds in scaled content points; the
-    /// window is the viewport less the occluding chrome, and the margin collapses
-    /// when the window is too small to honor it.
+    /// One axis of the minimal pan: shift only as far as the near edge demands to
+    /// reveal the target, which is the whole word (`spanMin`/`spanMax`) when it
+    /// fits the window and the cursor cell (`cellMin`/`cellMax`) when the word is
+    /// too wide to frame. All bounds are in scaled content points; the window is
+    /// the viewport less the occluding chrome, and the margin collapses when the
+    /// target is too wide to honor it.
+    ///
+    /// Choosing per-axis on FIT (word length and zoom), never on cursor position,
+    /// is what keeps typing smooth: a framed word does not move as the cursor
+    /// crosses it, and a too-wide word follows the cursor cell exactly as the
+    /// single-cell follow always has. `span == cell` (the cell follow) is
+    /// unchanged.
     private static func followedAxis(
-        _ offset: CGFloat, cellMin: CGFloat, cellMax: CGFloat,
+        _ offset: CGFloat,
+        spanMin: CGFloat, spanMax: CGFloat,
+        cellMin: CGFloat, cellMax: CGFloat,
         viewport: CGFloat, margin: CGFloat,
         insetMin: CGFloat = 0, insetMax: CGFloat = 0
     ) -> CGFloat {
         let window = max(viewport - insetMin - insetMax, 0)
-        let inset = min(margin, max(0, (window - (cellMax - cellMin)) / 2))
-        let visibleMin = cellMin + offset
-        let visibleMax = cellMax + offset
+        // Frame the whole word only when it fits; otherwise the word cannot be
+        // framed, so track the cursor cell (the original, smooth follow).
+        let fitsWord = (spanMax - spanMin) <= window
+        let targetMin = fitsWord ? spanMin : cellMin
+        let targetMax = fitsWord ? spanMax : cellMax
+        let inset = min(margin, max(0, (window - (targetMax - targetMin)) / 2))
+        let visibleMin = targetMin + offset
+        let visibleMax = targetMax + offset
         if visibleMin < insetMin + inset {
-            return insetMin + inset - cellMin
+            return insetMin + inset - targetMin
         }
         if visibleMax > viewport - insetMax - inset {
-            return viewport - insetMax - inset - cellMax
+            return viewport - insetMax - inset - targetMax
         }
         return offset
     }
