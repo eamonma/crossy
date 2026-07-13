@@ -399,7 +399,8 @@ struct ArrivalRootView: View {
                             // read at construction, cleared on sign-out.
                             roomSeeds[room.gameId] = RoomArrivalSeed(
                                 members: room.members, inviteCode: room.inviteCode,
-                                completedAt: room.completedAt)
+                                completedAt: room.completedAt,
+                                abandonedAt: room.abandonedAt)
                             path.append(roomRoute(for: room.gameId))
                         },
                         onJoinWithCode: { showJoin = true },
