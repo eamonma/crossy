@@ -60,7 +60,7 @@ export function TopBar({
             href="/privacy"
             className="text-1 text-text-subtle hover:text-text-muted hidden sm:inline"
           >
-            Privacy Policy
+            Privacy
           </a>
           <ThemeToggle />
           {/* Signed in, the avatar menu; signed out, nothing, since every signed-out surface
