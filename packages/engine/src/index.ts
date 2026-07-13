@@ -24,6 +24,14 @@ export { matches } from "./comparator";
 export { applyWithCompletion } from "./completion";
 export { firstCorrect } from "./first-correct";
 export type { OwnerMap, WriteEvent } from "./first-correct";
+export {
+  BURST_WINDOW_MS,
+  MOMENTUM_SAMPLES,
+  moments,
+  momentum,
+  solveTrace,
+} from "./analysis";
+export type { Beat, SolveEvent, TraceEntry, TurningPoint } from "./analysis";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,
