@@ -179,6 +179,14 @@ struct ArrivalRootView: View {
                 roomZoomSourceID = nil
                 roomSeeds.removeAll()
                 pendingJoinGameId = nil
+                // The selected tab is shell state too, and it survives the sign-out
+                // because this view (and its `tab` @State) outlives the shell, only its
+                // body swaps to Welcome. Sign-out happens FROM the Settings tab, so
+                // without this reset the next sign-in restores Settings instead of the
+                // home. Return it to the launch default (Rooms, absent an -i3Tab rig
+                // fact), the same value this view initializes `tab` to, so a re-entry
+                // always lands home.
+                tab = .launchSelection
             }
         }
         // The pre-fill is a one-shot for a failed deep link; a later hand-tapped
