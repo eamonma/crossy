@@ -46,6 +46,10 @@ struct ContentView: View {
             // guest-spectator filtered, the timer welcome-gated), so the seeded frame
             // the live goo grows from is capturable offline. Evidence only.
             SeededBirthLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-analysisTabsLab") {
+            // The Liquid Glass Clues/Analysis tab control in isolation
+            // (AnalysisTabsLab), both grounds over a busy field: evidence only.
+            AnalysisTabsLab()
         } else if let config = RoomConfig.resolve() {
             // The room's top chrome is the system nav bar's items now (the
             // toolbar-adoption ruling, DESIGN.md §4), and toolbar items render
@@ -297,7 +301,12 @@ struct RealRoomView: View {
                             gameId: room.gameId, code: room.inviteCode)
                     },
                     onEndGame: { room.endGame() },
-                    onKick: { userId in room.kick(userId: userId) }
+                    onKick: { userId in room.kick(userId: userId) },
+                    // The analysis fetch closes over the REST client and game id here
+                    // (AD-2: CrossyUI stays out of the REST ring); the solve screen
+                    // owns the when (completed) and the retries (owner ruling
+                    // 2026-07-13).
+                    fetchAnalysis: { await room.fetchAnalysis() }
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so

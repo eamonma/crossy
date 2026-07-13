@@ -94,10 +94,14 @@ final class CompletionModelConfettiTests: XCTestCase {
 
     func test_confettiPlaysWithTheMosaicMuted_ID1IsAboutTint() {
         let model = CompletionModel()
-        model.observe(status: .ongoing, live: true, mosaicEnabled: false, now: 100)
-        model.observe(status: .completed, live: true, mosaicEnabled: false, now: 200)
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
         XCTAssertEqual(model.confettiStartedAt, 200)
+        // The mosaic is deferred now (owner ruling 2026-07-13): observe never tints,
+        // and a muted mosaic (ID-1) never tints even when armed.
         XCTAssertNil(model.mosaicStartedAt)
+        model.startMosaic(summonOnSettle: true, mosaicEnabled: false, now: 200)
+        XCTAssertNil(model.mosaicStartedAt, "a muted mosaic derives no tint")
     }
 
     func test_confettiMuteSwitchSilencesOnlyTheDrift() {
@@ -106,6 +110,9 @@ final class CompletionModelConfettiTests: XCTestCase {
         model.observe(status: .completed, live: true, confettiEnabled: false, now: 200)
         XCTAssertNil(model.confettiStartedAt)
         XCTAssertEqual(model.celebrationFiredAt, 200)
+        // The mosaic no longer rides observe; it plays once armed (the ready branch).
+        XCTAssertNil(model.mosaicStartedAt)
+        model.startMosaic(summonOnSettle: false, now: 200)
         XCTAssertEqual(model.mosaicStartedAt, 200)
     }
 

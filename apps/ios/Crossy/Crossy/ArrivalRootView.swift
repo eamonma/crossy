@@ -302,7 +302,13 @@ struct ArrivalRootView: View {
                     // hides its own bar in the destination.
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: ArrivalRoute.self) { route in
+                        // The Puzzles push is a plain push (no zoom transition to keep
+                        // the interactive pop alive) and the room hides the back button,
+                        // so the left-edge swipe-back is disabled by default. Re-enable
+                        // it here (owner report 2026-07-13); the Rooms tab does not need
+                        // this, its zoom push already keeps the pop.
                         destination(route, pop: { puzzlesPath.removeAll() })
+                            .background(InteractivePopEnabler())
                     }
                 }
                 // The room owns the whole screen (the full-bleed ruling); the bar

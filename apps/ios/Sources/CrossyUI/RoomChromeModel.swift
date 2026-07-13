@@ -22,6 +22,14 @@ import Observation
     import QuartzCore
 #endif
 
+/// The completed clue chrome's two tabs (owner ruling 2026-07-13): the clue
+/// browser you know, and the post-game analysis, the same pair the web panel
+/// carries. Only ever shown once the room finishes.
+public enum AnalysisTab: String, CaseIterable, Sendable, Equatable {
+    case clues
+    case analysis
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 @Observable
@@ -31,6 +39,14 @@ public final class RoomChromeModel {
 
     /// True while a finger scrubs the melt (gesture bookkeeping for the views).
     public var isMeltDragging = false
+
+    /// The completed clue chrome's active tab (owner ruling 2026-07-13): once the
+    /// room finishes, the melt browser gains a Clues/Analysis pair, the same one
+    /// the web panel carries. Analysis is what the auto-summon opens on, and the
+    /// last-viewed tab is remembered across a dismiss-and-reopen (the segmented
+    /// control writes it). Inert mid-solve, where the chrome is only ever the clue
+    /// browser (there is no analysis until the room completes).
+    public var analysisTab: AnalysisTab = .analysis
 
     // The facts surface is a system sheet now (2026-07-12): the time pill's tap
     // presents RoomFactsSheet, which the system owns like the roster and share

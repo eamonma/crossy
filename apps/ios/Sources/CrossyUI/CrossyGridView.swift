@@ -29,6 +29,12 @@ public struct CrossyGridView: View {
     /// text passes nothing and the board tints no cross-reference.
     private let crossReference: Set<Int>
     private let mosaicStartedAt: TimeInterval?
+    /// The completion mosaic's writers when they are first-correct truth from GET
+    /// /analysis (owner ruling 2026-07-13): cell to the userId who solved it first,
+    /// the same attribution the web mosaic and legend paint. Nil falls the bloom
+    /// back to the event log's last writer (sequencedWriters): the fallback when the
+    /// fetch is absent, and every non-completion caller.
+    private let mosaicOwners: [Int: String]?
     /// The standing chrome's cover over the full-bleed board (the clamp's
     /// scroll-inset window): constant under clue growth by construction, so the
     /// board never moves with clue length.
@@ -73,6 +79,7 @@ public struct CrossyGridView: View {
         crossReference: Set<Int> = [],
         initialCamera: GridCamera? = nil,
         mosaicStartedAt: TimeInterval? = nil,
+        mosaicOwners: [Int: String]? = nil,
         occlusion: GridOcclusion = .none,
         keepClear: GridOcclusion? = nil,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
@@ -84,6 +91,7 @@ public struct CrossyGridView: View {
         self.selection = selection
         self.crossReference = crossReference
         self.mosaicStartedAt = mosaicStartedAt
+        self.mosaicOwners = mosaicOwners
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
         self.onSwipe = onSwipe
@@ -104,13 +112,16 @@ public struct CrossyGridView: View {
             let frame = GridFrame(
                 store: store, puzzle: puzzle, selection: selection, ground: ground,
                 crossReference: crossReference)
-            // The mosaic snapshot (DESIGN.md §8): palette from the sequenced event
-            // log's writer attribution, ID-1 gated inside GridMosaic. Snapshotted
-            // in body like GridFrame so @Observable registers the reads.
+            // The mosaic snapshot (DESIGN.md §8): palette from the first-correct
+            // owners when GET /analysis has landed (owner ruling 2026-07-13),
+            // falling back to the sequenced event log's last writer otherwise. ID-1
+            // gated inside GridMosaic. Snapshotted in body like GridFrame so
+            // @Observable registers the reads.
             let mosaic: MosaicWash? = mosaicStartedAt.map { startedAt in
                 MosaicWash(
                     colors: GridMosaic.colors(
-                        writers: Self.sequencedWriters(store: store, puzzle: puzzle),
+                        writers: mosaicOwners
+                            ?? Self.sequencedWriters(store: store, puzzle: puzzle),
                         participants: store.participants.map {
                             GridPresence.ParticipantInput(
                                 userId: $0.userId, displayName: $0.displayName,

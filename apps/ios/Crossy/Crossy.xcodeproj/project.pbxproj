@@ -8,11 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		FB15AC0F3000D30A004CA5C7 /* CrossyWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FB15AC113000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB15AC123000D30A004CA5C7 /* CrossyProtocol */; };
 		FB3E59F43000D30A004CA5C7 /* CrossyUI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F13000D30A004CA5C7 /* CrossyUI */; };
 		FB3E59F53000D30A004CA5C7 /* CrossyAPI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F23000D30A004CA5C7 /* CrossyAPI */; };
 		FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F33000D30A004CA5C7 /* CrossySession */; };
 		FB3E59F73000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F83000D30A004CA5C7 /* CrossyProtocol */; };
-		FB15AC113000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB15AC123000D30A004CA5C7 /* CrossyProtocol */; };
 		FBAD5E013001AAAA004CA5C7 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = FBAD5E023001AAAA004CA5C7 /* PostHog */; };
 /* End PBXBuildFile section */
 
@@ -577,6 +577,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		FB15AC123000D30A004CA5C7 /* CrossyProtocol */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CrossyProtocol;
+		};
 		FB3E59F13000D30A004CA5C7 /* CrossyUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CrossyUI;
@@ -590,10 +594,6 @@
 			productName = CrossySession;
 		};
 		FB3E59F83000D30A004CA5C7 /* CrossyProtocol */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CrossyProtocol;
-		};
-		FB15AC123000D30A004CA5C7 /* CrossyProtocol */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CrossyProtocol;
 		};

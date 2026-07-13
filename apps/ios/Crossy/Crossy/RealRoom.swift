@@ -258,6 +258,20 @@ final class RealRoom {
         LiveActivityRegistration(gameId: gameId, sink: self)
     }
 
+    /// The post-game analysis fetch (owner ruling 2026-07-13): GET
+    /// /games/{id}/analysis mapped to the render shape, or nil on any failure (a 404
+    /// during the completion race, transport weather, a decode fault). One attempt;
+    /// the solve screen retries a few times before it calls the game absent
+    /// (AnalysisModel). Member-gated and completed-only server-side (PROTOCOL.md §12),
+    /// INV-6-safe (userIds and numbers only).
+    func fetchAnalysis() async -> RoomAnalysis? {
+        do {
+            return RoomMapping.analysis(try await api.gameAnalysis(gameId))
+        } catch {
+            return nil
+        }
+    }
+
     /// The room has no surfaced REST error path yet (a reported gap for this
     /// slice; EXPERIENCE.md §4 wants one sentence per code). Until it lands, a
     /// failed operation logs in debug builds and no-ops rather than papering

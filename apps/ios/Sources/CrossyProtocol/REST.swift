@@ -694,6 +694,127 @@ public struct GameView: Sendable, Equatable, Codable {
     }
 }
 
+/// The `GET /games/{id}/analysis` post-game bundle (§12): the completed surface in one
+/// fetch. `owners` is the mosaic's owner map (cell index to owning userId), `momentum`
+/// is the room's tempo (a fixed-length peak-normalized curve plus the solve's duration),
+/// and `moments` are the three named beats. Twin of `AnalysisView`
+/// (apps/api/src/archive/analysis.ts).
+///
+/// Every field carries userIds, cells, and numbers only, so it is INV-6-safe by
+/// construction: the type has nowhere to hold a solution value or a raw event, so a leak
+/// is a compile error here, never a missed runtime strip. The client already holds the
+/// roster (names, colors) from the game view's member data, so this never duplicates
+/// identity display.
+public struct AnalysisView: Sendable, Equatable, Codable {
+    /// The room's tempo (§12). `samples` is a fixed-length 40-bucket curve, each value
+    /// peak-normalized into [0, 1]; `durationSeconds` is the solve's wall span. Numbers
+    /// only, so INV-6 holds.
+    public struct Momentum: Sendable, Equatable, Codable {
+        public let durationSeconds: Double
+        public let samples: [Double]
+
+        public init(durationSeconds: Double, samples: [Double]) {
+            self.durationSeconds = durationSeconds
+            self.samples = samples
+        }
+    }
+
+    /// One named beat (§12): a cell that fell, its owning userId, and when. A cell index
+    /// plus a userId plus a number, never a letter, so INV-6 holds.
+    public struct Beat: Sendable, Equatable, Codable {
+        public let cell: Int
+        public let userId: String
+        public let atSeconds: Double
+
+        public init(cell: Int, userId: String, atSeconds: Double) {
+            self.cell = cell
+            self.userId = userId
+            self.atSeconds = atSeconds
+        }
+    }
+
+    /// The pivot (§12): the stall before the break, the break itself, and the burst that
+    /// followed, all as timings and a count. Numbers only, so INV-6 holds.
+    public struct TurningPoint: Sendable, Equatable, Codable {
+        public let stallSeconds: Double
+        public let breakSeconds: Double
+        public let burst: Int
+
+        public init(stallSeconds: Double, breakSeconds: Double, burst: Int) {
+            self.stallSeconds = stallSeconds
+            self.breakSeconds = breakSeconds
+            self.burst = burst
+        }
+    }
+
+    /// The three named beats (§12). Each is nullable-and-present on the wire: the server
+    /// always writes the key, with an explicit JSON null when the beat is absent (a solve
+    /// too short to have one). The Codable conformance is hand-written for the same reason
+    /// `GameSummary`'s nullable fields are: decode requires the key (null reads as nil),
+    /// and encode emits the explicit null (not `encodeIfPresent`), so a decode/encode
+    /// round trip preserves the null wire-honestly.
+    public struct Moments: Sendable, Equatable, Codable {
+        public let firstToFall: Beat?
+        public let lastSquare: Beat?
+        public let turningPoint: TurningPoint?
+
+        public init(firstToFall: Beat?, lastSquare: Beat?, turningPoint: TurningPoint?) {
+            self.firstToFall = firstToFall
+            self.lastSquare = lastSquare
+            self.turningPoint = turningPoint
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case firstToFall
+            case lastSquare
+            case turningPoint
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            firstToFall = try container.decodeIfPresent(Beat.self, forKey: .firstToFall)
+            lastSquare = try container.decodeIfPresent(Beat.self, forKey: .lastSquare)
+            turningPoint = try container.decodeIfPresent(TurningPoint.self, forKey: .turningPoint)
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            // Explicit null when nil: the server always writes the key, so the fixture's
+            // explicit nulls survive the lossless round trip.
+            try container.encode(firstToFall, forKey: .firstToFall)
+            try container.encode(lastSquare, forKey: .lastSquare)
+            try container.encode(turningPoint, forKey: .turningPoint)
+        }
+    }
+
+    /// The mosaic owner map (§12): the first-correct owner per solved cell. The wire is a
+    /// JSON object whose keys are the cell indices as strings (JSON object keys are always
+    /// strings), values the owning userId. Kept as `[String: String]` so the round trip is
+    /// lossless; read `ownersByCell` for the integer-keyed view.
+    public let owners: [String: String]
+    public let momentum: Momentum
+    public let moments: Moments
+
+    public init(owners: [String: String], momentum: Momentum, moments: Moments) {
+        self.owners = owners
+        self.momentum = momentum
+        self.moments = moments
+    }
+
+    /// The owner map with its keys parsed back to cell indices. Non-integer keys are
+    /// dropped defensively (a current server sends only integer keys), so this is the
+    /// map's honest integer-keyed view without ever throwing on a malformed key.
+    public var ownersByCell: [Int: String] {
+        var result: [Int: String] = [:]
+        for (key, userId) in owners {
+            if let cell = Int(key) {
+                result[cell] = userId
+            }
+        }
+        return result
+    }
+}
+
 // MARK: - Account (PROTOCOL.md §12: DELETE /account)
 
 /// The `DELETE /account` response: the caller's own account is tombstoned, with host

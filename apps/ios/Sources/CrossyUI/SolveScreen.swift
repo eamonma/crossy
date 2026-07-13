@@ -64,9 +64,15 @@ public struct SolveScreen: View {
     /// Kick a member, host only (`DELETE /games/{id}/members/{userId}`,
     /// PROTOCOL.md §12). Confirmed in the roster menu, then reported here.
     private let onKick: (String) -> Void
+    /// The post-game analysis fetch, injected by the composition root (it closes
+    /// over the REST client and the game id, keeping CrossyUI out of the REST ring,
+    /// AD-2). Nil for compositions with no analysis (labs, some previews): there the
+    /// completion keeps the old last-writer bloom and no panel summons.
+    private let fetchAnalysis: (() async -> RoomAnalysis?)?
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
+    @State private var analysis = AnalysisModel()
     @State private var terminalPourBack = TerminalPourBackGate()
     @State private var hapticFold = SolveHapticFold()
     /// Room-space frames reported inside the room hierarchy (the board, the clue
@@ -136,7 +142,8 @@ public struct SolveScreen: View {
         onCopyShareLink: @escaping () -> Void = {},
         onShareInvite: @escaping () -> Void = {},
         onEndGame: @escaping () -> Void = {},
-        onKick: @escaping (String) -> Void = { _ in }
+        onKick: @escaping (String) -> Void = { _ in },
+        fetchAnalysis: (() async -> RoomAnalysis?)? = nil
     ) {
         self.store = store
         self.puzzle = puzzle
@@ -156,6 +163,7 @@ public struct SolveScreen: View {
         self.onShareInvite = onShareInvite
         self.onEndGame = onEndGame
         self.onKick = onKick
+        self.fetchAnalysis = fetchAnalysis
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
         _chrome = State(initialValue: chrome ?? RoomChromeModel())
         // A composition root that also drives the island snapshot passes the SAME cache it
@@ -295,6 +303,12 @@ public struct SolveScreen: View {
                         referenced: referencedIds),
                     glintMarks: glintMarks,
                     chrome: chrome,
+                    // Completion turns the browser into the tabbed analysis surface
+                    // (owner ruling 2026-07-13); mid-solve these are inert.
+                    completed: status == .completed,
+                    analysisPhase: analysis.phase,
+                    analysisMembers: members,
+                    selfUserId: store.selfUserId,
                     onDismissTransients: dismissTransients,
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
@@ -469,6 +483,38 @@ public struct SolveScreen: View {
         .onChange(of: completion.celebrationFiredAt) { _, fired in
             guard fired != nil else { return }
             SolveHaptics.shared.play(.completion)
+            // With no analysis fetch wired (labs, previews), keep the old instant
+            // bloom: last-writer colors, no panel. With a fetch, the bloom waits for
+            // the bundle (observed on analysis.phase below), so the color is
+            // first-correct truth (owner ruling 2026-07-13).
+            if fetchAnalysis == nil {
+                completion.startMosaic(summonOnSettle: false, reduceMotion: reduceMotion)
+            }
+        }
+        // The bloom paints first-correct owners, so it waits for the fetch (owner
+        // ruling 2026-07-13). Only the LIVE completion edge blooms (the gate fired,
+        // celebrationFiredAt set): a ready bundle blooms in first-correct color and
+        // arms the panel summon; an absent bundle falls back to the last-writer bloom
+        // with no summon. A reconnect into a completed room fetched for the tab but
+        // never blooms or summons (the celebration is a live-edge moment, INV-3).
+        .onChange(of: analysis.phase) { _, phase in
+            guard completion.celebrationFiredAt != nil else { return }
+            switch phase {
+            case .ready:
+                completion.startMosaic(summonOnSettle: true, reduceMotion: reduceMotion)
+            case .absent:
+                completion.startMosaic(summonOnSettle: false, reduceMotion: reduceMotion)
+            case .idle, .loading:
+                break
+            }
+        }
+        // The panel arrives AFTER the bloom settles (owner ruling 2026-07-13): melt
+        // the chrome open on the Analysis tab. The melt walk yields to a live finger
+        // (SP-i1), and Reduce Motion cuts straight to the open state.
+        .onChange(of: completion.summonToken) { _, token in
+            guard token > 0 else { return }
+            chrome.analysisTab = .analysis
+            chrome.settleMelt(open: true, animated: !reduceMotion)
         }
         // The celebration derives from store TRANSITIONS, observed here and
         // seeded once on appear, never from render (INV-3; the gate is the
@@ -500,7 +546,13 @@ public struct SolveScreen: View {
     /// clamp (GridOcclusion.standing, constant under clue growth) and the live
     /// slot only rescues the occluded cell (keepClear).
     private func boardArea(weather: RoomWeather) -> some View {
-        ZStack(alignment: .bottom) {
+        // The bar freezes to a fixed single-line height on the completed Analysis
+        // tab (owner ruling 2026-07-13): the door shows no clue, so the slot must not
+        // breathe to the (invisible) clue's wrap. On the Clues tab and mid-solve it
+        // still sizes to the clue.
+        let analysisResting = roomStatus == .completed && chrome.analysisTab == .analysis
+        let restingClue = analysisResting ? nil : clues.current(for: model.selection)
+        return ZStack(alignment: .bottom) {
             CrossyGridView(
                 store: store, puzzle: puzzle, ground: ground,
                 selection: model.selection,
@@ -511,6 +563,10 @@ public struct SolveScreen: View {
                 // selection, kept next to those derivations.
                 crossReference: clues.cells(of: referencedIds),
                 mosaicStartedAt: completion.mosaicStartedAt,
+                // The bloom's colors are first-correct owners once GET /analysis
+                // lands (owner ruling 2026-07-13); nil until then, where the grid
+                // falls back to the event log's last writer (the absent fallback).
+                mosaicOwners: analysis.bundle?.owners,
                 // The BOARD's standing occlusion is constant-built (DESIGN.md §2,
                 // SLICE C): the top inset is the room container's system-bar height
                 // (roomTopInset, read off the room's own container), never the
@@ -561,7 +617,7 @@ public struct SolveScreen: View {
             // 2026-07-10); Reduce Motion cuts. Keyed on the clue, so mid-word
             // cursor moves never enter an animated transaction. The feather
             // rides as the slot's background, sized by the same layout.
-            ClueBarSizer(ground: ground, current: clues.current(for: model.selection))
+            ClueBarSizer(ground: ground, current: restingClue)
                 .reportChromeFrame(.clueBarSlot)
                 .padding(.horizontal, ChromeLayout.inset)
                 .background(alignment: .bottom) {
@@ -569,8 +625,8 @@ public struct SolveScreen: View {
                         .padding(.top, -ClueFeather.extent)
                 }
                 .animation(
-                    reduceMotion ? nil : .crossyChrome,
-                    value: clues.current(for: model.selection)?.tag)
+                    reduceMotion || analysisResting ? nil : .crossyChrome,
+                    value: restingClue?.tag)
         }
     }
 
@@ -680,6 +736,15 @@ public struct SolveScreen: View {
             status: roomStatus,
             live: store.sync == .live,
             reduceMotion: reduceMotion)
+        // The analysis fetch fires once the room is completed (a live finish OR a
+        // reconnect into an already-completed room), so the Analysis tab has data
+        // whether or not the celebration played. Idempotent (fetches at most once);
+        // a 404 during the completion race retries (AnalysisModel). A composition
+        // with no fetch wired stays on the old last-writer bloom (see the
+        // celebrationFiredAt observer).
+        if roomStatus == .completed, let fetchAnalysis {
+            analysis.load(fetchAnalysis)
+        }
     }
 
     /// The board's haptic moments (DESIGN.md §7), derived by the pure fold and

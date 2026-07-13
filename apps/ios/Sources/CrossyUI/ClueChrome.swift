@@ -28,6 +28,18 @@ struct ClueChrome: View {
     /// Teammates whose cursors sit under the bar's clue right now (glint inputs).
     let glintMarks: [PresenceMark]
     let chrome: RoomChromeModel
+    /// Completion turns the browser into a tabbed surface (owner ruling
+    /// 2026-07-13): the pinned row becomes the gold Analysis door, and the open
+    /// panel carries a Clues/Analysis pair. False mid-solve, where the chrome is
+    /// only ever the clue browser (there is no analysis until the room completes).
+    let completed: Bool
+    /// The analysis fetch's state, rendered in the Analysis tab: loading, absent,
+    /// or the first-correct bundle (RoomAnalysis). Read only when `completed`.
+    let analysisPhase: AnalysisModel.Phase
+    /// The room's people, for the Analysis legend and moment cards (names and the
+    /// roster colors). Same list the roster menu reads.
+    let analysisMembers: [RosterMember]
+    let selfUserId: String?
     /// Transient panels yield to intent (DESIGN.md §4): any touch on the clue
     /// chrome is intent, so the room dismisses an open roster or stats card
     /// through this while the touch still lands here. Fired by the surface's
@@ -75,7 +87,7 @@ struct ClueChrome: View {
                 // The rest height IS the pinned row's height (the slot sizes
                 // to ClueBarSizer), so the list clears the row at any wrap.
                 .padding(.top, morph.rest.height)
-            pinnedRow(open: progress > 0.5)
+            pinnedRow(open: progress > 0.5, progress: progress)
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(shape)
@@ -121,16 +133,13 @@ struct ClueChrome: View {
 
     // MARK: The pinned row (the bar)
 
-    private func pinnedRow(open: Bool) -> some View {
-        HStack(spacing: 0) {
-            chevron("chevron.left", label: "Previous clue", action: onPrevious)
-            Button(action: toggle) {
-                ClueBarLabel(ground: ground, current: current)
-                    .contentShape(Rectangle())
+    private func pinnedRow(open: Bool, progress: CGFloat) -> some View {
+        Group {
+            if completed {
+                completedPinnedRow(progress: progress)
+            } else {
+                cluePinnedRow(open: open)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: open ? "Hide clues" : "Show all clues"))
-            chevron("chevron.right", label: "Next clue", action: onNext)
         }
         .padding(.horizontal, 10)
         .frame(minHeight: ChromeLayout.barHeight)
@@ -143,14 +152,95 @@ struct ClueChrome: View {
         // borrowed-height frame breathes (owner device finding). Key on the clue,
         // so the row reflows on the chrome spring in step with the outer frame,
         // and stays inert through a melt (the tag holds while progress scrubs).
+        // The completed row's content is fixed, so keying it here is harmless.
         .animation(reduceMotion ? nil : .crossyChrome, value: current?.tag)
         .contentShape(Rectangle())
         // High priority or the row's buttons win the touch and the melt never
         // scrubs (a plain .gesture ranks BELOW child gestures; owner device
         // finding 2026-07-10). The 12 pt floor keeps taps flowing to the
-        // buttons, and the row alone carries the drag so the open browser's
-        // list scrolls freely beneath it.
+        // buttons (the chevrons, the door, the tab segment), and the row alone
+        // carries the drag so the open panel's list scrolls freely beneath it.
         .highPriorityGesture(meltDrag)
+    }
+
+    /// The clue bar's rest content mid-solve (today's row): previous, the clue,
+    /// next. The whole row melts open into the browser.
+    private func cluePinnedRow(open: Bool) -> some View {
+        HStack(spacing: 0) {
+            chevron("chevron.left", label: "Previous clue", action: onPrevious)
+            Button(action: toggle) {
+                ClueBarLabel(ground: ground, current: current)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: open ? "Hide clues" : "Show all clues"))
+            chevron("chevron.right", label: "Next clue", action: onNext)
+        }
+    }
+
+    /// The completed pinned row (owner ruling 2026-07-13): the gold Analysis door
+    /// at rest, crossfading into the Clues/Analysis segmented control as the panel
+    /// opens. The door "becomes" the tabs (the owner's words); both ride the
+    /// surface's top edge, so the melt needs no separate header row.
+    private func completedPinnedRow(progress: CGFloat) -> some View {
+        ZStack {
+            // The rest content follows the active tab (owner ruling 2026-07-13):
+            // the gold Analysis door on the Analysis tab, the plain clue bar on the
+            // Clues tab, so collapsing while browsing clues shows the clue, not the
+            // door. Both crossfade into the segmented control as the panel opens.
+            Group {
+                if chrome.analysisTab == .clues {
+                    cluePinnedRow(open: false)
+                } else {
+                    analysisDoor
+                }
+            }
+            .opacity(1 - Double(min(1, progress * 1.4)))
+            .allowsHitTesting(progress < 0.5)
+
+            tabSegment
+                .opacity(Double(max(0, progress * 1.4 - 0.4)))
+                .allowsHitTesting(progress > 0.5)
+        }
+    }
+
+    /// The gold door: the finished bar's affordance into the analysis (the web's
+    /// completed clue bar), shown at rest on the Analysis tab. A tap melts the panel
+    /// open there.
+    private var analysisDoor: some View {
+        Button {
+            chrome.analysisTab = .analysis
+            settle(open: true)
+        } label: {
+            HStack(spacing: 10) {
+                Text(verbatim: "ANALYSIS")
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(1.4)
+                    .foregroundStyle(Color(rgb: AnalysisPalette.goldText(ground)))
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(rgb: AnalysisPalette.gold(ground)))
+            }
+            // A little more air inside the capsule than the row's own inset
+            // (owner device finding 2026-07-13).
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "See the analysis"))
+    }
+
+    /// The Clues/Analysis segmented control, shown once the panel is open: a single
+    /// Liquid Glass thumb that slides between the tabs (GlassSegmentedTabs, the
+    /// matchedGeometry slide). The active tab writes RoomChromeModel.analysisTab,
+    /// remembered across a dismiss-and-reopen; the gold dot marks Analysis when it
+    /// is not the tab showing.
+    private var tabSegment: some View {
+        AnalysisTabPicker(
+            selection: Binding(
+                get: { chrome.analysisTab },
+                set: { chrome.analysisTab = $0 }))
     }
 
     private func chevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -168,12 +258,24 @@ struct ClueChrome: View {
     // MARK: The browser list
 
     private var browserList: some View {
+        // One ScrollView for both tabs, so the swipe-down dismissal's top-of-list
+        // arbitration (ListTopReporter -> PanelDismiss) works the same whichever
+        // tab shows. The Analysis tab appears only once the room is completed; mid-
+        // solve this is always the clue sections.
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                section(title: "Across", rows: acrossRows)
-                section(title: "Down", rows: downRows)
+            if completed, chrome.analysisTab == .analysis {
+                AnalysisPanel(
+                    phase: analysisPhase,
+                    members: analysisMembers,
+                    selfUserId: selfUserId,
+                    ground: ground)
+            } else {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    section(title: "Across", rows: acrossRows)
+                    section(title: "Down", rows: downRows)
+                }
+                .padding(.bottom, 14)
             }
-            .padding(.bottom, 14)
         }
         .scrollIndicators(.hidden)
         // The takeover freezes the list (isScrollEnabled off cancels a live
