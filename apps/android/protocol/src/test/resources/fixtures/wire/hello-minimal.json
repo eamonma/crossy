@@ -1,0 +1,5 @@
+{
+  "type": "hello",
+  "protocolVersion": 1,
+  "token": "jwt"
+}
