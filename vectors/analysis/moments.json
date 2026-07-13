@@ -1,0 +1,54 @@
+[
+  {
+    "name": "an empty trace has no moments",
+    "intent": "With no fills there is no opening, no closing, and no gap to measure; all three are null.",
+    "given": { "trace": [] },
+    "then": { "firstToFall": null, "lastSquare": null, "turningPoint": null }
+  },
+  {
+    "name": "a single fill is both the first to fall and the last square, with no turning point",
+    "intent": "One entry is the min and the max by at, so firstToFall equals lastSquare (atSeconds 0 relative to itself). turningPoint needs two entries to have a gap, so it is null.",
+    "given": {
+      "trace": [{ "cell": 5, "userId": "u1", "seq": 1, "at": 1000 }]
+    },
+    "then": {
+      "firstToFall": { "cell": 5, "userId": "u1", "atSeconds": 0 },
+      "lastSquare": { "cell": 5, "userId": "u1", "atSeconds": 0 },
+      "turningPoint": null
+    }
+  },
+  {
+    "name": "a long stall then a burst: largest gap is the stall, the fill that ends it is the break, next 30s is the burst",
+    "intent": "Fills at 0, 5s, 60s, 61s, 62s. firstToFall is the earliest at, lastSquare the latest. The largest consecutive gap is 5s->60s (55s), so stallSeconds 55, breakSeconds 60 (the entry that ends the gap), and burst 3 (the entries at 60s, 61s, 62s, all within [60s, 90s]). Pins the turning point against BURST_WINDOW = 30s.",
+    "given": {
+      "trace": [
+        { "cell": 0, "userId": "u1", "seq": 1, "at": 0 },
+        { "cell": 1, "userId": "u2", "seq": 2, "at": 5000 },
+        { "cell": 2, "userId": "u3", "seq": 3, "at": 60000 },
+        { "cell": 3, "userId": "u1", "seq": 4, "at": 61000 },
+        { "cell": 4, "userId": "u2", "seq": 5, "at": 62000 }
+      ]
+    },
+    "then": {
+      "firstToFall": { "cell": 0, "userId": "u1", "atSeconds": 0 },
+      "lastSquare": { "cell": 4, "userId": "u2", "atSeconds": 62 },
+      "turningPoint": { "stallSeconds": 55, "breakSeconds": 60, "burst": 3 }
+    }
+  },
+  {
+    "name": "two fills at the same instant: first to fall breaks the tie by min seq",
+    "intent": "Two entries share the minimum at; firstToFall takes the min seq (u1 at seq 1, not u2 at seq 2). lastSquare is the latest at. The largest gap is the pause to the last fill.",
+    "given": {
+      "trace": [
+        { "cell": 0, "userId": "u1", "seq": 1, "at": 0 },
+        { "cell": 1, "userId": "u2", "seq": 2, "at": 0 },
+        { "cell": 2, "userId": "u3", "seq": 3, "at": 10000 }
+      ]
+    },
+    "then": {
+      "firstToFall": { "cell": 0, "userId": "u1", "atSeconds": 0 },
+      "lastSquare": { "cell": 2, "userId": "u3", "atSeconds": 10 },
+      "turningPoint": { "stallSeconds": 10, "breakSeconds": 10, "burst": 1 }
+    }
+  }
+]
