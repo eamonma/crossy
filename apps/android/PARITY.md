@@ -25,12 +25,12 @@ owner can do).
 | Solve room (grid, deck, clue bar) | partial       | Functional; design and motion pass is its own track     |
 | Rooms list                        | partial       | No featured wall; Ended section in-flight (#234 parity) |
 | Ended-games section               | in-flight     | Mirrors #234 (ios + web)                                |
-| Join by code                      | shipped       | Short-link paste parsing in-flight                      |
+| Join by code                      | shipped       | Field digests a pasted short link, `?code=`, `/g/`, or bare code (InviteScan) |
 | Create game                       | shipped       |                                                         |
 | Auth: email/dev-token             | shipped       | AAD-3 v0; in-memory tokens                              |
 | Auth: email OTP / magic link      | in-flight     | Mirrors #230; the right v0 leg                          |
 | Auth: Google native               | blocked-owner | Console work; PKCE helpers ready                        |
-| Invite short link emit + parse    | in-flight     | PROTOCOL.md §12, mirrors #225/#226                      |
+| Invite short link emit + parse    | shipped       | InviteLink pure module + room share sheet; mirrors #225/#226 (App Links still owner-blocked) |
 | App Links for crossy.ing          | blocked-owner | assetlinks.json + Play signing SHA-256                  |
 | Invite QR (show + scan)           | absent        |                                                         |
 | Completion (mosaic, celebration)  | absent        | Store carries the state; UI pending                     |

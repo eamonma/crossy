@@ -26,6 +26,11 @@ android {
         // variants; the api key is a dev placeholder.
         buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8790\"")
         buildConfigField("String", "SESSION_WS_BASE", "\"ws://10.0.2.2:8791\"")
+        // The invite host the share link is built against (PROTOCOL.md §12; api #222 serves it, iOS
+        // #226 and web #225 emit it). Bare host, no scheme: ShareInvite prepends https. Domain
+        // verification for App Links is owner-blocked (assetlinks.json + Play signing), so nothing
+        // claims this host with an intent filter yet (PARITY.md: App Links for crossy.ing).
+        buildConfigField("String", "INVITE_HOST", "\"crossy.ing\"")
         buildConfigField("String", "SUPABASE_AUTH_URL", "\"http://10.0.2.2:8792/auth/v1\"")
         buildConfigField("String", "SUPABASE_ISSUER", "\"http://127.0.0.1:8792/auth/v1\"")
         buildConfigField("String", "SUPABASE_API_KEY", "\"sb_publishable_dev_placeholder\"")
