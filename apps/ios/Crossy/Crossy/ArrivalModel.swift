@@ -193,6 +193,7 @@ struct RealRooms: RoomsProviding {
                             createdBy: summary.createdBy,
                             createdAt: summary.createdAt,
                             completedAt: summary.completedAt,
+                            abandonedAt: summary.abandonedAt,
                             lastActivityAt: summary.lastActivityAt,
                             // The row's member stack, digested to the UI's own shape
                             // (PROTOCOL.md section 12): identity as the server resolved
@@ -423,6 +424,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 3, createdBy: "you",
                         createdAt: "2026-07-06T19:00:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-09T21:14:00.000Z",
                         members: [
                             RoomCardMember(
@@ -456,6 +458,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 2, createdBy: "bee",
                         createdAt: "2026-07-04T11:00:00.000Z",
                         completedAt: "2026-07-08T15:07:00.000Z",
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-08T15:02:00.000Z",
                         members: [
                             RoomCardMember(
@@ -486,6 +489,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 6, createdBy: "ada",
                         createdAt: "2026-07-05T09:00:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: nil,
                         members: [
                             RoomCardMember(
@@ -525,6 +529,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 2, createdBy: "you",
                         createdAt: "2026-07-10T08:00:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-11T20:30:00.000Z",
                         members: [
                             RoomCardMember(
@@ -543,6 +548,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 1, createdBy: "you",
                         createdAt: "2026-07-10T07:45:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-10T22:05:00.000Z",
                         members: [
                             RoomCardMember(
@@ -550,6 +556,37 @@ struct FixtureRooms: RoomsProviding {
                                 isHost: true, isSpectator: false)
                         ],
                         inviteCode: "MINI0005"),
+                    // One host-ended room, so the trailing "Ended" section is judgeable in the
+                    // fixture walk (-i3Fixture -i3SignedIn): a real abandonedAt gathers it into the
+                    // shelf below "Solved" and dims its silhouette, the same quiet a solved room
+                    // reads. Ended by its host mid-solve (a non-nil lastActivityAt before the
+                    // abandonedAt), so it is distinct from both the solved and the live rooms.
+                    RoomCardModel(
+                        gameId: "fixture-ended", name: "Thursday, called early",
+                        puzzleTitle: "A door left ajar", rows: 9, cols: 9,
+                        // The believable 9x9 silhouette again (180-symmetric); ended, so the shelf
+                        // dims it, the muted-silhouette echo of the web's `Silhouette muted`.
+                        mask: [
+                            "...##....", "....#....", "....#....", "##.....#.", "...#.#...",
+                            ".#.....##", "....#....", "....#....", "....##...",
+                        ],
+                        memberCount: 3, createdBy: "ada",
+                        createdAt: "2026-07-07T18:00:00.000Z",
+                        completedAt: nil,
+                        abandonedAt: "2026-07-07T18:52:00.000Z",
+                        lastActivityAt: "2026-07-07T18:40:00.000Z",
+                        members: [
+                            RoomCardMember(
+                                userId: "ada", name: "Ada", avatarUrl: nil,
+                                isHost: true, isSpectator: false),
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "bee", name: "Bee", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                        ],
+                        inviteCode: "ENDED009"),
                 ],
                 nextBefore: nil))
     }

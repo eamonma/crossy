@@ -63,11 +63,16 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// has played yet (§12). Kept off the card face; it feeds ordering only.
     public let createdAt: String
     /// When the room completed (ISO 8601), or nil while it is ongoing AND nil for an
-    /// abandoned room, which never completed (§12, the completed read expand). The one
-    /// lifecycle fact the home reads: a non-nil value gathers the room into the trailing
-    /// "Solved" shelf. INV-6-safe (a bare timestamp, never a cell value). Kept off the
-    /// card face; the section tells the story.
+    /// abandoned room, which never completed (§12, the completed read expand). A non-nil
+    /// value gathers the room into the trailing "Solved" shelf. INV-6-safe (a bare timestamp,
+    /// never a cell value). Kept off the card face; the section tells the story.
     public let completedAt: String?
+    /// When a host ended the room (ISO 8601), or nil unless it was abandoned (§12). The twin
+    /// terminal fact to `completedAt` and mutually exclusive with it: a non-nil value gathers
+    /// the room into the trailing "Ended" shelf rather than leaving it in the live shelf (both
+    /// nil reads ongoing). INV-6-safe (a bare timestamp, never a cell value). Kept off the card
+    /// face; the section tells the story.
+    public let abandonedAt: String?
     /// The room's last activity (ISO 8601), or nil when no one has played yet: the
     /// newest board event's time, `MAX(cell_events.at)` server-side (§12). The rooms list
     /// orders on `lastActivityAt ?? createdAt` (COALESCE), most recent first, so a fresh
@@ -96,6 +101,14 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     /// gathers on (§12). Null (ongoing, or an abandoned room) reads as not solved.
     public var isSolved: Bool { completedAt != nil }
 
+    /// True when a host ended the room: the fact the trailing "Ended" shelf gathers on (§12).
+    /// Mutually exclusive with `isSolved` (a terminal room is one or the other, never both).
+    public var isAbandoned: Bool { abandonedAt != nil }
+
+    /// True when the room is terminal (solved or ended): both dim their silhouette and drop the
+    /// activity line, the quiet the two trailing shelves share. Neither is ever featured.
+    public var isTerminal: Bool { isSolved || isAbandoned }
+
     public init(
         gameId: String, name: String?, puzzleTitle: String?,
         rows: Int, cols: Int,
@@ -103,7 +116,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         // silhouette explicitly rather than silently ship a room that renders no face.
         mask: [String],
         memberCount: Int, createdBy: String,
-        createdAt: String, completedAt: String?, lastActivityAt: String?,
+        createdAt: String, completedAt: String?, abandonedAt: String?, lastActivityAt: String?,
         // No default: a construction site must decide the stack explicitly (the
         // RosterMember avatar lesson; a silent [] shipped the island without avatars).
         members: [RoomCardMember],
@@ -122,6 +135,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.createdBy = createdBy
         self.createdAt = createdAt
         self.completedAt = completedAt
+        self.abandonedAt = abandonedAt
         self.lastActivityAt = lastActivityAt
         self.members = members
         self.inviteCode = inviteCode
@@ -164,27 +178,31 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         }
     }
 
-    /// Split rooms into the two shelves the Rooms screen renders (the web's grammar,
-    /// Home.tsx GamesList): live rooms lead, solved rooms gather trailing. The partition
-    /// PRESERVES the input order within each group and never re-sorts, so the caller's
-    /// activity order carries through and appended pages stay stable (§12 pagination:
-    /// pages are createdAt-bounded and appended, never globally re-sorted, so a solved
-    /// room from page 2 lands after page 1's solved rooms). When nothing is solved the
-    /// `solved` group is empty and the screen draws no trailing header. Pure and
-    /// non-mutating.
+    /// Split rooms into the three shelves the Rooms screen renders (the web's grammar,
+    /// Home.tsx GamesList): live rooms lead, then solved rooms, then host-ended rooms, each
+    /// gathered trailing. A room is classified by its mutually exclusive terminal timestamps
+    /// (§12): completed into `solved`, abandoned into `ended`, neither into `live`. The
+    /// partition PRESERVES the input order within each group and never re-sorts, so the
+    /// caller's activity order carries through and appended pages stay stable (§12 pagination:
+    /// pages are createdAt-bounded and appended, never globally re-sorted, so a terminal room
+    /// from page 2 lands after page 1's terminal rooms). When a group is empty the screen draws
+    /// no trailing header for it. Pure and non-mutating.
     public static func shelved(
         _ rooms: [RoomCardModel]
-    ) -> (live: [RoomCardModel], solved: [RoomCardModel]) {
+    ) -> (live: [RoomCardModel], solved: [RoomCardModel], ended: [RoomCardModel]) {
         var live: [RoomCardModel] = []
         var solved: [RoomCardModel] = []
+        var ended: [RoomCardModel] = []
         for room in rooms {
             if room.isSolved {
                 solved.append(room)
+            } else if room.isAbandoned {
+                ended.append(room)
             } else {
                 live.append(room)
             }
         }
-        return (live, solved)
+        return (live, solved, ended)
     }
 }
 
@@ -206,11 +224,11 @@ public struct RoomCard: View {
     private let model: RoomCardModel
     private let ground: GridGround
 
-    /// How much the silhouette dims for a solved room: a quiet muted-silhouette echo of the
-    /// web's `Silhouette muted` (Home.tsx), the smallest honest signal that a room is done,
-    /// so the trailing "Solved" section reads finished without a loud badge. Only the
-    /// fingerprint dims; the headline and people stay full ink. A first pass for the owner's
-    /// device eye, tuned by one constant.
+    /// How much the silhouette dims for a terminal room, solved or ended: a quiet
+    /// muted-silhouette echo of the web's `Silhouette muted` (Home.tsx), the smallest honest
+    /// signal that a room is done, so the trailing "Solved" and "Ended" sections read finished
+    /// without a loud badge. Only the fingerprint dims; the headline and people stay full ink.
+    /// A first pass for the owner's device eye, tuned by one constant.
     public static let solvedFingerprintOpacity: Double = 0.45
 
     public init(model: RoomCardModel, ground: GridGround) {
@@ -223,7 +241,7 @@ public struct RoomCard: View {
             PuzzleSilhouetteView(
                 rows: model.rows, cols: model.cols, mask: model.mask, ground: ground)
                 .frame(width: 52, height: 52)
-                .opacity(model.isSolved ? Self.solvedFingerprintOpacity : 1)
+                .opacity(model.isTerminal ? Self.solvedFingerprintOpacity : 1)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: model.headline)
