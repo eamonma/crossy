@@ -44,7 +44,9 @@ export function buildApp(deps: AppDeps): Hono<ApiEnv> {
     app.use("*", async (c, next) => {
       c.header("access-control-allow-origin", corsOrigin);
       c.header("access-control-allow-headers", "authorization, content-type");
-      c.header("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
+      // Every method any route serves must appear here or its preflight fails; PATCH covers
+      // PATCH /me (the display-name write).
+      c.header("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
       c.header("vary", "origin");
       if (c.req.method === "OPTIONS") return c.body(null, 204);
       await next();
