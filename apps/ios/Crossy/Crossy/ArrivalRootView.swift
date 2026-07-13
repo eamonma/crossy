@@ -275,6 +275,15 @@ struct ArrivalRootView: View {
                             .roomZoom(
                                 from: RoomZoomSource(namespace: roomZoom),
                                 sourceID: roomZoomSourceID)
+                            // A deep-link / QR push names no zoom source (roomZoomSourceID
+                            // nil), so roomZoom falls back to a plain push and the hidden
+                            // back button leaves the interactive pop disabled, the same
+                            // bug as the Puzzles tab. Re-enable it exactly there; a card
+                            // or Join-capsule push (non-nil source) keeps the zoom
+                            // transition's own pop and must not be touched.
+                            .background {
+                                if roomZoomSourceID == nil { InteractivePopEnabler() }
+                            }
                     }
                 }
                 // The room owns the whole screen (the full-bleed ruling), so the bar
