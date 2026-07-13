@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Regenerate the app-icon PNGs from the committed SVG source.
 #
-# The app icon is the "CROSSY crossword" (crop-medium): a full-bleed, zoomed-in
-# crossword grid whose six open cells spell CROSSY, one gold cell (the Y), on the
-# bone / Observatory grounds. iOS applies its own squircle mask, so the vector
-# source is a full square with no rounded corners.
+# The app icon is the wordless mark at crop-medium: a full-bleed, zoomed-in
+# crossword grid, ink blocks stepping down the anti-diagonal to one gold cell
+# (the Y), on the bone / Observatory grounds. iOS applies its own squircle
+# mask, so the vector source is a full square with no rounded corners.
 #
 # Requires macOS `qlmanage` and `python3` + Pillow.
 set -euo pipefail

@@ -4,7 +4,7 @@
   mark-light.svg / mark-dark.svg              the canonical mark (3x3 core crop)
   wordmark-light.svg / wordmark-dark.svg      Crossy, Harfang Pro outlines
   lockup-horizontal-*.svg / lockup-stacked-*  the canonical logo
-  app-icon/icon-light.svg / icon-dark.svg     the CROSSY crossword (crop-medium)
+  app-icon/icon-light.svg / icon-dark.svg     the mark at crop-medium (wordless)
   apps/web/public/favicon.svg                 the 2x2 reduction, scheme-aware
 
 The crossword core is defined once (CORE, CORE_BLOCKS, GOLD_CORE); the app icon
@@ -52,43 +52,16 @@ def fmt3(v):
 
 
 # ==========================================================================
-# App icon: crop-medium. A 5x5 grid around the core; the frame slices the
-# outer ring mid-cell so the puzzle reads as continuing past the icon.
-# Letterforms are drawn geometric paths, no fonts. iOS applies its own
-# squircle mask, so the emitted SVG is a full square.
+# App icon: crop-medium, wordless. A 5x5 grid around the core; the frame
+# slices the outer ring mid-cell so the puzzle reads as continuing past the
+# icon. The six open cells still hold the CROSSY skeleton, its letters
+# retired; the outer blocks mirror across the main diagonal, so the four
+# never read as a pinwheel. iOS applies its own squircle mask, so the
+# emitted SVG is a full square.
 # ==========================================================================
 
 CANVAS = 1024
-MASK_R = 230   # iOS squircle stand-in, used only to verify letter clearance
 ICON_R = 0     # emitted SVG is a full square; iOS applies its own mask
-
-
-def glyph(name, H, t):
-    hh = (H - t) / 2
-    ww = (0.72 * H - t) / 2
-    f = fmt
-    if name == "O":
-        r = hh
-        return f"M {f(-r)} 0 A {f(r)} {f(r)} 0 1 0 {f(r)} 0 A {f(r)} {f(r)} 0 1 0 {f(-r)} 0"
-    if name == "C":
-        r = hh
-        x, y = 0.766 * r, 0.643 * r
-        return f"M {f(x)} {f(-y)} A {f(r)} {f(r)} 0 1 0 {f(x)} {f(y)}"
-    if name == "R":
-        rb = hh / 2
-        return (f"M {f(-ww)} {f(hh)} L {f(-ww)} {f(-hh)} L {f(ww - rb)} {f(-hh)} "
-                f"A {f(rb)} {f(rb)} 0 0 1 {f(ww - rb)} 0 L {f(-ww)} 0 "
-                f"M {f(ww - rb)} 0 L {f(ww)} {f(hh)}")
-    if name == "S":
-        rs = hh / 2
-        k = 1.35
-        xs = 0.866 * k * rs
-        return (f"M {f(xs)} {f(-1.5 * rs)} A {f(k * rs)} {f(rs)} 0 1 0 0 0 "
-                f"A {f(k * rs)} {f(rs)} 0 1 1 {f(-xs)} {f(1.5 * rs)}")
-    if name == "Y":
-        hw = 0.28 * H
-        return f"M {f(-hw)} {f(-hh)} L 0 0 L {f(hw)} {f(-hh)} M 0 0 L 0 {f(hh)}"
-    raise ValueError(name)
 
 
 class Icon:
@@ -107,11 +80,6 @@ class Icon:
     def rect(self, x, y, w, h, fill):
         self.parts.append(f'  <rect x="{fmt(x)}" y="{fmt(y)}" width="{fmt(w)}" '
                           f'height="{fmt(h)}" fill="{fill}"/>')
-
-    def stroke_path(self, d, tx, ty, color, t):
-        self.parts.append(f'  <path d="{d}" transform="translate({fmt(tx)} {fmt(ty)})" '
-                          f'fill="none" stroke="{color}" stroke-width="{fmt(t)}" '
-                          f'stroke-linecap="round" stroke-linejoin="round"/>')
 
     def line(self, x1, y1, x2, y2, w, color):
         self.parts.append(f'  <line x1="{fmt(x1)}" y1="{fmt(y1)}" x2="{fmt(x2)}" '
@@ -151,28 +119,6 @@ class CropGrid:
         dens = len(self.blocks) / (n * n)
         return read, sym, dens
 
-    def letter_clearances(self):
-        """Min distance from any letter glyph bbox to each frame edge and to the
-        squircle corner arc (MASK_R). Positive = the letter stays clear."""
-        half = 0.32 * self.s
-        min_edge = 1e9
-        min_corner = 1e9
-        for (c, r) in self.letters:
-            cx, cy = self.cell_xy(c, r)
-            gx0, gy0 = cx + self.s / 2 - half, cy + self.s / 2 - half
-            gx1, gy1 = cx + self.s / 2 + half, cy + self.s / 2 + half
-            min_edge = min(min_edge, gx0, gy0, CANVAS - gx1, CANVAS - gy1)
-            for gx in (gx0, gx1):
-                for gy in (gy0, gy1):
-                    inx = gx < MASK_R or gx > CANVAS - MASK_R
-                    iny = gy < MASK_R or gy > CANVAS - MASK_R
-                    if inx and iny:
-                        ccx = MASK_R if gx < CANVAS / 2 else CANVAS - MASK_R
-                        ccy = MASK_R if gy < CANVAS / 2 else CANVAS - MASK_R
-                        d = MASK_R - ((gx - ccx) ** 2 + (gy - ccy) ** 2) ** 0.5
-                        min_corner = min(min_corner, d)
-        return min_edge, min_corner
-
 
 def render_icon(g, dark, comment):
     ic = Icon(dark, comment)
@@ -197,11 +143,6 @@ def render_icon(g, dark, comment):
         for i in range(n + 1):
             ic.line(x0 + i * s, y0 - s, x0 + i * s, y0 + (n + 1) * s, sep, INK)
             ic.line(x0 - s, y0 + i * s, x0 + (n + 1) * s, y0 + i * s, sep, INK)
-    H = 0.54 * s
-    t = 0.19 * H
-    for (c, r), ch in g.letters.items():
-        x, y = g.cell_xy(c, r)
-        ic.stroke_path(glyph(ch, H, t), x + s / 2, y + s / 2, INK, t)
     return ic.svg()
 
 
@@ -242,22 +183,23 @@ def ascii_view(g):
 ICON_N = 5
 ICON_S, ICON_GX, ICON_GY = geom(5, 0.50)
 ICON_CORE_OFF = (1, 1)
-ICON_EXTRA_BLOCKS = make_symmetric(5, ICON_CORE_OFF, [(0, 1), (3, 0)])
+# Outer blocks from one diagonal-mirror seed pair, closed under 180 symmetry:
+# mirrored across the main diagonal so the four never read as a pinwheel.
+ICON_EXTRA_BLOCKS = make_symmetric(5, ICON_CORE_OFF, [(1, 0), (0, 1)])
 
 
 def emit_app_icon():
     g = CropGrid(ICON_N, ICON_S, ICON_GX, ICON_GY, ICON_CORE_OFF, ICON_EXTRA_BLOCKS)
     read, sym, dens = g.validate()
-    edge_cl, corner_cl = g.letter_clearances()
-    assert edge_cl > 12 and corner_cl > 8, "a letter would be clipped by the mask"
-    comment = (f"Crossy app icon (crop-medium). Anti-diagonal CROSSY core, frame "
-               f"slices the outer ring mid-cell; {ICON_N}x{ICON_N}, cell {ICON_S:.0f}px, block "
-               f"density {dens:.2f}, 180-symmetric={sym}. Full square; iOS masks the corners.")
+    comment = (f"Crossy app icon (crop-medium, wordless). Anti-diagonal core, its "
+               f"letters retired; the frame slices the outer ring mid-cell. {ICON_N}x{ICON_N}, "
+               f"cell {ICON_S:.0f}px, block density {dens:.2f}, 180-symmetric={sym}. "
+               f"Full square; iOS masks the corners.")
     for dark, fn in [(False, "icon-light.svg"), (True, "icon-dark.svg")]:
         with open(os.path.join(HERE, "app-icon", fn), "w") as fh:
             fh.write(render_icon(g, dark, comment))
-    print(f"app-icon: icon-light.svg + icon-dark.svg  read={read} sym={sym} "
-          f"dens={dens:.2f} edge_clear={edge_cl:.0f}px corner_clear={corner_cl:.0f}px")
+    print(f"app-icon: icon-light.svg + icon-dark.svg  wordless "
+          f"skeleton={read} sym={sym} dens={dens:.2f}")
 
 
 # ==========================================================================

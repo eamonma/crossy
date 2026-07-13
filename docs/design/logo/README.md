@@ -3,23 +3,23 @@
 The canonical identity: one mark, one wordmark, two lockups, light and dark.
 Every SVG here is emitted by `generate.py`. Edit the generator, never the SVGs.
 
-| file                                       | what                                                 |
-| ------------------------------------------ | ---------------------------------------------------- |
-| `mark-light.svg` / `mark-dark.svg`         | the mark alone                                       |
-| `wordmark-light.svg` / `wordmark-dark.svg` | Crossy, Harfang Pro outlines                         |
-| `lockup-horizontal-*.svg`                  | mark, gap, wordmark                                  |
-| `lockup-stacked-*.svg`                     | mark above wordmark                                  |
-| `wordmark_data.py`                         | committed Harfang outlines (see below)               |
-| `app-icon/`                                | the CROSSY crossword icon: emitted SVGs + PNG cutter |
-| `preview/`                                 | rendered lockups for review                          |
+| file                                       | what                                                   |
+| ------------------------------------------ | ------------------------------------------------------ |
+| `mark-light.svg` / `mark-dark.svg`         | the mark alone                                         |
+| `wordmark-light.svg` / `wordmark-dark.svg` | Crossy, Harfang Pro outlines                           |
+| `lockup-horizontal-*.svg`                  | mark, gap, wordmark                                    |
+| `lockup-stacked-*.svg`                     | mark above wordmark                                    |
+| `wordmark_data.py`                         | committed Harfang outlines (see below)                 |
+| `app-icon/`                                | the app icon (wordless mark, crop-medium): SVGs + PNGs |
+| `preview/`                                 | rendered lockups for review                            |
 
 ## The mark
 
 The 3x3 heart of the CROSSY crossword: three blocks stepping down the
 anti-diagonal to one gold cell, the Y's cell. Grid lines run to the frame so
-the puzzle reads as continuing past the crop. The full CROSSY tile (the app
-icon) spells the name, so it never sits beside the wordmark; the lockup
-carries this fragment.
+the puzzle reads as continuing past the crop. The app icon is a wider crop of
+the same puzzle; the lockup carries this tight three-cell fragment instead, so
+the mark stays legible beside the wordmark.
 
 Light draws ink on the ground, open cells transparent. Dark is the plate
 treatment the app icon and favicon already use: open cells glow bone, the
@@ -73,8 +73,8 @@ gold on the Y) is defined once in `generate.py`. Everything else is a crop or
 reduction of it:
 
 - the mark: the 3x3 core, letters retired
-- app icon: crop-medium, a 5x5 grid around the core, the frame slicing the
-  outer ring mid-cell (`app-icon/`)
+- app icon: crop-medium, a 5x5 grid around the core with letters retired, the
+  frame slicing the outer ring mid-cell (`app-icon/`)
 - favicon: a 2x2 reduction keeping the mark's two signature corner cells,
   the top-right block and the gold Y cell (`apps/web/public/favicon.svg`,
   emitted here)
