@@ -23,8 +23,8 @@ owner can do).
 | Surface                           | Status        | Notes                                                   |
 | --------------------------------- | ------------- | ------------------------------------------------------- |
 | Solve room (grid, deck, clue bar) | partial       | Functional; design and motion pass is its own track     |
-| Rooms list                        | partial       | No featured wall; Ended section in-flight (#234 parity) |
-| Ended-games section               | in-flight     | Mirrors #234 (ios + web)                                |
+| Rooms list                        | partial       | live/solved/ended shelves (#234); featured wall gap     |
+| Ended-games section               | shipped       | Mirrors #234: abandonedAt shelf + dimmed terminal cards |
 | Join by code                      | shipped       | Short-link paste parsing in-flight                      |
 | Create game                       | shipped       |                                                         |
 | Auth: email/dev-token             | shipped       | AAD-3 v0; in-memory tokens                              |

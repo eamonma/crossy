@@ -148,6 +148,35 @@ class RestSnapshotTests {
     }
 
     @Test
+    fun gamesListCarriesAbandonmentThroughAbandonedAt_PROTOCOL12() {
+        // §12: GET /games reports a host-ended game through `abandonedAt`, the twin terminal
+        // timestamp, mutually exclusive with `completedAt`. The shared fixture's two rows are
+        // solved and ongoing, so both read null abandonment; a non-null branch (an ended game) is
+        // pinned inline, decode -> re-encode -> decode, since the round-trip fixture never shows an
+        // abandoned row alongside a solved one.
+        val list = assertLosslessRoundTrip(GamesListResponse.serializer(), FixtureGroup.REST, "games-list")
+        assertNull(list.games[0].abandonedAt, "a solved game was not abandoned")
+        assertNull(list.games[1].abandonedAt, "an ongoing game was not abandoned")
+
+        val ended = """{"games":[{"gameId":"g","name":null,"role":"host","createdAt":"2026-07-01T00:00:00.000Z","createdBy":"u","memberCount":2,"members":[],"inviteCode":"ENDED009","completedAt":null,"abandonedAt":"2026-07-07T18:52:00.000Z","lastActivityAt":"2026-07-07T18:40:00.000Z","puzzle":{"puzzleId":"p","rows":15,"cols":15,"title":null,"mask":[]}}],"nextBefore":null}"""
+        val decoded = ProtocolJson.decodeFromString(GamesListResponse.serializer(), ended)
+        assertEquals("2026-07-07T18:52:00.000Z", decoded.games[0].abandonedAt, "a host-ended game carries its ISO abandonment time")
+        assertNull(decoded.games[0].completedAt, "an abandoned game never completed (the two terminal timestamps are exclusive)")
+        // Lossless: re-encoding then re-decoding preserves the abandoned row unchanged.
+        val reencoded = ProtocolJson.encodeToString(GamesListResponse.serializer(), decoded)
+        assertEquals(decoded, ProtocolJson.decodeFromString(GamesListResponse.serializer(), reencoded))
+    }
+
+    @Test
+    fun gamesListDecodesAnOlderServerThatOmitsAbandonedAt_PROTOCOL14() {
+        // §14 additive tolerance, mirroring completedAt: a server predating the abandonment read
+        // omits `abandonedAt`; the twin decodes it as null (reads as not-ended, §12).
+        val legacy = """{"games":[{"gameId":"g","name":null,"role":"solver","createdAt":"2026-07-01T00:00:00.000Z","createdBy":"u","memberCount":2,"completedAt":null,"lastActivityAt":null,"puzzle":{"puzzleId":"p","rows":15,"cols":15,"title":null}}],"nextBefore":null}"""
+        val decoded = ProtocolJson.decodeFromString(GamesListResponse.serializer(), legacy)
+        assertNull(decoded.games[0].abandonedAt, "an omitted abandonedAt reads as not-ended")
+    }
+
+    @Test
     fun gamesListDecodesAnOlderServerThatOmitsCompletedAt_PROTOCOL14() {
         // §14 additive tolerance, mirroring lastActivityAt: a server predating the completion read
         // omits `completedAt`; the twin decodes it as null (reads as ongoing, §12).
