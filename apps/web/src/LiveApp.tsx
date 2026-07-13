@@ -1166,6 +1166,14 @@ function LiveGame({
         {/* The desktop clue strip stays only while solving; the completed rail carries the tab
             header instead, so a duplicate strip would double the panel's header. */}
         {!boardCompleted && <ClueStrip clue={activeClue} />}
+        {/* Completed: the strip is gone, so the header loses its dashed underline. Restore the same
+            rule (desktop only; mobile's ClueBar carries its own) so the toolbar stays capped. */}
+        {boardCompleted && (
+          <div
+            aria-hidden
+            className="hidden md:block border-b border-dashed border-border-dashed"
+          />
+        )}
         <ClueBar
           clue={activeClue}
           completed={boardCompleted}
