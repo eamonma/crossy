@@ -180,12 +180,18 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
     // tab refocus would churn the game (close the socket, refetch, reopen) for nothing.
     current = next;
     if (!changed) return;
-    for (const cb of listeners) cb(current, causeOf(event, next));
+    const cause = causeOf(event, next);
+    if (cause === "signed_out") {
+      // Breadcrumb: name the vendor event behind every sign-out so a surprise sign-out
+      // report arrives with evidence (INV-11). One line, no dependency.
+      console.info(`crossy: signed out (${event})`);
+    }
+    for (const cb of listeners) cb(current, cause);
   });
 
   async function freshSession(): Promise<Session | null> {
     const { data } = await supabase.auth.getSession();
-    let session = data.session;
+    const session = data.session;
     if (session === null) return null;
     const now = Math.floor(Date.now() / 1000);
     const expiresAt = session.expires_at;
@@ -195,8 +201,17 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
     ) {
       const refreshed = await supabase.auth.refreshSession();
       if (refreshed.error === null && refreshed.data.session !== null) {
-        session = refreshed.data.session;
+        return refreshed.data.session;
       }
+      // Refresh yielded no token (network, transient reject, or a rotation discarded because
+      // a peer context already rotated: supabase-js 2.110 leaves the winner in storage and
+      // raises AuthRefreshDiscardedError). Re-read storage once. A session that now carries a
+      // rotated or still-valid token is used; a session that stands with nothing fresher is
+      // returned as-is, even past expiry, because a standing session is not a sign-out
+      // (INV-11) and the REST 401-retry seam and WS backoff absorb a server rejection. Only a
+      // re-read that finds no session is a true sign-out, and that returns null.
+      const reread = await supabase.auth.getSession();
+      return reread.data.session;
     }
     return session;
   }
@@ -217,11 +232,24 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
     async refreshAccessToken(): Promise<string | null> {
       // Force a rotation through the stored refresh token, bypassing the freshness
       // shortcut: the server just rejected a token the client thought was valid, so the
-      // cached one is useless. supabase-js emits SIGNED_OUT via onAuthStateChange when the
-      // refresh is genuinely dead, so a null return here needs no extra state handling.
+      // cached one is useless. Snapshot the token held before the call so a discarded
+      // rotation can be told apart from a dead one.
+      const before =
+        (await supabase.auth.getSession()).data.session?.access_token ?? null;
       const { data, error } = await supabase.auth.refreshSession();
-      if (error !== null || data.session === null) return null;
-      return data.session.access_token;
+      if (error === null && data.session !== null) {
+        return data.session.access_token;
+      }
+      // No new token from the rotation. Re-read storage: when a peer context already rotated,
+      // supabase-js 2.110 discards our rotation (AuthRefreshDiscardedError) and leaves the
+      // winning token in storage, so a stored token that differs from the one held before the
+      // call is a fresh one to use, not a failure (INV-11). If nothing changed, the refresh
+      // token is spent: return null and let onChange's SIGNED_OUT drive the sign-in surface.
+      const reread = (await supabase.auth.getSession()).data.session;
+      if (reread !== null && reread.access_token !== before) {
+        return reread.access_token;
+      }
+      return null;
     },
     async signInWithProvider(
       provider: SignInProvider,

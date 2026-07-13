@@ -69,14 +69,19 @@ export interface Identity {
 
   /**
    * A fresh access token for REST auth and the WebSocket hello (PROTOCOL.md section 2),
-   * refreshed if the cached token is near expiry. Null when signed out.
+   * refreshed if the cached token is near expiry. Null if and only if no session exists
+   * (INV-11): a transient refresh failure returns the best available token, even one past
+   * expiry, because the REST 401-retry seam and the WS backoff loop absorb a server
+   * rejection. A standing session is never reported as a sign-out.
    */
   getAccessToken(): Promise<string | null>;
 
   /**
    * Force a token refresh (used to recover from a server 401 on a token the client still
-   * thought was valid). Returns the new access token, or null when the refresh fails or
-   * there is no session.
+   * thought was valid). Returns the new access token, or null when no new token is
+   * available. Null does not mean signed out: the session may still stand (INV-11), for
+   * instance when a peer context already rotated the token. A genuinely dead refresh token
+   * surfaces as SIGNED_OUT through onChange, not through this return value.
    */
   refreshAccessToken(): Promise<string | null>;
 

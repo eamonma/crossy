@@ -514,3 +514,145 @@ describe("supabase identity adapter", () => {
     });
   });
 });
+
+// A standing session outlives an access token: a transient refresh failure never surfaces as a
+// sign-out, and a token a peer context rotated is picked up by re-reading storage.
+describe("INV-11 sessions outlive access tokens", () => {
+  const nowSec = (): number => Math.floor(Date.now() / 1000);
+
+  function tokenSession(
+    accessToken: string,
+    expiresAt: number,
+    over: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      access_token: accessToken,
+      expires_at: expiresAt,
+      user: fakeUser(over),
+    };
+  }
+
+  // A getSession that yields each session in turn and then holds the last, so a test can model
+  // storage changing (a peer rotation) between the first read and the post-refresh re-read.
+  function sequenceOf(
+    sessions: unknown[],
+  ): () => Promise<{ data: { session: unknown } }> {
+    let i = 0;
+    return () => {
+      const session = sessions[Math.min(i, sessions.length - 1)];
+      i += 1;
+      return Promise.resolve({ data: { session } });
+    };
+  }
+
+  it("INV-11: getAccessToken returns the new token after a near-expiry refresh", async () => {
+    const { deps, calls } = makeDeps({
+      getSession: () =>
+        Promise.resolve({
+          data: { session: tokenSession("stale", nowSec() + 5) },
+        }),
+      refreshSession: () =>
+        Promise.resolve({
+          data: { session: tokenSession("fresh", nowSec() + 3600) },
+          error: null,
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBe("fresh");
+    expect(calls.refreshSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("INV-11: getAccessToken returns the standing token, not null, when a near-expiry refresh fails", async () => {
+    const { deps, calls } = makeDeps({
+      // Storage still holds the session on the re-read, so a transient refresh failure is not a
+      // sign-out and the existing token stands.
+      getSession: () =>
+        Promise.resolve({
+          data: { session: tokenSession("existing", nowSec() + 5) },
+        }),
+      refreshSession: () =>
+        Promise.resolve({
+          data: { session: null },
+          error: { message: "network down" },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBe("existing");
+    expect(calls.refreshSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("INV-11: getAccessToken returns a peer-rotated token surfaced by the storage re-read", async () => {
+    const { deps } = makeDeps({
+      // First read: our near-expiry token. The refresh loses the race and errors; the re-read
+      // finds the token a peer context rotated into storage.
+      getSession: sequenceOf([
+        tokenSession("stale", nowSec() + 5),
+        tokenSession("rotated", nowSec() + 3600),
+      ]),
+      refreshSession: () =>
+        Promise.resolve({
+          data: { session: null },
+          error: { name: "AuthRefreshDiscardedError", message: "discarded" },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBe("rotated");
+  });
+
+  it("INV-11: getAccessToken is null when no session exists", async () => {
+    const { deps } = makeDeps({
+      getSession: () => Promise.resolve({ data: { session: null } }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.getAccessToken()).toBeNull();
+  });
+
+  it("INV-11: refreshAccessToken returns the peer-rotated token when the re-read shows a newer one after a discarded refresh", async () => {
+    const { deps } = makeDeps({
+      // The before-snapshot reads "old"; the rotation is discarded because a peer already
+      // rotated; the re-read finds the winning token the peer left in storage.
+      getSession: sequenceOf([
+        tokenSession("old", nowSec() + 3600),
+        tokenSession("winner", nowSec() + 3600),
+      ]),
+      refreshSession: () =>
+        Promise.resolve({
+          data: { session: null },
+          error: { name: "AuthRefreshDiscardedError", message: "discarded" },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.refreshAccessToken()).toBe("winner");
+  });
+
+  it("INV-11: refreshAccessToken is null when the refresh fails and nothing fresher is in storage", async () => {
+    const { deps } = makeDeps({
+      // The stored token never changes across the before-snapshot and the re-read: the refresh
+      // token is genuinely spent, a real failure rather than a discarded rotation.
+      getSession: () =>
+        Promise.resolve({
+          data: { session: tokenSession("old", nowSec() + 3600) },
+        }),
+      refreshSession: () =>
+        Promise.resolve({
+          data: { session: null },
+          error: { message: "invalid refresh token" },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.refreshAccessToken()).toBeNull();
+  });
+
+  it("INV-11: the signed-out breadcrumb names the vendor event on SIGNED_OUT", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const { deps, fireAuthChange } = makeDeps({});
+      createSupabaseIdentity(deps);
+      fireAuthChange({ access_token: "a", user: fakeUser({ id: "u1" }) });
+      fireAuthChange(null, "SIGNED_OUT");
+      expect(info).toHaveBeenCalledWith("crossy: signed out (SIGNED_OUT)");
+    } finally {
+      info.mockRestore();
+    }
+  });
+});
