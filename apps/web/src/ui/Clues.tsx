@@ -15,6 +15,7 @@ import type { Clue } from "../domain/types";
 import type { CluePresence, SolverEntry } from "./roster";
 import { ClueText } from "./ClueText";
 import { Divider, cx } from "./primitives";
+import { PanelTabs, type PanelTab } from "./PanelTabs";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -30,6 +31,50 @@ const DIR_ABBR: Record<Direction, string> = { across: "A", down: "D" };
  * entries this puzzle actually has). A row in this set gets a quiet amber wash so "See 42-Down"
  * and its friends read at a glance, always weaker than the active row's own amber. */
 export type ReferencedClues = ReadonlySet<string>;
+
+/**
+ * The tab wiring the clue surfaces gain once a room is completed. When absent (mid-solve), every
+ * surface is byte-identical to today: no header, no tab, the clue lists exactly as they were. When
+ * present, a [Clues | Analysis] header caps the panel and the active tab's body cross-fades in place
+ * of the clue lists (the Clues body is unchanged; only the sibling Analysis panel is added). The
+ * content is passed in as a node so this module stays free of the analysis data plumbing.
+ */
+export interface AnalysisTab {
+  /** The active tab. */
+  readonly value: PanelTab;
+  readonly onChange: (tab: PanelTab) => void;
+  /** The Analysis panel body (AnalysisPanel or its placeholder). */
+  readonly content: React.ReactNode;
+}
+
+/**
+ * The panel body switch, keyed so React remounts the incoming body and the cross-fade re-arms per
+ * tab. `.panel-fade` fades ONLY this inner content (reduced motion snaps); the panel frame and the
+ * board never move, so the frozen Clues view stays pixel-identical, it just fades. `idBase`
+ * namespaces the aria tabpanel ids so aria-labelledby resolves per surface.
+ */
+function TabbedBody({
+  tab,
+  idBase,
+  clues,
+}: {
+  tab: AnalysisTab;
+  idBase: string;
+  clues: React.ReactNode;
+}) {
+  const isAnalysis = tab.value === "analysis";
+  return (
+    <div
+      key={tab.value}
+      role="tabpanel"
+      id={`${idBase}-panel-${tab.value}`}
+      aria-labelledby={`${idBase}-tab-${tab.value}`}
+      className="panel-fade flex min-h-0 flex-1 flex-col motion-reduce:animate-none"
+    >
+      {isAnalysis ? tab.content : clues}
+    </div>
+  );
+}
 
 /** The clue containing the cursor on a given axis, if any. */
 export function clueOn(
@@ -65,18 +110,51 @@ export function ClueStrip({ clue }: { clue: Clue | undefined }) {
 /**
  * Mobile only: the active-clue bar. Prev/next step through clues on the current axis; the
  * label opens the sheet. On a mini with no word on an axis it states that plainly.
+ *
+ * Once the room is completed (`completed`), the bar becomes the door to Analysis, the mock's iOS
+ * treatment: a gold-edged invitation reading "Analysis" that opens the sheet on the Analysis tab.
+ * The prev/next steppers drop (there is no active clue to step through on a finished board).
  */
 export function ClueBar({
   clue,
+  completed,
   onOpen,
+  onOpenAnalysis,
   onPrev,
   onNext,
 }: {
   clue: Clue | undefined;
+  completed?: boolean | undefined;
   onOpen: () => void;
+  /** Open the sheet on the Analysis tab; used by the completed-state door. */
+  onOpenAnalysis?: (() => void) | undefined;
   onPrev: () => void;
   onNext: () => void;
 }) {
+  if (completed) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenAnalysis ?? onOpen}
+        aria-label="Open analysis"
+        className={cx(
+          "md:hidden flex items-center gap-3 border-b border-border-dashed px-4 py-2.5 text-left",
+          "border-focus-ring bg-gradient-to-b from-gold-2 to-panel",
+        )}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-gold-11">
+            Analysis
+          </span>
+          <span className="block text-2 text-text-subtle">
+            See how the room solved it
+          </span>
+        </span>
+        <ChevronRightIcon className="shrink-0 text-gold-9" />
+      </button>
+    );
+  }
+
   return (
     <div className="md:hidden flex items-stretch border-b border-dashed border-border-dashed">
       <Button
@@ -274,6 +352,7 @@ export function ClueRail({
   presence,
   referenced,
   solvingNow,
+  analysisTab,
   onJump,
 }: {
   across: readonly Clue[];
@@ -285,37 +364,60 @@ export function ClueRail({
   presence?: CluePresence | undefined;
   referenced?: ReferencedClues | undefined;
   solvingNow?: React.ReactNode;
+  /** Present only once the room is completed; absent leaves the rail byte-identical to today. */
+  analysisTab?: AnalysisTab | undefined;
   onJump: (clue: Clue) => void;
 }) {
+  // The frozen Clues body, unchanged. When the tab exists it becomes the "clues" child of the fade
+  // switch; when it does not, it renders directly, so the solving rail is exactly as it was.
+  const cluesBody = (
+    <div className="grid grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 flex-1">
+      <div className="flex min-h-0 border-b border-dashed border-border-dashed wide:border-b-0 wide:border-r">
+        <ClueList
+          title="Across"
+          clues={across}
+          activeNumber={activeAcross}
+          isCurrentAxis={currentDirection === "across"}
+          filled={filled}
+          presence={presence}
+          referenced={referenced}
+          onJump={onJump}
+        />
+      </div>
+      <div className="flex min-h-0">
+        <ClueList
+          title="Down"
+          clues={down}
+          activeNumber={activeDown}
+          isCurrentAxis={currentDirection === "down"}
+          filled={filled}
+          presence={presence}
+          referenced={referenced}
+          onJump={onJump}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="hidden md:flex ultra:hidden flex-col min-h-0 h-full border-l border-dashed border-border-dashed">
-      {solvingNow}
-      <div className="grid grid-rows-2 wide:grid-rows-1 wide:grid-cols-2 min-h-0 flex-1">
-        <div className="flex min-h-0 border-b border-dashed border-border-dashed wide:border-b-0 wide:border-r">
-          <ClueList
-            title="Across"
-            clues={across}
-            activeNumber={activeAcross}
-            isCurrentAxis={currentDirection === "across"}
-            filled={filled}
-            presence={presence}
-            referenced={referenced}
-            onJump={onJump}
+      {analysisTab !== undefined ? (
+        <>
+          <PanelTabs
+            value={analysisTab.value}
+            onChange={analysisTab.onChange}
+            variant="rail"
+            idBase="rail"
           />
-        </div>
-        <div className="flex min-h-0">
-          <ClueList
-            title="Down"
-            clues={down}
-            activeNumber={activeDown}
-            isCurrentAxis={currentDirection === "down"}
-            filled={filled}
-            presence={presence}
-            referenced={referenced}
-            onJump={onJump}
-          />
-        </div>
-      </div>
+          {analysisTab.value === "clues" && solvingNow}
+          <TabbedBody tab={analysisTab} idBase="rail" clues={cluesBody} />
+        </>
+      ) : (
+        <>
+          {solvingNow}
+          {cluesBody}
+        </>
+      )}
     </div>
   );
 }
@@ -443,6 +545,7 @@ export function ClueDock({
   presence,
   referenced,
   solvingNow,
+  analysisTab,
   onJump,
 }: {
   across: readonly Clue[];
@@ -454,10 +557,13 @@ export function ClueDock({
   presence?: CluePresence | undefined;
   referenced?: ReferencedClues | undefined;
   solvingNow?: React.ReactNode;
+  /** Present only once the room is completed; absent leaves the dock byte-identical to today. */
+  analysisTab?: AnalysisTab | undefined;
   onJump: (clue: Clue) => void;
 }) {
-  return (
-    <div className="clue-dock hidden ultra:flex min-h-0 border-t border-dashed border-border-dashed">
+  // The frozen dock body, unchanged: solving-now column, then the two newspaper axes.
+  const dockBody = (
+    <div className="flex min-h-0 flex-1">
       <div className="empty:hidden shrink-0 w-[20rem] overflow-y-auto border-r border-dashed border-border-dashed">
         {solvingNow}
       </div>
@@ -484,9 +590,45 @@ export function ClueDock({
       />
     </div>
   );
+
+  if (analysisTab === undefined) {
+    return (
+      <div className="clue-dock hidden ultra:flex min-h-0 border-t border-dashed border-border-dashed">
+        {dockBody}
+      </div>
+    );
+  }
+
+  // Completed: the tab header caps the dock, and the Analysis panel replaces the axes. The Analysis
+  // body is centered to a readable measure so it does not stretch across the whole ultrawide dock.
+  return (
+    <div className="clue-dock hidden ultra:flex min-h-0 flex-col border-t border-dashed border-border-dashed">
+      <PanelTabs
+        value={analysisTab.value}
+        onChange={analysisTab.onChange}
+        variant="rail"
+        idBase="dock"
+      />
+      {analysisTab.value === "clues" ? (
+        <TabbedBody tab={analysisTab} idBase="dock" clues={dockBody} />
+      ) : (
+        <div
+          key="analysis"
+          role="tabpanel"
+          id="dock-panel-analysis"
+          aria-labelledby="dock-tab-analysis"
+          className="panel-fade flex min-h-0 flex-1 justify-center motion-reduce:animate-none"
+        >
+          <div className="w-full max-w-[34rem]">{analysisTab.content}</div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-/** Mobile bottom sheet: both lists, a drag-handle header, dismissed by the scrim or the close. */
+/** Mobile bottom sheet: both lists, a drag-handle header, dismissed by the scrim or the close. Once
+ * a room is completed it carries the same [Clues | Analysis] segmented control at its head and the
+ * Analysis panel, the iOS-style sheet the mock shows; mid-solve it is byte-identical to today. */
 export function ClueSheet({
   open,
   onClose,
@@ -498,6 +640,7 @@ export function ClueSheet({
   filled,
   presence,
   referenced,
+  analysisTab,
   onJump,
 }: {
   open: boolean;
@@ -510,12 +653,44 @@ export function ClueSheet({
   filled?: ReadonlySet<number> | undefined;
   presence?: CluePresence | undefined;
   referenced?: ReferencedClues | undefined;
+  /** Present only once the room is completed; absent leaves the sheet byte-identical to today. */
+  analysisTab?: AnalysisTab | undefined;
   onJump: (clue: Clue) => void;
 }) {
   const jumpAndClose = (clue: Clue): void => {
     onJump(clue);
     onClose();
   };
+
+  // The frozen two-list Clues body, unchanged.
+  const cluesBody = (
+    <div className="grid grid-rows-2 min-h-0 flex-1">
+      <div className="flex min-h-0 border-b border-dashed border-border-dashed">
+        <ClueList
+          title="Across"
+          clues={across}
+          activeNumber={activeAcross}
+          isCurrentAxis={currentDirection === "across"}
+          filled={filled}
+          presence={presence}
+          referenced={referenced}
+          onJump={jumpAndClose}
+        />
+      </div>
+      <div className="flex min-h-0">
+        <ClueList
+          title="Down"
+          clues={down}
+          activeNumber={activeDown}
+          isCurrentAxis={currentDirection === "down"}
+          filled={filled}
+          presence={presence}
+          referenced={referenced}
+          onJump={jumpAndClose}
+        />
+      </div>
+    </div>
+  );
 
   // The panel is md:hidden, but shadcn's overlay renders through a portal and cannot inherit
   // that class; close on a live resize past the desktop breakpoint so a stray scrim never
@@ -541,43 +716,47 @@ export function ClueSheet({
         showCloseButton={false}
         className="md:hidden gap-0 p-0 rounded-t-2xl data-[side=bottom]:h-[75dvh]"
       >
-        <SheetHeader className="relative flex-row items-center justify-between gap-0 p-0 pl-4 pr-2 pt-3 pb-1">
-          <span className="absolute left-1/2 -translate-x-1/2 top-1.5 h-1 w-9 rounded-full bg-border-strong" />
-          <SheetTitle className="font-display text-5 font-medium">
-            Clues
-          </SheetTitle>
-          <SheetClose asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="Close">
-              <Cross2Icon />
-            </Button>
-          </SheetClose>
-        </SheetHeader>
-        <div className="grid grid-rows-2 min-h-0 flex-1">
-          <div className="flex min-h-0 border-b border-dashed border-border-dashed">
-            <ClueList
-              title="Across"
-              clues={across}
-              activeNumber={activeAcross}
-              isCurrentAxis={currentDirection === "across"}
-              filled={filled}
-              presence={presence}
-              referenced={referenced}
-              onJump={jumpAndClose}
-            />
-          </div>
-          <div className="flex min-h-0">
-            <ClueList
-              title="Down"
-              clues={down}
-              activeNumber={activeDown}
-              isCurrentAxis={currentDirection === "down"}
-              filled={filled}
-              presence={presence}
-              referenced={referenced}
-              onJump={jumpAndClose}
-            />
-          </div>
-        </div>
+        {analysisTab !== undefined ? (
+          // Completed: the grabber, the segmented control at the head, then the faded body. The
+          // title collapses into the SheetTitle for a11y (screen readers still announce the sheet)
+          // while the segmented control is the visible header the mock shows.
+          <>
+            <SheetHeader className="relative gap-0 p-0 px-3 pt-3 pb-1">
+              <span className="absolute left-1/2 -translate-x-1/2 top-1.5 h-1 w-9 rounded-full bg-border-strong" />
+              <SheetTitle className="sr-only">Clues and Analysis</SheetTitle>
+              <div className="mt-2 flex items-center gap-2">
+                <PanelTabs
+                  value={analysisTab.value}
+                  onChange={analysisTab.onChange}
+                  variant="segment"
+                  idBase="sheet"
+                  className="flex-1"
+                />
+                <SheetClose asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label="Close">
+                    <Cross2Icon />
+                  </Button>
+                </SheetClose>
+              </div>
+            </SheetHeader>
+            <TabbedBody tab={analysisTab} idBase="sheet" clues={cluesBody} />
+          </>
+        ) : (
+          <>
+            <SheetHeader className="relative flex-row items-center justify-between gap-0 p-0 pl-4 pr-2 pt-3 pb-1">
+              <span className="absolute left-1/2 -translate-x-1/2 top-1.5 h-1 w-9 rounded-full bg-border-strong" />
+              <SheetTitle className="font-display text-5 font-medium">
+                Clues
+              </SheetTitle>
+              <SheetClose asChild>
+                <Button variant="ghost" size="icon-sm" aria-label="Close">
+                  <Cross2Icon />
+                </Button>
+              </SheetClose>
+            </SheetHeader>
+            {cluesBody}
+          </>
+        )}
       </SheetContent>
     </Sheet>
   );

@@ -131,6 +131,46 @@ export async function fetchAttributionOnce(
 }
 
 /**
+ * One attempt at GET /games/{id}/analysis, returning the WHOLE bundle (owners + momentum + moments),
+ * for the Analysis tab. The mosaic's fetchAttributionOnce reads only `owners` from the same endpoint;
+ * this reads the rest. The server caches the bundle per game (INV-4 frozen, ANALYSIS.md), so this
+ * second fetch alongside the mosaic's is a cheap cache hit, not a recompute. Numeric owner keys are
+ * parsed back from the JSON string keys (the wire stringifies the cell index), matching the cell
+ * space the grid uses. Null on any non-200 (the completion-race 404, an auth blip) and never throws,
+ * so a player who just finished never sees an error surfaced from the tab's read.
+ */
+export async function fetchAnalysisOnce(
+  apiBase: string,
+  gameId: string,
+  getToken: BearerSource,
+): Promise<AnalysisResponse | null> {
+  try {
+    const token = await getToken();
+    if (token === null) return null;
+    const res = await fetch(`${apiBase}/games/${gameId}/analysis`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as AnalysisResponse;
+    const owners: Record<number, string> = {};
+    for (const [cell, userId] of Object.entries(body.owners ?? {})) {
+      owners[Number(cell)] = userId;
+    }
+    return {
+      owners,
+      momentum: body.momentum ?? { durationSeconds: 0, samples: [] },
+      moments: body.moments ?? {
+        firstToFall: null,
+        lastSquare: null,
+        turningPoint: null,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The completion-race retry knobs: the client can observe `completed` over the socket a beat before
  * the session has flushed `completed_at` to Postgres, so the endpoint may 404 for a short window
  * right after a live finish (the gate is completed-only, apps/api games/routes.ts). Retry a few
@@ -164,15 +204,38 @@ export async function fetchAttributionWithRetry(
   fetchOnce: () => Promise<OwnerMap | null>,
   options: AttributionRetryOptions = {},
 ): Promise<OwnerMap | null> {
+  return fetchWithRetry(fetchOnce, options);
+}
+
+/**
+ * The same completion-race retry, over any fetch-or-null, so the mosaic (owner map) and the Analysis
+ * tab (the whole bundle) share one control-flow loop instead of two. Resolves with the first
+ * non-null result, or null when every attempt fails or the loop is aborted.
+ */
+export async function fetchWithRetry<T>(
+  fetchOnce: () => Promise<T | null>,
+  options: AttributionRetryOptions = {},
+): Promise<T | null> {
   const tries = options.tries ?? 3;
   const delayMs = options.delayMs ?? 700;
   const sleep = options.sleep ?? defaultSleep;
   for (let attempt = 0; attempt < tries; attempt += 1) {
     if (options.signal?.aborted === true) return null;
-    const owners = await fetchOnce();
-    if (owners !== null) return owners;
+    const result = await fetchOnce();
+    if (result !== null) return result;
     // No wait after the final attempt: we are about to give up.
     if (attempt < tries - 1) await sleep(delayMs);
   }
   return null;
+}
+
+/**
+ * Fetch the whole analysis bundle across the completion race, the tab's twin of
+ * fetchAttributionWithRetry. Same loop, the full AnalysisResponse instead of just the owner map.
+ */
+export async function fetchAnalysisWithRetry(
+  fetchOnce: () => Promise<AnalysisResponse | null>,
+  options: AttributionRetryOptions = {},
+): Promise<AnalysisResponse | null> {
+  return fetchWithRetry(fetchOnce, options);
 }
