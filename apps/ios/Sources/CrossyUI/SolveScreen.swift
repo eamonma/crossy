@@ -200,6 +200,30 @@ public struct SolveScreen: View {
         let barSync: SyncState = barSettled ? store.sync : .connecting
 
         return ZStack {
+            #if canImport(UIKit)
+                // The deck presented as the system keyboard (DeckKeyboard): a
+                // FaceTime / PiP window keeps clear of it and the system positions it
+                // above the home indicator, both because a custom inputView publishes
+                // the keyboard frame. Zero-size and non-interactive here; it owns only
+                // the first responder. Presence is asserted from the room's first
+                // frame (not gated on `opening`): if the deck waited for the settle
+                // beat it would present after the board is already on screen, so
+                // avoidance would drag the board and clue bar up mid-fade. Active from
+                // frame one, the board arrives pre-inset and the clue bar fades in
+                // place, riding the deck up as one motion. The deck's geometry is
+                // fixed (DeckLayout), so it has no birth to wait for.
+                DeckKeyboardMount(
+                    ground: ground,
+                    rebusBuffer: model.rebusBuffer,
+                    isActive: status == .ongoing && !spectating,
+                    onPress: { key in
+                        dismissTransients()
+                        model.press(key)
+                    }
+                )
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+            #endif
             // The base layer: the full-bleed board over the deck (the owner's
             // full-bleed ruling, 2026-07-10). The board runs from the screen's
             // top edge to the deck's top and never under the deck (ID-4: the
@@ -241,7 +265,16 @@ public struct SolveScreen: View {
                             if spectating {
                                 watchingZone
                             } else {
-                                deckZone
+                                // The deck holds no layout here: it is the system
+                                // keyboard (DeckKeyboard, mounted above), so the board
+                                // rises above it through keyboard avoidance. The macOS
+                                // test build has no UIKit input view, so it keeps the
+                                // inline SwiftUI deck (`deckZone`).
+                                #if canImport(UIKit)
+                                    Color.clear.frame(height: 0)
+                                #else
+                                    deckZone
+                                #endif
                             }
                         }
                     }
@@ -907,30 +940,35 @@ public struct SolveScreen: View {
 
     // MARK: - The deck zone
 
-    /// The deck over solid canvas (ID-4), the rebus inline field surfacing above it
-    /// while an entry is open (EXPERIENCE.md baseline; the exhale bubble is I4).
-    private var deckZone: some View {
-        VStack(spacing: 10) {
-            if let buffer = model.rebusBuffer {
-                RebusField(buffer: buffer, ground: ground)
+    #if !canImport(UIKit)
+        /// The inline SwiftUI deck, the macOS test build's fallback. On iOS the deck
+        /// is the system keyboard (DeckKeyboard); this path renders it in the layout
+        /// where UIKit is absent, so CrossyUI still compiles and previews there.
+        /// The deck over solid canvas (ID-4), the rebus inline field surfacing above
+        /// it while an entry is open (EXPERIENCE.md baseline; the exhale bubble is I4).
+        private var deckZone: some View {
+            VStack(spacing: 10) {
+                if let buffer = model.rebusBuffer {
+                    RebusField(buffer: buffer, ground: ground)
+                }
+                KeyDeck(ground: ground, isRebusActive: model.isRebusActive) { key in
+                    // A press is intent (DESIGN.md §4): panels yield at touch-down
+                    // (the deck presses on first contact), the letter still lands.
+                    dismissTransients()
+                    model.press(key)
+                }
             }
-            KeyDeck(ground: ground, isRebusActive: model.isRebusActive) { key in
-                // A press is intent (DESIGN.md §4): panels yield at touch-down
-                // (the deck presses on first contact), the letter still lands.
-                dismissTransients()
-                model.press(key)
-            }
+            .padding(.horizontal, ChromeLayout.inset)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+            .background(Color(rgb: ground.tokens.canvas))
+            .animation(
+                .spring(
+                    response: Motion.Springs.chromeResponse,
+                    dampingFraction: Motion.Springs.chromeDampingFraction),
+                value: model.isRebusActive)
         }
-        .padding(.horizontal, ChromeLayout.inset)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(Color(rgb: ground.tokens.canvas))
-        .animation(
-            .spring(
-                response: Motion.Springs.chromeResponse,
-                dampingFraction: Motion.Springs.chromeDampingFraction),
-            value: model.isRebusActive)
-    }
+    #endif
 
     /// The abandoned room (EXPERIENCE.md: terminal and quiet): the board freezes
     /// with a one-line notice, nothing else. Browsing stays live above.
