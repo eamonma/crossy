@@ -1087,8 +1087,8 @@ function LiveGame({
   // already fetches the same (cached) endpoint for its owner map, so this is a cheap cache hit. Gated
   // on `boardCompleted` (an ongoing game has no analysis, and its trace would leak progress).
   const analysisSource = useMemo(
-    () => ({ apiBase, gameId, getToken: identity.getAccessToken }),
-    [apiBase, gameId, identity],
+    () => ({ apiBase, gameId, bearer }),
+    [apiBase, gameId, bearer],
   );
   const analysis = useGameAnalysis({
     source: analysisSource,
@@ -1268,11 +1268,7 @@ function LiveGame({
                     bloom={bloomOnCompletion}
                     replayTime={replay.time}
                     sequence={sequence}
-                    source={{
-                      apiBase,
-                      gameId,
-                      getToken: identity.getAccessToken,
-                    }}
+                    source={{ apiBase, gameId, bearer }}
                   />
                 </div>
               )}

@@ -18,11 +18,14 @@
 //   - fetchAttributionOnce / ...WithRetry: the GET /games/{id}/analysis read, typed to userIds
 //     only (INV-6), with the completion-race retry the endpoint needs (the client can see
 //     `completed` over the socket a beat before the session flushes completed_at to Postgres, so
-//     the endpoint 404s briefly). It reuses the app's authenticated request path (a TokenSource,
-//     the same bearer the home fetchers resolve). The mosaic reads only `owners` from the richer
-//     bundle; momentum/moments are typed but unused here (the Analysis tab consumes them next).
+//     the endpoint 404s briefly). It rides the authedFetch seam with the same Bearer the home
+//     fetchers resolve, so a stale access token gets one refresh-and-retry (INV-11). The mosaic
+//     reads only `owners` from the richer bundle; momentum/moments are typed but unused here
+//     (the Analysis tab consumes them next).
 import type { StackMember } from "./primitives";
 import type { OwnerMap, Roster } from "./mosaicReveal";
+import type { Bearer } from "../net/authedFetch";
+import { authedFetch } from "../net/authedFetch";
 import { identityColor } from "./identityRoster";
 
 /** A minimal read surface over the store, so this stays testable without a real GameStore. */
@@ -104,29 +107,26 @@ export interface AnalysisResponse {
   readonly sequence: { cell: number; atSeconds: number }[];
 }
 
-/** A token resolver, the same shape homeData.ts's fetchers take (refreshed per call, null when
- * signed out). Aliased locally so this module does not import the home data layer. */
-export type BearerSource = () => Promise<string | null>;
-
 /**
  * One attempt at GET /games/{id}/analysis. Returns the owner map as an `OwnerMap` (cell ->
  * userId, numeric keys parsed back from the JSON string keys) on 200; null on any non-200 (the
- * 404 the completion race produces, or an auth blip). Reads only `owners` from the richer bundle;
- * the mosaic needs nothing more. Never throws for a network error either: this is a best-effort
- * enhancement over the last-writer paint, so a failure is a silent null, never an error surfaced
- * to a player who just finished a puzzle.
+ * 404 the completion race produces, or an auth blip). Rides the authedFetch seam with the same
+ * Bearer the home fetchers use (INV-11): a stale access token 401s once, refreshes, and replays
+ * before this resolves; a signed-out bearer throws in the seam before any call, caught below.
+ * Never throws for a network error either: this is a best-effort enhancement over the
+ * last-writer paint, so a failure is a silent null, never an error surfaced to a player who
+ * just finished a puzzle.
  */
 export async function fetchAttributionOnce(
   apiBase: string,
   gameId: string,
-  getToken: BearerSource,
+  bearer: Bearer,
 ): Promise<OwnerMap | null> {
   try {
-    const token = await getToken();
-    if (token === null) return null;
-    const res = await fetch(`${apiBase}/games/${gameId}/analysis`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const res = await authedFetch(
+      bearer,
+      `${apiBase}/games/${gameId}/analysis`,
+    );
     if (!res.ok) return null;
     const body = (await res.json()) as AnalysisResponse;
     const owners = body.owners ?? {};
@@ -148,20 +148,20 @@ export async function fetchAttributionOnce(
  * this reads the rest. The server caches the bundle per game (INV-4 frozen, ANALYSIS.md), so this
  * second fetch alongside the mosaic's is a cheap cache hit, not a recompute. Numeric owner keys are
  * parsed back from the JSON string keys (the wire stringifies the cell index), matching the cell
- * space the grid uses. Null on any non-200 (the completion-race 404, an auth blip) and never throws,
- * so a player who just finished never sees an error surfaced from the tab's read.
+ * space the grid uses. Same seam as fetchAttributionOnce (authedFetch, one 401 refresh-and-retry,
+ * INV-11). Null on any non-200 (the completion-race 404, an auth blip) and never throws, so a
+ * player who just finished never sees an error surfaced from the tab's read.
  */
 export async function fetchAnalysisOnce(
   apiBase: string,
   gameId: string,
-  getToken: BearerSource,
+  bearer: Bearer,
 ): Promise<AnalysisResponse | null> {
   try {
-    const token = await getToken();
-    if (token === null) return null;
-    const res = await fetch(`${apiBase}/games/${gameId}/analysis`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    const res = await authedFetch(
+      bearer,
+      `${apiBase}/games/${gameId}/analysis`,
+    );
     if (!res.ok) return null;
     const body = (await res.json()) as AnalysisResponse;
     const owners: Record<number, string> = {};

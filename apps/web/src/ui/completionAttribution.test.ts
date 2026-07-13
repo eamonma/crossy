@@ -9,6 +9,7 @@ import type { Board } from "@crossy/protocol";
 import { GameStore } from "../store/gameStore";
 import type { StackMember } from "./primitives";
 import type { OwnerMap } from "./mosaicReveal";
+import type { Bearer } from "../net/authedFetch";
 import {
   fetchAttributionOnce,
   fetchAttributionWithRetry,
@@ -103,7 +104,10 @@ describe("shouldBloomOnCompletion (edge-trigger, ongoing -> completed only)", ()
 });
 
 describe("fetchAttributionOnce (GET /games/:id/analysis, reads owners; INV-6 userIds only)", () => {
-  const token = () => Promise.resolve<string | null>("tok");
+  const bearer: Bearer = {
+    getToken: () => Promise.resolve("tok"),
+    refresh: () => Promise.resolve(null),
+  };
 
   it("parses the wire owners (string cell keys) back into a numeric-keyed owner map", async () => {
     const fetchStub = stubFetch({
@@ -111,7 +115,7 @@ describe("fetchAttributionOnce (GET /games/:id/analysis, reads owners; INV-6 use
       json: { owners: { "0": "u-a", "5": "u-b", "12": "u-a" } },
     });
     await withFetch(fetchStub, async () => {
-      const map = await fetchAttributionOnce("https://api", "g1", token);
+      const map = await fetchAttributionOnce("https://api", "g1", bearer);
       expect(map).toEqual({ 0: "u-a", 5: "u-b", 12: "u-a" });
     });
     // The call hit the analysis endpoint with the bearer resolved fresh.
@@ -121,26 +125,56 @@ describe("fetchAttributionOnce (GET /games/:id/analysis, reads owners; INV-6 use
 
   it("returns null on a 404 (the completion race) without throwing, so the caller keeps last-writer", async () => {
     await withFetch(stubFetch({ ok: false, status: 404 }), async () => {
-      expect(await fetchAttributionOnce("https://api", "g1", token)).toBeNull();
+      expect(
+        await fetchAttributionOnce("https://api", "g1", bearer),
+      ).toBeNull();
     });
   });
 
   it("returns null on a network error, never surfacing it to the player", async () => {
     const throwing: FetchLike = () => Promise.reject(new Error("offline"));
     await withFetch(throwing, async () => {
-      expect(await fetchAttributionOnce("https://api", "g1", token)).toBeNull();
+      expect(
+        await fetchAttributionOnce("https://api", "g1", bearer),
+      ).toBeNull();
     });
   });
 
-  it("returns null when signed out (no bearer), never calling the endpoint", async () => {
+  it("returns null when signed out (no bearer), never calling the endpoint (INV-11: the seam throws before any dial)", async () => {
     const fetchStub = stubFetch({ ok: true, json: { owners: {} } });
     await withFetch(fetchStub, async () => {
-      const map = await fetchAttributionOnce("https://api", "g1", () =>
-        Promise.resolve(null),
-      );
+      const map = await fetchAttributionOnce("https://api", "g1", {
+        getToken: () => Promise.resolve(null),
+        refresh: () => Promise.resolve(null),
+      });
       expect(map).toBeNull();
     });
     expect(fetchStub.calls).toHaveLength(0);
+  });
+
+  it("a stale bearer rides the seam: one 401 forces a refresh and the replay wins (INV-11)", async () => {
+    const calls: FetchCall[] = [];
+    const sequenced: FetchLike = (input, init) => {
+      calls.push({ url: input, auth: init?.headers?.["authorization"] });
+      return Promise.resolve(
+        (calls.length === 1
+          ? { ok: false, status: 401, json: () => Promise.resolve({}) }
+          : {
+              ok: true,
+              status: 200,
+              json: () => Promise.resolve({ owners: { "0": "u-a" } }),
+            }) as Response,
+      );
+    };
+    await withFetch(sequenced, async () => {
+      const map = await fetchAttributionOnce("https://api", "g1", {
+        getToken: () => Promise.resolve("stale"),
+        refresh: () => Promise.resolve("fresh"),
+      });
+      // The 401 never surfaces: the seam refreshed and replayed, and the owner map landed.
+      expect(map).toEqual({ 0: "u-a" });
+    });
+    expect(calls.map((c) => c.auth)).toEqual(["Bearer stale", "Bearer fresh"]);
   });
 });
 

@@ -24,16 +24,18 @@ import {
   lastWriterOwnerMap,
   rosterOf,
   shouldBloomOnCompletion,
-  type BearerSource,
   type WriterSource,
 } from "./completionAttribution";
+import type { Bearer } from "../net/authedFetch";
 import { useTheme } from "./useTheme";
 
-/** The live attribution source, present only in LiveApp (the demo has no backend). */
+/** The live attribution source, present only in LiveApp (the demo has no backend). The bearer is
+ * the REST Bearer the room already holds (LiveGame's useBearer), riding the authedFetch seam so a
+ * stale token gets one refresh-and-retry (INV-11). */
 export interface AttributionSource {
   readonly apiBase: string;
   readonly gameId: string;
-  readonly getToken: BearerSource;
+  readonly bearer: Bearer;
 }
 
 /**
@@ -68,8 +70,7 @@ export function useAttributionOwnerMap({
     if (source === undefined) return; // the demo: last-writer only, no endpoint call.
     const signal = { aborted: false };
     void fetchAttributionWithRetry(
-      () =>
-        fetchAttributionOnce(source.apiBase, source.gameId, source.getToken),
+      () => fetchAttributionOnce(source.apiBase, source.gameId, source.bearer),
       { signal },
     ).then((firstCorrect) => {
       // Swap to first-correct only on success and only while still mounted. On a 404-forever race
@@ -80,9 +81,9 @@ export function useAttributionOwnerMap({
     return () => {
       signal.aborted = true;
     };
-    // Keyed on the game and its api/token source, not the store: the map is recomputed instantly on
+    // Keyed on the game and its api/bearer source, not the store: the map is recomputed instantly on
     // mount from writerOf via useState's initializer, and the fetch re-runs if the game changes.
-  }, [source?.apiBase, source?.gameId, source?.getToken, source]);
+  }, [source?.apiBase, source?.gameId, source?.bearer, source]);
 
   return ownerMap;
 }

@@ -17,6 +17,8 @@ import type { AppConfig } from "../config/config";
 import type { Identity } from "../identity";
 import type { Navigate } from "../nav";
 import { gameHref, homeHref } from "../nav";
+import { authedFetch } from "../net/authedFetch";
+import { useBearer } from "./useResource";
 import { TopBar } from "./TopBar";
 import { SignInButtons } from "./AuthBar";
 import { CapsLabel, cx, Divider } from "./primitives";
@@ -278,6 +280,10 @@ function CreateForm({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const apiBase = params.get("api") ?? config.apiBase;
+  // The REST bearer (ui/useResource): the `?token=` dogfood override wins with a fixed token and
+  // a no-op refresh; otherwise the identity port. Both creates ride the authedFetch seam through
+  // it, so a stale access token gets one refresh-and-retry (INV-11) instead of a raw failure.
+  const bearer = useBearer(identity, params.get("token"));
 
   // The display-metadata read (title, byline, geometry) over whatever is loaded or pasted.
   // Null means "not a JSON object", which is also the one shape the server rejects outright.
@@ -350,20 +356,18 @@ function CreateForm({
     }
 
     setPhase({ kind: "creating" });
-    const token = await identity.getAccessToken();
-    if (token === null) {
+    // A true sign-out that raced the gate (getAccessToken is null iff no session, INV-11): keep
+    // the specific session-expired sentence. The seam would throw on the null bearer otherwise,
+    // landing in the generic network catch below with the wrong message.
+    if ((await bearer.getToken()) === null) {
       setPhase({ kind: "error", message: rejectionSentence("UNAUTHORIZED") });
       return;
     }
-    const auth = {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    };
 
     try {
-      const puzzleRes = await fetch(`${apiBase}/puzzles`, {
+      const puzzleRes = await authedFetch(bearer, `${apiBase}/puzzles`, {
         method: "POST",
-        headers: auth,
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(doc),
       });
       if (!puzzleRes.ok) {
@@ -379,9 +383,9 @@ function CreateForm({
       // The API owns the game name: send the creator's optional label so it persists and is
       // returned on the game view. The server trims and caps it too; we match its 80-char bound.
       const label = name.trim().slice(0, 80);
-      const gameRes = await fetch(`${apiBase}/games`, {
+      const gameRes = await authedFetch(bearer, `${apiBase}/games`, {
         method: "POST",
-        headers: auth,
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(
           label === "" ? { puzzleId } : { puzzleId, name: label },
         ),

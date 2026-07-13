@@ -52,18 +52,4 @@ export default tseslint.config(
       ],
     },
   },
-  // Two pre-existing authenticated fetchers owned by other tracks (CreateGame: the create flow;
-  // completionAttribution: the analysis reads). They predate the loader's move onto the seam and
-  // are tracked to migrate onto authedFetch; exempted narrowly here so this fence lands without
-  // reaching across track boundaries. They are debt, not "legitimately outside the seam"; new code
-  // must ride the seam.
-  {
-    files: [
-      "apps/web/src/ui/CreateGame.tsx",
-      "apps/web/src/ui/completionAttribution.ts",
-    ],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
 );
