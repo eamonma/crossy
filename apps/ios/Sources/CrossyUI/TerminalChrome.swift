@@ -1,7 +1,7 @@
 // The kicked exit, the room's terminal screen (roadmap I2d): paper, the one
 // honest sentence, and a way back (ID-5; EXPERIENCE.md Kicked). Copy lives in
 // RoomTerminal so the words are pinned headlessly. The stats card that used to
-// live here grew into the room-facts card (RoomFactsCard.swift, owner ruling
+// live here grew into the room-facts surface (RoomFactsSheet.swift, owner ruling
 // 2026-07-10: the time pill is the room's facts).
 
 import CrossyDesign

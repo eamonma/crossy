@@ -185,12 +185,10 @@ final class DemoRoom {
         if arguments.contains("-i2cBrowser") {
             chrome.presentBrowser()
         }
-        if arguments.contains("-i2cFacts") {
-            // The one facts surface (redesign 2026-07-11): mid-solve the card
-            // lands open with the §12 operation rows; the -i2eFactsPopover
-            // flag retired with the popover it raised.
-            chrome.presentFacts()
-        }
+        // (-i2cFacts retired with the facts morph, 2026-07-12: the facts
+        // surface is a system sheet now, and a system presentation cannot be
+        // scripted open, the same reasoning that retired -i2cRoster and
+        // -i2fShare.)
         // (-i2fShare retired with the share morph card: share is a system
         // Menu now, and a system presentation cannot be scripted open, the
         // same reasoning that retired -i2cRoster.)
@@ -256,14 +254,10 @@ final class DemoRoom {
                             solveTimeSeconds: max(0, Int(Date().timeIntervalSince(origin))),
                             totalEvents: arguments.contains("-stress") ? 1284 : 143,
                             participantCount: store.participants.count))))
-            if arguments.contains("-i2eSealedPill") {
-                // The terminal pill at rest (redesign 2026-07-11): let the
-                // mosaic and the auto-summoned stats card play out, then pour
-                // the card back without a walk so the sealed pill stands for
-                // a screenshot (simctl cannot tap the card away).
-                try? await Task.sleep(for: .milliseconds(3400))
-                chrome.settleFacts(open: false, animated: false)
-            }
+            // (-i2eSealedPill retired with the facts morph, 2026-07-12: the
+            // facts sheet no longer auto-summons at completion, so the sealed
+            // pill stands as the record the instant the game completes, with
+            // nothing to pour back for the screenshot.)
         }
 
         if arguments.contains("-i2dAbandoned") {

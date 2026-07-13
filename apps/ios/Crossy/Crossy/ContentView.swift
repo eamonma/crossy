@@ -23,23 +23,6 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    init() {
-        // The facts card's morph character (PillInflation). The shipping
-        // default is metaball on iOS 26+ (owner ruling 2026-07-11: the
-        // system's materialize swap inside a GlassEffectContainer, falling
-        // back to the clean frame-interpolation walk below 26). -gooClean and
-        // -gooOvershoot override it for reference/regression; -gooMetaball is
-        // the default and stays reachable as an explicit no-op.
-        let arguments = ProcessInfo.processInfo.arguments
-        if arguments.contains("-gooClean") {
-            PillInflation.character = .clean
-        } else if arguments.contains("-gooOvershoot") {
-            PillInflation.character = .overshoot
-        } else if arguments.contains("-gooMetaball") {
-            PillInflation.character = .metaball
-        }
-    }
-
     var body: some View {
         // The glassEffectID recheck rig (MorphLab.swift): evidence only.
         if ProcessInfo.processInfo.arguments.contains("-morphLab") {

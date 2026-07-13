@@ -4,44 +4,36 @@ import XCTest
 
 @testable import CrossyUI
 
-// The room-facts card (owner ruling 2026-07-10: the time pill is the room's
-// facts; redesigned 2026-07-11: one morph for both moments, the popover and
-// the clock-rider retired). Pinned like every morph: the geometry is pure
-// math (fixed-height slots, the operations block included), the words derive
-// once as plain strings, and the headline clock is one rule shared with the
-// bar's own arithmetic, so the frozen pill and the card always agree.
+// The room-facts sheet (owner ruling 2026-07-10: the time pill is the room's
+// facts; the tap-opened surface is a plain system sheet, 2026-07-12). Pinned
+// like the ShareQRSheet: the detent height is pure slot arithmetic (the
+// operations block included), the words derive once as plain strings, and the
+// headline clock is one rule shared with the bar's own arithmetic, so the frozen
+// pill and the sheet always agree.
 
-final class FactsCardLayoutTests: XCTestCase {
-    // The open frame is arithmetic, never font metrics (DESIGN.md §4: the
-    // morph's endpoints are layout facts): slots plus padding, the detail and
-    // the operation rows adding their exact heights.
-    func test_panelHeight_isSlotArithmetic() {
+final class RoomFactsSheetLayoutTests: XCTestCase {
+    // The detent height is arithmetic, never font metrics (the ShareQRSheetLayout
+    // discipline): slots plus padding, the detail and the operation rows adding
+    // their exact heights.
+    func test_height_isSlotArithmetic() {
         XCTAssertEqual(
-            FactsCardLayout.panelHeight(hasDetail: false, operationRows: 0), 102)
+            RoomFactsSheetLayout.height(hasDetail: false, operationRows: 0), 152)
         XCTAssertEqual(
-            FactsCardLayout.panelHeight(hasDetail: true, operationRows: 0), 124)
+            RoomFactsSheetLayout.height(hasDetail: true, operationRows: 0), 180)
     }
 
-    // Mid-solve the card carries the §12 operations under a one-point
-    // hairline (redesign 2026-07-11): each row adds its fixed height, and the
-    // hairline block appears exactly once, only when rows exist.
-    func test_panelHeight_operationRowsAddExactly_section12() {
-        let bare = FactsCardLayout.panelHeight(hasDetail: true, operationRows: 0)
-        let one = FactsCardLayout.panelHeight(hasDetail: true, operationRows: 1)
-        let two = FactsCardLayout.panelHeight(hasDetail: true, operationRows: 2)
+    // Mid-solve the sheet carries the §12 operations under a one-point hairline:
+    // each row adds its fixed height, and the hairline block appears exactly
+    // once, only when rows exist.
+    func test_height_operationRowsAddExactly_section12() {
+        let bare = RoomFactsSheetLayout.height(hasDetail: true, operationRows: 0)
+        let one = RoomFactsSheetLayout.height(hasDetail: true, operationRows: 1)
+        let two = RoomFactsSheetLayout.height(hasDetail: true, operationRows: 2)
         let block =
-            FactsCardLayout.operationsAirAbove + FactsCardLayout.dividerHeight
-            + FactsCardLayout.operationsAirBelow
-        XCTAssertEqual(one, bare + block + FactsCardLayout.operationRowHeight)
-        XCTAssertEqual(two, one + FactsCardLayout.operationRowHeight)
-    }
-
-    // Row text takes the open card's CONSTANT content width, so truncation is
-    // computed once and a mid-morph width never re-truncates a line (owner
-    // device finding 2026-07-10, the stats pour-back).
-    func test_contentWidth_isConstantAgainstTheOpenCard_section4() {
-        XCTAssertEqual(FactsCardLayout.contentWidth(openWidth: 340), 300)
-        XCTAssertEqual(FactsCardLayout.contentWidth(openWidth: 10), 0)
+            RoomFactsSheetLayout.operationsAirAbove + RoomFactsSheetLayout.dividerHeight
+            + RoomFactsSheetLayout.operationsAirBelow
+        XCTAssertEqual(one, bare + block + RoomFactsSheetLayout.operationRowHeight)
+        XCTAssertEqual(two, one + RoomFactsSheetLayout.operationRowHeight)
     }
 }
 
@@ -72,7 +64,7 @@ final class RoomFactsClockTests: XCTestCase {
         XCTAssertEqual(time, "12:34")
     }
 
-    // Mid-solve the headline is the live ambient clock: the card never stops
+    // Mid-solve the headline is the live ambient clock: the sheet never stops
     // the room's time (the time pill is the room's facts, owner ruling
     // 2026-07-10).
     func test_headline_ticksWithNowWhileTheRoomRuns_ID2() {
@@ -88,9 +80,11 @@ final class RoomFactsClockTests: XCTestCase {
     }
 }
 
-// The card's words (EXPERIENCE.md Completed; owner ruling 2026-07-10 for the
-// mid-solve facts): derived once as plain strings so the card renders no
-// arithmetic, and the detail line carries what exists rather than zeros.
+// The sheet's words (owner ruling 2026-07-10 for the mid-solve facts): derived
+// once as plain strings so the view renders no arithmetic, and the detail line
+// carries what exists rather than zeros. The completed branch is a pure
+// derivation kept for coverage; the live sheet never opens on a completed room
+// (the pill seals instead, owner ruling 2026-07-12: not at game end).
 
 final class RoomFactsContentTests: XCTestCase {
     func test_midSolve_theLabelIsTheRoomAndTheDetailThePuzzlesFacts() {
@@ -129,9 +123,9 @@ final class RoomFactsContentTests: XCTestCase {
         XCTAssertNil(none.detail)
     }
 
-    // At completion the same surface is the stats card, unchanged (ID-2): the
-    // lexicon word leads and the server's stats fill the detail.
-    func test_completed_isTheStatsCard_ID5() {
+    // The completed derivation (kept for coverage): the lexicon word leads and
+    // the server's stats fill the detail.
+    func test_completed_derivesTheStatsWords() {
         let content = RoomFactsContent.make(
             roomName: "Tuesday evening",
             puzzleTitle: "Midsummer Crossings",
@@ -144,7 +138,7 @@ final class RoomFactsContentTests: XCTestCase {
         XCTAssertEqual(content.detail, "143 entries · 3 solvers")
     }
 
-    func test_completed_singularWordsForOne_ID5() {
+    func test_completed_singularWordsForOne() {
         let content = RoomFactsContent.make(
             roomName: "solo", puzzleTitle: nil, puzzleAuthor: nil, puzzleDate: nil,
             completed: true, totalEvents: 1, participantCount: 1)
@@ -169,13 +163,13 @@ final class RoomFactsContentTests: XCTestCase {
     }
 }
 
-// The facts card's operations (owner ruling 2026-07-10; the card carries them
-// since the 2026-07-11 redesign). Copy invite code retired 2026-07-11 (the
-// share surface, now a native menu, owns invite copying: its Section header
-// carries the code, Copy link the URL). So the only operation left is the
-// host's end-game (host abandon, a FORBIDDEN for a non-host, PROTOCOL.md §12).
-// Kick is not here; it lives on the roster menu. The derivation is pure, so
-// the card renders no policy, and rowCount feeds the panel-height arithmetic.
+// The sheet's operations (owner ruling 2026-07-10). Copy invite code retired
+// 2026-07-11 (the share surface, now a native menu, owns invite copying: its
+// Section header carries the code, Copy link the URL). So the only operation
+// left is the host's end-game (host abandon, a FORBIDDEN for a non-host,
+// PROTOCOL.md §12). Kick is not here; it lives on the roster menu. The
+// derivation is pure, so the view renders no policy, and rowCount feeds the
+// sheet-height arithmetic.
 
 final class FactsOperationsTests: XCTestCase {
     func test_host_seesEndGame() {
@@ -185,18 +179,17 @@ final class FactsOperationsTests: XCTestCase {
         XCTAssertEqual(ops.rowCount, 1)
     }
 
-    // The terminal card is the record, not a control surface (INV-4 makes an
-    // end-game no-op anyway): the empty set renders no hairline, no rows, and
-    // adds nothing to the panel height.
-    func test_none_isTheTerminalCardsEmptySet_INV4() {
+    // The empty set renders no hairline, no rows, and adds nothing to the
+    // sheet height.
+    func test_none_isTheEmptySet() {
         XCTAssertEqual(FactsOperations.none.rowCount, 0)
         XCTAssertFalse(FactsOperations.none.hasAny)
         XCTAssertFalse(FactsOperations.none.canEndGame)
     }
 
     // A non-host is never offered the destructive end-game; the server refuses
-    // a non-host abandon, and the card simply does not show it. With copy-code
-    // retired, a non-host mid-solve has no operations at all: the card shows
+    // a non-host abandon, and the sheet simply does not show it. With copy-code
+    // retired, a non-host mid-solve has no operations at all: the sheet shows
     // facts alone, which the ruling accepts.
     func test_nonHost_hasNoOperations() {
         let ops = FactsOperations.make(isHost: false)

@@ -48,15 +48,16 @@ public struct GlassMorph: Equatable, Sendable {
         Self.lerp(restCornerRadius, openCornerRadius, progress)
     }
 
-    // MARK: The inflation prototype's geometry (owner-gated, 2026-07-11)
+    // MARK: Unclamped geometry (the overshoot blend)
 
-    /// The same blend WITHOUT the clamp, for the overshoot inflation candidate
-    /// (PillInflation.character == .overshoot): a walked progress that
+    /// The same blend WITHOUT the clamp, for an overshoot walk: a progress that
     /// breathes a hair past 1 carries the surface past its open frame and
     /// settles back. Anchored edges (rest == open) are fixed points of the
     /// blend, so a panel's shared pill edges never move whatever the spring
     /// does; only the traveling edges breathe. Drag-scrubbed morphs never
-    /// call this: the law's clamp (`frame(at:)`, SP-i1) stands untouched.
+    /// call this: the law's clamp (`frame(at:)`, SP-i1) stands untouched. (The
+    /// pill inflation that drove this retired with the facts morph, 2026-07-12;
+    /// the blend stays as a tested geometry utility.)
     public func frameUnclamped(at progress: CGFloat) -> CGRect {
         let minX = Self.lerpUnclamped(rest.minX, open.minX, progress)
         let minY = Self.lerpUnclamped(rest.minY, open.minY, progress)
