@@ -16,7 +16,16 @@
 import { Hono } from "hono";
 import type { AppDeps, ApiEnv } from "../context";
 import { fail } from "../http/errors";
+import { clientIp, createRateLimiter } from "../http/rate-limit";
 import { findGameByInviteCode } from "./lookup";
+
+/**
+ * Per-IP rate limit for the public unfurl (defense in depth; Cloudflare's edge rules are primary).
+ * Unauthenticated and third-party-cached, so it is keyed by client IP; generous, a cap on flood and
+ * the valid-vs-invalid oracle, not brute force (the code space is 32^8, PROTOCOL.md §12).
+ */
+const UNFURL_LIMIT_PER_WINDOW = 60;
+const UNFURL_WINDOW_MS = 60_000;
 
 /**
  * The HTML shell. `code` is the stored invite code (safe alphabet by CHECK constraint).
@@ -46,8 +55,20 @@ function shell(code: string): string {
 
 export function unfurlRoutes(deps: AppDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
+  const limiter = createRateLimiter({
+    limit: UNFURL_LIMIT_PER_WINDOW,
+    windowMs: UNFURL_WINDOW_MS,
+  });
 
   app.get("/:code", async (c) => {
+    // Rate-limit before the DB probe (per IP). A plain-text 429 rather than the JSON error
+    // envelope, since this route serves HTML to unfurlers and browsers, not the REST API.
+    const gate = limiter.check(clientIp(c));
+    if (!gate.ok) {
+      return c.text("too many requests", 429, {
+        "retry-after": String(gate.retryAfterSec),
+      });
+    }
     const found = await findGameByInviteCode(deps.db, c.req.param("code"));
     if (found === null) {
       // §12 pins no rejection shape for this route, so the REST error envelope applies, and

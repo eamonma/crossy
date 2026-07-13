@@ -16,6 +16,7 @@ import type { AppDeps, ApiEnv } from "../context";
 import type { Db } from "../db/client";
 import { fail } from "../http/errors";
 import { parseBefore, parseLimit } from "../http/pagination";
+import { createRateLimiter, rateLimit } from "../http/rate-limit";
 import { authMiddleware } from "../auth/middleware";
 import { createGameWithHost } from "./create";
 import { findGameByInviteCode } from "./lookup";
@@ -309,9 +310,29 @@ function orderByActivity(a: GameSummary, b: GameSummary): number {
   return a.gameId < b.gameId ? 1 : a.gameId > b.gameId ? -1 : 0;
 }
 
+/**
+ * Join-by-code rate limit (defense in depth; Cloudflare's edge rules are the primary limiter). A
+ * user may make `JOIN_LIMIT_PER_WINDOW` join attempts per `JOIN_WINDOW_MS` across both join
+ * endpoints combined. Generous by design: the code space is 32^8 and joins are authenticated, so
+ * this caps flood and the valid-vs-invalid oracle, not brute force (PROTOCOL.md §12).
+ */
+const JOIN_LIMIT_PER_WINDOW = 30;
+const JOIN_WINDOW_MS = 60_000;
+
 export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
   app.use("*", authMiddleware(deps));
+
+  // One limiter shared by both join endpoints, keyed by the authenticated user, so a single account
+  // cannot hammer the invite-code index whichever endpoint it hits. The user is set by
+  // authMiddleware above, so it is present in this route-level middleware.
+  const limitJoinsByUser = rateLimit(
+    createRateLimiter({
+      limit: JOIN_LIMIT_PER_WINDOW,
+      windowMs: JOIN_WINDOW_MS,
+    }),
+    (c) => c.get("identity").userId,
+  );
 
   // POST /games: create a game from a puzzle. Full accounts only (DESIGN.md §8).
   app.post("/", async (c) => {
@@ -543,7 +564,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
   // account lands as solver, a guest as spectator, an existing member keeps their role. The
   // response is that endpoint's shape plus the resolved `gameId`, which the caller needs to GET
   // the view and open the WebSocket.
-  app.post("/join", async (c) => {
+  app.post("/join", limitJoinsByUser, async (c) => {
     const identity = c.get("identity");
 
     let body: unknown;
@@ -583,7 +604,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
 
   // POST /games/{id}/join: join by invite code. Any authenticated user, guests included. A full
   // account is seated directly as solver (play at once), a guest as spectator (DESIGN.md §7, §8).
-  app.post("/:id/join", async (c) => {
+  app.post("/:id/join", limitJoinsByUser, async (c) => {
     const identity = c.get("identity");
     const gameId = c.req.param("id");
     if (!UUID.test(gameId)) {
