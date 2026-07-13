@@ -1,0 +1,42 @@
+# Android parity ledger
+
+synced-to: 760e6e4 (2026-07-13)
+
+How this file works. The domain core needs no ledger: vectors, contract fixtures,
+and android.yml keep the three twins honest per PR (a vector change that skips the
+Kotlin twin is a red check, same contract ios.yml enforces for Swift). This file
+covers the tier CI cannot see: feature and UI surface where iOS leads and Android
+follows. The sweep ritual: diff `apps/ios` and `apps/web` since `synced-to`,
+classify each change (normative: already fenced; additive protocol: fixtures plus
+client work; UI parity: a row here; platform-specific: note and skip), update rows,
+bump the sha. Sync at wave boundaries, not per commit; Android trailing iOS is by
+design.
+
+Working agreement: iOS and web feature PRs carry a one-line `Android: n/a |
+ledger | co-landed` note so the sweep reads intent instead of inferring it.
+
+Status vocabulary: `shipped` (functional parity), `partial` (works, gaps named),
+`in-flight` (track dispatched), `absent` (on the backlog), `divergent` (deliberate,
+cites the AAD), `blocked-owner` (needs console, signing, or domain work only the
+owner can do).
+
+| Surface                           | Status        | Notes                                                   |
+| --------------------------------- | ------------- | ------------------------------------------------------- |
+| Solve room (grid, deck, clue bar) | partial       | Functional; design and motion pass is its own track     |
+| Rooms list                        | partial       | No featured wall; Ended section in-flight (#234 parity) |
+| Ended-games section               | in-flight     | Mirrors #234 (ios + web)                                |
+| Join by code                      | shipped       | Short-link paste parsing in-flight                      |
+| Create game                       | shipped       |                                                         |
+| Auth: email/dev-token             | shipped       | AAD-3 v0; in-memory tokens                              |
+| Auth: email OTP / magic link      | in-flight     | Mirrors #230; the right v0 leg                          |
+| Auth: Google native               | blocked-owner | Console work; PKCE helpers ready                        |
+| Invite short link emit + parse    | in-flight     | PROTOCOL.md §12, mirrors #225/#226                      |
+| App Links for crossy.ing          | blocked-owner | assetlinks.json + Play signing SHA-256                  |
+| Invite QR (show + scan)           | absent        |                                                         |
+| Completion (mosaic, celebration)  | absent        | Store carries the state; UI pending                     |
+| Post-game Analysis surface        | absent        | Mirrors ios #210                                        |
+| Settings / account                | absent        | Mirrors #197 shape when built                           |
+| Keystore token store              | absent        | In-memory tonight (AD-4 posture)                        |
+| Play identity + signing           | blocked-owner | AAD-5; applicationId is a placeholder                   |
+| Live Activity analog              | divergent     | AAD-4: Live Updates are post-v1                         |
+| Widget (Glance)                   | divergent     | AAD-6                                                   |
