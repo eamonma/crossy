@@ -127,6 +127,13 @@ final class RealRoom {
         // seeded false), the one-beat fallback.
         if let seed {
             store.seedRoster(RoomMapping.roster(cardMembers: seed.members))
+            // A solved card (completedAt present) seeds the store completed before the
+            // socket answers, so its key deck retires from the push's first frame instead
+            // of flashing the deck for the connect beat and dropping it when the welcome
+            // lands (GameStore.seedCompleted, gated to connecting; the welcome overrides).
+            if let completedAt = seed.completedAt {
+                store.seedCompleted(at: completedAt)
+            }
             inviteCode = seed.inviteCode
             chrome.seeded = true
         }
@@ -304,4 +311,9 @@ struct FixedBearerToken: BearerTokenProviding {
 struct RoomArrivalSeed {
     let members: [RoomCardMember]
     let inviteCode: String?
+    /// The card's completion fact (`GET /games` `completedAt`, non-nil for a solved
+    /// room), so the store seeds `.completed` before the socket answers and the key deck
+    /// never flashes for the connect beat (RealRoom.init, GameStore.seedCompleted). The
+    /// welcome stays the authority (applySnapshot); a live room seeds nil and is untouched.
+    let completedAt: String?
 }
