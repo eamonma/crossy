@@ -15,6 +15,7 @@ const OLD_SESSION: StoredSession = {
   accessToken: "at-old",
   refreshToken: "rt-old",
   expiresAt: NOW + 30,
+  userId: "user-abc",
   email: "solver@example.com",
   displayName: "Ada",
 };
@@ -62,7 +63,11 @@ const ROTATED_BODY = {
   refresh_token: "rt-new",
   expires_in: 3600,
   expires_at: NOW + 3600,
-  user: { email: "solver@example.com", user_metadata: { full_name: "Ada" } },
+  user: {
+    id: "user-abc",
+    email: "solver@example.com",
+    user_metadata: { full_name: "Ada" },
+  },
 };
 
 describe("refreshStoredSession", () => {
@@ -80,6 +85,7 @@ describe("refreshStoredSession", () => {
         accessToken: "at-new",
         refreshToken: "rt-new",
         expiresAt: NOW + 3600,
+        userId: "user-abc",
         email: "solver@example.com",
         displayName: "Ada",
       },

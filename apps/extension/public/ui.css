@@ -197,6 +197,32 @@ body.popup #result:empty {
   display: none;
 }
 
+/* Account-alignment warning: the extension is signed in as a different account than
+   crossy.party, so ingested puzzles will not reach the web library. A caution, not an
+   error: the soft gold wash, never the danger red. Non-blocking; the "Switch" link
+   resolves it. Empty and gone whenever the accounts match. */
+body.popup #align-note.align-warn {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ring-halo);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+body.popup #align-note.align-warn button {
+  flex: none;
+  font-size: 12px;
+}
+
+body.popup #align-note:empty {
+  display: none;
+}
+
 /* The re-summon line: a hairline note offering a hidden on-page pill back; the
    "Show it" action rides the linklike button. Absent when the page has no pill or
    its pill already shows. */

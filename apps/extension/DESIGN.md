@@ -65,22 +65,43 @@ Two triggers fire it. The popup, opening signed out, asks the worker for a silen
 sign-in behind a quiet "checking" state and time-boxes the wait, dropping to the
 provider buttons on failure or timeout; this needs no extra permission and works on
 both browsers. The crossy.party content script is the automatic half: at
-`document_idle` it makes one best-effort read of `window.localStorage` for a
-supabase-js `sb-*-auth-token` entry with a live `expires_at`, and if present asks the
-worker to attempt a silent sign-in (only when the extension is itself signed out). The
-only thing that crosses to the worker is a boolean "web session present" signal; the
-script never reads, forwards, or logs the web app's tokens. The coupling to
-supabase-js's storage layout is deliberately loose: if the key format changes or
-nothing matches, it does nothing and the popup trigger still covers the case. On
-Firefox this content script's host permission is opt-in (all host permissions are, so
-the user grants site access from the extensions button), so the automatic half
-degrades to the popup trigger there.
+`document_idle` it reads `window.localStorage` for a live supabase-js session and
+reports the web account to the worker. What crosses is the account's identity (the
+Supabase user id, the OAuth provider, and a display name), never a token; the worker
+stashes it and steers the silent attempt at that provider, so a success lands the SAME
+account the user plays as on the web. Reading identity metadata rather than a bare
+boolean is a deliberate, reviewed relaxation of the earlier "boolean only" rule: it
+still never reads, forwards, or logs the web app's tokens. The coupling to supabase-js's
+storage stays loose: an unrecognized shape, or a guest session with no steerable
+provider, reports nothing and the popup trigger still covers sign-in.
+
+Firefox cannot do the silent half. `identity.launchWebAuthFlow({interactive: false})`
+there throws `Requires user interaction` for a provider redirect chain (it will not
+follow `api.crossy.party` -> the provider -> back without a visible step), unlike
+Chrome, so the silent attempt always fails; separately, the content script's host
+permission is opt-in (all Firefox host permissions are). The extension does not pretend
+otherwise: when the web app is signed in and the silent attempt does not complete, the
+popup offers a one-click "Continue as \<name\>" at the web account's provider. That one
+interactive sign-in mints the extension's own rotating session, which then refreshes
+forever with no further `launchWebAuthFlow`, so the click is a one-time cost, not per
+session. On Chrome the silent half still works.
 
 This is web-to-extension only. Extension-to-web is deliberately not done: pushing the
 extension's session back into the web origin would mean injecting tokens into
 crossy.party's storage and sharing a refresh token across the two contexts, which
 trips Supabase's rotation reuse detection. The independent-session property is the
 whole point; a shared refresh token would break it.
+
+**Account alignment.** The two sessions are separate by design, but they must resolve
+to the SAME Supabase user, or a puzzle the extension ingests (owned by the extension's
+account under `POST /puzzles` `created_by`) never appears in the web library (scoped to
+the web account) the user plays from. The web signal carries the account id for exactly
+this: the popup compares it against the extension's own `user.id` and, on a mismatch,
+warns without blocking and offers a one-click switch to the web account. Steering the
+silent and the "continue as" sign-in at the web account's provider keeps the two
+aligned by construction in the common case; the id comparison is the backstop for the
+rest (a different account under the same provider, say). The id is identity metadata,
+not a credential, and never leaves the machine.
 
 ## Baked defaults
 

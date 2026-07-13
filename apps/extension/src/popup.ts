@@ -7,6 +7,8 @@
 // Every rejection is surfaced verbatim (PROTOCOL.md section 12), never rewritten.
 
 import { postPuzzle } from "./api";
+import type { AlignmentState } from "./auth/alignment";
+import { alignmentState } from "./auth/alignment";
 import type { Provider } from "./auth/flow";
 import type {
   SignInReply,
@@ -19,7 +21,12 @@ import {
   AUTH_SILENT_SIGN_IN,
   AUTH_TOKEN,
 } from "./auth/messages";
-import { chromeLocalArea, loadSession, SESSION_KEY } from "./auth/store";
+import {
+  chromeLocalArea,
+  loadSession,
+  loadWebIdentity,
+  SESSION_KEY,
+} from "./auth/store";
 import { silentSignInThenRender } from "./popup-silent";
 import { buildEnvelope } from "./envelope";
 import { EXTRACT_REQUEST } from "./messaging";
@@ -42,6 +49,9 @@ const statusEl = document.getElementById("status") as HTMLParagraphElement;
 const actionsEl = document.getElementById("actions") as HTMLDivElement;
 const resultEl = document.getElementById("result") as HTMLParagraphElement;
 const pillNoteEl = document.getElementById("pill-note") as HTMLParagraphElement;
+const alignNoteEl = document.getElementById(
+  "align-note",
+) as HTMLParagraphElement;
 
 const PROVIDERS: ReadonlyArray<{
   provider: Provider;
@@ -66,6 +76,7 @@ function renderChecking(): void {
   identityEl.textContent = "";
   statusEl.textContent = "Checking your Crossy sign-in...";
   showResult("", false);
+  alignNoteEl.replaceChildren();
   actionsEl.replaceChildren();
 }
 
@@ -82,47 +93,104 @@ async function extractFromActiveTab(): Promise<ExtractResponse | null> {
   }
 }
 
+// The interactive sign-in gesture, shared by the provider buttons, the "continue as
+// <name>" connect button, and the mismatch "switch" button. It requests both origins
+// synchronously (Firefox drops the gesture after any await; settings.ts), optionally
+// signs the current session out first (the account switch), then hands the flow to the
+// worker. The popup closes when the auth window takes focus, so on that path the
+// reopened popup reads the stored session; where it survives, init runs here.
+function startSignIn(provider: Provider, signOutFirst: boolean): void {
+  void (async () => {
+    const granted = await requestOriginPermissions([
+      bases.authBaseUrl,
+      bases.apiBaseUrl,
+    ]);
+    if (!granted) {
+      statusEl.textContent =
+        "Crossy needs permission to reach its servers to sign you in.";
+      return;
+    }
+    if (signOutFirst) {
+      await chrome.runtime.sendMessage({ type: AUTH_SIGN_OUT });
+    }
+    statusEl.textContent =
+      "Finish signing in in the window that opened, then reopen this popup.";
+    const reply = (await chrome.runtime.sendMessage({
+      type: AUTH_SIGN_IN,
+      provider,
+    })) as SignInReply;
+    if (reply.ok) {
+      void init();
+    } else {
+      statusEl.textContent = `Sign-in failed: ${reply.reason}`;
+    }
+  })();
+}
+
+function signInButton(
+  label: string,
+  tone: string,
+  provider: Provider,
+  signOutFirst = false,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = tone;
+  button.textContent = label;
+  // The click stays a gesture: startSignIn's first await is the permission request.
+  button.addEventListener("click", () => startSignIn(provider, signOutFirst));
+  return button;
+}
+
 function renderSignedOut(): void {
   identityEl.textContent = "";
   statusEl.textContent = "Sign in to add puzzles to your Crossy library.";
   showResult("", false);
-  const buttons = PROVIDERS.map(({ provider, label, tone }) => {
-    const button = document.createElement("button");
-    button.className = tone;
-    button.textContent = label;
-    button.addEventListener("click", () => {
-      void (async () => {
-        // First await, nothing before it: Firefox requires permissions.request
-        // synchronously inside the gesture (settings.ts; bases pre-resolved).
-        // Both origins ride this one request so the ingest path is already
-        // granted by the time it is needed.
-        const granted = await requestOriginPermissions([
-          bases.authBaseUrl,
-          bases.apiBaseUrl,
-        ]);
-        if (!granted) {
-          statusEl.textContent =
-            "Crossy needs permission to reach its servers to sign you in.";
-          return;
-        }
-        statusEl.textContent =
-          "Finish signing in in the window that opened, then reopen this popup.";
-        const reply = (await chrome.runtime.sendMessage({
-          type: AUTH_SIGN_IN,
-          provider,
-        })) as SignInReply;
-        // If this popup survived the auth window (platform-dependent), react here;
-        // otherwise the reopened popup reads the stored session.
-        if (reply.ok) {
-          void init();
-        } else {
-          statusEl.textContent = `Sign-in failed: ${reply.reason}`;
-        }
-      })();
-    });
-    return button;
-  });
+  alignNoteEl.replaceChildren();
+  const buttons = PROVIDERS.map(({ provider, label, tone }) =>
+    signInButton(label, tone, provider),
+  );
   actionsEl.replaceChildren(...buttons);
+}
+
+// Signed out, but crossy.party is signed in: offer a one-click "continue as <name>"
+// at the web account's provider (so the extension lands the SAME account), with a
+// quiet path back to the full provider list.
+function renderConnect(
+  state: Extract<AlignmentState, { kind: "connect" }>,
+): void {
+  identityEl.textContent = "";
+  statusEl.textContent = `You're signed in to Crossy on the web as ${state.name}.`;
+  showResult("", false);
+  alignNoteEl.replaceChildren();
+  const cont = signInButton(
+    `Continue as ${state.name}`,
+    "primary",
+    state.provider,
+  );
+  const other = document.createElement("button");
+  other.className = "linklike";
+  other.textContent = "Use a different account";
+  other.addEventListener("click", () => renderSignedOut());
+  actionsEl.replaceChildren(cont, other);
+}
+
+// Signed in as a DIFFERENT account than crossy.party: warn (non-blocking; ingest still
+// works) and offer a one-click switch to the web account. Empty in every aligned state.
+function renderAlignNote(state: AlignmentState): void {
+  if (state.kind !== "mismatch") {
+    alignNoteEl.replaceChildren();
+    return;
+  }
+  alignNoteEl.className = "align-warn";
+  const warn = document.createElement("span");
+  warn.textContent = `crossy.party is signed in as ${state.name}, a different account. Puzzles you add here will not appear in that library.`;
+  const swtch = signInButton(
+    `Switch to ${state.name}`,
+    "linklike",
+    state.provider,
+    true,
+  );
+  alignNoteEl.replaceChildren(warn, swtch);
 }
 
 type IngestRun =
@@ -299,17 +367,22 @@ async function init(): Promise<void> {
   // The pill note is about page UI, not auth, so it renders on every init in either
   // state, outside the silent flow's control path below.
   await renderPillNote();
-  const session = await loadSession(chromeLocalArea());
+  const area = chromeLocalArea();
+  const session = await loadSession(area);
+  const state = alignmentState(session, await loadWebIdentity(area));
   if (session !== null) {
     await renderSignedIn({
       displayName: session.displayName,
       email: session.email,
     });
+    // Warn (non-blocking) when this account differs from the crossy.party account.
+    renderAlignNote(state);
     return;
   }
-  // Signed out: try a silent sign-in before committing to the buttons. On success
-  // the worker has persisted a session and onSignedIn re-runs init into signed-in;
-  // on failure or timeout onSignedOut paints the normal provider buttons.
+  // Signed out: try a silent sign-in (steered at the web account) before committing to
+  // any buttons. On success the worker persists a session and onSignedIn re-runs init
+  // into signed-in; on failure or timeout, offer "continue as <name>" when the web app
+  // is signed in, otherwise the plain provider buttons.
   silentInFlight = true;
   await silentSignInThenRender({
     requestSilent: () =>
@@ -323,7 +396,8 @@ async function init(): Promise<void> {
     },
     onSignedOut: () => {
       silentInFlight = false;
-      renderSignedOut();
+      if (state.kind === "connect") renderConnect(state);
+      else renderSignedOut();
     },
     timeoutMs: SILENT_TIMEOUT_MS,
   });

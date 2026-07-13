@@ -17,7 +17,11 @@ function tokenResponse(overrides: Record<string, unknown> = {}): unknown {
     expires_in: 3600,
     expires_at: NOW + 3600,
     token_type: "bearer",
-    user: { email: "solver@example.com", user_metadata: { full_name: "Ada" } },
+    user: {
+      id: "user-abc",
+      email: "solver@example.com",
+      user_metadata: { full_name: "Ada" },
+    },
     ...overrides,
   };
 }
@@ -29,9 +33,23 @@ describe("sessionFromTokenResponse", () => {
       accessToken: "at-1",
       refreshToken: "rt-1",
       expiresAt: NOW + 3600,
+      userId: "user-abc",
       email: "solver@example.com",
       displayName: "Ada",
     });
+  });
+
+  it("reads user.id as the account key, null when the user object omits it", () => {
+    expect(sessionFromTokenResponse(tokenResponse(), NOW)?.userId).toBe(
+      "user-abc",
+    );
+    // A refresh response can omit the user object; the id is then unknown, not fatal.
+    expect(
+      sessionFromTokenResponse(tokenResponse({ user: undefined }), NOW)?.userId,
+    ).toBeNull();
+    expect(
+      sessionFromTokenResponse(tokenResponse({ user: { id: 7 } }), NOW)?.userId,
+    ).toBeNull();
   });
 
   it("computes expiry from expires_in when expires_at is absent", () => {

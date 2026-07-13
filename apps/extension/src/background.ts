@@ -10,18 +10,31 @@ import { runPkceAttempt } from "./auth/attempt";
 import type { Provider } from "./auth/flow";
 import type { AuthTarget } from "./auth/gotrue";
 import { revokeSession } from "./auth/gotrue";
-import type { SignInReply, TokenReply } from "./auth/messages";
+import type {
+  SignInReply,
+  SilentSignInReply,
+  TokenReply,
+  WebIdentity,
+  WebSignalRequest,
+} from "./auth/messages";
 import {
   AUTH_SIGN_IN,
   AUTH_SIGN_OUT,
   AUTH_SILENT_SIGN_IN,
   AUTH_TOKEN,
+  AUTH_WEB_SIGNAL,
 } from "./auth/messages";
 import type { RefreshOutcome } from "./auth/refresh";
 import { refreshStoredSession } from "./auth/refresh";
 import { needsRefresh, refreshAlarmWhenMs } from "./auth/session";
 import { SilentSignIn } from "./auth/silent";
-import { chromeLocalArea, clearSession, loadSession } from "./auth/store";
+import {
+  chromeLocalArea,
+  clearSession,
+  loadSession,
+  loadWebIdentity,
+  saveWebIdentity,
+} from "./auth/store";
 import { buildEnvelope } from "./envelope";
 import { PLAY_REQUEST } from "./pill/messages";
 import type { PlayReply, PlayRequest } from "./pill/messages";
@@ -37,10 +50,10 @@ const REFRESH_ALARM = "crossy/auth/refresh";
 /** The dev-auth storage key from before this design; cleared on update. */
 const LEGACY_SETTINGS_KEY = "settings";
 
-// The only provider tried silently. Discord keeps a live browser session across
-// visits; Apple rarely does, and its interactive button stays for it. interactive:false
-// resolves fast when the provider session is live and fails fast when it is not; the
-// popup time-boxes its own wait for the worker's reply.
+// The fallback provider for a silent attempt when no web account is stashed to steer
+// at. Discord keeps a live browser session across visits; Apple rarely does, and its
+// interactive button stays for it. interactive:false resolves fast when the provider
+// session is live and fails fast when it is not; the popup time-boxes its own wait.
 const SILENT_PROVIDER: Provider = "discord";
 
 const area = chromeLocalArea();
@@ -133,7 +146,10 @@ const silent = new SilentSignIn({
   interactiveInFlight: () => interactiveInFlight,
   alreadySignedIn: async () => (await loadSession(area)) !== null,
   attempt: async () => {
-    const result = await runPkceAttempt(SILENT_PROVIDER, {
+    // Steer at the web account's provider when one is stashed, so a silent success
+    // lands the SAME account the user plays as on the web; fall back to Discord.
+    const web = await loadWebIdentity(area);
+    const result = await runPkceAttempt(web?.provider ?? SILENT_PROVIDER, {
       target: await authTarget(),
       area,
       redirectUri: ext.identity.getRedirectURL(),
@@ -147,6 +163,21 @@ const silent = new SilentSignIn({
     return { ok: true };
   },
 });
+
+/**
+ * The crossy.party content script's web-account report. Stash it (so the popup can
+ * offer "continue as <name>" or warn on a mismatch), then, when an account is present,
+ * drive a steered silent attempt. The attempt stands down when the extension is already
+ * signed in or an interactive flow is running; on Firefox interactive:false throws and
+ * it quietly fails, leaving the popup to offer the one-click connect.
+ */
+async function handleWebSignal(
+  identity: WebIdentity | null,
+): Promise<SilentSignInReply> {
+  await saveWebIdentity(identity, area);
+  if (identity === null) return { ok: false };
+  return silent.run();
+}
 
 async function signOut(): Promise<void> {
   const session = await loadSession(area);
@@ -205,6 +236,12 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
   if (type === AUTH_SILENT_SIGN_IN) {
     void silent.run().then(sendResponse);
+    return true;
+  }
+  if (type === AUTH_WEB_SIGNAL) {
+    void handleWebSignal((message as WebSignalRequest).identity).then(
+      sendResponse,
+    );
     return true;
   }
   if (type === AUTH_SIGN_OUT) {
