@@ -31,7 +31,7 @@ owner can do).
 | Auth: email OTP / magic link       | shipped       | Send + verify code (#230); verifyEmailLink ready, magic-link deep link rides the App Links row |
 | Display name (onboarding + editor) | in-flight     | Mirrors #236: /me needsName, canonicalize/validate vectors                                     |
 | Auth: Turnstile captcha minting    | in-flight     | WebView minter + 8-digit code; unblocks prod send (#230)                                       |
-| Terminal room retires key deck     | in-flight     | Mirrors ios #205/#235                                                                          |
+| Terminal room retires key deck     | shipped       | RoomScreen `deckRetired`: solved + host-ended retire the deck from the first terminal frame (#205/#235) |
 | Auth: Google native                | blocked-owner | Console work; PKCE helpers ready                                                               |
 | Invite short link emit + parse     | shipped       | InviteLink pure module + room share sheet; mirrors #225/#226 (App Links still owner-blocked)   |
 | App Links for crossy.ing           | blocked-owner | assetlinks.json + Play signing SHA-256                                                         |

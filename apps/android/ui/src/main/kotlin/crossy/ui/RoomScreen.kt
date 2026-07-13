@@ -11,8 +11,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -50,7 +52,10 @@ fun RoomScreen(
 
     val values = remember(render) { buildValues(render, geometry) }
     val filled = values.keys
-    val frozen = render.status != GameStatus.ONGOING
+    // A terminal room (completed or abandoned) freezes input and retires the deck (INV-4): one
+    // condition, one predicate. `frozen` gates local mutation through InputActions; `deckRetired`
+    // reads the same fact to remove the deck itself below.
+    val frozen = deckRetired(render)
     val activeWord = remember(selection, geometry) { geometry.wordCells(selection.cell, selection.isAcross) }
     val presence = remember(render, ground) { Presence.marks(render.cursors, render.participants, render.selfUserId, ground) }
     val cursorTint =
@@ -101,15 +106,33 @@ fun RoomScreen(
             onPrev = { apply(InputActions.previousWord(env())) },
             onNext = { apply(InputActions.nextWord(env())) },
         )
-        KeyDeck(ground = ground) { key ->
-            when (key) {
-                is DeckKey.Letter -> apply(InputActions.letter(env(), key.character))
-                DeckKey.Backspace -> apply(InputActions.backspace(env()))
-                DeckKey.DirectionToggle -> apply(InputActions.toggleDirection(env()))
+        if (frozen) {
+            // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235
+            // host-ended): the deck just leaves, a small spacer keeps the bottom breath (iOS
+            // completed: Color.clear.frame(height: 12)). The abandoned one-line notice and the
+            // deck's own glass are a later design track, not the Wave A4 functional bar.
+            Spacer(Modifier.height(12.dp))
+        } else {
+            KeyDeck(ground = ground) { key ->
+                when (key) {
+                    is DeckKey.Letter -> apply(InputActions.letter(env(), key.character))
+                    DeckKey.Backspace -> apply(InputActions.backspace(env()))
+                    DeckKey.DirectionToggle -> apply(InputActions.toggleDirection(env()))
+                }
             }
         }
     }
 }
+
+/** A terminal room retires its key deck for everyone (iOS SolveScreen / RoomTerminal.deckRetired;
+ *  #205 solved, #235 host-ended): once the render model reports completed or abandoned the deck
+ *  leaves and never returns. A pure function of the render model, so the retirement lands on the
+ *  first frame the model reports terminal — the welcome that carries the terminal status retires
+ *  the deck with no flash, exactly as a mid-solve completion does. One predicate covers both
+ *  terminal statuses (`!= ONGOING`), so the host-ended case (#235) needs no view logic beyond the
+ *  solved case (#205). Mutation was already refused by the store and InputActions (INV-4); this is
+ *  the rendered truth. Selection stays for browsing. */
+internal fun deckRetired(render: RenderModel): Boolean = render.status != GameStatus.ONGOING
 
 /** The board's rendered composite as a cell to glyph map, blocks and empty cells omitted. Reads the
  *  store's INV-10 composite (sequenced state painted with the overlay) through GameStore.renderValue. */
