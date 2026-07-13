@@ -49,9 +49,21 @@ sealed interface EmailOtpStep {
 }
 
 /** The one-time code length the server issues, read by the field cap and the Verify gate so the two
- *  can never drift. Six on this track; #230's iOS/web ended at eight once the Turnstile captcha
- *  landed (a later Android track), so this is the one line that follows the server's OTP length. */
-private const val EMAIL_OTP_CODE_LENGTH = 6
+ *  can never drift. Eight: the captcha-on production project issues 8-digit codes (#230 raised
+ *  iOS/web to eight when the Turnstile captcha landed, EMAIL_OTP_CODE_LENGTH there), and this Android
+ *  track now mints that captcha, so it follows the same server OTP length. A stale 6 would reject
+ *  every valid code and mislead the "8-digit code" copy. `internal`, not private, so the field-cap
+ *  and Verify-gate helpers below are exercised by EmailOtpGateTests without a Compose host. */
+internal const val EMAIL_OTP_CODE_LENGTH = 8
+
+/** Keep digits only and cap at the code length: the raw field input filtered to what the OTP field
+ *  accepts. Pure so the same rule the field cap enforces is unit-testable. */
+internal fun sanitizeOtpCode(raw: String): String =
+    raw.filter(Char::isDigit).take(EMAIL_OTP_CODE_LENGTH)
+
+/** The Verify gate: the code is complete at exactly the OTP length. Pure so the button's enable rule
+ *  is testable, not reimplemented, by the tests. */
+internal fun isOtpCodeComplete(code: String): Boolean = code.length == EMAIL_OTP_CODE_LENGTH
 
 /** Seconds the resend stays disabled after a send, so a user cannot outrun GoTrue's send limiter. */
 private const val RESEND_COOLDOWN_SECONDS = 45
@@ -247,7 +259,7 @@ private fun CodeEntry(
     OutlinedTextField(
         value = code,
         // Digits only, capped at the code length, so the Verify gate is a plain length check.
-        onValueChange = { code = it.filter(Char::isDigit).take(EMAIL_OTP_CODE_LENGTH) },
+        onValueChange = { code = sanitizeOtpCode(it) },
         label = { Text("Code") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -256,7 +268,7 @@ private fun CodeEntry(
     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
     Button(
         onClick = { onVerify(code) },
-        enabled = !isBusy && code.length == EMAIL_OTP_CODE_LENGTH,
+        enabled = !isBusy && isOtpCodeComplete(code),
         modifier = Modifier.fillMaxWidth(),
     ) { Text(if (isBusy) "Verifying..." else "Verify") }
     TextButton(

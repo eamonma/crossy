@@ -30,7 +30,7 @@ owner can do).
 | Auth: email/dev-token              | shipped       | AAD-3 v0; in-memory tokens                                                                     |
 | Auth: email OTP / magic link       | shipped       | Send + verify code (#230); verifyEmailLink ready, magic-link deep link rides the App Links row |
 | Display name (onboarding + editor) | in-flight     | Mirrors #236: /me needsName, canonicalize/validate vectors                                     |
-| Auth: Turnstile captcha minting    | in-flight     | WebView minter + 8-digit code; unblocks prod send (#230)                                       |
+| Auth: Turnstile captcha minting    | shipped       | Hidden-WebView minter behind TurnstileMinter + pure TurnstileMintPolicy (timeout/retry/mapping, tested); OTP send mints when TURNSTILE_SITE_KEY is set; 8-digit code. Mirrors #230. Interactive-challenge reveal deferred; owner device-verifies the WebView |
 | Terminal room retires key deck     | in-flight     | Mirrors ios #205/#235                                                                          |
 | Auth: Google native                | blocked-owner | Console work; PKCE helpers ready                                                               |
 | Invite short link emit + parse     | shipped       | InviteLink pure module + room share sheet; mirrors #225/#226 (App Links still owner-blocked)   |
