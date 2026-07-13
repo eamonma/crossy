@@ -316,7 +316,7 @@ function DeleteRow({
     // (this tab raced a sign-out elsewhere), named plainly rather than as a failure.
     if ((await bearer.getToken()) === null) {
       setOpen(false);
-      setError("Your session expired. Sign in again to delete your account.");
+      setError("Your session expired. Continue to delete your account.");
       return;
     }
     setBusy(true);

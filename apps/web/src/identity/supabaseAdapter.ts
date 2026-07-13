@@ -7,12 +7,18 @@
 // design. Discord and Apple OAuth and anonymous guests are the providers; email gets no surface.
 import { createClient } from "@supabase/supabase-js";
 import type {
+  AuthError,
+  EmailOtpType,
+  Provider,
   Session,
   SupabaseClient,
   SupabaseClientOptions,
   User,
 } from "@supabase/supabase-js";
 import type {
+  EmailOtpReason,
+  EmailOtpResult,
+  EmailOtpSendResult,
   GuestSignInOptions,
   GuestSignInResult,
   Identity,
@@ -25,13 +31,16 @@ import type {
 const REFRESH_THRESHOLD_SEC = 60;
 
 /**
- * Port provider to the vendor's provider string. The strings coincide today, but the map is the
- * boundary: vendor vocabulary stays inside this adapter, so the port's union never leaks a Supabase
- * name and a divergence later is one edit here.
+ * Port provider to the vendor's provider string. The strings coincide for the built-ins, but the
+ * map is the boundary: vendor vocabulary stays inside this adapter, so the port's union never leaks
+ * a Supabase name and a divergence later is one edit here. hisbaan is a custom OIDC provider whose
+ * Supabase identifier is the literal "custom:hisbaan", which the vendor's Provider union does not
+ * name; it is cast narrowly at the signInWithOAuth call site and otherwise rides the standard path.
  */
-const SUPABASE_PROVIDER: Record<SignInProvider, "discord" | "apple"> = {
+const SUPABASE_PROVIDER: Record<SignInProvider, string> = {
   discord: "discord",
   apple: "apple",
+  hisbaan: "custom:hisbaan",
 };
 
 /** Apple's hide-my-email relays land here; the local part is random junk, never a name. */
@@ -149,6 +158,38 @@ function causeOf(
   }
 }
 
+/**
+ * Classify an email-auth AuthError into the port's reason enum. Keyed on the stable `code` first
+ * (over_*_rate_limit, otp_expired and its kin, otp_disabled / invalid_credentials for a bad code),
+ * then the HTTP status (429 is a throttle), then a message probe as the last resort, with "network"
+ * for an error the vendor raised with no HTTP status (it never reached the server). Everything else
+ * is "unknown", so the union stays closed and a caller always has a sentence to show.
+ */
+function emailOtpReasonOf(error: AuthError): EmailOtpReason {
+  const code = typeof error.code === "string" ? error.code : "";
+  if (code.includes("rate_limit")) return "rate_limited";
+  if (code === "otp_expired" || code.includes("expired")) return "expired";
+  if (
+    code === "otp_disabled" ||
+    code === "invalid_credentials" ||
+    code === "email_address_invalid"
+  ) {
+    return "invalid_code";
+  }
+  if (error.status === 429) return "rate_limited";
+  const message = error.message.toLowerCase();
+  if (message.includes("expired")) return "expired";
+  if (message.includes("rate limit") || message.includes("rate-limit")) {
+    return "rate_limited";
+  }
+  if (message.includes("invalid") || message.includes("token")) {
+    return "invalid_code";
+  }
+  // A vendor error with no HTTP status never reached the server: a transport failure.
+  if (error.status === undefined) return "network";
+  return "unknown";
+}
+
 export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
   const create = deps.createClientFn ?? createClient;
   const currentUrl = deps.currentUrl ?? defaultCurrentUrl;
@@ -257,8 +298,10 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
     ): Promise<void> {
       const { origin, pathAndQuery } = currentUrl();
       const redirectTo = `${origin}${redirectPath ?? pathAndQuery}`;
+      // The map yields a plain string so a custom OIDC id ("custom:hisbaan") fits; the vendor's
+      // Provider union does not name it, so cast narrowly here, at the one call that consumes it.
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: SUPABASE_PROVIDER[provider],
+        provider: SUPABASE_PROVIDER[provider] as Provider,
         options: { redirectTo },
       });
       if (error !== null) throw new Error(error.message);
@@ -296,6 +339,68 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
         };
       }
       return { ok: true, session };
+    },
+    async sendEmailOtp(email: string): Promise<EmailOtpSendResult> {
+      // Emails a six-digit code and a magic link both; the link lands on /auth/confirm, where the
+      // token_hash it carries is verified through verifyEmailLink. shouldCreateUser makes email a
+      // first-class sign-up path, not sign-in only. Success carries no session: the code entry is
+      // next, and the session lands later through onAuthStateChange. The origin comes from the same
+      // node-safe read the OAuth redirect uses (globalThis.window), never a bare window reference.
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: `${currentUrl().origin}/auth/confirm`,
+        },
+      });
+      if (error !== null) {
+        return {
+          ok: false,
+          reason: emailOtpReasonOf(error),
+          message: error.message,
+        };
+      }
+      return { ok: true };
+    },
+    async verifyEmailOtp(input: {
+      email: string;
+      token: string;
+    }): Promise<EmailOtpResult> {
+      // On success supabase-js persists the session and fires onAuthStateChange, so the app reacts
+      // through the one onChange path exactly as it does for an OAuth return; nothing is applied here.
+      const { error } = await supabase.auth.verifyOtp({
+        email: input.email,
+        token: input.token,
+        type: "email",
+      });
+      if (error !== null) {
+        return {
+          ok: false,
+          reason: emailOtpReasonOf(error),
+          message: error.message,
+        };
+      }
+      return { ok: true };
+    },
+    async verifyEmailLink(input: {
+      tokenHash: string;
+      type: string;
+    }): Promise<EmailOtpResult> {
+      // The magic-link path: token_hash and type ride on the /auth/confirm URL. The port keeps type
+      // a plain string (it owns no vendor vocabulary); the vendor's EmailOtpType admits any string,
+      // so cast narrowly here. Success flows through onAuthStateChange like every other sign-in.
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: input.tokenHash,
+        type: input.type as EmailOtpType,
+      });
+      if (error !== null) {
+        return {
+          ok: false,
+          reason: emailOtpReasonOf(error),
+          message: error.message,
+        };
+      }
+      return { ok: true };
     },
     async signOut(): Promise<void> {
       // Sign out this device only. supabase-js defaults to { scope: "global" }, which

@@ -39,12 +39,38 @@ export interface GuestSignInOptions {
 }
 
 /**
+ * Why an email sign-in step did not go through. The same discriminated ok/reason shape as
+ * GuestSignInResult, so every email surface renders a typed outcome rather than catching a
+ * thrown error: "rate_limited" when the provider throttles a resend, "invalid_code" for a
+ * wrong code or link, "expired" once the code or link has aged out, "network" for a transport
+ * failure, "unknown" for anything the adapter cannot classify.
+ */
+export type EmailOtpReason =
+  "rate_limited" | "invalid_code" | "expired" | "network" | "unknown";
+
+/**
+ * The result of requesting an email one-time code (or magic link). Success carries no session:
+ * sending the code only starts the flow, so the caller then shows the code entry. The session
+ * lands later, through onChange, when the code or link is verified.
+ */
+export type EmailOtpSendResult =
+  { ok: true } | { ok: false; reason: EmailOtpReason; message: string };
+
+/**
+ * The result of verifying an email code or magic link. On success the session flows through the
+ * existing onChange path exactly like OAuth, so the resolved session is not returned here; the
+ * caller reacts to onChange as it already does for a provider return.
+ */
+export type EmailOtpResult =
+  { ok: true } | { ok: false; reason: EmailOtpReason; message: string };
+
+/**
  * The OAuth providers the product offers. Product vocabulary the port owns: the union names the
  * choices the UI presents, and each adapter maps these to whatever the vendor calls them (DESIGN.md
  * section 8). Apple rides alongside Discord because the App Store mandates it once any third-party
- * login exists.
+ * login exists. hisbaan is a custom OIDC provider the adapter maps to its Supabase identifier.
  */
-export type SignInProvider = "discord" | "apple";
+export type SignInProvider = "discord" | "apple" | "hisbaan";
 
 /**
  * Why a session change fired. Product vocabulary the port owns: it distinguishes an
@@ -97,6 +123,33 @@ export interface Identity {
 
   /** Anonymous guest sign-in. Fails cleanly when guests are disabled or the provider refuses. */
   signInGuest(options?: GuestSignInOptions): Promise<GuestSignInResult>;
+
+  /**
+   * Request a one-time email code (and magic link) for the address. Creates the account when
+   * none exists. Resolves before any session; success only means the code was sent, so the
+   * caller then shows the code entry. Fails cleanly (rate limit, network) rather than throwing.
+   */
+  sendEmailOtp(email: string): Promise<EmailOtpSendResult>;
+
+  /**
+   * Verify a one-time code the user typed for the address. On success the session lands through
+   * onChange, exactly like an OAuth return, so no session is returned here. A wrong or aged-out
+   * code is a typed reason the caller renders, never a thrown error.
+   */
+  verifyEmailOtp(input: {
+    email: string;
+    token: string;
+  }): Promise<EmailOtpResult>;
+
+  /**
+   * Verify a magic-link click, from the token_hash and type carried on the confirm URL. On
+   * success the session lands through onChange like OAuth; a stale or already-used link is a
+   * typed reason, never a thrown error.
+   */
+  verifyEmailLink(input: {
+    tokenHash: string;
+    type: string;
+  }): Promise<EmailOtpResult>;
 
   signOut(): Promise<void>;
 

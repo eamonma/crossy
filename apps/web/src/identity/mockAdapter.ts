@@ -3,6 +3,8 @@
 // touch supabase-js or the network. Sign-in is synchronous here: signInWithProvider seeds a
 // fake account session rather than navigating away, so the app shell is exercisable offline.
 import type {
+  EmailOtpResult,
+  EmailOtpSendResult,
   GuestSignInResult,
   Identity,
   IdentitySession,
@@ -31,6 +33,12 @@ const ACCOUNT_SESSION: IdentitySession = {
   isAnonymous: false,
   avatarUrl: null,
 };
+
+/** The one code the mock treats as correct; any other value returns "invalid_code". */
+const VALID_EMAIL_OTP = "123456";
+
+/** The one token_hash the mock link-verify accepts; any other returns "invalid_code". */
+const VALID_EMAIL_LINK_HASH = "ok";
 
 export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
   const guestsEnabled = opts.guestsEnabled ?? false;
@@ -87,6 +95,46 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
       session = GUEST_SESSION;
       emit("signed_in");
       return Promise.resolve({ ok: true, session });
+    },
+    sendEmailOtp(): Promise<EmailOtpSendResult> {
+      // No email leaves here and no code is stored: sending always succeeds, and the fixed
+      // VALID_EMAIL_OTP is what the verify step then accepts, so the flow is deterministic offline.
+      return Promise.resolve({ ok: true });
+    },
+    verifyEmailOtp(input: {
+      email: string;
+      token: string;
+    }): Promise<EmailOtpResult> {
+      // The one correct code seeds the same full account every provider lands (like OAuth here);
+      // any other value is a typed "invalid_code", never a thrown error. Success emits "signed_in"
+      // exactly as an interactive OAuth return would, mirroring the real adapter's onChange path.
+      if (input.token !== VALID_EMAIL_OTP) {
+        return Promise.resolve({
+          ok: false,
+          reason: "invalid_code",
+          message: "that code didn't match",
+        });
+      }
+      session = ACCOUNT_SESSION;
+      emit("signed_in");
+      return Promise.resolve({ ok: true });
+    },
+    verifyEmailLink(input: {
+      tokenHash: string;
+      type: string;
+    }): Promise<EmailOtpResult> {
+      // The magic-link twin of verifyEmailOtp: the one correct token_hash lands the account and
+      // emits "signed_in"; any other value is a typed "invalid_code".
+      if (input.tokenHash !== VALID_EMAIL_LINK_HASH) {
+        return Promise.resolve({
+          ok: false,
+          reason: "invalid_code",
+          message: "that link is no longer valid",
+        });
+      }
+      session = ACCOUNT_SESSION;
+      emit("signed_in");
+      return Promise.resolve({ ok: true });
     },
     signOut(): Promise<void> {
       session = null;
