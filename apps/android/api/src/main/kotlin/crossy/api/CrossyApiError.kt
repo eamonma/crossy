@@ -36,6 +36,18 @@ public sealed class CrossyApiError(message: String, cause: Throwable? = null) :
     public class Api(public val status: Int, public val envelope: APIErrorEnvelope) :
         CrossyApiError("api rejected the request: ${envelope.error} ($status)")
 
+    /**
+     * A `429 RATE_LIMITED`: the caller spent a write window (PATCH /me is rate-limited per user,
+     * docs/design/name-onboarding §7.2). Its own case because the `Retry-After` header the UI honors
+     * (R4) is not in the envelope body; [retryAfterSeconds] is the parsed delay in seconds, null when
+     * the header was absent or unparseable. Still an API rejection (network fine, request refused),
+     * so callers that only need the code read [envelope] here too. Twin of iOS `.rateLimited`.
+     */
+    public class RateLimited(
+        public val retryAfterSeconds: Double?,
+        public val envelope: APIErrorEnvelope,
+    ) : CrossyApiError("api rate limited: ${envelope.error} (429)")
+
     /** The server broke the contract's frame: a non-2xx body that is not the §12 envelope
      *  (a proxy error page, say). */
     public class InvalidResponse(public val status: Int?) :
@@ -46,13 +58,21 @@ public sealed class CrossyApiError(message: String, cause: Throwable? = null) :
     public class DecodingFailed(public val status: Int, cause: Throwable) :
         CrossyApiError("2xx body did not decode ($status)", cause)
 
-    /** The typed §12 code for [Api] failures, null otherwise or when the code is outside the
-     *  vocabulary this client knows. */
+    /** The typed §12 code for [Api]/[RateLimited] failures, null otherwise or when the code is
+     *  outside the vocabulary this client knows. */
     public val apiCode: APIErrorCode?
-        get() = (this as? Api)?.envelope?.code
+        get() = when (this) {
+            is Api -> envelope.code
+            is RateLimited -> envelope.code
+            else -> null
+        }
 
-    /** The stable code string for [Api] failures (present even for a code this client does not
-     *  know), null for every other case. */
+    /** The stable code string for [Api]/[RateLimited] failures (present even for a code this client
+     *  does not know), null for every other case. */
     public val apiCodeString: String?
-        get() = (this as? Api)?.envelope?.error
+        get() = when (this) {
+            is Api -> envelope.error
+            is RateLimited -> envelope.error
+            else -> null
+        }
 }

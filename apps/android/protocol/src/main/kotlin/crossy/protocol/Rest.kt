@@ -57,6 +57,16 @@ public enum class APIErrorCode(public val httpStatus: Int) {
     AMBIGUOUS_SOLUTION(422),
     DEGENERATE_GRID(422),
     DIAGRAMLESS(422),
+
+    // Named display-name rejections (§12; docs/design/name-onboarding §7.2). All 422: the body is
+    // well-formed JSON (a malformed body is 400 VALIDATION) but the name violates a domain rule the
+    // person can read and fix. INV-1 casing does NOT apply to names (it is cell-values only).
+    NAME_REQUIRED(422),
+    NAME_TOO_LONG(422),
+    NAME_INVALID(422),
+
+    // The write window is spent (PATCH /me is rate-limited per user); carries a Retry-After header.
+    RATE_LIMITED(429),
     ;
 
     public companion object {
@@ -469,4 +479,38 @@ public data class DeleteAccountResponse(
     val successions: Int,
     val abandoned: List<String>,
     val vendorDeleted: Boolean,
+)
+
+// MARK: - Self display identity (PROTOCOL.md §12: GET /me, PATCH /me)
+
+/**
+ * The `GET /me` / `PATCH /me` response: the caller's own display identity, the read the onboarding
+ * trigger confirms against and the Settings editor loads from (docs/design/name-onboarding §7). Twin
+ * of iOS `MeResponse`; field list per apps/api/src/identity/me.ts.
+ *
+ * `displayName` is the raw app-DB value and MAY be null: this is the one place a null name crosses
+ * the wire on purpose, so a client can detect a nameless account and onboard (the gameplay wire in
+ * §4 stays non-null). Both nullable fields here are nullable-and-present: the server always writes
+ * the key (with an explicit JSON null when empty), so they carry NO default (the key is required on
+ * decode and an explicit null is written on encode, the §3 nullable-and-present posture).
+ * `needsName` is the server-computed trigger (`!isAnonymous && display_name IS NULL`), the
+ * authoritative "are you nameless" answer the client acts on rather than re-deriving.
+ */
+@Serializable
+public data class MeResponse(
+    val userId: String,
+    val displayName: String?,
+    val isAnonymous: Boolean,
+    val avatarUrl: String?,
+    val needsName: Boolean,
+)
+
+/**
+ * The `PATCH /me` request body: the caller sets their own display name. A single `displayName`
+ * field, sent verbatim; the server owns canonicalization and validation (§5), so mirroring that in
+ * the type would only shadow the contract. Twin of iOS `UpdateDisplayNameRequest`.
+ */
+@Serializable
+public data class UpdateDisplayNameRequest(
+    val displayName: String,
 )

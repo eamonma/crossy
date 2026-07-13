@@ -2,6 +2,7 @@ package crossy.protocol
 
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -51,6 +52,12 @@ class RestSnapshotTests {
             "AMBIGUOUS_SOLUTION" to 422,
             "DEGENERATE_GRID" to 422,
             "DIAGRAMLESS" to 422,
+            // Display-name rejections (docs/design/name-onboarding §7.2): the three NAME_* codes are
+            // 422 (a well-formed body whose value violates a rule), and a spent write window is 429.
+            "NAME_REQUIRED" to 422,
+            "NAME_TOO_LONG" to 422,
+            "NAME_INVALID" to 422,
+            "RATE_LIMITED" to 429,
         )
         assertEquals(table.keys, APIErrorCode.entries.map { it.name }.toSet())
         for (code in APIErrorCode.entries) {
@@ -289,6 +296,47 @@ class RestSnapshotTests {
         assertTrue(response.tombstoned)
         assertEquals(1, response.successions)
         assertEquals(listOf("c3d4e5f6-a7b8-4c9d-8e0f-2a3b4c5d6e7f"), response.abandoned)
+    }
+
+    // --- Self display identity (§12: GET /me, PATCH /me) ---
+
+    @Test
+    fun meResponseRoundTripsAndKeepsTheExplicitNullName() {
+        // §12: `displayName` is the one place a null name crosses the wire on purpose (a nameless
+        // account), and `avatarUrl` is null when the server has none. Both are nullable-and-present:
+        // the server writes the key with an explicit null, and the twin re-encodes that explicit
+        // null (not an absent key), so the round trip is lossless and needsName crosses verbatim.
+        val me = assertLosslessRoundTrip(MeResponse.serializer(), FixtureGroup.REST, "me-response")
+        assertNull(me.displayName, "a nameless account carries an explicit null name")
+        assertNull(me.avatarUrl)
+        assertFalse(me.isAnonymous)
+        assertTrue(me.needsName, "the server-computed onboarding trigger crosses the wire")
+        val reencoded = ProtocolJson.parseToJsonElement(ProtocolJson.encodeToString(MeResponse.serializer(), me)).jsonObject
+        assertEquals(JsonNull, reencoded["displayName"], "displayName re-encodes as an explicit null, not an absent key")
+        assertEquals(JsonNull, reencoded["avatarUrl"], "avatarUrl re-encodes as an explicit null")
+    }
+
+    @Test
+    fun meResponseDecodesAChosenName() {
+        // The named branch: a permanent account that has chosen a name. displayName is the raw value,
+        // needsName is false, and casing is preserved (INV-1 does not apply to names).
+        val named = """{"userId":"u-2","displayName":"Ada Lovelace","isAnonymous":false,"avatarUrl":"https://cdn.example/a.png","needsName":false}"""
+        val me = ProtocolJson.decodeFromString(MeResponse.serializer(), named)
+        assertEquals("Ada Lovelace", me.displayName)
+        assertFalse(me.needsName)
+        assertEquals("https://cdn.example/a.png", me.avatarUrl)
+        // Lossless: re-encode then re-decode preserves the chosen name.
+        val reencoded = ProtocolJson.encodeToString(MeResponse.serializer(), me)
+        assertEquals(me, ProtocolJson.decodeFromString(MeResponse.serializer(), reencoded))
+    }
+
+    @Test
+    fun updateDisplayNameRequestSendsOnlyTheNameField() {
+        val request = UpdateDisplayNameRequest("  Ada   Lovelace ")
+        val obj = ProtocolJson.parseToJsonElement(ProtocolJson.encodeToString(UpdateDisplayNameRequest.serializer(), request)).jsonObject
+        assertEquals(setOf("displayName"), obj.keys, "the PATCH body carries only displayName")
+        // Sent verbatim: the server owns canonicalization, so the client never folds or trims.
+        assertEquals("  Ada   Lovelace ", obj["displayName"]?.jsonPrimitive?.content)
     }
 
     @Test

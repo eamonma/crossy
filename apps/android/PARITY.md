@@ -29,7 +29,7 @@ owner can do).
 | Create game                        | shipped       |                                                                                                |
 | Auth: email/dev-token              | shipped       | AAD-3 v0; in-memory tokens                                                                     |
 | Auth: email OTP / magic link       | shipped       | Send + verify code (#230); verifyEmailLink ready, magic-link deep link rides the App Links row |
-| Display name (onboarding + editor) | in-flight     | Mirrors #236: /me needsName, canonicalize/validate vectors                                     |
+| Display name (onboarding + editor) | shipped       | Mirrors #236: /me needsName gate before Rooms + Settings nickname editor; canonicalize/validate/sanitize pinned by vectors/identity/display-name.json |
 | Auth: Turnstile captcha minting    | in-flight     | WebView minter + 8-digit code; unblocks prod send (#230)                                       |
 | Terminal room retires key deck     | in-flight     | Mirrors ios #205/#235                                                                          |
 | Auth: Google native                | blocked-owner | Console work; PKCE helpers ready                                                               |
@@ -38,7 +38,7 @@ owner can do).
 | Invite QR (show + scan)            | absent        |                                                                                                |
 | Completion (mosaic, celebration)   | absent        | Store carries the state; UI pending                                                            |
 | Post-game Analysis surface         | absent        | Mirrors ios #210                                                                               |
-| Settings / account                 | absent        | Mirrors #197 shape when built                                                                  |
+| Settings / account                 | partial       | Minimal honest surface from #236: account row + nickname editor + sign-out; fuller #197 parity (avatar, account management, preferences) is a separate track |
 | Keystore token store               | absent        | In-memory tonight (AD-4 posture)                                                               |
 | Play identity + signing            | blocked-owner | AAD-5; applicationId is a placeholder                                                          |
 | Live Activity analog               | divergent     | AAD-4: Live Updates are post-v1                                                                |

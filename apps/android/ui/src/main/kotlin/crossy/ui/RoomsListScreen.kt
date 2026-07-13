@@ -38,7 +38,9 @@ fun RoomsListScreen(
     onJoinByCode: () -> Unit,
     onCreate: () -> Unit,
     onOpenDemo: () -> Unit,
-    onSignOut: () -> Unit,
+    // The account/Settings entry point (the nickname editor and sign-out live there now, mirroring
+    // iOS which puts both in Settings).
+    onOpenSettings: () -> Unit,
 ) {
     Scaffold { inner ->
         Column(modifier = Modifier.fillMaxSize().padding(inner).padding(horizontal = 16.dp)) {
@@ -47,7 +49,7 @@ fun RoomsListScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Rooms", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = onSignOut) { Text("Sign out") }
+                TextButton(onClick = onOpenSettings) { Text("Settings") }
             }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
