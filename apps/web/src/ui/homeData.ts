@@ -61,6 +61,13 @@ export interface GameSummary {
    */
   completedAt: string | null;
   /**
+   * When a host ended the game (ISO), or null unless it was abandoned. The twin terminal timestamp
+   * to completedAt and mutually exclusive with it (a terminal game is completed or ended, never
+   * both): a non-null value shelves the room as ended rather than leaving it in the live shelf.
+   * Read from the session-owned game_state, a bare timestamp, never a solution (INV-6-safe).
+   */
+  abandonedAt: string | null;
+  /**
    * The game's last activity: the newest board event's timestamp (ISO), or null when no one has
    * played yet. `MAX(cell_events.at)` read server-side under a SELECT-only grant, never a cell
    * value or a solution (INV-6-safe). The list is ordered by this field, most recent first.
@@ -80,6 +87,15 @@ export interface GameSummary {
 /** True when a game has finished (a non-null completion timestamp); the sidebar marks these. */
 export function isCompleted(g: GameSummary): boolean {
   return g.completedAt !== null;
+}
+
+/**
+ * True when a host ended the game (a non-null abandonment timestamp). Terminal like a solved game
+ * but distinct from it: an ended room gathers into its own trailing shelf, never the live shelf and
+ * never the "Solved" one. Mutually exclusive with isCompleted (a terminal game is one or the other).
+ */
+export function isAbandoned(g: GameSummary): boolean {
+  return g.abandonedAt !== null;
 }
 
 /**
@@ -122,22 +138,28 @@ export function sortByActivity(games: readonly GameSummary[]): GameSummary[] {
 }
 
 /**
- * Split rooms into the two shelves the home and the sidebar render (Home.tsx GamesList, AppShell
- * RecentGames): live rooms lead, solved rooms gather trailing. The partition PRESERVES the input
- * order within each group and never re-sorts, so a caller's activity order carries through. When
- * nothing is solved the `solved` group is empty and the caller draws no trailing header. The iOS
- * twin is RoomCardModel.shelved. Pure and non-mutating.
+ * Split rooms into the three shelves the home and the sidebar render (Home.tsx GamesList, AppShell
+ * RecentGames): live rooms lead, then solved rooms, then host-ended rooms, each gathered trailing.
+ * A game is classified by its terminal timestamps, which are mutually exclusive (PROTOCOL §12):
+ * completedAt puts it in `solved`, abandonedAt in `ended`, neither in `live`. The partition
+ * PRESERVES the input order within each group and never re-sorts, so a caller's activity order
+ * carries through. When a group is empty the caller draws no header for it, so an all-live shelf
+ * carries no trailing sections. The iOS twin is RoomCardModel.shelved. Pure and non-mutating.
  */
-export function partitionBySolved(games: readonly GameSummary[]): {
+export function partitionRooms(games: readonly GameSummary[]): {
   live: GameSummary[];
   solved: GameSummary[];
+  ended: GameSummary[];
 } {
   const live: GameSummary[] = [];
   const solved: GameSummary[] = [];
+  const ended: GameSummary[] = [];
   for (const g of games) {
-    (isCompleted(g) ? solved : live).push(g);
+    if (isCompleted(g)) solved.push(g);
+    else if (isAbandoned(g)) ended.push(g);
+    else live.push(g);
   }
-  return { live, solved };
+  return { live, solved, ended };
 }
 
 /** Detected puzzle features, the flags GET /puzzles returns (no solution content). */

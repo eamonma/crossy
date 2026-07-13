@@ -66,6 +66,49 @@ final class ArrivalCopyTests: XCTestCase {
         XCTAssertEqual(ArrivalCopy.puzzleStarting, "Starting")
     }
 
+    func test_theContinueAnotherWayCopyIsPresentAndSubordinateInVoice_I3b() {
+        // The tertiary affordance and the sheet it opens (roadmap I3b): the strings
+        // exist and read plainly, the two rows name the two secondary methods.
+        XCTAssertEqual(ArrivalCopy.continueAnotherWay, "Continue another way")
+        XCTAssertFalse(ArrivalCopy.continueSheetTitle.isEmpty)
+        XCTAssertEqual(ArrivalCopy.continueRowEmail, "Email")
+        XCTAssertEqual(ArrivalCopy.continueRowHisbaan, "Hisbaan")
+    }
+
+    func test_theCodeEntryHintNamesTheAddressTheCodeWentTo_I3b() {
+        // The code step tells the person where the code went, so a mistyped address is
+        // obvious before they hunt an inbox that never got one.
+        let hint = ArrivalCopy.codeEntryHint(email: "ada@example.com")
+        XCTAssertTrue(hint.contains("ada@example.com"))
+    }
+
+    func test_theResendCountdownNamesTheRemainingSeconds_I3b() {
+        // The cooldown reads as a live count, so the resend affordance is honest about
+        // when it returns.
+        XCTAssertTrue(ArrivalCopy.codeResendCountdown(seconds: 12).contains("12"))
+    }
+
+    func test_theEmailErrorsSayWhatToDoWithoutServerProse_I3b() {
+        // Same voice as the arrival errors: a plain sentence with a remedy, never the
+        // server's own words.
+        XCTAssertFalse(ArrivalCopy.emailSendFailed.isEmpty)
+        XCTAssertFalse(ArrivalCopy.codeVerifyFailed.isEmpty)
+    }
+
+    func test_theEmailOTPCodeLengthIsEightAndTheCopyAgrees_I3b() {
+        // Supabase's OTP is 8 digits; the one length constant, the field prompt, and the
+        // hint copy must all agree so the entry never rejects a valid code or misleads.
+        XCTAssertEqual(ArrivalCopy.emailOTPCodeLength, 8)
+        // The field prompt is a run of placeholder digits exactly the OTP length, so the
+        // person sees how many to type.
+        XCTAssertEqual(ArrivalCopy.codeFieldPrompt.count, ArrivalCopy.emailOTPCodeLength)
+        XCTAssertTrue(ArrivalCopy.codeFieldPrompt.allSatisfy { $0.isNumber })
+        // The send hint states the length in words; it must say "eight", never a stale
+        // "six".
+        XCTAssertTrue(ArrivalCopy.emailEntryHint.contains("eight-digit"))
+        XCTAssertFalse(ArrivalCopy.emailEntryHint.contains("six"))
+    }
+
     func test_startFailureIsOneSentencePerCodeAndNeverShowsTheRawCode() {
         // A failed start reads inline on the card, keyed on the §12 code, same posture
         // as the join and delete errors: say what happened, offer a retry, no raw code.

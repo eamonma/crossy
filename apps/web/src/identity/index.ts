@@ -3,6 +3,9 @@
 export type {
   Identity,
   IdentitySession,
+  EmailOtpReason,
+  EmailOtpResult,
+  EmailOtpSendResult,
   GuestSignInOptions,
   GuestSignInResult,
   SessionChangeCause,

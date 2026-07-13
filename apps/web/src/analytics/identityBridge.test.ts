@@ -46,6 +46,9 @@ function makeIdentity(initial: IdentitySession | null = null): {
         reason: "guests_disabled",
         message: "not under test",
       }),
+    sendEmailOtp: () => Promise.resolve({ ok: true }),
+    verifyEmailOtp: () => Promise.resolve({ ok: true }),
+    verifyEmailLink: () => Promise.resolve({ ok: true }),
     signOut: () => Promise.resolve(),
     onChange(cb) {
       listeners.add(cb);

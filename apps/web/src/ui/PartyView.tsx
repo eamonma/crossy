@@ -87,14 +87,12 @@ function ClueTag({ clue }: { clue: Clue }) {
 export function PartyView({
   store,
   puzzle,
-  gameId,
   code,
   name,
   onExit,
 }: {
   store: GameStore;
   puzzle: Puzzle;
-  gameId: string;
   code: string | null;
   name: string | null;
   /** Leave party mode, back to the interactive game. Undefined on a projector opened straight
@@ -189,15 +187,7 @@ export function PartyView({
 
   // The QR target is the game's shareable invite link, byte-identical to the host's Share link
   // (no party flag): scanning it joins as a solver, never opens another projector.
-  const joinUrl = useMemo(
-    () =>
-      buildShareUrl({
-        origin: window.location.origin,
-        gameId,
-        code,
-      }),
-    [gameId, code],
-  );
+  const joinUrl = useMemo(() => buildShareUrl({ code }), [code]);
   const qrMarkup = useMemo(
     () =>
       joinUrl === null

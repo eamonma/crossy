@@ -189,22 +189,23 @@ public struct RoomsScreen: View {
                 }
 
                 // The web's shelf grammar (Home.tsx GamesList): live rooms lead, then, only
-                // when any exist, a quiet "Solved" section gathers the finished rooms so the
-                // shelf reads current up top. iOS leads the live rooms with a featured wall:
-                // the few most-recently-active render as large silhouette cards (a 2x2 grid),
-                // the way the web home leads with real grids, and the rest fall to the compact
-                // list below. Partition at render time off the ONE appended `rooms` array (the
-                // pure helper), never a second paging list: pages are createdAt-bounded and
-                // appended, so a solved room from a deeper page lands after the earlier solved
-                // rooms within this trailing section (§12 pagination stability).
+                // when any exist, a quiet "Solved" section and then an "Ended" section gather
+                // the terminal rooms (completed and host-ended) so the shelf reads current up
+                // top. iOS leads the live rooms with a featured wall: the few most-recently-active
+                // render as large silhouette cards (a 2x2 grid), the way the web home leads with
+                // real grids, and the rest fall to the compact list below. Partition at render
+                // time off the ONE appended `rooms` array (the pure helper), never a second
+                // paging list: pages are createdAt-bounded and appended, so a terminal room from a
+                // deeper page lands after the earlier terminal rooms within its trailing section
+                // (§12 pagination stability).
                 let shelved = RoomCardModel.shelved(rooms)
                 let featured = Array(shelved.live.prefix(Self.featuredCount))
                 let restLive = Array(shelved.live.dropFirst(Self.featuredCount))
 
-                if featured.count == 1 {
-                    // One live room stands full-width, not a lonely half of a 2x2.
-                    roomTap(featured[0]) { FeaturedRoomCard(model: featured[0], ground: ground) }
-                } else if !featured.isEmpty {
+                if !featured.isEmpty {
+                    // The featured wall keeps its grid cell size no matter the count: a single
+                    // live room sits in the first cell at the same face as a full 2x2, never
+                    // ballooning to a lone full-width hero.
                     LazyVGrid(columns: Self.featuredColumns, spacing: 12) {
                         ForEach(featured) { room in
                             roomTap(room) { FeaturedRoomCard(model: room, ground: ground) }
@@ -220,6 +221,13 @@ public struct RoomsScreen: View {
                 if !shelved.solved.isEmpty {
                     sectionHeader(ArrivalCopy.roomsSolvedSection)
                     ForEach(shelved.solved) { room in
+                        roomTap(room) { RoomCard(model: room, ground: ground) }
+                    }
+                }
+
+                if !shelved.ended.isEmpty {
+                    sectionHeader(ArrivalCopy.roomsEndedSection)
+                    ForEach(shelved.ended) { room in
                         roomTap(room) { RoomCard(model: room, ground: ground) }
                     }
                 }

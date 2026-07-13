@@ -37,6 +37,96 @@ describe("mock identity adapter", () => {
     const apple = createMockIdentity();
     await apple.signInWithProvider("apple");
     expect(apple.getSession()?.isAnonymous).toBe(false);
+
+    // hisbaan rides the same OAuth path as the built-ins, so the union member is usable end to end.
+    const hisbaan = createMockIdentity();
+    await hisbaan.signInWithProvider("hisbaan");
+    expect(hisbaan.getSession()?.isAnonymous).toBe(false);
+  });
+
+  it("sendEmailOtp succeeds without a session (the code entry is next)", async () => {
+    const identity = createMockIdentity();
+    const result = await identity.sendEmailOtp("ada@example.com");
+    expect(result).toEqual({ ok: true });
+    // Sending only starts the flow: no session lands until the code is verified.
+    expect(identity.getSession()).toBeNull();
+  });
+
+  it("sendEmailOtp accepts an optional captcha token, threaded like the guest path (captcha_failed cure)", async () => {
+    // The modal threads the Turnstile token into the send when the project's captcha is on; the
+    // mock accepts and ignores it (no captcha-gated provider here). Spy to prove the caller's
+    // token reaches the port exactly as passed, so the wiring is covered without a real provider.
+    const identity = createMockIdentity();
+    const send = vi.spyOn(identity, "sendEmailOtp");
+    const result = await identity.sendEmailOtp("ada@example.com", {
+      captchaToken: "turnstile-token",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(send).toHaveBeenCalledWith("ada@example.com", {
+      captchaToken: "turnstile-token",
+    });
+    // The token is a send-time concern only: it lands no session.
+    expect(identity.getSession()).toBeNull();
+  });
+
+  it("verifyEmailOtp lands a full account on the correct code and emits 'signed_in'", async () => {
+    const identity = createMockIdentity();
+    const seen = vi.fn();
+    identity.onChange(seen);
+    const result = await identity.verifyEmailOtp({
+      email: "ada@example.com",
+      token: "12345678",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(identity.getSession()?.isAnonymous).toBe(false);
+    expect(seen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isAnonymous: false }),
+      "signed_in",
+    );
+  });
+
+  it("verifyEmailOtp returns 'invalid_code' for a wrong code and lands no session", async () => {
+    const identity = createMockIdentity();
+    const result = await identity.verifyEmailOtp({
+      email: "ada@example.com",
+      token: "00000000",
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_code",
+      message: expect.any(String),
+    });
+    expect(identity.getSession()).toBeNull();
+  });
+
+  it("verifyEmailLink lands a full account on the correct token_hash and emits 'signed_in'", async () => {
+    const identity = createMockIdentity();
+    const seen = vi.fn();
+    identity.onChange(seen);
+    const result = await identity.verifyEmailLink({
+      tokenHash: "ok",
+      type: "magiclink",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(identity.getSession()?.isAnonymous).toBe(false);
+    expect(seen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ isAnonymous: false }),
+      "signed_in",
+    );
+  });
+
+  it("verifyEmailLink returns 'invalid_code' for a stale token_hash", async () => {
+    const identity = createMockIdentity();
+    const result = await identity.verifyEmailLink({
+      tokenHash: "stale",
+      type: "magiclink",
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: "invalid_code",
+      message: expect.any(String),
+    });
+    expect(identity.getSession()).toBeNull();
   });
 
   it("onChange fires on sign-in and sign-out and unsubscribes cleanly", async () => {

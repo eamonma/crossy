@@ -30,6 +30,10 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
  * envelope names a format outside the registry; the message names the format and never echoes
  * the document) and SOLUTION_MISSING (a well-formed document with no complete solution grid;
  * v1 requires solutions at ingest so check and completion work unchanged, D11).
+ *
+ * RATE_LIMITED (429) is the REST-only code the invite/join code paths return when a caller spends
+ * their fixed window (http/rate-limit.ts), carrying a `Retry-After` header. Application-level
+ * defense in depth behind Cloudflare's edge limiter; flagged for the docs amendment ledger.
  */
 export type ApiErrorCode =
   | "UNAUTHORIZED" // 401: bad or missing bearer token
@@ -48,7 +52,8 @@ export type ApiErrorCode =
   | "UNSOLVABLE_CELL" // 422: a solution cell no legal input can satisfy (DESIGN.md §7, SP5)
   | "AMBIGUOUS_SOLUTION" // 422: two clues for one slot, a Schroedinger puzzle (SP5)
   | "UNKNOWN_FORMAT" // 400: the envelope names a format not in the registry (PROTOCOL.md §12)
-  | "SOLUTION_MISSING"; // 422: a well-formed document with no complete solution grid (PROTOCOL.md §12, D11)
+  | "SOLUTION_MISSING" // 422: a well-formed document with no complete solution grid (PROTOCOL.md §12, D11)
+  | "RATE_LIMITED"; // 429: the caller spent their rate-limit window on a code path (http/rate-limit.ts)
 
 const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
   UNAUTHORIZED: 401,
@@ -68,6 +73,7 @@ const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
   AMBIGUOUS_SOLUTION: 422,
   UNKNOWN_FORMAT: 400,
   SOLUTION_MISSING: 422,
+  RATE_LIMITED: 429,
 };
 
 /** Serialize an API error to its JSON body and HTTP status. */

@@ -146,7 +146,7 @@ final class AuthSessionTests: XCTestCase {
         StubURLProtocol.install { _ in (200, grantBody) }
         let (session, opened, _, keychain) = makeSession()
 
-        await session.signIn()
+        await session.signIn(provider: .discord)
 
         XCTAssertEqual(session.phase, .signedIn)
         XCTAssertEqual(session.userId, "11111111-2222-3333-4444-555555555555")
@@ -194,7 +194,7 @@ final class AuthSessionTests: XCTestCase {
         StubURLProtocol.install { _ in (200, grantBody) }
         let (session, _, _, keychain) = makeSession(web: [.canceled])
 
-        await session.signIn()
+        await session.signIn(provider: .discord)
 
         XCTAssertEqual(session.phase, .signedOut)
         XCTAssertNil(try keychain.read(account: AuthSession.keychainAccount))
@@ -205,12 +205,12 @@ final class AuthSessionTests: XCTestCase {
         StubURLProtocol.install { _ in (200, grantBody) }
         let (session, _, _, _) = makeSession(web: [.failed, .callback("crossy://auth/callback?code=the-code")])
 
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.phase, .failed)
 
         // EXPERIENCE.md §3: failure returns to Welcome with a plain retry; the same
         // signIn() runs again from failed.
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.phase, .signedIn)
     }
 
@@ -219,7 +219,7 @@ final class AuthSessionTests: XCTestCase {
         let (session, _, _, _) = makeSession(
             web: [.callback("crossy://auth/callback?error=access_denied")])
 
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.phase, .failed)
         XCTAssertTrue(StubURLProtocol.recordedRequests.isEmpty)
     }
@@ -454,7 +454,7 @@ final class AuthSessionTests: XCTestCase {
     func test_signOutClearsTheKeychainAndTheTokenPathThrows() async throws {
         StubURLProtocol.install { _ in (200, grantBody) }
         let (session, _, _, keychain) = makeSession()
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.phase, .signedIn)
 
         StubURLProtocol.install { _ in (204, Data()) }
@@ -626,7 +626,7 @@ final class AuthSessionTests: XCTestCase {
         let keychain = InMemoryKeychain()
         let (session, _, _, _) = makeSession(keychain: keychain)
 
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.provider, .discord)
 
         // A relaunch restores only from the Keychain: the marker still names the provider.
@@ -650,7 +650,7 @@ final class AuthSessionTests: XCTestCase {
         StubURLProtocol.install { _ in (200, grantBody) }
         let keychain = InMemoryKeychain()
         let (session, _, _, _) = makeSession(keychain: keychain)
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.provider, .discord)
 
         StubURLProtocol.install { _ in (204, Data()) }
@@ -666,7 +666,7 @@ final class AuthSessionTests: XCTestCase {
         StubURLProtocol.install { _ in (200, grantBody) }
         let keychain = InMemoryKeychain()
         let (session, _, _, _) = makeSession(keychain: keychain)
-        await session.signIn()
+        await session.signIn(provider: .discord)
         XCTAssertEqual(session.phase, .signedIn)
 
         // The server-side DELETE /account is the API client's; this is the local purge
@@ -699,5 +699,198 @@ final class AuthSessionTests: XCTestCase {
 
         XCTAssertEqual(session.phase, .signedIn)
         XCTAssertNil(session.provider, "no marker, no provider named")
+    }
+
+    // MARK: - Secondary sign-in methods (roadmap I3b)
+
+    func test_hisbaanRidesTheSameWebLegWithTheEncodedProviderAndRemembersItself() async throws {
+        // hisbaan is a custom OIDC provider on the identical PKCE web flow Discord uses;
+        // only the provider value and the remembered marker differ. The ":" must land on the
+        // wire percent-encoded (custom%3Ahisbaan) yet decode back to the raw provider.
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, opened, _, _) = makeSession()
+
+        await session.signIn(provider: .hisbaan)
+
+        XCTAssertEqual(session.phase, .signedIn)
+        XCTAssertEqual(session.provider, .hisbaan, "the leg remembers hisbaan")
+
+        let authorize = try XCTUnwrap(opened.all.first)
+        XCTAssertEqual(authorize.host, "api.crossy.party")
+        XCTAssertEqual(authorize.path, "/auth/v1/authorize")
+        // On the wire the colon is encoded (some proxies mis-split a bare colon).
+        XCTAssertTrue(
+            authorize.absoluteString.contains("provider=custom%3Ahisbaan"),
+            "the raw colon is percent-encoded on the wire")
+        // Decoded, it reads back the exact provider raw value GoTrue expects.
+        let query = URLComponents(url: authorize, resolvingAgainstBaseURL: false)?.queryItems
+        XCTAssertEqual(query?.first { $0.name == "provider" }?.value, "custom:hisbaan")
+
+        // The exchange still hit the pkce grant, exactly as Discord's leg does.
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.path, "/auth/v1/token")
+        XCTAssertEqual(request.queryValue("grant_type"), "pkce")
+    }
+
+    func test_verifyEmailOTPWalksAuthenticatingToSignedInAndRemembersEmail() async throws {
+        // The two-step email flow's second step: a good code drives .authenticating ->
+        // .signedIn, persists the session, and remembers the email provider.
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, _, keychain) = makeSession()
+
+        try await session.verifyEmailOTP(email: "ada@example.com", code: "123456")
+
+        XCTAssertEqual(session.phase, .signedIn)
+        XCTAssertEqual(session.provider, .emailOTP)
+        XCTAssertEqual(session.userId, "11111111-2222-3333-4444-555555555555")
+
+        // The verify hit /auth/v1/verify with the email type, the address, and the code.
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.path, "/auth/v1/verify")
+        XCTAssertEqual(request.headers["Apikey"] ?? request.headers["apikey"], "sb_publishable_test")
+        let body = try JSONDecoder().decode([String: String].self, from: XCTUnwrap(request.body))
+        XCTAssertEqual(body["type"], "email")
+        XCTAssertEqual(body["email"], "ada@example.com")
+        XCTAssertEqual(body["token"], "123456")
+
+        // And the session persisted for the token path.
+        let blob = try XCTUnwrap(try keychain.read(account: AuthSession.keychainAccount))
+        let persisted = try JSONDecoder().decode(SupabaseSession.self, from: blob)
+        XCTAssertEqual(persisted.accessToken, "granted-access")
+    }
+
+    func test_verifyEmailOTPWithABadCodeLandsInFailedAndRethrows() async throws {
+        // A refused code (4xx) returns to the failed state (EXPERIENCE.md §3 retry) and
+        // surfaces the typed error so the sheet can render the inline reason too.
+        StubURLProtocol.install { _ in (403, Data(#"{"error":"otp_expired"}"#.utf8)) }
+        let (session, _, _, keychain) = makeSession()
+
+        do {
+            try await session.verifyEmailOTP(email: "ada@example.com", code: "000000")
+            XCTFail("a refused code must throw")
+        } catch let error as SupabaseAuthError {
+            guard case .refused(let status) = error else {
+                return XCTFail("a 4xx code refusal is .refused, got \(error)")
+            }
+            XCTAssertEqual(status, 403)
+        }
+
+        XCTAssertEqual(session.phase, .failed)
+        XCTAssertNil(session.provider, "a failed verify remembers nothing")
+        XCTAssertNil(
+            try keychain.read(account: AuthSession.keychainAccount),
+            "a failed verify persists nothing")
+    }
+
+    func test_sendEmailOTPPostsTheSendRequestAndLeavesThePhaseAlone() async throws {
+        // Step one only asks the server to send the code; no session comes back and the
+        // phase does not move (a later sheet owns the local sub-state).
+        StubURLProtocol.install { _ in (200, Data("{}".utf8)) }
+        let (session, _, _, _) = makeSession()
+        XCTAssertEqual(session.phase, .signedOut)
+
+        try await session.sendEmailOTP(email: "ada@example.com")
+
+        XCTAssertEqual(session.phase, .signedOut, "sending the code moves no phase")
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.path, "/auth/v1/otp")
+        // create_user mints an account on first sight, so a new email signs in.
+        let body = try jsonObject(XCTUnwrap(request.body))
+        XCTAssertEqual(body, try jsonObject(Data(#"{"email":"ada@example.com","create_user":true}"#.utf8)))
+    }
+
+    func test_sendEmailOTPSurfacesTheServerRefusal() async throws {
+        // The send leg surfaces its error straight through for the sheet to render.
+        StubURLProtocol.install { _ in (429, Data(#"{"error":"over_email_send_rate_limit"}"#.utf8)) }
+        let (session, _, _, _) = makeSession()
+
+        do {
+            try await session.sendEmailOTP(email: "ada@example.com")
+            XCTFail("a refused send must throw")
+        } catch is SupabaseAuthError {
+            // the typed error rides through
+        }
+        XCTAssertEqual(session.phase, .signedOut, "a failed send moves no phase")
+    }
+
+    func test_sendEmailOTPCarriesTheCaptchaTokenInGotrueMetaSecurity() async throws {
+        // Supabase has Turnstile protection on project-wide, so the /otp send must carry
+        // the captcha token under gotrue_meta_security.captcha_token or GoTrue refuses it
+        // with captcha_failed. The token the hidden Turnstile web view minted rides here.
+        StubURLProtocol.install { _ in (200, Data("{}".utf8)) }
+        let (session, _, _, _) = makeSession()
+
+        try await session.sendEmailOTP(email: "ada@example.com", captchaToken: "cf-turnstile-token")
+
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.path, "/auth/v1/otp")
+        let body = try jsonObject(XCTUnwrap(request.body))
+        XCTAssertEqual(
+            body,
+            try jsonObject(
+                Data(
+                    #"{"email":"ada@example.com","create_user":true,"gotrue_meta_security":{"captcha_token":"cf-turnstile-token"}}"#
+                        .utf8)),
+            "the send must nest the token as gotrue_meta_security.captcha_token beside create_user")
+    }
+
+    func test_sendEmailOTPOmitsTheCaptchaBlockWhenNoTokenIsGiven() async throws {
+        // A nil token (a captcha-off build, or an older server) omits the whole
+        // gotrue_meta_security block, so the body stays byte-identical to the
+        // pre-captcha form and never sends an empty captcha envelope.
+        StubURLProtocol.install { _ in (200, Data("{}".utf8)) }
+        let (session, _, _, _) = makeSession()
+
+        try await session.sendEmailOTP(email: "ada@example.com", captchaToken: nil)
+
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        let body = try jsonObject(XCTUnwrap(request.body))
+        XCTAssertEqual(
+            body,
+            try jsonObject(Data(#"{"email":"ada@example.com","create_user":true}"#.utf8)),
+            "a nil token must omit gotrue_meta_security entirely")
+    }
+
+    func test_completeMagicLinkVerifiesTheTokenHashAndSignsIn() async throws {
+        // The magic-link path (a later wave routes CrossyApp here): the token_hash and its
+        // type verify to a session, driving .authenticating -> .signedIn and remembering
+        // the email provider.
+        StubURLProtocol.install { _ in (200, grantBody) }
+        let (session, _, _, keychain) = makeSession()
+
+        try await session.completeMagicLink(tokenHash: "the-hash", type: "magiclink")
+
+        XCTAssertEqual(session.phase, .signedIn)
+        XCTAssertEqual(session.provider, .emailOTP)
+
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.path, "/auth/v1/verify")
+        let body = try JSONDecoder().decode([String: String].self, from: XCTUnwrap(request.body))
+        XCTAssertEqual(body["type"], "magiclink")
+        XCTAssertEqual(body["token_hash"], "the-hash")
+        XCTAssertNil(body["email"], "the link verify carries no email, only the hash")
+
+        let blob = try XCTUnwrap(try keychain.read(account: AuthSession.keychainAccount))
+        let persisted = try JSONDecoder().decode(SupabaseSession.self, from: blob)
+        XCTAssertEqual(persisted.accessToken, "granted-access")
+    }
+
+    func test_completeMagicLinkOnARefusalLandsInFailedAndRethrows() async throws {
+        // A dead or reused link (4xx) returns to the failed state and surfaces the error.
+        StubURLProtocol.install { _ in (401, Data(#"{"error":"token_hash_invalid"}"#.utf8)) }
+        let (session, _, _, keychain) = makeSession()
+
+        do {
+            try await session.completeMagicLink(tokenHash: "dead-hash", type: "magiclink")
+            XCTFail("a dead link must throw")
+        } catch is SupabaseAuthError {
+            // the typed error rides through
+        }
+
+        XCTAssertEqual(session.phase, .failed)
+        XCTAssertNil(session.provider)
+        XCTAssertNil(try keychain.read(account: AuthSession.keychainAccount))
     }
 }

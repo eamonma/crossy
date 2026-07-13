@@ -27,6 +27,11 @@ describe("parseRoute (paths select the surface)", () => {
       kind: "game",
       gameId: "g-1",
     });
+    // The magic-link landing: token_hash/type ride the query, read in the view, so the route
+    // itself carries no fields.
+    expect(parseRoute("/auth/confirm", p("?token_hash=x&type=email"))).toEqual({
+      kind: "auth-confirm",
+    });
   });
 
   it("tolerates trailing slashes and falls back to home on unknown paths", () => {

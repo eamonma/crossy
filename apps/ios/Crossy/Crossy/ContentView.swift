@@ -362,4 +362,5 @@ private struct RoomOpenFailure: View {
 #Preview {
     ContentView()
         .environment(PendingInvite())
+        .environment(PendingMagicLink())
 }

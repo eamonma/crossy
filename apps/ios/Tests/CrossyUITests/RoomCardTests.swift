@@ -10,15 +10,15 @@ final class RoomCardTests: XCTestCase {
     private func model(
         name: String? = nil, title: String? = nil, members: Int = 2,
         gameId: String = "g1", createdAt: String = "2026-07-01T00:00:00.000Z",
-        completedAt: String? = nil, lastActivityAt: String? = nil,
+        completedAt: String? = nil, abandonedAt: String? = nil, lastActivityAt: String? = nil,
         stack: [RoomCardMember] = [], inviteCode: String? = nil,
         mask: [String] = []
     ) -> RoomCardModel {
         RoomCardModel(
             gameId: gameId, name: name, puzzleTitle: title,
             rows: 15, cols: 15, mask: mask, memberCount: members, createdBy: "u1",
-            createdAt: createdAt, completedAt: completedAt, lastActivityAt: lastActivityAt,
-            members: stack, inviteCode: inviteCode)
+            createdAt: createdAt, completedAt: completedAt, abandonedAt: abandonedAt,
+            lastActivityAt: lastActivityAt, members: stack, inviteCode: inviteCode)
     }
 
     func test_roomCardModelCarriesTheMappedMemberStack_PROTOCOL12() {
@@ -93,22 +93,55 @@ final class RoomCardTests: XCTestCase {
     }
 
     func test_isSolvedReadsTheCompletedFact_PROTOCOL12() {
-        // §12: completedAt is the one lifecycle fact the home needs; a non-null time is solved,
-        // null (ongoing, or an abandoned game that never completed) is not.
+        // §12: completedAt is the completion fact; a non-null time is solved, null (ongoing, or
+        // an abandoned game that never completed) is not.
         XCTAssertTrue(model(completedAt: "2026-07-08T20:11:47.000Z").isSolved)
         XCTAssertFalse(model(completedAt: nil).isSolved, "ongoing (and abandoned) read as not solved")
     }
 
-    func test_shelved_partitionsLiveFromSolved_PROTOCOL12() {
-        // The web's shelf grammar (Home.tsx GamesList): live rooms lead, solved gather trailing.
+    func test_isAbandonedReadsTheEndedFact_andIsExclusiveWithSolved_PROTOCOL12() {
+        // §12: abandonedAt is the twin terminal fact, mutually exclusive with completedAt. A
+        // host-ended room is abandoned and terminal but never solved; a solved room is the
+        // reverse; a live room is neither.
+        let ended = model(abandonedAt: "2026-07-07T18:52:00.000Z")
+        XCTAssertTrue(ended.isAbandoned)
+        XCTAssertFalse(ended.isSolved)
+        XCTAssertTrue(ended.isTerminal)
+
+        let solved = model(completedAt: "2026-07-08T20:11:47.000Z")
+        XCTAssertFalse(solved.isAbandoned)
+        XCTAssertTrue(solved.isTerminal)
+
+        let live = model()
+        XCTAssertFalse(live.isAbandoned)
+        XCTAssertFalse(live.isTerminal)
+    }
+
+    func test_shelved_partitionsLiveSolvedEnded_PROTOCOL12() {
+        // The web's shelf grammar (Home.tsx GamesList): live rooms lead, then solved, then
+        // host-ended, each gathered trailing by its mutually exclusive terminal timestamp.
         let live1 = model(gameId: "a", completedAt: nil)
         let solved1 = model(gameId: "b", completedAt: "2026-07-08T20:11:47.000Z")
-        let live2 = model(gameId: "c", completedAt: nil)
-        let solved2 = model(gameId: "d", completedAt: "2026-07-09T09:00:00.000Z")
+        let ended1 = model(gameId: "c", abandonedAt: "2026-07-08T21:00:00.000Z")
+        let live2 = model(gameId: "d", completedAt: nil)
+        let solved2 = model(gameId: "e", completedAt: "2026-07-09T09:00:00.000Z")
+        let ended2 = model(gameId: "f", abandonedAt: "2026-07-09T10:00:00.000Z")
 
-        let shelved = RoomCardModel.shelved([live1, solved1, live2, solved2])
-        XCTAssertEqual(shelved.live.map(\.gameId), ["a", "c"])
-        XCTAssertEqual(shelved.solved.map(\.gameId), ["b", "d"])
+        let shelved = RoomCardModel.shelved([live1, solved1, ended1, live2, solved2, ended2])
+        XCTAssertEqual(shelved.live.map(\.gameId), ["a", "d"])
+        XCTAssertEqual(shelved.solved.map(\.gameId), ["b", "e"])
+        XCTAssertEqual(shelved.ended.map(\.gameId), ["c", "f"])
+    }
+
+    func test_shelved_keepsAnAbandonedRoomOutOfLive_theFix_PROTOCOL12() {
+        // The fix: an abandoned room has a null completedAt, so the old two-way split left it in
+        // the live shelf. It must gather into `ended`, out of both live and solved.
+        let shelved = RoomCardModel.shelved([
+            model(gameId: "a", abandonedAt: "2026-07-07T18:52:00.000Z")
+        ])
+        XCTAssertTrue(shelved.live.isEmpty)
+        XCTAssertTrue(shelved.solved.isEmpty)
+        XCTAssertEqual(shelved.ended.map(\.gameId), ["a"])
     }
 
     func test_shelved_preservesOrderWithinEachGroup_PROTOCOL12() {
@@ -117,32 +150,37 @@ final class RoomCardTests: XCTestCase {
         let rooms = [
             model(gameId: "s1", completedAt: "2026-07-09T00:00:00.000Z"),
             model(gameId: "l1", completedAt: nil),
+            model(gameId: "e1", abandonedAt: "2026-07-09T06:00:00.000Z"),
             model(gameId: "s2", completedAt: "2026-07-08T00:00:00.000Z"),
             model(gameId: "l2", completedAt: nil),
+            model(gameId: "e2", abandonedAt: "2026-07-08T06:00:00.000Z"),
             model(gameId: "s3", completedAt: "2026-07-07T00:00:00.000Z"),
         ]
         let shelved = RoomCardModel.shelved(rooms)
         XCTAssertEqual(shelved.live.map(\.gameId), ["l1", "l2"], "live order preserved")
         XCTAssertEqual(shelved.solved.map(\.gameId), ["s1", "s2", "s3"], "solved order preserved")
+        XCTAssertEqual(shelved.ended.map(\.gameId), ["e1", "e2"], "ended order preserved")
     }
 
-    func test_shelved_allLiveGivesEmptySolved_PROTOCOL12() {
-        // When nothing is solved the trailing section does not render (the web's all-live shelf
-        // carries no empty header); the helper reports an empty solved group.
+    func test_shelved_allLiveGivesEmptyTerminalGroups_PROTOCOL12() {
+        // When nothing is terminal the trailing sections do not render (the web's all-live shelf
+        // carries no empty header); the helper reports empty solved and ended groups.
         let rooms = [model(gameId: "a"), model(gameId: "b")]
         let shelved = RoomCardModel.shelved(rooms)
         XCTAssertEqual(shelved.live.map(\.gameId), ["a", "b"])
         XCTAssertTrue(shelved.solved.isEmpty)
+        XCTAssertTrue(shelved.ended.isEmpty)
     }
 
-    func test_shelved_allSolvedGivesEmptyLive_PROTOCOL12() {
+    func test_shelved_allTerminalGivesEmptyLive_PROTOCOL12() {
         let rooms = [
             model(gameId: "a", completedAt: "2026-07-08T00:00:00.000Z"),
-            model(gameId: "b", completedAt: "2026-07-09T00:00:00.000Z"),
+            model(gameId: "b", abandonedAt: "2026-07-09T00:00:00.000Z"),
         ]
         let shelved = RoomCardModel.shelved(rooms)
         XCTAssertTrue(shelved.live.isEmpty)
-        XCTAssertEqual(shelved.solved.map(\.gameId), ["a", "b"])
+        XCTAssertEqual(shelved.solved.map(\.gameId), ["a"])
+        XCTAssertEqual(shelved.ended.map(\.gameId), ["b"])
     }
 
     func test_headlinePrefersTheGameNameThenTheTitleThenGeometry() {

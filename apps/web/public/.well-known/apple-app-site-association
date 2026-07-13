@@ -11,6 +11,10 @@
           {
             "/": "/g/*",
             "comment": "Short unfurl links open the iOS app"
+          },
+          {
+            "/": "/auth/confirm*",
+            "comment": "Magic-link sign-in opens the iOS app"
           }
         ]
       }

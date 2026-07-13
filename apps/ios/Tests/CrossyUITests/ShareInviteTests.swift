@@ -1,24 +1,25 @@
-// ShareInvite.url is a Swift port of apps/web/src/domain/invite.ts's `buildShareUrl`;
-// these vectors mirror invite.test.ts's `buildShareUrl` suite so the two clients agree
-// on the shareable link's shape byte for byte.
+// ShareInvite.url emits the canonical short invite link the web app emits;
+// these vectors pin the shareable link's shape byte for byte so the two clients
+// agree on `https://crossy.ing/{CODE}`.
 
 import XCTest
 
 @testable import CrossyUI
 
 final class ShareInviteTests: XCTestCase {
-    func test_buildsAJoinablePathFormLink() {
+    func test_buildsTheCanonicalShortLink() {
         XCTAssertEqual(
             ShareInvite.url(gameId: "g-1", code: "ABCD2345")?.absoluteString,
-            "https://crossy.party/game/g-1?code=ABCD2345")
+            "https://crossy.ing/ABCD2345")
     }
 
-    // The code is the whole query: the room name is API-served (GET /games/{id}),
-    // so the link never carries it.
+    // The short link is the origin plus the code: no gameId, no query, no name.
+    // The room name is API-served (GET /games/{id}), so the link never carries it.
     func test_carriesOnlyTheCode() throws {
         let url = try XCTUnwrap(ShareInvite.url(gameId: "g-1", code: "ABCD2345"))
-        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
-        XCTAssertEqual(items?.map(\.name), ["code"])
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        XCTAssertNil(components?.queryItems)
+        XCTAssertEqual(components?.path, "/ABCD2345")
     }
 
     func test_noCodeMeansNoLink() {

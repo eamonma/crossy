@@ -51,7 +51,7 @@ function rejectionSentence(code: string): string {
     case "FULL_ACCOUNT_REQUIRED":
       return "You need a full account to create a game.";
     case "UNAUTHORIZED":
-      return "Your session expired. Sign in again to create a game.";
+      return "Your session expired. Continue to create a game.";
     default:
       return "Something went wrong creating the game. Give it another try.";
   }
@@ -164,18 +164,13 @@ function CreateGate({
     <DialogCard>
       <DialogHeader title="Create a game">
         {guest
-          ? "Guests can watch but not host. Sign in to create your own games."
+          ? "Guests can watch but not host. Continue to create your own games."
           : "Upload a puzzle and share the link. Hosting takes an account."}
       </DialogHeader>
       {/* Guest sign-in is a dead end here (guests can't create), so the gate offers
           the account providers alone. */}
       <div className="px-5 py-5">
-        <SignInButtons
-          identity={identity}
-          config={config}
-          verb="Sign in"
-          allowGuest={false}
-        />
+        <SignInButtons identity={identity} config={config} allowGuest={false} />
       </div>
     </DialogCard>
   );

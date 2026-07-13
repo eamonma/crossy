@@ -56,6 +56,24 @@ async function main(): Promise<void> {
   // route fails closed with 404 and universal links stay dark.
   const appleAppId = process.env["APPLE_APP_ID"];
 
+  // The invite host for short share links (PROTOCOL.md §12 "Invite links"), e.g. crossy.ing. It is
+  // an owner-held domain pointed at this same service; when set, requests on that host are served
+  // as the short-link surface. The redirect target is the web origin: its own WEB_ORIGIN, else
+  // CORS_ORIGIN, since the SPA origin and the web origin coincide. INVITE_HOST without a resolvable
+  // web origin leaves the host disabled (the middleware needs somewhere to send a browser).
+  const inviteHost = process.env["INVITE_HOST"];
+  const webOrigin = process.env["WEB_ORIGIN"] ?? corsOrigin;
+  if (
+    inviteHost !== undefined &&
+    inviteHost !== "" &&
+    (webOrigin === undefined || webOrigin === "")
+  ) {
+    console.warn(
+      "INVITE_HOST set but no WEB_ORIGIN or CORS_ORIGIN: the invite host is disabled " +
+        "(it needs a web origin to redirect a browser to)",
+    );
+  }
+
   // The membership notifier (DESIGN.md §6). Configured only when both the session's private
   // internal base URL and the shared static bearer are present; otherwise it is omitted and
   // membership changes stay authoritative in Postgres (a kicked user is still refused at
@@ -124,6 +142,8 @@ async function main(): Promise<void> {
     analytics,
     ...(corsOrigin !== undefined && corsOrigin !== "" ? { corsOrigin } : {}),
     ...(appleAppId !== undefined && appleAppId !== "" ? { appleAppId } : {}),
+    ...(inviteHost !== undefined && inviteHost !== "" ? { inviteHost } : {}),
+    ...(webOrigin !== undefined && webOrigin !== "" ? { webOrigin } : {}),
     ...(membershipNotifier !== undefined ? { membershipNotifier } : {}),
     ...(vendorIdentity !== undefined ? { vendorIdentity } : {}),
   });

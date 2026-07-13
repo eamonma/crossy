@@ -43,6 +43,20 @@ protocol ArrivalSessioning: AnyObject {
     var authProvider: AuthProvider? { get }
     func signIn() async
     func signInWithApple() async
+    /// The secondary methods behind "Continue another way" (roadmap I3b). Hisbaan rides
+    /// the same ASWebAuth leg Discord does (a custom OIDC provider); the email pair is
+    /// the two-step OTP grant, and completeMagicLink finishes a magic link a Universal
+    /// Link delivered. All drive the same signed-in phase the primary buttons do, so the
+    /// routing stays provider-blind. The two email calls surface errors so the sheet can
+    /// render the inline reason; the send call does not change the phase (AuthSession
+    /// contract).
+    func continueWithHisbaan() async
+    /// `captchaToken` is the invisible Turnstile token the sheet minted before the send
+    /// (Supabase has captcha on project-wide; a send without it is refused). Optional so
+    /// the fixture and injected sessions ignore it.
+    func sendEmailOTP(email: String, captchaToken: String?) async throws
+    func verifyEmailOTP(email: String, code: String) async throws
+    func completeMagicLink(tokenHash: String, type: String) async throws
     func signOut() async
     /// Delete the account: the server-side `DELETE /account` then the local token
     /// purge. nil on success (routing lands at Welcome), a digested failure otherwise
@@ -91,8 +105,22 @@ final class RealArrivalSession: ArrivalSessioning {
     var tokenProvider: any BearerTokenProviding { auth }
     var userId: String? { auth.userId }
     var authProvider: AuthProvider? { auth.provider }
-    func signIn() async { await auth.signIn() }
+    func signIn() async { await auth.signIn(provider: .discord) }
     func signInWithApple() async { await auth.signInWithApple() }
+    // The secondary methods forward straight to AuthSession (roadmap I3b): hisbaan is the
+    // same web leg with its own provider value, the email pair is the OTP grant, and the
+    // magic-link finisher is the link-verify grant. Each already drives the machine, so
+    // these are pure passthroughs.
+    func continueWithHisbaan() async { await auth.signIn(provider: .hisbaan) }
+    func sendEmailOTP(email: String, captchaToken: String?) async throws {
+        try await auth.sendEmailOTP(email: email, captchaToken: captchaToken)
+    }
+    func verifyEmailOTP(email: String, code: String) async throws {
+        try await auth.verifyEmailOTP(email: email, code: code)
+    }
+    func completeMagicLink(tokenHash: String, type: String) async throws {
+        try await auth.completeMagicLink(tokenHash: tokenHash, type: type)
+    }
     func signOut() async { await auth.signOut() }
 
     /// `DELETE /account` first; only on the server's confirmation do we purge local
@@ -129,6 +157,12 @@ final class InjectedArrivalSession: ArrivalSessioning {
     var authProvider: AuthProvider? { nil }
     func signIn() async {}
     func signInWithApple() async {}
+    // The harness identity is already signed in from launch (Welcome never shows), so the
+    // sign-in intents are no-ops, the secondary methods with them.
+    func continueWithHisbaan() async {}
+    func sendEmailOTP(email: String, captchaToken: String?) async throws {}
+    func verifyEmailOTP(email: String, code: String) async throws {}
+    func completeMagicLink(tokenHash: String, type: String) async throws {}
     func signOut() async {}
     func deleteAccount() async -> ArrivalFailure? { nil }
 }
@@ -159,6 +193,7 @@ struct RealRooms: RoomsProviding {
                             createdBy: summary.createdBy,
                             createdAt: summary.createdAt,
                             completedAt: summary.completedAt,
+                            abandonedAt: summary.abandonedAt,
                             lastActivityAt: summary.lastActivityAt,
                             // The row's member stack, digested to the UI's own shape
                             // (PROTOCOL.md section 12): identity as the server resolved
@@ -260,6 +295,10 @@ extension ArrivalFailure {
 
 // MARK: - Fixture backend (-i3Fixture)
 
+/// The fixture verify's rejection, so the "Continue another way" sheet's inline
+/// verify-failure copy is walkable offline (any code but the fixed fixture OTP throws).
+private struct FixtureVerifyError: Error {}
+
 /// The device-walk session: sign-in succeeds after a beat (long enough to see the
 /// authenticating state, short enough to feel instant), no network, no Keychain. It
 /// carries a fake identity so the Account screen is reachable and demo-able offline,
@@ -288,12 +327,47 @@ final class FixtureArrivalSession: ArrivalSessioning {
 
     var tokenProvider: any BearerTokenProviding { FixedBearerToken(token: "fixture-token") }
 
+    /// The fixed OTP the fixture verify accepts, so the device walk exercises the whole
+    /// email leg offline: any other code lands the calm verify-failure copy, this one
+    /// signs in. Eight digits, matching Supabase's OTP length and the field's Verify gate
+    /// (a shorter code would never enable Verify).
+    static let fixtureOTP = "12345678"
+
     func signIn() async { await beat(provider: .discord) }
 
     /// The -i3Fixture device walk exercises both Welcome buttons; Apple takes the same
     /// beat as Discord, so the authenticating state and the tapped-button spinner show
     /// identically on either path.
     func signInWithApple() async { await beat(provider: .apple) }
+
+    /// Hisbaan takes the same beat as the primary buttons (it is the same web leg in the
+    /// real path), so the sheet's hand-off and the Welcome spinner are walkable offline.
+    func continueWithHisbaan() async { await beat(provider: .hisbaan) }
+
+    /// Sending the code is a no-op that succeeds after a short beat (long enough to see
+    /// the "Send code" spinner), so the sheet advances to the code pane with no network.
+    /// The captcha token is ignored (the fixture mints none; the offline walk skips the
+    /// hidden web view entirely).
+    func sendEmailOTP(email: String, captchaToken: String?) async throws {
+        try? await Task.sleep(for: .milliseconds(400))
+    }
+
+    /// Verify accepts the fixed fixture code and signs in (the beat mirrors the primary
+    /// buttons so the spinner shows); any other code throws, so the sheet's inline
+    /// verify-failure copy is walkable on device.
+    func verifyEmailOTP(email: String, code: String) async throws {
+        guard code == Self.fixtureOTP else {
+            try? await Task.sleep(for: .milliseconds(300))
+            throw FixtureVerifyError()
+        }
+        await beat(provider: .emailOTP)
+    }
+
+    /// A magic link the fixture never receives (no Universal Link in the offline walk),
+    /// so this simply signs in with the email marker, keeping the seam total.
+    func completeMagicLink(tokenHash: String, type: String) async throws {
+        await beat(provider: .emailOTP)
+    }
 
     private func beat(provider: AuthProvider) async {
         phase = .authenticating
@@ -350,6 +424,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 3, createdBy: "you",
                         createdAt: "2026-07-06T19:00:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-09T21:14:00.000Z",
                         members: [
                             RoomCardMember(
@@ -383,6 +458,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 2, createdBy: "bee",
                         createdAt: "2026-07-04T11:00:00.000Z",
                         completedAt: "2026-07-08T15:07:00.000Z",
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-08T15:02:00.000Z",
                         members: [
                             RoomCardMember(
@@ -413,6 +489,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 6, createdBy: "ada",
                         createdAt: "2026-07-05T09:00:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: nil,
                         members: [
                             RoomCardMember(
@@ -452,6 +529,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 2, createdBy: "you",
                         createdAt: "2026-07-10T08:00:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-11T20:30:00.000Z",
                         members: [
                             RoomCardMember(
@@ -470,6 +548,7 @@ struct FixtureRooms: RoomsProviding {
                         memberCount: 1, createdBy: "you",
                         createdAt: "2026-07-10T07:45:00.000Z",
                         completedAt: nil,
+                        abandonedAt: nil,
                         lastActivityAt: "2026-07-10T22:05:00.000Z",
                         members: [
                             RoomCardMember(
@@ -477,6 +556,37 @@ struct FixtureRooms: RoomsProviding {
                                 isHost: true, isSpectator: false)
                         ],
                         inviteCode: "MINI0005"),
+                    // One host-ended room, so the trailing "Ended" section is judgeable in the
+                    // fixture walk (-i3Fixture -i3SignedIn): a real abandonedAt gathers it into the
+                    // shelf below "Solved" and dims its silhouette, the same quiet a solved room
+                    // reads. Ended by its host mid-solve (a non-nil lastActivityAt before the
+                    // abandonedAt), so it is distinct from both the solved and the live rooms.
+                    RoomCardModel(
+                        gameId: "fixture-ended", name: "Thursday, called early",
+                        puzzleTitle: "A door left ajar", rows: 9, cols: 9,
+                        // The believable 9x9 silhouette again (180-symmetric); ended, so the shelf
+                        // dims it, the muted-silhouette echo of the web's `Silhouette muted`.
+                        mask: [
+                            "...##....", "....#....", "....#....", "##.....#.", "...#.#...",
+                            ".#.....##", "....#....", "....#....", "....##...",
+                        ],
+                        memberCount: 3, createdBy: "ada",
+                        createdAt: "2026-07-07T18:00:00.000Z",
+                        completedAt: nil,
+                        abandonedAt: "2026-07-07T18:52:00.000Z",
+                        lastActivityAt: "2026-07-07T18:40:00.000Z",
+                        members: [
+                            RoomCardMember(
+                                userId: "ada", name: "Ada", avatarUrl: nil,
+                                isHost: true, isSpectator: false),
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                            RoomCardMember(
+                                userId: "bee", name: "Bee", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                        ],
+                        inviteCode: "ENDED009"),
                 ],
                 nextBefore: nil))
     }
@@ -545,6 +655,18 @@ final class ArrivalModel {
     /// the auth/session seam being live.
     let privacyURL: URL
     let termsURL: URL
+    /// The Turnstile site key the email OTP send needs (Supabase has captcha on
+    /// project-wide). nil in the fixture/unconfigured compositions and when the plist
+    /// slot is empty: ArrivalRootView then builds no hidden web view and the send carries
+    /// no token. The real composition threads the plist key here.
+    let turnstileSiteKey: String?
+    /// The one invisible captcha provider the email OTP send mints tokens through, and
+    /// the surface the hidden web view drives. Built here from the site key so a single
+    /// @Observable instance is shared across the whole arrival composition (the send
+    /// closure and the web view read the same reveal state). Its siteKey is nil in the
+    /// captcha-off compositions, so token() there throws .unconfigured (ArrivalRootView
+    /// omits the web view and skips the acquisition on those paths).
+    let turnstile: TurnstileProvider
 
     private init(
         session: any ArrivalSessioning,
@@ -553,7 +675,8 @@ final class ArrivalModel {
         liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?,
         authConfigured: Bool,
         privacyURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "privacy"),
-        termsURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "terms")
+        termsURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "terms"),
+        turnstileSiteKey: String? = nil
     ) {
         self.session = session
         self.rooms = rooms
@@ -562,6 +685,8 @@ final class ArrivalModel {
         self.authConfigured = authConfigured
         self.privacyURL = privacyURL
         self.termsURL = termsURL
+        self.turnstileSiteKey = turnstileSiteKey
+        self.turnstile = TurnstileProvider(siteKey: turnstileSiteKey)
     }
 
     /// The launch-time resolution described in the header comment.
@@ -623,7 +748,11 @@ final class ArrivalModel {
             liveRoomFacts: (config.apiBaseURL, config.sessionBaseURL),
             authConfigured: configured,
             privacyURL: config.webOrigin.appending(path: "privacy"),
-            termsURL: config.webOrigin.appending(path: "terms"))
+            termsURL: config.webOrigin.appending(path: "terms"),
+            // The captcha key only matters when the real auth session is live (the
+            // injected-token and unconfigured paths never send an OTP); it is carried
+            // regardless, and ArrivalRootView omits the web view when it is nil.
+            turnstileSiteKey: config.turnstileSiteKey)
     }
 
     /// The Welcome screen's state, mapped from the session phase and the config.
@@ -667,6 +796,8 @@ final class ArrivalModel {
         switch provider {
         case .discord: return ArrivalCopy.providerDiscord
         case .apple: return ArrivalCopy.providerApple
+        case .hisbaan: return ArrivalCopy.providerHisbaan
+        case .emailOTP: return ArrivalCopy.providerEmail
         case nil: return ArrivalCopy.providerUnknown
         }
     }

@@ -37,7 +37,7 @@ export function SpectateBanner({
               disabled={signingIn}
               className="font-medium text-text underline decoration-dashed underline-offset-4 disabled:opacity-70"
             >
-              Sign in with Discord to solve
+              Continue with Discord to solve
             </button>
             <span className="text-text-muted">or</span>
             <button

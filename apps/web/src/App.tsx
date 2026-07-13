@@ -39,6 +39,7 @@ import { Home } from "./ui/Home";
 import { AppShell } from "./ui/AppShell";
 import { CreateGame } from "./ui/CreateGame";
 import { Settings } from "./ui/Settings";
+import { AuthConfirm } from "./ui/AuthConfirm";
 import { useBearer, useResource } from "./ui/useResource";
 import { fetchGames } from "./ui/homeData";
 import type { GameSummary } from "./ui/homeData";
@@ -146,6 +147,20 @@ function Router({
 
   if (route.kind === "demo") {
     return <DemoApp config={config} identity={identity} />;
+  }
+
+  // The magic-link landing owns its own full-viewport chrome (like the landing) and must render
+  // for signed-out and signed-in arrivals alike, so it is dispatched before the signed-in gate. It
+  // reads token_hash/type off the query and, on a verified session, navigates home itself.
+  if (route.kind === "auth-confirm") {
+    return (
+      <AuthConfirm
+        identity={identity}
+        config={config}
+        params={params}
+        navigate={navigate}
+      />
+    );
   }
 
   const shell = (children: React.ReactNode): React.ReactNode => (

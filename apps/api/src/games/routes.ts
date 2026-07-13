@@ -16,6 +16,7 @@ import type { AppDeps, ApiEnv } from "../context";
 import type { Db } from "../db/client";
 import { fail } from "../http/errors";
 import { parseBefore, parseLimit } from "../http/pagination";
+import { createRateLimiter, rateLimit } from "../http/rate-limit";
 import { authMiddleware } from "../auth/middleware";
 import { createGameWithHost } from "./create";
 import { findGameByInviteCode } from "./lookup";
@@ -253,6 +254,15 @@ interface GameSummary {
    */
   readonly completedAt: string | null;
   /**
+   * When a host ended the game (`game_state.abandoned_at`, DESIGN.md §6), null unless it was
+   * abandoned. The twin terminal timestamp to `completedAt`, and mutually exclusive with it: a
+   * terminal game is completed or abandoned, never both (INV-4). A non-null value is the fact a
+   * client shelves an ended game on, out of the live shelf it would otherwise sit in (both
+   * timestamps null reads ongoing). Read from the session-owned `game_state` under the API's SELECT
+   * grant (migration 0005), a bare timestamp so INV-6 is untouched; never written by the API (INV-7).
+   */
+  readonly abandonedAt: string | null;
+  /**
    * The game's last activity: `MAX(cell_events.at)` (PROTOCOL.md §12), null for a game no one has
    * played yet. Read from the session-owned event log under the API's SELECT-only grant (migration
    * 0008); never written by the API (INV-7). The list page is ordered by `COALESCE(lastActivityAt,
@@ -309,9 +319,29 @@ function orderByActivity(a: GameSummary, b: GameSummary): number {
   return a.gameId < b.gameId ? 1 : a.gameId > b.gameId ? -1 : 0;
 }
 
+/**
+ * Join-by-code rate limit (defense in depth; Cloudflare's edge rules are the primary limiter). A
+ * user may make `JOIN_LIMIT_PER_WINDOW` join attempts per `JOIN_WINDOW_MS` across both join
+ * endpoints combined. Generous by design: the code space is 32^8 and joins are authenticated, so
+ * this caps flood and the valid-vs-invalid oracle, not brute force (PROTOCOL.md §12).
+ */
+const JOIN_LIMIT_PER_WINDOW = 30;
+const JOIN_WINDOW_MS = 60_000;
+
 export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
   const app = new Hono<ApiEnv>();
   app.use("*", authMiddleware(deps));
+
+  // One limiter shared by both join endpoints, keyed by the authenticated user, so a single account
+  // cannot hammer the invite-code index whichever endpoint it hits. The user is set by
+  // authMiddleware above, so it is present in this route-level middleware.
+  const limitJoinsByUser = rateLimit(
+    createRateLimiter({
+      limit: JOIN_LIMIT_PER_WINDOW,
+      windowMs: JOIN_WINDOW_MS,
+    }),
+    (c) => c.get("identity").userId,
+  );
 
   // POST /games: create a game from a puzzle. Full accounts only (DESIGN.md §8).
   app.post("/", async (c) => {
@@ -441,6 +471,11 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         puzzleBlocks: sql<number[]>`${schema.games.puzzleSnapshot} -> 'blocks'`,
         puzzleTitle: schema.puzzles.title,
         completedAt: schema.gameState.completedAt,
+        // The twin terminal timestamp, read from the same session-owned game_state row under the
+        // same SELECT grant (migration 0005): null unless a host ended the game, and mutually
+        // exclusive with completed_at (INV-4). Only the two terminal timestamps are selected, never
+        // the board or status enum. A bare timestamp, so INV-6 is untouched.
+        abandonedAt: schema.gameState.abandonedAt,
         // MAX(at) as an ISO 8601 UTC string, formatted in SQL so it matches Date.toISOString()
         // exactly (millisecond precision, trailing `Z`). A scalar aggregate subquery loses the
         // timestamptz OID node-postgres needs to auto-parse it to a Date, so it would otherwise
@@ -508,6 +543,9 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       // `completed_at` is null while ongoing, and null when no game_state row exists yet (the
       // left join): both read as "not done" on the home. Present only for a completed game.
       completedAt: r.completedAt === null ? null : r.completedAt.toISOString(),
+      // `abandoned_at` is null while ongoing, null when no game_state row exists yet (the left
+      // join), and set only when a host ended the game: the fact the ended shelf gathers on.
+      abandonedAt: r.abandonedAt === null ? null : r.abandonedAt.toISOString(),
       // `MAX(cell_events.at)` as an ISO 8601 UTC string (formatted in SQL), null for an unplayed
       // game. Drives the activity reorder below.
       lastActivityAt: r.lastActivityAt,
@@ -543,7 +581,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
   // account lands as solver, a guest as spectator, an existing member keeps their role. The
   // response is that endpoint's shape plus the resolved `gameId`, which the caller needs to GET
   // the view and open the WebSocket.
-  app.post("/join", async (c) => {
+  app.post("/join", limitJoinsByUser, async (c) => {
     const identity = c.get("identity");
 
     let body: unknown;
@@ -583,7 +621,7 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
 
   // POST /games/{id}/join: join by invite code. Any authenticated user, guests included. A full
   // account is seated directly as solver (play at once), a guest as spectator (DESIGN.md §7, §8).
-  app.post("/:id/join", async (c) => {
+  app.post("/:id/join", limitJoinsByUser, async (c) => {
     const identity = c.get("identity");
     const gameId = c.req.param("id");
     if (!UUID.test(gameId)) {

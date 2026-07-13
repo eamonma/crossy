@@ -116,6 +116,9 @@ struct ArrivalRootView: View {
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
+    /// The magic link a Universal Link delivered (CrossyApp set it via AuthConfirm,
+    /// roadmap I3b): completed against the session here, the PendingInvite precedent.
+    @Environment(PendingMagicLink.self) private var pendingMagicLink
     /// The analytics port CrossyApp built (the noop in every rig composition, so
     /// nothing here checks). Identify and signed_in live on this view because it is
     /// the one observer of the session phase; the seam the routing already reads.
@@ -130,7 +133,36 @@ struct ArrivalRootView: View {
                     state: model.welcomeState,
                     onContinueApple: { Task { await model.session.signInWithApple() } },
                     onContinueDiscord: { Task { await model.session.signIn() } },
-                    onOpenLegal: { welcomeLegal = legalItem(for: $0) }
+                    // The secondary methods (roadmap I3b): hisbaan rides the web leg
+                    // like Discord, the email pair is the sheet's own OTP flow. Their
+                    // completion flips the phase to signed in exactly as the primary
+                    // buttons do, so the shell swaps in without any extra wiring here.
+                    onContinueHisbaan: { Task { await model.session.continueWithHisbaan() } },
+                    // The email OTP send mints an invisible Turnstile token first, then
+                    // sends with it (Supabase has captcha on project-wide, so a send
+                    // without a token is refused). When this build carries no site key
+                    // (the fixture/unconfigured paths, or an empty plist slot) the token
+                    // step is skipped and the send carries nil, exactly the pre-captcha
+                    // behavior. A token-acquisition failure throws, which the sheet
+                    // renders as the calm send-failure sentence.
+                    sendEmailOTP: { email in
+                        let token = try await captchaTokenIfNeeded()
+                        try await model.session.sendEmailOTP(email: email, captchaToken: token)
+                    },
+                    verifyEmailOTP: { email, code in
+                        try await model.session.verifyEmailOTP(email: email, code: code)
+                    },
+                    onOpenLegal: { welcomeLegal = legalItem(for: $0) },
+                    // The hidden captcha web view, only when this build has a site key.
+                    // Type-erased so CrossyUI never sees WebKit; it renders nothing until
+                    // a forced interactive challenge reveals it in place.
+                    captchaView: {
+                        if model.turnstile.siteKey != nil {
+                            AnyView(TurnstileCaptchaView(provider: model.turnstile))
+                        } else {
+                            AnyView(EmptyView())
+                        }
+                    }
                 )
                 .sheet(item: $welcomeLegal) { item in
                     SafariSheet(url: item.url)
@@ -149,9 +181,14 @@ struct ArrivalRootView: View {
         .task {
             if let userId = model.session.userId { analytics.identify(userId: userId) }
             honorPendingInvite()
+            // A cold launch straight from a magic link: the link is set before this
+            // view's observers register (the invite's cold-launch reasoning), so
+            // complete it once on appear. AuthSession no-ops it when already signing in.
+            completePendingMagicLink()
         }
         // A link arriving while the app runs.
         .onChange(of: pendingInvite.code) { honorPendingInvite() }
+        .onChange(of: pendingMagicLink.link) { completePendingMagicLink() }
         .onChange(of: model.isSignedIn) { _, signedIn in
             if signedIn {
                 // The one transition into signed in: an interactive sign-in
@@ -196,6 +233,17 @@ struct ArrivalRootView: View {
         }
     }
 
+    /// The invisible Turnstile token the OTP send needs, or nil when this build carries
+    /// no site key (the fixture/unconfigured paths, or an empty plist slot): the send then
+    /// runs with no token, the pre-captcha behavior. When a key is present this drives the
+    /// hidden web view to mint a fresh single-use token (a challenge reveals itself in the
+    /// sheet if Turnstile forces one); a failure throws, which the sheet renders as the
+    /// calm send-failure sentence.
+    private func captchaTokenIfNeeded() async throws -> String? {
+        guard model.turnstile.siteKey != nil else { return nil }
+        return try await model.turnstile.token()
+    }
+
     /// Honor a Universal Link's invite code. Signed in: join at once and push the
     /// room — the QR's whole point, scan the projector and land in the room. A rare
     /// failure (the room ended, or the host removed you) opens the join panel
@@ -213,11 +261,35 @@ struct ArrivalRootView: View {
                 // never have shown, and no card was tapped), so the room takes the
                 // default push: name no zoom source (native continuity, DESIGN.md §4).
                 roomZoomSourceID = nil
+                // The room pushes into the Rooms tab's own NavigationStack (`path`),
+                // which the TabView renders only while Rooms is the selected tab. A scan
+                // foregrounds the app wherever it stood: the system Camera's QR banner
+                // opens the link from any tab, commonly Settings or Puzzles. So select
+                // Rooms before the push. Without this the room lands in a hidden stack
+                // and the scan reads as doing nothing (the reported bug).
+                tab = .rooms
                 path = [roomRoute(for: gameId)]
             case .failure:
                 deepLinkPrefill = code
                 showJoin = true
             }
+        }
+    }
+
+    /// Complete a magic link a Universal Link delivered (roadmap I3b): hand its
+    /// token_hash and type to the session, which drives the same signed-in outcome the
+    /// email OTP and the primary buttons do (the shell swaps in through the phase alone).
+    /// Cleared on consumption so it fires exactly once. A verify failure is swallowed
+    /// here: the session lands in .failed, and Welcome already shows the plain retry for
+    /// that phase, so a second surface would only double the message. Already signing in
+    /// (a code entry in flight) makes completeMagicLink a no-op, which is the honest
+    /// outcome.
+    private func completePendingMagicLink() {
+        guard let link = pendingMagicLink.link else { return }
+        pendingMagicLink.link = nil
+        Task {
+            try? await model.session.completeMagicLink(
+                tokenHash: link.tokenHash, type: link.type)
         }
     }
 

@@ -40,6 +40,8 @@ import type {
 const POSTGRES_IMAGE = "postgres:16-alpine";
 const BOOT_TIMEOUT_MS = 180_000;
 const SESSION_WS_BASE = "wss://session.crossy.test";
+const INVITE_HOST = "crossy.ing";
+const WEB_ORIGIN = "https://crossy.party";
 
 // A minimal well-formed XWord Info JSON fixture: a 2x2 all-playable grid. The grid holds the
 // real A-Z solutions, so the stored (server-side) model is valid; the client view must drop them.
@@ -230,6 +232,12 @@ beforeAll(async () => {
     sessionWsBase: SESSION_WS_BASE,
     membershipNotifier,
     vendorIdentity,
+    // The invite host is enabled here so its DB-backed paths (a real code resolving to a game) are
+    // exercised against Postgres. It is host-scoped, so every existing test (which requests a
+    // relative path, host `localhost`) is unaffected; only `http://crossy.ing/...` requests below
+    // reach it.
+    inviteHost: INVITE_HOST,
+    webOrigin: WEB_ORIGIN,
   });
 }, BOOT_TIMEOUT_MS);
 
@@ -1167,6 +1175,60 @@ describe("POST /games (PROTOCOL.md §12; DESIGN.md §7, §8; INV-7)", () => {
   });
 });
 
+describe("invite host GET /{code} (PROTOCOL.md §12 Invite links)", () => {
+  it("302s a real browser navigation to the canonical game view", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(`https://${INVITE_HOST}/${inviteCode}`, {
+      headers: { "sec-fetch-mode": "navigate" },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `${WEB_ORIGIN}/game/${gameId}?code=${inviteCode}`,
+    );
+  });
+
+  it("serves a 200 OpenGraph shell that forwards to the game for a link unfurler (no navigate signal)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(`https://${INVITE_HOST}/${inviteCode}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    const html = await res.text();
+    // The OG card is present, and the shell forwards a browser onward to the canonical game URL.
+    expect(html).toContain('property="og:title"');
+    expect(html).toContain(`${WEB_ORIGIN}/game/${gameId}?code=${inviteCode}`);
+  });
+
+  it("resolves a lowercase code (INV-1 ASCII-uppercasing), same as join-by-code", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+
+    const res = await app.request(
+      `https://${INVITE_HOST}/${inviteCode.toLowerCase()}`,
+      { headers: { "sec-fetch-mode": "navigate" } },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      `${WEB_ORIGIN}/game/${gameId}?code=${inviteCode}`,
+    );
+  });
+
+  it("bounces a well-formed but unknown code to the web home, not an oracle 404 (INV-6)", async () => {
+    // Shape-valid (8 chars from the alphabet) but not a code this suite minted (a 32^8 space).
+    const res = await app.request(`https://${INVITE_HOST}/ABCD2345`, {
+      headers: { "sec-fetch-mode": "navigate" },
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`${WEB_ORIGIN}/`);
+  });
+});
+
 describe("POST /games/{id}/join (PROTOCOL.md §12; DESIGN.md §7, §8)", () => {
   it("lets a guest join by invite code, seated as spectator", async () => {
     const host = await auth.mintUpgraded();
@@ -2026,19 +2088,28 @@ async function setPuzzleCreatedAt(
 /**
  * Materialize a `game_state` row through the superuser fixture, standing in for the session
  * service (the real single writer of game_state, DESIGN.md §9). A non-null `completedAt` seeds a
- * completed game; null (the default) leaves it ongoing. The API reads this row under its
- * SELECT-only grant (migration 0005), never writes it, so this fixture is the only way a test can
- * put a game into a terminal state without a live actor.
+ * completed game; a non-null `abandonedAt` seeds a host-ended one; both null (the default) leaves
+ * it ongoing. The two terminal timestamps are mutually exclusive (INV-4), so a caller passes one or
+ * the other, never both. The API reads this row under its SELECT-only grant (migration 0005), never
+ * writes it, so this fixture is the only way a test can put a game into a terminal state without a
+ * live actor.
  */
 async function seedGameState(
   gameId: string,
   completedAt: string | null,
+  abandonedAt: string | null = null,
 ): Promise<void> {
+  const status =
+    completedAt !== null
+      ? "completed"
+      : abandonedAt !== null
+        ? "abandoned"
+        : "ongoing";
   await adminPool.query(
-    `insert into game_state (game_id, status, completed_at)
-       values ($1, $2, $3)
-     on conflict (game_id) do update set status = excluded.status, completed_at = excluded.completed_at`,
-    [gameId, completedAt === null ? "ongoing" : "completed", completedAt],
+    `insert into game_state (game_id, status, completed_at, abandoned_at)
+       values ($1, $2, $3, $4)
+     on conflict (game_id) do update set status = excluded.status, completed_at = excluded.completed_at, abandoned_at = excluded.abandoned_at`,
+    [gameId, status, completedAt, abandonedAt],
   );
 }
 
@@ -2081,6 +2152,7 @@ interface GamesList {
     }[];
     inviteCode: string;
     completedAt: string | null;
+    abandonedAt: string | null;
     lastActivityAt: string | null;
     puzzle: {
       puzzleId: string;
@@ -2539,6 +2611,37 @@ describe("GET /games list (PROTOCOL.md §12; DESIGN.md §8, §9; INV-6)", () => 
     expect(byId.get(ongoing)!.completedAt).toBeNull();
     // A game with no game_state row still lists (left join) and reads ongoing.
     expect(byId.get(never)!.completedAt).toBeNull();
+  });
+
+  it("reports abandonedAt for a host-ended game, its own terminal timestamp distinct from completedAt (read expand; INV-7)", async () => {
+    const caller = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(caller);
+    const { gameId: ended } = await createGame(caller, puzzleId);
+    const { gameId: done } = await createGame(caller, puzzleId);
+    const { gameId: ongoing } = await createGame(caller, puzzleId);
+
+    // The session (here the superuser fixture) materializes game_state: `ended` was abandoned by
+    // its host, `done` completed, `ongoing` has a row but neither terminal timestamp.
+    const abandonedIso = "2026-06-03T08:15:00.000Z";
+    const completedIso = "2026-06-01T12:00:00.000Z";
+    await seedGameState(ended, null, abandonedIso);
+    await seedGameState(done, completedIso);
+    await seedGameState(ongoing, null);
+
+    const { games } = (await get("/games", caller).then((r) =>
+      r.json(),
+    )) as GamesList;
+    const byId = new Map(games.map((g) => [g.gameId, g]));
+    // An abandoned game reports abandonedAt and never completedAt: the two terminal timestamps are
+    // mutually exclusive (INV-4), so a client shelves it as ended, not as solved, and not as live.
+    expect(byId.get(ended)!.abandonedAt).toBe(abandonedIso);
+    expect(byId.get(ended)!.completedAt).toBeNull();
+    // A completed game carries completedAt, never abandonedAt.
+    expect(byId.get(done)!.abandonedAt).toBeNull();
+    expect(byId.get(done)!.completedAt).toBe(completedIso);
+    // An ongoing game carries neither terminal timestamp.
+    expect(byId.get(ongoing)!.abandonedAt).toBeNull();
+    expect(byId.get(ongoing)!.completedAt).toBeNull();
   });
 
   it("reads game_state under a SELECT-only grant and never writes it (INV-7 single writer)", async () => {

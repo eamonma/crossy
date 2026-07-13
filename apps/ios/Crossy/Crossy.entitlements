@@ -15,6 +15,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:crossy.party</string>
+		<string>applinks:crossy.ing</string>
 	</array>
 </dict>
 </plist>

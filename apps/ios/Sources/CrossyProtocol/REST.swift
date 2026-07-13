@@ -394,6 +394,14 @@ public struct GameSummary: Sendable, Equatable, Codable {
     /// decoded with `decodeIfPresent` so an older server that omits it still decodes (nil =
     /// ongoing).
     public let completedAt: String?
+    /// When a host ended the game (ISO 8601), or nil unless it was abandoned (§12). The twin
+    /// terminal timestamp to `completedAt` and mutually exclusive with it: a terminal game is
+    /// completed or ended, never both, so a non-nil value shelves the room as ended rather than
+    /// leaving it in the live shelf (both nil reads ongoing). A bare timestamp read from the
+    /// session-owned `game_state.abandoned_at` under the same SELECT-only grant, so INV-6 is
+    /// untouched. Additive and optional on the wire (§14): decoded with `decodeIfPresent` so an
+    /// older server that omits it, or sends null, reads as not-ended.
+    public let abandonedAt: String?
     /// The game's last activity: the newest board event's ISO 8601 timestamp, or nil when no one
     /// has played yet (§12). `MAX(cell_events.at)` read server-side under a SELECT-only grant,
     /// never a cell value or a solution (INV-6-safe). The list arrives ordered by
@@ -413,6 +421,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         members: [Member],
         inviteCode: String?,
         completedAt: String?,
+        abandonedAt: String?,
         lastActivityAt: String?,
         puzzle: PuzzleRef
     ) {
@@ -425,6 +434,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         self.members = members
         self.inviteCode = inviteCode
         self.completedAt = completedAt
+        self.abandonedAt = abandonedAt
         self.lastActivityAt = lastActivityAt
         self.puzzle = puzzle
     }
@@ -439,6 +449,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         case members
         case inviteCode
         case completedAt
+        case abandonedAt
         case lastActivityAt
         case puzzle
     }
@@ -457,6 +468,8 @@ public struct GameSummary: Sendable, Equatable, Codable {
         inviteCode = try container.decodeIfPresent(String.self, forKey: .inviteCode)
         // Optional and additive (§14): a server that omits it, or sends null, reads as ongoing.
         completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
+        // Optional and additive (§14): a server that omits it, or sends null, reads as not-ended.
+        abandonedAt = try container.decodeIfPresent(String.self, forKey: .abandonedAt)
         // Optional and additive (§14): a server that omits it, or sends null, reads as unplayed.
         lastActivityAt = try container.decodeIfPresent(String.self, forKey: .lastActivityAt)
         puzzle = try container.decode(PuzzleRef.self, forKey: .puzzle)
@@ -474,6 +487,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
         // Absent when nil, never null: the server either sends the code or omits the key.
         try container.encodeIfPresent(inviteCode, forKey: .inviteCode)
         try container.encode(completedAt, forKey: .completedAt)
+        try container.encode(abandonedAt, forKey: .abandonedAt)
         try container.encode(lastActivityAt, forKey: .lastActivityAt)
         try container.encode(puzzle, forKey: .puzzle)
     }

@@ -20,23 +20,26 @@ export function resolveInviteField(
 }
 
 /**
- * Build the shareable invite URL from the resolved code, in the path-route form the router
- * serves (`/game/<id>?code=...`); links minted before path routing (`?game=<id>&code=...`)
- * keep working through the router's one-time redirect. The invite code is the capability a
- * new visitor needs to self-join, so it stays in the link; a null code means there is nothing
- * to share yet and the popover shows its fallback message. The game name is not appended:
- * a member gets it from GET /games/{id}, and no other receiving surface reads it (the
- * signed-out gate shows no title, iOS parses only the code, the unfurl copy is static).
- * `resolveInviteField` keeps reading `?name=` so already-minted links still title old games.
+ * The dedicated host for short invite links (PROTOCOL.md §12 "Invite links"). Hardcoded, like the
+ * iOS client's equivalent (ShareInvite), so the two emit byte-identical links. It points at the
+ * invite host, which resolves the code and hands a browser to the game (a 302) or an unfurler an
+ * OpenGraph card, and which iOS claims as a universal link.
  */
-export function buildShareUrl(args: {
-  origin: string;
-  gameId: string;
-  code: string | null;
-}): string | null {
-  const { origin, gameId, code } = args;
+const INVITE_ORIGIN = "https://crossy.ing";
+
+/**
+ * Build the shareable invite link: the short `https://crossy.ing/<code>` form (PROTOCOL.md §12).
+ * It carries only the invite code, the capability a new visitor needs to self-join; no gameId and no
+ * name (the receiver resolves those after arriving). A null code means there is nothing to share yet
+ * and the popover shows its fallback message. The copy row, the QR, and the system share sheet all
+ * encode this one value, byte-identical to the iOS client's ShareInvite. This changes only what the
+ * client EMITS: incoming links still arrive as `/game/<id>?code=...` (the invite host redirects to
+ * that), which the router and `resolveInviteField` handle unchanged, so old links keep working.
+ */
+export function buildShareUrl(args: { code: string | null }): string | null {
+  const { code } = args;
   if (code === null) return null;
-  return `${origin}/game/${encodeURIComponent(gameId)}?code=${code}`;
+  return `${INVITE_ORIGIN}/${code}`;
 }
 
 /**

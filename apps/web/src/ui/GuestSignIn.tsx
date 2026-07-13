@@ -1,8 +1,10 @@
 // The guest sign-in path (Task M4/Turnstile): rendered by SignInButtons only when the caller
-// has confirmed config.guestsEnabled and a Turnstile site key are both set. A tap reveals the
-// widget in place of the button; a solved challenge signs the guest in right away, no second
-// tap. The Identity port's signInGuest has no display-name field (types.ts), so a guest stays
-// "Guest" here; naming would be an additive change to the port, out of scope for this pass.
+// has confirmed config.guestsEnabled and a Turnstile site key are both set. A tap swaps the button
+// for an invisible Turnstile (appearance "interaction-only"): in the common case nothing shows and
+// the token arrives on its own, signing the guest in right away, no second tap; the managed box
+// only surfaces if Cloudflare forces an interactive challenge. The Identity port's signInGuest has
+// no display-name field (types.ts), so a guest stays "Guest" here; naming would be an additive
+// change to the port, out of scope for this pass.
 import { useState } from "react";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { Identity } from "../identity";
@@ -62,16 +64,20 @@ export function GuestSignIn({
 
   return (
     <div className="flex flex-col items-center gap-2 py-1">
+      {/* Invisible in the common case: appearance "interaction-only" keeps Cloudflare's managed box
+          out of sight, and the token still arrives through onSuccess on its own. The widget only
+          surfaces if Cloudflare forces an interactive challenge (rare), so the guest flow no longer
+          shows the managed box. onSuccess/onError wiring is unchanged. */}
       <Turnstile
         siteKey={siteKey}
         onSuccess={onSuccess}
         onError={onFailure}
         onExpire={onFailure}
-        options={{ size: "compact" }}
+        options={{ size: "compact", appearance: "interaction-only" }}
       />
-      {phase === "joining" && (
-        <span className="text-1 text-text-subtle">Joining as a guest...</span>
-      )}
+      <span className="text-1 text-text-subtle">
+        {phase === "joining" ? "Joining as a guest..." : "Verifying..."}
+      </span>
     </div>
   );
 }
