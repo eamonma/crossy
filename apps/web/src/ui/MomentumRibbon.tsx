@@ -3,10 +3,18 @@
 // quiet baseline, and, when the turning point exists, a shaded stall region closing on the "picked
 // up" marker at breakSeconds. The math lives in analysisReadout.ts; this only draws it.
 //
+// When replay is wired (the Analysis tab on a rail or dock), the ribbon doubles as the replay
+// transport: a scrub overlay captures the drag, a gold playhead marks the current time T, and the
+// board fills to match on the same clock (REPLAY.md). The transport is opt-in through optional props,
+// so any other caller or harness that passes only { bundle, idBase } renders the plain ribbon.
+//
 // Degenerate: an all-zero series (a single-instant solve) draws a flat baseline and no break marker,
-// never a NaN path. The break maps through timeToSampleIndex, the exact inverse of the server's
-// bucketing, so the dot lands on the bin its samples were counted into.
+// never a NaN path, and offers NO playhead or scrub (there is nothing to replay). The break maps
+// through timeToSampleIndex, the exact inverse of the server's bucketing, so the dot lands on the bin
+// its samples were counted into; the playhead uses the same forward mapping so the two align.
+import { useRef } from "react";
 import {
+  formatMSS,
   momentumHasSignal,
   ribbonAreaPath,
   ribbonBaselineY,
@@ -14,6 +22,7 @@ import {
   ribbonPoints,
   sampleIndexToX,
   timeToSampleIndex,
+  xToTimeSeconds,
   type RibbonBox,
 } from "./analysisReadout";
 import type { AnalysisResponse } from "./completionAttribution";
@@ -27,28 +36,45 @@ const BOX: RibbonBox = {
 };
 
 /** The momentum ribbon for a bundle. `idBase` namespaces the gradient id so two ribbons on one page
- * (the desktop panel and, in the harness, a second instance) never share a def. */
+ * (the desktop panel and, in the harness, a second instance) never share a def.
+ *
+ * The replay props are optional and default to inert: without them the ribbon draws exactly as
+ * before. With them (`durationSeconds > 0` and a series that has signal) the ribbon gains the scrub
+ * overlay and, when `replayTime !== null`, the playhead. `onSeek` reports a time in [0, duration]. */
 export function MomentumRibbon({
   bundle,
   idBase,
+  durationSeconds = 0,
+  replayTime = null,
+  playing = false,
+  onSeek,
 }: {
   bundle: AnalysisResponse;
   idBase: string;
+  durationSeconds?: number | undefined;
+  replayTime?: number | null | undefined;
+  playing?: boolean | undefined;
+  onSeek?: ((t: number) => void) | undefined;
 }) {
-  const { samples, durationSeconds } = bundle.momentum;
+  const { samples, durationSeconds: bundleDuration } = bundle.momentum;
   const points = ribbonPoints(samples);
   const line = ribbonLinePath(points, BOX);
   const area = ribbonAreaPath(points, BOX);
   const hasSignal = momentumHasSignal(samples);
   const baselineY = ribbonBaselineY(BOX);
   const gradId = `${idBase}-momentum-fill`;
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // The transport rides only where there is a solve to scrub: a real duration and a shaped series.
+  // A single-instant solve keeps the quiet flat line and offers no playhead or scrub overlay.
+  const transport = durationSeconds > 0 && hasSignal && onSeek !== undefined;
 
   const turning = bundle.moments.turningPoint;
   // The break only marks when there is a turning point AND the series has a shape to mark on.
   const breakX =
     turning !== null && hasSignal
       ? sampleIndexToX(
-          timeToSampleIndex(turning.breakSeconds, durationSeconds),
+          timeToSampleIndex(turning.breakSeconds, bundleDuration),
           samples.length || 1,
           BOX,
         )
@@ -60,15 +86,70 @@ export function MomentumRibbon({
       ? sampleIndexToX(
           timeToSampleIndex(
             Math.max(0, turning.breakSeconds - turning.stallSeconds),
-            durationSeconds,
+            bundleDuration,
           ),
           samples.length || 1,
           BOX,
         )
       : null;
 
+  // The playhead's x: the SAME forward mapping the break uses, so a playhead and the break marker
+  // align pixel-for-pixel when they sit at the same time.
+  const headX =
+    transport && replayTime !== null
+      ? sampleIndexToX(
+          timeToSampleIndex(replayTime, durationSeconds),
+          samples.length || 1,
+          BOX,
+        )
+      : null;
+
+  // Convert a pointer event's client x to the SVG's own viewBox x, then to a time, and report it.
+  // getScreenCTM handles the box's scale-to-fit so a drag lands under the pointer at any width.
+  const seekFromClientX = (clientX: number): void => {
+    if (!transport || onSeek === undefined) return;
+    const svg = svgRef.current;
+    if (svg === null) return;
+    const ctm = svg.getScreenCTM();
+    if (ctm === null) return;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = 0;
+    const local = pt.matrixTransform(ctm.inverse());
+    onSeek(xToTimeSeconds(local.x, BOX, durationSeconds));
+  };
+
+  const step = durationSeconds / 40;
+  const onScrubKeyDown = (e: React.KeyboardEvent): void => {
+    if (!transport || onSeek === undefined) return;
+    const at = replayTime ?? 0;
+    switch (e.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        e.preventDefault();
+        onSeek(Math.max(0, at - step));
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        e.preventDefault();
+        onSeek(Math.min(durationSeconds, at + step));
+        break;
+      case "Home":
+        e.preventDefault();
+        onSeek(0);
+        break;
+      case "End":
+        e.preventDefault();
+        onSeek(durationSeconds);
+        break;
+      default:
+        break;
+    }
+  };
+
   return (
     <svg
+      ref={svgRef}
       className="block w-full h-auto"
       viewBox={`0 0 ${BOX.width} ${BOX.height}`}
       role="img"
@@ -164,6 +245,74 @@ export function MomentumRibbon({
             picked up
           </text>
         </g>
+      )}
+
+      {/* The playhead: a full-height gold rule with a handle on the baseline and a compact time
+          label, drawn at the same mapping the break uses so the two line up. Shown only while
+          replaying (replayTime !== null); the resting board has no head. */}
+      {headX !== null && replayTime !== null && (
+        <g pointerEvents="none">
+          <line
+            x1={headX}
+            y1={BOX.padTop - 8}
+            x2={headX}
+            y2={baselineY + 3}
+            stroke="var(--color-gold-11)"
+            strokeWidth={1.5}
+          />
+          <circle
+            cx={headX}
+            cy={baselineY + 3}
+            r={3.6}
+            fill="var(--color-gold-11)"
+          />
+          <text
+            x={clampLabelX(headX)}
+            y={baselineY + 15}
+            fontSize={9}
+            textAnchor={headX > BOX.width - 60 ? "end" : "start"}
+            fill="var(--color-gold-11)"
+            fontFamily="var(--font-sans)"
+            fontWeight={600}
+          >
+            {formatMSS(replayTime)}
+          </text>
+        </g>
+      )}
+
+      {/* The scrub overlay: a transparent full-height rect over the plot that captures the drag and
+          the keyboard. It sits last so it wins the pointer, and it is a slider for assistive tech. */}
+      {transport && (
+        <rect
+          role="slider"
+          aria-label="Scrub the solve replay"
+          aria-valuemin={0}
+          aria-valuemax={durationSeconds}
+          aria-valuenow={replayTime ?? 0}
+          aria-valuetext={`${formatMSS(replayTime ?? 0)}${playing ? ", playing" : ""}`}
+          tabIndex={0}
+          x={BOX.padX}
+          y={0}
+          width={BOX.width - 2 * BOX.padX}
+          height={BOX.height}
+          fill="transparent"
+          style={{ cursor: "ew-resize", outline: "none" }}
+          onPointerDown={(e) => {
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+            seekFromClientX(e.clientX);
+          }}
+          onPointerMove={(e) => {
+            if (
+              (e.target as Element).hasPointerCapture?.(e.pointerId) === true
+            ) {
+              seekFromClientX(e.clientX);
+            }
+          }}
+          onPointerUp={(e) => {
+            (e.target as Element).releasePointerCapture?.(e.pointerId);
+          }}
+          onKeyDown={onScrubKeyDown}
+        />
       )}
     </svg>
   );

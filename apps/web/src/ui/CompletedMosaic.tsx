@@ -122,6 +122,8 @@ export function CompletedMosaicBoard({
   roster,
   bloom,
   replayKey,
+  replayTime,
+  sequence,
   ariaLabel,
 }: {
   puzzle: Puzzle;
@@ -133,23 +135,42 @@ export function CompletedMosaicBoard({
   /** A Replay nonce: a change re-arms the reveal arc even on a revisit that would otherwise settle
    * straight to the wash. 0 (or absent) means no replay has been requested yet. */
   replayKey?: number | undefined;
+  /** The solve-replay playhead (relative seconds), or null when not replaying. When non-null the
+   * board is the time-gated reveal; when null it is the bloom-or-wash logic, unchanged. */
+  replayTime?: number | null | undefined;
+  /** The solve order the replay gates on: cell index -> its solve time. INV-6: cells and times only,
+   * never a letter (the letters come from the `letters` prop). */
+  sequence?: readonly { cell: number; atSeconds: number }[] | undefined;
   ariaLabel?: string | undefined;
 }) {
-  // Play the reveal on the live completion edge OR whenever Replay has been asked for (replayKey > 0),
-  // so the Replay control re-blooms the settled wash a revisit landed on. replayKey re-arms the arc
-  // (ContributionMosaic keys its effect on it), so each Replay tap plays the sweep again.
+  // cell index -> its solve time, memoized on the sequence so a per-frame replayTime change never
+  // rebuilds it. On a duplicate cell the earliest time wins (the sequence is ascending, so the first
+  // entry for a cell is its first-correct fill).
+  const revealedAt = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const { cell, atSeconds } of sequence ?? []) {
+      if (!m.has(cell)) m.set(cell, atSeconds);
+    }
+    return m;
+  }, [sequence]);
+
+  // Replaying takes precedence and NEVER re-fires the bloom: entering or leaving replay is a switch
+  // between the time-gated reveal and the settled wash, not a re-bloom. Otherwise the board is the
+  // live completion bloom or a Replay-nonce re-bloom, exactly as before.
   const play = bloom || (replayKey ?? 0) > 0;
+  const behavior =
+    replayTime !== null && replayTime !== undefined
+      ? ({ kind: "replay", revealedAt, timeSeconds: replayTime } as const)
+      : play
+        ? ({ kind: "reveal", replayKey: replayKey ?? 0 } as const)
+        : ({ kind: "static", state: "wash" } as const);
   return (
     <ContributionMosaic
       puzzle={puzzle}
       letters={letters}
       ownerMap={ownerMap}
       roster={roster}
-      behavior={
-        play
-          ? { kind: "reveal", replayKey: replayKey ?? 0 }
-          : { kind: "static", state: "wash" }
-      }
+      behavior={behavior}
       ariaLabel={
         ariaLabel ?? "The solved board, painted by who solved each square"
       }
@@ -175,6 +196,8 @@ export function CompletedMosaic({
   members,
   bloom,
   replayKey,
+  replayTime,
+  sequence,
   source,
   ariaLabel,
 }: {
@@ -186,6 +209,10 @@ export function CompletedMosaic({
   bloom: boolean;
   /** A Replay nonce from the parent; a change re-blooms the board (the Analysis tab's Replay). */
   replayKey?: number | undefined;
+  /** The solve-replay playhead (relative seconds), or null when not replaying (the full wash). */
+  replayTime?: number | null | undefined;
+  /** The solve order the replay gates on ({cell, atSeconds}); INV-6: cells and times only. */
+  sequence?: readonly { cell: number; atSeconds: number }[] | undefined;
   source?: AttributionSource | undefined;
   ariaLabel?: string | undefined;
 }) {
@@ -202,6 +229,8 @@ export function CompletedMosaic({
       roster={roster}
       bloom={bloom}
       replayKey={replayKey}
+      replayTime={replayTime}
+      sequence={sequence}
       ariaLabel={ariaLabel}
     />
   );

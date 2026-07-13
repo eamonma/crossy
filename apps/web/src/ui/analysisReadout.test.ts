@@ -14,7 +14,9 @@ import {
   ribbonAreaPath,
   ribbonLinePath,
   ribbonPoints,
+  sampleIndexToX,
   timeToSampleIndex,
+  xToTimeSeconds,
   type RibbonBox,
 } from "./analysisReadout";
 
@@ -151,6 +153,41 @@ describe("timeToSampleIndex (inverse of the server's bucketing)", () => {
   it("puts everything at index 0 for a zero or non-finite duration (single-instant solve)", () => {
     expect(timeToSampleIndex(10, 0)).toBe(0);
     expect(timeToSampleIndex(10, Number.NaN)).toBe(0);
+  });
+});
+
+describe("xToTimeSeconds (the replay playhead's inverse of the forward x mapping)", () => {
+  // The playhead is drawn at sampleIndexToX(timeToSampleIndex(t, dur), N, box), and the scrub reads
+  // a drag x back to t. Round-tripping the two must return the same t so the playhead lands under
+  // the pointer, and dragging past either end must clamp to [0, dur] rather than run off-axis.
+  const box: RibbonBox = {
+    width: 340,
+    height: 104,
+    padX: 4,
+    padTop: 20,
+    padBottom: 22,
+  };
+  const dur = 372;
+  const forwardX = (t: number): number =>
+    sampleIndexToX(timeToSampleIndex(t, dur), RIBBON_SAMPLES, box);
+
+  it("round-trips against the forward mapping the playhead is drawn at", () => {
+    for (const t of [0, 42, 186, 271, 372]) {
+      const back = xToTimeSeconds(forwardX(t), box, dur);
+      expect(Math.abs(back - t)).toBeLessThan(0.5);
+    }
+  });
+
+  it("clamps a drag past the left edge to 0 and past the right edge to the duration", () => {
+    expect(xToTimeSeconds(box.padX - 100, box, dur)).toBe(0);
+    expect(xToTimeSeconds(box.width, box, dur)).toBe(dur);
+    expect(xToTimeSeconds(box.width + 500, box, dur)).toBe(dur);
+  });
+
+  it("returns 0 for a zero or non-finite duration (a single-instant solve has one instant)", () => {
+    expect(xToTimeSeconds(170, box, 0)).toBe(0);
+    expect(xToTimeSeconds(170, box, Number.NaN)).toBe(0);
+    expect(xToTimeSeconds(Number.NaN, box, dur)).toBe(0);
   });
 });
 

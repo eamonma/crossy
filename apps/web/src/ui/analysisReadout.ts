@@ -262,6 +262,28 @@ export function sampleIndexToX(
   return round(scaleX(frac, box));
 }
 
+/**
+ * The replay playhead's inverse: an SVG-local x back to a relative time in [0, durationSeconds].
+ * The playhead is drawn at the SAME place the break marker is, `sampleIndexToX(timeToSampleIndex(t,
+ * dur), N, box)`, and that round-trip is linear in t (the sample count cancels: index = t/dur*(N-1),
+ * x = padX + index/(N-1)*(width - 2*padX) = padX + t/dur*(width - 2*padX)). So a drag inverts it in
+ * closed form: the fraction of the plot width the pointer sits at, times the duration. Clamped to
+ * [0, dur] so dragging past either end pins to that end, never off-axis. A zero or non-finite
+ * duration returns 0 (a single-instant solve has one instant to seek to). Pure: same x, same t.
+ */
+export function xToTimeSeconds(
+  x: number,
+  box: RibbonBox,
+  durationSeconds: number,
+): number {
+  if (!Number.isFinite(x) || !Number.isFinite(durationSeconds)) return 0;
+  if (durationSeconds <= 0) return 0;
+  const span = box.width - 2 * box.padX;
+  if (span <= 0) return 0;
+  const frac = Math.max(0, Math.min(1, (x - box.padX) / span));
+  return frac * durationSeconds;
+}
+
 /** The y pixel for the ribbon's baseline (intensity 0), where the time ticks and the break dot sit. */
 export function ribbonBaselineY(box: RibbonBox): number {
   return round(scaleY(0, box));
