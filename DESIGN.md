@@ -269,6 +269,7 @@ The simulation harness is the regression fortress: every convergence bug it find
 - **INV-8 The session service never mutates membership**; it verifies.
 - **INV-9 Engine purity.** No IO, clock, randomness, or ambient identity inside `packages/engine`.
 - **INV-10 Clients render sequenced state plus overlay only.** Overlay entries clear on echo (`commandId` match), on a non-fatal `error` for that `commandId`, or on snapshot reconciliation, never silently, and never left orphaned by a rejection.
+- **INV-11 Sessions outlive access tokens.** A standing session survives access-token expiry: sign-in surfaces render only when the identity port's session is null (a true sign-out), never on a transient token, HTTP, or transport failure. `getAccessToken()` returns null only when no session exists.
 
 INV-5 is deliberately honest: durability is bounded, not absolute, and the bound is a product decision (D14).
 
