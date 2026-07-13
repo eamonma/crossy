@@ -3,9 +3,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Cleartext is dev-only: the dev stack serves http on the emulator's host loopback
+         (10.0.2.2:8790-8792). A release variant pins https and drops this (a later track). -->
     <application
         android:label="@string/app_name"
         android:theme="@style/Theme.Crossy"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true">
         <activity
             android:name=".MainActivity"

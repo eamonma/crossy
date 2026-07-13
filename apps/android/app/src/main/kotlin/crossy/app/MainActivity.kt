@@ -1,21 +1,22 @@
+// The composition root's entry point: build the shared HTTP client, the session/API wiring, and
+// the room transport factory once, then hand them to CrossyApp. Adapters are wired here and nowhere
+// else (ARCHITECTURE.md: ":app wires everything"). Nothing else of substance lives in this class.
+
 package crossy.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import okhttp3.OkHttpClient
 
-// Placeholder shell pending Wave A2; the composition root wires adapters into stores
-// here and nowhere else.
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val http = OkHttpClient()
+        val session = AppSession(AppConfig.urls(), AppConfig.supabase(), http)
+        val factory = ScriptedRoomTransportFactory()
         setContent {
-            MaterialTheme {
-                Surface { Text("Crossy") }
-            }
+            CrossyApp(session = session, factory = factory)
         }
     }
 }
