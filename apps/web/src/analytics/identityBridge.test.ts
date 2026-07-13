@@ -38,6 +38,7 @@ function makeIdentity(initial: IdentitySession | null = null): {
     load: () => Promise.resolve(session),
     getSession: () => session,
     getAccessToken: () => Promise.resolve(null),
+    refreshAccessToken: () => Promise.resolve(null),
     signInWithProvider: () => Promise.resolve(),
     signInGuest: () =>
       Promise.resolve({

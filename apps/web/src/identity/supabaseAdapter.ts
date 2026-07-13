@@ -214,6 +214,15 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       const session = await freshSession();
       return session?.access_token ?? null;
     },
+    async refreshAccessToken(): Promise<string | null> {
+      // Force a rotation through the stored refresh token, bypassing the freshness
+      // shortcut: the server just rejected a token the client thought was valid, so the
+      // cached one is useless. supabase-js emits SIGNED_OUT via onAuthStateChange when the
+      // refresh is genuinely dead, so a null return here needs no extra state handling.
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error !== null || data.session === null) return null;
+      return data.session.access_token;
+    },
     async signInWithProvider(
       provider: SignInProvider,
       redirectPath?: string,

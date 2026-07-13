@@ -4,7 +4,7 @@
 // the panels read through one mechanism instead of two hand-rolled copies.
 import { useEffect, useMemo, useState } from "react";
 import type { Identity } from "../identity";
-import type { TokenSource } from "./homeData";
+import type { Bearer } from "../net/authedFetch";
 
 export type Resource<T> =
   { phase: "loading" } | { phase: "error" } | { phase: "ready"; data: T };
@@ -51,22 +51,26 @@ export function useResource<T>(
 }
 
 /**
- * The bearer source for REST reads: the `?token=` override (dogfood and the dev stack)
- * wins, otherwise the identity port, which refreshes near expiry. A source, not a resolved
- * string, and the same shape the WebSocket hello already rides (LiveApp's getToken): the
- * string form froze the token in state at mount, so a tab open past the token's TTL kept
- * sending an expired bearer, and a sign-in with no redirect (a guest) never got one at all.
- * Callers resolve at fetch time instead.
+ * The REST bearer: how a fetch resolves its token and forces a refresh after a 401. The
+ * `?token=` override (dogfood and the dev stack) wins with a fixed token and a no-op refresh;
+ * otherwise the identity port, which refreshes near expiry and can force a rotation. A source,
+ * not a resolved string: the string form froze the token in state at mount, so a tab open past
+ * the token's TTL kept sending an expired bearer, and a guest never got one at all. The
+ * WebSocket hello resolves its own token from the same port; only REST rides this bearer,
+ * because only REST needs the 401 refresh-and-retry (net/authedFetch).
  */
-export function useTokenSource(
-  identity: Identity,
-  urlToken: string | null,
-): TokenSource {
+export function useBearer(identity: Identity, urlToken: string | null): Bearer {
   return useMemo(
     () =>
       urlToken !== null
-        ? () => Promise.resolve(urlToken)
-        : () => identity.getAccessToken(),
+        ? {
+            getToken: () => Promise.resolve(urlToken),
+            refresh: () => Promise.resolve(null),
+          }
+        : {
+            getToken: () => identity.getAccessToken(),
+            refresh: () => identity.refreshAccessToken(),
+          },
     [identity, urlToken],
   );
 }

@@ -60,6 +60,12 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
     getAccessToken(): Promise<string | null> {
       return Promise.resolve(session === null ? null : tokenFor(session));
     },
+    refreshAccessToken(): Promise<string | null> {
+      // The mock never rotates a token: a "refresh" simply hands back the same stub token
+      // while signed in, or null when signed out. It mirrors getAccessToken because there
+      // is no vendor to force a rotation against.
+      return Promise.resolve(session === null ? null : tokenFor(session));
+    },
     signInWithProvider(): Promise<void> {
       // The provider argument is unused: every provider lands the same fake account here, since
       // the mock never leaves for a vendor. Omitting it mirrors signInGuest, which drops its

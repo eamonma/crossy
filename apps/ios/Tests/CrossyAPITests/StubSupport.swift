@@ -138,6 +138,51 @@ struct NoSessionTokenProvider: BearerTokenProviding {
     func currentToken() async throws -> String { throw NoSession() }
 }
 
+/// A provider that separates the proactive token from the forced refresh, so the 401
+/// retry path is drivable: `currentToken()` serves the stale token the server will
+/// reject; `refreshedToken()` serves a fresh one (or throws when `refreshOutcome` is set
+/// to). Both call counts are recorded.
+@available(macOS 12.0, iOS 15.0, *)
+final class StaleThenFreshTokenProvider: BearerTokenProviding, @unchecked Sendable {
+    enum RefreshOutcome {
+        case fresh(String)
+        case throwing(any Error)
+    }
+
+    let staleToken: String
+    let refreshOutcome: RefreshOutcome
+
+    // No lock: NSLock.lock()/unlock() are unavailable from the async provider methods
+    // under strict concurrency (Swift 6). This spy is driven sequentially within one task
+    // per test (currentToken, then a forced refreshedToken on a 401), so the counts never
+    // race; @unchecked Sendable carries that promise.
+    private var currentCalls = 0
+    private var refreshCalls = 0
+
+    init(stale: String, refresh: RefreshOutcome) {
+        self.staleToken = stale
+        self.refreshOutcome = refresh
+    }
+
+    var currentTokenCallCount: Int { currentCalls }
+    var refreshedTokenCallCount: Int { refreshCalls }
+
+    func currentToken() async throws -> String {
+        currentCalls += 1
+        return staleToken
+    }
+
+    func refreshedToken() async throws -> String {
+        refreshCalls += 1
+        switch refreshOutcome {
+        case .fresh(let token):
+            return token
+        case .throwing(let error):
+            throw error
+        }
+    }
+}
+
 /// A client whose session routes every request into `StubURLProtocol`.
 @available(macOS 12.0, iOS 15.0, *)
 func makeStubbedClient(

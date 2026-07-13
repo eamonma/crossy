@@ -74,6 +74,13 @@ export interface Identity {
   getAccessToken(): Promise<string | null>;
 
   /**
+   * Force a token refresh (used to recover from a server 401 on a token the client still
+   * thought was valid). Returns the new access token, or null when the refresh fails or
+   * there is no session.
+   */
+  refreshAccessToken(): Promise<string | null>;
+
+  /**
    * Begin OAuth with the named provider. Navigates the browser to the provider and returns to
    * redirectPath (defaults to the current location). Resolves before the redirect; it does not
    * return a session.

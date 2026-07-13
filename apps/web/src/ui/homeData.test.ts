@@ -3,6 +3,7 @@
 // INV-n. The `now` parameter is what makes the formatters deterministic to pin.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  type Bearer,
   compactTime,
   featureLabels,
   fetchGames,
@@ -347,12 +348,12 @@ describe("compactTime (sidebar rows)", () => {
   });
 });
 
-describe("bearer resolution (fetchers take a token source, not a string)", () => {
+describe("bearer resolution (fetchers ride a Bearer through the authedFetch seam)", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("resolves the bearer through the source on every call, so a long-lived tab never rides a frozen token", async () => {
+  it("resolves the bearer on every call, so a long-lived tab never rides a frozen token", async () => {
     const sent: (string | undefined)[] = [];
     vi.stubGlobal(
       "fetch",
@@ -362,10 +363,13 @@ describe("bearer resolution (fetchers take a token source, not a string)", () =>
       }),
     );
     const tokens = ["token-at-noon", "token-an-hour-later"];
-    const getToken = () => Promise.resolve(tokens.shift() ?? null);
+    const bearer: Bearer = {
+      getToken: () => Promise.resolve(tokens.shift() ?? null),
+      refresh: () => Promise.resolve(null),
+    };
 
-    await fetchGames("https://api", getToken);
-    await fetchGames("https://api", getToken);
+    await fetchGames("https://api", bearer);
+    await fetchGames("https://api", bearer);
 
     expect(sent).toEqual([
       "Bearer token-at-noon",
@@ -378,7 +382,10 @@ describe("bearer resolution (fetchers take a token source, not a string)", () =>
     vi.stubGlobal("fetch", dialed);
 
     await expect(
-      fetchGames("https://api", () => Promise.resolve(null)),
+      fetchGames("https://api", {
+        getToken: () => Promise.resolve(null),
+        refresh: () => Promise.resolve(null),
+      }),
     ).rejects.toThrow();
     expect(dialed).not.toHaveBeenCalled();
   });

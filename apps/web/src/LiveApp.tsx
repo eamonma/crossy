@@ -1056,7 +1056,14 @@ function LiveGame({
           selfId={ready.selfId}
           shareUrl={shareUrl}
           inviteCode={code}
-          admin={{ apiBase, gameId, getToken: identity.getAccessToken }}
+          admin={{
+            apiBase,
+            gameId,
+            bearer: {
+              getToken: () => identity.getAccessToken(),
+              refresh: () => identity.refreshAccessToken(),
+            },
+          }}
           onBack={goHome}
           leading={leading}
         />

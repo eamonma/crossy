@@ -8,7 +8,8 @@
 // spirit so a host sees the same affordances on both platforms; the server enforces host-only
 // and self-target regardless (FORBIDDEN), so this only decides what the UI offers.
 import type { StackMember } from "./primitives";
-import type { TokenSource } from "./homeData";
+import type { Bearer } from "../net/authedFetch";
+import { authedFetch } from "../net/authedFetch";
 
 interface RoomMember {
   userId: string;
@@ -66,14 +67,6 @@ export function canKick(
   return member.userId !== selfUserId;
 }
 
-async function authHeaders(
-  getToken: TokenSource,
-): Promise<Record<string, string>> {
-  const token = await getToken();
-  if (token === null) throw new Error("signed out: no bearer to send");
-  return { authorization: `Bearer ${token}` };
-}
-
 /**
  * End the game (host abandon, `POST /games/{id}/abandon`). Terminal state, executed via the
  * session service; a no-op if the game is already terminal (INV-4). Throws on any non-2xx
@@ -81,12 +74,11 @@ async function authHeaders(
  */
 export async function abandonGame(
   apiBase: string,
-  getToken: TokenSource,
+  bearer: Bearer,
   gameId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/games/${gameId}/abandon`, {
+  const res = await authedFetch(bearer, `${apiBase}/games/${gameId}/abandon`, {
     method: "POST",
-    headers: await authHeaders(getToken),
   });
   if (!res.ok) throw new Error(`POST /games/${gameId}/abandon ${res.status}`);
 }
@@ -99,14 +91,15 @@ export async function abandonGame(
  */
 export async function kickMember(
   apiBase: string,
-  getToken: TokenSource,
+  bearer: Bearer,
   gameId: string,
   userId: string,
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/games/${gameId}/members/${userId}`, {
-    method: "DELETE",
-    headers: await authHeaders(getToken),
-  });
+  const res = await authedFetch(
+    bearer,
+    `${apiBase}/games/${gameId}/members/${userId}`,
+    { method: "DELETE" },
+  );
   if (!res.ok) {
     throw new Error(`DELETE /games/${gameId}/members/${userId} ${res.status}`);
   }

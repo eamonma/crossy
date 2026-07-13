@@ -251,7 +251,17 @@ public struct CrossyAPIClient: Sendable {
     /// The shared trip both `send` variants ride: resolve the token, build and issue the
     /// request, and split on status, returning the raw 2xx body and its status code. A
     /// non-2xx throws the typed section 12 envelope here, so neither caller repeats it.
+    ///
+    /// A server 401 on a token the client still thought valid (clock skew, a server-side
+    /// revocation, a shortened TTL) triggers exactly one reactive refresh-and-retry: force
+    /// a fresh token, rebuild the request, re-issue once. Only 401 retries; every other
+    /// status passes through unchanged (DENIED, GAME_NOT_FOUND, and friends are not auth
+    /// staleness). If the forced refresh cannot produce a token, the original 401 outcome
+    /// is surfaced, so the two 401 exits stay consistent.
     private func perform(_ endpoint: Endpoint) async throws -> (data: Data, status: Int) {
+        // Attempt 0 resolves the current token; attempt 1 (only reached after a 401) forces
+        // a refresh. A refresh that cannot mint a token surfaces the same tokenUnavailable
+        // this method already maps a failed token resolve to.
         let token: String
         do {
             token = try await tokenProvider.currentToken()
@@ -259,9 +269,33 @@ public struct CrossyAPIClient: Sendable {
             throw CrossyAPIError.tokenUnavailable(underlying: error)
         }
 
+        let first = try await roundTrip(endpoint, bearer: token)
+        guard first.http.statusCode == 401 else {
+            return try outcome(of: first)
+        }
+
+        // One reactive refresh: replay the request with a freshly minted token. If the
+        // refresh throws (terminal sign-out, or transient weather rethrown), do not loop;
+        // surface the original 401 outcome instead.
+        let refreshed: String
+        do {
+            refreshed = try await tokenProvider.refreshedToken()
+        } catch {
+            return try outcome(of: first)
+        }
+
+        let second = try await roundTrip(endpoint, bearer: refreshed)
+        return try outcome(of: second)
+    }
+
+    /// One request build and issue with the given bearer, returning the raw body and the
+    /// HTTP response for the caller to split on status. Transport weather throws here.
+    private func roundTrip(
+        _ endpoint: Endpoint, bearer: String
+    ) async throws -> (data: Data, http: HTTPURLResponse) {
         var request = URLRequest(url: requestURL(endpoint))
         request.httpMethod = endpoint.method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body = endpoint.body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -279,17 +313,24 @@ public struct CrossyAPIClient: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw CrossyAPIError.invalidResponse(status: nil)
         }
-        guard (200..<300).contains(http.statusCode) else {
-            // Non-2xx is the section 12 envelope, keyed on the stable code. The
-            // envelope's `error` stays a plain string, so a code outside today's
-            // vocabulary still decodes and surfaces typed (degraded, never crashed).
-            guard let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
-            else {
-                throw CrossyAPIError.invalidResponse(status: http.statusCode)
-            }
-            throw CrossyAPIError.api(status: http.statusCode, envelope: envelope)
-        }
+        return (data, http)
+    }
 
-        return (data, http.statusCode)
+    /// The status split: a 2xx returns its body and status; a non-2xx throws the typed
+    /// section 12 envelope, keyed on the stable code. The envelope's `error` stays a plain
+    /// string, so a code outside today's vocabulary still decodes and surfaces typed
+    /// (degraded, never crashed).
+    private func outcome(
+        of trip: (data: Data, http: HTTPURLResponse)
+    ) throws -> (data: Data, status: Int) {
+        guard (200..<300).contains(trip.http.statusCode) else {
+            guard
+                let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: trip.data)
+            else {
+                throw CrossyAPIError.invalidResponse(status: trip.http.statusCode)
+            }
+            throw CrossyAPIError.api(status: trip.http.statusCode, envelope: envelope)
+        }
+        return (trip.data, trip.http.statusCode)
     }
 }

@@ -22,7 +22,7 @@ import { renderSVG } from "uqr";
 import { AvatarStack, CapsLabel } from "./primitives";
 import type { StackMember } from "./primitives";
 import { abandonGame, isHost, kickMember, partitionRoster } from "./roomAdmin";
-import type { TokenSource } from "./homeData";
+import type { Bearer } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -49,7 +49,7 @@ import { ThemeToggle } from "./TopBar";
 export interface RoomAdmin {
   apiBase: string;
   gameId: string;
-  getToken: TokenSource;
+  bearer: Bearer;
   /** Called after a successful end-game or kick so the caller can refresh state; optional. */
   onChanged?: () => void;
 }
@@ -176,7 +176,7 @@ function EndGameRow({ admin }: { admin: RoomAdmin }) {
     setBusy(true);
     setError(null);
     try {
-      await abandonGame(admin.apiBase, admin.getToken, admin.gameId);
+      await abandonGame(admin.apiBase, admin.bearer, admin.gameId);
       setOpen(false);
       admin.onChanged?.();
     } catch {
@@ -398,7 +398,7 @@ function RosterPopover({
     try {
       await kickMember(
         admin.apiBase,
-        admin.getToken,
+        admin.bearer,
         admin.gameId,
         target.userId,
       );

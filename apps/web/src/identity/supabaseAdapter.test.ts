@@ -212,6 +212,40 @@ describe("supabase identity adapter", () => {
     expect(await identity.getAccessToken()).toBeNull();
   });
 
+  it("refreshAccessToken forces a rotation and returns the new token (recovering a server 401)", async () => {
+    // No expiry shortcut: it rotates unconditionally, since the server just rejected a token
+    // the client's clock still thought valid.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { deps, calls } = makeDeps({
+      refreshSession: () =>
+        Promise.resolve({
+          data: {
+            session: {
+              access_token: "rotated",
+              expires_at: nowSec + 3600,
+              user: fakeUser(),
+            },
+          },
+          error: null,
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.refreshAccessToken()).toBe("rotated");
+    expect(calls.refreshSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshAccessToken returns null when the rotation fails (a dead refresh token)", async () => {
+    const { deps } = makeDeps({
+      refreshSession: () =>
+        Promise.resolve({
+          data: { session: null },
+          error: { message: "invalid refresh token" },
+        }),
+    });
+    const identity = createSupabaseIdentity(deps);
+    expect(await identity.refreshAccessToken()).toBeNull();
+  });
+
   it("signInWithProvider('discord') starts OAuth with a redirectTo built from the current location", async () => {
     const { deps, calls } = makeDeps({});
     const identity = createSupabaseIdentity(deps);
