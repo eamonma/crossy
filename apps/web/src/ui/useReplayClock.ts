@@ -51,6 +51,15 @@ export function useReplayClock(durationSeconds: number): ReplayClock {
   const durationRef = useRef(durationSeconds);
   durationRef.current = durationSeconds;
 
+  // A ref mirror of the head, so toggle() reads the latest without a setState updater. Scheduling the
+  // rAF sweep inside a setTime updater would double-fire under StrictMode (updaters must be pure);
+  // every write to `time` goes through setHead so the ref and the state never drift.
+  const timeRef = useRef<number | null>(null);
+  const setHead = useCallback((t: number | null): void => {
+    timeRef.current = t;
+    setTime(t);
+  }, []);
+
   const cancelRaf = useCallback((): void => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
@@ -61,8 +70,8 @@ export function useReplayClock(durationSeconds: number): ReplayClock {
   const reset = useCallback((): void => {
     cancelRaf();
     setPlaying(false);
-    setTime(null);
-  }, [cancelRaf]);
+    setHead(null);
+  }, [cancelRaf, setHead]);
 
   const seek = useCallback(
     (t: number): void => {
@@ -70,9 +79,9 @@ export function useReplayClock(durationSeconds: number): ReplayClock {
       if (dur <= 0) return;
       cancelRaf();
       setPlaying(false);
-      setTime(Math.max(0, Math.min(dur, t)));
+      setHead(Math.max(0, Math.min(dur, t)));
     },
-    [cancelRaf],
+    [cancelRaf, setHead],
   );
 
   const toggle = useCallback((): void => {
@@ -88,42 +97,41 @@ export function useReplayClock(durationSeconds: number): ReplayClock {
 
     // Start from the current head, unless it is null (fresh) or at the end (a finished sweep): those
     // restart from 0 so pressing play again replays from the top rather than sitting stuck at the end.
-    setTime((current) => {
-      const atEnd = current !== null && current >= dur;
-      const from = current === null || atEnd ? 0 : current;
+    const current = timeRef.current;
+    const atEnd = current !== null && current >= dur;
+    const from = current === null || atEnd ? 0 : current;
 
-      // Reduced motion: do not run an animation. Settle straight to the full board (REPLAY.md: a
-      // reduced-motion user gets the resting state, not a sweep) and leave scrubbing available.
-      if (prefersReducedMotion()) {
-        setPlaying(false);
-        return null;
+    // Reduced motion: do not run an animation. Settle straight to the full board (REPLAY.md: a
+    // reduced-motion user gets the resting state, not a sweep) and leave scrubbing available.
+    if (prefersReducedMotion()) {
+      reset();
+      return;
+    }
+
+    fromRef.current = from;
+    startRef.current = performance.now();
+    setHead(from);
+    setPlaying(true);
+
+    const step = (now: number): void => {
+      const d = durationRef.current;
+      if (d <= 0) {
+        reset();
+        return;
       }
-
-      fromRef.current = from;
-      startRef.current = performance.now();
-      setPlaying(true);
-
-      const step = (now: number): void => {
-        const d = durationRef.current;
-        if (d <= 0) {
-          reset();
-          return;
-        }
-        const elapsedMs = now - startRef.current;
-        // The whole solve maps onto PLAYBACK_MS: t = from + (elapsed / PLAYBACK_MS) * duration.
-        const t = fromRef.current + (elapsedMs / PLAYBACK_MS) * d;
-        if (t >= d) {
-          // Reached the end: settle back to the full board (null), never leave a frozen head.
-          reset();
-          return;
-        }
-        setTime(t);
-        rafRef.current = requestAnimationFrame(step);
-      };
+      const elapsedMs = now - startRef.current;
+      // The whole solve maps onto PLAYBACK_MS: t = from + (elapsed / PLAYBACK_MS) * duration.
+      const t = fromRef.current + (elapsedMs / PLAYBACK_MS) * d;
+      if (t >= d) {
+        // Reached the end: settle back to the full board (null), never leave a frozen head.
+        reset();
+        return;
+      }
+      setHead(t);
       rafRef.current = requestAnimationFrame(step);
-      return from;
-    });
-  }, [cancelRaf, reset]);
+    };
+    rafRef.current = requestAnimationFrame(step);
+  }, [cancelRaf, reset, setHead]);
 
   // Cancel any in-flight frame when the component unmounts (or the hook is torn down).
   useEffect(() => cancelRaf, [cancelRaf]);
