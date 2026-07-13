@@ -22,21 +22,23 @@ describe("resolveInviteField (URL param fallback for the API fields)", () => {
   });
 });
 
-describe("buildShareUrl (share popover no longer needs ?code= in the current URL)", () => {
-  const base = { origin: "https://crossy.party", gameId: "g-1" };
-
-  it("builds a joinable path-form link from the resolved code, independent of the current URL", () => {
-    expect(buildShareUrl({ ...base, code: "ABCD2345" })).toBe(
-      "https://crossy.party/game/g-1?code=ABCD2345",
+describe("buildShareUrl (the short crossy.ing/<code> invite link)", () => {
+  it("builds the short link from the resolved code alone", () => {
+    expect(buildShareUrl({ code: "ABCD2345" })).toBe(
+      "https://crossy.ing/ABCD2345",
     );
   });
 
-  it("carries only the code: the name is API-served, so the link never leaks it", () => {
-    expect(buildShareUrl({ ...base, code: "ABCD2345" })).not.toContain("name");
+  it("carries only the code: no gameId, no name, no query string", () => {
+    const url = buildShareUrl({ code: "ABCD2345" });
+    expect(url).toBe("https://crossy.ing/ABCD2345");
+    expect(url).not.toContain("name");
+    expect(url).not.toContain("game");
+    expect(url).not.toContain("?");
   });
 
   it("returns null when there is no code to share (popover shows its fallback message)", () => {
-    expect(buildShareUrl({ ...base, code: null })).toBeNull();
+    expect(buildShareUrl({ code: null })).toBeNull();
   });
 });
 
