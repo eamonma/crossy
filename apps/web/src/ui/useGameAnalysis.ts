@@ -15,8 +15,8 @@ import {
   fetchAnalysisOnce,
   fetchAnalysisWithRetry,
   type AnalysisResponse,
-  type BearerSource,
 } from "./completionAttribution";
+import type { Bearer } from "../net/authedFetch";
 
 /** Where the tab is in its one fetch: still loading, the bundle in hand, or absent (a 404 / failure,
  * so the tab shows a quiet empty state). */
@@ -25,13 +25,13 @@ export type AnalysisState =
   | { readonly status: "ready"; readonly bundle: AnalysisResponse }
   | { readonly status: "absent" };
 
-/** The live source for the fetch: the api base, the game, and the bearer resolver, the same three the
- * mosaic's AttributionSource carries. Omitted (the demo) short-circuits to a fixed bundle if one is
- * supplied, or stays absent. */
+/** The live source for the fetch: the api base, the game, and the REST Bearer, the same three the
+ * mosaic's AttributionSource carries (the seam gives a stale token one refresh-and-retry, INV-11).
+ * Omitted (the demo) short-circuits to a fixed bundle if one is supplied, or stays absent. */
 export interface AnalysisSource {
   readonly apiBase: string;
   readonly gameId: string;
-  readonly getToken: BearerSource;
+  readonly bearer: Bearer;
 }
 
 /**
@@ -57,7 +57,7 @@ export function useGameAnalysis({
     const signal = { aborted: false };
     setState({ status: "loading" });
     void fetchAnalysisWithRetry(
-      () => fetchAnalysisOnce(source.apiBase, source.gameId, source.getToken),
+      () => fetchAnalysisOnce(source.apiBase, source.gameId, source.bearer),
       { signal },
     ).then((bundle) => {
       if (signal.aborted) return;
@@ -68,7 +68,7 @@ export function useGameAnalysis({
     return () => {
       signal.aborted = true;
     };
-  }, [enabled, source, source?.apiBase, source?.gameId, source?.getToken]);
+  }, [enabled, source, source?.apiBase, source?.gameId, source?.bearer]);
 
   return state;
 }

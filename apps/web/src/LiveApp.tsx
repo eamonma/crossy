@@ -24,12 +24,15 @@ import type { Grid } from "@crossy/engine";
 import { tabTarget } from "@crossy/engine";
 import { connectToGame } from "./net/connect";
 import type { GameConnection } from "./net/connect";
+import { authedFetch } from "./net/authedFetch";
+import type { Bearer } from "./net/authedFetch";
 import { computeLayout } from "./domain/layout";
 import {
   buildAppLink,
   buildShareUrl,
   resolveInviteField,
 } from "./domain/invite";
+import { isSignedOut } from "./domain/authGate";
 import { isAppleMobile } from "./lib/platform";
 import type { Clue, ClueRun, Puzzle } from "./domain/types";
 import {
@@ -54,6 +57,7 @@ import {
   clueOn,
 } from "./ui/Clues";
 import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
+import { useBearer } from "./ui/useResource";
 import { useNavPrefs } from "./ui/useNavPrefs";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
@@ -256,9 +260,27 @@ export function LiveApp({
       const code = params.get("code");
       const name = params.get("name");
       const tokenParam = params.get("token");
-      const token = tokenParam ?? (await identity.getAccessToken());
-      // Auth gate first: a logged-out invitee sees the sign-in gate before any server concern,
-      // so the invite experience never leaks a deploy detail (audit voice: no error codes).
+      // The REST bearer, built exactly as useBearer builds it (ui/useResource): the `?token=`
+      // override wins with a fixed token and a no-op refresh (the smoke and dogfood), otherwise the
+      // identity port, which refreshes near expiry and can force one rotation after a 401. This one
+      // bearer resolves the token for the claims below, rides the authedFetch seam, and feeds the
+      // WS hello, so REST and the socket recover a stale access token the same way.
+      const bearer: Bearer =
+        tokenParam !== null
+          ? {
+              getToken: () => Promise.resolve(tokenParam),
+              refresh: () => Promise.resolve(null),
+            }
+          : {
+              getToken: () => identity.getAccessToken(),
+              refresh: () => identity.refreshAccessToken(),
+            };
+
+      // Resolve the token once for the claims below (selfId, the guest fallback). getAccessToken
+      // returns null iff there is no session (INV-11), and the override always yields its fixed
+      // string, so a null here is a true sign-out: show the gate before any server concern, so the
+      // invite experience never leaks a deploy detail (audit voice: no error codes).
+      const token = await bearer.getToken();
       if (token === null) {
         setState({ phase: "needs-auth", invited: code !== null });
         return;
@@ -271,45 +293,81 @@ export function LiveApp({
         return;
       }
 
-      const auth = { authorization: `Bearer ${token}` };
       const selfId = jwtSub(token);
       // Guest status: the identity session is authoritative when present (the real product path);
       // the `?token=` dogfood path has no session, so fall back to the token's own claim.
       const isAnonymous =
         identity.getSession()?.isAnonymous ?? jwtIsAnonymous(token);
 
-      // Fetch the game view. A non-member gets 403; with an invite code we self-join as a
-      // spectator (DESIGN section 8), then read the view again.
-      let res = await fetch(`${api}/games/${game}`, { headers: auth });
-      if (res.status === 401) {
-        setState({ phase: "needs-auth", invited: code !== null });
+      // INV-11: a 401 that survives the seam's refresh-and-retry, a thrown null bearer, or a
+      // transport failure is a sign-out ONLY when the session is truly gone. Gate then; otherwise
+      // it is a recoverable error, never the sign-in surface (audit voice: no codes, no deploy
+      // details). The gate rule lives pure in domain/authGate so the invariant stays testable.
+      const gateOrError = (): void => {
+        setState(
+          isSignedOut(tokenParam, identity.getSession() !== null)
+            ? { phase: "needs-auth", invited: code !== null }
+            : {
+                phase: "error",
+                message:
+                  "We couldn't reach the game. Check your connection and try again.",
+              },
+        );
+      };
+
+      // Fetch the game view through the 401 refresh-and-retry seam (INV-11): a stale access token
+      // (a backgrounded tab past its TTL) 401s once, the seam refreshes and replays, and the room
+      // opens without ever flashing the sign-in gate. A non-member gets 403; with an invite code we
+      // self-join as a spectator (DESIGN section 8), then read the view again.
+      let res: Response;
+      try {
+        res = await authedFetch(bearer, `${api}/games/${game}`);
+        if (res.status === 403) {
+          if (code === null) {
+            setState({
+              phase: "error",
+              message: "You need an invite link to join this game.",
+            });
+            return;
+          }
+          const joinRes = await authedFetch(
+            bearer,
+            `${api}/games/${game}/join`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ code }),
+            },
+          );
+          if (!joinRes.ok) {
+            const body = (await joinRes.json().catch(() => ({}))) as {
+              error?: string;
+              message?: string;
+            };
+            setState({
+              phase: "error",
+              message: joinError(
+                joinRes.status,
+                body.error,
+                body.message ?? "",
+              ),
+            });
+            return;
+          }
+          res = await authedFetch(bearer, `${api}/games/${game}`);
+        }
+      } catch {
+        // authedFetch throws only on a null bearer (a sign-out that raced the token check above);
+        // a transport failure rejects here too. Neither is a sign-out unless the session is truly
+        // gone (INV-11), so defer the whole decision to gateOrError.
+        gateOrError();
         return;
       }
-      if (res.status === 403) {
-        if (code === null) {
-          setState({
-            phase: "error",
-            message: "You need an invite link to join this game.",
-          });
-          return;
-        }
-        const joinRes = await fetch(`${api}/games/${game}/join`, {
-          method: "POST",
-          headers: { ...auth, "content-type": "application/json" },
-          body: JSON.stringify({ code }),
-        });
-        if (!joinRes.ok) {
-          const body = (await joinRes.json().catch(() => ({}))) as {
-            error?: string;
-            message?: string;
-          };
-          setState({
-            phase: "error",
-            message: joinError(joinRes.status, body.error, body.message ?? ""),
-          });
-          return;
-        }
-        res = await fetch(`${api}/games/${game}`, { headers: auth });
+      // A 401 the seam could not refresh away: the rotation failed while the session may still
+      // stand (a peer already rotated the token). Not automatically a sign-out (INV-11).
+      if (res.status === 401) {
+        gateOrError();
+        return;
       }
       if (!res.ok) {
         setState({
@@ -328,14 +386,10 @@ export function LiveApp({
       // back to the URL query params so old invite links keep working (expand/contract).
       const resolvedCode = resolveInviteField(view.inviteCode, code);
       const resolvedName = resolveInviteField(view.name, name);
-      // Resolve a fresh token before every hello (reconnects included) so an expired
-      // access token never wedges the reconnect loop. The ?token= override (smoke and
-      // dogfood) has no identity session, so it feeds the fixed string straight back.
-      const getToken: () => Promise<string | null> =
-        tokenParam !== null
-          ? () => Promise.resolve(tokenParam)
-          : () => identity.getAccessToken();
-      connection = connectToGame({ url: wsUrl, getToken });
+      // Resolve a fresh token before every hello (reconnects included) so an expired access token
+      // never wedges the reconnect loop. The same bearer resolves it: the ?token= override feeds
+      // its fixed string straight back, the identity port refreshes near expiry otherwise.
+      connection = connectToGame({ url: wsUrl, getToken: bearer.getToken });
       if (cancelled) {
         connection.close();
         return;
@@ -656,6 +710,10 @@ function LiveGame({
 }) {
   const { connection, puzzle, apiBase, gameId, code, name } = ready;
   const store = connection.store;
+  // The same REST bearer the loader built: the role upgrade rides the authedFetch seam so a stale
+  // access token gets one refresh-and-retry (INV-11) instead of silently failing the upgrade. The
+  // `?token=` override keeps its fixed token and no-op refresh (useBearer, ui/useResource).
+  const bearer = useBearer(identity, params.get("token"));
   const grid: Grid = useMemo(
     () => ({ cols: puzzle.cols, rows: puzzle.rows, blocks: puzzle.blocks }),
     [puzzle],
@@ -926,16 +984,13 @@ function LiveGame({
   }
 
   async function upgrade(): Promise<void> {
-    const token = await identity.getAccessToken();
-    if (token === null) return;
     setUpgrading(true);
     try {
-      const res = await fetch(`${apiBase}/games/${gameId}/role`, {
+      // Ride the seam: a stale token 401s once, refreshes, and replays (INV-11), so an upgrade
+      // near token expiry lands instead of failing silently.
+      const res = await authedFetch(bearer, `${apiBase}/games/${gameId}/role`, {
         method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ role: "solver" }),
       });
       if (res.ok) {
@@ -949,6 +1004,9 @@ function LiveGame({
       if (res.status === 403 && body.error === "FULL_ACCOUNT_REQUIRED") {
         setBlockedByAccount(true);
       }
+    } catch {
+      // authedFetch throws only on a signed-out bearer; the upgrade simply did not happen, so the
+      // spectate banner stays as-is and the player can retry.
     } finally {
       setUpgrading(false);
     }
@@ -1029,8 +1087,8 @@ function LiveGame({
   // already fetches the same (cached) endpoint for its owner map, so this is a cheap cache hit. Gated
   // on `boardCompleted` (an ongoing game has no analysis, and its trace would leak progress).
   const analysisSource = useMemo(
-    () => ({ apiBase, gameId, getToken: identity.getAccessToken }),
-    [apiBase, gameId, identity],
+    () => ({ apiBase, gameId, bearer }),
+    [apiBase, gameId, bearer],
   );
   const analysis = useGameAnalysis({
     source: analysisSource,
@@ -1210,11 +1268,7 @@ function LiveGame({
                     bloom={bloomOnCompletion}
                     replayTime={replay.time}
                     sequence={sequence}
-                    source={{
-                      apiBase,
-                      gameId,
-                      getToken: identity.getAccessToken,
-                    }}
+                    source={{ apiBase, gameId, bearer }}
                   />
                 </div>
               )}
