@@ -1,10 +1,11 @@
 // The scanned invite's digest (the join panel, DESIGN.md §4 arrival notes). A QR
-// in the wild carries one of three shapes: the web share link the projector shows
-// (`/game/{id}?code=...`, apps/web domain/invite buildShareUrl), the §12 unfurl
-// link (`/g/{code}`), or a bare read-aloud code. All three digest to the code —
-// the only thing `POST /games/join` wants (PROTOCOL.md §12) — or nil when the
-// payload names no room. Casing rides InviteCodeEntry (bytewise ASCII, INV-1);
-// the server still owns lookup normalization.
+// in the wild carries one of these shapes: the canonical short link the web app
+// now emits (`crossy.ing/{CODE}`, a single path segment that IS the code), an old
+// query-carried share link (`?code=...`), the §12 unfurl link (`/g/{code}`), or a
+// bare read-aloud code. All digest to the code — the only thing `POST /games/join`
+// wants (PROTOCOL.md §12) — or nil when the payload names no room. Casing rides
+// InviteCodeEntry (bytewise ASCII, INV-1); the server still owns lookup
+// normalization.
 
 import Foundation
 
@@ -39,6 +40,19 @@ public enum InviteScan {
             let candidate = InviteCodeEntry.sanitize(String(segments[1]))
             if InviteCodeEntry.isComplete(candidate),
                 segments[1].count == InviteCodeEntry.length
+            {
+                return candidate
+            }
+        }
+
+        // The short-link form: crossy.ing/{CODE} — a single path segment that IS
+        // the code. Host-agnostic and shape-gated like the /g/ branch: only a
+        // segment that already reads as a valid code matches, so a non-code route
+        // (`/puzzles`) falls through to nil.
+        if segments.count == 1 {
+            let candidate = InviteCodeEntry.sanitize(String(segments[0]))
+            if InviteCodeEntry.isComplete(candidate),
+                segments[0].count == InviteCodeEntry.length
             {
                 return candidate
             }
