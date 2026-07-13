@@ -7,6 +7,7 @@
 
 package crossy.app
 
+import android.content.Intent
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -16,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import crossy.protocol.ClientPuzzle
 import crossy.protocol.CreateGameRequest
 import crossy.protocol.GameSummary
@@ -30,6 +32,7 @@ import crossy.ui.GridGround
 import crossy.ui.JoinCodeScreen
 import crossy.ui.RoomScreen
 import crossy.ui.RoomsListScreen
+import crossy.ui.ShareInvite
 import crossy.ui.SignInScreen
 import kotlinx.coroutines.launch
 
@@ -39,7 +42,14 @@ private sealed interface Screen {
     data object Join : Screen
     data object Create : Screen
     // wsUrl null = no live socket (the demo room): the room runs on the scripted transport.
-    data class Room(val puzzle: ClientPuzzle, val name: String?, val demo: Boolean, val wsUrl: String? = null) : Screen
+    // inviteCode null = nothing to share (the demo room carries no code).
+    data class Room(
+        val puzzle: ClientPuzzle,
+        val name: String?,
+        val demo: Boolean,
+        val wsUrl: String? = null,
+        val inviteCode: String? = null,
+    ) : Screen
 }
 
 @Composable
@@ -55,7 +65,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
             Screen.Rooms -> RoomsHost(
                 session = session,
                 ground = ground,
-                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws) },
+                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode) },
                 onJoin = { screen = Screen.Join },
                 onCreate = { screen = Screen.Create },
                 onOpenDemo = { screen = Screen.Room(RoomScripts.demoPuzzle, "Demo room", demo = true) },
@@ -69,13 +79,13 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
             Screen.Join -> JoinHost(
                 session = session,
                 onBack = { screen = Screen.Rooms },
-                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws) },
+                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode) },
             )
 
             Screen.Create -> CreateHost(
                 session = session,
                 onBack = { screen = Screen.Rooms },
-                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws) },
+                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode) },
             )
 
             is Screen.Room -> RoomHost(
@@ -86,6 +96,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
                 selfUserId = session.selfUserId ?: "you",
                 demo = s.demo,
                 wsUrl = s.wsUrl,
+                inviteCode = s.inviteCode,
                 onExit = { screen = Screen.Rooms },
             )
         }
@@ -230,10 +241,26 @@ private fun RoomHost(
     selfUserId: String,
     demo: Boolean,
     wsUrl: String?,
+    inviteCode: String?,
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val store = remember(puzzle) { GameStore() }
+    // The share intent: the pure ShareInvite builds the canonical short link from the configured
+    // host (AppConfig.INVITE_HOST), and the app target fires the system share sheet (mirroring iOS,
+    // where CrossyUI is pure over the link and the app target presents the sheet). Null when the
+    // room has no code (the demo room), so RoomBar shows no share affordance.
+    val context = LocalContext.current
+    val shareLink = remember(inviteCode) { ShareInvite.url(AppConfig.inviteHost(), inviteCode) }
+    val onShare: (() -> Unit)? = shareLink?.let { link ->
+        {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, link)
+            }
+            context.startActivity(Intent.createChooser(send, null))
+        }
+    }
     DisposableEffect(puzzle) {
         val job = scope.launch {
             if (wsUrl != null) {
@@ -255,5 +282,5 @@ private fun RoomHost(
         }
         onDispose { job.cancel() }
     }
-    RoomScreen(store = store, puzzle = puzzle, roomName = roomName, onExit = onExit)
+    RoomScreen(store = store, puzzle = puzzle, roomName = roomName, onExit = onExit, onShare = onShare)
 }

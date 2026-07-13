@@ -1,7 +1,9 @@
 // Join by invite code (iOS JoinCodeScreen, Wave A4 functional bar): one code field and a join
-// intent. The code is sent verbatim; the server owns normalization (INV-1), so nothing here folds
-// it. QR scan and the short-link path are later tracks. A pure function of the field plus busy/error
-// state; the composition root runs the join call.
+// intent. The field digests through InviteScan the same way iOS's scan ingest does, so a pasted
+// short link (`crossy.ing/{CODE}`), an old `?code=` link, or the `/g/{code}` unfurl resolves to the
+// bare code inline; a partial code being typed folds through InviteCode (bytewise ASCII, INV-1). The
+// server still owns lookup normalization. QR scan is a later track. A pure function of the field plus
+// busy/error state; the composition root runs the join call.
 
 package crossy.ui
 
@@ -41,15 +43,17 @@ fun JoinCodeScreen(
         Text("Enter the invite code a host shared with you.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(
             value = code,
-            onValueChange = { code = it },
-            label = { Text("Invite code") },
+            // A pasted link digests to its code inline (InviteScan); a partial code sanitizes as
+            // typed (InviteCode). Both keep the field to the read-aloud alphabet, INV-1.
+            onValueChange = { raw -> code = InviteScan.parse(raw) ?: InviteCode.sanitize(raw) },
+            label = { Text("Invite code or link") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
         Button(
             onClick = { onJoin(code) },
-            enabled = !isBusy && code.isNotBlank(),
+            enabled = !isBusy && InviteCode.isComplete(code),
             modifier = Modifier.fillMaxWidth(),
         ) { Text(if (isBusy) "Joining..." else "Join") }
         TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back") }

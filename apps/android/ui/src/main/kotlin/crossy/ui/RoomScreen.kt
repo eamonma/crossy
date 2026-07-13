@@ -37,6 +37,9 @@ fun RoomScreen(
     roomName: String?,
     modifier: Modifier = Modifier,
     onExit: () -> Unit = {},
+    // The room's share intent, or null when there is no code to share (the demo room). The
+    // composition root builds the short link and fires the system share sheet (RoomBar surfaces it).
+    onShare: (() -> Unit)? = null,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -70,7 +73,7 @@ fun RoomScreen(
     }
 
     Column(modifier = modifier.fillMaxSize().background(ground.tokens.canvas.toColor())) {
-        RoomBar(roomName, render.participants, render.sync, render.status, ground, onExit = onExit)
+        RoomBar(roomName, render.participants, render.sync, render.status, ground, onExit = onExit, onShare = onShare)
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center,

@@ -29,6 +29,10 @@ data class AppUrls(val apiBaseUrl: HttpUrl, val sessionWsBase: String)
 object AppConfig {
     fun urls(): AppUrls = AppUrls(BuildConfig.API_BASE_URL.toHttpUrl(), BuildConfig.SESSION_WS_BASE)
 
+    /** The invite host the share link is built against (PROTOCOL.md §12). Bare host, no scheme;
+     *  ShareInvite prepends https. Configured via BuildConfig.INVITE_HOST (default crossy.ing). */
+    fun inviteHost(): String = BuildConfig.INVITE_HOST
+
     fun supabase(): SupabaseConfig = SupabaseConfig(
         authBaseUrl = BuildConfig.SUPABASE_AUTH_URL.toHttpUrl(),
         apiKey = BuildConfig.SUPABASE_API_KEY,

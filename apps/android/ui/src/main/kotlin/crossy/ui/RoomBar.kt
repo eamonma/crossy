@@ -1,7 +1,9 @@
 // The room's top chrome (iOS RoomBar, trimmed to the Wave A4 functional bar): a back affordance,
-// the room name, the roster as color dots, and the connection state as a small chip. Rich roster
-// menus, share, and the ambient clock are later tracks. A pure function of the render model's
-// presence plus the sync state; the room screen owns the exit intent.
+// the room name, the roster as color dots, a share affordance, and the connection state as a small
+// chip. Share emits the canonical short invite link through the system share sheet (iOS ShareMenu,
+// PROTOCOL.md §12); it renders only when the room has a code to share (onShare non-null), so the
+// demo room shows none. Rich roster menus and the ambient clock are later tracks. A pure function of
+// the render model's presence plus the sync state; the room screen owns the exit and share intents.
 
 package crossy.ui
 
@@ -40,6 +42,7 @@ fun RoomBar(
     ground: GridGround,
     modifier: Modifier = Modifier,
     onExit: () -> Unit = {},
+    onShare: (() -> Unit)? = null,
 ) {
     val tokens = ground.tokens
     Surface(modifier = modifier.fillMaxWidth(), color = tokens.canvas.toColor(), contentColor = tokens.ink.toColor()) {
@@ -73,8 +76,24 @@ fun RoomBar(
                     )
                 }
             }
+            if (onShare != null) ShareChip(ground, onShare)
             SyncChip(sync, status, ground)
         }
+    }
+}
+
+// The share affordance: a quiet pill matching the SyncChip idiom, tapping it fires the room's share
+// intent (the composition root builds the short link and hands it to the system share sheet).
+@Composable
+private fun ShareChip(ground: GridGround, onShare: () -> Unit) {
+    val tokens = ground.tokens
+    Surface(
+        color = tokens.cell.toColor(),
+        contentColor = tokens.ink.toColor(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+        modifier = Modifier.pointerInput(Unit) { detectTapGestures { onShare() } },
+    ) {
+        Text("Share", fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     }
 }
 
