@@ -1,0 +1,39 @@
+name: Android vectors
+
+# The Kotlin third of the vector proof, mirroring ios.yml's shape: a separate workflow,
+# not a job in ci.yml, so the path filter scopes the whole thing natively and it never
+# slows the JS `checks` job. Ubuntu, not macOS: every module this job tests is JVM-pure
+# (apps/android/ARCHITECTURE.md), so no Android SDK, no emulator, no macOS minutes.
+# App assembly and device tests are added when they earn their runtime cost.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/android/**"
+      - "vectors/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "apps/android/**"
+      - "vectors/**"
+      - ".github/workflows/android.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jvm-vectors:
+    name: kotlin vector runner (JUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: JVM module tests (engine, protocol, store, api, session, design)
+        working-directory: apps/android
+        run: ./gradlew --no-daemon :engine:test :protocol:test :store:test :api:test :session:test :design:test

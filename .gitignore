@@ -25,6 +25,12 @@ apps/ios/scripts/.integration.pid
 apps/ios/scripts/.room.pid
 apps/ios/scripts/.room-derived/
 
+# Kotlin / Gradle (apps/android)
+.gradle/
+apps/android/**/build/
+apps/android/local.properties
+.kotlin/
+
 # OS / editor
 .DS_Store
 .claude/
