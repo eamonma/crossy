@@ -116,6 +116,9 @@ struct ArrivalRootView: View {
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
+    /// The magic link a Universal Link delivered (CrossyApp set it via AuthConfirm,
+    /// roadmap I3b): completed against the session here, the PendingInvite precedent.
+    @Environment(PendingMagicLink.self) private var pendingMagicLink
     /// The analytics port CrossyApp built (the noop in every rig composition, so
     /// nothing here checks). Identify and signed_in live on this view because it is
     /// the one observer of the session phase; the seam the routing already reads.
@@ -130,6 +133,15 @@ struct ArrivalRootView: View {
                     state: model.welcomeState,
                     onContinueApple: { Task { await model.session.signInWithApple() } },
                     onContinueDiscord: { Task { await model.session.signIn() } },
+                    // The secondary methods (roadmap I3b): hisbaan rides the web leg
+                    // like Discord, the email pair is the sheet's own OTP flow. Their
+                    // completion flips the phase to signed in exactly as the primary
+                    // buttons do, so the shell swaps in without any extra wiring here.
+                    onContinueHisbaan: { Task { await model.session.continueWithHisbaan() } },
+                    sendEmailOTP: { email in try await model.session.sendEmailOTP(email: email) },
+                    verifyEmailOTP: { email, code in
+                        try await model.session.verifyEmailOTP(email: email, code: code)
+                    },
                     onOpenLegal: { welcomeLegal = legalItem(for: $0) }
                 )
                 .sheet(item: $welcomeLegal) { item in
@@ -149,9 +161,14 @@ struct ArrivalRootView: View {
         .task {
             if let userId = model.session.userId { analytics.identify(userId: userId) }
             honorPendingInvite()
+            // A cold launch straight from a magic link: the link is set before this
+            // view's observers register (the invite's cold-launch reasoning), so
+            // complete it once on appear. AuthSession no-ops it when already signing in.
+            completePendingMagicLink()
         }
         // A link arriving while the app runs.
         .onChange(of: pendingInvite.code) { honorPendingInvite() }
+        .onChange(of: pendingMagicLink.link) { completePendingMagicLink() }
         .onChange(of: model.isSignedIn) { _, signedIn in
             if signedIn {
                 // The one transition into signed in: an interactive sign-in
@@ -225,6 +242,23 @@ struct ArrivalRootView: View {
                 deepLinkPrefill = code
                 showJoin = true
             }
+        }
+    }
+
+    /// Complete a magic link a Universal Link delivered (roadmap I3b): hand its
+    /// token_hash and type to the session, which drives the same signed-in outcome the
+    /// email OTP and the primary buttons do (the shell swaps in through the phase alone).
+    /// Cleared on consumption so it fires exactly once. A verify failure is swallowed
+    /// here: the session lands in .failed, and Welcome already shows the plain retry for
+    /// that phase, so a second surface would only double the message. Already signing in
+    /// (a code entry in flight) makes completeMagicLink a no-op, which is the honest
+    /// outcome.
+    private func completePendingMagicLink() {
+        guard let link = pendingMagicLink.link else { return }
+        pendingMagicLink.link = nil
+        Task {
+            try? await model.session.completeMagicLink(
+                tokenHash: link.tokenHash, type: link.type)
         }
     }
 

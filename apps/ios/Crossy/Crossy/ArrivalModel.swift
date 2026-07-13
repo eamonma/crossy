@@ -43,6 +43,17 @@ protocol ArrivalSessioning: AnyObject {
     var authProvider: AuthProvider? { get }
     func signIn() async
     func signInWithApple() async
+    /// The secondary methods behind "Continue another way" (roadmap I3b). Hisbaan rides
+    /// the same ASWebAuth leg Discord does (a custom OIDC provider); the email pair is
+    /// the two-step OTP grant, and completeMagicLink finishes a magic link a Universal
+    /// Link delivered. All drive the same signed-in phase the primary buttons do, so the
+    /// routing stays provider-blind. The two email calls surface errors so the sheet can
+    /// render the inline reason; the send call does not change the phase (AuthSession
+    /// contract).
+    func continueWithHisbaan() async
+    func sendEmailOTP(email: String) async throws
+    func verifyEmailOTP(email: String, code: String) async throws
+    func completeMagicLink(tokenHash: String, type: String) async throws
     func signOut() async
     /// Delete the account: the server-side `DELETE /account` then the local token
     /// purge. nil on success (routing lands at Welcome), a digested failure otherwise
@@ -93,6 +104,18 @@ final class RealArrivalSession: ArrivalSessioning {
     var authProvider: AuthProvider? { auth.provider }
     func signIn() async { await auth.signIn(provider: .discord) }
     func signInWithApple() async { await auth.signInWithApple() }
+    // The secondary methods forward straight to AuthSession (roadmap I3b): hisbaan is the
+    // same web leg with its own provider value, the email pair is the OTP grant, and the
+    // magic-link finisher is the link-verify grant. Each already drives the machine, so
+    // these are pure passthroughs.
+    func continueWithHisbaan() async { await auth.signIn(provider: .hisbaan) }
+    func sendEmailOTP(email: String) async throws { try await auth.sendEmailOTP(email: email) }
+    func verifyEmailOTP(email: String, code: String) async throws {
+        try await auth.verifyEmailOTP(email: email, code: code)
+    }
+    func completeMagicLink(tokenHash: String, type: String) async throws {
+        try await auth.completeMagicLink(tokenHash: tokenHash, type: type)
+    }
     func signOut() async { await auth.signOut() }
 
     /// `DELETE /account` first; only on the server's confirmation do we purge local
@@ -129,6 +152,12 @@ final class InjectedArrivalSession: ArrivalSessioning {
     var authProvider: AuthProvider? { nil }
     func signIn() async {}
     func signInWithApple() async {}
+    // The harness identity is already signed in from launch (Welcome never shows), so the
+    // sign-in intents are no-ops, the secondary methods with them.
+    func continueWithHisbaan() async {}
+    func sendEmailOTP(email: String) async throws {}
+    func verifyEmailOTP(email: String, code: String) async throws {}
+    func completeMagicLink(tokenHash: String, type: String) async throws {}
     func signOut() async {}
     func deleteAccount() async -> ArrivalFailure? { nil }
 }
@@ -260,6 +289,10 @@ extension ArrivalFailure {
 
 // MARK: - Fixture backend (-i3Fixture)
 
+/// The fixture verify's rejection, so the "Continue another way" sheet's inline
+/// verify-failure copy is walkable offline (any code but the fixed fixture OTP throws).
+private struct FixtureVerifyError: Error {}
+
 /// The device-walk session: sign-in succeeds after a beat (long enough to see the
 /// authenticating state, short enough to feel instant), no network, no Keychain. It
 /// carries a fake identity so the Account screen is reachable and demo-able offline,
@@ -288,12 +321,44 @@ final class FixtureArrivalSession: ArrivalSessioning {
 
     var tokenProvider: any BearerTokenProviding { FixedBearerToken(token: "fixture-token") }
 
+    /// The fixed OTP the fixture verify accepts, so the device walk exercises the whole
+    /// email leg offline: any other code lands the calm verify-failure copy, this one
+    /// signs in.
+    static let fixtureOTP = "123456"
+
     func signIn() async { await beat(provider: .discord) }
 
     /// The -i3Fixture device walk exercises both Welcome buttons; Apple takes the same
     /// beat as Discord, so the authenticating state and the tapped-button spinner show
     /// identically on either path.
     func signInWithApple() async { await beat(provider: .apple) }
+
+    /// Hisbaan takes the same beat as the primary buttons (it is the same web leg in the
+    /// real path), so the sheet's hand-off and the Welcome spinner are walkable offline.
+    func continueWithHisbaan() async { await beat(provider: .hisbaan) }
+
+    /// Sending the code is a no-op that succeeds after a short beat (long enough to see
+    /// the "Send code" spinner), so the sheet advances to the code pane with no network.
+    func sendEmailOTP(email: String) async throws {
+        try? await Task.sleep(for: .milliseconds(400))
+    }
+
+    /// Verify accepts the fixed fixture code and signs in (the beat mirrors the primary
+    /// buttons so the spinner shows); any other code throws, so the sheet's inline
+    /// verify-failure copy is walkable on device.
+    func verifyEmailOTP(email: String, code: String) async throws {
+        guard code == Self.fixtureOTP else {
+            try? await Task.sleep(for: .milliseconds(300))
+            throw FixtureVerifyError()
+        }
+        await beat(provider: .emailOTP)
+    }
+
+    /// A magic link the fixture never receives (no Universal Link in the offline walk),
+    /// so this simply signs in with the email marker, keeping the seam total.
+    func completeMagicLink(tokenHash: String, type: String) async throws {
+        await beat(provider: .emailOTP)
+    }
 
     private func beat(provider: AuthProvider) async {
         phase = .authenticating

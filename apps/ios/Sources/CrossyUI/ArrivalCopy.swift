@@ -43,11 +43,42 @@ public enum ArrivalCopy {
     public static let welcomeLine = "Crosswords you solve together."
     public static let continueWithApple = "Continue with Apple"
     public static let continueWithDiscord = "Continue with Discord"
-    /// The two secondary methods (roadmap I3b), worded like the primary buttons. The
-    /// "Continue another way" sheet that shows them is a later wave; the strings live here
-    /// with the rest of the provider copy.
+    /// The two secondary methods (roadmap I3b), worded like the primary buttons.
     public static let continueWithHisbaan = "Continue with Hisbaan"
     public static let continueWithEmail = "Continue with email"
+
+    // MARK: - "Continue another way" sheet (roadmap I3b)
+
+    /// The quiet tertiary affordance under the two primary buttons: it opens the sheet
+    /// that holds the secondary methods. Subordinate by design, so it reads as an
+    /// escape hatch, not a third first-class button.
+    public static let continueAnotherWay = "Continue another way"
+    /// The sheet's own title, and the two rows it lists.
+    public static let continueSheetTitle = "Another way in"
+    public static let continueRowEmail = "Email"
+    public static let continueRowHisbaan = "Hisbaan"
+    /// The email step: the field's prompt, the one line under it, and the send action.
+    public static let emailEntryTitle = "Sign in with email"
+    public static let emailFieldPrompt = "you@example.com"
+    public static let emailEntryHint = "We'll send a six-digit code to your inbox."
+    public static let emailSendCode = "Send code"
+    /// The code step: the title names the address the code went to, the field prompt,
+    /// the verify action, and the resend affordance (with its counting-down twin).
+    public static let codeEntryTitle = "Enter the code"
+    public static func codeEntryHint(email: String) -> String {
+        "We sent a code to \(email). Enter it to sign in."
+    }
+    public static let codeFieldPrompt = "000000"
+    public static let codeVerify = "Verify"
+    public static let codeResend = "Resend code"
+    public static func codeResendCountdown(seconds: Int) -> String {
+        "Resend code in \(seconds)s"
+    }
+    /// Calm error copy for the two steps (same voice as the arrival errors: say what
+    /// happened, offer the retry, no apology). The send and verify failures read as
+    /// plain sentences; the server prose never reaches the screen.
+    public static let emailSendFailed = "Couldn't send the code. Check the address and try again."
+    public static let codeVerifyFailed = "That code didn't work. Check it and try again, or resend."
     /// Auth failure returns here with a plain retry, never a dead end.
     public static let signInFailed = "Sign-in didn't finish. Try again."
     /// The honest unconfigured state: the plist slots are empty in this build.

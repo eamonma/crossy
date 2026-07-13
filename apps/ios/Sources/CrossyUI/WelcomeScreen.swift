@@ -33,6 +33,9 @@ public struct WelcomeScreen: View {
     private let state: WelcomeState
     private let onContinueApple: () -> Void
     private let onContinueDiscord: () -> Void
+    private let onContinueHisbaan: () -> Void
+    private let sendEmailOTP: (String) async throws -> Void
+    private let verifyEmailOTP: (String, String) async throws -> Void
     private let onOpenLegal: (LegalPage) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -40,16 +43,27 @@ public struct WelcomeScreen: View {
     /// The button that fired; reset when the phase leaves authenticating (a canceled or
     /// failed leg returns here, and the spinner must not linger on the wrong button).
     @State private var pending: Provider?
+    /// The "Continue another way" sheet's presentation. Sign-in completion is observed
+    /// through the phase (the shell swaps away from Welcome), so this only needs to fall
+    /// on a hand dismiss or a hisbaan hand-off (the sheet dismisses itself, then the web
+    /// leg raises).
+    @State private var showAnotherWay = false
 
     public init(
         state: WelcomeState,
         onContinueApple: @escaping () -> Void,
         onContinueDiscord: @escaping () -> Void,
+        onContinueHisbaan: @escaping () -> Void = {},
+        sendEmailOTP: @escaping (String) async throws -> Void = { _ in },
+        verifyEmailOTP: @escaping (String, String) async throws -> Void = { _, _ in },
         onOpenLegal: @escaping (LegalPage) -> Void
     ) {
         self.state = state
         self.onContinueApple = onContinueApple
         self.onContinueDiscord = onContinueDiscord
+        self.onContinueHisbaan = onContinueHisbaan
+        self.sendEmailOTP = sendEmailOTP
+        self.verifyEmailOTP = verifyEmailOTP
         self.onOpenLegal = onOpenLegal
     }
 
@@ -83,6 +97,25 @@ public struct WelcomeScreen: View {
                 typedCells = index
                 try? await Task.sleep(for: .seconds(0.12))
             }
+        }
+        // The secondary methods (roadmap I3b): a native sheet, medium detent, its own
+        // NavigationStack. Sign-in completion is observed from the phase (the shell
+        // swaps this whole screen away), so nothing here dismisses on success; the
+        // sheet only closes on a hand dismiss or when hisbaan hands off to the web leg.
+        .sheet(isPresented: $showAnotherWay) {
+            ContinueAnotherWaySheet(
+                ground: ground,
+                onContinueHisbaan: {
+                    // Dismiss first, then raise the web leg: the same read as a
+                    // primary button, and the spinner shows on the Welcome frame the
+                    // sheet melts back to (state drives to .authenticating).
+                    showAnotherWay = false
+                    onContinueHisbaan()
+                },
+                sendEmailOTP: sendEmailOTP,
+                verifyEmailOTP: verifyEmailOTP)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -137,12 +170,31 @@ public struct WelcomeScreen: View {
                     systemImage: nil,
                     label: ArrivalCopy.continueWithDiscord,
                     action: onContinueDiscord)
+                anotherWayButton
             }
             legalFooter
         }
         .onChange(of: state) { _, newState in
             if newState != .authenticating { pending = nil }
         }
+    }
+
+    /// The quiet tertiary affordance under the two primary buttons: a subdued text
+    /// button, not a glass capsule, so Apple and Discord stay the first-class way in and
+    /// this reads as the escape hatch it is. It opens the secondary-methods sheet.
+    /// Disabled while a primary leg is in flight, so it never stacks a sheet over the web
+    /// sheet.
+    private var anotherWayButton: some View {
+        Button {
+            showAnotherWay = true
+        } label: {
+            Text(verbatim: ArrivalCopy.continueAnotherWay)
+                .font(.system(size: 14))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 2)
+        .disabled(state == .authenticating)
     }
 
     /// The quiet legal pair, visible before any sign-in intent. Buttons, not Links:
@@ -218,6 +270,303 @@ public struct WelcomeScreen: View {
     }
 }
 
+// MARK: - Continue another way (roadmap I3b)
+
+/// The secondary-methods sheet: a small NavigationStack behind the "Continue another
+/// way" affordance. Root is two rows (Email, Hisbaan); Email pushes the address step,
+/// then the code step. Hisbaan hands off to the web leg (the parent dismisses this
+/// sheet, then raises ASWebAuth, so the read matches a primary button). Sign-in
+/// COMPLETION is not this sheet's job: the phase flips to signed in and the whole
+/// Welcome screen (this sheet with it) swaps to the shell, exactly as Apple and
+/// Discord do. This holds only the local send/verify sub-state.
+private struct ContinueAnotherWaySheet: View {
+    let ground: GridGround
+    let onContinueHisbaan: () -> Void
+    let sendEmailOTP: (String) async throws -> Void
+    let verifyEmailOTP: (String, String) async throws -> Void
+
+    /// The one thing this stack can push: the email leg. The address-then-code
+    /// transition lives inside that view (one view keeps the address in hand across a
+    /// resend), so the route needs no payload.
+    private enum Step: Hashable {
+        case email
+    }
+
+    @State private var path: [Step] = []
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                NavigationLink(value: Step.email) {
+                    Label(ArrivalCopy.continueRowEmail, systemImage: "envelope")
+                        .foregroundStyle(Color(rgb: ground.tokens.ink))
+                }
+                Button {
+                    onContinueHisbaan()
+                } label: {
+                    Label(ArrivalCopy.continueRowHisbaan, systemImage: "person.badge.key")
+                        .foregroundStyle(Color(rgb: ground.tokens.ink))
+                }
+            }
+            .navigationTitle(ArrivalCopy.continueSheetTitle)
+            #if os(iOS)
+                .listStyle(.insetGrouped)
+                .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .navigationDestination(for: Step.self) { _ in
+                EmailFlowView(
+                    ground: ground,
+                    sendEmailOTP: sendEmailOTP,
+                    verifyEmailOTP: verifyEmailOTP)
+            }
+        }
+        .tint(Color(rgb: ground.tokens.ink))
+    }
+}
+
+/// The email leg inside the sheet: address then code, one view owning the two
+/// sub-states so a resend keeps the same email in hand. Send and verify are the
+/// injected closures (they reach AuthSession through the composition root); this view
+/// owns only the calm in-flight and error states. Verify is disabled while a verify is
+/// in flight (the flag in the brief: a double verify silently no-ops in the state
+/// machine, so re-entrancy is prevented here, not detected by a throw).
+private struct EmailFlowView: View {
+    let ground: GridGround
+    let sendEmailOTP: (String) async throws -> Void
+    let verifyEmailOTP: (String, String) async throws -> Void
+
+    /// Where the email leg stands. `codeSent` carries no data (the email lives in its
+    /// own field), it just gates which pane shows.
+    private enum Phase: Equatable {
+        case address
+        case sending
+        case codeSent
+        case verifying
+    }
+
+    /// The resend cooldown, so a person can retry a lost code without spamming the send.
+    private static let resendCooldown = 30
+
+    @State private var email = ""
+    @State private var code = ""
+    @State private var phase: Phase = .address
+    @State private var errorText: String?
+    @State private var resendRemaining = 0
+    @FocusState private var focus: Field?
+
+    private enum Field {
+        case email
+        case code
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if phase == .codeSent || phase == .verifying {
+                codePane
+            } else {
+                addressPane
+            }
+            Spacer()
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+        .navigationTitle(
+            phase == .codeSent || phase == .verifying
+                ? ArrivalCopy.codeEntryTitle : ArrivalCopy.emailEntryTitle)
+        #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    // MARK: - Address pane
+
+    private var addressPane: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(verbatim: ArrivalCopy.emailEntryHint)
+                .font(.system(size: 14))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+            TextField(ArrivalCopy.emailFieldPrompt, text: $email)
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .submitLabel(.send)
+                .focused($focus, equals: .email)
+                .onSubmit { Task { await send() } }
+                #if os(iOS)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .textContentType(.emailAddress)
+                #endif
+            if let errorText {
+                errorLine(errorText)
+            }
+            actionButton(
+                title: ArrivalCopy.emailSendCode,
+                inFlight: phase == .sending,
+                enabled: canSend
+            ) {
+                Task { await send() }
+            }
+        }
+        .onAppear { focus = .email }
+    }
+
+    // MARK: - Code pane
+
+    private var codePane: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(verbatim: ArrivalCopy.codeEntryHint(email: email))
+                .font(.system(size: 14))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+            TextField(ArrivalCopy.codeFieldPrompt, text: $code)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 20, weight: .medium, design: .monospaced))
+                .focused($focus, equals: .code)
+                .onChange(of: code) { _, new in
+                    // Numeric only, six digits: the field stays a clean OTP field
+                    // without a custom keypad (native numberPad, plain filtering).
+                    let digits = new.filter { $0.isNumber }
+                    code = String(digits.prefix(6))
+                }
+                #if os(iOS)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                #endif
+            if let errorText {
+                errorLine(errorText)
+            }
+            actionButton(
+                title: ArrivalCopy.codeVerify,
+                inFlight: phase == .verifying,
+                enabled: canVerify
+            ) {
+                Task { await verify() }
+            }
+            resendControl
+        }
+        .onAppear { focus = .code }
+    }
+
+    /// Resend with a cooldown: live while counting down (a plain caption), a button once
+    /// it clears. A resend just runs the send leg again with the same address.
+    @ViewBuilder
+    private var resendControl: some View {
+        if resendRemaining > 0 {
+            Text(verbatim: ArrivalCopy.codeResendCountdown(seconds: resendRemaining))
+                .font(.system(size: 13))
+                .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.8))
+        } else {
+            Button(ArrivalCopy.codeResend) {
+                Task { await resend() }
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+            .disabled(phase == .verifying)
+        }
+    }
+
+    // MARK: - Pieces
+
+    private func errorLine(_ text: String) -> some View {
+        Text(verbatim: text)
+            .font(.system(size: 13))
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+    }
+
+    /// One filled action button, calm and consistent across the two steps: the label,
+    /// or a spinner while its leg is in flight. Disabled state carries the same reasons
+    /// the two panes gate on.
+    private func actionButton(
+        title: String,
+        inFlight: Bool,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            ZStack {
+                Text(verbatim: title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .opacity(inFlight ? 0 : 1)
+                if inFlight {
+                    ProgressView().tint(Color(rgb: ground.tokens.canvas))
+                }
+            }
+            .foregroundStyle(Color(rgb: ground.tokens.canvas))
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(rgb: ground.tokens.ink).opacity(enabled ? 1 : 0.4)))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    // MARK: - Gating
+
+    private var canSend: Bool {
+        phase != .sending && email.contains("@") && !email.hasSuffix("@")
+    }
+
+    private var canVerify: Bool {
+        // Disabled while a verify is in flight (the re-entrancy flag: a second verify
+        // no-ops in the state machine, so it must be blocked here, not caught later).
+        phase != .verifying && code.count == 6
+    }
+
+    // MARK: - Legs
+
+    private func send() async {
+        guard canSend else { return }
+        errorText = nil
+        phase = .sending
+        do {
+            try await sendEmailOTP(email)
+            phase = .codeSent
+            focus = .code
+            startResendCooldown()
+        } catch {
+            phase = .address
+            errorText = ArrivalCopy.emailSendFailed
+        }
+    }
+
+    private func resend() async {
+        errorText = nil
+        do {
+            try await sendEmailOTP(email)
+            startResendCooldown()
+        } catch {
+            errorText = ArrivalCopy.emailSendFailed
+        }
+    }
+
+    private func verify() async {
+        guard canVerify else { return }
+        errorText = nil
+        phase = .verifying
+        do {
+            try await verifyEmailOTP(email, code)
+            // Success flips the phase to signed in; the sheet swaps away with the
+            // whole Welcome screen, so nothing here dismisses. Stay in .verifying so
+            // the button keeps its spinner through that swap.
+        } catch {
+            phase = .codeSent
+            errorText = ArrivalCopy.codeVerifyFailed
+        }
+    }
+
+    private func startResendCooldown() {
+        resendRemaining = Self.resendCooldown
+        Task {
+            while resendRemaining > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                if resendRemaining > 0 { resendRemaining -= 1 }
+            }
+        }
+    }
+}
+
 #Preview("Welcome, Studio") {
     WelcomeScreen(
         state: .ready, onContinueApple: {}, onContinueDiscord: {}, onOpenLegal: { _ in })
@@ -234,4 +583,21 @@ public struct WelcomeScreen: View {
         state: .failed, onContinueApple: {}, onContinueDiscord: {}, onOpenLegal: { _ in }
     )
     .preferredColorScheme(.dark)
+}
+
+// The secondary-methods sheet in isolation (the two rows, then the email leg). The
+// stubbed send always succeeds so the code pane is reachable on device; verify always
+// fails so the calm error copy is judgeable without a live server.
+#Preview("Continue another way, Studio") {
+    Color(rgb: GridGround.studio.tokens.canvas)
+        .ignoresSafeArea()
+        .sheet(isPresented: .constant(true)) {
+            ContinueAnotherWaySheet(
+                ground: .studio,
+                onContinueHisbaan: {},
+                sendEmailOTP: { _ in },
+                verifyEmailOTP: { _, _ in throw CancellationError() })
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
 }

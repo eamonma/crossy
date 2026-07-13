@@ -15,6 +15,12 @@ struct CrossyApp: App {
     /// honor it (the environment carries it down to ArrivalRootView).
     @State private var pendingInvite = PendingInvite()
 
+    /// The one magic link a Universal Link delivered (roadmap I3b), waiting for the
+    /// arrival flow to complete it against the session. Its own channel, distinct from
+    /// the invite, because it drives sign-in rather than a room join (the environment
+    /// carries it down to ArrivalRootView, the PendingInvite precedent).
+    @State private var pendingMagicLink = PendingMagicLink()
+
     /// The analytics port, built once from the committed config (Analytics/). The
     /// noop when the token slot is empty or the composition is a rig (previews,
     /// labs, demo room, fixture, harness), so the capture below is safe to fire
@@ -32,6 +38,7 @@ struct CrossyApp: App {
         WindowGroup {
             ContentView()
                 .environment(pendingInvite)
+                .environment(pendingMagicLink)
                 .environment(\.analytics, analytics)
                 // Universal Links (applinks:crossy.party): the system Camera app's QR
                 // banner and any tap on a crossy.party invite hand the app a browsing
@@ -42,8 +49,20 @@ struct CrossyApp: App {
                 // crossy.party URL that names no room digests to nil and is ignored, so
                 // the app just opens.
                 .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
-                    guard let url = activity.webpageURL,
-                        let code = InviteScan.code(fromPayload: url.absoluteString)
+                    guard let url = activity.webpageURL else { return }
+                    // The magic link (roadmap I3b, AASA /auth/confirm*): a Supabase email
+                    // link lands here as a browsing activity carrying token_hash and type.
+                    // AuthConfirm digests exactly that path (distinct from the invite's
+                    // /game and /g paths), and the arrival flow completes it against the
+                    // session. Checked first so the invite parser never sees it; a match
+                    // is terminal here. This is the https Universal Link path only; the
+                    // crossy://auth/callback ASWebAuth callback is a different scheme the
+                    // sign-in session owns (and onOpenURL still ignores).
+                    if let link = AuthConfirm.link(fromURL: url) {
+                        pendingMagicLink.link = link
+                        return
+                    }
+                    guard let code = InviteScan.code(fromPayload: url.absoluteString)
                     else { return }
                     pendingInvite.code = code
                 }
@@ -70,4 +89,13 @@ struct CrossyApp: App {
 @Observable
 final class PendingInvite {
     var code: String?
+}
+
+/// The pending magic link a Universal Link delivered (roadmap I3b), cleared the moment
+/// the arrival flow completes it against the session (so it fires exactly once). The
+/// PendingInvite twin, on its own channel because it drives sign-in, not a room join.
+@MainActor
+@Observable
+final class PendingMagicLink {
+    var link: AuthConfirmLink?
 }
