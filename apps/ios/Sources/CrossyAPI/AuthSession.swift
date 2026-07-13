@@ -171,8 +171,12 @@ public final class AuthSession {
     /// Step one of the email OTP flow: ask the server to send the code (and the magic link).
     /// No phase change here; a later sheet owns the local sub-state (code entry, resend). The
     /// error rides straight through so the sheet can say what went wrong.
-    public func sendEmailOTP(email: String) async throws {
-        try await client.sendEmailOTP(email: email)
+    ///
+    /// `captchaToken` is the Turnstile token the sheet minted before this call (Supabase has
+    /// captcha on project-wide, so the send is refused without it). Optional so the harness
+    /// and captcha-off builds keep the plain send.
+    public func sendEmailOTP(email: String, captchaToken: String? = nil) async throws {
+        try await client.sendEmailOTP(email: email, captchaToken: captchaToken)
     }
 
     /// Step two of the email OTP flow: verify the entered code. Walks the same machine as

@@ -60,15 +60,19 @@ public enum ArrivalCopy {
     /// The email step: the field's prompt, the one line under it, and the send action.
     public static let emailEntryTitle = "Sign in with email"
     public static let emailFieldPrompt = "you@example.com"
-    public static let emailEntryHint = "We'll send a six-digit code to your inbox."
+    public static let emailEntryHint = "We'll send an eight-digit code to your inbox."
     public static let emailSendCode = "Send code"
+    /// The OTP length Supabase is configured for (8 digits). One constant the field cap,
+    /// the Verify gate, and the field prompt all read, so the entry can never drift from
+    /// the server's length; the copy above ("eight-digit") states it in words.
+    public static let emailOTPCodeLength = 8
     /// The code step: the title names the address the code went to, the field prompt,
     /// the verify action, and the resend affordance (with its counting-down twin).
     public static let codeEntryTitle = "Enter the code"
     public static func codeEntryHint(email: String) -> String {
         "We sent a code to \(email). Enter it to sign in."
     }
-    public static let codeFieldPrompt = "000000"
+    public static let codeFieldPrompt = "00000000"
     public static let codeVerify = "Verify"
     public static let codeResend = "Resend code"
     public static func codeResendCountdown(seconds: Int) -> String {

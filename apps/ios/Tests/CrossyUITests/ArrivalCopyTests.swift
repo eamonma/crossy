@@ -95,6 +95,20 @@ final class ArrivalCopyTests: XCTestCase {
         XCTAssertFalse(ArrivalCopy.codeVerifyFailed.isEmpty)
     }
 
+    func test_theEmailOTPCodeLengthIsEightAndTheCopyAgrees_I3b() {
+        // Supabase's OTP is 8 digits; the one length constant, the field prompt, and the
+        // hint copy must all agree so the entry never rejects a valid code or misleads.
+        XCTAssertEqual(ArrivalCopy.emailOTPCodeLength, 8)
+        // The field prompt is a run of placeholder digits exactly the OTP length, so the
+        // person sees how many to type.
+        XCTAssertEqual(ArrivalCopy.codeFieldPrompt.count, ArrivalCopy.emailOTPCodeLength)
+        XCTAssertTrue(ArrivalCopy.codeFieldPrompt.allSatisfy { $0.isNumber })
+        // The send hint states the length in words; it must say "eight", never a stale
+        // "six".
+        XCTAssertTrue(ArrivalCopy.emailEntryHint.contains("eight-digit"))
+        XCTAssertFalse(ArrivalCopy.emailEntryHint.contains("six"))
+    }
+
     func test_startFailureIsOneSentencePerCodeAndNeverShowsTheRawCode() {
         // A failed start reads inline on the card, keyed on the §12 code, same posture
         // as the join and delete errors: say what happened, offer a retry, no raw code.

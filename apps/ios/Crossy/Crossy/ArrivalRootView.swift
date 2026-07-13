@@ -138,11 +138,31 @@ struct ArrivalRootView: View {
                     // completion flips the phase to signed in exactly as the primary
                     // buttons do, so the shell swaps in without any extra wiring here.
                     onContinueHisbaan: { Task { await model.session.continueWithHisbaan() } },
-                    sendEmailOTP: { email in try await model.session.sendEmailOTP(email: email) },
+                    // The email OTP send mints an invisible Turnstile token first, then
+                    // sends with it (Supabase has captcha on project-wide, so a send
+                    // without a token is refused). When this build carries no site key
+                    // (the fixture/unconfigured paths, or an empty plist slot) the token
+                    // step is skipped and the send carries nil, exactly the pre-captcha
+                    // behavior. A token-acquisition failure throws, which the sheet
+                    // renders as the calm send-failure sentence.
+                    sendEmailOTP: { email in
+                        let token = try await captchaTokenIfNeeded()
+                        try await model.session.sendEmailOTP(email: email, captchaToken: token)
+                    },
                     verifyEmailOTP: { email, code in
                         try await model.session.verifyEmailOTP(email: email, code: code)
                     },
-                    onOpenLegal: { welcomeLegal = legalItem(for: $0) }
+                    onOpenLegal: { welcomeLegal = legalItem(for: $0) },
+                    // The hidden captcha web view, only when this build has a site key.
+                    // Type-erased so CrossyUI never sees WebKit; it renders nothing until
+                    // a forced interactive challenge reveals it in place.
+                    captchaView: {
+                        if model.turnstile.siteKey != nil {
+                            AnyView(TurnstileCaptchaView(provider: model.turnstile))
+                        } else {
+                            AnyView(EmptyView())
+                        }
+                    }
                 )
                 .sheet(item: $welcomeLegal) { item in
                     SafariSheet(url: item.url)
@@ -211,6 +231,17 @@ struct ArrivalRootView: View {
         .onChange(of: showJoin) { _, open in
             if !open { deepLinkPrefill = "" }
         }
+    }
+
+    /// The invisible Turnstile token the OTP send needs, or nil when this build carries
+    /// no site key (the fixture/unconfigured paths, or an empty plist slot): the send then
+    /// runs with no token, the pre-captcha behavior. When a key is present this drives the
+    /// hidden web view to mint a fresh single-use token (a challenge reveals itself in the
+    /// sheet if Turnstile forces one); a failure throws, which the sheet renders as the
+    /// calm send-failure sentence.
+    private func captchaTokenIfNeeded() async throws -> String? {
+        guard model.turnstile.siteKey != nil else { return nil }
+        return try await model.turnstile.token()
     }
 
     /// Honor a Universal Link's invite code. Signed in: join at once and push the

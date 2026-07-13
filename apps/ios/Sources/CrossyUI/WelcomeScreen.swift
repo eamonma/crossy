@@ -37,6 +37,14 @@ public struct WelcomeScreen: View {
     private let sendEmailOTP: (String) async throws -> Void
     private let verifyEmailOTP: (String, String) async throws -> Void
     private let onOpenLegal: (LegalPage) -> Void
+    /// The hidden captcha web view, built by the composition root (WebKit lives in the
+    /// app target, AD-2: the CameraScan/SafariSheet precedent). It renders nothing in the
+    /// calm case (invisible Turnstile) and reveals itself in place only on a forced
+    /// interactive challenge. Type-erased to keep WelcomeScreen non-generic (it holds a
+    /// static wordmark; a generic type could not). Placed inside the code pane so a
+    /// revealed challenge appears where the person is looking; the fixture and previews
+    /// pass an empty view (no captcha).
+    private let captchaView: () -> AnyView
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var typedCells = 0
@@ -56,7 +64,8 @@ public struct WelcomeScreen: View {
         onContinueHisbaan: @escaping () -> Void = {},
         sendEmailOTP: @escaping (String) async throws -> Void = { _ in },
         verifyEmailOTP: @escaping (String, String) async throws -> Void = { _, _ in },
-        onOpenLegal: @escaping (LegalPage) -> Void
+        onOpenLegal: @escaping (LegalPage) -> Void,
+        captchaView: @escaping () -> AnyView = { AnyView(EmptyView()) }
     ) {
         self.state = state
         self.onContinueApple = onContinueApple
@@ -65,6 +74,7 @@ public struct WelcomeScreen: View {
         self.sendEmailOTP = sendEmailOTP
         self.verifyEmailOTP = verifyEmailOTP
         self.onOpenLegal = onOpenLegal
+        self.captchaView = captchaView
     }
 
     private var ground: GridGround {
@@ -113,7 +123,8 @@ public struct WelcomeScreen: View {
                     onContinueHisbaan()
                 },
                 sendEmailOTP: sendEmailOTP,
-                verifyEmailOTP: verifyEmailOTP)
+                verifyEmailOTP: verifyEmailOTP,
+                captchaView: captchaView)
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
@@ -284,6 +295,9 @@ private struct ContinueAnotherWaySheet: View {
     let onContinueHisbaan: () -> Void
     let sendEmailOTP: (String) async throws -> Void
     let verifyEmailOTP: (String, String) async throws -> Void
+    /// The hidden captcha web view, forwarded to the email leg (only the email step
+    /// mints a token). Opaque to CrossyUI (WebKit lives in the app target).
+    let captchaView: () -> AnyView
 
     /// The one thing this stack can push: the email leg. The address-then-code
     /// transition lives inside that view (one view keeps the address in hand across a
@@ -317,7 +331,8 @@ private struct ContinueAnotherWaySheet: View {
                 EmailFlowView(
                     ground: ground,
                     sendEmailOTP: sendEmailOTP,
-                    verifyEmailOTP: verifyEmailOTP)
+                    verifyEmailOTP: verifyEmailOTP,
+                    captchaView: captchaView)
             }
         }
         .tint(Color(rgb: ground.tokens.ink))
@@ -334,6 +349,17 @@ private struct EmailFlowView: View {
     let ground: GridGround
     let sendEmailOTP: (String) async throws -> Void
     let verifyEmailOTP: (String, String) async throws -> Void
+    /// The hidden Turnstile web view (app-target owned), type-erased. It sits in the code
+    /// pane from the first send onward so a forced interactive challenge can reveal itself
+    /// in place; in the calm case it renders nothing and takes no space. sendEmailOTP
+    /// mints the token behind this closure, so this view stays token-blind.
+    let captchaView: () -> AnyView
+
+    /// The digits the OTP carries. Supabase is configured for an 8-digit code, so the
+    /// field caps and the verify gate both count to this (a stale 6 would reject valid
+    /// codes and mislead the copy). Sourced from the one public constant so the field,
+    /// the gate, and the copy never drift apart.
+    static var codeLength: Int { ArrivalCopy.emailOTPCodeLength }
 
     /// Where the email leg stands. `codeSent` carries no data (the email lives in its
     /// own field), it just gates which pane shows.
@@ -366,6 +392,13 @@ private struct EmailFlowView: View {
             } else {
                 addressPane
             }
+            // The hidden captcha web view lives at the pane level (not inside either
+            // pane) so it stays mounted across the address to code switch: a send fired
+            // from the address pane can still reveal a challenge here, and a resend from
+            // the code pane reuses the same widget. It renders nothing and takes no space
+            // in the calm case; on a forced challenge it reveals itself and grows. The
+            // fixture and previews pass an empty view, so this is inert there.
+            captchaView()
             Spacer()
         }
         .padding(24)
@@ -423,10 +456,11 @@ private struct EmailFlowView: View {
                 .font(.system(size: 20, weight: .medium, design: .monospaced))
                 .focused($focus, equals: .code)
                 .onChange(of: code) { _, new in
-                    // Numeric only, six digits: the field stays a clean OTP field
-                    // without a custom keypad (native numberPad, plain filtering).
+                    // Numeric only, capped at the OTP length (Supabase's 8 digits): the
+                    // field stays a clean OTP field without a custom keypad (native
+                    // numberPad, plain filtering).
                     let digits = new.filter { $0.isNumber }
-                    code = String(digits.prefix(6))
+                    code = String(digits.prefix(Self.codeLength))
                 }
                 #if os(iOS)
                     .keyboardType(.numberPad)
@@ -511,7 +545,8 @@ private struct EmailFlowView: View {
     private var canVerify: Bool {
         // Disabled while a verify is in flight (the re-entrancy flag: a second verify
         // no-ops in the state machine, so it must be blocked here, not caught later).
-        phase != .verifying && code.count == 6
+        // The code is complete at the OTP length (Supabase's 8 digits).
+        phase != .verifying && code.count == Self.codeLength
     }
 
     // MARK: - Legs
@@ -596,7 +631,8 @@ private struct EmailFlowView: View {
                 ground: .studio,
                 onContinueHisbaan: {},
                 sendEmailOTP: { _ in },
-                verifyEmailOTP: { _, _ in throw CancellationError() })
+                verifyEmailOTP: { _, _ in throw CancellationError() },
+                captchaView: { AnyView(EmptyView()) })
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }

@@ -200,10 +200,18 @@ public struct SupabaseAuthClient: Sendable {
     /// throw-or-return over the same error taxonomy as the grants (`refused` on 4xx,
     /// weather otherwise). `create_user` mints an account on first sight, so a new email
     /// signs in rather than dead-ending.
-    public func sendEmailOTP(email: String) async throws {
+    ///
+    /// The optional `captchaToken` rides in `gotrue_meta_security.captcha_token`, the
+    /// shape GoTrue reads: Supabase has Turnstile protection on project-wide, so a send
+    /// without a token is refused with `captcha_failed`. iOS mints the token in a hidden
+    /// Turnstile web view (the app target's TurnstileProvider) and passes it here. A nil
+    /// token omits the block entirely, so a build with captcha off (or an older server)
+    /// sends exactly as before.
+    public func sendEmailOTP(email: String, captchaToken: String? = nil) async throws {
         _ = try await post(
             path: "otp",
-            body: try? JSONEncoder().encode(SendOTPBody(email: email, createUser: true)))
+            body: try? JSONEncoder().encode(
+                SendOTPBody(email: email, createUser: true, captchaToken: captchaToken)))
     }
 
     /// `POST {auth}/verify`: exchange the emailed code for a session (the second step of
@@ -269,10 +277,41 @@ public struct SupabaseAuthClient: Sendable {
     private struct SendOTPBody: Encodable {
         let email: String
         let createUser: Bool
+        /// The captcha token GoTrue reads from `gotrue_meta_security.captcha_token`. Nil
+        /// omits the whole block, so a captcha-off build's body is byte-identical to the
+        /// pre-captcha form (a synthesized `encodeIfPresent` skips a nil member).
+        let captchaToken: String?
+
+        init(email: String, createUser: Bool, captchaToken: String? = nil) {
+            self.email = email
+            self.createUser = createUser
+            self.captchaToken = captchaToken
+        }
+
+        /// GoTrue's captcha envelope: `{ "captcha_token": <token> }` under
+        /// `gotrue_meta_security`. Encoded only when a token is present.
+        private struct MetaSecurity: Encodable {
+            let captchaToken: String
+
+            enum CodingKeys: String, CodingKey {
+                case captchaToken = "captcha_token"
+            }
+        }
 
         enum CodingKeys: String, CodingKey {
             case email
             case createUser = "create_user"
+            case metaSecurity = "gotrue_meta_security"
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(email, forKey: .email)
+            try container.encode(createUser, forKey: .createUser)
+            if let captchaToken {
+                try container.encode(
+                    MetaSecurity(captchaToken: captchaToken), forKey: .metaSecurity)
+            }
         }
     }
 

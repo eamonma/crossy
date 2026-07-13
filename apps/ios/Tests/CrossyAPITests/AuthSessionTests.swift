@@ -815,6 +815,44 @@ final class AuthSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .signedOut, "a failed send moves no phase")
     }
 
+    func test_sendEmailOTPCarriesTheCaptchaTokenInGotrueMetaSecurity() async throws {
+        // Supabase has Turnstile protection on project-wide, so the /otp send must carry
+        // the captcha token under gotrue_meta_security.captcha_token or GoTrue refuses it
+        // with captcha_failed. The token the hidden Turnstile web view minted rides here.
+        StubURLProtocol.install { _ in (200, Data("{}".utf8)) }
+        let (session, _, _, _) = makeSession()
+
+        try await session.sendEmailOTP(email: "ada@example.com", captchaToken: "cf-turnstile-token")
+
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        XCTAssertEqual(request.path, "/auth/v1/otp")
+        let body = try jsonObject(XCTUnwrap(request.body))
+        XCTAssertEqual(
+            body,
+            try jsonObject(
+                Data(
+                    #"{"email":"ada@example.com","create_user":true,"gotrue_meta_security":{"captcha_token":"cf-turnstile-token"}}"#
+                        .utf8)),
+            "the send must nest the token as gotrue_meta_security.captcha_token beside create_user")
+    }
+
+    func test_sendEmailOTPOmitsTheCaptchaBlockWhenNoTokenIsGiven() async throws {
+        // A nil token (a captcha-off build, or an older server) omits the whole
+        // gotrue_meta_security block, so the body stays byte-identical to the
+        // pre-captcha form and never sends an empty captcha envelope.
+        StubURLProtocol.install { _ in (200, Data("{}".utf8)) }
+        let (session, _, _, _) = makeSession()
+
+        try await session.sendEmailOTP(email: "ada@example.com", captchaToken: nil)
+
+        let request = try XCTUnwrap(StubURLProtocol.recordedRequests.first)
+        let body = try jsonObject(XCTUnwrap(request.body))
+        XCTAssertEqual(
+            body,
+            try jsonObject(Data(#"{"email":"ada@example.com","create_user":true}"#.utf8)),
+            "a nil token must omit gotrue_meta_security entirely")
+    }
+
     func test_completeMagicLinkVerifiesTheTokenHashAndSignsIn() async throws {
         // The magic-link path (a later wave routes CrossyApp here): the token_hash and its
         // type verify to a session, driving .authenticating -> .signedIn and remembering

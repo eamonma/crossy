@@ -16,6 +16,13 @@
 	<string>https://api.crossy.party</string>
 	<key>SupabasePublishableKey</key>
 	<string>sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd</string>
+	<!-- The Cloudflare Turnstile site key protecting the email OTP send. Public by
+	     design (a site key is meant to be embedded in a page); the secret half lives
+	     only in Supabase's captcha settings. The iOS email leg mints an invisible
+	     token from this key in a hidden web view and carries it in the /otp body, the
+	     same captcha gate the web guest flow already passes. -->
+	<key>TurnstileSiteKey</key>
+	<string>0x4AAAAAADyxovx2eQsDvein</string>
 	<!-- The phc_ project token is write-only (it can only ingest events), public by
 	     design: the publishable-key footing above. An empty token slot means
 	     analytics off (the noop port, Analytics/). -->

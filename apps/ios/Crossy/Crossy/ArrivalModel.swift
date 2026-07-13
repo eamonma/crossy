@@ -51,7 +51,10 @@ protocol ArrivalSessioning: AnyObject {
     /// render the inline reason; the send call does not change the phase (AuthSession
     /// contract).
     func continueWithHisbaan() async
-    func sendEmailOTP(email: String) async throws
+    /// `captchaToken` is the invisible Turnstile token the sheet minted before the send
+    /// (Supabase has captcha on project-wide; a send without it is refused). Optional so
+    /// the fixture and injected sessions ignore it.
+    func sendEmailOTP(email: String, captchaToken: String?) async throws
     func verifyEmailOTP(email: String, code: String) async throws
     func completeMagicLink(tokenHash: String, type: String) async throws
     func signOut() async
@@ -109,7 +112,9 @@ final class RealArrivalSession: ArrivalSessioning {
     // magic-link finisher is the link-verify grant. Each already drives the machine, so
     // these are pure passthroughs.
     func continueWithHisbaan() async { await auth.signIn(provider: .hisbaan) }
-    func sendEmailOTP(email: String) async throws { try await auth.sendEmailOTP(email: email) }
+    func sendEmailOTP(email: String, captchaToken: String?) async throws {
+        try await auth.sendEmailOTP(email: email, captchaToken: captchaToken)
+    }
     func verifyEmailOTP(email: String, code: String) async throws {
         try await auth.verifyEmailOTP(email: email, code: code)
     }
@@ -155,7 +160,7 @@ final class InjectedArrivalSession: ArrivalSessioning {
     // The harness identity is already signed in from launch (Welcome never shows), so the
     // sign-in intents are no-ops, the secondary methods with them.
     func continueWithHisbaan() async {}
-    func sendEmailOTP(email: String) async throws {}
+    func sendEmailOTP(email: String, captchaToken: String?) async throws {}
     func verifyEmailOTP(email: String, code: String) async throws {}
     func completeMagicLink(tokenHash: String, type: String) async throws {}
     func signOut() async {}
@@ -323,8 +328,9 @@ final class FixtureArrivalSession: ArrivalSessioning {
 
     /// The fixed OTP the fixture verify accepts, so the device walk exercises the whole
     /// email leg offline: any other code lands the calm verify-failure copy, this one
-    /// signs in.
-    static let fixtureOTP = "123456"
+    /// signs in. Eight digits, matching Supabase's OTP length and the field's Verify gate
+    /// (a shorter code would never enable Verify).
+    static let fixtureOTP = "12345678"
 
     func signIn() async { await beat(provider: .discord) }
 
@@ -339,7 +345,9 @@ final class FixtureArrivalSession: ArrivalSessioning {
 
     /// Sending the code is a no-op that succeeds after a short beat (long enough to see
     /// the "Send code" spinner), so the sheet advances to the code pane with no network.
-    func sendEmailOTP(email: String) async throws {
+    /// The captcha token is ignored (the fixture mints none; the offline walk skips the
+    /// hidden web view entirely).
+    func sendEmailOTP(email: String, captchaToken: String?) async throws {
         try? await Task.sleep(for: .milliseconds(400))
     }
 
@@ -610,6 +618,18 @@ final class ArrivalModel {
     /// the auth/session seam being live.
     let privacyURL: URL
     let termsURL: URL
+    /// The Turnstile site key the email OTP send needs (Supabase has captcha on
+    /// project-wide). nil in the fixture/unconfigured compositions and when the plist
+    /// slot is empty: ArrivalRootView then builds no hidden web view and the send carries
+    /// no token. The real composition threads the plist key here.
+    let turnstileSiteKey: String?
+    /// The one invisible captcha provider the email OTP send mints tokens through, and
+    /// the surface the hidden web view drives. Built here from the site key so a single
+    /// @Observable instance is shared across the whole arrival composition (the send
+    /// closure and the web view read the same reveal state). Its siteKey is nil in the
+    /// captcha-off compositions, so token() there throws .unconfigured (ArrivalRootView
+    /// omits the web view and skips the acquisition on those paths).
+    let turnstile: TurnstileProvider
 
     private init(
         session: any ArrivalSessioning,
@@ -618,7 +638,8 @@ final class ArrivalModel {
         liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?,
         authConfigured: Bool,
         privacyURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "privacy"),
-        termsURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "terms")
+        termsURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "terms"),
+        turnstileSiteKey: String? = nil
     ) {
         self.session = session
         self.rooms = rooms
@@ -627,6 +648,8 @@ final class ArrivalModel {
         self.authConfigured = authConfigured
         self.privacyURL = privacyURL
         self.termsURL = termsURL
+        self.turnstileSiteKey = turnstileSiteKey
+        self.turnstile = TurnstileProvider(siteKey: turnstileSiteKey)
     }
 
     /// The launch-time resolution described in the header comment.
@@ -688,7 +711,11 @@ final class ArrivalModel {
             liveRoomFacts: (config.apiBaseURL, config.sessionBaseURL),
             authConfigured: configured,
             privacyURL: config.webOrigin.appending(path: "privacy"),
-            termsURL: config.webOrigin.appending(path: "terms"))
+            termsURL: config.webOrigin.appending(path: "terms"),
+            // The captcha key only matters when the real auth session is live (the
+            // injected-token and unconfigured paths never send an OTP); it is carried
+            // regardless, and ArrivalRootView omits the web view when it is nil.
+            turnstileSiteKey: config.turnstileSiteKey)
     }
 
     /// The Welcome screen's state, mapped from the session phase and the config.
