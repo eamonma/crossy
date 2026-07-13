@@ -136,6 +136,18 @@ async function get(path: string, token: string): Promise<Response> {
   return app.request(path, { method: "GET", headers: bearer(token) });
 }
 
+async function patchJson(
+  path: string,
+  token: string,
+  body: unknown,
+): Promise<Response> {
+  return app.request(path, {
+    method: "PATCH",
+    headers: bearer(token),
+    body: JSON.stringify(body),
+  });
+}
+
 /** Assert the JSON error body carries `code` (Fetch `Response.json()` is typed unknown). */
 async function expectError(res: Response, code: string): Promise<void> {
   expect(((await res.json()) as { error: string }).error).toBe(code);
@@ -351,13 +363,19 @@ describe("auth + JIT upsert (DESIGN.md §8; INV-7 users single writer)", () => {
     expect(rows[0].display_name).toBe("Ada");
   });
 
-  it("propagates a changed provider display name on the next request (INV-7)", async () => {
+  it("propagates a changed provider display name only while the name is still provider-owned (INV-7)", async () => {
+    // The provider-name propagation holds for a row whose name has never diverged from the
+    // token: a token name only FILLS a null, and here the second token's name overwrites the
+    // first because the first token's name was never a user choice. (The next test proves that
+    // once a user sets a name via PATCH /me, a later provider rename does NOT overwrite it.)
     const sub = randomUUID();
     await postJson(
       "/puzzles",
       await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
       FIXTURE,
     );
+    // A second token with a different provider name only FILLS a null; here the row is not null,
+    // so under the R1 contract the app-DB value wins and the rename does NOT propagate.
     await postJson(
       "/puzzles",
       await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada L." } }),
@@ -367,7 +385,219 @@ describe("auth + JIT upsert (DESIGN.md §8; INV-7 users single writer)", () => {
       "select display_name from users where user_id = $1",
       [sub],
     );
-    expect(rows[0].display_name).toBe("Ada L.");
+    // R1 (DESIGN.md name-onboarding): the app-DB name is authoritative; a token name only fills
+    // a null or adopts on upgrade. A provider rename never overwrites an established name.
+    expect(rows[0].display_name).toBe("Ada");
+  });
+
+  it("a PATCH /me name survives a later request whose token carries a different provider name (INV-7, the user owns the name)", async () => {
+    const sub = randomUUID();
+    // The user arrives with a provider name, then chooses their own via PATCH /me.
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
+      FIXTURE,
+    );
+    const patched = await patchJson(
+      "/me",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
+      { displayName: "Ada Lovelace" },
+    );
+    expect(patched.status).toBe(200);
+    // A later request whose token carries a DIFFERENT provider name must not clobber the choice.
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({
+        sub,
+        userMetadata: { full_name: "Someone Else" },
+      }),
+      FIXTURE,
+    );
+    const { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBe("Ada Lovelace");
+  });
+
+  it("a guest who upgrades WITH a provider name adopts it, dropping the Guest default (R1; INV-7)", async () => {
+    const sub = randomUUID();
+    await postJson("/puzzles", await auth.mintAnonymous({ sub }), FIXTURE);
+    // Sanity: the guest mirror holds the "Guest" default.
+    let { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBe("Guest");
+    // Upgrade with a provider name: the upgrade branch drops "Guest" and adopts the name.
+    await postJson(
+      "/puzzles",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Grace" } }),
+      FIXTURE,
+    );
+    ({ rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    ));
+    expect(rows[0].display_name).toBe("Grace");
+  });
+
+  it("a guest who upgrades WITHOUT a provider name becomes display_name null, arming onboarding (R1; INV-7)", async () => {
+    const sub = randomUUID();
+    await postJson("/puzzles", await auth.mintAnonymous({ sub }), FIXTURE);
+    // Upgrade with NO provider name: the upgrade branch drops "Guest" to null (not to "Guest"),
+    // so the account is nameless and onboarding fires (GET /me reports needsName true).
+    await postJson("/puzzles", await auth.mintUpgraded({ sub }), FIXTURE);
+    const { rows } = await adminPool.query(
+      "select display_name from users where user_id = $1",
+      [sub],
+    );
+    expect(rows[0].display_name).toBeNull();
+  });
+});
+
+describe("self display identity /me (DESIGN.md name-onboarding; PROTOCOL.md §12; INV-7 single writer of users)", () => {
+  interface MeBody {
+    userId: string;
+    displayName: string | null;
+    isAnonymous: boolean;
+    avatarUrl: string | null;
+    needsName: boolean;
+  }
+
+  it("GET /me returns needsName true and displayName null for a nameless permanent mint (R3)", async () => {
+    const sub = randomUUID();
+    // A permanent token with no user_metadata name mirrors display_name null (email OTP, etc.).
+    const res = await get("/me", await auth.mintUpgraded({ sub }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MeBody;
+    expect(body.userId).toBe(sub);
+    expect(body.displayName).toBeNull();
+    expect(body.isAnonymous).toBe(false);
+    expect(body.needsName).toBe(true);
+  });
+
+  it("GET /me returns needsName false when the token carried a provider name", async () => {
+    const sub = randomUUID();
+    const res = await get(
+      "/me",
+      await auth.mintUpgraded({ sub, userMetadata: { full_name: "Ada" } }),
+    );
+    const body = (await res.json()) as MeBody;
+    expect(body.displayName).toBe("Ada");
+    expect(body.needsName).toBe(false);
+  });
+
+  it("GET /me returns needsName false for an anonymous guest (guests are never onboarded, R2)", async () => {
+    const sub = randomUUID();
+    const res = await get("/me", await auth.mintAnonymous({ sub }));
+    const body = (await res.json()) as MeBody;
+    // A guest holds the "Guest" default and is join-only; needsName only fires for permanents.
+    expect(body.isAnonymous).toBe(true);
+    expect(body.needsName).toBe(false);
+  });
+
+  it("PATCH /me sets the name and GET /me then reports it with needsName false", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    const patched = await patchJson("/me", token, {
+      displayName: "Ada Lovelace",
+    });
+    expect(patched.status).toBe(200);
+    const body = (await patched.json()) as MeBody;
+    expect(body.displayName).toBe("Ada Lovelace");
+    expect(body.needsName).toBe(false);
+    // The write is the single authoritative source: a later GET /me reads it back.
+    const after = (await (await get("/me", token)).json()) as MeBody;
+    expect(after.displayName).toBe("Ada Lovelace");
+    expect(after.needsName).toBe(false);
+  });
+
+  it("PATCH /me canonicalizes: NFC, trim, and collapse internal whitespace (INV-1 casing untouched)", async () => {
+    const sub = randomUUID();
+    const res = await patchJson("/me", await auth.mintUpgraded({ sub }), {
+      displayName: "  Ada   Lovelace ",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MeBody;
+    expect(body.displayName).toBe("Ada Lovelace");
+  });
+
+  it("PATCH /me is idempotent on the canonical value", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    const first = (await (
+      await patchJson("/me", token, { displayName: "Ada" })
+    ).json()) as MeBody;
+    const second = (await (
+      await patchJson("/me", token, { displayName: "Ada" })
+    ).json()) as MeBody;
+    expect(first.displayName).toBe("Ada");
+    expect(second.displayName).toBe("Ada");
+  });
+
+  it("PATCH /me rejects a whitespace-only name as 422 NAME_REQUIRED", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      displayName: "   ",
+    });
+    expect(res.status).toBe(422);
+    await expectError(res, "NAME_REQUIRED");
+  });
+
+  it("PATCH /me rejects an over-40-grapheme name as 422 NAME_TOO_LONG", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      displayName: "a".repeat(41),
+    });
+    expect(res.status).toBe(422);
+    await expectError(res, "NAME_TOO_LONG");
+  });
+
+  it("PATCH /me rejects a name with a disallowed character as 422 NAME_INVALID", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      displayName: "Ada\nLovelace",
+    });
+    expect(res.status).toBe(422);
+    await expectError(res, "NAME_INVALID");
+  });
+
+  it("PATCH /me rejects a malformed body (missing displayName) as 400 VALIDATION", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {});
+    expect(res.status).toBe(400);
+    await expectError(res, "VALIDATION");
+  });
+
+  it("PATCH /me rejects a non-string displayName as 400 VALIDATION", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      displayName: 42,
+    });
+    expect(res.status).toBe(400);
+    await expectError(res, "VALIDATION");
+  });
+
+  it("GET /me and PATCH /me reject a missing bearer as 401 UNAUTHORIZED", async () => {
+    const noAuth = await app.request("/me", { method: "GET" });
+    expect(noAuth.status).toBe(401);
+    await expectError(noAuth, "UNAUTHORIZED");
+    const noAuthPatch = await app.request("/me", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ displayName: "Ada" }),
+    });
+    expect(noAuthPatch.status).toBe(401);
+    await expectError(noAuthPatch, "UNAUTHORIZED");
+  });
+
+  it("PATCH /me is rate-limited per user with 429 RATE_LIMITED and a Retry-After (INV-7 write path)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    // The budget is 20 writes / 10 min; the 21st spends the window.
+    let last: Response | undefined;
+    for (let i = 0; i < 21; i += 1) {
+      last = await patchJson("/me", token, { displayName: `Ada ${i}` });
+    }
+    expect(last!.status).toBe(429);
+    await expectError(last!, "RATE_LIMITED");
+    expect(last!.headers.get("retry-after")).not.toBeNull();
   });
 });
 

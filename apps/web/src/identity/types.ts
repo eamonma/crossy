@@ -11,6 +11,15 @@ export interface IdentitySession {
   /** True for an anonymous guest (DESIGN.md section 8). */
   isAnonymous: boolean;
   /**
+   * A prefill suggestion for onboarding, derived from the token's provider metadata name or the
+   * email local part (DESIGN.md name-onboarding §5, steps 1-2), or null when neither yields one
+   * (the onboarding form then generates a deterministic "Adjective Noun" from userId, §5 step 3).
+   * This is NEVER a display value (R5): the chrome renders `displayName` (reconciled to the /me
+   * app-DB name), and this only seeds the field the user confirms. Optional so a session that
+   * never onboards (a guest, the demo) may omit it.
+   */
+  nameSuggestion?: string | null;
+  /**
    * The signed-in user's own profile picture (the Discord or Apple avatar carried in the OAuth
    * user_metadata), or null. It lives in the port so the chrome can reserve the avatar box and
    * lay the image over the initial the moment it resolves, never reflowing the chip once it
@@ -82,6 +91,49 @@ export type EmailOtpResult =
  * login exists. hisbaan is a custom OIDC provider the adapter maps to its Supabase identifier.
  */
 export type SignInProvider = "discord" | "apple" | "hisbaan";
+
+/**
+ * The caller's self display identity, the shape of GET /me and PATCH /me (DESIGN.md
+ * name-onboarding §7). `displayName` is the raw app-DB value and MAY be null here (the one place
+ * null crosses; the gameplay wire stays non-null, PROTOCOL.md §4), so a client can detect a
+ * nameless account. `needsName` is the server-computed onboarding trigger,
+ * `!isAnonymous && displayName === null` (R3): the client shows onboarding iff it is true and
+ * holds no naming policy of its own. This is the app-DB truth the UI reads, distinct from the
+ * bootstrap `IdentitySession.displayName` (which the adapter reconciles to this on load, R5).
+ */
+export interface UserProfile {
+  userId: string;
+  displayName: string | null;
+  isAnonymous: boolean;
+  avatarUrl: string | null;
+  needsName: boolean;
+}
+
+/**
+ * Why a display-name write did not land, as typed reasons the UI keys copy on (mirrors
+ * EmailOtpReason's discriminated shape). The three NAME_* are the server's 422 domain
+ * rejections, shown as an inline field error the user can fix; `rate_limited` is the 429 (the
+ * result carries the Retry-After so a resilient submit backs off honestly); `network` is a
+ * transport failure or a 5xx (auto-retryable); `unknown` is anything else, so the union stays
+ * closed and the caller always has a sentence.
+ */
+export type SetDisplayNameReason =
+  | "NAME_REQUIRED"
+  | "NAME_TOO_LONG"
+  | "NAME_INVALID"
+  | "rate_limited"
+  | "network"
+  | "unknown";
+
+/**
+ * The result of setDisplayName. Success carries the canonical profile the server stored, so the
+ * caller adopts exactly what was kept. A failure is a typed reason plus, for a 429, the
+ * `retryAfterMs` the server asked to wait. Never a thrown error, so the naming surfaces stay a
+ * lockout-free retry (R4).
+ */
+export type SetDisplayNameResult =
+  | { ok: true; profile: UserProfile }
+  | { ok: false; reason: SetDisplayNameReason; retryAfterMs?: number };
 
 /**
  * Why a session change fired. Product vocabulary the port owns: it distinguishes an
@@ -168,6 +220,26 @@ export interface Identity {
   }): Promise<EmailOtpResult>;
 
   signOut(): Promise<void>;
+
+  /**
+   * Read the caller's self display identity from GET /me (DESIGN.md name-onboarding §7). This is
+   * the app-DB truth the onboarding trigger confirms against and the Settings editor loads: it
+   * returns `needsName` (the server-computed onboarding trigger) and the raw `displayName`
+   * (possibly null). On load the adapter also reconciles IdentitySession.displayName to this
+   * value (R5), so the chrome renders the app-DB name, not the token-metadata derivation. A
+   * failed load throws (the caller retries); it is never a sign-out (INV-11). Throws when signed
+   * out (no bearer), the same guard authedFetch applies.
+   */
+  loadProfile(): Promise<UserProfile>;
+
+  /**
+   * Write the caller's display name via PATCH /me and adopt the canonical value the server
+   * returns (DESIGN.md name-onboarding §7). On success the adapter updates the in-memory session
+   * name and fires onChange("refreshed") so the chrome re-renders with the new name; the caller
+   * reads the canonical profile from the result. A failure is a typed reason the caller renders
+   * inline, never a thrown error (R4).
+   */
+  setDisplayName(name: string): Promise<SetDisplayNameResult>;
 
   /**
    * Subscribe to session changes. Returns an unsubscribe function. The cause says why the

@@ -22,17 +22,28 @@
 // (identity removed, hosted games handed off or ended, past contributions stay as an anonymous
 // former participant, DESIGN.md §8), then DELETE /account with the bearer. On success the app
 // signs out locally and returns to the landing page; on failure an inline sentence, never silent.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ExitIcon } from "@radix-ui/react-icons";
-import type { Identity, IdentitySession } from "../identity";
+import type {
+  Identity,
+  IdentitySession,
+  SetDisplayNameReason,
+} from "../identity";
 import type { Navigate } from "../nav";
 import { homeHref } from "../nav";
 import { CapsLabel, Divider, cx } from "./primitives";
 import { deleteAccount, type Bearer } from "./homeData";
 import { useNavPrefs } from "./useNavPrefs";
 import type { EndOfWord } from "../input/prefs";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  sanitizeDisplayName,
+  isCompleteDisplayName,
+  canonicalizeDisplayName,
+} from "../profile/name";
+import { displayNameErrorOf } from "./onboardingMachine";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -64,7 +75,31 @@ export function Settings({
   navigate: Navigate;
   params: URLSearchParams;
 }) {
-  const session = identity.getSession();
+  // Subscribe so the identity row reflects the app-DB name the moment loadProfile reconciles it
+  // (the adapter fires onChange("refreshed") on adoption, R5) and so a sign-out flips the page.
+  const [session, setSession] = useState<IdentitySession | null>(() =>
+    identity.getSession(),
+  );
+  useEffect(() => identity.onChange(setSession), [identity]);
+
+  // On entering Settings, read GET /me so the row shows the app-DB truth, not the bootstrap
+  // (§12). A failed load is harmless here (the row keeps the session's current name); the editor
+  // still writes through PATCH /me. Guests have no /me name to load, but the call is cheap and
+  // its reconcile is a no-op for an anonymous session, so it is not gated.
+  useEffect(() => {
+    let live = true;
+    void identity
+      .loadProfile()
+      .catch(() => {
+        // Transient GET /me failure: keep the current name, never sign out (INV-11).
+      })
+      .finally(() => {
+        if (!live) return;
+      });
+    return () => {
+      live = false;
+    };
+  }, [identity]);
 
   return (
     <div className="h-full min-w-0 p-4 md:p-3 md:pl-0">
@@ -89,6 +124,7 @@ export function Settings({
                 </p>
               ) : (
                 <AccountGroup
+                  identity={identity}
                   session={session}
                   onSignOut={() => void identity.signOut()}
                   apiBase={apiBase}
@@ -197,39 +233,27 @@ function SolvingGroup() {
 }
 
 /** The account group: who you are, then sign out and delete as two more rows in the same
- * grammar. The identity row leads (avatar, name, account type); a dashed rule separates it
- * from the two actions. Delete's inline error and its confirm dialog live in DeleteRow. */
+ * grammar. The identity row leads (avatar, name, account type) and, for a permanent account,
+ * gains an inline name editor; a dashed rule separates it from the two actions. Delete's inline
+ * error and its confirm dialog live in DeleteRow. */
 function AccountGroup({
+  identity,
   session,
   onSignOut,
   apiBase,
   bearer,
   onDeleted,
 }: {
+  identity: Identity;
   session: IdentitySession;
   onSignOut: () => void;
   apiBase: string;
   bearer: Bearer;
   onDeleted: () => Promise<void>;
 }) {
-  const initial = session.displayName.slice(0, 1).toUpperCase() || "Y";
   return (
     <Group label="Account">
-      <div className="flex items-center gap-3 py-4">
-        <Avatar size="lg">
-          <AvatarFallback className="bg-gold-4 text-gold-11">
-            {initial}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0">
-          <div className="truncate text-3 font-medium text-text">
-            {session.displayName}
-          </div>
-          <div className="mt-0.5 text-2 text-text-muted">
-            {accountTypeLabel(session)}
-          </div>
-        </div>
-      </div>
+      <IdentityRow identity={identity} session={session} />
       <Divider />
       <SettingRow
         label="Sign out"
@@ -244,6 +268,137 @@ function AccountGroup({
       <Divider />
       <DeleteRow apiBase={apiBase} bearer={bearer} onDeleted={onDeleted} />
     </Group>
+  );
+}
+
+/**
+ * The identity row: avatar + name + account type, with an inline "Edit" affordance for a
+ * permanent account (§12). Read mode shows the app-DB name (reconciled by loadProfile in the
+ * parent). Edit mode swaps the name line for an Input seeded from the current name, with Save
+ * (inverse) and Cancel (ghost), the avatar initial updating live from the draft, and validation
+ * failures in the row error slot. A guest sees the existing read-only row (guests are join-only
+ * and keep the "Guest" label; the editor is permanent-accounts-only in v1, R2).
+ */
+function IdentityRow({
+  identity,
+  session,
+}: {
+  identity: Identity;
+  session: IdentitySession;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.displayName);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<SetDisplayNameReason | null>(null);
+
+  // The avatar initial: from the live draft while editing, else the current name. A neutral "Y"
+  // (you) when a permanent account has no name yet, matching the prior read-only fallback.
+  const source = editing ? draft : session.displayName;
+  const initial = source.trim().slice(0, 1).toUpperCase() || "Y";
+  const ready = isCompleteDisplayName(draft);
+
+  function beginEdit(): void {
+    setDraft(session.displayName);
+    setError(null);
+    setEditing(true);
+  }
+
+  function cancel(): void {
+    setEditing(false);
+    setError(null);
+  }
+
+  async function save(): Promise<void> {
+    if (!ready || saving) return;
+    setSaving(true);
+    setError(null);
+    const result = await identity.setDisplayName(
+      canonicalizeDisplayName(draft),
+    );
+    setSaving(false);
+    if (result.ok) {
+      // The adapter adopted the canonical name and fired onChange, so the parent re-renders the
+      // row with the new name; just leave edit mode.
+      setEditing(false);
+      return;
+    }
+    // A NAME_* / rate_limit / network reason: keep the draft, show the row error, stay in edit.
+    setError(result.reason);
+  }
+
+  const control = editing ? (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="inverse"
+        size="sm"
+        disabled={!ready || saving}
+        onClick={() => void save()}
+      >
+        {saving ? "Saving..." : "Save"}
+      </Button>
+      <Button variant="ghost" size="sm" disabled={saving} onClick={cancel}>
+        Cancel
+      </Button>
+    </div>
+  ) : (
+    !session.isAnonymous && (
+      <Button variant="ghost" size="sm" onClick={beginEdit}>
+        Edit
+      </Button>
+    )
+  );
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 py-4">
+        <div className="flex min-w-[9rem] flex-1 items-center gap-3">
+          <Avatar size="lg" aria-hidden={editing}>
+            {session.avatarUrl !== null && (
+              <AvatarImage src={session.avatarUrl} alt="" />
+            )}
+            <AvatarFallback className="bg-gold-4 text-gold-11">
+              {initial}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            {editing ? (
+              <Input
+                autoFocus
+                value={draft}
+                disabled={saving}
+                aria-label="Display name"
+                aria-invalid={error !== null}
+                maxLength={80}
+                placeholder="Your name"
+                onChange={(e) => {
+                  setDraft(sanitizeDisplayName(e.target.value));
+                  if (error !== null) setError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void save();
+                  }
+                }}
+              />
+            ) : (
+              <div className="truncate text-3 font-medium text-text">
+                {session.displayName || "Signed in"}
+              </div>
+            )}
+            <div className="mt-0.5 text-2 text-text-muted">
+              {accountTypeLabel(session)}
+            </div>
+          </div>
+        </div>
+        {control && <div className="ml-auto shrink-0">{control}</div>}
+      </div>
+      {error !== null && (
+        <p className="-mt-1.5 pb-3 text-1 text-danger-text" role="alert">
+          {displayNameErrorOf(error)}
+        </p>
+      )}
+    </div>
   );
 }
 

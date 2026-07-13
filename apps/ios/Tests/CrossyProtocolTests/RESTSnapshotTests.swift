@@ -44,6 +44,13 @@ final class RESTSnapshotTests: XCTestCase {
             "AMBIGUOUS_SOLUTION": 422,
             "DEGENERATE_GRID": 422,
             "DIAGRAMLESS": 422,
+            // Display-name rejections (docs/design/name-onboarding.md §7.2): the three
+            // NAME_* codes are 422 (a well-formed body whose value violates a rule), and a
+            // spent write window is 429.
+            "NAME_REQUIRED": 422,
+            "NAME_TOO_LONG": 422,
+            "NAME_INVALID": 422,
+            "RATE_LIMITED": 429,
         ]
         XCTAssertEqual(Set(APIErrorCode.allCases.map(\.rawValue)), Set(table.keys))
         for code in APIErrorCode.allCases {

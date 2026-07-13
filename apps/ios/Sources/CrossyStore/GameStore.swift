@@ -254,6 +254,21 @@ public final class GameStore {
         self.completedAt = completedAt
     }
 
+    /// Seed a known-abandoned status before the socket answers, the terminal twin of
+    /// `seedCompleted` (the seeded-birth rule, DESIGN.md §4, §12): the tapped card carries
+    /// the room's abandonment fact (`GET /games` `abandonedAt`, the Ended shelf's gathering
+    /// key), so a host-ended room retires its key deck from the push's first frame instead of
+    /// flashing the deck for the connect beat and dropping it when the welcome lands abandoned.
+    /// Gated to `connecting` exactly like `seedCompleted`: a pre-handshake courtesy the welcome
+    /// always overrides (applySnapshot sets status and abandonedAt from the board). Abandonment
+    /// is terminal and immutable (INV-4), so a seeded `.abandoned` can never contradict the
+    /// snapshot that confirms it, and the mutation freeze already keys on `status != .ongoing`.
+    public func seedAbandoned(at abandonedAt: String?) {
+        guard sync == .connecting else { return }
+        status = .abandoned
+        self.abandonedAt = abandonedAt
+    }
+
     /// Liveness ping (PROTOCOL.md §5, §9). The adapter owns the 15 s timer
     /// (`ReconnectPolicy.heartbeatIntervalSeconds`); emitting through the store keeps
     /// one ordered outbound path. Meaningless before the first welcome, so gated like

@@ -9,7 +9,13 @@ import type {
   Identity,
   IdentitySession,
   SessionChangeCause,
+  SetDisplayNameResult,
+  UserProfile,
 } from "./types";
+import {
+  canonicalizeDisplayName,
+  isCompleteDisplayName,
+} from "../profile/name";
 
 export interface MockIdentityOptions {
   /** Mirrors config.guestsEnabled: when false, signInGuest returns "guests_disabled". */
@@ -18,6 +24,14 @@ export interface MockIdentityOptions {
   initialSession?: IdentitySession | null;
   /** The token getAccessToken returns while signed in. Defaults to a deterministic stub. */
   token?: string;
+  /**
+   * The app-DB display name GET /me reports for a permanent account, distinct from the session's
+   * bootstrap displayName (R5). `null` models a NAMELESS permanent account, so loadProfile
+   * reports `needsName: true` and the onboarding surface fires; a string models a named one. The
+   * demo path (never onboarded) leaves it undefined, which reads as the session's own name so the
+   * mock stays a faithful signed-in shell. setDisplayName mutates this store, the single source.
+   */
+  meDisplayName?: string | null;
 }
 
 const GUEST_SESSION: IdentitySession = {
@@ -48,6 +62,12 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
     (s: IdentitySession | null, cause: SessionChangeCause) => void
   >();
 
+  // The app-DB display name the mock /me reports (R5). `undefined` means "unset": loadProfile
+  // then folds it to the session's own name so the demo shell reads named. An explicit `null`
+  // models a nameless permanent account (needsName true); a string models a named one.
+  // setDisplayName rewrites this, the single name store the mock UI reads through.
+  let meName: string | null | undefined = opts.meDisplayName;
+
   // Both mock sign-in paths are interactive by construction (a click in the UI), so they
   // emit "signed_in"; the initialSession option models an already-restored session and is
   // in place before anyone can subscribe, so load() never emits "restored" here.
@@ -57,6 +77,27 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
 
   function tokenFor(s: IdentitySession): string {
     return opts.token ?? `mock-token-${s.userId}`;
+  }
+
+  /** The /me payload the mock reports for the current session (R5): a signed-out caller has no
+   *  profile, so loadProfile throws (mirroring the real adapter's authedFetch signed-out guard).
+   *  For a permanent account displayName is the meName store, folded to the session name when
+   *  unset; needsName is the server rule, `!isAnonymous && displayName === null`. */
+  function profileOf(s: IdentitySession): UserProfile {
+    const displayName = s.isAnonymous
+      ? s.displayName
+      : meName === undefined
+        ? s.displayName === ""
+          ? null
+          : s.displayName
+        : meName;
+    return {
+      userId: s.userId,
+      displayName,
+      isAnonymous: s.isAnonymous,
+      avatarUrl: s.avatarUrl,
+      needsName: !s.isAnonymous && displayName === null,
+    };
   }
 
   return {
@@ -139,6 +180,38 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
       session = ACCOUNT_SESSION;
       emit("signed_in");
       return Promise.resolve({ ok: true });
+    },
+    loadProfile(): Promise<UserProfile> {
+      // A signed-out caller has no profile: throw, mirroring authedFetch's signed-out guard, so
+      // the app root's INV-11 gate (arm only on a real session) is exercised offline too.
+      if (session === null) {
+        return Promise.reject(new Error("signed out: no profile to load"));
+      }
+      return Promise.resolve(profileOf(session));
+    },
+    setDisplayName(name: string): Promise<SetDisplayNameResult> {
+      // Validate at the mock edge the same way the field does, so a test that submits a valid
+      // prefill lands ok and a malformed one gets a typed reason (no network here). On success
+      // rewrite the meName store AND the session name, then emit "refreshed" so the chrome
+      // updates, mirroring the real adapter's adoptProfileName.
+      if (session === null) {
+        return Promise.resolve({ ok: false, reason: "network" });
+      }
+      if (!isCompleteDisplayName(name)) {
+        // A whitespace-only draft is NAME_REQUIRED; anything else that fails completeness here is
+        // a shape the server would reject, surfaced as NAME_INVALID (the mock does not distinguish
+        // TOO_LONG since the field caps length before submit).
+        const canonical = canonicalizeDisplayName(name);
+        return Promise.resolve({
+          ok: false,
+          reason: canonical.length === 0 ? "NAME_REQUIRED" : "NAME_INVALID",
+        });
+      }
+      const canonical = canonicalizeDisplayName(name);
+      meName = canonical;
+      session = { ...session, displayName: canonical };
+      emit("refreshed");
+      return Promise.resolve({ ok: true, profile: profileOf(session) });
     },
     signOut(): Promise<void> {
       session = null;

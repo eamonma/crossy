@@ -16,6 +16,7 @@ export function createIdentity(config: AppConfig): Identity {
     return createSupabaseIdentity({
       supabaseUrl: config.supabaseUrl,
       publishableKey: config.supabasePublishableKey,
+      apiBase: config.apiBase,
       guestsEnabled: config.guestsEnabled,
     });
   }

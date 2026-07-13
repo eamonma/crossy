@@ -1,0 +1,205 @@
+[
+  {
+    "name": "canonicalize trims and collapses internal whitespace (INV-1 casing does not apply)",
+    "intent": "canonicalize",
+    "input": "  Ada   Lovelace ",
+    "then": {
+      "ok": true,
+      "value": "Ada Lovelace"
+    }
+  },
+  {
+    "name": "preserves lowercase casing; names are NOT ASCII-folded (INV-1 is cell-values only)",
+    "intent": "canonicalize",
+    "input": "ada",
+    "then": {
+      "ok": true,
+      "value": "ada"
+    }
+  },
+  {
+    "name": "preserves uppercase casing; names are NOT ASCII-folded (INV-1 is cell-values only)",
+    "intent": "canonicalize",
+    "input": "ADA",
+    "then": {
+      "ok": true,
+      "value": "ADA"
+    }
+  },
+  {
+    "name": "preserves a cedilla given name byte-equal after NFC",
+    "intent": "canonicalize",
+    "input": "François",
+    "then": {
+      "ok": true,
+      "value": "François"
+    }
+  },
+  {
+    "name": "preserves a Han name byte-equal after NFC",
+    "intent": "canonicalize",
+    "input": "王伯",
+    "then": {
+      "ok": true,
+      "value": "王伯"
+    }
+  },
+  {
+    "name": "NFC-normalizes a decomposed e plus combining acute to the precomposed form",
+    "intent": "canonicalize",
+    "input": "André",
+    "then": {
+      "ok": true,
+      "value": "André"
+    }
+  },
+  {
+    "name": "accepts a 40-grapheme name (the max boundary)",
+    "intent": "canonicalize",
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "then": {
+      "ok": true,
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "name": "rejects a 41-grapheme name as NAME_TOO_LONG (the server grapheme count is authoritative, R7)",
+    "intent": "canonicalize",
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "then": {
+      "ok": false,
+      "code": "NAME_TOO_LONG"
+    }
+  },
+  {
+    "name": "counts a multi-codepoint ZWJ family emoji as one grapheme, so it passes (R7)",
+    "intent": "canonicalize",
+    "input": "👨‍👩‍👧‍👦",
+    "then": {
+      "ok": true,
+      "value": "👨‍👩‍👧‍👦"
+    }
+  },
+  {
+    "name": "counts a regional-indicator flag as one grapheme, so it passes (R7)",
+    "intent": "canonicalize",
+    "input": "🇺🇸",
+    "then": {
+      "ok": true,
+      "value": "🇺🇸"
+    }
+  },
+  {
+    "name": "accepts an internal ZWJ inside a valid emoji grapheme cluster; the zero-width check does not fire inside a cluster",
+    "intent": "canonicalize",
+    "input": "Fam 👨‍👩‍👧‍👦",
+    "then": {
+      "ok": true,
+      "value": "Fam 👨‍👩‍👧‍👦"
+    }
+  },
+  {
+    "name": "rejects a name containing U+0000 as NAME_INVALID",
+    "intent": "canonicalize",
+    "input": "Ada\u0000",
+    "then": {
+      "ok": false,
+      "code": "NAME_INVALID"
+    }
+  },
+  {
+    "name": "rejects a name containing a newline as NAME_INVALID (a name is one line)",
+    "intent": "canonicalize",
+    "input": "Ada\nLovelace",
+    "then": {
+      "ok": false,
+      "code": "NAME_INVALID"
+    }
+  },
+  {
+    "name": "rejects a name containing a tab as NAME_INVALID (a name is one line)",
+    "intent": "canonicalize",
+    "input": "Ada\tLovelace",
+    "then": {
+      "ok": false,
+      "code": "NAME_INVALID"
+    }
+  },
+  {
+    "name": "rejects a lone zero-width space U+200B as NAME_INVALID",
+    "intent": "canonicalize",
+    "input": "Ada​Lovelace",
+    "then": {
+      "ok": false,
+      "code": "NAME_INVALID"
+    }
+  },
+  {
+    "name": "rejects a bidi override U+202E as NAME_INVALID (spoofs visible order)",
+    "intent": "canonicalize",
+    "input": "Ada‮Lovelace",
+    "then": {
+      "ok": false,
+      "code": "NAME_INVALID"
+    }
+  },
+  {
+    "name": "rejects the empty string as NAME_REQUIRED",
+    "intent": "canonicalize",
+    "input": "",
+    "then": {
+      "ok": false,
+      "code": "NAME_REQUIRED"
+    }
+  },
+  {
+    "name": "rejects a whitespace-only name as NAME_REQUIRED (canonicalizes to empty)",
+    "intent": "canonicalize",
+    "input": "   ",
+    "then": {
+      "ok": false,
+      "code": "NAME_REQUIRED"
+    }
+  },
+  {
+    "name": "accepts exactly one grapheme (the min boundary)",
+    "intent": "canonicalize",
+    "input": "A",
+    "then": {
+      "ok": true,
+      "value": "A"
+    }
+  },
+  {
+    "name": "sanitize strips a disallowed scalar without trimming or collapsing whitespace (R6)",
+    "intent": "sanitize",
+    "input": "  Ada​   Lovelace ",
+    "then": {
+      "value": "  Ada   Lovelace "
+    }
+  },
+  {
+    "name": "sanitize caps at 40 graphemes without trimming or collapsing (R6)",
+    "intent": "sanitize",
+    "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "then": {
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  },
+  {
+    "name": "sanitize keeps an internal ZWJ inside a valid emoji cluster (does not fire inside a grapheme)",
+    "intent": "sanitize",
+    "input": "Fam 👨‍👩‍👧‍👦",
+    "then": {
+      "value": "Fam 👨‍👩‍👧‍👦"
+    }
+  },
+  {
+    "name": "sanitize strips a bidi override but leaves surrounding text and spaces intact (R6)",
+    "intent": "sanitize",
+    "input": "Ada‮ Lovelace",
+    "then": {
+      "value": "Ada Lovelace"
+    }
+  }
+]

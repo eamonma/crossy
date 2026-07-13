@@ -34,6 +34,13 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
  * RATE_LIMITED (429) is the REST-only code the invite/join code paths return when a caller spends
  * their fixed window (http/rate-limit.ts), carrying a `Retry-After` header. Application-level
  * defense in depth behind Cloudflare's edge limiter; flagged for the docs amendment ledger.
+ *
+ * The display-name write (`PATCH /me`, DESIGN.md name-onboarding, PROTOCOL.md §12) adds the three
+ * NAME_* codes, all 422 (Unprocessable Content), matching the ingestion precedent: the body is
+ * well-formed JSON (a malformed body is 400 VALIDATION) but the name violates a domain rule the
+ * user can read and fix (empty, too long, or a disallowed character). INV-1 casing does NOT apply
+ * to names (it is cell-values only); a name is display content, so the block-list rejects only what
+ * breaks rendering or spoofs order.
  */
 export type ApiErrorCode =
   | "UNAUTHORIZED" // 401: bad or missing bearer token
@@ -53,6 +60,9 @@ export type ApiErrorCode =
   | "AMBIGUOUS_SOLUTION" // 422: two clues for one slot, a Schroedinger puzzle (SP5)
   | "UNKNOWN_FORMAT" // 400: the envelope names a format not in the registry (PROTOCOL.md §12)
   | "SOLUTION_MISSING" // 422: a well-formed document with no complete solution grid (PROTOCOL.md §12, D11)
+  | "NAME_REQUIRED" // 422: a display name that is empty after canonicalization (PATCH /me)
+  | "NAME_TOO_LONG" // 422: a display name over 40 graphemes after canonicalization (PATCH /me)
+  | "NAME_INVALID" // 422: a display name with a control, lone zero-width, or bidi-override char (PATCH /me)
   | "RATE_LIMITED"; // 429: the caller spent their rate-limit window on a code path (http/rate-limit.ts)
 
 const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
@@ -73,6 +83,9 @@ const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
   AMBIGUOUS_SOLUTION: 422,
   UNKNOWN_FORMAT: 400,
   SOLUTION_MISSING: 422,
+  NAME_REQUIRED: 422,
+  NAME_TOO_LONG: 422,
+  NAME_INVALID: 422,
   RATE_LIMITED: 429,
 };
 

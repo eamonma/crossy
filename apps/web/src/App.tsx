@@ -40,6 +40,7 @@ import { AppShell } from "./ui/AppShell";
 import { CreateGame } from "./ui/CreateGame";
 import { Settings } from "./ui/Settings";
 import { AuthConfirm } from "./ui/AuthConfirm";
+import { DisplayNameOnboarding } from "./ui/DisplayNameOnboarding";
 import { useBearer, useResource } from "./ui/useResource";
 import { fetchGames } from "./ui/homeData";
 import type { GameSummary } from "./ui/homeData";
@@ -164,16 +165,26 @@ function Router({
   }
 
   const shell = (children: React.ReactNode): React.ReactNode => (
-    <AppShell
-      route={route}
-      params={params}
-      navigate={navigate}
-      identity={identity}
-      games={games}
-      reloadGames={reloadGames}
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        route={route}
+        params={params}
+        navigate={navigate}
+        identity={identity}
+        games={games}
+        reloadGames={reloadGames}
+      >
+        {children}
+      </AppShell>
+      {/* Display-name onboarding: a portal Dialog that opens over the shell when GET /me reports
+          a nameless permanent account (needsName), and closes once a name lands. It self-manages
+          the trigger off the identity session (INV-11: only on a real session), so it rides every
+          signed-in shell surface (home, settings, a game in the shell) and never the projector or
+          the signed-out gates. The `?token=` dogfood override has no /me identity, so it no-ops. */}
+      {params.get("token") === null && (
+        <DisplayNameOnboarding identity={identity} />
+      )}
+    </>
   );
 
   if (route.kind === "game") {

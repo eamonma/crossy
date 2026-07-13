@@ -26,3 +26,28 @@ the push surfaces, and iOS.
 `apps/session/src/push/roster.ts` and iOS `IdentityRoster.swift` carry their own copies today,
 each pinned by a local test to the same values. Pointing those two tests at this vector is a
 clean follow-up that makes all three provably identical from one source.
+
+## display-name.json
+
+The display-name spec (DESIGN.md name-onboarding §5, PROTOCOL.md §12). A bare array of cases,
+each with an `intent` (`canonicalize` or `sanitize`), an `input`, and a `then`. The
+`canonicalize` cases run the input through the authoritative canonicalize (Unicode NFC, trim
+Unicode White_Space, collapse internal whitespace runs to one space) plus validate, and assert
+`{ ok: true, value }` or `{ ok: false, code }` where the code is `NAME_REQUIRED`,
+`NAME_TOO_LONG`, or `NAME_INVALID`. The `sanitize` cases run the per-keystroke edge filter
+(strip disallowed scalars, cap graphemes, no trim or collapse) and assert the resulting
+`{ value }`, so the keystroke path is pinned distinctly from the submit path (R6). Length is in
+extended grapheme clusters; a ZWJ family emoji and a regional-indicator flag each count as one
+(R7). Casing is preserved: INV-1 (ASCII-only casing) is cell-values only and does NOT apply to
+names.
+
+Consumers, each pinned by a local test that runs this file:
+
+- API validator: `apps/api/src/identity/display-name.ts`
+  (`apps/api/src/identity/display-name.test.ts`).
+- Web sanitizer: `apps/web/src/profile/name.ts` (`apps/web/src/profile/name.test.ts`).
+- iOS sanitizer: `apps/ios/Sources/CrossyUI/DisplayNameEntry.swift`
+  (`apps/ios/Tests/CrossyUITests`).
+
+The API and web share the spec constants from `@crossy/protocol` (`MAX_DISPLAY_NAME_GRAPHEMES`,
+the disallowed-scalar ranges); iOS re-declares them and is pinned here by the shared vector.
