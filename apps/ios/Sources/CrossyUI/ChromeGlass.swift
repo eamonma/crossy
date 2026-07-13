@@ -48,7 +48,7 @@ enum ChromeLayout {
     /// Open panels (the browser, the roster).
     static let panelCornerRadius: CGFloat = 24
     /// Air between the room bar and an open panel's top edge.
-    static let panelTopGap: CGFloat = 8
+    static let panelTopGap: CGFloat = 16
     /// The named coordinate space every chrome frame is measured in.
     static let roomSpace = "crossy.room"
 }
