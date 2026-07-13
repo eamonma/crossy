@@ -42,7 +42,7 @@ import {
   startGameFromPuzzle,
   type GameSummary,
   type PuzzleSummary,
-  type TokenSource,
+  type Bearer,
 } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,7 +54,7 @@ export function Home({
   surface,
   playIntent = null,
   apiBase,
-  getToken,
+  bearer,
   session,
   games,
   reloadGames,
@@ -67,7 +67,7 @@ export function Home({
    * room creation. Consumed once by the puzzles panel; null on a plain library visit. */
   playIntent?: string | null;
   apiBase: string;
-  getToken: TokenSource;
+  bearer: Bearer;
   session: IdentitySession | null;
   /** The games read is shared with the sidebar (one GET /games, owned by the Router). */
   games: Resource<GameSummary[]>;
@@ -98,7 +98,7 @@ export function Home({
             <PuzzlesPanel
               playIntent={playIntent}
               apiBase={apiBase}
-              getToken={getToken}
+              bearer={bearer}
               onNewGame={onStartGame}
               onCreate={onCreate}
             />
@@ -367,14 +367,14 @@ function GamesList({
 function PuzzlesPanel({
   playIntent,
   apiBase,
-  getToken,
+  bearer,
   onNewGame,
   onCreate,
 }: {
   /** The pending play intent's puzzle id (D22), or null on a plain library visit. */
   playIntent: string | null;
   apiBase: string;
-  getToken: TokenSource;
+  bearer: Bearer;
   onNewGame: (gameId: string, code: string) => void;
   onCreate: () => void;
 }) {
@@ -383,8 +383,8 @@ function PuzzlesPanel({
   // refresh or a copied address never reopens the flow; dismissing it clears the state copy.
   const [intent, setIntent] = useState(playIntent);
   const [state, reload] = useResource<PuzzleSummary[]>(
-    () => fetchPuzzles(apiBase, getToken),
-    [apiBase, getToken],
+    () => fetchPuzzles(apiBase, bearer),
+    [apiBase, bearer],
   );
 
   useEffect(() => {
@@ -404,7 +404,7 @@ function PuzzlesPanel({
     try {
       const { gameId, inviteCode } = await startGameFromPuzzle(
         apiBase,
-        getToken,
+        bearer,
         p.puzzleId,
       );
       onNewGame(gameId, inviteCode);

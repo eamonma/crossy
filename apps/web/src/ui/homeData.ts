@@ -9,6 +9,8 @@
 // row also carries the puzzle's `mask`, its black-square silhouette (PROTOCOL section 12), the
 // face the home renders per room and per upload.
 import type { Mask } from "@crossy/protocol";
+import type { Bearer } from "../net/authedFetch";
+import { authedFetch } from "../net/authedFetch";
 
 /** The caller's role in a game (PROTOCOL roles). */
 export type Role = "host" | "solver" | "spectator";
@@ -159,31 +161,18 @@ export interface PuzzleSummary {
   mask: Mask;
 }
 
-/**
- * Resolves the bearer for one REST call: the identity port's access token (refreshed near
- * expiry) or the fixed `?token=` dogfood override. Every fetcher here takes the source and
- * resolves it per call, never a pre-resolved string: a string frozen in state at mount
- * outlives its own expiry in any tab open past the token's TTL, and every read after that
- * rides a dead bearer into a 401. Null means signed out.
- */
-export type TokenSource = () => Promise<string | null>;
-
-/** Bearer headers for the REST calls, resolved fresh through the source per call. */
-async function authHeaders(
-  getToken: TokenSource,
-): Promise<Record<string, string>> {
-  const token = await getToken();
-  if (token === null) throw new Error("signed out: no bearer to send");
-  return { authorization: `Bearer ${token}` };
-}
+// The REST bearer and the authenticated-fetch seam live in the transport layer
+// (net/authedFetch): the bearer resolves the token per call (never a string frozen at
+// mount, which outlives its own expiry and rides a dead bearer into a 401), and the seam
+// recovers from a 401 with one refresh-and-retry. Re-exported here so the WebSocket path
+// and other callers keep importing the TokenSource shape from one place.
+export type { Bearer, TokenSource } from "../net/authedFetch";
 
 export async function fetchGames(
   apiBase: string,
-  getToken: TokenSource,
+  bearer: Bearer,
 ): Promise<GameSummary[]> {
-  const res = await fetch(`${apiBase}/games`, {
-    headers: await authHeaders(getToken),
-  });
+  const res = await authedFetch(bearer, `${apiBase}/games`);
   if (!res.ok) throw new Error(`GET /games ${res.status}`);
   const body = (await res.json()) as { games?: GameSummary[] };
   return body.games ?? [];
@@ -191,11 +180,9 @@ export async function fetchGames(
 
 export async function fetchPuzzles(
   apiBase: string,
-  getToken: TokenSource,
+  bearer: Bearer,
 ): Promise<PuzzleSummary[]> {
-  const res = await fetch(`${apiBase}/puzzles`, {
-    headers: await authHeaders(getToken),
-  });
+  const res = await authedFetch(bearer, `${apiBase}/puzzles`);
   if (!res.ok) throw new Error(`GET /puzzles ${res.status}`);
   const body = (await res.json()) as { puzzles?: PuzzleSummary[] };
   return body.puzzles ?? [];
@@ -209,11 +196,10 @@ export async function fetchPuzzles(
  */
 export async function deleteAccount(
   apiBase: string,
-  getToken: TokenSource,
+  bearer: Bearer,
 ): Promise<void> {
-  const res = await fetch(`${apiBase}/account`, {
+  const res = await authedFetch(bearer, `${apiBase}/account`, {
     method: "DELETE",
-    headers: await authHeaders(getToken),
   });
   if (!res.ok) throw new Error(`DELETE /account ${res.status}`);
 }
@@ -221,15 +207,12 @@ export async function deleteAccount(
 /** Start a fresh game from an existing puzzle: the reusability story (replay with a new group). */
 export async function startGameFromPuzzle(
   apiBase: string,
-  getToken: TokenSource,
+  bearer: Bearer,
   puzzleId: string,
 ): Promise<{ gameId: string; inviteCode: string }> {
-  const res = await fetch(`${apiBase}/games`, {
+  const res = await authedFetch(bearer, `${apiBase}/games`, {
     method: "POST",
-    headers: {
-      ...(await authHeaders(getToken)),
-      "content-type": "application/json",
-    },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ puzzleId }),
   });
   if (!res.ok) throw new Error(`POST /games ${res.status}`);
