@@ -12,6 +12,7 @@ import { gameRoutes } from "./games/routes";
 import { identityRoutes } from "./identity/routes";
 import { wellKnownRoutes } from "./well-known/routes";
 import { unfurlRoutes } from "./games/unfurl";
+import { inviteHostMiddleware } from "./invite-host/routes";
 
 /** Compose the API from its injected dependencies. */
 export function buildApp(deps: AppDeps): Hono<ApiEnv> {
@@ -27,6 +28,12 @@ export function buildApp(deps: AppDeps): Hono<ApiEnv> {
     );
     return fail(c, "INTERNAL", "internal server error");
   });
+
+  // The invite host (PROTOCOL.md §12 "Invite links"), first so it owns a short-link request end
+  // to end before CORS or any core route sees it. Host-scoped: a no-op pass-through unless the
+  // request hostname matches the configured `inviteHost` (and a `webOrigin` is set to redirect
+  // to), so the core API host is untouched. Off in tests and any deploy that leaves it unset.
+  app.use("*", inviteHostMiddleware(deps));
 
   // CORS for the cross-origin SPA (DESIGN.md §7 link-preview aside; the SPA is a separate
   // origin). Off unless a corsOrigin is injected, so the in-process test suite is

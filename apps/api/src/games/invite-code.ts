@@ -12,6 +12,17 @@ export const INVITE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 export const INVITE_CODE_LENGTH = 8;
 
 /**
+ * The invite-code shape, built from the same alphabet and length as the generator so the two
+ * cannot drift, and equivalent to the `games_invite_code_format` CHECK (`^[2-9A-HJ-NP-Z]{8}$`).
+ * The public code-resolution paths (the invite host, the unfurl) shape-gate a caller-supplied
+ * code against this BEFORE any DB lookup, so a malformed code never probes the unique index. The
+ * caller's code is ASCII-uppercased first (INV-1); the alphabet has no `-`, so it forms no range.
+ */
+export const INVITE_CODE_PATTERN = new RegExp(
+  `^[${INVITE_ALPHABET}]{${INVITE_CODE_LENGTH}}$`,
+);
+
+/**
  * Generate one crypto-random invite code. `randomInt` draws from the CSPRNG without modulo
  * bias because the alphabet length (32) divides the generator's range evenly, and it is a
  * node builtin (this is an app, not the pure engine, so IO and randomness are allowed).
