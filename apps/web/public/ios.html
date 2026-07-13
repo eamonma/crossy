@@ -143,6 +143,15 @@
       [data-platform="android"] .when-android {
         display: block;
       }
+      /* On desktop (and the no-JS/crawler fallback) the QR is the whole message,
+         so the subtitle is hidden; the phones keep it. */
+      .head p {
+        display: none;
+      }
+      [data-platform="ios"] .head p,
+      [data-platform="android"] .head p {
+        display: block;
+      }
       .btn {
         display: inline-flex;
         align-items: center;
@@ -238,7 +247,6 @@
             alt="QR code to crossy.party/ios"
           />
         </span>
-        <p class="cap">Point your iPhone camera here.</p>
       </div>
 
       <div class="when-android">
