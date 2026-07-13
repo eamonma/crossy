@@ -12,11 +12,16 @@ android {
     compileSdk = 36
     defaultConfig { minSdk = 29 }
     buildFeatures { compose = true }
+    // The pure render helpers (CellFill, GridGeometry, InputActions) are JVM-testable with no
+    // device: their smoke tests run on JUnit 5 as plain unit tests, matching the JVM modules.
+    testOptions { unitTests.all { it.useJUnitPlatform() } }
 }
 
 // Toolchain, not compileOptions: resolved via foojay so the build never depends on
-// whatever JVM launched Gradle (the dev box ships a compiler-less JRE).
-kotlin { jvmToolchain(17) }
+// whatever JVM launched Gradle (the dev box ships a compiler-less JRE). Pinned to 21 to match
+// the JVM modules this consumes (:store, :protocol build at 21): the unit test runtime must load
+// their class files, and a 17 runtime cannot read a 21-compiled dependency.
+kotlin { jvmToolchain(21) }
 
 dependencies {
     implementation(project(":store"))
@@ -27,5 +32,8 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.kotlinx.coroutines.core)
     debugImplementation(libs.compose.ui.tooling)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
