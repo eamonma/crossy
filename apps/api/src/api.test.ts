@@ -259,6 +259,45 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
+// CORS preflight: the SPA calls this API from a different origin (crossy.party ->
+// rest.crossy.party), so any request carrying Authorization is preceded by an OPTIONS
+// preflight. The allow-methods header must advertise every method the API routes, or the
+// browser blocks the real call. Regression: #236 added PATCH /me but left PATCH out of the
+// list, so the display-name write failed the preflight cross-origin (DESIGN.md §7).
+describe("CORS preflight advertises every served method (DESIGN.md §7)", () => {
+  const corsApp = () =>
+    buildApp({
+      db: createDb(apiPool),
+      authPort: auth,
+      sessionWsBase: SESSION_WS_BASE,
+      membershipNotifier,
+      vendorIdentity,
+      inviteHost: INVITE_HOST,
+      webOrigin: WEB_ORIGIN,
+      corsOrigin: WEB_ORIGIN,
+    });
+
+  it("answers OPTIONS /me with PATCH in allow-methods, so the SPA's display-name write is not blocked", async () => {
+    const res = await corsApp().request("/me", {
+      method: "OPTIONS",
+      headers: {
+        origin: WEB_ORIGIN,
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "authorization, content-type",
+      },
+    });
+    expect(res.status).toBe(204);
+    const methods = res.headers.get("access-control-allow-methods") ?? "";
+    for (const method of ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]) {
+      expect(methods).toContain(method);
+    }
+    expect(res.headers.get("access-control-allow-origin")).toBe(WEB_ORIGIN);
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "authorization",
+    );
+  });
+});
+
 describe("auth + JIT upsert (DESIGN.md §8; INV-7 users single writer)", () => {
   it("rejects a request with no bearer token as UNAUTHORIZED (PROTOCOL.md §12)", async () => {
     const res = await app.request("/puzzles", {
