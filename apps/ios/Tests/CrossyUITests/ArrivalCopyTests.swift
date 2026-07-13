@@ -128,4 +128,59 @@ final class ArrivalCopyTests: XCTestCase {
             ArrivalCopy.puzzleStartFailure(forCode: "BARRED"),
             "Couldn't start the game. Try again.")
     }
+
+    // MARK: - Display name (onboarding + Settings editor; docs/design/name-onboarding.md §14.1)
+
+    func test_theDisplayNameCopyMatchesTheAuthoritativeTable_14_1() {
+        XCTAssertEqual(ArrivalCopy.displayNameTitle, "What should we call you?")
+        XCTAssertEqual(
+            ArrivalCopy.displayNameOnboardingHint,
+            "This is how you show up in a room. You can change it later.")
+        XCTAssertEqual(ArrivalCopy.displayNameFieldPrompt, "Your name")
+        XCTAssertEqual(ArrivalCopy.displayNameSave, "Continue")
+        XCTAssertEqual(ArrivalCopy.settingsNameTitle, "Name")
+        XCTAssertEqual(ArrivalCopy.settingsNameSubtitle, "How you show up in a room")
+        XCTAssertEqual(ArrivalCopy.settingsNameSave, "Save")
+        XCTAssertEqual(ArrivalCopy.settingsNameCancel, "Cancel")
+    }
+
+    func test_displayNameErrorIsOneSentencePerCode_includingRateLimit_R9() {
+        // The onboarding + Settings share one error map; the RATE_LIMITED sentence is on
+        // BOTH surfaces (R9). Each code reads plainly and never shows the raw code.
+        let expected: [String: String] = [
+            "NAME_REQUIRED": "Add a name so people know who you are.",
+            "NAME_TOO_LONG": "That name is too long. Keep it to 40 characters.",
+            "NAME_INVALID":
+                "That name has characters we can't use. Try letters, numbers, or emoji.",
+            "RATE_LIMITED": "Too many changes just now. Wait a moment, then try again.",
+        ]
+        for (code, sentence) in expected {
+            XCTAssertEqual(ArrivalCopy.displayNameError(forCode: code), sentence)
+            XCTAssertFalse(
+                ArrivalCopy.displayNameError(forCode: code).contains(code),
+                "no raw codes on screen (§12 posture): \(code)")
+        }
+        // Network weather (nil) and an unknown code degrade to plain, distinct sentences.
+        XCTAssertFalse(ArrivalCopy.displayNameError(forCode: nil).isEmpty)
+        XCTAssertEqual(
+            ArrivalCopy.displayNameError(forCode: "BARRED"),
+            "Couldn't save your name. Try again.")
+    }
+
+    func test_theDisplayNameCopyHasNoEmDashes() {
+        // House style: no em dashes in prose.
+        let copy = [
+            ArrivalCopy.displayNameTitle, ArrivalCopy.displayNameOnboardingHint,
+            ArrivalCopy.displayNameFieldPrompt, ArrivalCopy.displayNameSave,
+            ArrivalCopy.settingsNameSubtitle,
+            ArrivalCopy.displayNameError(forCode: nil),
+            ArrivalCopy.displayNameError(forCode: "NAME_REQUIRED"),
+            ArrivalCopy.displayNameError(forCode: "NAME_TOO_LONG"),
+            ArrivalCopy.displayNameError(forCode: "NAME_INVALID"),
+            ArrivalCopy.displayNameError(forCode: "RATE_LIMITED"),
+        ]
+        for line in copy {
+            XCTAssertFalse(line.contains("—"), "no em dashes: \(line)")
+        }
+    }
 }

@@ -25,6 +25,14 @@ public enum CrossyAPIError: Error {
     /// gain codes later, so an unknown code degrades, it never fails the decode).
     case api(status: Int, envelope: APIErrorEnvelope)
 
+    /// A `429 RATE_LIMITED`: the caller spent a write window (PATCH /me is rate-limited
+    /// per user, docs/design/name-onboarding.md §7.2). Carried as its own case because
+    /// the `Retry-After` header the UI honors (R4/R9) is not in the envelope body;
+    /// `retryAfter` is the parsed delay in seconds, nil when the header was absent or
+    /// unparseable. Still an `.api`-shaped rejection (network fine, request refused), so
+    /// digest sites that only care about the code read `envelope.error` here too.
+    case rateLimited(retryAfter: TimeInterval?, envelope: APIErrorEnvelope)
+
     /// The server broke the contract's frame: a non-HTTP response (`status` nil) or a
     /// non-2xx body that is not the section 12 envelope (a proxy error page, say).
     case invalidResponse(status: Int?)
@@ -35,17 +43,33 @@ public enum CrossyAPIError: Error {
 }
 
 extension CrossyAPIError {
-    /// The typed section 12 code for `.api` failures, nil otherwise or when the code is
-    /// outside the vocabulary this client knows.
+    /// The typed section 12 code for `.api`/`.rateLimited` failures, nil otherwise or when
+    /// the code is outside the vocabulary this client knows.
     public var apiCode: APIErrorCode? {
-        guard case .api(_, let envelope) = self else { return nil }
-        return envelope.code
+        switch self {
+        case .api(_, let envelope), .rateLimited(_, let envelope):
+            return envelope.code
+        default:
+            return nil
+        }
     }
 
-    /// The stable code string for `.api` failures (present even for a code this client
-    /// does not know), nil for every other case.
+    /// The stable code string for `.api`/`.rateLimited` failures (present even for a code
+    /// this client does not know), nil for every other case.
     public var apiCodeString: String? {
-        guard case .api(_, let envelope) = self else { return nil }
-        return envelope.error
+        switch self {
+        case .api(_, let envelope), .rateLimited(_, let envelope):
+            return envelope.error
+        default:
+            return nil
+        }
+    }
+
+    /// The `Retry-After` delay (seconds) for a `.rateLimited` failure, nil when the
+    /// header was absent or the failure is a different kind. The onboarding submit honors
+    /// this before its next auto-retry (R4).
+    public var retryAfterSeconds: TimeInterval? {
+        guard case .rateLimited(let retryAfter, _) = self else { return nil }
+        return retryAfter
     }
 }

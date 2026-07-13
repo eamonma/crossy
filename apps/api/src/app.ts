@@ -10,6 +10,7 @@ import { fail } from "./http/errors";
 import { puzzleRoutes } from "./puzzles/routes";
 import { gameRoutes } from "./games/routes";
 import { identityRoutes } from "./identity/routes";
+import { meRoutes } from "./identity/me";
 import { wellKnownRoutes } from "./well-known/routes";
 import { unfurlRoutes } from "./games/unfurl";
 import { inviteHostMiddleware } from "./invite-host/routes";
@@ -58,5 +59,8 @@ export function buildApp(deps: AppDeps): Hono<ApiEnv> {
   app.route("/puzzles", puzzleRoutes(deps));
   app.route("/games", gameRoutes(deps));
   app.route("/account", identityRoutes(deps));
+  // Self display identity (DESIGN.md name-onboarding, PROTOCOL.md §12): the caller's own name
+  // read + write, in the identity module for cohesion. Works before any game exists.
+  app.route("/me", meRoutes(deps));
   return app;
 }

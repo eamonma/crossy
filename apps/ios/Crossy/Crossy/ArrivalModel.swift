@@ -65,6 +65,31 @@ protocol ArrivalSessioning: AnyObject {
     func deleteAccount() async -> ArrivalFailure?
 }
 
+/// The self display-identity side (docs/design/name-onboarding.md §6): the `/me` read
+/// the onboarding trigger confirms against, and the display-name write both the sheet
+/// and Settings share. Decoupled from games and puzzles (its own seam), the RoomsProviding
+/// shape exactly. `loadProfile` returns nil when the composition has no `/me` (the
+/// fixture/harness), so the root simply skips onboarding there.
+@MainActor
+protocol ProfileProviding {
+    /// `GET /me`: the caller's display identity, or nil when this composition has none.
+    func loadProfile() async -> SelfProfile?
+    /// `PATCH /me`: set the display name; the outcome is digested to the typed shape the
+    /// onboarding sheet and the Settings editor render (the ArrivalFailure precedent).
+    func setDisplayName(_ name: String) async -> DisplayNameOutcome
+}
+
+/// The `/me` payload as the composition root consumes it: the app-DB display name (nil
+/// when the account has not chosen one), the avatar for the live puck, and the
+/// server-computed onboarding trigger (§7.1). Plain data; the twin lives in CrossyProtocol.
+struct SelfProfile: Sendable, Equatable {
+    let userId: String
+    let displayName: String?
+    let isAnonymous: Bool
+    let avatarUrl: String?
+    let needsName: Bool
+}
+
 /// The rooms side: one page of cards, one join. Failures arrive pre-digested to the
 /// stable-code shape the screens render (ArrivalFailure).
 @MainActor
@@ -270,6 +295,124 @@ struct RealPuzzles: PuzzlesProviding {
     }
 }
 
+/// Real self-identity over the section 12 client (docs/design/name-onboarding.md §6):
+/// mapping and error digestion only, the RealRooms shape. `GET /me` and `PATCH /me` ride
+/// the same client the lists do (401-retry, Bearer). The screens never see CrossyAPI.
+@MainActor
+struct RealProfile: ProfileProviding {
+    let api: CrossyAPIClient
+
+    /// `GET /me` to the composition's SelfProfile. A transient failure returns nil rather
+    /// than throwing: the caller (the onboarding gate) treats "could not read" as "do not
+    /// present onboarding on a maybe" and retries with backoff, never signing out (INV-11).
+    func loadProfile() async -> SelfProfile? {
+        do {
+            let me = try await api.getMe()
+            return SelfProfile(
+                userId: me.userId,
+                displayName: me.displayName,
+                isAnonymous: me.isAnonymous,
+                avatarUrl: me.avatarUrl,
+                needsName: me.needsName)
+        } catch {
+            return nil
+        }
+    }
+
+    /// `PATCH /me` to the typed onboarding outcome. Success adopts the canonical stored
+    /// name; a `NAME_*` 422 is a name rejection; a 429 is rate-limited (carrying the
+    /// Retry-After); everything else (transport, 5xx, an unknown code) is retryable, so the
+    /// UI auto-retries and never walls (R4).
+    func setDisplayName(_ name: String) async -> DisplayNameOutcome {
+        do {
+            let me = try await api.updateDisplayName(name)
+            // The server always returns a non-null name on a successful write; fall back to
+            // the sent value defensively so the UI always has a canonical name to adopt.
+            return .saved(canonical: me.displayName ?? name)
+        } catch {
+            return DisplayNameOutcome(digesting: error)
+        }
+    }
+}
+
+extension DisplayNameOutcome {
+    /// CrossyAPIError to the onboarding/Settings shape (§9, §10). A `NAME_*` 422 is a name
+    /// rejection the person can fix; a 429 carries the Retry-After the submit honors;
+    /// transport, 5xx, a missing token, and an unknown code are all retryable (the UI
+    /// auto-retries and keeps the form, never a sign-out, INV-11).
+    init(digesting error: any Error) {
+        guard let apiError = error as? CrossyAPIError else {
+            self = .retryable(code: nil)
+            return
+        }
+        switch apiError {
+        case .rateLimited(let retryAfter, _):
+            self = .rateLimited(retryAfter: retryAfter)
+        case .api(_, let envelope):
+            switch envelope.error {
+            case "NAME_REQUIRED", "NAME_TOO_LONG", "NAME_INVALID":
+                self = .nameRejected(code: envelope.error)
+            case "RATE_LIMITED":
+                self = .rateLimited(retryAfter: nil)
+            default:
+                // A 5xx / unknown code: retry, do not wall. Carry the code only so the
+                // calm sentence can key on it (it degrades to the generic fallback).
+                self = .retryable(code: envelope.error)
+            }
+        case .transport, .tokenUnavailable, .invalidResponse, .decodingFailed:
+            self = .retryable(code: nil)
+        }
+    }
+}
+
+/// A deterministic, always-valid display-name suggestion for onboarding (§5, prefill
+/// step 3): a friendly "Adjective Noun" keyed off the userId, so the same user sees the
+/// same suggestion every time and it is stable across a reopened form. The lists are
+/// curated to always pass the name spec (ASCII letters and one space), so the generated
+/// name never trips validation. Used only when no better prefill exists (a metadata name
+/// or a non-relay email local part); it is an editable suggestion, never a silent write.
+enum DisplayNameSuggestion {
+    // Small curated lists (space-age / calm, matching the app's voice). Both are ASCII
+    // letters only, so "Adjective Noun" is always 1..40 graphemes and block-list-clean.
+    static let adjectives = [
+        "Quiet", "Amber", "Bright", "Calm", "Cobalt", "Ember", "Gentle", "Golden",
+        "Hazel", "Lunar", "Merry", "Nimble", "Polar", "Rapid", "Silver", "Solar",
+        "Still", "Sunny", "Swift", "Teal", "Umber", "Vivid", "Warm", "Zephyr",
+    ]
+    static let nouns = [
+        "Comet", "Vireo", "Heron", "Falcon", "Lark", "Otter", "Marten", "Sable",
+        "Sparrow", "Tanager", "Meadow", "Harbor", "Signal", "Beacon", "Cinder",
+        "Quartz", "Pebble", "Willow", "Cedar", "Aspen", "Delta", "Summit", "Cove",
+        "Ridge",
+    ]
+
+    /// The suggestion for a user id: a stable non-negative hash picks one adjective and one
+    /// noun. FNV-1a over the id's UTF-8, so the pick is deterministic and platform-stable
+    /// (String.hashValue is per-process salted and would drift the suggestion per launch).
+    static func suggestion(for userId: String) -> String {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in userId.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        let adjective = adjectives[Int(hash % UInt64(adjectives.count))]
+        let noun = nouns[Int((hash >> 32) % UInt64(nouns.count))]
+        return "\(adjective) \(noun)"
+    }
+
+    /// The prefill for the onboarding field (§5): the app-DB display name if the server
+    /// already holds one (a provider name that seeded the row), else the deterministic
+    /// suggestion. The email-local-part step is not reachable from this seam (AuthSession
+    /// surfaces no email), and the generated name is always valid, so a nameless account
+    /// still gets a one-tap prefill. Always non-empty and spec-valid.
+    static func prefill(displayName: String?, userId: String) -> String {
+        if let displayName, !displayName.trimmingCharacters(in: .whitespaces).isEmpty {
+            return displayName
+        }
+        return suggestion(for: userId)
+    }
+}
+
 extension ArrivalFailure {
     /// CrossyAPIError to the screens' shape: the stable code when the server spoke
     /// (§12), nil for network weather, and the closest honest code otherwise. A
@@ -281,7 +424,7 @@ extension ArrivalFailure {
             return
         }
         switch apiError {
-        case .api(_, let envelope):
+        case .api(_, let envelope), .rateLimited(_, let envelope):
             self.init(code: envelope.error)
         case .transport:
             self.init(code: nil)
@@ -636,15 +779,42 @@ struct FixturePuzzles: PuzzlesProviding {
     }
 }
 
+/// Self identity for the fixture walk: a stable already-named profile, so the offline
+/// walk never blocks on onboarding and the Settings editor is demoable (a save just adopts
+/// the sent name). needsName is false, so the fixture never presents the onboarding sheet.
+@MainActor
+struct FixtureProfile: ProfileProviding {
+    let userId: String
+
+    func loadProfile() async -> SelfProfile? {
+        SelfProfile(
+            userId: userId, displayName: "Ada Lovelace", isAnonymous: false,
+            avatarUrl: nil, needsName: false)
+    }
+
+    func setDisplayName(_ name: String) async -> DisplayNameOutcome {
+        try? await Task.sleep(for: .milliseconds(400))
+        return .saved(canonical: name)
+    }
+}
+
 // MARK: - The model
 
 /// One resolved arrival composition. Routing state (the navigation path) stays in
 /// the view; this object holds the seams and the facts rooms open with.
 @MainActor
+@Observable
 final class ArrivalModel {
     let session: any ArrivalSessioning
     let rooms: any RoomsProviding
     let puzzles: any PuzzlesProviding
+    /// The self display-identity seam (docs/design/name-onboarding.md §6). nil in a
+    /// composition with no /me (an unconfigured build), which skips onboarding entirely.
+    let profile: (any ProfileProviding)?
+    /// The /me result once loaded, the single source of the displayed name (R5): the
+    /// composition root loads it on entering the signed-in shell and the Settings tab
+    /// reads its name here. @ObservationIgnored is not used, so a load re-renders the view.
+    var selfProfile: SelfProfile?
     /// nil in the fixture composition: cards open the loopback room, not RealRoom.
     let liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?
     let authConfigured: Bool
@@ -672,6 +842,7 @@ final class ArrivalModel {
         session: any ArrivalSessioning,
         rooms: any RoomsProviding,
         puzzles: any PuzzlesProviding,
+        profile: (any ProfileProviding)?,
         liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?,
         authConfigured: Bool,
         privacyURL: URL = ArrivalConfig.defaultWebOrigin.appending(path: "privacy"),
@@ -681,6 +852,7 @@ final class ArrivalModel {
         self.session = session
         self.rooms = rooms
         self.puzzles = puzzles
+        self.profile = profile
         self.liveRoomFacts = liveRoomFacts
         self.authConfigured = authConfigured
         self.privacyURL = privacyURL
@@ -696,6 +868,7 @@ final class ArrivalModel {
                 session: FixtureArrivalSession(signedIn: LaunchFacts.flag("i3SignedIn")),
                 rooms: FixtureRooms(),
                 puzzles: FixturePuzzles(),
+                profile: FixtureProfile(userId: FixtureArrivalSession.fixtureUserId),
                 liveRoomFacts: nil,
                 authConfigured: true)
         }
@@ -708,6 +881,7 @@ final class ArrivalModel {
                 session: FixtureArrivalSession(),
                 rooms: FixtureRooms(),
                 puzzles: FixturePuzzles(),
+                profile: FixtureProfile(userId: FixtureArrivalSession.fixtureUserId),
                 liveRoomFacts: nil,
                 authConfigured: false)
         }
@@ -741,10 +915,14 @@ final class ArrivalModel {
         // deletion was built above and rides the auth branch.
         let api = CrossyAPIClient(
             baseURL: config.apiBaseURL, tokenProvider: session.tokenProvider)
+        // The /me seam rides the same client. The harness (injected-token) path carries no
+        // display facts, so its selfIdentity is nil and onboarding never fires; give it a
+        // RealProfile too (harmless, never consulted) rather than special-casing here.
         return ArrivalModel(
             session: session,
             rooms: RealRooms(api: api),
             puzzles: RealPuzzles(api: api),
+            profile: RealProfile(api: api),
             liveRoomFacts: (config.apiBaseURL, config.sessionBaseURL),
             authConfigured: configured,
             privacyURL: config.webOrigin.appending(path: "privacy"),
@@ -777,17 +955,62 @@ final class ArrivalModel {
         }
     }
 
-    /// The signed-in person for the Settings tab, mapped from what the session
-    /// already holds. nil when there is no user id to show (the harness path, or
-    /// before sign-in), which leaves the tab a quiet canvas. Display name is not
-    /// persisted yet (auth state carries only the id and the provider), so it is nil
-    /// here and the puck falls back to its colored initial.
+    /// The signed-in person for the Settings tab, mapped from what the session holds plus
+    /// the /me profile once loaded (R5: the app-DB name is the single display source). nil
+    /// when there is no user id to show (the harness path, or before sign-in), which leaves
+    /// the tab a quiet canvas. The display name and avatar come from `selfProfile` (loaded
+    /// on entering the shell); pre-/me a permanent user shows the neutral "Signed in"
+    /// fallback and the colored initial, never a synthesized name.
     var selfIdentity: AccountIdentity? {
         guard let userId = session.userId else { return nil }
         return AccountIdentity(
             userId: userId,
-            displayName: nil,
-            providerLabel: providerLabel(session.authProvider))
+            displayName: selfProfile?.displayName,
+            providerLabel: providerLabel(session.authProvider),
+            avatarUrl: selfProfile?.avatarUrl)
+    }
+
+    /// Load `/me` into `selfProfile` (the single reconciliation point, R5). Called on
+    /// entering the signed-in shell. nil-tolerant: a transient read failure leaves
+    /// `selfProfile` as it was, so the caller retries rather than presenting onboarding on
+    /// a maybe (INV-11). Returns the loaded profile (or nil on a failed read) so the caller
+    /// can decide whether to onboard.
+    @discardableResult
+    func loadSelfProfile() async -> SelfProfile? {
+        guard let profile else { return nil }
+        guard let loaded = await profile.loadProfile() else { return nil }
+        selfProfile = loaded
+        return loaded
+    }
+
+    /// Adopt a name the user just set (onboarding or the Settings editor confirmed it), so
+    /// the Settings tab and any later read see the new name without a round trip. Mirrors
+    /// the server's canonical value.
+    func adoptDisplayName(_ canonical: String) {
+        guard let existing = selfProfile else { return }
+        selfProfile = SelfProfile(
+            userId: existing.userId,
+            displayName: canonical,
+            isAnonymous: existing.isAnonymous,
+            avatarUrl: existing.avatarUrl,
+            needsName: false)
+    }
+
+    /// The display-name write, digested to the typed outcome the onboarding sheet and the
+    /// Settings editor render. nil profile (an unconfigured build) is treated as a
+    /// transient failure so the UI stays retryable rather than silently succeeding.
+    func setDisplayName(_ name: String) async -> DisplayNameOutcome {
+        guard let profile else { return .retryable(code: nil) }
+        let outcome = await profile.setDisplayName(name)
+        if case .saved(let canonical) = outcome { adoptDisplayName(canonical) }
+        return outcome
+    }
+
+    /// The onboarding prefill for a nameless account (§5): the app-DB name if the server
+    /// already seeded one, else a deterministic valid suggestion keyed off the user id.
+    func onboardingPrefill(for userId: String) -> String {
+        DisplayNameSuggestion.prefill(
+            displayName: selfProfile?.displayName, userId: userId)
     }
 
     /// The provider line the Account screen shows, or the plain fallback when none is

@@ -38,6 +38,14 @@ public enum APIErrorCode: String, Codable, Sendable, Equatable, CaseIterable {
     case ambiguousSolution = "AMBIGUOUS_SOLUTION"
     case degenerateGrid = "DEGENERATE_GRID"
     case diagramless = "DIAGRAMLESS"
+    // Named display-name rejections (§12; docs/design/name-onboarding.md §7.2). All 422:
+    // the body is well-formed JSON (a malformed body is 400 VALIDATION) but the name
+    // violates a domain rule the person can read and fix.
+    case nameRequired = "NAME_REQUIRED"
+    case nameTooLong = "NAME_TOO_LONG"
+    case nameInvalid = "NAME_INVALID"
+    // The write window is spent (PATCH /me is rate-limited per user); carries Retry-After.
+    case rateLimited = "RATE_LIMITED"
 
     /// The HTTP status the §12 tables pair with each code.
     public var httpStatus: Int {
@@ -47,8 +55,9 @@ public enum APIErrorCode: String, Codable, Sendable, Equatable, CaseIterable {
         case .gameNotFound, .puzzleNotFound: return 404
         case .validation: return 400
         case .internalError: return 500
+        case .rateLimited: return 429
         case .unsolvableCell, .rebusTooLong, .oversizeGrid, .ambiguousSolution,
-            .degenerateGrid, .diagramless:
+            .degenerateGrid, .diagramless, .nameRequired, .nameTooLong, .nameInvalid:
             return 422
         }
     }
@@ -854,5 +863,58 @@ public struct DeleteAccountResponse: Sendable, Equatable, Codable {
         self.successions = successions
         self.abandoned = abandoned
         self.vendorDeleted = vendorDeleted
+    }
+}
+
+// MARK: - Self display identity (PROTOCOL.md §12: GET /me, PATCH /me)
+
+/// The `GET /me` / `PATCH /me` response: the caller's own display identity, the read the
+/// onboarding trigger confirms against and the Settings editor loads from
+/// (docs/design/name-onboarding.md §7). Field list per apps/api/src/identity/routes.ts.
+///
+/// `displayName` is the raw app-DB value and MAY be null: this is the one place a null
+/// name crosses the wire on purpose, so a client can detect a nameless account and
+/// onboard (the gameplay wire in §4 stays non-null). `needsName` is the server-computed
+/// trigger (`!isAnonymous && display_name IS NULL`, R3), the authoritative "are you
+/// nameless" answer the client acts on rather than re-deriving. Because `displayName` is
+/// an intentional null (not an absent user-content field), its Codable is the default:
+/// the key is present with a JSON null the synthesized optional decodes cleanly.
+public struct MeResponse: Sendable, Equatable, Codable {
+    /// The caller's id (the token `sub`, mirrored). Always present.
+    public let userId: String
+    /// The app-DB display name, or nil for an account that has not chosen one yet.
+    public let displayName: String?
+    /// The identity's anonymous flag, so the client can apply the guest rule.
+    public let isAnonymous: Bool
+    /// The resolved avatar URL for the live puck preview, nil when the server has none.
+    public let avatarUrl: String?
+    /// The server-computed onboarding trigger: true iff a permanent account is nameless.
+    /// Present onboarding iff this is true (R3: the naming policy lives on the server).
+    public let needsName: Bool
+
+    public init(
+        userId: String,
+        displayName: String?,
+        isAnonymous: Bool,
+        avatarUrl: String?,
+        needsName: Bool
+    ) {
+        self.userId = userId
+        self.displayName = displayName
+        self.isAnonymous = isAnonymous
+        self.avatarUrl = avatarUrl
+        self.needsName = needsName
+    }
+}
+
+/// The `PATCH /me` request body: the caller sets their own display name. A single
+/// `displayName` field (a partial update of the profile resource), sent verbatim; the
+/// server owns canonicalization and validation (§5), so mirroring it in the type would
+/// only shadow the contract.
+public struct UpdateDisplayNameRequest: Sendable, Equatable, Codable {
+    public let displayName: String
+
+    public init(displayName: String) {
+        self.displayName = displayName
     }
 }

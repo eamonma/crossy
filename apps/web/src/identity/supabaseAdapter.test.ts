@@ -93,6 +93,7 @@ function makeDeps(
   const deps: SupabaseIdentityDeps = {
     supabaseUrl: "https://api.crossy.party",
     publishableKey: "sb_publishable_test",
+    apiBase: "https://api.crossy.party",
     guestsEnabled: true,
     createClientFn: createClient as unknown as NonNullable<
       SupabaseIdentityDeps["createClientFn"]
@@ -333,11 +334,15 @@ describe("supabase identity adapter", () => {
     });
     const identity = createSupabaseIdentity(deps);
     const loaded = await identity.load();
+    // R5: a permanent account's bootstrap displayName is the empty placeholder, never the
+    // token-metadata name; the metadata name rides `nameSuggestion` for onboarding prefill only.
+    // The chrome renders the app-DB /me name once loadProfile reconciles it.
     expect(loaded).toEqual({
       userId: "u9",
-      displayName: "Ada Lovelace",
+      displayName: "",
       isAnonymous: false,
       avatarUrl: null,
+      nameSuggestion: "Ada Lovelace",
     });
     const seen = vi.fn();
     identity.onChange(seen);
@@ -345,18 +350,20 @@ describe("supabase identity adapter", () => {
       access_token: "b",
       user: fakeUser({ id: "u9", is_anonymous: true }),
     });
+    // A guest keeps its "Guest" render label and never onboards, so nameSuggestion is null.
     expect(seen).toHaveBeenCalledWith(
       {
         userId: "u9",
         displayName: "Guest",
         isAnonymous: true,
         avatarUrl: null,
+        nameSuggestion: null,
       },
       "signed_in",
     );
   });
 
-  it("displayName falls through to 'Player' for an Apple private-relay email with no name metadata", async () => {
+  it("R5: a permanent account bootstraps with an empty displayName (no synthesized 'Player'), and an Apple private-relay email yields no prefill suggestion", async () => {
     const { deps } = makeDeps({
       getSession: () =>
         Promise.resolve({
@@ -376,13 +383,14 @@ describe("supabase identity adapter", () => {
     const loaded = await identity.load();
     expect(loaded).toEqual({
       userId: "u-apple",
-      displayName: "Player",
+      displayName: "",
       isAnonymous: false,
       avatarUrl: null,
+      nameSuggestion: null,
     });
   });
 
-  it("displayName still uses the local part for a normal email lacking name metadata", async () => {
+  it("R5: the email local part becomes the onboarding prefill suggestion (nameSuggestion), never the display value, when name metadata is absent", async () => {
     const { deps } = makeDeps({
       getSession: () =>
         Promise.resolve({
@@ -400,7 +408,8 @@ describe("supabase identity adapter", () => {
     });
     const identity = createSupabaseIdentity(deps);
     const loaded = await identity.load();
-    expect(loaded?.displayName).toBe("ada");
+    expect(loaded?.displayName).toBe("");
+    expect(loaded?.nameSuggestion).toBe("ada");
   });
 
   const session = (over: Record<string, unknown> = {}): unknown => ({
@@ -418,9 +427,10 @@ describe("supabase identity adapter", () => {
     expect(seen).toHaveBeenCalledWith(
       {
         userId: "u1",
-        displayName: "Ada Lovelace",
+        displayName: "",
         isAnonymous: false,
         avatarUrl: null,
+        nameSuggestion: "Ada Lovelace",
       },
       "signed_in",
     );
@@ -436,9 +446,10 @@ describe("supabase identity adapter", () => {
     expect(seen).toHaveBeenCalledWith(
       {
         userId: "u1",
-        displayName: "Ada Lovelace",
+        displayName: "",
         isAnonymous: false,
         avatarUrl: null,
+        nameSuggestion: "Ada Lovelace",
       },
       "restored",
     );
@@ -487,9 +498,10 @@ describe("supabase identity adapter", () => {
     expect(seen).toHaveBeenCalledWith(
       {
         userId: "u2",
-        displayName: "Ada Lovelace",
+        displayName: "",
         isAnonymous: false,
         avatarUrl: null,
+        nameSuggestion: "Ada Lovelace",
       },
       "signed_in",
     );
@@ -660,6 +672,205 @@ describe("supabase identity adapter", () => {
         reason: "invalid_code",
         message: "invalid credentials",
       });
+    });
+  });
+
+  // GET /me and PATCH /me over authedFetch (R5): loadProfile reconciles the session name to the
+  // app-DB value and fires onChange; setDisplayName adopts the canonical value the server returns
+  // and maps typed failures. fetch is stubbed so no network is touched; the bearer resolves its
+  // token from the fake auth's getSession, so authedFetch's 401 refresh path is exercisable too.
+  describe("profile (GET /me, PATCH /me)", () => {
+    const nowSec = (): number => Math.floor(Date.now() / 1000);
+
+    function jsonResponse(
+      status: number,
+      body: unknown,
+      headers: Record<string, string> = {},
+    ): Response {
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json", ...headers },
+      });
+    }
+
+    // A signed-in adapter whose bearer resolves a stable token (session not near expiry).
+    function signedInDeps(): { deps: SupabaseIdentityDeps } {
+      const { deps } = makeDeps({
+        getSession: () =>
+          Promise.resolve({
+            data: {
+              session: {
+                access_token: "tok",
+                expires_at: nowSec() + 3600,
+                user: fakeUser({ id: "u-me", user_metadata: {} }),
+              },
+            },
+          }),
+      });
+      return { deps };
+    }
+
+    it("loadProfile reads GET /me, adopts the app-DB name into the session, and fires onChange('refreshed') (R5)", async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(200, {
+            userId: "u-me",
+            displayName: "Real Name",
+            isAnonymous: false,
+            avatarUrl: null,
+            needsName: false,
+          }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { deps } = signedInDeps();
+        const identity = createSupabaseIdentity(deps);
+        await identity.load(); // bootstraps current with the empty placeholder name
+        expect(identity.getSession()?.displayName).toBe("");
+        const seen = vi.fn();
+        identity.onChange(seen);
+        const profile = await identity.loadProfile();
+        expect(profile.displayName).toBe("Real Name");
+        // The chrome now renders the app-DB name, not the empty bootstrap.
+        expect(identity.getSession()?.displayName).toBe("Real Name");
+        expect(seen).toHaveBeenCalledWith(
+          expect.objectContaining({ displayName: "Real Name" }),
+          "refreshed",
+        );
+        // The request carried the bearer.
+        const call = fetchMock.mock.calls[0] as unknown as [
+          string,
+          RequestInit,
+        ];
+        const init = call[1];
+        expect((init.headers as Record<string, string>).authorization).toBe(
+          "Bearer tok",
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("loadProfile reports needsName for a nameless permanent account and leaves the empty bootstrap", async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(200, {
+            userId: "u-me",
+            displayName: null,
+            isAnonymous: false,
+            avatarUrl: null,
+            needsName: true,
+          }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { deps } = signedInDeps();
+        const identity = createSupabaseIdentity(deps);
+        await identity.load();
+        const profile = await identity.loadProfile();
+        expect(profile.needsName).toBe(true);
+        expect(profile.displayName).toBeNull();
+        // A null /me name never overwrites the bootstrap: the session stays the empty placeholder.
+        expect(identity.getSession()?.displayName).toBe("");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("setDisplayName PATCHes and adopts the canonical value the server returns", async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(200, {
+            userId: "u-me",
+            displayName: "Ada Lovelace",
+            isAnonymous: false,
+            avatarUrl: null,
+            needsName: false,
+          }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { deps } = signedInDeps();
+        const identity = createSupabaseIdentity(deps);
+        await identity.load();
+        const result = await identity.setDisplayName("  Ada   Lovelace ");
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.profile.displayName).toBe("Ada Lovelace");
+        expect(identity.getSession()?.displayName).toBe("Ada Lovelace");
+        const call = fetchMock.mock.calls[0] as unknown as [
+          string,
+          RequestInit,
+        ];
+        expect(call[1].method).toBe("PATCH");
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("setDisplayName maps a 422 NAME_TOO_LONG to its typed reason (an inline field error, not a lockout)", async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(422, {
+            error: "NAME_TOO_LONG",
+            message: "display name is too long",
+          }),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { deps } = signedInDeps();
+        const identity = createSupabaseIdentity(deps);
+        await identity.load();
+        const result = await identity.setDisplayName("x");
+        expect(result).toEqual({ ok: false, reason: "NAME_TOO_LONG" });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("setDisplayName maps a 429 to 'rate_limited' and surfaces the Retry-After (R9)", async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(
+            429,
+            { error: "RATE_LIMITED", message: "slow down" },
+            { "retry-after": "30" },
+          ),
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { deps } = signedInDeps();
+        const identity = createSupabaseIdentity(deps);
+        await identity.load();
+        const result = await identity.setDisplayName("Ada");
+        expect(result).toEqual({
+          ok: false,
+          reason: "rate_limited",
+          retryAfterMs: 30000,
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("setDisplayName maps a 5xx to 'network' so the resilient submit auto-retries (INV-11: never a sign-out)", async () => {
+      const fetchMock = vi.fn(() =>
+        Promise.resolve(jsonResponse(503, { error: "INTERNAL" })),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      try {
+        const { deps } = signedInDeps();
+        const identity = createSupabaseIdentity(deps);
+        await identity.load();
+        const result = await identity.setDisplayName("Ada");
+        expect(result).toEqual({ ok: false, reason: "network" });
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
   });
 

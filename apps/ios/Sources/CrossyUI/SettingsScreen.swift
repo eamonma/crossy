@@ -77,6 +77,12 @@ public struct SettingsScreen: View {
     /// Delete the account; nil means success (the parent lands at Welcome), a failure
     /// carries the stable code the inline sentence keys on.
     private let onDeleteAccount: () async -> ArrivalFailure?
+    /// Save a new display name (docs/design/name-onboarding.md §10): the composition root
+    /// wraps `PATCH /me` and digests its result to a typed outcome, so the card keys the
+    /// inline error on the code and adopts the canonical name on success. nil means the
+    /// composition supplies no name editor (the harness identity, which has no /me to
+    /// write): the identity row then stays read-only, exactly as before this feature.
+    private let onSaveDisplayName: ((String) async -> DisplayNameOutcome)?
     /// Open a legal page (the WelcomeScreen grammar): the screen signals intent, the
     /// composition root maps it to the live page and presents the Safari sheet.
     private let onOpenLegal: (LegalPage) -> Void
@@ -87,9 +93,21 @@ public struct SettingsScreen: View {
     @Bindable private var typingPrefs: NavigationSettingsStore
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var confirmingDelete = false
     @State private var deleting = false
     @State private var deleteFailure: ArrivalFailure?
+    // The identity card's inline name editor (§10). The current name lives here, seeded
+    // from the composition root's /me-sourced identity, so a saved name updates the puck
+    // and the row in place without a new AccountIdentity field. Editing flips the name
+    // line from Text to a TextField in the same card; Save adopts the canonical value.
+    @State private var currentName: String?
+    @State private var editingName = false
+    @State private var nameDraft = ""
+    @State private var savingName = false
+    @State private var nameErrorCode: String?
+    @State private var nameHasError = false
+    @FocusState private var nameFieldFocused: Bool
     // The identity puck is a live RosterPuckView, so its avatar layer reads a cache
     // from the environment (AvatarImage). This screen mounts outside the room, so it
     // owns its own instance; without one the puck would have no cache to load from and
@@ -110,6 +128,7 @@ public struct SettingsScreen: View {
         versionLabel: String? = nil,
         onSignOut: @escaping () -> Void,
         onDeleteAccount: @escaping () async -> ArrivalFailure?,
+        onSaveDisplayName: ((String) async -> DisplayNameOutcome)? = nil,
         onOpenLegal: @escaping (LegalPage) -> Void
     ) {
         self.identity = identity
@@ -117,7 +136,12 @@ public struct SettingsScreen: View {
         self.versionLabel = versionLabel
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
+        self.onSaveDisplayName = onSaveDisplayName
         self.onOpenLegal = onOpenLegal
+        // Seed the editable name from the composition root's identity (sourced from
+        // /me). @State's initial value is honored only on first build, so the identity's
+        // name is the source of truth on entry and `currentName` carries edits thereafter.
+        _currentName = State(initialValue: identity.displayName)
     }
 
     private var ground: GridGround {
@@ -165,6 +189,14 @@ public struct SettingsScreen: View {
         // The identity puck's avatar layer reads its cache here (PROTOCOL.md §4: a
         // null or unresolved url just shows the initial).
         .environment(\.avatarImageCache, avatarCache)
+        // The name arrives from /me possibly AFTER this tab first builds (the profile
+        // load races the tab render): adopt a later-arriving name when not mid-edit, so
+        // the row and puck fill in rather than staying on the seeded value. An edit in
+        // flight is left alone; the composition root's own selfProfile is the truth a
+        // successful save writes back, so this never fights a local edit.
+        .onChange(of: identity.displayName) { _, newName in
+            if !editingName { currentName = newName }
+        }
         // The two-beat confirmation: a system dialog with a destructive action, its
         // body stating the consequence plainly (roadmap I3). The system owns its
         // placement and dismissal (the Mail-mechanism grammar, DESIGN.md §4).
@@ -212,14 +244,51 @@ public struct SettingsScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// The identity as a roster member reflecting the LIVE edited name, so the puck's
+    /// initial recomputes as the person types and after a save (§10). Reuses the account's
+    /// id (color) and avatar; the name is the draft while editing, else the current name.
+    private var liveRosterMember: RosterMember {
+        RosterMember(
+            userId: identity.userId,
+            displayName: editingName ? nameDraft : (currentName ?? ""),
+            wireColor: "",
+            avatarUrl: identity.avatarUrl,
+            isHost: false,
+            isSpectator: false,
+            connected: true)
+    }
+
     /// The person: their puck (roster vocabulary), the name (or the plain fallback), and
     /// the provider line beneath, held in a paper card at the top like a profile header.
-    /// Read from what auth state holds; no wire call.
+    /// The name line flips from Text to a TextField in place when editing (§10, inline
+    /// edit, not a sheet), keeping the live puck to its left. The card is its own preview.
     private var identityCard: some View {
-        HStack(spacing: 14) {
-            RosterPuckView(member: identity.rosterMember, ground: ground, diameter: 52)
+        HStack(alignment: editingName ? .top : .center, spacing: 14) {
+            RosterPuckView(member: liveRosterMember, ground: ground, diameter: 52)
+                // Swap the puck initial with no spring/cross-fade under Reduce Motion (§15).
+                .animation(
+                    reduceMotion ? nil : .crossyChrome,
+                    value: editingName ? nameDraft : (currentName ?? ""))
+            if editingName {
+                nameEditor
+            } else {
+                nameDisplay
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Layout.rowPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground())
+    }
+
+    /// The read state: the name (or the pre-onboarding fallback) over the provider line,
+    /// with a trailing pencil that enters edit mode. The whole name line is tappable too,
+    /// so the affordance is generous. Rendered when a name editor is supplied; without one
+    /// (the harness) the row stays plain read-only, exactly as before this feature.
+    private var nameDisplay: some View {
+        HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: identity.displayName ?? ArrivalCopy.settingsNoName)
+                Text(verbatim: currentName ?? ArrivalCopy.settingsNoName)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(Color(rgb: ground.tokens.ink))
                 if let providerLabel = identity.providerLabel {
@@ -228,11 +297,143 @@ public struct SettingsScreen: View {
                         .foregroundStyle(Color(rgb: ground.tokens.number))
                 }
             }
-            Spacer(minLength: 0)
+            if onSaveDisplayName != nil {
+                Spacer(minLength: 8)
+                Button {
+                    beginEditingName()
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(rgb: ground.tokens.number))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(ArrivalCopy.settingsNameTitle)
+            }
         }
-        .padding(Layout.rowPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardBackground())
+        .contentShape(Rectangle())
+        .onTapGesture { if onSaveDisplayName != nil { beginEditingName() } }
+    }
+
+    /// The edit state: a glass-surfaced TextField in the same card seeded from the current
+    /// name, with a compact glass Save capsule and a Cancel ghost button, and an inline
+    /// error line keyed on the §12 code (§10). The provider line stays beneath so the row
+    /// grammar holds.
+    private var nameEditor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            TextField(ArrivalCopy.displayNameFieldPrompt, text: $nameDraft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 17))
+                .foregroundStyle(Color(rgb: ground.tokens.ink))
+                .submitLabel(.done)
+                .focused($nameFieldFocused)
+                .onChange(of: nameDraft) { _, new in
+                    let clean = DisplayNameEntry.sanitize(new)
+                    if clean != new { nameDraft = clean }
+                }
+                .onSubmit { Task { await saveName() } }
+                #if os(iOS)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                #endif
+                .padding(.vertical, 12)
+                .padding(.horizontal, 14)
+                .modifier(ChromeGlassSurface(cornerRadius: 12))
+                .accessibilityLabel(ArrivalCopy.settingsNameTitle)
+                .accessibilityValue(
+                    nameHasError
+                        ? ArrivalCopy.displayNameError(forCode: nameErrorCode) : "")
+
+            if nameHasError {
+                Text(verbatim: ArrivalCopy.displayNameError(forCode: nameErrorCode))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+
+            HStack(spacing: 10) {
+                saveNameCapsule
+                Button(ArrivalCopy.settingsNameCancel) { cancelEditingName() }
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+                    .buttonStyle(.plain)
+                    .disabled(savingName)
+                    .accessibilityLabel(ArrivalCopy.settingsNameCancel)
+            }
+        }
+    }
+
+    /// The compact glass Save capsule: the primary-action material, the capsule spinner
+    /// during PATCH /me, disabled when the sanitized draft is empty.
+    private var saveNameCapsule: some View {
+        Button {
+            Task { await saveName() }
+        } label: {
+            ZStack {
+                Text(verbatim: ArrivalCopy.settingsNameSave)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    .opacity(savingName ? 0 : 1)
+                if savingName {
+                    ProgressView().tint(Color(rgb: ground.tokens.ink))
+                }
+            }
+            .padding(.horizontal, 22)
+            .frame(height: 40)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .modifier(ChromeGlassSurface(cornerRadius: 20))
+        .opacity(canSaveName ? 1 : 0.4)
+        .disabled(!canSaveName || savingName)
+        .accessibilityLabel(ArrivalCopy.settingsNameSave)
+    }
+
+    private var canSaveName: Bool {
+        !DisplayNameEntry.canonicalize(nameDraft).isEmpty
+    }
+
+    private func beginEditingName() {
+        nameDraft = DisplayNameEntry.sanitize(currentName ?? "")
+        nameErrorCode = nil
+        nameHasError = false
+        editingName = true
+        nameFieldFocused = true
+    }
+
+    private func cancelEditingName() {
+        editingName = false
+        nameHasError = false
+        nameErrorCode = nil
+    }
+
+    /// Save the edited name (§10): validate at the edge, call the injected save, adopt the
+    /// canonical name and exit on success, show the inline error on a NAME_* / rate-limit
+    /// rejection, keep the draft on a transient failure (retryable). Never a lockout.
+    private func saveName() async {
+        guard let onSaveDisplayName, canSaveName, !savingName else { return }
+        savingName = true
+        nameHasError = false
+        nameErrorCode = nil
+        defer { savingName = false }
+
+        let canonical = DisplayNameEntry.canonicalize(nameDraft)
+        switch await onSaveDisplayName(canonical) {
+        case .saved(let stored):
+            currentName = stored
+            editingName = false
+        case .nameRejected(let code):
+            nameErrorCode = code
+            nameHasError = true
+        case .rateLimited:
+            nameErrorCode = "RATE_LIMITED"
+            nameHasError = true
+        case .retryable(let code):
+            nameErrorCode = code
+            nameHasError = true
+        }
     }
 
     /// The solving preferences (personal-settings slice 1): two rows in one paper card,
@@ -422,6 +623,7 @@ private func previewTypingPrefs() -> NavigationSettingsStore {
             versionLabel: "1.0 (12)",
             onSignOut: {},
             onDeleteAccount: { nil },
+            onSaveDisplayName: { name in .saved(canonical: name) },
             onOpenLegal: { _ in })
     }
 }

@@ -49,6 +49,19 @@ function makeIdentity(initial: IdentitySession | null = null): {
     sendEmailOtp: () => Promise.resolve({ ok: true }),
     verifyEmailOtp: () => Promise.resolve({ ok: true }),
     verifyEmailLink: () => Promise.resolve({ ok: true }),
+    loadProfile: () =>
+      Promise.resolve({
+        userId: session?.userId ?? "",
+        displayName: session?.displayName ?? null,
+        isAnonymous: session?.isAnonymous ?? false,
+        avatarUrl: session?.avatarUrl ?? null,
+        needsName: false,
+      }),
+    setDisplayName: () =>
+      Promise.resolve({
+        ok: false,
+        reason: "unknown",
+      }),
     signOut: () => Promise.resolve(),
     onChange(cb) {
       listeners.add(cb);
