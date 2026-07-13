@@ -2,8 +2,8 @@
 // sections 2 and 7). Frames decode through packages/protocol's codec before they
 // reach the store; reconnects follow the section 7 backoff schedule (backoff.ts,
 // unit-tested); heartbeats go out every 15 seconds (section 9). End-to-end against
-// the real session service is Wave 2.2's gate; nothing in the test suite requires
-// this module.
+// the real session service is Wave 2.2's gate; the unit suite (wsTransport.test.ts)
+// covers token resolution and the INV-11 throw-versus-null handling in sendHello.
 import {
   PROTOCOL_VERSION,
   decodeServerMessage,
@@ -21,9 +21,12 @@ export interface WsTransportOptions {
   /**
    * Resolve the identity provider's access token for the next hello. Called fresh
    * before every hello, including each reconnect, so an expired token is never reused:
-   * the real path is `identity.getAccessToken()`, which refreshes near expiry. `null`
-   * means signed out (see connect: the transport stops rather than busy-looping a hello
-   * the server would reject with UNAUTHORIZED).
+   * the real path is `identity.getAccessToken()`, which returns the best available token
+   * and yields null only on a true sign-out (INV-11). sendHello reads the two failure
+   * modes differently: a `null` result is a sign-out, so the transport stops rather than
+   * busy-loop a hello the server rejects with UNAUTHORIZED; a thrown rejection is a
+   * transient resolution failure (a blip mid-refresh), so the socket drops into the
+   * section 7 backoff and a later hello retries.
    */
   getToken: () => Promise<string | null>;
   /** A codec-decoded frame arrived; typically store.receive. */
@@ -98,18 +101,28 @@ export class WsTransport implements GameTransport {
 
   /**
    * Resolve a fresh token, then send the mandatory first `hello` (PROTOCOL.md section 2)
-   * and start heartbeats. A `null` token means signed out: stop deliberately rather than
-   * loop a hello the server rejects with UNAUTHORIZED. This is a stop, not a busy loop,
-   * so a signed-out client mid-reconnect settles instead of hammering the endpoint; a
-   * later connect (a fresh sign-in re-opens the game) starts a new socket. If the socket
-   * closed while the token was resolving, drop the hello and let onclose reconnect.
+   * and start heartbeats. Token resolution has two failure modes with opposite handling
+   * under INV-11. A `null` token is a true sign-out: stop the transport deliberately
+   * rather than loop a hello the server rejects with UNAUTHORIZED, so a signed-out client
+   * mid-reconnect settles instead of hammering the endpoint; a later connect (a fresh
+   * sign-in re-opens the game) starts a new socket. A thrown rejection is a transient
+   * failure (a network blip mid-refresh), not a sign-out: drop this socket so onclose
+   * runs the normal reconnect-and-backoff path (PROTOCOL.md sections 7 and 8), never a
+   * dead stop. The throw and hello paths guard the socket first: if a successor already
+   * replaced this one while the token resolved, they leave the live socket untouched.
    */
   private async sendHello(socket: WebSocket): Promise<void> {
     let token: string | null;
     try {
       token = await this.options.getToken();
     } catch {
-      token = null;
+      // Transient failure (INV-11): drop this socket into the reconnect-and-backoff
+      // walk, matching simulateDrop. The guard keeps a successor socket alive: if a
+      // reconnect already replaced this one, `this.socket` is no longer it, so leave
+      // the live socket be and let the stale socket's own onclose (already fired) carry
+      // the reconnect.
+      if (socket === this.socket) socket.close();
+      return;
     }
     if (token === null) {
       this.close();
