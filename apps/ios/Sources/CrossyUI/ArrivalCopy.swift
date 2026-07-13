@@ -75,6 +75,7 @@ public enum ArrivalCopy {
     public static let codeFieldPrompt = "00000000"
     public static let codeVerify = "Verify"
     public static let codeResend = "Resend code"
+    public static let codeResending = "Sending a new code"
     public static func codeResendCountdown(seconds: Int) -> String {
         "Resend code in \(seconds)s"
     }

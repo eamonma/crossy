@@ -380,6 +380,10 @@ private struct EmailFlowView: View {
     @State private var resendRemaining = 0
     /// The wall-clock deadline the cooldown counts down to (see startResendCooldown).
     @State private var resendUntil: Date?
+    /// True from the instant Resend is tapped until its send leg settles, so the
+    /// control disables and shows feedback right away (the token fetch plus the send
+    /// take a beat, and a filled cooldown then takes over).
+    @State private var resending = false
     @FocusState private var focus: Field?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -429,7 +433,9 @@ private struct EmailFlowView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Color(rgb: ground.tokens.number))
             TextField(ArrivalCopy.emailFieldPrompt, text: $email)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16))
+                .foregroundStyle(Color(rgb: ground.tokens.ink))
                 .autocorrectionDisabled()
                 .submitLabel(.send)
                 .focused($focus, equals: .email)
@@ -439,6 +445,9 @@ private struct EmailFlowView: View {
                     .textInputAutocapitalization(.never)
                     .textContentType(.emailAddress)
                 #endif
+                .padding(.vertical, 16)
+                .padding(.horizontal, 18)
+                .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
             if let errorText {
                 errorLine(errorText)
             }
@@ -461,8 +470,10 @@ private struct EmailFlowView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(Color(rgb: ground.tokens.number))
             TextField(ArrivalCopy.codeFieldPrompt, text: $code)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(.plain)
                 .font(.system(size: 20, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color(rgb: ground.tokens.ink))
+                .multilineTextAlignment(.center)
                 .focused($focus, equals: .code)
                 .onChange(of: code) { _, new in
                     // Numeric only, capped at the OTP length (Supabase's 8 digits): the
@@ -475,6 +486,9 @@ private struct EmailFlowView: View {
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                 #endif
+                .padding(.vertical, 16)
+                .padding(.horizontal, 18)
+                .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
             if let errorText {
                 errorLine(errorText)
             }
@@ -494,7 +508,14 @@ private struct EmailFlowView: View {
     /// it clears. A resend just runs the send leg again with the same address.
     @ViewBuilder
     private var resendControl: some View {
-        if resendRemaining > 0 {
+        if resending {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(verbatim: ArrivalCopy.codeResending)
+            }
+            .font(.system(size: 13))
+            .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.8))
+        } else if resendRemaining > 0 {
             Text(verbatim: ArrivalCopy.codeResendCountdown(seconds: resendRemaining))
                 .font(.system(size: 13))
                 .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.8))
@@ -531,17 +552,19 @@ private struct EmailFlowView: View {
                     .font(.system(size: 16, weight: .semibold))
                     .opacity(inFlight ? 0 : 1)
                 if inFlight {
-                    ProgressView().tint(Color(rgb: ground.tokens.canvas))
+                    ProgressView().tint(Color(rgb: ground.tokens.ink))
                 }
             }
-            .foregroundStyle(Color(rgb: ground.tokens.canvas))
+            .foregroundStyle(Color(rgb: ground.tokens.ink))
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(rgb: ground.tokens.ink).opacity(enabled ? 1 : 0.4)))
+            .frame(height: ChromeLayout.barHeight)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // Liquid Glass, the same material as the Apple and Discord capsules. Glass
+        // carries no fill, so a disabled step dims the whole capsule.
+        .modifier(ChromeGlassSurface(cornerRadius: ChromeLayout.barCornerRadius))
+        .opacity(enabled ? 1 : 0.4)
         .disabled(!enabled)
     }
 
@@ -576,7 +599,12 @@ private struct EmailFlowView: View {
     }
 
     private func resend() async {
+        // Disable and show feedback the instant it is tapped: the guard blocks a second
+        // run, and resending stays true across the token fetch and the send.
+        guard !resending else { return }
+        resending = true
         errorText = nil
+        defer { resending = false }
         do {
             try await sendEmailOTP(email)
             startResendCooldown()
