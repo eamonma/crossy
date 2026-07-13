@@ -25,8 +25,18 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { AppDeps, ApiEnv } from "../context";
 import { INVITE_CODE_PATTERN } from "../games/invite-code";
 import { findGameByInviteCode, normalizeInviteCode } from "../games/lookup";
+import { clientIp, createRateLimiter } from "../http/rate-limit";
 
 const AASA_PATH = "/.well-known/apple-app-site-association";
+
+/**
+ * Per-IP rate limit for `GET /{code}` (defense in depth; Cloudflare's edge rules are primary). The
+ * AASA path is NOT limited: Apple's CDN fetches it and may retry, and throttling it would break
+ * universal-link verification. Generous, a cap on flood and the valid-vs-invalid oracle, not brute
+ * force (the code space is 32^8, PROTOCOL.md §12).
+ */
+const CODE_LIMIT_PER_WINDOW = 60;
+const CODE_WINDOW_MS = 60_000;
 
 /**
  * The invite host's app-site-association. It claims the whole host (`components: [{ "/": "/*" }]`)
@@ -104,6 +114,10 @@ export function inviteHostMiddleware(deps: AppDeps): MiddlewareHandler<ApiEnv> {
   }
 
   const home = `${webOrigin}/`;
+  const limiter = createRateLimiter({
+    limit: CODE_LIMIT_PER_WINDOW,
+    windowMs: CODE_WINDOW_MS,
+  });
   return async (c, next) => {
     const host = new URL(c.req.url).hostname.toLowerCase();
     if (host !== inviteHost) return next();
@@ -119,6 +133,15 @@ export function inviteHostMiddleware(deps: AppDeps): MiddlewareHandler<ApiEnv> {
     // to the web home.
     const segment = path.replace(/^\/+/, "").replace(/\/+$/, "");
     if (segment === "" || segment.includes("/")) return c.redirect(home, 302);
+
+    // Per-IP rate limit before any normalization or DB probe (a plain-text 429, since this host
+    // serves HTML/redirects, not the JSON API). The AASA path above is intentionally not limited.
+    const gate = limiter.check(clientIp(c));
+    if (!gate.ok) {
+      return c.text("too many requests", 429, {
+        "retry-after": String(gate.retryAfterSec),
+      });
+    }
 
     const code = normalizeInviteCode(decodeURIComponent(segment));
     // Shape-gate before any DB touch: a code that cannot be a real code never probes the index.
