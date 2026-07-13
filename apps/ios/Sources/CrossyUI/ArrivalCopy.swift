@@ -158,11 +158,51 @@ public enum ArrivalCopy {
     /// The screen title, and the tab's label (the signed-in shell's three tabs are
     /// the three place names: Rooms, Puzzles, Settings).
     public static let settingsTitle = "Settings"
-    /// The name shown when auth state holds none (display name is not persisted yet;
-    /// the puck and provider still identify the person).
+    /// The name shown when auth state holds none (the pre-onboarding fallback; after a
+    /// name lands a permanent user never shows it, docs/design/name-onboarding.md §14.1).
     public static let settingsNoName = "Signed in"
     public static let signOutAction = "Sign out"
     public static let deleteAccountAction = "Delete account"
+
+    // MARK: - Display name (onboarding + the Settings editor; §14.1, stable keys)
+
+    /// The onboarding sheet: the question, the one line under it, the field's prompt and
+    /// a11y label, and the single-tap confirm. Calm, American English, no apology (§14.1).
+    public static let displayNameTitle = "What should we call you?"
+    public static let displayNameOnboardingHint =
+        "This is how you show up in a room. You can change it later."
+    public static let displayNameFieldPrompt = "Your name"
+    public static let displayNameSave = "Continue"
+
+    /// The Settings name editor: the row label, its one-line subtitle, and the two edit
+    /// controls. The editor is for permanent accounts (§10).
+    public static let settingsNameTitle = "Name"
+    public static let settingsNameSubtitle = "How you show up in a room"
+    public static let settingsNameSave = "Save"
+    public static let settingsNameCancel = "Cancel"
+
+    /// One human sentence per display-name failure, keyed on the stable §12 code (the
+    /// deleteFailure pattern). `nil` is network weather (nothing was judged). The
+    /// RATE_LIMITED sentence is included on BOTH surfaces (R9): the onboarding submit and
+    /// the Settings editor share this one map. The raw code never renders.
+    public static func displayNameError(forCode code: String?) -> String {
+        switch code {
+        case nil:
+            return "Couldn't reach Crossy. Check your connection and try again."
+        case "NAME_REQUIRED":
+            return "Add a name so people know who you are."
+        case "NAME_TOO_LONG":
+            return "That name is too long. Keep it to 40 characters."
+        case "NAME_INVALID":
+            return "That name has characters we can't use. Try letters, numbers, or emoji."
+        case "RATE_LIMITED":
+            return "Too many changes just now. Wait a moment, then try again."
+        case "UNAUTHORIZED":
+            return "Your sign-in expired. Sign in again, then set your name."
+        default:
+            return "Couldn't save your name. Try again."
+        }
+    }
 
     // Solving preferences (personal-settings slice 1): the two per-device navigation
     // knobs, worded the way the web twin words them so both surfaces read the same.

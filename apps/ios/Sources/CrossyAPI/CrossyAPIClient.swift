@@ -195,6 +195,28 @@ public struct CrossyAPIClient: Sendable {
         try await send(Endpoint(method: "DELETE", path: ["account"]))
     }
 
+    // MARK: - Self display identity (section 12: GET /me, PATCH /me)
+
+    /// `GET /me`: the caller's own display identity, the read the onboarding trigger
+    /// confirms against and Settings loads from (docs/design/name-onboarding.md §7.1).
+    /// Works with zero games. `displayName` may be null (the one place null crosses the
+    /// wire, so a client can detect nameless); `needsName` is the server-computed trigger.
+    public func getMe() async throws -> MeResponse {
+        try await send(Endpoint(method: "GET", path: ["me"]))
+    }
+
+    /// `PATCH /me`: set the caller's own display name (§7.2). The name is sent verbatim;
+    /// the server canonicalizes (NFC, trim, collapse) and validates (§5) and returns the
+    /// canonical stored value, so the client adopts exactly what the server kept. A
+    /// well-formed name that violates a rule throws `.api` with a `NAME_*` code (422); a
+    /// spent write window throws `.rateLimited` carrying the `Retry-After` delay (429).
+    public func updateDisplayName(_ name: String) async throws -> MeResponse {
+        try await send(
+            Endpoint(
+                method: "PATCH", path: ["me"],
+                body: try encode(UpdateDisplayNameRequest(displayName: name))))
+    }
+
     // MARK: - Request plumbing
 
     private struct Endpoint {
@@ -337,8 +359,27 @@ public struct CrossyAPIClient: Sendable {
             else {
                 throw CrossyAPIError.invalidResponse(status: trip.http.statusCode)
             }
+            // A 429 carries a Retry-After the UI honors before its next auto-retry
+            // (docs/design/name-onboarding.md R4/R9). The delay lives in the header, not
+            // the body, so it is lifted into a dedicated case here; every other non-2xx
+            // stays the plain typed envelope. The header may be seconds or an HTTP-date;
+            // only the seconds form (what the API sends) is parsed, and an absent or
+            // unparseable value degrades to nil (the UI falls back to its own backoff).
+            if trip.http.statusCode == 429 {
+                throw CrossyAPIError.rateLimited(
+                    retryAfter: Self.retryAfterSeconds(from: trip.http), envelope: envelope)
+            }
             throw CrossyAPIError.api(status: trip.http.statusCode, envelope: envelope)
         }
         return (trip.data, trip.http.statusCode)
+    }
+
+    /// The `Retry-After` header as a seconds delay, nil when absent or not a plain
+    /// integer/decimal count. The API sends the delta-seconds form; an HTTP-date form is
+    /// not parsed here (it never arrives from this API), so it degrades to nil rather than
+    /// guessing a clock.
+    private static func retryAfterSeconds(from http: HTTPURLResponse) -> TimeInterval? {
+        guard let raw = http.value(forHTTPHeaderField: "Retry-After") else { return nil }
+        return TimeInterval(raw.trimmingCharacters(in: .whitespaces))
     }
 }

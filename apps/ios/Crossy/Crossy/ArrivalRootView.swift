@@ -113,6 +113,15 @@ struct ArrivalRootView: View {
     /// a change in Settings reaches an open room live (SelectionModel re-reads the prefs
     /// closure on each keystroke). Persisted in UserDefaults, off the wire entirely.
     @State private var typingPrefs = NavigationSettingsStore()
+    /// Display-name onboarding (docs/design/name-onboarding.md §9): on entering the
+    /// signed-in shell the composition root reads `/me`; a nameless permanent account
+    /// (`needsName`) gates the shell behind a light scrim and presents the onboarding sheet
+    /// until a name lands. `onboardingChecked` guards the one-shot per sign-in so a
+    /// re-render never re-runs the read; it resets on sign-out. The model is built when the
+    /// sheet is armed, carrying the prefill and the resilient submit (R4).
+    @State private var onboardingChecked = false
+    @State private var showNameOnboarding = false
+    @State private var onboardingModel: DisplayNameOnboardingModel?
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
@@ -128,6 +137,32 @@ struct ArrivalRootView: View {
         Group {
             if model.isSignedIn {
                 signedInShell
+                    // A light scrim gates the shell content while a nameless account is
+                    // onboarding (§9.1), so the goal (always a name) holds; it clears the
+                    // instant a name lands and the sheet dismisses. Only visible while the
+                    // onboarding sheet is up.
+                    .overlay {
+                        if showNameOnboarding {
+                            Color.black.opacity(0.18).ignoresSafeArea()
+                                .allowsHitTesting(true)
+                        }
+                    }
+                    // The one onboarding read per sign-in: on entering the shell, load
+                    // /me; if the account is nameless, arm the sheet. INV-11: this runs
+                    // only on a true signed-in session (the shell is shown), and a
+                    // transient read failure retries with backoff rather than presenting
+                    // onboarding on a maybe or signing out. Keyed on the user id so a
+                    // re-sign-in as a different account re-checks.
+                    .task(id: model.session.userId) { await checkOnboarding() }
+                    .sheet(isPresented: $showNameOnboarding) {
+                        if let onboardingModel, let userId = model.session.userId {
+                            DisplayNameOnboardingSheet(
+                                ground: ground,
+                                userId: userId,
+                                avatarUrl: model.selfProfile?.avatarUrl,
+                                model: onboardingModel)
+                        }
+                    }
             } else {
                 WelcomeScreen(
                     state: model.welcomeState,
@@ -216,6 +251,12 @@ struct ArrivalRootView: View {
                 roomZoomSourceID = nil
                 roomSeeds.removeAll()
                 pendingJoinGameId = nil
+                // Onboarding is per sign-in: drop the sheet and re-arm the one-shot so the
+                // next sign-in (possibly a different, nameless account) checks /me afresh.
+                showNameOnboarding = false
+                onboardingModel = nil
+                onboardingChecked = false
+                model.selfProfile = nil
                 // The selected tab is shell state too, and it survives the sign-out
                 // because this view (and its `tab` @State) outlives the shell, only its
                 // body swaps to Welcome. Sign-out happens FROM the Settings tab, so
@@ -242,6 +283,48 @@ struct ArrivalRootView: View {
     private func captchaTokenIfNeeded() async throws -> String? {
         guard model.turnstile.siteKey != nil else { return nil }
         return try await model.turnstile.token()
+    }
+
+    /// The one onboarding read per sign-in (§9.1). Read /me with a bounded backoff retry;
+    /// present the sheet iff the server reports `needsName` (R3: the trigger is the
+    /// server's own answer, no client policy). INV-11: armed only by a true signed-in
+    /// session (this runs inside the shell), never by a transient failure; a failed read
+    /// retries a few times and then gives up quietly (the next shell entry re-checks),
+    /// never signing out. Guarded so a re-render never re-onboards mid-session.
+    private func checkOnboarding() async {
+        guard model.session.userId != nil, !onboardingChecked else { return }
+        onboardingChecked = true
+
+        // Bounded backoff: a brand-new email sign-up hits /me the instant the shell
+        // appears, so a blip must not skip onboarding. A handful of tries is plenty; if
+        // all fail, the account is still nameless on the next entry and re-checks.
+        var attempt = 0
+        while attempt < 4 {
+            if let loaded = await model.loadSelfProfile() {
+                if loaded.needsName, let userId = model.session.userId {
+                    armOnboarding(userId: userId)
+                }
+                return
+            }
+            attempt += 1
+            try? await Task.sleep(for: .seconds(Double(attempt) * 0.6))
+        }
+    }
+
+    /// Build the onboarding model (the prefill + the resilient submit) and present the
+    /// sheet. The submit rides the model's digested /me write; on a confirmed save the
+    /// name is adopted into selfProfile (so Settings shows it) and the sheet dismisses.
+    private func armOnboarding(userId: String) {
+        onboardingModel = DisplayNameOnboardingModel(
+            prefill: model.onboardingPrefill(for: userId),
+            submit: { name in await model.setDisplayName(name) },
+            onSaved: { _ in
+                // The name landed (the model already adopted it into selfProfile); drop
+                // the scrim and the sheet, revealing the shell.
+                showNameOnboarding = false
+                onboardingModel = nil
+            })
+        showNameOnboarding = true
     }
 
     /// Honor a Universal Link's invite code. Signed in: join at once and push the
@@ -486,6 +569,10 @@ struct ArrivalRootView: View {
                 onDeleteAccount: {
                     await model.session.deleteAccount()
                 },
+                // The inline name editor (§10): PATCH /me digested to the typed outcome the
+                // card keys on. On success the model adopts the canonical name into
+                // selfProfile too, so the identity stays consistent across the tab.
+                onSaveDisplayName: { name in await model.setDisplayName(name) },
                 onOpenLegal: { settingsLegal = legalItem(for: $0) })
                 .sheet(item: $settingsLegal) { item in
                     SafariSheet(url: item.url)
