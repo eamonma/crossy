@@ -43,6 +43,7 @@ function makeDeps(
     signInAnonymously: ReturnType<typeof vi.fn>;
     signInWithOAuth: ReturnType<typeof vi.fn>;
     refreshSession: ReturnType<typeof vi.fn>;
+    signOut: ReturnType<typeof vi.fn>;
   };
   fireAuthChange: (session: unknown, event?: string) => void;
 } {
@@ -59,6 +60,9 @@ function makeDeps(
     behavior.refreshSession ??
       (() => Promise.resolve({ data: { session: null }, error: null })),
   );
+  const signOut = vi.fn(
+    behavior.signOut ?? (() => Promise.resolve({ error: null })),
+  );
   const auth = {
     getSession:
       behavior.getSession ??
@@ -66,7 +70,7 @@ function makeDeps(
     refreshSession,
     signInAnonymously,
     signInWithOAuth,
-    signOut: behavior.signOut ?? (() => Promise.resolve({ error: null })),
+    signOut,
     onAuthStateChange: (cb: AuthChangeCb) => {
       authCb = cb;
       return { data: { subscription: { unsubscribe: () => undefined } } };
@@ -90,7 +94,13 @@ function makeDeps(
 
   return {
     deps,
-    calls: { createClient, signInAnonymously, signInWithOAuth, refreshSession },
+    calls: {
+      createClient,
+      signInAnonymously,
+      signInWithOAuth,
+      refreshSession,
+      signOut,
+    },
     fireAuthChange: (session: unknown, event = "SIGNED_IN") =>
       authCb(event, session),
   };
@@ -274,6 +284,16 @@ describe("supabase identity adapter", () => {
       provider: "discord",
       options: { redirectTo: "https://app.test/lobby" },
     });
+  });
+
+  it("signOut is device-local, so it never revokes another device's session (INV-11)", async () => {
+    // supabase-js defaults to { scope: "global" }, which kills the user's whole
+    // refresh-token family and signs the phone and extension out at their next refresh.
+    // The adapter pins local scope so a sign-out here ends this device only.
+    const { deps, calls } = makeDeps({});
+    const identity = createSupabaseIdentity(deps);
+    await identity.signOut();
+    expect(calls.signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
   it("load maps the persisted session and onChange relays auth-state updates", async () => {

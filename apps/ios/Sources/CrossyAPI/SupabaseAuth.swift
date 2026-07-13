@@ -176,12 +176,16 @@ public struct SupabaseAuthClient: Sendable {
         return (200..<300).contains(http.statusCode)
     }
 
-    /// `POST {auth}/logout`: revoke the refresh token server-side. Best-effort by
-    /// design: local sign-out (Keychain clear) must succeed even offline, so the
-    /// caller never awaits a verdict here.
+    /// `POST {auth}/logout?scope=local`: revoke this device's refresh token server-side,
+    /// not the user's whole token family (global scope would sign the web app and other
+    /// devices out at their next refresh). Best-effort by design: local sign-out (Keychain
+    /// clear) must succeed even offline, so the caller never awaits a verdict here.
     public func signOut(accessToken: String) async {
-        var request = URLRequest(
-            url: configuration.authBaseURL.appendingPathComponent("logout"))
+        var components = URLComponents(
+            url: configuration.authBaseURL.appendingPathComponent("logout"),
+            resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "scope", value: "local")]
+        var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
