@@ -2,7 +2,8 @@
 // A tiny hand-rolled nav (no nav library earns its weight yet, mirroring the repo's "no
 // orchestrator until it hurts"): one screen enum, one when. Each host owns its screen's data
 // fetch and intents, calling the composition root's AppSession; the :ui screens stay pure
-// functions of that state. The room runs a GameStore over the transport seam (scripted tonight).
+// functions of that state. A live room runs a GameStore under :session's SessionDriver; the demo
+// room runs the scripted transport (RoomTransport.kt), no server.
 
 package crossy.app
 
@@ -20,6 +21,8 @@ import crossy.protocol.CreateGameRequest
 import crossy.protocol.GameSummary
 import crossy.protocol.GameView
 import crossy.protocol.PuzzleSummary
+import crossy.session.SessionDriver
+import crossy.session.WebSocketTransport
 import crossy.store.GameStore
 import crossy.ui.CreateGameScreen
 import crossy.ui.CrossyTheme
@@ -35,7 +38,8 @@ private sealed interface Screen {
     data object Rooms : Screen
     data object Join : Screen
     data object Create : Screen
-    data class Room(val puzzle: ClientPuzzle, val name: String?, val demo: Boolean) : Screen
+    // wsUrl null = no live socket (the demo room): the room runs on the scripted transport.
+    data class Room(val puzzle: ClientPuzzle, val name: String?, val demo: Boolean, val wsUrl: String? = null) : Screen
 }
 
 @Composable
@@ -51,7 +55,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
             Screen.Rooms -> RoomsHost(
                 session = session,
                 ground = ground,
-                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false) },
+                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws) },
                 onJoin = { screen = Screen.Join },
                 onCreate = { screen = Screen.Create },
                 onOpenDemo = { screen = Screen.Room(RoomScripts.demoPuzzle, "Demo room", demo = true) },
@@ -65,21 +69,23 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
             Screen.Join -> JoinHost(
                 session = session,
                 onBack = { screen = Screen.Rooms },
-                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false) },
+                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws) },
             )
 
             Screen.Create -> CreateHost(
                 session = session,
                 onBack = { screen = Screen.Rooms },
-                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false) },
+                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws) },
             )
 
             is Screen.Room -> RoomHost(
+                session = session,
                 factory = factory,
                 puzzle = s.puzzle,
                 roomName = s.name,
                 selfUserId = session.selfUserId ?: "you",
                 demo = s.demo,
+                wsUrl = s.wsUrl,
                 onExit = { screen = Screen.Rooms },
             )
         }
@@ -209,25 +215,43 @@ private fun CreateHost(session: AppSession, onBack: () -> Unit, onCreated: (Game
     )
 }
 
-/** The room host: build one GameStore and run it over the transport (scripted tonight) for the
- *  screen's life. Confinement to the main dispatcher is the composition root's job (AAD-2); the
- *  compose coroutine scope is main-confined, so the store's single consumption loop runs there. */
+/** The room host: build one GameStore and run it for the screen's life. A live room (wsUrl
+ *  present) runs the real :session stack: SessionDriver dials a fresh WebSocketTransport per
+ *  attempt with the store's bearer, resumes from the store's seq on a redial, and executes the
+ *  store-decided backoff (AD-6). The demo room (wsUrl null) runs the scripted transport, no
+ *  server. Confinement to the main dispatcher is the composition root's job (AAD-2); the compose
+ *  coroutine scope is main-confined, so the store's single consumption loop runs there. */
 @Composable
 private fun RoomHost(
+    session: AppSession,
     factory: RoomTransportFactory,
     puzzle: ClientPuzzle,
     roomName: String?,
     selfUserId: String,
     demo: Boolean,
+    wsUrl: String?,
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val store = remember(puzzle) { GameStore() }
     DisposableEffect(puzzle) {
-        val transport = factory.create(puzzle, selfUserId, demo)
         val job = scope.launch {
-            transport.connect()
-            store.run(transport)
+            if (wsUrl != null) {
+                SessionDriver(
+                    store = store,
+                    makeTransport = {
+                        WebSocketTransport(
+                            url = wsUrl,
+                            tokenProvider = { session.bearerToken() },
+                            resumeFromSeq = store.render.value.seq.takeIf { it > 0 },
+                        )
+                    },
+                ).run()
+            } else {
+                val transport = factory.create(puzzle, selfUserId, demo)
+                transport.connect()
+                store.run(transport)
+            }
         }
         onDispose { job.cancel() }
     }

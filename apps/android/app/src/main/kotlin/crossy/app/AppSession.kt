@@ -63,6 +63,10 @@ class AppSession(
     /** The REST client every shell screen calls, bearer-authenticated through [bearer]. */
     val api = CrossyApiClient(urls.apiBaseUrl, bearer, http)
 
+    /** The socket handshake's token (PROTOCOL.md §2). Same bearer the REST client rides; the
+     *  transport folds a thrown SignedOutError into its signed-out stop. */
+    suspend fun bearerToken(): String = bearer.currentToken()
+
     /** The signed-in user id, for seeding the room's self identity. Display only; the token is the
      *  identity authority (DESIGN.md §8). */
     var selfUserId: String? = null

@@ -1,11 +1,8 @@
-// The room transport seam. On this branch :session is the placeholder (SessionPlaceholder), so the
-// real OkHttp WebSocket Transport (AAD-1: adapters implement the store's port outward) has not
-// landed. Tonight the room runs on a scripted transport that seeds a `welcome` from the puzzle
-// geometry and echoes the local player's own mutations back as sequenced `cellSet` frames, so the
-// room screen is fully demonstrable without a server and the optimistic overlay clears on echo
-// exactly as INV-10 requires. When :session lands (Wave A1) its Transport replaces
-// ScriptedRoomTransport here and nothing above the seam changes: RoomHost still builds a GameStore
-// and runs it over a Transport. The wiring point for the real dial is marked below.
+// The demo room's transport. Live rooms run :session's WebSocketTransport under SessionDriver,
+// wired in RoomHost (CrossyApp.kt); this scripted transport serves the demo room and previews:
+// it seeds a `welcome` from the puzzle geometry and echoes the local player's own mutations back
+// as sequenced `cellSet` frames, so the room screen is fully demonstrable without a server and
+// the optimistic overlay clears on echo exactly as INV-10 requires.
 
 package crossy.app
 
@@ -27,8 +24,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 import java.time.Instant
 
-/** Builds the Transport a room runs over. The scripted implementation is tonight's only one; the
- *  real one (SessionEndpoint.ws + BuildConfig.SESSION_WS_BASE) arrives with :session. */
+/** Builds the Transport a server-less room runs over (the demo room; previews). Live rooms do
+ *  not pass through this seam: RoomHost dials :session directly with the game's SessionEndpoint. */
 fun interface RoomTransportFactory {
     fun create(puzzle: ClientPuzzle, selfUserId: String, seedDemo: Boolean): Transport
 }
@@ -82,9 +79,6 @@ class ScriptedRoomTransport(
  *  teammate and a couple of filled cells so presence and the roster render on the first frame. */
 class ScriptedRoomTransportFactory : RoomTransportFactory {
     override fun create(puzzle: ClientPuzzle, selfUserId: String, seedDemo: Boolean): Transport {
-        // TODO(session, Wave A1): when :session lands, return its OkHttp WebSocket Transport here,
-        // dialing SessionEndpoint.ws (resolved against BuildConfig.SESSION_WS_BASE) with the bearer;
-        // the store, RoomHost, and every screen above this seam stay unchanged.
         val welcome = RoomScripts.welcome(puzzle, selfUserId, seedDemo)
         return ScriptedRoomTransport(welcome, selfUserId, startSeq = welcome.message.board.seq)
     }
