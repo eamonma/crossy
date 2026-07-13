@@ -62,6 +62,7 @@ import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
 import { CompletionOverlay } from "./ui/Completion";
+import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { TopBar } from "./ui/TopBar";
 import { SignInButtons } from "./ui/AuthBar";
 import { Button } from "@/components/ui/button";
@@ -1006,6 +1007,14 @@ function LiveGame({
   });
 
   const completed = store.status === "completed" && !dismissedCompletion;
+  // The board's own completed state, independent of whether the summary card is still up: the
+  // mosaic is the board treatment for the whole completed state, so dismissing the card leaves the
+  // player on the settled wash (not back on the frozen interactive grid).
+  const boardCompleted = store.status === "completed";
+  // Edge-trigger the bloom on the ongoing -> completed transition seen in THIS session. Latched on
+  // the persistent LiveGame (not the mosaic, which mounts only once completed), so a reload onto an
+  // already-completed game lands on the settled wash with no re-bloom.
+  const bloomOnCompletion = useCompletionBloomEdge(boardCompleted);
   const goHome = (): void => navigate(homeHref(params));
 
   // In the shell the desktop toolbar leads with the sidebar trigger, anchored in the panel so
@@ -1087,28 +1096,50 @@ function LiveGame({
               className="board-fit board-scroll"
               style={{ aspectRatio: `${puzzle.cols} / ${puzzle.rows}` }}
             >
-              <div
-                className={`board-wrap outline-none transition-opacity duration-300 motion-reduce:transition-none${
-                  awaitingFirstSync ? " opacity-45" : ""
-                }`}
-                data-testid="grid"
-                ref={gridRef}
-                tabIndex={0}
-                onKeyDown={onKeyDown}
-                aria-label="Crossword grid"
-                aria-busy={awaitingFirstSync}
-              >
-                <CrosswordGrid
-                  puzzle={puzzle}
-                  fills={fills}
-                  selection={selection}
-                  presence={presence}
-                  flashes={flashes}
-                  xref={referencedCellSet}
-                  onCellClick={onCellClick}
-                  onFlashEnd={onFlashEnd}
-                />
-              </div>
+              {boardCompleted ? (
+                // The completed board's treatment: the contribution mosaic in place of the
+                // interactive grid (the mosaic renders the solved board itself). It blooms once on
+                // the live finish (ink -> field -> wash), painted by first-correct attribution over
+                // a last-writer fallback, then settles; the CompletionOverlay layers on top exactly
+                // as before, and dismissing it leaves the player on this settled wash.
+                <div className="board-wrap" aria-label="Solved crossword grid">
+                  <CompletedMosaic
+                    store={store}
+                    puzzle={puzzle}
+                    letters={fills}
+                    members={members}
+                    bloom={bloomOnCompletion}
+                    source={{
+                      apiBase,
+                      gameId,
+                      getToken: identity.getAccessToken,
+                    }}
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`board-wrap outline-none transition-opacity duration-300 motion-reduce:transition-none${
+                    awaitingFirstSync ? " opacity-45" : ""
+                  }`}
+                  data-testid="grid"
+                  ref={gridRef}
+                  tabIndex={0}
+                  onKeyDown={onKeyDown}
+                  aria-label="Crossword grid"
+                  aria-busy={awaitingFirstSync}
+                >
+                  <CrosswordGrid
+                    puzzle={puzzle}
+                    fills={fills}
+                    selection={selection}
+                    presence={presence}
+                    flashes={flashes}
+                    xref={referencedCellSet}
+                    onCellClick={onCellClick}
+                    onFlashEnd={onFlashEnd}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
