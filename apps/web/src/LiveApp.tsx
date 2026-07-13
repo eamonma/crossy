@@ -29,6 +29,7 @@ import type { Bearer } from "./net/authedFetch";
 import { computeLayout } from "./domain/layout";
 import {
   buildAppLink,
+  buildIosAppUrl,
   buildShareUrl,
   resolveInviteField,
 } from "./domain/invite";
@@ -433,12 +434,19 @@ export function LiveApp({
     return <LoadingGameShell inShell={inShell} />;
   }
   if (state.phase === "needs-auth") {
-    // A signed-out invitee on iOS may already have the app. Universal Links do not fire for a
-    // same-domain Safari tap or an in-app browser (Discord), which is exactly where this page
-    // loads, so offer the crossy:// handoff as a button: one tap into the app, where Sign in with
-    // Apple is native and the invite survives it (iOS ArrivalRootView). Everyone else signs in on
-    // the web below. Null off iOS or without a code, so no dead deep link is ever rendered.
-    const appLink = isAppleMobile(navigator.userAgent, navigator.maxTouchPoints)
+    // A signed-out invitee on iOS almost never has the app: it is TestFlight-only in the beta era,
+    // so install-first is the honest default. Lead with "Get the Crossy app", routing to the /ios
+    // install page (which stays in the browser, since /ios is not an app-claimed Universal Link
+    // path) and carrying the code so that page can offer a re-entry link once installed. The
+    // crossy:// deep link is demoted to the quiet "already have it" escape hatch: Universal Links
+    // do not fire for a same-domain Safari tap or an in-app browser (Discord), which is exactly
+    // where this page loads, so an existing user needs the custom scheme to reach the app they
+    // already installed. Everyone else signs in on the web below. The install button shows for
+    // every iOS visitor; the deep link stays null without a code, hiding only the "already have it"
+    // link (never a dead one), and off iOS the whole block is absent.
+    const isIos = isAppleMobile(navigator.userAgent, navigator.maxTouchPoints);
+    const iosUrl = buildIosAppUrl({ code: params.get("code") });
+    const appLink = isIos
       ? buildAppLink({
           gameId,
           code: params.get("code"),
@@ -469,21 +477,32 @@ export function LiveApp({
           <Divider className="m-0" />
           <div className="bg-panel px-6 py-5">
             <div className="mx-auto max-w-[18rem]">
-              {appLink !== null && (
+              {isIos && (
                 <div className="mb-4 flex flex-col gap-2.5">
+                  {/* Hero: install-first. The one gold CTA, the clear primary within the ticket. */}
                   <Button
                     asChild
-                    variant="secondary"
+                    variant="default"
                     size="lg"
                     className="w-full"
                   >
-                    <a href={appLink}>Open in the Crossy app</a>
+                    <a href={iosUrl}>Get the Crossy app</a>
                   </Button>
-                  {/* The system's dashed rule carries the fork: open the app, or continue here. */}
-                  <div className="flex items-center gap-3" aria-hidden>
+                  {/* Quiet escape hatch for people who already installed it (only when a code is
+                      present, so the crossy:// deep link is never dead). */}
+                  {appLink !== null && (
+                    <a
+                      href={appLink}
+                      className="text-1 text-text-subtle underline underline-offset-2 hover:text-text"
+                    >
+                      Already have the app? Open it
+                    </a>
+                  )}
+                  {/* The system's dashed rule carries the fork: get the app, or solve here. */}
+                  <div className="mt-1.5 flex items-center gap-3" aria-hidden>
                     <Divider className="m-0 flex-1" />
                     <span className="text-1 text-text-subtle">
-                      or continue on the web
+                      or solve on the web
                     </span>
                     <Divider className="m-0 flex-1" />
                   </div>

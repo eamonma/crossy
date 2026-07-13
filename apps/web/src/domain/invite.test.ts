@@ -1,7 +1,12 @@
 // Share/invite fallback logic (ROADMAP Phase 4 stopgap retirement). The API value is preferred
 // and the URL query param is the expand/contract fallback, so old invite links keep working.
 import { describe, expect, it } from "vitest";
-import { buildAppLink, buildShareUrl, resolveInviteField } from "./invite";
+import {
+  buildAppLink,
+  buildIosAppUrl,
+  buildShareUrl,
+  resolveInviteField,
+} from "./invite";
 
 describe("resolveInviteField (URL param fallback for the API fields)", () => {
   it("prefers the API value when present", () => {
@@ -51,5 +56,15 @@ describe("buildAppLink (crossy:// handoff for the signed-out iOS invite gate)", 
 
   it("returns null when there is no code, so the gate offers no dead deep link", () => {
     expect(buildAppLink({ gameId: "g-1", code: null })).toBeNull();
+  });
+});
+
+describe("buildIosAppUrl (the /ios install page, the first-class path for invitees)", () => {
+  it("carries the code so the install page can offer a re-entry link", () => {
+    expect(buildIosAppUrl({ code: "ABCD2345" })).toBe("/ios?code=ABCD2345");
+  });
+
+  it("returns the bare /ios when there is no code (still worth offering)", () => {
+    expect(buildIosAppUrl({ code: null })).toBe("/ios");
   });
 });

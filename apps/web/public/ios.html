@@ -32,6 +32,15 @@
           "data-platform",
           iOS ? "ios" : android ? "android" : "desktop",
         );
+        // An invite code in the query means the visitor tapped a Crossy invite
+        // and needs the app. Reveal invite affordances only for a valid code;
+        // anything else leaves the page exactly as it is with no code.
+        var code = new URLSearchParams(location.search).get("code");
+        if (code && /^[2-9A-HJ-NP-Z]{8}$/.test(code)) {
+          document.documentElement.setAttribute("data-invite", "");
+          var open = document.getElementById("open-game");
+          if (open) open.href = "https://crossy.ing/" + code;
+        }
       })();
     </script>
     <!-- Display serif (Harfang Pro), same Typekit kit the app shell loads. -->
@@ -152,6 +161,18 @@
       [data-platform="android"] .head p {
         display: block;
       }
+      /* Invite affordances: hidden by default, shown only when a valid code
+         is present AND we are on iOS, mirroring the .when-* gating above. */
+      .invite-context,
+      .invite-open {
+        display: none;
+      }
+      [data-invite][data-platform="ios"] .invite-context {
+        display: block;
+      }
+      [data-invite][data-platform="ios"] .invite-open {
+        display: inline-block;
+      }
       .btn {
         display: inline-flex;
         align-items: center;
@@ -232,10 +253,19 @@
       </div>
 
       <div class="when-ios">
+        <p class="invite-context">You're joining a game.</p>
         <a class="btn" href="https://testflight.apple.com/join/yMB29jXc"
           >Join the beta</a
         >
         <p class="hint">Opens in TestFlight.</p>
+        <!-- crossy.ing/<code> is an app-claimed Universal Link, so once the app
+             is installed, tapping it opens the app directly on the invited game
+             (and the iOS app carries the pending invite through sign-in). This
+             turns "re-tap your link" into one tap right on this page. The href
+             is set in the platform script from the validated code. -->
+        <a id="open-game" class="weblink invite-open" href="https://crossy.ing/"
+          >Already installed? Open your game</a
+        >
       </div>
 
       <div class="when-desktop">
