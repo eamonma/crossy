@@ -2,7 +2,9 @@
 // reconnect). A fake socket stands in for the browser API through the createSocket
 // injection, so no real socket or network is touched. The behavior under test is that
 // the transport resolves a fresh token before every hello (an expired token must never
-// wedge the reconnect loop) and stops deliberately when the provider returns null.
+// wedge the reconnect loop) and, under INV-11, reads a null token as a true sign-out
+// (deliberate stop) but a thrown resolution as a transient failure (drop into backoff
+// and retry the hello), never acting on a socket a successor has already replaced.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WsTransport } from "./wsTransport";
 
@@ -120,5 +122,107 @@ describe("ws transport token provider (PROTOCOL.md section 2 hello; section 7 re
     await flush();
     expect(sockets).toHaveLength(1);
     expect(onConnectionLost).not.toHaveBeenCalled();
+  });
+});
+
+/** A getToken whose resolutions are settled by the test, one deferred per call, so the
+ * suite can interleave a token landing with a socket having already been replaced. */
+function deferredTokens(): {
+  getToken: () => Promise<string | null>;
+  deferreds: Array<{
+    resolve: (token: string | null) => void;
+    reject: (reason: unknown) => void;
+  }>;
+} {
+  const deferreds: Array<{
+    resolve: (token: string | null) => void;
+    reject: (reason: unknown) => void;
+  }> = [];
+  const getToken = () =>
+    new Promise<string | null>((resolve, reject) => {
+      deferreds.push({ resolve, reject });
+    });
+  return { getToken, deferreds };
+}
+
+describe("INV-11: sessions outlive access tokens (a transient token failure is not a sign-out)", () => {
+  it("INV-11: a thrown token drops the socket into backoff and the retried hello lands, never a dead stop", async () => {
+    let call = 0;
+    const { sockets, transport, onConnectionLost } = makeTransport(() => {
+      call += 1;
+      return call === 1
+        ? Promise.reject(new Error("network blip mid-refresh"))
+        : Promise.resolve("token-after-retry");
+    });
+
+    transport.connect();
+    sockets[0]!.open();
+    await flush();
+
+    // The throw dropped the socket without a hello and without the deliberate 1000 code,
+    // so onclose ran the transport-drop path: the store hears the connection was lost.
+    expect(sockets[0]!.sent).toEqual([]);
+    expect(sockets[0]!.closedWith).not.toContain(1000);
+    expect(onConnectionLost).toHaveBeenCalledTimes(1);
+
+    // Backoff (0 ms for attempt 0) reconnects rather than leaving the game dead.
+    await flush();
+    expect(sockets).toHaveLength(2);
+
+    sockets[1]!.open();
+    await flush();
+    // The retry resolves a token and delivers the hello: the connection is alive again.
+    expect(helloToken(sockets[1]!.sent[0])).toBe("token-after-retry");
+  });
+
+  it("INV-11: a null token is a true sign-out: deliberate stop, no reconnect timer, no hello", async () => {
+    const { sockets, transport, onConnectionLost } = makeTransport(() =>
+      Promise.resolve(null),
+    );
+
+    transport.connect();
+    sockets[0]!.open();
+    await flush();
+
+    // Deliberate teardown: the 1000 close code, no hello frame.
+    expect(sockets[0]!.sent).toEqual([]);
+    expect(sockets[0]!.closedWith).toContain(1000);
+
+    // No reconnect is scheduled and the store is never told the connection was lost;
+    // letting timers run opens no successor socket.
+    await flush();
+    expect(sockets).toHaveLength(1);
+    expect(onConnectionLost).not.toHaveBeenCalled();
+  });
+
+  it("INV-11: a token resolving after a successor replaced the socket never acts on the stale socket", async () => {
+    const { getToken, deferreds } = deferredTokens();
+    const { sockets, transport } = makeTransport(getToken);
+
+    transport.connect();
+    sockets[0]!.open(); // sendHello(sockets[0]) now awaits deferreds[0]
+    await flush();
+    expect(deferreds).toHaveLength(1);
+
+    // The first socket drops before its token settles; onclose schedules a reconnect.
+    sockets[0]!.drop();
+    await flush(); // the 0 ms reconnect timer fires and opens the successor
+    expect(sockets).toHaveLength(2);
+
+    sockets[1]!.open(); // sendHello(sockets[1]) now awaits deferreds[1]
+    await flush();
+    expect(deferreds).toHaveLength(2);
+
+    // The stale socket's token finally rejects. The guard sees sockets[0] is no longer
+    // the live socket, so the successor is left untouched: not closed, still open.
+    deferreds[0]!.reject(new Error("network blip mid-refresh"));
+    await flush();
+    expect(sockets[1]!.closedWith).toEqual([]);
+    expect(sockets[1]!.readyState).toBe(1); // OPEN
+
+    // The live socket completes its own hello once its own token resolves.
+    deferreds[1]!.resolve("token-live");
+    await flush();
+    expect(helloToken(sockets[1]!.sent[0])).toBe("token-live");
   });
 });
