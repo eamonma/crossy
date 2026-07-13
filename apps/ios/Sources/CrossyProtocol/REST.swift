@@ -264,18 +264,29 @@ public struct CreateGameResponse: Sendable, Equatable, Codable {
 /// board. `puzzle` carries only INV-6-safe geometry plus the display `title`. Twin of
 /// `GameSummary` (apps/api/src/games/routes.ts).
 public struct GameSummary: Sendable, Equatable, Codable {
-    /// The INV-6-safe puzzle summary on a game row: geometry and display title only.
+    /// The INV-6-safe puzzle summary on a game row: geometry, display title, and the
+    /// black-square silhouette. `mask` is the puzzle's pattern only (§12): an array of
+    /// `rows` strings, each `cols` characters of `#` (block) and `.` (playable cell),
+    /// derived server-side from geometry and block positions, never the solution (no
+    /// letters, numbers, or circles; INV-6 holds). It is the face of the puzzle the
+    /// signed-in home paints per room.
     public struct PuzzleRef: Sendable, Equatable, Codable {
         public let puzzleId: String
         public let rows: Int
         public let cols: Int
         public let title: String?
+        /// The black-square silhouette, pattern only (§12). Always present and never null
+        /// on a current server; additive and optional on the wire (§14), so an older
+        /// server that predates the field, or a fixture that carries none, reads as empty
+        /// and the client falls back to the bare geometry lattice.
+        public let mask: [String]
 
-        public init(puzzleId: String, rows: Int, cols: Int, title: String?) {
+        public init(puzzleId: String, rows: Int, cols: Int, title: String?, mask: [String]) {
             self.puzzleId = puzzleId
             self.rows = rows
             self.cols = cols
             self.title = title
+            self.mask = mask
         }
 
         private enum CodingKeys: String, CodingKey {
@@ -283,6 +294,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
             case rows
             case cols
             case title
+            case mask
         }
 
         public init(from decoder: any Decoder) throws {
@@ -291,6 +303,9 @@ public struct GameSummary: Sendable, Equatable, Codable {
             rows = try container.decode(Int.self, forKey: .rows)
             cols = try container.decode(Int.self, forKey: .cols)
             title = try container.decode(String?.self, forKey: .title)
+            // Additive and optional (§14): an older server omits the mask, which reads as
+            // empty (the silhouette then falls back to the bare geometry lattice).
+            mask = try container.decodeIfPresent([String].self, forKey: .mask) ?? []
         }
 
         public func encode(to encoder: any Encoder) throws {
@@ -299,6 +314,7 @@ public struct GameSummary: Sendable, Equatable, Codable {
             try container.encode(rows, forKey: .rows)
             try container.encode(cols, forKey: .cols)
             try container.encode(title, forKey: .title)
+            try container.encode(mask, forKey: .mask)
         }
     }
 

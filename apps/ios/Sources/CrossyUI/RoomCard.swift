@@ -50,6 +50,11 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
     public let puzzleTitle: String?
     public let rows: Int
     public let cols: Int
+    /// The puzzle's black-square silhouette, pattern only (PROTOCOL.md §12): rows of
+    /// `#`/`.`, painted as the card's face by `PuzzleSilhouetteView`. Empty from an older
+    /// server that predates the field (§14) or a fixture that carries none, which falls
+    /// back to the bare geometry lattice. INV-6-safe (no letters, numbers, or solution).
+    public let mask: [String]
     public let memberCount: Int
     /// The creator's user id: the one member the list row names, so the one honest
     /// person-color the card can carry.
@@ -93,7 +98,11 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
 
     public init(
         gameId: String, name: String?, puzzleTitle: String?,
-        rows: Int, cols: Int, memberCount: Int, createdBy: String,
+        rows: Int, cols: Int,
+        // No default, the members/inviteCode lesson: a construction site must decide the
+        // silhouette explicitly rather than silently ship a room that renders no face.
+        mask: [String],
+        memberCount: Int, createdBy: String,
         createdAt: String, completedAt: String?, lastActivityAt: String?,
         // No default: a construction site must decide the stack explicitly (the
         // RosterMember avatar lesson; a silent [] shipped the island without avatars).
@@ -108,6 +117,7 @@ public struct RoomCardModel: Identifiable, Equatable, Sendable {
         self.puzzleTitle = puzzleTitle
         self.rows = rows
         self.cols = cols
+        self.mask = mask
         self.memberCount = memberCount
         self.createdBy = createdBy
         self.createdAt = createdAt
@@ -210,7 +220,8 @@ public struct RoomCard: View {
 
     public var body: some View {
         HStack(spacing: 14) {
-            GeometryFingerprintView(rows: model.rows, cols: model.cols, ground: ground)
+            PuzzleSilhouetteView(
+                rows: model.rows, cols: model.cols, mask: model.mask, ground: ground)
                 .frame(width: 52, height: 52)
                 .opacity(model.isSolved ? Self.solvedFingerprintOpacity : 1)
 
@@ -225,7 +236,9 @@ public struct RoomCard: View {
                         .foregroundStyle(Color(rgb: ground.tokens.number))
                         .lineLimit(1)
                 }
-                dots
+                MemberDotsRow(
+                    memberCount: model.memberCount, createdBy: model.createdBy, ground: ground)
+                    .padding(.top, 2)
             }
             Spacer(minLength: 0)
         }
@@ -238,19 +251,80 @@ public struct RoomCard: View {
                         .strokeBorder(Color(rgb: ground.tokens.gridLine), lineWidth: 1))
         )
     }
+}
 
-    /// Member dots. The list row names one member (the creator), so one dot carries
-    /// that person's roster color and the rest stay quiet; painting invented colors
-    /// on unknown members would be dressing (people are the only color, and only
-    /// real people earn it).
-    private var dots: some View {
-        let (count, overflow) = RoomCardDots.counts(memberCount: model.memberCount)
+/// A featured room card (EXPERIENCE.md §3 Rooms): the same paper card grammar as
+/// `RoomCard`, stood up vertically so the silhouette leads as a large face, the way the
+/// web home leads its live rooms with a real grid (Home.tsx). The screen renders the few
+/// most-recently-active live rooms this way (a 2x2 wall, RoomsScreen), the rest and the
+/// solved rooms as the compact `RoomCard`. Featured rooms are live by construction (the
+/// screen never features a solved room), so no muted-silhouette branch here. Paper, not
+/// glass (DESIGN.md §1: a scrolling list is content); people are the only color.
+public struct FeaturedRoomCard: View {
+    private let model: RoomCardModel
+    private let ground: GridGround
+
+    public init(model: RoomCardModel, ground: GridGround) {
+        self.model = model
+        self.ground = ground
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PuzzleSilhouetteView(
+                rows: model.rows, cols: model.cols, mask: model.mask, ground: ground)
+                // A square face fits the common 15x15 exactly and centers an oblong grid
+                // (the silhouette's layout keeps true aspect, so a 21x21 or a mini stays
+                // honest inside the square). It fills the card's width, the featured card's
+                // whole point: the puzzle read large.
+                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: .infinity)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verbatim: model.headline)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    .lineLimit(1)
+                MemberDotsRow(
+                    memberCount: model.memberCount, createdBy: model.createdBy, ground: ground)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(rgb: ground.tokens.cell))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color(rgb: ground.tokens.gridLine), lineWidth: 1))
+        )
+    }
+}
+
+/// Member dots, shared by the compact and featured cards. The list row names one member
+/// (the creator), so one dot carries that person's roster color and the rest stay quiet;
+/// painting invented colors on unknown members would be dressing (people are the only
+/// color, and only real people earn it). The +N overflow speaks the count-badge
+/// vocabulary the board already speaks (root DESIGN.md §10).
+public struct MemberDotsRow: View {
+    private let memberCount: Int
+    private let createdBy: String
+    private let ground: GridGround
+
+    public init(memberCount: Int, createdBy: String, ground: GridGround) {
+        self.memberCount = memberCount
+        self.createdBy = createdBy
+        self.ground = ground
+    }
+
+    public var body: some View {
+        let (count, overflow) = RoomCardDots.counts(memberCount: memberCount)
         return HStack(spacing: 5) {
             ForEach(0..<count, id: \.self) { index in
                 Circle()
                     .fill(
                         index == 0
-                            ? Color(rgb: ground.rosterColor(IdentityRoster.color(for: model.createdBy)))
+                            ? Color(rgb: ground.rosterColor(IdentityRoster.color(for: createdBy)))
                             : Color(rgb: ground.tokens.number).opacity(0.45)
                     )
                     .frame(width: 8, height: 8)
@@ -261,6 +335,5 @@ public struct RoomCard: View {
                     .foregroundStyle(Color(rgb: ground.tokens.number))
             }
         }
-        .padding(.top, 2)
     }
 }
