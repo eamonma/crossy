@@ -65,6 +65,12 @@ export interface TurningPoint {
   readonly burst: number;
 }
 
+/** One replay step: a cell and the relative second it went correct. Cells and numbers only (INV-6). */
+export interface SequenceStep {
+  readonly cell: number;
+  readonly atSeconds: number;
+}
+
 /**
  * Project the write log to the solve trace (scheme 1). Events are walked in ascending seq
  * order (sorted defensively, as firstCorrect does); the first matching write to a solution
@@ -228,4 +234,18 @@ export function moments(trace: readonly TraceEntry[]): {
   }
 
   return { firstToFall, lastSquare, turningPoint };
+}
+
+/**
+ * The solve replay's foundation: the ordered "who fell when" as { cell, atSeconds }, sorted
+ * ascending by (at, seq) and timed relative to the solve's start (t0 = min(at)). at-driven, not
+ * an echo of trace order: clock skew across writers can put a later-seq fill at an earlier at.
+ * No userId (INV-6): the client reads the owner from the bundle's owners map. Empty trace -> [].
+ */
+export function solveSequence(trace: readonly TraceEntry[]): SequenceStep[] {
+  if (trace.length === 0) return [];
+  let t0 = Infinity;
+  for (const entry of trace) if (entry.at < t0) t0 = entry.at;
+  const ordered = [...trace].sort((a, b) => a.at - b.at || a.seq - b.seq);
+  return ordered.map((e) => ({ cell: e.cell, atSeconds: (e.at - t0) / 1000 }));
 }
