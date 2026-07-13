@@ -141,7 +141,7 @@ struct NoSessionTokenProvider: BearerTokenProviding {
 /// A provider that separates the proactive token from the forced refresh, so the 401
 /// retry path is drivable: `currentToken()` serves the stale token the server will
 /// reject; `refreshedToken()` serves a fresh one (or throws when `refreshOutcome` is set
-/// to). Both call counts are recorded (locked, since the client may await off-main).
+/// to). Both call counts are recorded.
 @available(macOS 12.0, iOS 15.0, *)
 final class StaleThenFreshTokenProvider: BearerTokenProviding, @unchecked Sendable {
     enum RefreshOutcome {
@@ -152,7 +152,10 @@ final class StaleThenFreshTokenProvider: BearerTokenProviding, @unchecked Sendab
     let staleToken: String
     let refreshOutcome: RefreshOutcome
 
-    private let lock = NSLock()
+    // No lock: NSLock.lock()/unlock() are unavailable from the async provider methods
+    // under strict concurrency (Swift 6). This spy is driven sequentially within one task
+    // per test (currentToken, then a forced refreshedToken on a 401), so the counts never
+    // race; @unchecked Sendable carries that promise.
     private var currentCalls = 0
     private var refreshCalls = 0
 
@@ -161,26 +164,16 @@ final class StaleThenFreshTokenProvider: BearerTokenProviding, @unchecked Sendab
         self.refreshOutcome = refresh
     }
 
-    var currentTokenCallCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return currentCalls
-    }
-    var refreshedTokenCallCount: Int {
-        lock.lock(); defer { lock.unlock() }
-        return refreshCalls
-    }
+    var currentTokenCallCount: Int { currentCalls }
+    var refreshedTokenCallCount: Int { refreshCalls }
 
     func currentToken() async throws -> String {
-        lock.lock()
         currentCalls += 1
-        lock.unlock()
         return staleToken
     }
 
     func refreshedToken() async throws -> String {
-        lock.lock()
         refreshCalls += 1
-        lock.unlock()
         switch refreshOutcome {
         case .fresh(let token):
             return token
