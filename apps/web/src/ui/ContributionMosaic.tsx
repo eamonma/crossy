@@ -15,7 +15,7 @@
 // The reveal blooms INK -> FIELD along a diagonal sweep, holds the peak, then settles to WASH.
 // prefers-reduced-motion crosses straight to WASH with no sweep. Letters come only from board
 // state passed in (never a solution lookup), so this adds no data path (INV-6).
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { Puzzle } from "../domain/types";
 import {
   BLOOM_SPREAD_MS,
@@ -31,6 +31,12 @@ import {
 } from "./mosaicReveal";
 
 const CELL = 36;
+
+/** The on-screen letter color: the theme's ink token (light ground = near-black, dark ground = light),
+ * not the baked-in light-ground INK the share plate uses. The mosaic draws letters through this so the
+ * solved board stays legible on the dark ground; in dark mode a hardcoded INK would be near-black on a
+ * near-black cell. The share plate (spoiler-safe) hides letters entirely, so it never needs this. */
+const ONSCREEN_INK = "var(--letter)";
 
 /** A stable empty reveal map, so a non-replay render never hands the replay effect a fresh identity. */
 const EMPTY_REVEALED: ReadonlyMap<number, number> = new Map();
@@ -177,9 +183,16 @@ export function ContributionMosaic({
     behavior.kind === "replay" ? behavior.revealedAt : EMPTY_REVEALED;
   const revealedAtRef = useRef(revealedAt);
   revealedAtRef.current = revealedAt;
-  useEffect(() => {
+  // Whether this replay session has painted its first (snap) frame. Reset whenever replay stops, so
+  // the next entry snaps a fresh baseline.
+  const replayInitRef = useRef(false);
+  // A layout effect (pre-paint) so entering replay corrects the board before the browser paints,
+  // never a blank flash; the crossing fades still animate because the crossed cells were painted at
+  // their prior opacity last frame.
+  useLayoutEffect(() => {
     if (behavior.kind !== "replay" || replayTime === null) {
       revealedSetRef.current = new Set();
+      replayInitRef.current = false;
       return;
     }
     const cells = cellsRef.current;
@@ -187,30 +200,37 @@ export function ContributionMosaic({
     const prev = revealedSetRef.current;
     const next = new Set<number>();
     const wash = frameStyle("wash");
+    // On the first frame after entering replay, snap EVERY cell to its absolute state for the
+    // playhead with no transition, so the frame is a pure function of the time and never inherits
+    // whatever the board showed before scrubbing began (a settled wash, a held field, an earlier
+    // scrub spot). This is the path-dependence fix: previously a cell whose shown-state matched the
+    // empty baseline was skipped and kept its stale opacity, so one time could render solid, dimmed,
+    // or blank depending on history. After entry, only the cells whose shown-state flips get the calm
+    // ~250ms fade; the rest are already correct, so they are left untouched.
+    const initializing = !replayInitRef.current;
     for (const cell of cells) {
       const t = at.get(cell.index);
       const shown = t !== undefined && t <= replayTime;
       if (shown) next.add(cell.index);
-      // Only the cells whose shown-state flipped this frame get a transition; the rest are left
-      // exactly as they were, so a settled cell never restarts its fade as the head sweeps past
-      // later cells. A ~250ms calm fade in the forward direction (the important one); a backward
-      // scrub also fades, which reads fine.
-      if (shown === prev.has(cell.index)) continue;
+      const flipped = shown !== prev.has(cell.index);
+      if (!initializing && !flipped) continue;
+      const animate = !initializing;
       const rect = rectRefs.current.get(cell.index);
       const text = letterRefs.current.get(cell.index);
       if (rect) {
-        rect.style.transition = "opacity 250ms ease-out";
+        rect.style.transition = animate ? "opacity 250ms ease-out" : "none";
         rect.style.transitionDelay = "0ms";
         rect.style.opacity = String(shown ? wash.rectOpacity : 0);
       }
       if (text) {
-        text.style.transition = "opacity 250ms ease-out";
+        text.style.transition = animate ? "opacity 250ms ease-out" : "none";
         text.style.transitionDelay = "0ms";
-        text.style.fill = wash.letterFill;
+        text.style.fill = ONSCREEN_INK;
         text.style.opacity = String(shown ? wash.letterOpacity : 0);
       }
     }
     revealedSetRef.current = next;
+    replayInitRef.current = true;
   }, [behavior.kind, replayTime]);
 
   // The reveal: apply INK, then bloom each cell to FIELD on its diagonal delay, hold the peak,
@@ -243,7 +263,9 @@ export function ContributionMosaic({
           text.style.transition = animate ? "" : "none";
           text.style.transitionDelay = `${delay}ms`;
           text.style.opacity = String(f.letterOpacity);
-          text.style.fill = f.letterFill;
+          // On-screen letters ride the theme ink, not the baked light-ground INK, so the solved
+          // board stays legible on the dark ground. The field hides letters, so its fill is moot.
+          text.style.fill = ONSCREEN_INK;
         }
       }
     };
@@ -377,7 +399,7 @@ export function ContributionMosaic({
                 y={y + 32}
                 fontSize={24}
                 textAnchor="middle"
-                fill={staticFrame ? staticFrame.letterFill : "var(--letter)"}
+                fill={ONSCREEN_INK}
                 style={initialLetterStyle}
               >
                 {cell.letter}
