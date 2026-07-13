@@ -43,6 +43,11 @@ public enum ArrivalCopy {
     public static let welcomeLine = "Crosswords you solve together."
     public static let continueWithApple = "Continue with Apple"
     public static let continueWithDiscord = "Continue with Discord"
+    /// The two secondary methods (roadmap I3b), worded like the primary buttons. The
+    /// "Continue another way" sheet that shows them is a later wave; the strings live here
+    /// with the rest of the provider copy.
+    public static let continueWithHisbaan = "Continue with Hisbaan"
+    public static let continueWithEmail = "Continue with email"
     /// Auth failure returns here with a plain retry, never a dead end.
     public static let signInFailed = "Sign-in didn't finish. Try again."
     /// The honest unconfigured state: the plist slots are empty in this build.
@@ -136,6 +141,10 @@ public enum ArrivalCopy {
     /// The provider line beneath the name, or the fallback when none is remembered.
     public static let providerDiscord = "Discord"
     public static let providerApple = "Apple"
+    /// The two secondary sign-in methods (roadmap I3b): the custom OIDC provider and email
+    /// OTP / magic link. The Account screen names them the same way it names the others.
+    public static let providerHisbaan = "Hisbaan"
+    public static let providerEmail = "Email"
     public static let providerUnknown = "Signed in"
 
     /// The two-beat confirmation body (roadmap I3): the consequence stated plainly, so

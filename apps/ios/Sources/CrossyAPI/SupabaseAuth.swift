@@ -53,6 +53,14 @@ public struct SupabaseAuthConfiguration: Sendable, Equatable {
 public enum AuthProvider: String, Codable, Sendable, Equatable, CaseIterable {
     case discord
     case apple
+    /// The custom OIDC provider (roadmap I3b). Its raw value is exactly the `provider=`
+    /// query value GoTrue expects, so the same web-auth leg Discord rides serves it with
+    /// no branching; the colon is URL-encoded where it lands in a query.
+    case hisbaan = "custom:hisbaan"
+    /// Email OTP / magic link (roadmap I3b). No web-auth leg: the session arrives through
+    /// the two-step verify grant (or a magic-link verify), and this marker names it after
+    /// a relaunch. Raw value is GoTrue's own `email` provider string.
+    case emailOTP = "email"
 }
 
 /// One signed-in session as Supabase grants it and the Keychain stores it. Codable
@@ -102,21 +110,47 @@ public struct SupabaseAuthClient: Sendable {
 
     // MARK: - The authorize URL (the web sheet's destination)
 
-    /// `GET {auth}/authorize?provider=discord&...`: where ASWebAuthenticationSession
-    /// navigates. Pure construction, pinned in tests against the configured origin
-    /// verbatim (the issuer-trap posture: no origin rewriting anywhere).
-    public func authorizeURL(codeChallenge: String) -> URL {
+    /// `GET {auth}/authorize?provider=<provider>&...`: where ASWebAuthenticationSession
+    /// navigates. The provider is the raw value verbatim, with its reserved characters
+    /// percent-encoded so `custom:hisbaan` rides as `custom%3Ahisbaan` (URLComponents leaves
+    /// a bare colon in a query value, which some proxies mis-split; the encoded form is the
+    /// contract). Only the provider value is re-encoded; every other item keeps the encoding
+    /// URLComponents already gave it, so the Discord leg is byte-identical to before. Pure
+    /// construction, pinned in tests against the configured origin verbatim (the issuer-trap
+    /// posture: no origin rewriting anywhere). Defaults to Discord so the existing
+    /// single-provider callers are unchanged.
+    public func authorizeURL(
+        provider: AuthProvider = .discord, codeChallenge: String
+    ) -> URL {
         var components = URLComponents(
             url: configuration.authBaseURL.appendingPathComponent("authorize"),
             resolvingAgainstBaseURL: false)!
         components.queryItems = [
-            URLQueryItem(name: "provider", value: "discord"),
+            URLQueryItem(name: "provider", value: provider.rawValue),
             URLQueryItem(name: "redirect_to", value: configuration.redirectURL.absoluteString),
             URLQueryItem(name: "code_challenge", value: codeChallenge),
             URLQueryItem(name: "code_challenge_method", value: "s256"),
         ]
+        // Force reserved characters out of the provider value only (chiefly the ":" in
+        // `custom:hisbaan`), leaving the rest exactly as URLComponents encoded them. The
+        // value still decodes back to the raw provider on the server's side.
+        components.percentEncodedQueryItems = (components.percentEncodedQueryItems ?? []).map {
+            item in
+            guard item.name == "provider" else { return item }
+            let encoded = provider.rawValue.addingPercentEncoding(
+                withAllowedCharacters: Self.providerValueAllowed) ?? provider.rawValue
+            return URLQueryItem(name: item.name, value: encoded)
+        }
         return components.url!
     }
+
+    /// The query-value character set minus the reserved characters we force-encode in the
+    /// `provider` value (the ":" of `custom:hisbaan` above all).
+    private static let providerValueAllowed: CharacterSet = {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: ":/?#[]@!$&'()*+,;=")
+        return allowed
+    }()
 
     /// The `code` out of the OAuth callback URL, or nil (a provider error lands as
     /// `error`/`error_description` query items and carries no code).
@@ -159,6 +193,44 @@ public struct SupabaseAuthClient: Sendable {
             now: now)
     }
 
+    // MARK: - Email OTP / magic link (roadmap I3b)
+
+    /// `POST {auth}/otp`: ask GoTrue to send the email code (and the magic link). No
+    /// session comes back here, only a send acknowledgement, so the caller gets a bare
+    /// throw-or-return over the same error taxonomy as the grants (`refused` on 4xx,
+    /// weather otherwise). `create_user` mints an account on first sight, so a new email
+    /// signs in rather than dead-ending.
+    public func sendEmailOTP(email: String) async throws {
+        _ = try await post(
+            path: "otp",
+            body: try? JSONEncoder().encode(SendOTPBody(email: email, createUser: true)))
+    }
+
+    /// `POST {auth}/verify`: exchange the emailed code for a session (the second step of
+    /// the OTP flow). Same decode and error taxonomy as the token grants.
+    public func verifyEmailOTP(
+        email: String, token: String, now: Date = Date()
+    ) async throws -> SupabaseSession {
+        let data = try await post(
+            path: "verify",
+            body: try? JSONEncoder().encode(
+                ["type": "email", "email": email, "token": token]))
+        return try Self.session(from: data, now: now)
+    }
+
+    /// `POST {auth}/verify`: complete a magic link by its `token_hash`. `type` is the link's
+    /// own type (`magiclink`, `email`, ...), passed through verbatim from the callback. Same
+    /// decode and error taxonomy as the token grants. A later wave wires CrossyApp to route
+    /// the universal link here.
+    public func verifyEmailLink(
+        tokenHash: String, type: String, now: Date = Date()
+    ) async throws -> SupabaseSession {
+        let data = try await post(
+            path: "verify",
+            body: try? JSONEncoder().encode(["type": type, "token_hash": tokenHash]))
+        return try Self.session(from: data, now: now)
+    }
+
     /// `PUT {auth}/user`: push the Apple full name into GoTrue's user metadata, which the
     /// API mirrors to the display name. Best-effort by design, mirroring signOut(): it
     /// never throws, because a name push must never fail a sign-in. True on a 2xx.
@@ -194,6 +266,16 @@ public struct SupabaseAuthClient: Sendable {
 
     // MARK: - Plumbing
 
+    private struct SendOTPBody: Encodable {
+        let email: String
+        let createUser: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case email
+            case createUser = "create_user"
+        }
+    }
+
     private struct TokenResponse: Decodable {
         let accessToken: String
         let refreshToken: String
@@ -217,16 +299,31 @@ public struct SupabaseAuthClient: Sendable {
     private func grant(
         _ grantType: String, body: [String: String], now: Date
     ) async throws -> SupabaseSession {
+        let data = try await post(
+            path: "token",
+            query: [URLQueryItem(name: "grant_type", value: grantType)],
+            body: try? JSONEncoder().encode(body))
+        return try Self.session(from: data, now: now)
+    }
+
+    /// The shared POST leg for every JSON auth call: the apikey header, the body, and the
+    /// one error taxonomy (`refused` on a 4xx grant refusal, `invalidResponse` for 5xx and
+    /// undecodable frames, `transport` for network weather). Returns the raw 2xx body for
+    /// the caller to decode (or ignore, for the send-only `otp` leg). 408/429 stay in the
+    /// transient lane: the limiter answered, not the grant evaluator.
+    private func post(
+        path: String, query: [URLQueryItem]? = nil, body: Data?
+    ) async throws -> Data {
         var components = URLComponents(
-            url: configuration.authBaseURL.appendingPathComponent("token"),
+            url: configuration.authBaseURL.appendingPathComponent(path),
             resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "grant_type", value: grantType)]
+        components.queryItems = query
 
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(body)
+        request.httpBody = body
 
         let data: Data
         let response: URLResponse
@@ -249,8 +346,14 @@ public struct SupabaseAuthClient: Sendable {
             }
             throw SupabaseAuthError.invalidResponse(status: http.statusCode)
         }
+        return data
+    }
+
+    /// Decode a token-grant body (the `token` and `verify` legs share it) into a session.
+    /// An undecodable 2xx body is `invalidResponse`, the same verdict a malformed grant got.
+    private static func session(from data: Data, now: Date) throws -> SupabaseSession {
         guard let decoded = try? JSONDecoder().decode(TokenResponse.self, from: data) else {
-            throw SupabaseAuthError.invalidResponse(status: http.statusCode)
+            throw SupabaseAuthError.invalidResponse(status: nil)
         }
         // expires_at when the server sends it, else derived from expires_in against
         // the injected clock (older GoTrue omits the absolute form).

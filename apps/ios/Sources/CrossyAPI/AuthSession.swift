@@ -96,12 +96,16 @@ public final class AuthSession {
         return AuthProvider(rawValue: raw)
     }
 
-    /// The full sign-in leg: PKCE pair, the web sheet, the code exchange, persist.
-    /// Every exit is a machine event, so the UI's routing follows the phase alone.
-    public func signIn() async {
+    /// The full OAuth-redirect sign-in leg: PKCE pair, the web sheet, the code exchange,
+    /// persist. Every exit is a machine event, so the UI's routing follows the phase alone.
+    /// Discord and hisbaan ride the identical path (hisbaan is a custom OIDC provider on the
+    /// same GoTrue authorize flow); the only difference is the `provider=` value in the
+    /// authorize URL and the marker recorded on success.
+    public func signIn(provider: AuthProvider = .discord) async {
         guard machine.apply(.signInStarted) else { return }
         let verifier = PKCE.verifier()
-        let url = client.authorizeURL(codeChallenge: PKCE.challenge(for: verifier))
+        let url = client.authorizeURL(
+            provider: provider, codeChallenge: PKCE.challenge(for: verifier))
         do {
             let callback = try await web.authenticate(
                 url: url, callbackScheme: client.configuration.callbackScheme)
@@ -109,7 +113,7 @@ public final class AuthSession {
             else { throw SupabaseAuthError.invalidCallback }
             let session = try await client.exchangeCode(code, verifier: verifier, now: now())
             persist(session)
-            recordProvider(.discord)
+            recordProvider(provider)
             machine.apply(.signInCompleted)
         } catch WebAuthenticationError.canceled {
             machine.apply(.signInCanceled)
@@ -160,6 +164,52 @@ public final class AuthSession {
             refreshToken: session.refreshToken, now: now())
         else { return }
         persist(refreshed)
+    }
+
+    // MARK: - Email OTP / magic link (roadmap I3b)
+
+    /// Step one of the email OTP flow: ask the server to send the code (and the magic link).
+    /// No phase change here; a later sheet owns the local sub-state (code entry, resend). The
+    /// error rides straight through so the sheet can say what went wrong.
+    public func sendEmailOTP(email: String) async throws {
+        try await client.sendEmailOTP(email: email)
+    }
+
+    /// Step two of the email OTP flow: verify the entered code. Walks the same machine as
+    /// the other sign-in legs (`.authenticating` -> `.signedIn` on success, `-> .failed` on
+    /// a bad code), so the routing is provider-blind. On success persist, remember the
+    /// provider, and complete; on failure return to the failed state and rethrow so the
+    /// sheet can render the inline reason too.
+    public func verifyEmailOTP(email: String, code: String) async throws {
+        guard machine.apply(.signInStarted) else { return }
+        do {
+            let session = try await client.verifyEmailOTP(
+                email: email, token: code, now: now())
+            persist(session)
+            recordProvider(.emailOTP)
+            machine.apply(.signInCompleted)
+        } catch {
+            machine.apply(.signInFailed)
+            throw error
+        }
+    }
+
+    /// Complete a magic link by its `token_hash` (roadmap I3b). Identical to verifyEmailOTP
+    /// but through the link-verify grant; a later wave wires CrossyApp's universal-link
+    /// route to call this. Drives `.authenticating` -> `.signedIn`, persists, and remembers
+    /// the email provider.
+    public func completeMagicLink(tokenHash: String, type: String) async throws {
+        guard machine.apply(.signInStarted) else { return }
+        do {
+            let session = try await client.verifyEmailLink(
+                tokenHash: tokenHash, type: type, now: now())
+            persist(session)
+            recordProvider(.emailOTP)
+            machine.apply(.signInCompleted)
+        } catch {
+            machine.apply(.signInFailed)
+            throw error
+        }
     }
 
     /// Sign out: revoke best-effort, clear the Keychain, drop the session. Local

@@ -91,7 +91,7 @@ final class RealArrivalSession: ArrivalSessioning {
     var tokenProvider: any BearerTokenProviding { auth }
     var userId: String? { auth.userId }
     var authProvider: AuthProvider? { auth.provider }
-    func signIn() async { await auth.signIn() }
+    func signIn() async { await auth.signIn(provider: .discord) }
     func signInWithApple() async { await auth.signInWithApple() }
     func signOut() async { await auth.signOut() }
 
@@ -667,6 +667,8 @@ final class ArrivalModel {
         switch provider {
         case .discord: return ArrivalCopy.providerDiscord
         case .apple: return ArrivalCopy.providerApple
+        case .hisbaan: return ArrivalCopy.providerHisbaan
+        case .emailOTP: return ArrivalCopy.providerEmail
         case nil: return ArrivalCopy.providerUnknown
         }
     }
