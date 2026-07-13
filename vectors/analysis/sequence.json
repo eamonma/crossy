@@ -1,0 +1,90 @@
+[
+  {
+    "name": "a multi-fill trace becomes the ordered who-fell-when, first at zero seconds",
+    "intent": "solveSequence maps each trace entry to {cell, atSeconds} with atSeconds = (at - t0)/1000, t0 = min(at). Strictly increasing at yields the entries in order, the first at 0. INV-6: cells and times only, no userId.",
+    "given": {
+      "trace": [
+        { "cell": 0, "userId": "u1", "seq": 1, "at": 0 },
+        { "cell": 1, "userId": "u2", "seq": 2, "at": 4000 },
+        { "cell": 2, "userId": "u3", "seq": 3, "at": 11000 },
+        { "cell": 3, "userId": "u1", "seq": 4, "at": 27500 },
+        { "cell": 4, "userId": "u2", "seq": 5, "at": 42000 }
+      ]
+    },
+    "then": {
+      "sequence": [
+        { "cell": 0, "atSeconds": 0 },
+        { "cell": 1, "atSeconds": 4 },
+        { "cell": 2, "atSeconds": 11 },
+        { "cell": 3, "atSeconds": 27.5 },
+        { "cell": 4, "atSeconds": 42 }
+      ]
+    }
+  },
+  {
+    "name": "two fills at the same instant order by ascending seq",
+    "intent": "An (at, seq) tie breaks by ascending seq: cell 8 (seq 2) precedes cell 9 (seq 3) though both share at 6000. Pins the secondary sort key.",
+    "given": {
+      "trace": [
+        { "cell": 7, "userId": "u1", "seq": 1, "at": 0 },
+        { "cell": 8, "userId": "u2", "seq": 2, "at": 6000 },
+        { "cell": 9, "userId": "u3", "seq": 3, "at": 6000 }
+      ]
+    },
+    "then": {
+      "sequence": [
+        { "cell": 7, "atSeconds": 0 },
+        { "cell": 8, "atSeconds": 6 },
+        { "cell": 9, "atSeconds": 6 }
+      ]
+    }
+  },
+  {
+    "name": "the sequence re-sorts on at, not on trace order, when clock skew crosses seq order",
+    "intent": "THE KEY CASE. The trace arrives seq-ordered but a later-seq entry carries an earlier at (clock skew across writers). solveSequence sorts by (at, seq), so the output is who-fell-when by at, not an echo of trace order. t0 = min(at) = 5000; the seq-1 fill (at 20000) lands third, not first.",
+    "given": {
+      "trace": [
+        { "cell": 10, "userId": "u1", "seq": 1, "at": 20000 },
+        { "cell": 11, "userId": "u2", "seq": 2, "at": 5000 },
+        { "cell": 12, "userId": "u3", "seq": 3, "at": 35000 },
+        { "cell": 13, "userId": "u1", "seq": 4, "at": 12000 }
+      ]
+    },
+    "then": {
+      "sequence": [
+        { "cell": 11, "atSeconds": 0 },
+        { "cell": 13, "atSeconds": 7 },
+        { "cell": 10, "atSeconds": 15 },
+        { "cell": 12, "atSeconds": 30 }
+      ]
+    }
+  },
+  {
+    "name": "a single-instant solve is all zero seconds, ordered by seq",
+    "intent": "Every entry shares one at (tEnd == t0), so every atSeconds is 0 and the (at, seq) sort falls entirely to seq. Mirrors the single-instant parity the other projections pin.",
+    "given": {
+      "trace": [
+        { "cell": 3, "userId": "u2", "seq": 2, "at": 9000 },
+        { "cell": 1, "userId": "u1", "seq": 1, "at": 9000 },
+        { "cell": 2, "userId": "u3", "seq": 3, "at": 9000 }
+      ]
+    },
+    "then": {
+      "sequence": [
+        { "cell": 1, "atSeconds": 0 },
+        { "cell": 3, "atSeconds": 0 },
+        { "cell": 2, "atSeconds": 0 }
+      ]
+    }
+  },
+  {
+    "name": "an empty trace is an empty sequence",
+    "intent": "No fills means no order to project; solveSequence returns []. Mirrors the empty-trace parity momentum and moments pin.",
+    "given": {
+      "trace": []
+    },
+    "then": {
+      "sequence": []
+    }
+  }
+]

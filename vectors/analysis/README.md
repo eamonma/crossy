@@ -1,24 +1,25 @@
 # Post-game analysis vectors
 
-Status: **data-only, ahead of the engine.** These fixtures pin three NEW engine projections,
-`solveTrace`, `momentum`, and `moments`, before they are implemented. Vectors are written
-before implementations (CLAUDE.md, PROTOCOL.md section 13). The consuming test and the engine
-functions land in a later PR; nothing globs this directory yet.
+Status: **data-only, ahead of the engine.** These fixtures pin four NEW engine projections,
+`solveTrace`, `momentum`, `moments`, and `solveSequence`, before they are implemented. Vectors
+are written before implementations (CLAUDE.md, PROTOCOL.md section 13). The consuming test and
+the engine functions land in a later PR; nothing globs this directory yet.
 
 Precedence when sources disagree: these vectors, then PROTOCOL.md, then any implementation.
 Companion design: `design/post-game/ANALYSIS.md`.
 
 ## The projections
 
-The three read one thing, the **solve trace**: for each cell, the first-correct event's
-`{ cell, userId, seq, at }`. `solveTrace` builds it; `momentum` and `moments` read it. They are
-tested independently, so `momentum` and `moments` take a trace directly as `given.trace` rather
-than recomputing it from events.
+All read one thing, the **solve trace**: for each cell, the first-correct event's
+`{ cell, userId, seq, at }`. `solveTrace` builds it; `momentum`, `moments`, and `solveSequence`
+read it. They are tested independently, so the reader projections take a trace directly as
+`given.trace` rather than recomputing it from events.
 
 ```
 solveTrace(events, solution) -> trace                         // ordered by seq ascending
 momentum(trace)              -> { durationSeconds, samples }  // samples length N = 40
 moments(trace)               -> { firstToFall, lastSquare, turningPoint }
+solveSequence(trace)         -> [{ cell, atSeconds }]         // sorted by (at, seq) ascending
 ```
 
 ### Time and constants
@@ -66,20 +67,37 @@ magic number.
   with `at` in `[breakAt, breakAt + BURST_WINDOW]`. `null` when the trace has fewer than two
   entries.
 
+### solveSequence
+
+The replay's foundation: the ordered "who fell when," each cell with the relative second it went
+correct. Read by the engine's `solveSequence` (arriving next), consumed by the post-game solve
+replay (`design/post-game/REPLAY.md`).
+
+- `given.trace`: the solve trace (seq-ordered), each `{ cell, userId, seq, at }`.
+- `sequence` (`{ cell, atSeconds }[]`): every trace entry as `{ cell, atSeconds }`, sorted
+  **ascending by `(at, seq)`**: primarily by `at`, ties broken by `seq`. `atSeconds = (at - t0) /
+1000`, `t0 = min(at)`, so the first entry is `0`. The order is `at`-driven, the same clock
+  `momentum` and `moments` use: it re-sorts on `at` and does not merely echo the trace's seq
+  order, since clock skew across writers can put a later-seq fill at an earlier `at`. `[]` for an
+  empty trace. INV-6-safe by shape: cells and times only, no `userId` (the client reads the owner
+  from the bundle's `owners` map).
+
 ## Why a separate family, not under `v1/`
 
 `vectors/v1/` is a closed registry whose runner throws on an unrecognized family. These pin
 not-yet-implemented engine projections, so this family sits at the top level where the `v1/`
 runner never globs it, exactly as `vectors/first-correct/` does. A future PR adopts these files
-with a narrow reader (`resolve(here, "../../../vectors/analysis")`).
+with a narrow reader (`resolve(here, "../../../vectors/analysis")`). `sequence.json` is adopted
+the same way the other three are, a fourth `describe` block over `solveSequence` in that reader.
 
 ## INV-6
 
 Every output carries userIds, cell indices, and numbers only, never a solution value.
 `given.solution` in `solve-trace.json` MAY carry the answer grid because the vectors tree is
 repo-and-server-only and never shipped to a client (as `vectors/first-correct/README.md` notes
-for its own grids). `momentum` and `moments` take a valueless trace, so their fixtures never even
-name a solution.
+for its own grids). `momentum`, `moments`, and `solveSequence` take a valueless trace, so their
+fixtures never even name a solution, and `solveSequence` drops the `userId` too: its output is
+cells and times only.
 
 ## Layout
 
@@ -89,6 +107,7 @@ vectors/
     solve-trace.json   first-correct events retained with timing; scheme-1 immunity keeps first at
     momentum.json      bucketing and peak-normalization of the tempo samples (N = 40)
     moments.json       first / last by at (seq tie-break), and the largest-gap turning point
+    sequence.json      the ordered who-fell-when: each cell with atSeconds, sorted by (at, seq)
 ```
 
 One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (matches `v1/`,
@@ -105,6 +124,6 @@ One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (
 }
 ```
 
-`solve-trace.json` cases carry `given.solution` and `given.events`; `momentum.json` and
-`moments.json` cases carry `given.trace`. All times in `given` are epoch ms; all reported times
-in `then` are relative seconds.
+`solve-trace.json` cases carry `given.solution` and `given.events`; `momentum.json`,
+`moments.json`, and `sequence.json` cases carry `given.trace`. All times in `given` are epoch ms;
+all reported times in `then` are relative seconds.
