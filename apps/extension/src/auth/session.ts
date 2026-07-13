@@ -21,6 +21,13 @@ export interface StoredSession {
   readonly refreshToken: string;
   /** Epoch seconds. */
   readonly expiresAt: number;
+  /**
+   * The Supabase user id (`user.id`), read from the token response, never decoded
+   * from the JWT (this stays a bearer holder). It is the account-identity key: the
+   * extension's own session is aligned with the web app iff this matches the web
+   * session's user id. Null only when a token response omits the user object.
+   */
+  readonly userId: string | null;
   readonly email: string | null;
   readonly displayName: string;
 }
@@ -29,7 +36,7 @@ export interface StoredSession {
 const APPLE_PRIVATE_RELAY_SUFFIX = "@privaterelay.appleid.com";
 
 /** Derive a display name from provider metadata, mirroring apps/web's fallbacks. */
-function displayNameOf(user: Record<string, unknown>): string {
+export function displayNameOf(user: Record<string, unknown>): string {
   const meta =
     typeof user["user_metadata"] === "object" && user["user_metadata"] !== null
       ? (user["user_metadata"] as Record<string, unknown>)
@@ -76,11 +83,13 @@ export function sessionFromTokenResponse(
       ? (r["user"] as Record<string, unknown>)
       : {};
   const email = typeof user["email"] === "string" ? user["email"] : null;
+  const userId = typeof user["id"] === "string" ? user["id"] : null;
 
   return {
     accessToken,
     refreshToken,
     expiresAt,
+    userId,
     email,
     displayName: displayNameOf(user),
   };
