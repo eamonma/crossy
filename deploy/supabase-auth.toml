@@ -1,0 +1,78 @@
+# Supabase auth session policy: config-as-code (audited snapshot)
+#
+# WHY THIS FILE EXISTS
+# The Supabase auth (GoTrue) session policy governs how long a signed-in web
+# session survives. None of it was in the repo: it lived only in the Supabase
+# dashboard, unversioned and invisible to review. Per CLAUDE.md (config-as-code:
+# server config lives in the repo; a dashboard-only setting is a defect) this
+# file records the actual, audited values so a change to session lifetime is a
+# reviewable diff.
+#
+# THIS FILE IS A RECORD, NOT AN APPLIER.
+# Nothing in the pipeline reads or pushes it. The project is not managed by the
+# Supabase CLI (no `supabase/` dir, no `config.toml`, CLI not installed); it is
+# provisioned per deploy/README.md (Railway + the Supabase Management API /
+# dashboard). Changing a value here does NOT change the server. To change the
+# server, land the edit here in a reviewed PR, then the owner applies the same
+# value via the Management API (see deploy/README.md "Supabase auth session
+# policy"). This mirrors the rest of deploy/: repo code that documents and
+# verifies but performs no account mutation on its own.
+#
+# PROVENANCE
+#   project ref : qvnvokstvbarsxhufrja   (name "Crossy", region us-east-1)
+#   org         : niecljgvkxpsoiuoicyw   (plan: pro)
+#   audited     : 2026-07-13
+#   source      : GET https://api.supabase.com/v1/projects/qvnvokstvbarsxhufrja/config/auth
+#   keys below use the Supabase CLI config.toml schema
+#               (https://supabase.com/docs/guides/local-development/cli/config);
+#               each line notes the Management-API field it maps to.
+
+[auth]
+# JWT / access-token lifetime.
+#   Management API: jwt_exp = 3600
+#   Dashboard: Authentication > Sessions ("Access token (JWT) expiry time")
+# 3600s = 1 hour. This is the ACCESS-token lifetime, not the session lifetime.
+# A stale access token (e.g. a backgrounded tab whose refresh ticker paused) is
+# recoverable client-side by exchanging the still-valid refresh token; it is not
+# a server-forced logout.
+jwt_expiry = 3600
+
+# Refresh-token rotation. This is the dashboard's "Detect and revoke potentially
+# compromised refresh tokens": with rotation on, a rotated-out (already-used)
+# refresh token presented after the reuse window is treated as a reuse attack and
+# the whole session's token family is revoked.
+#   Management API: refresh_token_rotation_enabled = true
+#   Dashboard: Authentication > Sessions ("Detect and revoke ... refresh tokens")
+enable_refresh_token_rotation = true
+
+# Grace window in which the PREVIOUS refresh token may be replayed and returns the
+# same rotated tokens (tolerates double-fired refreshes / in-flight retries).
+# Presenting an old token AFTER this window triggers the revoke above.
+#   Management API: security_refresh_token_reuse_interval = 10
+#   Dashboard: Authentication > Sessions ("Refresh token reuse interval")
+# 10s is the Supabase default.
+refresh_token_reuse_interval = 10
+
+# Present in the audited config for context (not session-lifetime policy):
+#   site_url                          = "https://crossy.party"
+#   external_anonymous_users_enabled  = true    (guests; GUESTS_ENABLED gates the client)
+#   security_captcha_enabled          = true    (provider: turnstile)
+#   rate_limit_token_refresh          = 150      (token-refresh rate limit; raw audited value)
+
+[auth.sessions]
+# Session time-box and inactivity timeout are Pro-plan features (this org is Pro),
+# so they are AVAILABLE but currently DISABLED. In the Management API a value of 0
+# means disabled; in config.toml "disabled" is the absence of the key. Both are
+# recorded here as 0 to make the audited state explicit; a real applied config.toml
+# would OMIT both to express the same "no forced logout" state.
+#
+#   timebox            -> Management API sessions_timebox            = 0  (disabled: no forced max session length)
+#   inactivity_timeout -> Management API sessions_inactivity_timeout = 0  (disabled: no forced logout on inactivity)
+#
+# Management-API / dashboard-only fields (no config.toml key exists for these):
+#   sessions_single_per_user = false  (a new sign-in does NOT evict other sessions)
+#   sessions_tags            = null
+
+# End of audited snapshot. See deploy/README.md for the assessment against the
+# reported "signed out on access-token cadence" symptom and the target values for
+# "sessions last until deliberate sign-out".
