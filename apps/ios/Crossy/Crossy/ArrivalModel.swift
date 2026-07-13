@@ -151,6 +151,10 @@ struct RealRooms: RoomsProviding {
                             puzzleTitle: summary.puzzle.title,
                             rows: summary.puzzle.rows,
                             cols: summary.puzzle.cols,
+                            // The puzzle's black-square silhouette (PROTOCOL.md §12), painted
+                            // as the card's face. Empty from an older server (§14) falls back
+                            // to the bare geometry lattice.
+                            mask: summary.puzzle.mask,
                             memberCount: summary.memberCount,
                             createdBy: summary.createdBy,
                             createdAt: summary.createdAt,
@@ -337,6 +341,12 @@ struct FixtureRooms: RoomsProviding {
                     RoomCardModel(
                         gameId: "fixture-tuesday", name: "Tuesday evening",
                         puzzleTitle: "A door left ajar", rows: 9, cols: 9,
+                        // A believable 9x9 silhouette (180-symmetric), so the fixture walk
+                        // renders a real face, not a bare lattice.
+                        mask: [
+                            "...##....", "....#....", "....#....", "##.....#.", "...#.#...",
+                            ".#.....##", "....#....", "....#....", "....##...",
+                        ],
                         memberCount: 3, createdBy: "you",
                         createdAt: "2026-07-06T19:00:00.000Z",
                         completedAt: nil,
@@ -361,6 +371,15 @@ struct FixtureRooms: RoomsProviding {
                     RoomCardModel(
                         gameId: "fixture-themeless", name: nil,
                         puzzleTitle: "Themeless Saturday", rows: 15, cols: 15,
+                        // A believable 15x15 silhouette (180-symmetric); solved, so the shelf
+                        // dims it, the muted-silhouette echo of the web's `Silhouette muted`.
+                        mask: [
+                            "....#.....#....", "....#.....#....", "....#.....#....",
+                            "##.....#.....##", ".....##.....#..", "...#.......#...",
+                            "###.....##.....", "....#.....#....", ".....##.....###",
+                            "...#.......#...", "..#.....##.....", "##.....#.....##",
+                            "....#.....#....", "....#.....#....", "....#.....#....",
+                        ],
                         memberCount: 2, createdBy: "bee",
                         createdAt: "2026-07-04T11:00:00.000Z",
                         completedAt: "2026-07-08T15:07:00.000Z",
@@ -377,6 +396,20 @@ struct FixtureRooms: RoomsProviding {
                     RoomCardModel(
                         gameId: "fixture-stumper", name: "Sunday call",
                         puzzleTitle: "The Stumper", rows: 21, cols: 21,
+                        // A believable 21x21 Sunday silhouette (180-symmetric).
+                        mask: [
+                            ".....#.....#....#....", ".....#.....#....#....",
+                            ".....#.....#....#....", "##......#.....#....##",
+                            "......##.....#....#..", "....#.....#.....#....",
+                            "...#.....#.....#.....", "##.....#....#.....#..",
+                            ".....#.....#.....#...", "....#.....#.....#....",
+                            "##.....#.....#.....##", "....#.....#.....#....",
+                            "...#.....#.....#.....", "..#.....#....#.....##",
+                            ".....#.....#.....#...", "....#.....#.....#....",
+                            "..#....#.....##......", "##....#.....#......##",
+                            "....#....#.....#.....", "....#....#.....#.....",
+                            "....#....#.....#....",
+                        ],
                         memberCount: 6, createdBy: "ada",
                         createdAt: "2026-07-05T09:00:00.000Z",
                         completedAt: nil,
@@ -402,6 +435,48 @@ struct FixtureRooms: RoomsProviding {
                                 isHost: false, isSpectator: true),
                         ],
                         inviteCode: "STUMPER7"),
+                    // Two more live rooms so the fixture walk fills the featured 2x2 wall
+                    // (four live rooms), with real size variety across the faces: a 13x13,
+                    // a 5x5 mini, the 9x9 above, and the 21x21 Sunday.
+                    RoomCardModel(
+                        gameId: "fixture-wednesday", name: "Wednesday crossword",
+                        puzzleTitle: "Crossed wires", rows: 13, cols: 13,
+                        // A believable 13x13 silhouette (180-symmetric).
+                        mask: [
+                            "....#....#...", "....#....#...", "....#....#...",
+                            "##.....#.....", ".....#.....#.", "...#.....#...",
+                            "##....#....##", "...#.....#...", ".#.....#.....",
+                            ".....#.....##", "...#....#....", "...#....#....",
+                            "...#....#....",
+                        ],
+                        memberCount: 2, createdBy: "you",
+                        createdAt: "2026-07-10T08:00:00.000Z",
+                        completedAt: nil,
+                        lastActivityAt: "2026-07-11T20:30:00.000Z",
+                        members: [
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: true, isSpectator: false),
+                            RoomCardMember(
+                                userId: "bee", name: "Bee", avatarUrl: nil,
+                                isHost: false, isSpectator: false),
+                        ],
+                        inviteCode: "WEDNES13"),
+                    RoomCardModel(
+                        gameId: "fixture-mini", name: "Coffee mini",
+                        puzzleTitle: "Monday mini", rows: 5, cols: 5,
+                        // A believable 5x5 mini silhouette (180-symmetric).
+                        mask: ["..#..", ".....", "#...#", ".....", "..#.."],
+                        memberCount: 1, createdBy: "you",
+                        createdAt: "2026-07-10T07:45:00.000Z",
+                        completedAt: nil,
+                        lastActivityAt: "2026-07-10T22:05:00.000Z",
+                        members: [
+                            RoomCardMember(
+                                userId: "you", name: "You", avatarUrl: nil,
+                                isHost: true, isSpectator: false)
+                        ],
+                        inviteCode: "MINI0005"),
                 ],
                 nextBefore: nil))
     }

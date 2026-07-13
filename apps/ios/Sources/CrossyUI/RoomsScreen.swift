@@ -188,18 +188,40 @@ public struct RoomsScreen: View {
                     stateLine(ArrivalCopy.roomsEmpty)
                 }
 
-                // The web's shelf grammar (Home.tsx GamesList): live rooms lead with NO header,
-                // then, only when any exist, a quiet "Solved" section gathers the finished rooms so
-                // the shelf reads current up top. Partition at render time off the ONE appended
-                // `rooms` array (the pure helper), never a second paging list: pages are
-                // createdAt-bounded and appended, so a solved room from a deeper page lands after
-                // the earlier solved rooms within this trailing section (§12 pagination stability).
+                // The web's shelf grammar (Home.tsx GamesList): live rooms lead, then, only
+                // when any exist, a quiet "Solved" section gathers the finished rooms so the
+                // shelf reads current up top. iOS leads the live rooms with a featured wall:
+                // the few most-recently-active render as large silhouette cards (a 2x2 grid),
+                // the way the web home leads with real grids, and the rest fall to the compact
+                // list below. Partition at render time off the ONE appended `rooms` array (the
+                // pure helper), never a second paging list: pages are createdAt-bounded and
+                // appended, so a solved room from a deeper page lands after the earlier solved
+                // rooms within this trailing section (§12 pagination stability).
                 let shelved = RoomCardModel.shelved(rooms)
-                ForEach(shelved.live) { room in roomButton(room) }
+                let featured = Array(shelved.live.prefix(Self.featuredCount))
+                let restLive = Array(shelved.live.dropFirst(Self.featuredCount))
+
+                if featured.count == 1 {
+                    // One live room stands full-width, not a lonely half of a 2x2.
+                    roomTap(featured[0]) { FeaturedRoomCard(model: featured[0], ground: ground) }
+                } else if !featured.isEmpty {
+                    LazyVGrid(columns: Self.featuredColumns, spacing: 12) {
+                        ForEach(featured) { room in
+                            roomTap(room) { FeaturedRoomCard(model: room, ground: ground) }
+                        }
+                    }
+                }
+
+                // The live rooms past the featured slice, then the solved shelf, both compact.
+                ForEach(restLive) { room in
+                    roomTap(room) { RoomCard(model: room, ground: ground) }
+                }
 
                 if !shelved.solved.isEmpty {
                     sectionHeader(ArrivalCopy.roomsSolvedSection)
-                    ForEach(shelved.solved) { room in roomButton(room) }
+                    ForEach(shelved.solved) { room in
+                        roomTap(room) { RoomCard(model: room, ground: ground) }
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -208,14 +230,29 @@ public struct RoomsScreen: View {
         .refreshable { await reload() }
     }
 
-    /// One room card as a plain tappable row. The load-more trigger fires on the LAST card of the
-    /// raw appended `rooms` array (not the visually last, which the solved section may reorder), so
-    /// paging stays keyed to the source of truth and never fires twice for one page.
-    private func roomButton(_ room: RoomCardModel) -> some View {
+    /// The featured wall: the few most-recently-active live rooms as large silhouette cards.
+    /// Four fills a clean 2x2 on a phone (each face ~half width, still legible for a 15x15);
+    /// a live count at or below this features them all, so the compact list appears only at
+    /// five or more live rooms.
+    private static let featuredCount = 4
+
+    /// Two flexible columns for the featured wall, the web's card grid at phone width.
+    private static let featuredColumns = [
+        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 12),
+    ]
+
+    /// One tappable room card (compact or featured). The load-more trigger fires on the LAST
+    /// card of the raw appended `rooms` array (not the visually last, which the featured slice
+    /// and the solved section reorder), so paging stays keyed to the source of truth and never
+    /// fires twice for one page.
+    private func roomTap<Label: View>(
+        _ room: RoomCardModel, @ViewBuilder label: () -> Label
+    ) -> some View {
         Button {
             onOpenRoom(room)
         } label: {
-            RoomCard(model: room, ground: ground)
+            label()
         }
         .buttonStyle(.plain)
         // The card is the surface the room grows from: it stamps itself as the
