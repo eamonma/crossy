@@ -276,7 +276,7 @@ and account-deletion:
 - **Web client:** the `Identity` port (`apps/web/src/identity/types.ts`) gains two methods,
   `loadProfile()` and `setDisplayName(name)`. The Supabase adapter implements them by
   calling the core API through the existing `authedFetch` seam (`apps/web/src/net/
-  authedFetch.ts`), not through Supabase PostgREST. A small `apps/web/src/profile/`
+authedFetch.ts`), not through Supabase PostgREST. A small `apps/web/src/profile/`
   data-access file (mirroring `apps/web/src/ui/roomAdmin.ts`) holds the two fetch calls; the
   adapter delegates to it so the port stays a thin, testable seam.
 - **iOS client:** `CrossyAPIClient` (`apps/ios/Sources/CrossyAPI/CrossyAPIClient.swift`)
@@ -292,7 +292,7 @@ and account-deletion:
    packages/protocol (name spec constants + REST shapes)   packages/auth (untouched)
               ^                                                   ^
    apps/api/src/profile ---> packages/db (users table), @crossy/auth (Identity)
-              ^                                                   
+              ^
    apps/web (Identity port + adapter)      apps/ios (CrossyAPIClient + UI)
 ```
 
@@ -344,7 +344,7 @@ zero games. (This supersedes the earlier "reuse GET /games self member, no /me" 
 owner approved `/me` for this feature.)
 
 **Detecting "needs a name" without a second source of truth.** The client may read its own
-session's local name state as a *trigger hint* (the token's metadata name is absent, or the
+session's local name state as a _trigger hint_ (the token's metadata name is absent, or the
 web adapter's derived name is the generic fallback), but it must not treat that local guess
 as the display value. The authoritative "are you nameless" answer is `GET /me`. So the flow
 is: cheap local hint arms the check, `GET /me` confirms, and from that point the app DB
@@ -432,14 +432,14 @@ sending the same canonical name twice yields the same 200.
 **Error codes** (added to `apps/api/src/http/errors.ts` `ApiErrorCode`, all stable strings;
 body is the standard `{ error, message }`):
 
-| code            | HTTP | when                                                                 |
-| --------------- | ---- | -------------------------------------------------------------------- |
-| `NAME_REQUIRED` | 422  | empty after canonicalization (whitespace-only, or all-stripped)      |
-| `NAME_TOO_LONG` | 422  | over 40 graphemes after canonicalization                             |
+| code            | HTTP | when                                                                      |
+| --------------- | ---- | ------------------------------------------------------------------------- |
+| `NAME_REQUIRED` | 422  | empty after canonicalization (whitespace-only, or all-stripped)           |
+| `NAME_TOO_LONG` | 422  | over 40 graphemes after canonicalization                                  |
 | `NAME_INVALID`  | 422  | contains a disallowed character (control, lone zero-width, bidi override) |
-| `VALIDATION`    | 400  | body is not an object, or `displayName` is absent or not a string    |
-| `UNAUTHORIZED`  | 401  | bad or missing bearer                                                |
-| `RATE_LIMITED`  | 429  | write window spent (below); carries `Retry-After`                    |
+| `VALIDATION`    | 400  | body is not an object, or `displayName` is absent or not a string         |
+| `UNAUTHORIZED`  | 401  | bad or missing bearer                                                     |
+| `RATE_LIMITED`  | 429  | write window spent (below); carries `Retry-After`                         |
 
 The three `NAME_*` codes are 422 (Unprocessable Content), matching the ingestion precedent
 in `errors.ts`: the body is well-formed JSON (that would be 400 `VALIDATION`) but the value
@@ -505,10 +505,10 @@ the legacy account, which the sign-in prompt does.
 
 Add two rows to the section 12 route table:
 
-| Route        | Who                  | Behavior                                                                                                                                                       |
-| ------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /me`    | authenticated (self) | the caller's display identity `{userId, displayName, isAnonymous, avatarUrl}`; `displayName` is the app-DB value and MAY be null (the only place null crosses, so a client can detect a nameless account and onboard); works with zero games |
-| `PATCH /me`  | authenticated (self) | `{displayName}` sets the caller's display name; the server NFC-normalizes, trims, collapses internal whitespace, validates (1-40 graphemes, no control/zero-width/bidi-override, INV-1 casing does NOT apply), and returns the canonical `{userId, displayName, isAnonymous, avatarUrl}`; rejects `NAME_REQUIRED`/`NAME_TOO_LONG`/`NAME_INVALID` (422); rate-limited per user |
+| Route       | Who                  | Behavior                                                                                                                                                                                                                                                                                                                                                                      |
+| ----------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me`   | authenticated (self) | the caller's display identity `{userId, displayName, isAnonymous, avatarUrl}`; `displayName` is the app-DB value and MAY be null (the only place null crosses, so a client can detect a nameless account and onboard); works with zero games                                                                                                                                  |
+| `PATCH /me` | authenticated (self) | `{displayName}` sets the caller's display name; the server NFC-normalizes, trims, collapses internal whitespace, validates (1-40 graphemes, no control/zero-width/bidi-override, INV-1 casing does NOT apply), and returns the canonical `{userId, displayName, isAnonymous, avatarUrl}`; rejects `NAME_REQUIRED`/`NAME_TOO_LONG`/`NAME_INVALID` (422); rate-limited per user |
 
 Add prose after the invite-links block:
 
@@ -742,7 +742,7 @@ nameless; see edge cases).
   `DialogDescription` ("This is how you show up in a room. You can change it later.",
   `text-2 text-muted-foreground`).
 - **Live preview**: an `Avatar size="lg"` with `AvatarFallback className="bg-gold-4
-  text-gold-11"` whose initial is `draft.slice(0,1).toUpperCase()`, layered with
+text-gold-11"` whose initial is `draft.slice(0,1).toUpperCase()`, layered with
   `AvatarImage` when `avatarUrl` is set. Centered. It updates as the user types (same as the
   `AuthBar` initial derivation).
 - **Field**: `Input` (32px, `aria-invalid` on error) prefilled with the suggestion
@@ -752,7 +752,7 @@ nameless; see edge cases).
 - **Inline error**: below the input, `text-1 text-danger-text role="alert"`, text keyed on
   the stable code via a `displayNameErrorOf(code)` map (mirrors `emailOtpReasonOf`).
 - **Submit**: `DialogFooter` with a single `Button variant="inverse" size="lg"
-  className="w-full"` (the strong ink CTA, the sign-in material) labeled "Continue".
+className="w-full"` (the strong ink CTA, the sign-in material) labeled "Continue".
   Disabled when the sanitized draft is empty. Shows a spinner / disabled state during
   `setDisplayName`.
 
@@ -792,7 +792,7 @@ to have the adapter, on `load()` / first `getSession()`, best-effort populate th
 name from `GET /me` and thereafter treat the app-DB value as the display name; the token-
 metadata derivation stays only as the pre-`/me` bootstrap value and the onboarding trigger
 hint, never as the post-onboarding display source. `displayNameOf`'s `"Player"` fallback
-stops being a *display* value and becomes only a transient bootstrap string that the nameless
+stops being a _display_ value and becomes only a transient bootstrap string that the nameless
 check overrides by opening onboarding. (Concretely: keep `IdentitySession.displayName:
 string` non-null for existing callers, but the value is the `/me` name once loaded.)
 
@@ -808,57 +808,59 @@ same logic against the same vector, so client and server agree.
 ## 14. Copy tables (stable keys)
 
 ### 14.1 iOS (`apps/ios/Sources/CrossyUI/ArrivalCopy.swift`, add as `public static let` /
+
 `static func`)
 
-| key                             | value                                                     |
-| ------------------------------- | --------------------------------------------------------- |
-| `displayNameTitle`              | "What should we call you?"                                |
-| `displayNameOnboardingHint`     | "This is how you show up in a room. You can change it later." |
-| `displayNameFieldPrompt`        | "Your name"                                               |
-| `displayNameSave`               | "Continue"                                                |
-| `settingsNameTitle`             | "Name"                                                    |
-| `settingsNameSubtitle`          | "How you show up in a room"                               |
-| `settingsNameSave`              | "Save"                                                    |
-| `settingsNameCancel`            | "Cancel"                                                  |
-| `displayNameError(forCode:)`    | code-keyed (below)                                        |
+| key                          | value                                                         |
+| ---------------------------- | ------------------------------------------------------------- |
+| `displayNameTitle`           | "What should we call you?"                                    |
+| `displayNameOnboardingHint`  | "This is how you show up in a room. You can change it later." |
+| `displayNameFieldPrompt`     | "Your name"                                                   |
+| `displayNameSave`            | "Continue"                                                    |
+| `settingsNameTitle`          | "Name"                                                        |
+| `settingsNameSubtitle`       | "How you show up in a room"                                   |
+| `settingsNameSave`           | "Save"                                                        |
+| `settingsNameCancel`         | "Cancel"                                                      |
+| `displayNameError(forCode:)` | code-keyed (below)                                            |
 
 `displayNameError(forCode:)` returns:
 
-| code            | sentence                                                              |
-| --------------- | -------------------------------------------------------------------- |
-| `nil` (offline) | "Couldn't reach Crossy. Check your connection and try again."        |
-| `NAME_REQUIRED` | "Add a name so people know who you are."                             |
-| `NAME_TOO_LONG` | "That name is too long. Keep it to 40 characters."                   |
+| code            | sentence                                                                 |
+| --------------- | ------------------------------------------------------------------------ |
+| `nil` (offline) | "Couldn't reach Crossy. Check your connection and try again."            |
+| `NAME_REQUIRED` | "Add a name so people know who you are."                                 |
+| `NAME_TOO_LONG` | "That name is too long. Keep it to 40 characters."                       |
 | `NAME_INVALID`  | "That name has characters we can't use. Try letters, numbers, or emoji." |
-| `UNAUTHORIZED`  | "Your sign-in expired. Sign in again, then set your name."           |
-| default         | "Couldn't save your name. Try again."                                |
+| `UNAUTHORIZED`  | "Your sign-in expired. Sign in again, then set your name."               |
+| default         | "Couldn't save your name. Try again."                                    |
 
 `settingsNoName` stays ("Signed in") as the pre-onboarding fallback; after onboarding a
 named user never shows it.
 
 ### 14.2 Web (co-located with the onboarding component and Settings, mirroring
+
 `emailOtpReasonOf`)
 
-| key / usage                     | value                                                     |
-| ------------------------------- | --------------------------------------------------------- |
-| onboarding title                | "What should we call you?"                                |
-| onboarding description          | "This is how you show up in a room. You can change it later." |
-| field placeholder               | "Your name"                                               |
-| submit label                    | "Continue"                                                |
-| settings row label              | "Name"                                                    |
-| settings row description        | "How you show up in a room"                               |
-| settings save / cancel / edit   | "Save" / "Cancel" / "Edit"                                |
+| key / usage                   | value                                                         |
+| ----------------------------- | ------------------------------------------------------------- |
+| onboarding title              | "What should we call you?"                                    |
+| onboarding description        | "This is how you show up in a room. You can change it later." |
+| field placeholder             | "Your name"                                                   |
+| submit label                  | "Continue"                                                    |
+| settings row label            | "Name"                                                        |
+| settings row description      | "How you show up in a room"                                   |
+| settings save / cancel / edit | "Save" / "Cancel" / "Edit"                                    |
 
 `displayNameErrorOf(reason)`:
 
-| reason          | sentence                                                              |
-| --------------- | -------------------------------------------------------------------- |
-| `NAME_REQUIRED` | "Add a name so people know who you are."                             |
-| `NAME_TOO_LONG` | "That name is too long. Keep it to 40 characters."                   |
+| reason          | sentence                                                                 |
+| --------------- | ------------------------------------------------------------------------ |
+| `NAME_REQUIRED` | "Add a name so people know who you are."                                 |
+| `NAME_TOO_LONG` | "That name is too long. Keep it to 40 characters."                       |
 | `NAME_INVALID`  | "That name has characters we can't use. Try letters, numbers, or emoji." |
-| `rate_limited`  | "Too many changes just now. Wait a moment, then try again."          |
-| `network`       | "That didn't go through. Check your connection and try again."       |
-| `unknown`       | "Couldn't save your name. Try again."                                |
+| `rate_limited`  | "Too many changes just now. Wait a moment, then try again."              |
+| `network`       | "That didn't go through. Check your connection and try again."           |
+| `unknown`       | "Couldn't save your name. Try again."                                    |
 
 Tone matches the existing calm one-sentence `GuestSignIn` / `emailOtpReasonOf` copy.
 
@@ -878,7 +880,7 @@ Tone matches the existing calm one-sentence `GuestSignIn` / `emailOtpReasonOf` c
 - **Duplicate names.** Allowed by spec. No check, no warning. Color + id disambiguate.
 - **Very long / emoji / RTL / whitespace-only.** Long: capped at 40 graphemes (sanitizer
   stops input; server rejects `NAME_TOO_LONG` as a backstop). Emoji: allowed, one ZWJ family
-  emoji counts as one grapheme. RTL: plain RTL scripts render natively; bidi *override*
+  emoji counts as one grapheme. RTL: plain RTL scripts render natively; bidi _override_
   controls are rejected (`NAME_INVALID`). Whitespace-only: canonicalizes to empty ->
   `NAME_REQUIRED`.
 - **Reduce Motion.** The puck-initial change and any dialog/sheet transition respect
