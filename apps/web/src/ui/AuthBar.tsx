@@ -164,8 +164,13 @@ export function SignInButtons({
       )}
       {/* The quiet tertiary path: Hisbaan or an email one-time code, in a self-contained modal so it
           drops into every gate this control renders without shifting the layout. Subordinate to the
-          provider buttons by design, sitting a step below the guest "or" treatment. */}
-      <ContinueAnotherWay identity={identity} />
+          provider buttons by design, sitting a step below the guest "or" treatment. The site key
+          threads through so the email send carries a captcha token when the project's captcha is on;
+          it is undefined in dev/local, where the send goes through without one. */}
+      <ContinueAnotherWay
+        identity={identity}
+        turnstileSiteKey={turnstileSiteKey}
+      />
     </div>
   );
 }

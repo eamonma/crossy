@@ -52,13 +52,30 @@ describe("mock identity adapter", () => {
     expect(identity.getSession()).toBeNull();
   });
 
+  it("sendEmailOtp accepts an optional captcha token, threaded like the guest path (captcha_failed cure)", async () => {
+    // The modal threads the Turnstile token into the send when the project's captcha is on; the
+    // mock accepts and ignores it (no captcha-gated provider here). Spy to prove the caller's
+    // token reaches the port exactly as passed, so the wiring is covered without a real provider.
+    const identity = createMockIdentity();
+    const send = vi.spyOn(identity, "sendEmailOtp");
+    const result = await identity.sendEmailOtp("ada@example.com", {
+      captchaToken: "turnstile-token",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(send).toHaveBeenCalledWith("ada@example.com", {
+      captchaToken: "turnstile-token",
+    });
+    // The token is a send-time concern only: it lands no session.
+    expect(identity.getSession()).toBeNull();
+  });
+
   it("verifyEmailOtp lands a full account on the correct code and emits 'signed_in'", async () => {
     const identity = createMockIdentity();
     const seen = vi.fn();
     identity.onChange(seen);
     const result = await identity.verifyEmailOtp({
       email: "ada@example.com",
-      token: "123456",
+      token: "12345678",
     });
     expect(result).toEqual({ ok: true });
     expect(identity.getSession()?.isAnonymous).toBe(false);
@@ -72,7 +89,7 @@ describe("mock identity adapter", () => {
     const identity = createMockIdentity();
     const result = await identity.verifyEmailOtp({
       email: "ada@example.com",
-      token: "000000",
+      token: "00000000",
     });
     expect(result).toEqual({
       ok: false,

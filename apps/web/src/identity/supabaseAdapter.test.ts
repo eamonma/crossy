@@ -515,6 +515,41 @@ describe("supabase identity adapter", () => {
       });
     });
 
+    it("sendEmailOtp threads a captcha token into the send when present (captcha_failed cure), alongside the redirect", async () => {
+      // The project's captcha is on: GoTrue rejects /otp with captcha_failed unless the send carries
+      // a Turnstile token. The token rides alongside emailRedirectTo, exactly as the guest path
+      // threads captchaToken into signInAnonymously, so a captcha-protected project accepts the send.
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      const result = await identity.sendEmailOtp("ada@example.com", {
+        captchaToken: "turnstile-token",
+      });
+      expect(result).toEqual({ ok: true });
+      expect(calls.signInWithOtp).toHaveBeenCalledWith({
+        email: "ada@example.com",
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: "https://app.test/auth/confirm",
+          captchaToken: "turnstile-token",
+        },
+      });
+    });
+
+    it("sendEmailOtp omits the captcha token when none is given (dev/local send still works)", async () => {
+      // No site key configured, so no token: the options carry only the redirect and shouldCreateUser,
+      // never an undefined captchaToken key, so a project without captcha protection is unaffected.
+      const { deps, calls } = makeDeps({});
+      const identity = createSupabaseIdentity(deps);
+      await identity.sendEmailOtp("ada@example.com");
+      expect(calls.signInWithOtp).toHaveBeenCalledWith({
+        email: "ada@example.com",
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: "https://app.test/auth/confirm",
+        },
+      });
+    });
+
     it("sendEmailOtp maps a rate-limit error to 'rate_limited'", async () => {
       const { deps } = makeDeps({
         signInWithOtp: () =>

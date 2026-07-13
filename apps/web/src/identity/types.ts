@@ -39,6 +39,17 @@ export interface GuestSignInOptions {
 }
 
 /**
+ * Options for sending an email one-time code. captchaToken carries the Turnstile token when the
+ * project's captcha protection is on: GoTrue rejects /otp with captcha_failed unless the send
+ * includes one. Mirrors GuestSignInOptions so the email path threads the same token the guest
+ * path already does; the widget in the modal supplies it, and it is absent (dev/local, mock) when
+ * no site key is configured.
+ */
+export interface EmailOtpSendOptions {
+  captchaToken?: string;
+}
+
+/**
  * Why an email sign-in step did not go through. The same discriminated ok/reason shape as
  * GuestSignInResult, so every email surface renders a typed outcome rather than catching a
  * thrown error: "rate_limited" when the provider throttles a resend, "invalid_code" for a
@@ -128,8 +139,13 @@ export interface Identity {
    * Request a one-time email code (and magic link) for the address. Creates the account when
    * none exists. Resolves before any session; success only means the code was sent, so the
    * caller then shows the code entry. Fails cleanly (rate limit, network) rather than throwing.
+   * options.captchaToken threads a Turnstile token so a captcha-protected project accepts the
+   * send; it is omitted where no site key is configured (dev/local, mock).
    */
-  sendEmailOtp(email: string): Promise<EmailOtpSendResult>;
+  sendEmailOtp(
+    email: string,
+    options?: EmailOtpSendOptions,
+  ): Promise<EmailOtpSendResult>;
 
   /**
    * Verify a one-time code the user typed for the address. On success the session lands through

@@ -18,6 +18,7 @@ import type {
 import type {
   EmailOtpReason,
   EmailOtpResult,
+  EmailOtpSendOptions,
   EmailOtpSendResult,
   GuestSignInOptions,
   GuestSignInResult,
@@ -340,17 +341,25 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       }
       return { ok: true, session };
     },
-    async sendEmailOtp(email: string): Promise<EmailOtpSendResult> {
-      // Emails a six-digit code and a magic link both; the link lands on /auth/confirm, where the
+    async sendEmailOtp(
+      email: string,
+      otpOptions?: EmailOtpSendOptions,
+    ): Promise<EmailOtpSendResult> {
+      // Emails an eight-digit code and a magic link both; the link lands on /auth/confirm, where the
       // token_hash it carries is verified through verifyEmailLink. shouldCreateUser makes email a
       // first-class sign-up path, not sign-in only. Success carries no session: the code entry is
       // next, and the session lands later through onAuthStateChange. The origin comes from the same
       // node-safe read the OAuth redirect uses (globalThis.window), never a bare window reference.
+      // captchaToken rides alongside when the project's captcha is on (GoTrue rejects /otp with
+      // captcha_failed otherwise); it is threaded exactly as the guest path threads it to
+      // signInAnonymously, and absent when no site key is configured.
+      const captchaToken = otpOptions?.captchaToken;
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
           shouldCreateUser: true,
           emailRedirectTo: `${currentUrl().origin}/auth/confirm`,
+          ...(captchaToken !== undefined ? { captchaToken } : {}),
         },
       });
       if (error !== null) {

@@ -7,7 +7,16 @@
 // Success is never read from a verify return (the port returns no session, types.ts): a verified
 // session lands through identity.onChange exactly like OAuth. This component subscribes to that and
 // closes itself the moment a session appears, so the app re-renders authenticated on its own.
-import { useEffect, useState } from "react";
+//
+// The email send is captcha-gated when the project's Turnstile protection is on (GoTrue rejects
+// /otp with captcha_failed otherwise): the email step renders an invisible Turnstile (the same
+// managed widget GuestSignIn uses, appearance "interaction-only"), captures the single-use token
+// via onSuccess, and threads it into sendEmailOtp. The token is reset before each send and resend
+// so every request carries a fresh one. When no site key is configured (dev/local, mock) the
+// widget is skipped and the send goes through with no token, so those paths still work.
+import { useEffect, useRef, useState } from "react";
+import { Turnstile } from "@marsidev/react-turnstile";
+import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import type { Identity } from "../identity";
 import {
   Dialog,
@@ -38,11 +47,17 @@ import {
 const RESEND_COOLDOWN_SEC = 45;
 
 /**
- * The subdued trigger plus its modal. Rendered by SignInButtons below the primary buttons. `verb`
- * is accepted for a consistent call signature with the buttons but unused: this affordance keeps
- * one calm wording everywhere so it never competes with the primary CTAs.
+ * The subdued trigger plus its modal. Rendered by SignInButtons below the primary buttons.
+ * `turnstileSiteKey` comes from config, threaded down to the email step so the captcha-gated send
+ * carries a token; it is undefined in dev/local, where the send goes through without one.
  */
-export function ContinueAnotherWay({ identity }: { identity: Identity }) {
+export function ContinueAnotherWay({
+  identity,
+  turnstileSiteKey,
+}: {
+  identity: Identity;
+  turnstileSiteKey?: string | undefined;
+}) {
   const [open, setOpen] = useState(false);
 
   // Close the moment a session lands, however it landed (the Hisbaan redirect returns to a fresh
@@ -70,7 +85,11 @@ export function ContinueAnotherWay({ identity }: { identity: Identity }) {
         </Button>
       </div>
       <DialogContent className="sm:max-w-sm">
-        <ContinueAnotherWayBody identity={identity} open={open} />
+        <ContinueAnotherWayBody
+          identity={identity}
+          open={open}
+          turnstileSiteKey={turnstileSiteKey}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -84,9 +103,11 @@ export function ContinueAnotherWay({ identity }: { identity: Identity }) {
 function ContinueAnotherWayBody({
   identity,
   open,
+  turnstileSiteKey,
 }: {
   identity: Identity;
   open: boolean;
+  turnstileSiteKey?: string | undefined;
 }) {
   // "chooser" is the two-path menu; once the user picks email we hand off to the machine's states.
   const [mode, setMode] = useState<"chooser" | "email">("chooser");
@@ -144,22 +165,36 @@ function ContinueAnotherWayBody({
     );
   }
 
-  return <EmailFlow identity={identity} state={state} setState={setState} />;
+  return (
+    <EmailFlow
+      identity={identity}
+      state={state}
+      setState={setState}
+      turnstileSiteKey={turnstileSiteKey}
+    />
+  );
 }
 
-/** The email sub-flow: address entry, then the six-digit code, with resend and a back action. */
+/** The email sub-flow: address entry, then the eight-digit code, with resend and a back action. */
 function EmailFlow({
   identity,
   state,
   setState,
+  turnstileSiteKey,
 }: {
   identity: Identity;
   state: OtpEmailState;
   setState: (next: OtpEmailState) => void;
+  turnstileSiteKey?: string | undefined;
 }) {
   const [emailDraft, setEmailDraft] = useState("");
   const [codeDraft, setCodeDraft] = useState("");
   const [cooldown, setCooldown] = useState(0);
+  // The latest Turnstile token, or null before one has arrived (or after a reset). Only meaningful
+  // when a site key is configured; with no key the send never waits on it.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance | undefined>(undefined);
+  const captchaGated = turnstileSiteKey !== undefined;
 
   // The resend cooldown ticks down once per second while it is above zero. It arms when a code is
   // first sent and after every resend, so the "Resend code" control is quiet until it is useful.
@@ -172,11 +207,22 @@ function EmailFlow({
   }, [cooldown]);
 
   async function requestCode(email: string): Promise<void> {
+    // Snapshot and immediately clear the token: it is single-use, so once it is spent on this send
+    // the next send (a resend) must wait on a fresh one. Reset the widget so it re-solves and hands
+    // back a new token via onSuccess. With no site key there is no widget and no token to reset.
+    const token = captchaToken;
+    if (captchaGated) {
+      setCaptchaToken(null);
+      turnstileRef.current?.reset();
+    }
     setState(toSending(email));
     // Set the same-browser marker BEFORE sending, so a magic-link finish (even one that outraces
     // this resolve) finds the marker and verifies silently on /auth/confirm.
     setOtpFlowMarker(email);
-    const result = await identity.sendEmailOtp(email);
+    const result = await identity.sendEmailOtp(
+      email,
+      token !== null ? { captchaToken: token } : undefined,
+    );
     if (result.ok) {
       setState(toCodeEntry(email));
       setCodeDraft("");
@@ -194,6 +240,27 @@ function EmailFlow({
     if (!result.ok) setState(verifyFailed(email, result.reason));
   }
 
+  // The invisible captcha, rendered inside the email step when a site key is configured. Appearance
+  // "interaction-only" keeps Cloudflare's managed box out of sight and out of the layout: the token
+  // arrives on its own through onSuccess in the common case, and the box only surfaces if Cloudflare
+  // forces an interactive challenge. A width-zero, height-zero container keeps it off the layout.
+  const captcha =
+    turnstileSiteKey !== undefined ? (
+      <div aria-hidden className="h-0 w-0 overflow-hidden">
+        <Turnstile
+          ref={turnstileRef}
+          siteKey={turnstileSiteKey}
+          onSuccess={(token) => setCaptchaToken(token)}
+          onExpire={() => setCaptchaToken(null)}
+          onError={() => setCaptchaToken(null)}
+          options={{ size: "compact", appearance: "interaction-only" }}
+        />
+      </div>
+    ) : null;
+  // With a site key, the send waits on a fresh token; with none, it never does. Cleared to null on
+  // spend/expire/error, so the button re-disables until the widget hands back a new one.
+  const captchaReady = !captchaGated || captchaToken !== null;
+
   if (state.step === "emailEntry" || state.step === "sending") {
     const sending = state.step === "sending";
     const ready = isPlausibleEmail(emailDraft);
@@ -201,7 +268,7 @@ function EmailFlow({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!ready || sending) return;
+          if (!ready || sending || !captchaReady) return;
           void requestCode(emailDraft.trim());
         }}
       >
@@ -233,11 +300,12 @@ function EmailFlow({
             variant="inverse"
             size="lg"
             className="w-full"
-            disabled={!ready || sending}
+            disabled={!ready || sending || !captchaReady}
           >
             {sending ? "Sending..." : "Send code"}
           </Button>
         </div>
+        {captcha}
       </form>
     );
   }
@@ -263,12 +331,12 @@ function EmailFlow({
           inputMode="numeric"
           autoComplete="one-time-code"
           autoFocus
-          maxLength={6}
-          placeholder="000000"
+          maxLength={8}
+          placeholder="00000000"
           value={codeDraft}
           disabled={verifying}
           onChange={(e) => setCodeDraft(sanitizeCode(e.target.value))}
-          aria-label="Six-digit code"
+          aria-label="Eight-digit code"
           className="text-center text-5 tracking-[0.4em] tabular-nums"
         />
         {state.step === "codeEntry" && state.error !== null && (
@@ -289,7 +357,7 @@ function EmailFlow({
           <button
             type="button"
             className="hover:text-text-muted disabled:opacity-50"
-            disabled={cooldown > 0 || verifying}
+            disabled={cooldown > 0 || verifying || !captchaReady}
             onClick={() => void requestCode(email)}
           >
             {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
@@ -307,6 +375,7 @@ function EmailFlow({
           </button>
         </div>
       </div>
+      {captcha}
     </form>
   );
 }

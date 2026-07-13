@@ -1,5 +1,5 @@
 // The "Continue another way" email flow's transitions, walked against the mock Identity adapter
-// (which succeeds for code "123456" and fails "invalid_code" otherwise). The modal's async steps
+// (which succeeds for code "12345678" and fails "invalid_code" otherwise). The modal's async steps
 // call the port between these pure states; the test drives the same sequence so the state model and
 // the adapter agree end to end, with no React render (the web suite runs under node).
 import { describe, expect, it, vi } from "vitest";
@@ -52,7 +52,7 @@ describe("otpModalMachine transitions (email -> code -> session via onChange)", 
 
     const result = await identity.verifyEmailOtp({
       email: "ada@example.com",
-      token: "123456",
+      token: "12345678",
     });
     // The port returns only ok, never a session: the modal reacts to onChange, exactly like OAuth.
     expect(result).toEqual({ ok: true });
@@ -122,11 +122,11 @@ describe("otpModalMachine copy and input guards", () => {
     expect(isPlausibleEmail("a b@example.com")).toBe(false);
   });
 
-  it("sanitizeCode keeps digits, caps at six; isCompleteCode gates the submit", () => {
-    expect(sanitizeCode("12-34-56")).toBe("123456");
-    expect(sanitizeCode("1234567")).toBe("123456");
+  it("sanitizeCode keeps digits, caps at eight; isCompleteCode gates the submit", () => {
+    expect(sanitizeCode("12-34-56-78")).toBe("12345678");
+    expect(sanitizeCode("123456789")).toBe("12345678");
     expect(sanitizeCode("12ab34")).toBe("1234");
-    expect(isCompleteCode("123456")).toBe(true);
-    expect(isCompleteCode("12345")).toBe(false);
+    expect(isCompleteCode("12345678")).toBe(true);
+    expect(isCompleteCode("1234567")).toBe(false);
   });
 });

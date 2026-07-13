@@ -34,8 +34,9 @@ const ACCOUNT_SESSION: IdentitySession = {
   avatarUrl: null,
 };
 
-/** The one code the mock treats as correct; any other value returns "invalid_code". */
-const VALID_EMAIL_OTP = "123456";
+/** The one code the mock treats as correct; any other value returns "invalid_code". Eight digits
+ *  to match Supabase's OTP length (the code entry accepts eight now). */
+const VALID_EMAIL_OTP = "12345678";
 
 /** The one token_hash the mock link-verify accepts; any other returns "invalid_code". */
 const VALID_EMAIL_LINK_HASH = "ok";
@@ -97,8 +98,11 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
       return Promise.resolve({ ok: true, session });
     },
     sendEmailOtp(): Promise<EmailOtpSendResult> {
-      // No email leaves here and no code is stored: sending always succeeds, and the fixed
-      // VALID_EMAIL_OTP is what the verify step then accepts, so the flow is deterministic offline.
+      // The email and the optional captchaToken are both accepted by the port but dropped here,
+      // mirroring signInWithProvider and signInGuest: the mock never leaves for a vendor, so no email
+      // leaves and no captcha is reached. Structural typing keeps this assignable to the port, and
+      // sending always succeeds, so the fixed VALID_EMAIL_OTP the verify step accepts is deterministic
+      // offline. The threading test spies on this method to assert the caller's args, not the body.
       return Promise.resolve({ ok: true });
     },
     verifyEmailOtp(input: {

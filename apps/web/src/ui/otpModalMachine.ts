@@ -9,7 +9,7 @@ import type { EmailOtpReason } from "../identity";
 /**
  * The email path's states. `hisbaan` and the closed modal are not here: this machine owns only the
  * email sub-flow. `emailEntry` collects the address; `sending` waits on sendEmailOtp; `codeEntry`
- * collects the six-digit code (carrying the email it was sent to, for the "sent a code to {email}"
+ * collects the eight-digit code (carrying the email it was sent to, for the "sent a code to {email}"
  * line and the resend); `verifying` waits on verifyEmailOtp. A failure returns to the entry it came
  * from with `error` set, never a dead end.
  */
@@ -60,15 +60,20 @@ export function isPlausibleEmail(raw: string): boolean {
   return dot !== -1 && dot < email.length - 1;
 }
 
-/** Keep only digits, capped at six: the code field accepts a paste or a keyboard but never holds
- *  more than a full code, so the submit button's enabled state is a simple length check. */
+/** The code length Supabase issues (its OTP length is set to eight). One constant so the sanitize
+ *  cap and the completeness check can never drift. */
+const CODE_LENGTH = 8;
+
+/** Keep only digits, capped at the code length: the code field accepts a paste or a keyboard but
+ *  never holds more than a full code, so the submit button's enabled state is a simple length
+ *  check. */
 export function sanitizeCode(raw: string): string {
-  return raw.replace(/\D/g, "").slice(0, 6);
+  return raw.replace(/\D/g, "").slice(0, CODE_LENGTH);
 }
 
-/** The code is submittable once it is a full six digits. */
+/** The code is submittable once it is a full eight digits. */
 export function isCompleteCode(code: string): boolean {
-  return sanitizeCode(code).length === 6;
+  return sanitizeCode(code).length === CODE_LENGTH;
 }
 
 // The transitions. Each returns the next state; the React component runs the async port call
@@ -90,7 +95,7 @@ export function sendFailed(reason: EmailOtpReason): OtpEmailState {
   return { step: "emailEntry", error: otpReasonMessage(reason) };
 }
 
-/** codeEntry -> verifying: the six-digit code was submitted for this email. */
+/** codeEntry -> verifying: the eight-digit code was submitted for this email. */
 export function toVerifying(email: string): OtpEmailState {
   return { step: "verifying", email };
 }
