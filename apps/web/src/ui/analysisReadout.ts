@@ -13,6 +13,7 @@
 // mosaicReveal.ts pins against ContributionMosaic.tsx.
 import type { AnalysisResponse } from "./completionAttribution";
 import type { Roster } from "./mosaicReveal";
+import { identityColor } from "./identityRoster";
 
 /**
  * M:SS from a seconds count, tabular-friendly: floor to whole seconds, zero-pad the seconds field,
@@ -77,14 +78,15 @@ export interface LegendMember {
  * The legend rows: every member who owns at least one square, in the mosaic's colors. Self is named
  * "You" and floated to the front (the roster convention); the rest keep room order. A member with no
  * owned square is dropped (they contributed no color to the board, so a dot for them would name a
- * color that appears nowhere in the mosaic). Colors come straight from the member list, the SAME
- * source rosterOf feeds the mosaic, so the legend, the board, and the moment dots agree pixel-for-
- * pixel.
+ * color that appears nowhere in the mosaic). Colors resolve through the shared identity palette
+ * (identityRoster.ts, `isDark` for the ground) exactly as rosterOf resolves the board, so the legend,
+ * the board, and the moment dots agree pixel-for-pixel and match iOS.
  */
 export function legendSolvers(
   bundle: AnalysisResponse,
   members: readonly LegendMember[],
   selfId: string | null,
+  isDark: boolean,
 ): LegendSolver[] {
   const owners = new Set(Object.values(bundle.owners));
   const rows: LegendSolver[] = [];
@@ -94,7 +96,7 @@ export function legendSolvers(
     const row: LegendSolver = {
       userId: m.userId,
       name: self ? "You" : m.name,
-      color: m.color,
+      color: identityColor(m.color, isDark),
       self,
     };
     if (self) rows.unshift(row);
