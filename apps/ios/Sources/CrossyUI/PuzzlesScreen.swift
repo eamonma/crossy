@@ -36,6 +36,10 @@ public struct PuzzlesScreen: View {
     /// The created room, handed to the composition root to push (the RoomsScreen
     /// onOpenRoom shape: navigation is the root's, not the screen's).
     private let onOpenRoom: (String) -> Void
+    /// The puzzle a crossy://play deep link preselects (D22, the web's `?play=`): scroll to
+    /// it and briefly ring it so the solver sees which upload to start. The start stays a
+    /// manual tap; puzzle import never auto-creates a game.
+    private let playIntent: String?
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var puzzles: [PuzzleCardModel] = []
@@ -51,17 +55,24 @@ public struct PuzzlesScreen: View {
     /// A per-card inline failure sentence, keyed by puzzleId; cleared when that card
     /// is tapped again.
     @State private var startFailures: [String: String] = [:]
+    /// The card currently ringed by a play intent, cleared after a beat; nil when none.
+    @State private var highlighted: String?
+    /// The play intent already honored, so a re-render never re-scrolls (the web's
+    /// consume-once), keyed by the intent's puzzleId.
+    @State private var consumedIntent: String?
 
     public init(
         loadPage: @escaping (String?) async -> Result<PuzzlesPage, ArrivalFailure>,
         startGame: @escaping (PuzzleCardModel) async -> Result<String, ArrivalFailure> = { _ in
             .failure(ArrivalFailure(code: nil))
         },
-        onOpenRoom: @escaping (String) -> Void = { _ in }
+        onOpenRoom: @escaping (String) -> Void = { _ in },
+        playIntent: String? = nil
     ) {
         self.loadPage = loadPage
         self.startGame = startGame
         self.onOpenRoom = onOpenRoom
+        self.playIntent = playIntent
     }
 
     private var ground: GridGround {
@@ -69,41 +80,71 @@ public struct PuzzlesScreen: View {
     }
 
     public var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                Text(verbatim: ArrivalCopy.puzzlesTitle)
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundStyle(Color(rgb: ground.tokens.ink))
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    Text(verbatim: ArrivalCopy.puzzlesTitle)
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundStyle(Color(rgb: ground.tokens.ink))
+                        .padding(.top, 8)
+                        .padding(.bottom, 8)
 
-                if let failure, puzzles.isEmpty {
-                    stateLine(failure.sentence)
-                } else if loaded && puzzles.isEmpty {
-                    stateLine(ArrivalCopy.puzzlesEmpty)
-                }
+                    if let failure, puzzles.isEmpty {
+                        stateLine(failure.sentence)
+                    } else if loaded && puzzles.isEmpty {
+                        stateLine(ArrivalCopy.puzzlesEmpty)
+                    }
 
-                ForEach(puzzles) { puzzle in
-                    PuzzleCard(
-                        model: puzzle,
-                        ground: ground,
-                        starting: starting == puzzle.id,
-                        failure: startFailures[puzzle.id],
-                        onStart: { Task { await start(puzzle) } }
-                    )
-                    .onAppear {
-                        if puzzle.id == puzzles.last?.id {
-                            Task { await loadMore() }
+                    ForEach(puzzles) { puzzle in
+                        PuzzleCard(
+                            model: puzzle,
+                            ground: ground,
+                            starting: starting == puzzle.id,
+                            failure: startFailures[puzzle.id],
+                            onStart: { Task { await start(puzzle) } }
+                        )
+                        .id(puzzle.id)
+                        .overlay {
+                            if highlighted == puzzle.id {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(
+                                        Color(rgb: ground.tokens.ink), lineWidth: 2)
+                                    .transition(.opacity)
+                            }
+                        }
+                        .onAppear {
+                            if puzzle.id == puzzles.last?.id {
+                                Task { await loadMore() }
+                            }
                         }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .refreshable { await reload() }
+            .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
+            .task {
+                await reload()
+                await honorIntent(proxy)
+            }
+            .onChange(of: playIntent) { Task { await honorIntent(proxy) } }
         }
-        .refreshable { await reload() }
-        .background(Color(rgb: ground.tokens.canvas).ignoresSafeArea())
-        .task { await reload() }
+    }
+
+    /// Honor a crossy://play preselect once: land, scroll the named upload to center and
+    /// ring it briefly so the solver sees which one to start. Reloads first when the card is
+    /// missing (a just-imported puzzle is not in a cached list); an id this account does not
+    /// have (foreign, deleted, stale) rings nothing and leaves the plain library.
+    private func honorIntent(_ proxy: ScrollViewProxy) async {
+        guard let intent = playIntent, intent != consumedIntent else { return }
+        consumedIntent = intent
+        if !puzzles.contains(where: { $0.id == intent }) { await reload() }
+        guard puzzles.contains(where: { $0.id == intent }) else { return }
+        withAnimation(.easeInOut) { proxy.scrollTo(intent, anchor: .center) }
+        withAnimation { highlighted = intent }
+        try? await Task.sleep(for: .seconds(1.8))
+        if highlighted == intent { withAnimation { highlighted = nil } }
     }
 
     private func stateLine(_ sentence: String) -> some View {

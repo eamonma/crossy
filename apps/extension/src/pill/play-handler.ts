@@ -10,7 +10,7 @@
 import type { IngestOutcome } from "../api";
 import type { TokenReply } from "../auth/messages";
 import type { Envelope } from "../envelope";
-import { originPattern, playIntentUrl } from "../settings";
+import { originPattern } from "../settings";
 import type { PlayReply } from "./messages";
 
 export interface PlayDeps {
@@ -22,6 +22,9 @@ export interface PlayDeps {
     token: string,
     envelope: Envelope,
   ) => Promise<IngestOutcome>;
+  /** Where "Play in Crossy" lands: the web intent, or the app scheme on iOS. Injected so
+   * the platform choice lives in the worker and this decision tree stays pure. */
+  readonly playUrl: (puzzleId: string) => string;
   readonly openTab: (url: string) => Promise<void>;
 }
 
@@ -54,6 +57,6 @@ export async function handlePlayRequest(
       message: outcome.message,
     };
   }
-  await deps.openTab(playIntentUrl(outcome.puzzleId));
+  await deps.openTab(deps.playUrl(outcome.puzzleId));
   return { ok: true };
 }

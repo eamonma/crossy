@@ -69,7 +69,7 @@ describe("pillViewForReply", () => {
     for (const reason of ["signed_out", "no_permission"] as const) {
       const view = pillViewForReply({ ok: false, reason });
       expect(view.kind).toBe("defer");
-      expect(view.label).toBe("Finish in the Crossy toolbar button");
+      expect(view.label).toBe("Open Crossy to finish");
       expect(isClickable(view)).toBe(false);
     }
   });

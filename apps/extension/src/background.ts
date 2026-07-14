@@ -43,7 +43,12 @@ import { buildEnvelope } from "./envelope";
 import { PLAY_REQUEST } from "./pill/messages";
 import type { PlayReply, PlayRequest } from "./pill/messages";
 import { handlePlayRequest } from "./pill/play-handler";
-import { AUTH_CALLBACK_URL, loadBases } from "./settings";
+import {
+  AUTH_CALLBACK_URL,
+  appPlayUrl,
+  loadBases,
+  playIntentUrl,
+} from "./settings";
 
 // Firefox exposes the promise-based API on `browser`; Chrome promisifies `chrome`
 // itself in MV3. One shim, no polyfill dependency.
@@ -248,6 +253,15 @@ async function freshAccessToken(): Promise<TokenReply> {
   };
 }
 
+// iOS Safari ships this extension inside the Crossy app, so "Play in Crossy" deep-links the
+// app (crossy://) instead of opening crossy.party; every other browser has no app and keeps
+// the web intent. A tab the worker opens never fires a Universal Link, so the custom scheme
+// is the reliable hand-off, and the app is guaranteed installed because it hosts this
+// extension.
+const playUrl = /iP(hone|ad|od)/.test(navigator.userAgent)
+  ? appPlayUrl
+  : playIntentUrl;
+
 // The pill's play click, end to end (src/pill/play-handler.ts holds the decision
 // tree). No permission request here: the worker has no user gesture, so a missing
 // API-origin grant defers the solver to the popup instead.
@@ -259,6 +273,7 @@ async function playFromPill(request: PlayRequest): Promise<PlayReply> {
       ext.permissions.contains({ origins: [...origins] }),
     freshAccessToken,
     postPuzzle,
+    playUrl,
     openTab: async (url) => {
       await ext.tabs.create({ url });
     },

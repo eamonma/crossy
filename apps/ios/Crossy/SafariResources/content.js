@@ -79,7 +79,7 @@
     if (reply.reason === "network") {
       return { kind: "retry", label: "Could not reach Crossy. Try again." };
     }
-    return { kind: "defer", label: "Finish in the Crossy toolbar button" };
+    return { kind: "defer", label: "Open Crossy to finish" };
   }
 
   // src/pill/messages.ts

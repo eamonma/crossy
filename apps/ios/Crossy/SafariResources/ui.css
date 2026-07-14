@@ -154,6 +154,17 @@ body.popup {
   width: 320px;
 }
 
+/* iOS Safari presents the popup as a device-width sheet (via the viewport meta in
+   popup.html), so fill it instead of sitting as a narrow 320 column. Chrome and Firefox
+   size the popup to this body's width, so the viewport there is ~320 and this never
+   matches, leaving the fixed width to hold. */
+@media (min-width: 360px) {
+  body.popup {
+    width: 100vw;
+    max-width: 420px;
+  }
+}
+
 body.popup main {
   display: flex;
   flex-direction: column;

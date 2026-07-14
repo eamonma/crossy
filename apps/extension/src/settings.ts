@@ -24,6 +24,18 @@ export function playIntentUrl(puzzleId: string): string {
 }
 
 /**
+ * The Crossy app's custom-scheme play intent, used where the app is present: iOS Safari,
+ * where this extension ships inside the app, so the app is guaranteed installed. A tab the
+ * worker opens programmatically never triggers a Universal Link, so the extension
+ * deep-links the app directly; CrossyApp.onOpenURL routes `crossy://play/<id>` to the same
+ * startGame the library uses. Chrome, Firefox, and desktop have no app and keep the web
+ * intent above.
+ */
+export function appPlayUrl(puzzleId: string): string {
+  return `crossy://play/${encodeURIComponent(puzzleId)}`;
+}
+
+/**
  * Safari sign-in redirect target. Safari has no identity.getRedirectURL and refuses to
  * redirect an OAuth provider to a custom-scheme (extension) URL, so redirect_to must be a
  * real hosted https page. This inert page's content script hands the ?code= back to the

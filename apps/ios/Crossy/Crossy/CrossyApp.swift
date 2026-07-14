@@ -15,6 +15,11 @@ struct CrossyApp: App {
     /// honor it (the environment carries it down to ArrivalRootView).
     @State private var pendingInvite = PendingInvite()
 
+    /// The one puzzle a crossy://play deep link delivered (the Safari extension's "Play in
+    /// Crossy"), waiting for the arrival flow to start a game from it. Its own channel down
+    /// to ArrivalRootView, the PendingInvite precedent.
+    @State private var pendingPlay = PendingPlay()
+
     /// The one magic link a Universal Link delivered (roadmap I3b), waiting for the
     /// arrival flow to complete it against the session. Its own channel, distinct from
     /// the invite, because it drives sign-in rather than a room join (the environment
@@ -38,6 +43,7 @@ struct CrossyApp: App {
         WindowGroup {
             ContentView()
                 .environment(pendingInvite)
+                .environment(pendingPlay)
                 .environment(pendingMagicLink)
                 .environment(\.analytics, analytics)
                 // Universal Links (applinks:crossy.party): the system Camera app's QR
@@ -74,6 +80,17 @@ struct CrossyApp: App {
                 // so it is skipped here; the guard also fends off the theoretical case where the OS
                 // routes that callback to onOpenURL instead of the session.
                 .onOpenURL { url in
+                    // crossy://play/<puzzleId>: the Safari extension's "Play in Crossy"
+                    // hand-off (the extension ships inside this app). Routed to the same
+                    // startGame the Puzzles library uses; checked before the invite parser.
+                    if url.host == "play" {
+                        if let puzzleId = url.pathComponents.dropFirst()
+                            .first(where: { !$0.isEmpty })
+                        {
+                            pendingPlay.puzzleId = puzzleId
+                        }
+                        return
+                    }
                     guard url.host != "auth",
                         let code = InviteScan.code(fromPayload: url.absoluteString)
                     else { return }
@@ -89,6 +106,16 @@ struct CrossyApp: App {
 @Observable
 final class PendingInvite {
     var code: String?
+}
+
+/// The pending puzzle a crossy://play deep link delivered (the Safari extension's "Play in
+/// Crossy" hand-off), cleared the moment the arrival flow plays it, so it fires exactly
+/// once. The PendingInvite twin on its own channel: it starts a game from a puzzle rather
+/// than joining a room from a code.
+@MainActor
+@Observable
+final class PendingPlay {
+    var puzzleId: String?
 }
 
 /// The pending magic link a Universal Link delivered (roadmap I3b), cleared the moment

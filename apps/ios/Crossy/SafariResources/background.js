@@ -412,6 +412,9 @@
   function playIntentUrl(puzzleId) {
     return `${WEB_ORIGIN}/puzzles?play=${encodeURIComponent(puzzleId)}`;
   }
+  function appPlayUrl(puzzleId) {
+    return `crossy://play/${encodeURIComponent(puzzleId)}`;
+  }
   var AUTH_CALLBACK_URL = `${WEB_ORIGIN}/auth/ext/callback`;
   var DEFAULT_PUBLISHABLE_KEY = "sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd";
   var OVERRIDES_KEY = "overrides";
@@ -466,7 +469,7 @@
         message: outcome.message
       };
     }
-    await deps.openTab(playIntentUrl(outcome.puzzleId));
+    await deps.openTab(deps.playUrl(outcome.puzzleId));
     return { ok: true };
   }
 
@@ -606,6 +609,7 @@
       reason: outcome.failure === "retry" ? "network" : "signed_out"
     };
   }
+  var playUrl = /iP(hone|ad|od)/.test(navigator.userAgent) ? appPlayUrl : playIntentUrl;
   async function playFromPill(request) {
     const bases = await loadBases();
     return handlePlayRequest(buildEnvelope(request.format, request.document), {
@@ -613,6 +617,7 @@
       containsOrigins: (origins) => ext.permissions.contains({ origins: [...origins] }),
       freshAccessToken,
       postPuzzle,
+      playUrl,
       openTab: async (url) => {
         await ext.tabs.create({ url });
       }
