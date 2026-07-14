@@ -140,6 +140,29 @@ const PILL_STYLES = `
     background: var(--wash);
     color: var(--text);
   }
+  /* Touch devices (iOS Safari, the reason the pill ships to phones): grow the hit
+     areas toward the 44px finger target. The padding moves onto the buttons so the
+     tap area itself grows, not just the look; the pill sheds its own inner padding
+     so the shape does not balloon (the 14px mark inset holds: 8 pill + 6 play). */
+  @media (pointer: coarse) {
+    .pill {
+      gap: 2px;
+      padding: 4px 4px 4px 8px;
+      font-size: 15px;
+    }
+    .play {
+      padding: 10px 6px;
+      gap: 10px;
+    }
+    .hide {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+    }
+  }
 `;
 
 // The 3x3 brand mark at pill scale; currentColor tracks the label, gold is gold.
