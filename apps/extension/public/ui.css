@@ -234,6 +234,32 @@ body.popup #align-note:empty {
   display: none;
 }
 
+/* Site-access offer: the extension has no host access to the crossword sites yet, so it
+   cannot read the puzzle (on Safari the extractor never injects). The soft gold wash of a
+   caution, not an error; the "Turn on" action grants every crossword origin in one tap.
+   Empty and gone once access is held. */
+body.popup #site-access:not(:empty) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ring-halo);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+body.popup #site-access button {
+  flex: none;
+  font-size: 12px;
+}
+
+body.popup #site-access:empty {
+  display: none;
+}
+
 /* The re-summon line: a hairline note offering a hidden on-page pill back; the
    "Show it" action rides the linklike button. Absent when the page has no pill or
    its pill already shows. */

@@ -3,7 +3,13 @@
 // a request reached past an await: "permissions.request may only be called
 // from a user input handler" (observed on a real load, 2026-07-12).
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { playIntentUrl, requestOriginPermissions } from "./settings";
+import {
+  hasPuzzleSitePermissions,
+  playIntentUrl,
+  PUZZLE_SITE_ORIGINS,
+  requestOriginPermissions,
+  requestPuzzleSitePermissions,
+} from "./settings";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -33,6 +39,45 @@ describe("requestOriginPermissions", () => {
     expect(calls).toEqual([
       { origins: ["https://rest.crossy.party/*", "http://localhost/*"] },
     ]);
+  });
+});
+
+describe("requestPuzzleSitePermissions", () => {
+  it("requests every crossword origin in one direct call, no contains pre-check (Firefox gesture law)", async () => {
+    const calls: unknown[] = [];
+    vi.stubGlobal("chrome", {
+      permissions: {
+        request: (arg: unknown) => {
+          calls.push(arg);
+          return Promise.resolve(true);
+        },
+        contains: () => {
+          throw new Error(
+            "contains() must not be called: the await unwinds the Firefox gesture",
+          );
+        },
+      },
+    });
+    const granted = await requestPuzzleSitePermissions();
+    expect(granted).toBe(true);
+    expect(calls).toEqual([{ origins: [...PUZZLE_SITE_ORIGINS] }]);
+  });
+});
+
+describe("hasPuzzleSitePermissions", () => {
+  it("reads the grant through permissions.contains with the crossword origins", async () => {
+    const calls: unknown[] = [];
+    vi.stubGlobal("chrome", {
+      permissions: {
+        contains: (arg: unknown) => {
+          calls.push(arg);
+          return Promise.resolve(false);
+        },
+      },
+    });
+    const held = await hasPuzzleSitePermissions();
+    expect(held).toBe(false);
+    expect(calls).toEqual([{ origins: [...PUZZLE_SITE_ORIGINS] }]);
   });
 });
 

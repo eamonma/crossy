@@ -206,6 +206,18 @@
     const origins = baseUrls.map(originPattern);
     return chrome.permissions.request({ origins });
   }
+  var PUZZLE_SITE_ORIGINS = [
+    "https://www.nytimes.com/*",
+    "https://www.theguardian.com/*",
+    "https://theguardian.com/*",
+    "https://*.amuselabs.com/*"
+  ];
+  function requestPuzzleSitePermissions() {
+    return chrome.permissions.request({ origins: [...PUZZLE_SITE_ORIGINS] });
+  }
+  function hasPuzzleSitePermissions() {
+    return chrome.permissions.contains({ origins: [...PUZZLE_SITE_ORIGINS] });
+  }
 
   // src/popup.ts
   var bases;
@@ -214,6 +226,9 @@
   var actionsEl = document.getElementById("actions");
   var resultEl = document.getElementById("result");
   var pillNoteEl = document.getElementById("pill-note");
+  var siteAccessEl = document.getElementById(
+    "site-access"
+  );
   var alignNoteEl = document.getElementById(
     "align-note"
   );
@@ -448,9 +463,42 @@
     await setPillDisabled(site, false);
     pillNoteEl.replaceChildren("Shown. Reload the page to see it.");
   }
+  async function renderSiteAccess() {
+    let held;
+    try {
+      held = await hasPuzzleSitePermissions();
+    } catch {
+      held = false;
+    }
+    if (held) {
+      siteAccessEl.replaceChildren();
+      return;
+    }
+    const text = document.createElement("span");
+    text.textContent = "Let Crossy read crossword sites to add puzzles.";
+    const turnOn = document.createElement("button");
+    turnOn.className = "linklike";
+    turnOn.textContent = "Turn on";
+    turnOn.addEventListener("click", () => {
+      turnOn.disabled = true;
+      void (async () => {
+        const granted = await requestPuzzleSitePermissions();
+        if (granted) {
+          siteAccessEl.replaceChildren(
+            "Access on. Reload the crossword page to add it."
+          );
+          return;
+        }
+        text.textContent = "Still off. Allow Crossy for these sites, then tap again.";
+        turnOn.disabled = false;
+      })();
+    });
+    siteAccessEl.replaceChildren(text, turnOn);
+  }
   async function init() {
     bases = await loadBases();
     await renderPillNote();
+    await renderSiteAccess();
     const area = chromeLocalArea();
     const session = await loadSession(area);
     const state = alignmentState(session, await loadWebIdentity(area));
