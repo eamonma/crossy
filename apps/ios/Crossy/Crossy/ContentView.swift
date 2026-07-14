@@ -27,6 +27,11 @@ struct ContentView: View {
         // The glassEffectID recheck rig (MorphLab.swift): evidence only.
         if ProcessInfo.processInfo.arguments.contains("-morphLab") {
             MorphLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-reactionLab") {
+            // The reaction sticker/fan rig (ReactionLab.swift, Wave 7.5): the
+            // motion review surface for stickers, piles, the coalesce pulse, the
+            // settle-boundary proof, and the fan. Evidence only.
+            ReactionLab()
         } else if ProcessInfo.processInfo.arguments.contains("-meltLab") {
             // The scrubbed melt's recheck rig (MeltLab.swift): evidence only.
             MeltLab()
@@ -78,6 +83,14 @@ struct ContentView: View {
         let arguments = ProcessInfo.processInfo.arguments
         return arguments.contains("-demoRoom")
             || arguments.contains { $0.hasPrefix("-i2") }
+    }
+
+    /// The reaction fan's placement (Wave 7.5): the clue-bar corner unless the
+    /// alternate's launch flag stands. One read for the demo room and the live one,
+    /// so the A/B never diverges between them.
+    static var reactionFanPlacement: ReactionFanPlacement {
+        ProcessInfo.processInfo.arguments.contains("-reactionFanDeckEdge")
+            ? .deckEdge : .clueBarCorner
     }
 }
 
@@ -131,7 +144,10 @@ struct DemoRoomView: View {
                     gameId: room.gameId, code: room.inviteCode)
             },
             onEndGame: {},
-            onKick: { _ in }
+            onKick: { _ in },
+            // The Wave 7.5 placement pick (owner judges on device): the clue-bar
+            // corner by default, the deck-edge alternate behind the launch flag.
+            reactionFanPlacement: ContentView.reactionFanPlacement
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController). `total` is
@@ -306,7 +322,9 @@ struct RealRoomView: View {
                     // (AD-2: CrossyUI stays out of the REST ring); the solve screen
                     // owns the when (completed) and the retries (owner ruling
                     // 2026-07-13).
-                    fetchAnalysis: { await room.fetchAnalysis() }
+                    fetchAnalysis: { await room.fetchAnalysis() },
+                    // The Wave 7.5 placement pick, same flag as the demo room.
+                    reactionFanPlacement: ContentView.reactionFanPlacement
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so

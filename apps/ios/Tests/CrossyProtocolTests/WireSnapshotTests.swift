@@ -80,6 +80,12 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(message, MoveCursorMessage(cell: 17, direction: .across))
     }
 
+    func test_reactRoundTrips() throws {
+        // §5, §9: the wire carries the emoji grapheme itself, never a symbolic token.
+        let message = try pinClientFrame(ReactMessage.self, "react")
+        XCTAssertEqual(message, ReactMessage(emoji: "🎉", cell: 17))
+    }
+
     func test_checkRequestRoundTrips() throws {
         let message = try pinClientFrame(CheckRequestMessage.self, "checkRequest")
         XCTAssertEqual(message, CheckRequestMessage(commandId: "c3"))
@@ -150,6 +156,11 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(notice, CursorMessage(userId: "u2", cell: 5, direction: .down))
     }
 
+    func test_reactionRoundTrips() throws {
+        let notice = try pinServerFrame(ReactionMessage.self, "reaction")
+        XCTAssertEqual(notice, ReactionMessage(userId: "u2", emoji: "🎉", cell: 5))
+    }
+
     func test_checkResultRoundTrips() throws {
         let notice = try pinServerFrame(CheckResultMessage.self, "checkResult")
         XCTAssertEqual(notice, CheckResultMessage(commandId: "c4", wrongCells: [3, 7, 12]))
@@ -191,7 +202,7 @@ final class WireSnapshotTests: XCTestCase {
         }
         let ephemeral = [
             "welcome", "sync", "sync-completed", "playerConnected", "playerDisconnected",
-            "cursor", "checkResult", "kicked", "error-nonfatal", "error-fatal",
+            "cursor", "reaction", "checkResult", "kicked", "error-nonfatal", "error-fatal",
         ]
         for name in ephemeral {
             let message = try JSONDecoder().decode(

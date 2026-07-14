@@ -35,6 +35,14 @@ public struct CrossyGridView: View {
     /// back to the event log's last writer (sequencedWriters): the fallback when the
     /// fetch is absent, and every non-completion caller.
     private let mosaicOwners: [Int: String]?
+    /// The reaction sticker book (PROTOCOL.md §9), rendered as a Canvas layer over
+    /// the flashes. Nil for callers without reactions (previews, older rigs): the
+    /// layer costs nothing then, and the timeline pause is unchanged.
+    private let reactions: ReactionModel?
+    /// The ReactionLab's Reduce Motion preview (the system environment value is the
+    /// system's to set; a rig cannot). True renders the sticker layer upright and
+    /// fade-only exactly as the real setting would; the room always passes false.
+    private let simulatesReduceMotion: Bool
     /// The standing chrome's cover over the full-bleed board (the clamp's
     /// scroll-inset window): constant under clue growth by construction, so the
     /// board never moves with clue length.
@@ -78,6 +86,8 @@ public struct CrossyGridView: View {
         selection: GridSelection?,
         crossReference: Set<Int> = [],
         initialCamera: GridCamera? = nil,
+        reactions: ReactionModel? = nil,
+        simulatesReduceMotion: Bool = false,
         mosaicStartedAt: TimeInterval? = nil,
         mosaicOwners: [Int: String]? = nil,
         occlusion: GridOcclusion = .none,
@@ -90,6 +100,8 @@ public struct CrossyGridView: View {
         self.ground = ground
         self.selection = selection
         self.crossReference = crossReference
+        self.reactions = reactions
+        self.simulatesReduceMotion = simulatesReduceMotion
         self.mosaicStartedAt = mosaicStartedAt
         self.mosaicOwners = mosaicOwners
         self.occlusion = occlusion
@@ -130,16 +142,25 @@ public struct CrossyGridView: View {
                         ground: ground),
                     startedAt: startedAt)
             }
-            // The timeline drives redraws only while a flash decays or the mosaic
-            // plays; at rest the Canvas redraws only when the snapshot inputs change.
+            // The reaction stickers, snapshotted in body like GridFrame so
+            // @Observable registers the read: while any live the timeline runs and
+            // the one draw pass carries them (the performance posture: no second
+            // render layer, no per-sticker views, nothing new for the pan to move).
+            let stickers = reactions?.stickers ?? []
+            // The timeline drives redraws only while a flash decays, the mosaic
+            // plays, or a sticker lives; at rest the Canvas redraws only when the
+            // snapshot inputs change.
             TimelineView(
-                .animation(minimumInterval: nil, paused: flashes.isEmpty && mosaic == nil)
+                .animation(
+                    minimumInterval: nil,
+                    paused: flashes.isEmpty && mosaic == nil && stickers.isEmpty)
             ) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
                 Canvas { context, size in
                     Self.draw(
                         frame: frame, camera: camera, ground: ground,
-                        flashes: flashes, mosaic: mosaic, now: now,
+                        flashes: flashes, mosaic: mosaic, stickers: stickers,
+                        reduceMotion: reduceMotion || simulatesReduceMotion, now: now,
                         context: &context, viewport: size)
                 }
             }
@@ -266,6 +287,22 @@ public struct CrossyGridView: View {
             }
             .onAppear { wireFlashSink() }
             .onDisappear { followTask?.cancel() }
+            // The sticker sweep (the FlashBook pattern, scheduled instead of fixed):
+            // every mutation re-keys the task, which sleeps to the book's soonest
+            // expiry and retires it, so the timeline can pause again. A coalesce that
+            // pushed an expiry out simply reschedules; sweep is idempotent.
+            .task(id: reactions?.revision ?? -1) {
+                guard let reactions else { return }
+                while !reactions.isEmpty, !Task.isCancelled {
+                    guard let expiry = reactions.nextExpiry else { return }
+                    let delay = expiry - Date().timeIntervalSinceReferenceDate
+                    if delay > 0 {
+                        try? await Task.sleep(for: .seconds(delay + 0.02))
+                    }
+                    if Task.isCancelled { return }
+                    reactions.sweep(at: Date().timeIntervalSinceReferenceDate)
+                }
+            }
             // The edge-pop gutter (owner report 2026-07-12): the camera drag
             // claims any touch that moves one point, so a back swipe from the
             // leading edge never reached the system's interactive pop — the
@@ -381,7 +418,8 @@ extension CrossyGridView {
     /// closure is not actor-isolated, and the snapshot means it needs nothing that is.
     private nonisolated static func draw(
         frame: GridFrame, camera: GridCamera, ground: GridGround,
-        flashes: FlashBook, mosaic: MosaicWash?, now: TimeInterval,
+        flashes: FlashBook, mosaic: MosaicWash?, stickers: [ReactionSticker],
+        reduceMotion: Bool, now: TimeInterval,
         context: inout GraphicsContext, viewport: CGSize
     ) {
         let puzzle = frame.puzzle
@@ -398,6 +436,7 @@ extension CrossyGridView {
             drawMosaic(frame, visible, mosaic, now, ground, &context)
         }
         drawFlashes(puzzle, visible, flashes, now, &context)
+        drawStickers(puzzle, visible, stickers, now, reduceMotion, &context)
 
         // The closing frame: a quiet 2-unit rule over the hairlines (web parity).
         let board = GridCamera.boardSize(rows: puzzle.rows, cols: puzzle.cols)
@@ -629,6 +668,45 @@ extension CrossyGridView {
             context.fill(
                 Path(GridModule.cellRect(cell, cols: puzzle.cols)),
                 with: .color(Color(rgb: flash.color).opacity(opacity)))
+        }
+    }
+
+    /// Reaction stickers, the topmost layer (PROTOCOL.md §9): native emoji drawn as
+    /// Canvas text at each sticker's born-correct placement — the cell center plus
+    /// its seeded scatter, at its seeded tilt — with only StickerEnvelope's scale and
+    /// opacity moving over time. The placement transform is static from birth (the
+    /// web #245 lesson), so a sticker can never drift or snap; z-order is arrival
+    /// order, so a pile stacks oldest-under-newest and any bleed past the cell edge
+    /// is covered or covering by age, never re-laid-out. Reduce Motion renders
+    /// upright at resting scale, fade-only.
+    private nonisolated static func drawStickers(
+        _ puzzle: GridPuzzle, _ visible: (rows: Range<Int>, cols: Range<Int>),
+        _ stickers: [ReactionSticker], _ now: TimeInterval, _ reduceMotion: Bool,
+        _ context: inout GraphicsContext
+    ) {
+        for sticker in stickers {
+            let row = sticker.cell / puzzle.cols
+            let col = sticker.cell % puzzle.cols
+            guard visible.rows.contains(row), visible.cols.contains(col) else { continue }
+            let opacity = StickerEnvelope.opacity(sticker, at: now, reduceMotion: reduceMotion)
+            guard opacity > 0 else { continue }
+            let scale = StickerEnvelope.scale(sticker, at: now, reduceMotion: reduceMotion)
+            guard scale > 0.01 else { continue }
+            let origin = GridModule.cellOrigin(sticker.cell, cols: puzzle.cols)
+            // A copied context is an isolated layer state: transform and opacity
+            // here never leak back into the shared pass.
+            var layer = context
+            layer.opacity = opacity
+            layer.translateBy(
+                x: origin.x + GridModule.unit / 2 + CGFloat(sticker.offsetX),
+                y: origin.y + GridModule.unit / 2 + CGFloat(sticker.offsetY))
+            layer.rotate(
+                by: .degrees(StickerEnvelope.tiltDegrees(sticker, reduceMotion: reduceMotion)))
+            layer.scaleBy(x: CGFloat(scale), y: CGFloat(scale))
+            layer.draw(
+                Text(verbatim: sticker.emoji)
+                    .font(.system(size: GridModule.stickerFontSize)),
+                at: .zero, anchor: .center)
         }
     }
 

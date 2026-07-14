@@ -69,6 +69,9 @@ public struct SolveScreen: View {
     /// AD-2). Nil for compositions with no analysis (labs, some previews): there the
     /// completion keeps the old last-writer bloom and no panel summons.
     private let fetchAnalysis: (() async -> RoomAnalysis?)?
+    /// Where the reaction fan stands (Wave 7.5): the clue-bar corner by default,
+    /// the deck-edge alternate behind the lab toggle so the owner picks on device.
+    private let reactionFanPlacement: ReactionFanPlacement
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
@@ -103,6 +106,12 @@ public struct SolveScreen: View {
     @State private var factsPresented = false
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
+    /// The reaction sticker book (Wave 7.5; PROTOCOL.md §9): beside the store, never
+    /// inside it (D24). The grid renders it; the fan and the store's fan-out feed it.
+    @State private var reactions = ReactionModel()
+    /// The fan's grammar (pure; ReactionFanModel). Owned here so the room's one
+    /// dismissal seam can close a standing fan like any transient.
+    @State private var fan = ReactionFanModel()
     /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
     /// shared avatar fetches once and the 1 Hz clock tick never re-hits the network
     /// (AvatarImage.swift). Injected into the environment below. A composition root may
@@ -143,7 +152,8 @@ public struct SolveScreen: View {
         onShareInvite: @escaping () -> Void = {},
         onEndGame: @escaping () -> Void = {},
         onKick: @escaping (String) -> Void = { _ in },
-        fetchAnalysis: (() async -> RoomAnalysis?)? = nil
+        fetchAnalysis: (() async -> RoomAnalysis?)? = nil,
+        reactionFanPlacement: ReactionFanPlacement = .clueBarCorner
     ) {
         self.store = store
         self.puzzle = puzzle
@@ -164,6 +174,7 @@ public struct SolveScreen: View {
         self.onEndGame = onEndGame
         self.onKick = onKick
         self.fetchAnalysis = fetchAnalysis
+        self.reactionFanPlacement = reactionFanPlacement
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
         _chrome = State(initialValue: chrome ?? RoomChromeModel())
         // A composition root that also drives the island snapshot passes the SAME cache it
@@ -263,6 +274,17 @@ public struct SolveScreen: View {
                         .asymmetric(
                             insertion: .move(edge: .bottom).combined(with: .opacity),
                             removal: .opacity))
+                    // The ALTERNATE fan placement (Wave 7.5, behind the lab
+                    // toggle): floating astride the deck's top edge, trailing.
+                    // Kept through every bottom zone, so the completed room still
+                    // reacts (§9: reactions on the finished grid are intended).
+                    .overlay(alignment: .topTrailing) {
+                        if reactionFanPlacement == .deckEdge {
+                            ReactionFan(fan: $fan, ground: ground, onFire: fireReaction)
+                                .padding(.trailing, ChromeLayout.inset + 6)
+                                .offset(y: -(ReactionFan.buttonSize / 2))
+                        }
+                    }
                 }
             }
             // Transient panels yield to intent (DESIGN.md §4): every touch
@@ -322,7 +344,11 @@ public struct SolveScreen: View {
                     onDismissTransients: dismissTransients,
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
-                    onJump: { model.jump(to: ClueBrowserList.jumpTarget($0)) })
+                    onJump: { model.jump(to: ClueBrowserList.jumpTarget($0)) },
+                    // The fan rides the bar's corner (Wave 7.5) in the default
+                    // placement; the deck-edge alternate hosts it below instead.
+                    reactionFan: reactionFanPlacement == .clueBarCorner ? $fan : nil,
+                    onReactionFire: { fireReaction($0) })
                     // The clue bar joins the settle beat's fade: it mounts one
                     // frame after the board (its rest slot is a reported frame),
                     // so it rides its own presence on the same spring instead of
@@ -544,7 +570,12 @@ public struct SolveScreen: View {
             // keep the generators warm (the KeyHaptics discipline).
             observeHaptics()
             SolveHaptics.shared.prepare()
+            wireReactionSink()
         }
+        // The sink closes over the grid it validates against, so the live room's
+        // retarget from the 1x1 stand-in must re-wire it (the stand-in would drop
+        // every reaction as out of range forever).
+        .onChange(of: puzzle) { _, _ in wireReactionSink() }
         .onDisappear {
             relayTrailing?.cancel()
             relay.trailingCancelled()
@@ -578,6 +609,7 @@ public struct SolveScreen: View {
                 // the current clue names. A pure function of the same clue book and
                 // selection, kept next to those derivations.
                 crossReference: clues.cells(of: referencedIds),
+                reactions: reactions,
                 mosaicStartedAt: completion.mosaicStartedAt,
                 // The bloom's colors are first-correct owners once GET /analysis
                 // lands (owner ruling 2026-07-13); nil until then, where the grid
@@ -633,7 +665,10 @@ public struct SolveScreen: View {
             // 2026-07-10); Reduce Motion cuts. Keyed on the clue, so mid-word
             // cursor moves never enter an animated transaction. The feather
             // rides as the slot's background, sized by the same layout.
-            ClueBarSizer(ground: ground, current: restingClue)
+            ClueBarSizer(
+                ground: ground, current: restingClue,
+                reservesFanSlot: reactionFanPlacement == .clueBarCorner
+            )
                 .reportChromeFrame(.clueBarSlot)
                 .padding(.horizontal, ChromeLayout.inset)
                 .background(alignment: .bottom) {
@@ -905,6 +940,10 @@ public struct SolveScreen: View {
     /// another surface opens or the room turns terminal.
     private func dismissTransients() {
         factsPresented = false
+        // A standing (tap-opened) fan yields to intent like any transient (DESIGN.md
+        // §4): the touch closes it AND lands. The fan's own surface never routes
+        // here (its overlay stands outside the chrome's dismiss gestures).
+        withAnimation(reduceMotion ? nil : .crossyChrome) { fan.tapAway() }
     }
 
     /// The facts sheet's summon (2026-07-12: the pill's tap presents
@@ -943,6 +982,49 @@ public struct SolveScreen: View {
     private func sendCursor(_ selection: GridSelection) {
         store.moveCursor(
             cell: selection.cell, direction: selection.isAcross ? .across : .down)
+    }
+
+    // MARK: - Reactions (Wave 7.5; PROTOCOL.md §9, D24)
+
+    /// The fan fired: send-gate on the client's set (§9: only sending is gated),
+    /// echo locally through the model (which owns the 5/s cap), and put the frame on
+    /// the wire at the CURSOR cell — the reaction is anchored where you stand. A
+    /// capped attempt sends nothing anywhere. Spectators react by design (§9), so
+    /// unlike the cursor relay nothing here checks the seat.
+    private func fireReaction(_ emoji: String) {
+        guard ReactionPolicy.sendSet.contains(emoji) else { return }
+        let cell = model.selection.cell
+        guard
+            reactions.send(
+                userId: store.selfUserId ?? "you", emoji: emoji, cell: cell,
+                at: Date().timeIntervalSinceReferenceDate)
+        else { return }
+        store.react(emoji: emoji, cell: cell)
+        SolveHaptics.shared.play(.reactionSent)
+    }
+
+    /// Inbound reactions land here (GameStore.onReaction, the onConflictFlash
+    /// pattern): render any well-formed emoji (receive-any, §9) whose cell exists on
+    /// this grid, and tap softly when it lands on or beside the active word (the
+    /// proximity gate; toggleable, default on). Re-wired on a puzzle change because
+    /// the closure captures the grid it validates against (the live room retargets
+    /// from the 1x1 stand-in when REST lands).
+    private func wireReactionSink() {
+        let puzzle = self.puzzle
+        store.onReaction = { notice in
+            guard notice.cell >= 0, notice.cell < puzzle.cellCount,
+                !puzzle.blocks.contains(notice.cell)
+            else { return }
+            reactions.receive(
+                userId: notice.userId, emoji: notice.emoji, cell: notice.cell,
+                at: Date().timeIntervalSinceReferenceDate)
+            if ReactionSettings.receiveHapticsEnabled,
+                ReactionProximity.landsNearActiveWord(
+                    cell: notice.cell, selection: model.selection, puzzle: puzzle)
+            {
+                SolveHaptics.shared.play(.reactionLanded)
+            }
+        }
     }
 
     // MARK: - The deck zone
