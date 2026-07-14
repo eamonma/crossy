@@ -36,6 +36,7 @@ import { ReactionHud } from "./reactions/ReactionHud";
 import { ReactionStickers } from "./reactions/ReactionStickers";
 import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
+import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
 import type { StackMember } from "./ui/primitives";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
@@ -597,8 +598,12 @@ function DemoApp({
         // live bloom. The demo has no backend, so no `source`: the owner map is last-writer only,
         // resolved through mosaicMembers (which colors the seeded cells so the preview paints).
         <div
-          className="board-wrap relative max-w-[620px] mx-auto"
+          className="board-wrap relative outline-none max-w-[620px] mx-auto"
           aria-label="Solved crossword grid"
+          ref={gridRef}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onKeyUp={(e) => reactions.handleKeyUp(e.key)}
         >
           <CompletedMosaic
             store={store}
@@ -606,6 +611,16 @@ function DemoApp({
             letters={fills}
             members={mosaicMembers}
             bloom={bloomOnCompletion}
+          />
+          {/* The same selection and aim layer LiveApp mounts, so `?demo=1` proves the completed
+              board is selectable without a live room: click a cell, the ring moves, the tray and
+              the `/` HUD anchor there (§9). The demo's onCellClick focuses this wrapper (gridRef),
+              so keyboard aim survives a click; the grid and mosaic never mount at once here (the
+              ternary), so they share the one ref safely. */}
+          <MosaicSelectLayer
+            grid={grid}
+            selectedCell={selection.cell}
+            onSelect={onCellClick}
           />
           {/* Reactions stay legal in any game status (§9): stickers paint over the mosaic
               exactly as over the live grid, the same treatment LiveApp mounts. */}
@@ -615,6 +630,15 @@ function DemoApp({
             blocks={puzzle.blocks}
             reactions={reactions.entries}
           />
+          {reactions.hudOpen && reactions.hudCell !== null && (
+            <ReactionHud
+              cols={puzzle.cols}
+              rows={puzzle.rows}
+              cell={reactions.hudCell}
+              options={reactionSet.options}
+              onReact={reactions.sendFromHud}
+            />
+          )}
         </div>
       ) : (
         <div

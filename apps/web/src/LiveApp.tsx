@@ -72,6 +72,7 @@ import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
+import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
 import { useReplayClock } from "./ui/useReplayClock";
@@ -764,6 +765,10 @@ function LiveGame({
   const { prefs: navPrefs } = useNavPrefs();
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
+  // The completed mosaic's own focus target: the interactive grid and the mosaic can both be
+  // mounted at once (the Clues tab keeps the grid alive while the mosaic hides), so the mosaic
+  // cannot share gridRef and needs its own to take keyboard focus on a cell click.
+  const mosaicRef = useRef<HTMLDivElement>(null);
   // Cursor relay throttle (PROTOCOL.md §9): a leading send plus one coalesced trailing send,
   // capped at 10/s. `selectionRef` carries the latest selection to a pending trailing send.
   const cursorLastSentRef = useRef(0);
@@ -998,6 +1003,17 @@ function LiveGame({
 
   function onCellClick(cell: number): void {
     gridRef.current?.focus();
+    const next = cellClick(grid, selection, cell);
+    if (next !== null) setSelection(next);
+  }
+
+  // The completed mosaic's click path: identical selection logic to onCellClick (blocks return null,
+  // the same cell toggles axis, INV-4 keeps it mutation-free), but focus goes to the mosaic wrapper
+  // so the keyboard aim keeps working after a click. The selection change relays moveCursor through
+  // the effect above, exactly as the live grid does (PROTOCOL.md §9), so the tray and HUD anchor
+  // their reaction to wherever you last aimed on the finished board.
+  function onMosaicCellClick(cell: number): void {
+    mosaicRef.current?.focus();
     const next = cellClick(grid, selection, cell);
     if (next !== null) setSelection(next);
   }
@@ -1306,9 +1322,13 @@ function LiveGame({
                   and is only hidden on the Clues tab, so switching tabs never re-fires the bloom. */}
               {boardCompleted && (
                 <div
-                  className="board-wrap relative"
+                  className="board-wrap relative outline-none"
                   aria-label="Solved crossword grid"
                   hidden={!showMosaic}
+                  ref={mosaicRef}
+                  tabIndex={0}
+                  onKeyDown={onKeyDown}
+                  onKeyUp={onKeyUp}
                 >
                   <CompletedMosaic
                     store={store}
@@ -1320,6 +1340,16 @@ function LiveGame({
                     sequence={sequence}
                     source={{ apiBase, gameId, bearer }}
                   />
+                  {/* The selection and aim layer: pointer targets and the selection ring over the
+                      mosaic art, so a reaction anchors anywhere on the finished board (PROTOCOL.md
+                      §9). Above the mosaic (its clicks land) and below the stickers (which are
+                      pointer-transparent, so order never steals a click). It never repaints the
+                      mosaic, so the bloom is untouched. */}
+                  <MosaicSelectLayer
+                    grid={grid}
+                    selectedCell={selection.cell}
+                    onSelect={onMosaicCellClick}
+                  />
                   {/* Reactions stay legal in any game status (PROTOCOL.md §9): the completed
                       board celebrates, so stickers paint over the mosaic exactly as they paint
                       over the live grid (iOS renders them over its mosaic the same way). */}
@@ -1329,6 +1359,17 @@ function LiveGame({
                     blocks={puzzle.blocks}
                     reactions={reactions.entries}
                   />
+                  {/* The `/` leader ring on the mosaic, same props as the live-grid mount so the aim
+                      HUD works post-completion. Anchored to the selection the overlay now moves. */}
+                  {reactions.hudOpen && reactions.hudCell !== null && (
+                    <ReactionHud
+                      cols={puzzle.cols}
+                      rows={puzzle.rows}
+                      cell={reactions.hudCell}
+                      options={reactionSet.options}
+                      onReact={reactions.sendFromHud}
+                    />
+                  )}
                 </div>
               )}
               {/* The interactive grid: the live board while solving, and the Clues-tab treatment once
