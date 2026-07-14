@@ -23,6 +23,10 @@ const ECHO_DELAY_MS = 150; // long enough that the pending overlay is real
 const RESYNC_DELAY_MS = 700; // long enough that the Resyncing pill is visible
 const RECONNECT_DELAY_MS = 1400; // long enough that the Reconnecting pill is visible
 
+// The demo teammate's reaction rotation. 🔥 is deliberately OUTSIDE the v1 send set so the demo
+// proves receive-any: the client renders whatever well-formed emoji arrives (PROTOCOL.md §9).
+const DEMO_REACTIONS = ["🎉", "👀", "💀", "🫡", "🔥", "🤔"];
+
 export interface FakeSession {
   store: GameStore;
   /** A teammate overwrites the given cell: the section 8 conflict flash on a cell
@@ -34,6 +38,10 @@ export interface FakeSession {
   /** Drop the connection, then reconnect with a welcome snapshot; pending overlay
    * entries re-send through reconciliation (PROTOCOL sections 7 and 8). */
   dropConnection(): void;
+  /** A teammate reacts at a cell (Wave 7.3): deliver a `reaction` notice, the same fan-out a live
+   * actor relays (PROTOCOL.md §6). Rotates through a set that includes an emoji OUTSIDE the send
+   * set, so the demo exercises receive-any (§9). Anchors to a teammate's cursor cell by default. */
+  teammateReact(cell?: number): void;
   /** Emit gameCompleted: the terminal-state rule freezes mutation, navigation
    * stays live (ROADMAP Wave 2.1d). */
   completeGame(): void;
@@ -204,10 +212,28 @@ export function createFakeSession(board: Board): FakeSession {
     });
   }
 
+  let reactionTick = 0;
+
   deliverWelcome();
 
   return {
     store,
+    teammateReact(cell?: number): void {
+      const teammate = participants[1] ?? participants[0];
+      if (teammate === undefined) return;
+      const anchor = cell ?? cursors[0]?.cell ?? board.teammates[0]?.cell ?? 0;
+      const emoji =
+        DEMO_REACTIONS[reactionTick % DEMO_REACTIONS.length] ?? "🎉";
+      reactionTick += 1;
+      // Relay only, never echoed to a sender (PROTOCOL.md §6): the store fans this to the view's
+      // ReactionModel and records nothing, exactly as a live actor would.
+      store.receive({
+        type: "reaction",
+        userId: teammate.userId,
+        emoji,
+        cell: anchor,
+      });
+    },
     scribble(cell: number): void {
       if (status !== "ongoing") return;
       teammateWrite(cell, true);

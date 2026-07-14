@@ -11,6 +11,7 @@ import type {
   Direction,
   GameStatus,
   Participant,
+  ReactionNotice,
   ServerMessage,
   Stats,
 } from "@crossy/protocol";
@@ -97,6 +98,7 @@ export class GameStore {
   private version = 0;
   private readonly listeners = new Set<() => void>();
   private readonly flashListeners = new Set<(flash: ConflictFlash) => void>();
+  private readonly reactionListeners = new Set<(r: ReactionNotice) => void>();
 
   constructor(init: GameStoreInit) {
     this.transport = init.transport;
@@ -186,6 +188,18 @@ export class GameStore {
     return () => this.flashListeners.delete(listener);
   }
 
+  /**
+   * Relay an incoming reaction notice to the view (PROTOCOL.md §6, §9). Like subscribeFlash, the
+   * store DETECTS and forwards but holds NOTHING: a reaction is ephemeral and never sequenced, so
+   * it must never enter reconciled state (Wave 7.3). Because no reaction is stored, a snapshot
+   * (welcome/sync/crash-rollback) can neither resurrect nor clear a live sticker. The transient
+   * sprite state lives entirely in the view's ReactionModel.
+   */
+  subscribeReaction(listener: (r: ReactionNotice) => void): () => void {
+    this.reactionListeners.add(listener);
+    return () => this.reactionListeners.delete(listener);
+  }
+
   // --- Local commands (PROTOCOL.md section 8: overlay entry plus send) ---
 
   placeLetter(cell: number, value: string, commandId?: string): void {
@@ -205,6 +219,19 @@ export class GameStore {
   moveCursor(cell: number, direction: Direction): void {
     if (this.syncValue === "connecting") return;
     this.transport.send({ type: "moveCursor", cell, direction });
+  }
+
+  /**
+   * Fan a local reaction out to the room (PROTOCOL.md §5, §9). Ephemeral like moveCursor: no
+   * overlay, no seq, and nothing stored, so views never re-render off this and a reaction can never
+   * enter reconciled state (Wave 7.3). Refused before the first snapshot (`connecting`): there is
+   * no authoritative board to anchor a cell against yet. The 5/s cap and the local echo are the
+   * caller's job (ReactionModel), the same split as the cursor throttle. A reaction is legal in any
+   * status, completed and abandoned included (§9), so there is deliberately no terminal-state gate.
+   */
+  react(emoji: string, cell: number): void {
+    if (this.syncValue === "connecting") return;
+    this.transport.send({ type: "react", emoji, cell });
   }
 
   private sendMutation(
@@ -319,6 +346,11 @@ export class GameStore {
           direction: message.direction as Direction,
         });
         this.bump();
+        return;
+      case "reaction":
+        // Pure fan-out, then gone (PROTOCOL.md §6): forward to the view's ReactionModel and store
+        // nothing. No bump, since no reconciled state changed; a sticker is not board state.
+        for (const listener of this.reactionListeners) listener(message);
         return;
       case "checkResult":
         // Check styling is M6 scope (ROADMAP Phase 5); the skeleton ignores it.

@@ -46,6 +46,9 @@ import type { Selection } from "./input/actions";
 import { ChevronLeftIcon } from "@radix-ui/react-icons";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
+import { useReactions } from "./reactions/useReactions";
+import { ReactionTray } from "./reactions/ReactionTray";
+import { ReactionHud } from "./reactions/ReactionHud";
 import type { StackMember } from "./ui/primitives";
 import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
@@ -766,6 +769,11 @@ function LiveGame({
   const selectionRef = useRef(selection);
 
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
+  // Ephemeral reactions (Wave 7.3): a transient sprite model kept entirely outside the sequenced
+  // store, plus the tray/HUD/key wiring. Reactions are role `any` (spectators cheer too, §9), so
+  // this is not gated on role; the store refuses a react while `connecting`, and the affordances
+  // below only mount once synced. Legal in any status, so a completed board still reacts.
+  const reactions = useReactions(store);
   const frozen = store.status !== "ongoing";
   // Post-REST, pre-welcome: the store is `connecting`, so the real grid renders at its
   // true geometry with empty cells but de-emphasized, and input is locked until the first
@@ -964,7 +972,23 @@ function LiveGame({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Reaction keys run first (the `/` leader, mapped fire, `?`/`!` direct keys, and a captured
+    // key's held repeats), once synced and off the mosaic. An unmapped key inside the HUD returns
+    // false, so it falls through to the letter handler below and never gets swallowed (Wave 7.3).
+    if (
+      !awaitingFirstSync &&
+      reactions.handleKeyDown(e.key, selection.cell, e.repeat)
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (handleKey(e.key, e.shiftKey)) e.preventDefault();
+  }
+
+  function onKeyUp(e: React.KeyboardEvent<HTMLDivElement>): void {
+    // Releases a mapped key captured by a HUD fire back to normal typing (owner ruling
+    // 2026-07-14). Unconditional: a release must land even if sync state changed mid-hold.
+    reactions.handleKeyUp(e.key);
   }
 
   function onCellClick(cell: number): void {
@@ -1297,13 +1321,14 @@ function LiveGame({
                   completed (frozen, so a clue jump highlights its answer on the plain solved board). */}
               {!showMosaic && (
                 <div
-                  className={`board-wrap outline-none transition-opacity duration-300 motion-reduce:transition-none${
+                  className={`board-wrap relative outline-none transition-opacity duration-300 motion-reduce:transition-none${
                     awaitingFirstSync ? " opacity-45" : ""
                   }`}
                   data-testid="grid"
                   ref={gridRef}
                   tabIndex={0}
                   onKeyDown={onKeyDown}
+                  onKeyUp={onKeyUp}
                   aria-label="Crossword grid"
                   aria-busy={awaitingFirstSync}
                 >
@@ -1314,12 +1339,32 @@ function LiveGame({
                     presence={presence}
                     flashes={flashes}
                     xref={referencedCellSet}
+                    reactions={reactions.entries}
                     onCellClick={onCellClick}
                     onFlashEnd={onFlashEnd}
                   />
+                  {/* The `/` leader ring, positioned over the anchor cell. Rendered inside the
+                      board wrapper so its cell-percentage math lands at any board scale. */}
+                  {reactions.hudOpen && reactions.hudCell !== null && (
+                    <ReactionHud
+                      cols={puzzle.cols}
+                      rows={puzzle.rows}
+                      cell={reactions.hudCell}
+                      onReact={reactions.sendFromHud}
+                    />
+                  )}
                 </div>
               )}
             </div>
+            {/* The persistent mini-tray, set quietly below the board. Present once synced and off
+                the completion mosaic; reactions anchor to the current cursor cell. */}
+            {!awaitingFirstSync && !showMosaic && (
+              <div className="mt-3 flex shrink-0 justify-center md:mt-4">
+                <ReactionTray
+                  onReact={(emoji) => reactions.send(emoji, selection.cell)}
+                />
+              </div>
+            )}
           </div>
 
           <ClueRail
