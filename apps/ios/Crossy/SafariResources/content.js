@@ -218,6 +218,29 @@
     background: var(--wash);
     color: var(--text);
   }
+  /* Touch devices (iOS Safari, the reason the pill ships to phones): grow the hit
+     areas toward the 44px finger target. The padding moves onto the buttons so the
+     tap area itself grows, not just the look; the pill sheds its own inner padding
+     so the shape does not balloon (the 14px mark inset holds: 8 pill + 6 play). */
+  @media (pointer: coarse) {
+    .pill {
+      gap: 2px;
+      padding: 4px 4px 4px 8px;
+      font-size: 15px;
+    }
+    .play {
+      padding: 10px 6px;
+      gap: 10px;
+    }
+    .hide {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      font-size: 18px;
+    }
+  }
 `;
   var MARK_SVG = `<svg class="mark" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" width="8" height="8" fill="currentColor"/><rect x="8" y="8" width="8" height="8" fill="currentColor"/><rect y="16" width="8" height="8" fill="currentColor"/><rect x="16" y="16" width="8" height="8" fill="#978365"/><path d="M8 0v24M16 0v24M0 8h24M0 16h24" stroke="currentColor" stroke-width="1.25" fill="none"/></svg>`;
   async function maybeMountPill(site, extract2) {
