@@ -963,7 +963,10 @@ public struct SolveScreen: View {
         }
         .padding(.horizontal, ChromeLayout.inset)
         .padding(.top, 10)
-        .padding(.bottom, 6)
+        // The deck's lift off the bottom safe-area line (owner on-device ruling):
+        // the original tight gap read bottom-stuck on the tall Max screen, so the
+        // keys rise off the home indicator.
+        .padding(.bottom, 30)
         .background(Color(rgb: ground.tokens.canvas))
         .animation(
             .spring(
