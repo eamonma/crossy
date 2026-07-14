@@ -65,6 +65,16 @@ export const users = pgTable("users", {
   // grant. It is a resolved URL, never an email: the Gravatar hash is computed API-side, so this
   // column exposes no email to any reader (INV-6 spirit). Scrubbed to null on tombstone (§8).
   avatar: text("avatar"),
+  // The user's personal reaction set: the five emoji their client offers to send (PROTOCOL.md
+  // §9, §12; DESIGN.md D25). Written by the API's `PATCH /me` under the same single writer as the
+  // name (INV-7); the session never reads it, since a `react` carries the grapheme itself. Stored
+  // as a jsonb string array, the schema's idiom for a small string array (matching
+  // `game_state.recent_command_ids`). Nullable with no default and no backfill: null means the
+  // five defaults (PROTOCOL.md §9) and is the state of every existing and new account until it
+  // chooses otherwise. Byte-exact: the graphemes are stored as given, never normalized (a
+  // variation selector or skin-tone modifier is significant). Not PII, so it is NOT scrubbed on
+  // tombstone (unlike display_name and avatar), and it carries no solution content (INV-6).
+  reactionSet: jsonb("reaction_set").$type<string[]>(),
   // Auth method is an attribute of identity (§8); guests are `true`.
   isAnonymous: boolean("is_anonymous").notNull().default(false),
   // Physical detail (DESIGN.md §9 silent): needed by the stale-anonymous reclaim job
