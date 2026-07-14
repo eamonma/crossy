@@ -125,6 +125,10 @@ describe("client to server messages (PROTOCOL.md §5)", () => {
       name: "moveCursor",
       frame: { type: "moveCursor", cell: 17, direction: "across" },
     },
+    {
+      name: "react",
+      frame: { type: "react", emoji: "🎉", cell: 17 },
+    },
     { name: "checkRequest", frame: { type: "checkRequest", commandId: "c3" } },
     { name: "heartbeat", frame: { type: "heartbeat" } },
     { name: "requestSync", frame: { type: "requestSync" } },
@@ -269,6 +273,10 @@ describe("ephemeral notices (PROTOCOL.md §6)", () => {
       frame: { type: "cursor", userId: "u2", cell: 5, direction: "down" },
     },
     {
+      name: "reaction",
+      frame: { type: "reaction", userId: "u2", emoji: "🎉", cell: 5 },
+    },
+    {
       name: "checkResult",
       frame: { type: "checkResult", commandId: "c4", wrongCells: [3, 7, 12] },
     },
@@ -287,6 +295,96 @@ describe("ephemeral notices (PROTOCOL.md §6)", () => {
     const result = decodeServerMessage({ type: "sparkle", glitter: true });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("unknown_type");
+  });
+});
+
+describe("emoji reactions: shape only, receive-any (PROTOCOL.md §5, §6, §9)", () => {
+  it("decodes a react whose emoji is outside the v1 set: receive-any, the codec checks shape not set membership (§9)", () => {
+    const result = decodeClientMessage({ type: "react", emoji: "🔥", cell: 3 });
+    assertOk(result);
+    if (result.ok && result.value.type === "react") {
+      expect(result.value.emoji).toBe("🔥");
+    }
+  });
+
+  it("decodes a reaction whose emoji is outside the v1 set: a receiver MUST NOT reject an unknown emoji (receive-any, send-gated, §9)", () => {
+    const result = decodeServerMessage({
+      type: "reaction",
+      userId: "u2",
+      emoji: "🦀",
+      cell: 3,
+    });
+    assertOk(result);
+    if (result.ok && result.value.type === "reaction") {
+      expect(result.value.emoji).toBe("🦀");
+    }
+  });
+
+  it("ignores unknown extra fields on react and reaction (forward compatibility, §3)", () => {
+    const react = decodeClientMessage({
+      type: "react",
+      emoji: "🎉",
+      cell: 3,
+      futureField: { nested: true },
+    });
+    assertOk(react);
+    if (react.ok) {
+      expect(react.value).not.toHaveProperty("futureField");
+      expect(react.value).toEqual({ type: "react", emoji: "🎉", cell: 3 });
+    }
+    const reaction = decodeServerMessage({
+      type: "reaction",
+      userId: "u2",
+      emoji: "🎉",
+      cell: 3,
+      futureField: 1,
+    });
+    assertOk(reaction);
+    if (reaction.ok) expect(reaction.value).not.toHaveProperty("futureField");
+  });
+
+  it("rejects a react missing emoji as malformed", () => {
+    const result = decodeClientMessage({ type: "react", cell: 3 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("rejects a reaction with a mistyped cell as malformed", () => {
+    const result = decodeServerMessage({
+      type: "reaction",
+      userId: "u2",
+      emoji: "🎉",
+      cell: "3",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("rejects an empty emoji as malformed (non-empty shape rule, §9)", () => {
+    const result = decodeClientMessage({ type: "react", emoji: "", cell: 3 });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("rejects an emoji over 32 UTF-8 bytes as malformed (§9)", () => {
+    // Nine 🎉 graphemes are 36 UTF-8 bytes (4 each), past the 32-byte shape cap.
+    const result = decodeClientMessage({
+      type: "react",
+      emoji: "🎉".repeat(9),
+      cell: 3,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("accepts an emoji exactly at the 32 UTF-8 byte cap (§9)", () => {
+    // Eight 🎉 graphemes are exactly 32 UTF-8 bytes, the inclusive boundary.
+    const result = decodeClientMessage({
+      type: "react",
+      emoji: "🎉".repeat(8),
+      cell: 3,
+    });
+    assertOk(result);
   });
 });
 

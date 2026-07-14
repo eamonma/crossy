@@ -91,6 +91,7 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 | `placeLetter`  | host, solver      | `commandId`, `cell`, `value` | board mutation                     |
 | `clearCell`    | host, solver      | `commandId`, `cell`          | board mutation; value becomes null |
 | `moveCursor`   | any               | `cell`, `direction`          | ephemeral; at most 10/s; spectator cursors suppressed client-side by default |
+| `react`        | any               | `emoji`, `cell`              | ephemeral; at most 5/s; any role incl. spectator; legal in any status (section 9) |
 | `checkRequest` | host, solver      | `commandId`                  | whole-grid check                   |
 | `heartbeat`    | any               | none                         | every 15 s                         |
 | `requestSync`  | any               | none                         | server replies `sync`              |
@@ -173,6 +174,7 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 - `welcome`, `sync` (`{"type":"sync","board":{...}}`)
 - `playerConnected {userId, displayName, avatarUrl, color, role}` and `playerDisconnected {userId}`. `avatarUrl` is the same opaque nullable field as the participant carries (section 4).
 - `cursor {userId, cell, direction}`
+- `reaction {userId, emoji, cell}`: relayed to the other connections on a valid `react`, never echoed to the sender (like `cursor`). Even lighter than a cursor: the server records nothing, so a reaction never appears in a `welcome` or `sync` `board` snapshot (there is no `board.reactions`). Semantics in section 9.
 - `checkResult {commandId, wrongCells:[int]}`: unicast to the requester. Lists filled cells whose value fails the comparator; empty cells are never listed.
 - `kicked {reason}`, followed by close `1008`.
 - `error {code, message, fatal, commandId?}`
@@ -197,7 +199,7 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 - **Snapshot reconciliation**, used identically for every full snapshot (`welcome`, `sync`, and a crash-rollback snapshot) so the paths cannot drift: clear the overlay, then for each still-pending command, if its `commandId` is in the snapshot's `recentCommandIds` it is confirmed: drop it; otherwise, if the command is still within the recent-command window (K; DESIGN.md section 15), re-add its overlay entry **and re-send it** (MUST after a gap or reconnect, not MAY); if it has aged out of the window, drop it rather than re-send, because re-applying it could regress a value that superseded it. Duplicates are dropped by `commandId`. This stops an overlay entry whose echo was lost in a gap or disconnect from becoming immortal and masking a later write to that cell. Then re-render.
 - **Age against K, proposal (not settled).** The rule above re-sends a pending command that is still within the window K and drops it once it has aged out, but it does not fix how a client measures a pending command's age against K. The unit is unspecified: a send-`seq` delta, an applied-command count, or wall-clock time are all candidates. Proposal: measure by `seq` delta, since the server's K counts applied commands and every accepted command consumes exactly one `seq` (section 6). A pending command has aged out when a reconciling snapshot's `board.seq` exceeds the `seq` the client had applied when it sent the command by more than K (a conservative bound, since terminal events also consume `seq`). The client-store vectors (section 13) supply `agedOut` as case input rather than deriving it, so they pin the outcome (aged-out drops, live re-sends) without committing to a measure; until this closes (DESIGN.md section 15, by M2) implementations MUST NOT diverge on the measure.
 
-## 9. Presence, heartbeat, cursors
+## 9. Presence, heartbeat, cursors, reactions
 
 - Clients send `heartbeat` every 15 s. The server broadcasts `playerDisconnected` after 45 s with no inbound frame of any type (heartbeat or command), or on socket close; any received frame resets the liveness timer, so an actively typing client never flaps to disconnected.
 - `playerConnected` and `playerDisconnected` key on the user's first and last socket, not on each socket. A user is connected while they hold at least one socket, so with several open tabs a second socket announces nothing and closing it disconnects nothing while another socket holds them live; `playerConnected` fires on the 0-to-1 transition and `playerDisconnected` on the 1-to-0. The connecting socket learns the full participant list in its own `welcome`, so it is never sent its own `playerConnected`.
@@ -205,6 +207,16 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 - On a valid `moveCursor` the server relays a `cursor` notice to the other connections and does not echo it to the sender, which already knows its own cursor. It records the position as that user's current cursor, so the next snapshot's `board.cursors` carries it, and it clears that cursor when the user's last socket closes, so a `playerDisconnected` and the following snapshot agree the departed user has no cursor.
 - A `moveCursor` whose `cell` is out of range or a black square is dropped silently, with no error: presence is best-effort, and `INVALID_CELL` (section 11) is a mutation-only mapping. `moveCursor` is role `any` (section 5); a spectator's cursor is suppressed client-side by default, not filtered by the server.
 - Presence and cursor state are best-effort: never persisted, never sequenced. The board payload carries the current view at snapshot time.
+
+**Reactions.** `react` is the presence-family sibling of `moveCursor`, and the same best-effort rules govern it.
+
+- `react` is role `any` (section 5), spectators included by design: friends watching a solve get to cheer. `emoji` MUST be an exact grapheme from the server's published reaction set, and `cell` is valid iff it is in range and not a black square. Any violation, an unpublished emoji or an out-of-range or black-square `cell`, is dropped silently with no error, exactly as `moveCursor` is: presence is best-effort, and `INVALID_CELL` (section 11) stays a mutation-only mapping.
+- `react` is rate-limited at most 5 per second per client; the server MAY drop excess silently.
+- `react` is legal in any game status, including `completed` and `abandoned`. It mutates nothing, so a terminal state does not gate it the way it gates `placeLetter` (which then draws `GAME_NOT_ONGOING`, section 10); reactions on the finished grid after completion are intended, and the connection already stays open for the post-game screen.
+- On a valid `react` the server relays a `reaction` notice to the other connections and does not echo it to the sender, the same fan-out as `cursor`. It is even lighter than a cursor: the server records nothing, so a reaction never appears in a `welcome` or `sync` `board` snapshot (there is no `board.reactions`, unlike `board.cursors`). Pure fan-out, then gone.
+- The v1 reaction set is exactly these five graphemes: 🎉 (U+1F389), 🤔 (U+1F914), 👀 (U+1F440), 💀 (U+1F480), 🫡 (U+1FAE1).
+- **Grapheme on the wire; receive-any, send-gated.** The wire carries the emoji grapheme itself, never a symbolic token. The reaction set is server-defined and MAY widen, or later become per-user, WITHOUT a protocol version bump (section 14). A client MUST render or ignore any well-formed `reaction.emoji` it receives, and MUST NOT reject a reaction whose emoji is outside its own send set; only sending is gated by the set. Decoders enforce shape only, a non-empty string of at most 32 UTF-8 bytes, and never set membership, which is session-service policy.
+- **Client render guidance (non-normative).** A reaction renders as a transient sticker at its `cell` for roughly 5 seconds, then fades. Repeated sends of the same emoji from one user coalesce client-side rather than stacking sprites.
 
 ## 10. Completion and check
 
