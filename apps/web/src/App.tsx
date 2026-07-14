@@ -29,6 +29,9 @@ import {
 import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
+import { useReactions } from "./reactions/useReactions";
+import { ReactionTray } from "./reactions/ReactionTray";
+import { ReactionHud } from "./reactions/ReactionHud";
 import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import type { StackMember } from "./ui/primitives";
@@ -313,6 +316,10 @@ function DemoApp({
 
   const store = session.store;
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
+  // Reactions on the demo board (Wave 7.3): the same hook the live game uses, so send + local echo
+  // + receive-any + the leader HUD run without a backend. The "Teammate reacts" button below drives
+  // the receive path through the fake session.
+  const reactions = useReactions(store);
 
   const board = boardById(boardId);
   const puzzle = board.puzzle;
@@ -441,6 +448,12 @@ function DemoApp({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Reaction keys first (leader HUD, mapped fire, `?`/`!` direct keys, captured held repeats);
+    // an unmapped key inside the HUD falls through to the letter handler below (Wave 7.3).
+    if (reactions.handleKeyDown(e.key, selection.cell, e.repeat)) {
+      e.preventDefault();
+      return;
+    }
     const effect = keyEffect(
       { grid, filled, selection, frozen, prefs: navPrefs },
       e.key,
@@ -518,6 +531,13 @@ function DemoApp({
           <Button
             variant="secondary"
             size="sm"
+            onClick={() => session.teammateReact()}
+          >
+            Teammate reacts
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => session.completeGame()}
           >
             Complete game
@@ -586,10 +606,11 @@ function DemoApp({
         </div>
       ) : (
         <div
-          className="board-wrap outline-none max-w-[620px] mx-auto"
+          className="board-wrap relative outline-none max-w-[620px] mx-auto"
           ref={gridRef}
           tabIndex={0}
           onKeyDown={onKeyDown}
+          onKeyUp={(e) => reactions.handleKeyUp(e.key)}
           aria-label="Crossword grid. Arrow keys move, letters fill, Tab jumps clues."
         >
           <CrosswordGrid
@@ -598,8 +619,24 @@ function DemoApp({
             selection={selection}
             presence={presence}
             flashes={flashes}
+            reactions={reactions.entries}
             onCellClick={onCellClick}
             onFlashEnd={onFlashEnd}
+          />
+          {reactions.hudOpen && reactions.hudCell !== null && (
+            <ReactionHud
+              cols={puzzle.cols}
+              rows={puzzle.rows}
+              cell={reactions.hudCell}
+              onReact={reactions.sendFromHud}
+            />
+          )}
+        </div>
+      )}
+      {!boardCompleted && (
+        <div className="mt-3 flex justify-center">
+          <ReactionTray
+            onReact={(emoji) => reactions.send(emoji, selection.cell)}
           />
         </div>
       )}
