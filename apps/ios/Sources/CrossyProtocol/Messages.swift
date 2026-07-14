@@ -27,6 +27,29 @@ private func expectWireType<Key: CodingKey>(
     }
 }
 
+/// Decode a reaction emoji with the PROTOCOL.md §9 shape check: a non-empty string of
+/// at most 32 UTF-8 bytes, the twin of the codec's `asEmoji` (`String.utf8.count` is
+/// the byte count codec.ts computes by hand). Shape only: set membership is
+/// session-service policy and is never checked here, so an emoji outside the v1 set
+/// still decodes (receive-any, §9) and the published set MAY widen without a protocol
+/// version bump (§14).
+private func decodeEmoji<Key: CodingKey>(
+    _ container: KeyedDecodingContainer<Key>, _ key: Key
+) throws -> String {
+    let emoji = try container.decode(String.self, forKey: key)
+    guard !emoji.isEmpty else {
+        throw DecodingError.dataCorruptedError(
+            forKey: key, in: container,
+            debugDescription: "emoji: non-empty string required")
+    }
+    guard emoji.utf8.count <= 32 else {
+        throw DecodingError.dataCorruptedError(
+            forKey: key, in: container,
+            debugDescription: "emoji: at most 32 UTF-8 bytes required")
+    }
+    return emoji
+}
+
 // MARK: - Client to server (PROTOCOL.md §2, §5)
 
 /// First frame from the client (PROTOCOL.md §2). `protocolVersion` is negotiated, not
@@ -174,6 +197,42 @@ public struct MoveCursorMessage: Sendable, Equatable, Codable {
         try container.encode(Self.wireType, forKey: .type)
         try container.encode(cell, forKey: .cell)
         try container.encode(direction, forKey: .direction)
+    }
+}
+
+/// Send an emoji reaction at a cell (PROTOCOL.md §5, §9). The presence-family sibling
+/// of moveCursor: ephemeral, no commandId, no seq, at most 5/s, role `any` (spectators
+/// react by design), legal in any game status. The wire carries the emoji grapheme
+/// itself, never a symbolic token (§9).
+public struct ReactMessage: Sendable, Equatable, Codable {
+    public static let wireType = "react"
+
+    public let emoji: String
+    public let cell: Int
+
+    public init(emoji: String, cell: Int) {
+        self.emoji = emoji
+        self.cell = cell
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case emoji
+        case cell
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        emoji = try decodeEmoji(container, CodingKeys.emoji)
+        cell = try container.decode(Int.self, forKey: .cell)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(emoji, forKey: .emoji)
+        try container.encode(cell, forKey: .cell)
     }
 }
 
@@ -606,6 +665,48 @@ public struct CursorMessage: Sendable, Equatable, Codable {
     }
 }
 
+/// Another participant reacted (PROTOCOL.md §6, §9). Relayed on a valid `react`, never
+/// echoed to the sender (like `cursor`) and even lighter: the server records nothing,
+/// so a reaction never appears in a snapshot (there is no `board.reactions`).
+/// Receive-any: a client renders or ignores any well-formed emoji and MUST NOT reject
+/// one outside its own send set (§9).
+public struct ReactionMessage: Sendable, Equatable, Codable {
+    public static let wireType = "reaction"
+
+    public let userId: String
+    public let emoji: String
+    public let cell: Int
+
+    public init(userId: String, emoji: String, cell: Int) {
+        self.userId = userId
+        self.emoji = emoji
+        self.cell = cell
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case userId
+        case emoji
+        case cell
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        userId = try container.decode(String.self, forKey: .userId)
+        emoji = try decodeEmoji(container, CodingKeys.emoji)
+        cell = try container.decode(Int.self, forKey: .cell)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(userId, forKey: .userId)
+        try container.encode(emoji, forKey: .emoji)
+        try container.encode(cell, forKey: .cell)
+    }
+}
+
 /// Unicast reply to checkRequest (PROTOCOL.md §6, §10). Lists filled cells whose value
 /// fails the comparator; empty cells are never listed.
 public struct CheckResultMessage: Sendable, Equatable, Codable {
@@ -730,6 +831,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
     case placeLetter(PlaceLetterMessage)
     case clearCell(ClearCellMessage)
     case moveCursor(MoveCursorMessage)
+    case react(ReactMessage)
     case checkRequest(CheckRequestMessage)
     case heartbeat(HeartbeatMessage)
     case requestSync(RequestSyncMessage)
@@ -741,6 +843,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
         case .placeLetter: return PlaceLetterMessage.wireType
         case .clearCell: return ClearCellMessage.wireType
         case .moveCursor: return MoveCursorMessage.wireType
+        case .react: return ReactMessage.wireType
         case .checkRequest: return CheckRequestMessage.wireType
         case .heartbeat: return HeartbeatMessage.wireType
         case .requestSync: return RequestSyncMessage.wireType
@@ -759,6 +862,8 @@ public enum ClientMessage: Sendable, Equatable, Codable {
             self = .clearCell(try ClearCellMessage(from: decoder))
         case MoveCursorMessage.wireType:
             self = .moveCursor(try MoveCursorMessage(from: decoder))
+        case ReactMessage.wireType:
+            self = .react(try ReactMessage(from: decoder))
         case CheckRequestMessage.wireType:
             self = .checkRequest(try CheckRequestMessage(from: decoder))
         case HeartbeatMessage.wireType:
@@ -776,6 +881,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
         case .placeLetter(let message): try message.encode(to: encoder)
         case .clearCell(let message): try message.encode(to: encoder)
         case .moveCursor(let message): try message.encode(to: encoder)
+        case .react(let message): try message.encode(to: encoder)
         case .checkRequest(let message): try message.encode(to: encoder)
         case .heartbeat(let message): try message.encode(to: encoder)
         case .requestSync(let message): try message.encode(to: encoder)
@@ -797,6 +903,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
     case playerConnected(PlayerConnectedMessage)
     case playerDisconnected(PlayerDisconnectedMessage)
     case cursor(CursorMessage)
+    case reaction(ReactionMessage)
     case checkResult(CheckResultMessage)
     case kicked(KickedMessage)
     case error(ErrorMessage)
@@ -812,6 +919,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .playerConnected: return PlayerConnectedMessage.wireType
         case .playerDisconnected: return PlayerDisconnectedMessage.wireType
         case .cursor: return CursorMessage.wireType
+        case .reaction: return ReactionMessage.wireType
         case .checkResult: return CheckResultMessage.wireType
         case .kicked: return KickedMessage.wireType
         case .error: return ErrorMessage.wireType
@@ -827,7 +935,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .gameCompleted(let message): return message.seq
         case .gameAbandoned(let message): return message.seq
         case .welcome, .sync, .playerConnected, .playerDisconnected, .cursor,
-            .checkResult, .kicked, .error:
+            .reaction, .checkResult, .kicked, .error:
             return nil
         }
     }
@@ -852,6 +960,8 @@ public enum ServerMessage: Sendable, Equatable, Codable {
             self = .playerDisconnected(try PlayerDisconnectedMessage(from: decoder))
         case CursorMessage.wireType:
             self = .cursor(try CursorMessage(from: decoder))
+        case ReactionMessage.wireType:
+            self = .reaction(try ReactionMessage(from: decoder))
         case CheckResultMessage.wireType:
             self = .checkResult(try CheckResultMessage(from: decoder))
         case KickedMessage.wireType:
@@ -873,6 +983,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .playerConnected(let message): try message.encode(to: encoder)
         case .playerDisconnected(let message): try message.encode(to: encoder)
         case .cursor(let message): try message.encode(to: encoder)
+        case .reaction(let message): try message.encode(to: encoder)
         case .checkResult(let message): try message.encode(to: encoder)
         case .kicked(let message): try message.encode(to: encoder)
         case .error(let message): try message.encode(to: encoder)

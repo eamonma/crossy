@@ -47,6 +47,14 @@ public enum GridModule {
     public static let badgeRadius: CGFloat = 7
     public static let badgeCountFontSize: CGFloat = 9
 
+    // MARK: Reaction stickers (PROTOCOL.md §9; native emoji, no assets)
+
+    /// The sticker glyph's type size, module units: big enough to read as a cheer,
+    /// small enough that the scatter disc (ReactionSticker.scatterRadiusUnits) keeps
+    /// it mostly inside the 36-unit cell (owner ruling: bleed is possible by
+    /// z-order, not a goal).
+    public static let stickerFontSize: CGFloat = 21
+
     // MARK: Lines
 
     /// Cell hairline (web parity: 0.6 stroke) and the closing outer frame (2 units).

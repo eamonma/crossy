@@ -50,6 +50,9 @@
 //    -stress                extremes for chrome mockups (owner ask 2026-07-10):
 //                           eleven people with long names, a room name that must
 //                           truncate, an hours-old clock; composes with any -i2*
+//    -reactionFanDeckEdge   host the reaction fan at the deck's edge (the Wave 7.5
+//                           alternate placement) instead of the clue-bar corner;
+//                           Bee's periodic reactions run in every demo room
 //
 
 import CrossyProtocol
@@ -131,6 +134,13 @@ final class DemoRoom {
     private func script() async {
         let arguments = ProcessInfo.processInfo.arguments
         try? await Task.sleep(for: .milliseconds(400))  // let the welcome land
+
+        // Bee cheers on a loose cadence (Wave 7.5), default-on so the fixture room
+        // always demonstrates reactions: her own word first, then around the board,
+        // with 🔥 in the cycle as the receive-any proof (PROTOCOL.md §9: outside the
+        // v1 send set, rendered anyway) and one quick repeat as the coalesce proof.
+        // A child task, so the one-shot scripts below still run.
+        Task { await reactionLoop() }
 
         if let index = arguments.firstIndex(of: "-i2cWord"),
             arguments.indices.contains(index + 1),
@@ -289,6 +299,38 @@ final class DemoRoom {
                 try? await Task.sleep(for: .milliseconds(1400))
                 selection.swipe(.nextWord)
             }
+        }
+    }
+}
+
+extension DemoRoom {
+    /// The reaction script: every ~7 s Bee (or Ada, alternating) reacts at a cell in
+    /// or near her word, cycling a set that includes 🔥 (receive-any, PROTOCOL.md
+    /// §9); every third beat repeats the same reaction after a breath so the
+    /// coalesce pulse shows in place of a second sprite.
+    private func reactionLoop() async {
+        let beats: [(user: String, emoji: String, cell: Int)] = [
+            ("bee", "🎉", 17),
+            ("bee", "🔥", 18),
+            ("ada", "🤔", 12),
+            ("bee", "👀", 15),
+            ("ada", "💀", 7),
+            ("bee", "🫡", 19),
+        ]
+        var index = 0
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(index == 0 ? 2_600 : 7_000))
+            let beat = beats[index % beats.count]
+            await transport.deliver(
+                .reaction(
+                    ReactionMessage(userId: beat.user, emoji: beat.emoji, cell: beat.cell)))
+            if index % 3 == 2 {
+                try? await Task.sleep(for: .milliseconds(900))
+                await transport.deliver(
+                    .reaction(
+                        ReactionMessage(userId: beat.user, emoji: beat.emoji, cell: beat.cell)))
+            }
+            index += 1
         }
     }
 }
@@ -555,7 +597,10 @@ actor LoopbackTransport: Transport {
                     CellSetMessage(
                         seq: seq, cell: clear.cell, value: nil,
                         by: selfUserId, commandId: clear.commandId, at: Self.now())))
-        case .hello, .moveCursor, .checkRequest, .heartbeat, .requestSync:
+        case .hello, .moveCursor, .react, .checkRequest, .heartbeat, .requestSync:
+            // Ephemerals vanish exactly as a serverless room would swallow them;
+            // a react in particular is never echoed even by real servers
+            // (PROTOCOL.md §9), so the local echo is the only sticker you see.
             break
         }
     }

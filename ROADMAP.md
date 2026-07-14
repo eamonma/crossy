@@ -978,7 +978,17 @@ A fan button that opens the send set; hold-slide-release over the emoji via poin
 events, with a tap-tap fallback (tap the fan, tap an emoji). **Exit: a phone-only
 solver sends a reaction both ways.**
 
-### Wave 7.5 — iOS (parked)
+### Wave 7.5 — iOS (in progress)
 
-Parked. A fan button in the clue-bar corner with haptics, bundled with enlarging the
-`<`/`>` tap areas (owner note 2026-07-14). Lands when the iOS client next has a wave.
+In progress on `reactions-5-ios`. `react`/`reaction` in CrossyProtocol (codec-test
+twins, shape-only emoji guard), a stateless `GameStore.react` plus an `onReaction`
+fan-out (nothing stored, D24), and a CrossyUI sticker layer in the grid's one Canvas
+pass: born-correct placement seeded from each sticker's stable key, the entry slap
+(~9% overshoot, settle clamped so rest is exact), coalesce pulse, 4-per-cell pile
+cap, 5/s send window, reduced-motion fade-only. The fan button rides the clue-bar
+corner (hold-slide-release plus tap-tap, pure state machine), with the deck-edge
+alternate behind `-reactionFanDeckEdge`; bundled `<`/`>` tap-area enlargement (owner
+note 2026-07-14). Haptics: light on send, soft on a near-word landing (toggleable).
+Review surfaces: DemoRoom's periodic teammate reactions (🔥 receive-any proof) and
+the `-reactionLab` rig. **Exit: owner device pass on look-and-feel and the fan
+placement pick.**

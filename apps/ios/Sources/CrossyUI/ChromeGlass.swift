@@ -33,6 +33,10 @@ enum ChromeLayout {
     /// The bar's chevron slot; the layout twin (ClueBarSizer) reserves the
     /// same span so the slot and the pinned row wrap at one width.
     static let clueChevronWidth: CGFloat = 36
+    /// The reaction fan's corner slot (Wave 7.5): the 40 pt button plus its 8 pt
+    /// trailing inset. Reserved by the pinned row and the layout twin alike, so
+    /// the clue wraps at one width whether or not the fan stands.
+    static let clueFanSlotWidth: CGFloat = 48
     /// The room bar's pills (owner ruling 2026-07-10: a cluster of glass pills,
     /// not one bar): the compact-toolbar register, smaller than a standing bar.
     /// Still the register the below-26 Menu labels render in (RosterMenu /

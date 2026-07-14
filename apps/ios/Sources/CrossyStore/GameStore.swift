@@ -142,6 +142,12 @@ public final class GameStore {
     /// `onConflictFlash` surfaces the flash to the view. Set by the composition root.
     @ObservationIgnored public var onKicked: (@MainActor (KickedMessage) -> Void)?
 
+    /// Inbound reactions hand off to the view layer through this, the onConflictFlash
+    /// pattern: the store holds NOTHING for a reaction (never stored, never sequenced,
+    /// never in a snapshot; PROTOCOL.md §9, D24), so decay and render belong wholly to
+    /// the sticker layer. Set by the composition root.
+    @ObservationIgnored public var onReaction: (@MainActor (ReactionMessage) -> Void)?
+
     @ObservationIgnored private let newCommandId: () -> String
     @ObservationIgnored private var outboxWake: AsyncStream<Void>.Continuation?
 
@@ -203,6 +209,19 @@ public final class GameStore {
     public func moveCursor(cell: Int, direction: Direction) {
         if sync == .connecting { return }
         emit(.moveCursor(MoveCursorMessage(cell: cell, direction: direction)))
+    }
+
+    /// Send an emoji reaction at the given cell (PROTOCOL.md §5, §9): moveCursor's
+    /// presence-family twin. Stateless by design (D24): no overlay entry, no seq,
+    /// nothing recorded here, so a snapshot or resync is provably unable to touch a
+    /// sticker. Legal in any game status, completed and abandoned included (§9:
+    /// reactions on the finished grid are intended), so unlike a mutation it never
+    /// checks `status`. Refused before the first snapshot (`connecting`) like every
+    /// intent; the 5/s client cap is the caller's job (§9), matching moveCursor's
+    /// caller-owned throttle.
+    public func react(emoji: String, cell: Int) {
+        if sync == .connecting { return }
+        emit(.react(ReactMessage(emoji: emoji, cell: cell)))
     }
 
     /// Drop a participant from the roster after a host kick the server has confirmed
@@ -382,6 +401,12 @@ public final class GameStore {
         case .cursor(let notice):
             cursors[notice.userId] = Cursor(
                 userId: notice.userId, cell: notice.cell, direction: notice.direction)
+        case .reaction(let notice):
+            // Pure fan-out (PROTOCOL.md §9, D24): unlike a cursor, the store keeps no
+            // current value for a reaction, so nothing a snapshot reconciles can ever
+            // carry one. Hand the notice to the sticker layer and return.
+            onReaction?(notice)
+            return
         case .checkResult:
             // Check styling is M6 scope (root ROADMAP Phase 5); ignored here exactly
             // as the web store skeleton ignores it.
