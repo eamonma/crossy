@@ -1302,7 +1302,7 @@ function LiveGame({
                   and is only hidden on the Clues tab, so switching tabs never re-fires the bloom. */}
               {boardCompleted && (
                 <div
-                  className="board-wrap"
+                  className="board-wrap relative"
                   aria-label="Solved crossword grid"
                   hidden={!showMosaic}
                 >
@@ -1315,6 +1315,15 @@ function LiveGame({
                     replayTime={replay.time}
                     sequence={sequence}
                     source={{ apiBase, gameId, bearer }}
+                  />
+                  {/* Reactions stay legal in any game status (PROTOCOL.md §9): the completed
+                      board celebrates, so stickers paint over the mosaic exactly as they paint
+                      over the live grid (iOS renders them over its mosaic the same way). */}
+                  <ReactionStickers
+                    cols={puzzle.cols}
+                    rows={puzzle.rows}
+                    blocks={puzzle.blocks}
+                    reactions={reactions.entries}
                   />
                 </div>
               )}
@@ -1365,9 +1374,10 @@ function LiveGame({
                 </div>
               )}
             </div>
-            {/* The persistent mini-tray, set quietly below the board. Present once synced and off
-                the completion mosaic; reactions anchor to the current cursor cell. */}
-            {!awaitingFirstSync && !showMosaic && (
+            {/* The persistent mini-tray, set quietly below the board. Present once synced, in
+                every game status (post-completion celebration is intended, §9), mosaic included;
+                reactions anchor to the current cursor cell, which survives completion. */}
+            {!awaitingFirstSync && (
               <div className="mt-3 flex shrink-0 justify-center md:mt-4">
                 <ReactionTray
                   onReact={(emoji) => reactions.send(emoji, selection.cell)}

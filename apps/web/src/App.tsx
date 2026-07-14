@@ -594,7 +594,7 @@ function DemoApp({
         // live bloom. The demo has no backend, so no `source`: the owner map is last-writer only,
         // resolved through mosaicMembers (which colors the seeded cells so the preview paints).
         <div
-          className="board-wrap max-w-[620px] mx-auto"
+          className="board-wrap relative max-w-[620px] mx-auto"
           aria-label="Solved crossword grid"
         >
           <CompletedMosaic
@@ -603,6 +603,14 @@ function DemoApp({
             letters={fills}
             members={mosaicMembers}
             bloom={bloomOnCompletion}
+          />
+          {/* Reactions stay legal in any game status (§9): stickers paint over the mosaic
+              exactly as over the live grid, the same treatment LiveApp mounts. */}
+          <ReactionStickers
+            cols={puzzle.cols}
+            rows={puzzle.rows}
+            blocks={puzzle.blocks}
+            reactions={reactions.entries}
           />
         </div>
       ) : (
@@ -640,13 +648,12 @@ function DemoApp({
           )}
         </div>
       )}
-      {!boardCompleted && (
-        <div className="mt-3 flex justify-center">
-          <ReactionTray
-            onReact={(emoji) => reactions.send(emoji, selection.cell)}
-          />
-        </div>
-      )}
+      {/* The tray stands in every game status (post-completion celebration is intended, §9). */}
+      <div className="mt-3 flex justify-center">
+        <ReactionTray
+          onReact={(emoji) => reactions.send(emoji, selection.cell)}
+        />
+      </div>
 
       {store.status === "completed" && !dismissedCompletion && (
         // The completion card, layered over the mosaic board above exactly as in LiveApp: the
