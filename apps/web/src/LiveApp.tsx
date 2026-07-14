@@ -49,6 +49,7 @@ import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { useReactions } from "./reactions/useReactions";
 import { ReactionTray } from "./reactions/ReactionTray";
 import { ReactionHud } from "./reactions/ReactionHud";
+import { ReactionStickers } from "./reactions/ReactionStickers";
 import type { StackMember } from "./ui/primitives";
 import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
@@ -1339,9 +1340,17 @@ function LiveGame({
                     presence={presence}
                     flashes={flashes}
                     xref={referencedCellSet}
-                    reactions={reactions.entries}
                     onCellClick={onCellClick}
                     onFlashEnd={onFlashEnd}
+                  />
+                  {/* The sticker layer, an HTML overlay above the SVG (the settle-pop fix;
+                      reactions/ReactionStickers.tsx). Inside the board wrapper so its cell
+                      percentages land at any board scale. */}
+                  <ReactionStickers
+                    cols={puzzle.cols}
+                    rows={puzzle.rows}
+                    blocks={puzzle.blocks}
+                    reactions={reactions.entries}
                   />
                   {/* The `/` leader ring, positioned over the anchor cell. Rendered inside the
                       board wrapper so its cell-percentage math lands at any board scale. */}

@@ -32,6 +32,7 @@ import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { useReactions } from "./reactions/useReactions";
 import { ReactionTray } from "./reactions/ReactionTray";
 import { ReactionHud } from "./reactions/ReactionHud";
+import { ReactionStickers } from "./reactions/ReactionStickers";
 import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import type { StackMember } from "./ui/primitives";
@@ -619,9 +620,15 @@ function DemoApp({
             selection={selection}
             presence={presence}
             flashes={flashes}
-            reactions={reactions.entries}
             onCellClick={onCellClick}
             onFlashEnd={onFlashEnd}
+          />
+          {/* The sticker layer, an HTML overlay above the SVG (the settle-pop fix). */}
+          <ReactionStickers
+            cols={puzzle.cols}
+            rows={puzzle.rows}
+            blocks={puzzle.blocks}
+            reactions={reactions.entries}
           />
           {reactions.hudOpen && reactions.hudCell !== null && (
             <ReactionHud
