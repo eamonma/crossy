@@ -1,10 +1,14 @@
-// The radial reaction HUD (Wave 7.3): the `/` leader ring, drawn around the cursor cell. It is an
-// HTML overlay positioned by cell PERCENTAGE inside the board wrapper, so it lands on the cell at
-// any board scale without reading pixels. The five slots sit at the W / E / A / S / D compass
+// The radial reaction HUD (Wave 7.3): the `/` leader ring, drawn around the cursor cell. A
+// zero-size anchor sits at the cell by PERCENTAGE inside the board wrapper (so it lands at any
+// board scale), and the ring itself renders through a portal at the anchor's screen point: the
+// board stage clips its overflow for sizing, and a ring on an edge cell must ride over that edge
+// (and the dashed rule beyond it) uncut. The five slots sit at the W / E / A / S / D compass
 // points from REACTION_SET, each labelled with its key (the teaching affordance), so the ring reads
 // as the keys under the hand. It is keyboard-first: the container is pointer-transparent and only
 // the slots take clicks, so an errant click falls through to the board. Motion (.hud-pop) lives in
 // styles.css with a reduced-motion fallback.
+import { useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ReactionSlot } from "./reactionSet";
 import { REACTION_SET } from "./reactionSet";
 import { Keycap } from "./Keycap";
@@ -38,14 +42,57 @@ export function ReactionHud({
   const leftPct = (((cell % cols) + 0.5) / cols) * 100;
   const topPct = ((Math.floor(cell / cols) + 0.5) / rows) * 100;
 
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
+
+  // Project the anchor to viewport coordinates for the portal, and track it while the ring is
+  // open: the stage scrolls on small screens and the window can resize under a 3s ring.
+  useLayoutEffect(() => {
+    const measure = () => {
+      const el = anchorRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setPoint({ x: rect.left, y: rect.top });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [cell, cols, rows]);
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        aria-hidden
+        className="absolute"
+        style={{ left: `${leftPct}%`, top: `${topPct}%` }}
+      />
+      {point !== null &&
+        createPortal(<Ring point={point} onReact={onReact} />, document.body)}
+    </>
+  );
+}
+
+function Ring({
+  point,
+  onReact,
+}: {
+  point: { x: number; y: number };
+  onReact: (emoji: string) => void;
+}) {
   return (
     <div
       // Pointer-transparent so a click that misses a slot reaches the board underneath. The slots
-      // re-enable pointer events on themselves.
-      className="hud-pop pointer-events-none absolute z-[var(--z-dropdown)]"
+      // re-enable pointer events on themselves. The translate centers the (zero-size) ring origin
+      // on the anchor point; .hud-pop's keyframes carry the same translate.
+      className="hud-pop pointer-events-none fixed z-[var(--z-dropdown)]"
       style={{
-        left: `${leftPct}%`,
-        top: `${topPct}%`,
+        left: point.x,
+        top: point.y,
         transform: "translate(-50%, -50%)",
       }}
       role="group"
