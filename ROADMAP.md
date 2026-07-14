@@ -999,3 +999,68 @@ corner variant behind `-reactionFanClueBarCorner`), returning the fan slot's wid
 to the clue; and the fan stands in every game status at melt rest, so the finished
 grid reacts like the web's completed board. **Exit: owner device pass on the steady
 entry and the detached fan.**
+
+## Phase 8 — Personal reaction sets (builds on Phase 7)
+
+Design landed: PROTOCOL.md §9 (the send gate takes any RGI emoji grapheme, the shipped
+five relabeled as the default personal set) and §12 (`reactionSet` on `GET`/`PATCH /me`,
+the three `REACTION_SET_*` codes), DESIGN.md §6 + D25 (each user configures their own
+five, account-synced via `/me`, works for guests; the session never learns of the sets).
+Phase 7 shipped a fixed five with the session gating sends to that allowlist; this makes
+the five a per-user preference and swaps the allowlist for the emoji-shape gate. The wire
+is unchanged: a `react` still carries the grapheme, so the feature is client preferences
+plus the gate rewording.
+
+**No vectors, no protocol bump.** Nothing sequenced changes and the codec still enforces
+shape only (a non-empty string at most 32 UTF-8 bytes, never emoji-ness, the Phase 7
+boundary decided in D24), so `packages/protocol` and `vectors/` are untouched. The send
+gate is session-service policy and the set is a client preference synced through the API;
+neither is vector ground.
+
+### Wave 8.1 — contract (this PR)
+
+The §9 send-gate rewording (any RGI emoji grapheme, the five relabeled as the default
+personal set, the `!`/`?` accelerators bound to slots 1 and 2), the `reactionSet` field
+and the three `REACTION_SET_*` codes on `GET`/`PATCH /me` (§12), the D25 decision, the
+DESIGN.md §6 sentence, and this phase. Docs only; no app or protocol-package code.
+**Exit: the four checks are green and the four build waves below have a contract to land
+against.**
+
+### Wave 8.2 — api (blocked on 8.1)
+
+`users.reaction_set` as a nullable column (expand-only, API single writer, INV-7;
+migration in `packages/db`), plus the `/me` field: `GET /me` returns it and `PATCH /me`
+accepts it, where null resets to the default five and an array validates as exactly five
+distinct entries, each one RGI emoji grapheme within 32 UTF-8 bytes, with
+`REACTION_SET_LENGTH`, `REACTION_SET_INVALID`, and `REACTION_SET_DUPLICATE` at 422 and a
+malformed body at 400 `VALIDATION` (`apps/api/src/http/errors.ts`). **Exit: a user PATCHes
+a five-emoji set and reads it back on `GET /me`; every rule violation returns its named
+code; a guest can set one.**
+
+### Wave 8.3 — session (blocked on 8.1)
+
+Swap the Wave 7.2 five-grapheme allowlist for the RGI validation gate in
+`apps/session/src/server.ts`: a `react` is accepted iff `emoji` matches `/^\p{RGI_Emoji}$/v`
+within the 32-UTF-8-byte bound at a valid cell inside the 5/s window; everything else is a
+silent drop, unchanged posture. The session learns nothing of personal sets. Integration
+tests: a non-default well-formed emoji now relays (the receive-any proof becomes a send
+proof), a non-emoji string is still a silent drop, over-rate and bad-cell drops unchanged.
+**Exit: any RGI emoji relays; a non-emoji is silently dropped; no allowlist remains.**
+
+### Wave 8.4 — web (blocked on 8.2, 8.3)
+
+Load `reactionSet` from `GET /me` into client state (null renders the defaults), a Settings
+section to edit it (a quick-grid of common picks plus a free-entry field that accepts any
+pasted or typed emoji, validated client-side against the same RGI rule before `PATCH /me`),
+and the send surfaces reading the set: the mini-tray, the leader HUD, and the `!`/`?` direct
+keys all fire the configured slots, with slots 1 and 2 wearing the `!`/`?` keycaps wherever
+the user put them. **Exit: a solver edits their five in Settings; the tray, HUD, and keys
+fire the new set; the keycap hints follow the slots.**
+
+### Wave 8.5 — iOS (blocked on 8.2, 8.3)
+
+A `ReactionSettings` store synced from `GET`/`PATCH /me`, a SettingsScreen section to edit
+the five (the system emoji keyboard supplies any emoji, validated against the RGI rule
+before write), and the reaction fan reading the set instead of the bundled five. **Exit: an
+iOS user edits their five, the fan sends them, and the set matches what web shows for the
+same account.**
