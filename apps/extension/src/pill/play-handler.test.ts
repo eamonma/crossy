@@ -4,6 +4,7 @@
 // proving the pre-check branch answers without one (the settings.test.ts model).
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Envelope } from "../envelope";
+import { playIntentUrl } from "../settings";
 import { handlePlayRequest } from "./play-handler";
 import type { PlayDeps } from "./play-handler";
 
@@ -15,6 +16,7 @@ function deps(overrides: Partial<PlayDeps> = {}): PlayDeps {
     containsOrigins: () => Promise.resolve(true),
     freshAccessToken: () => Promise.resolve({ ok: true, accessToken: "at" }),
     postPuzzle: () => Promise.resolve({ ok: true, puzzleId: "p_1" }),
+    playUrl: playIntentUrl,
     openTab: () => Promise.resolve(),
     ...overrides,
   };
