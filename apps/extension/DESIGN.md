@@ -86,6 +86,28 @@ interactive sign-in mints the extension's own rotating session, which then refre
 forever with no further `launchWebAuthFlow`, so the click is a one-time cost, not per
 session. On Chrome the silent half still works.
 
+Safari implements no `identity` API at all: no `launchWebAuthFlow`, no `getRedirectURL`,
+and it refuses to redirect an OAuth provider to a custom-scheme (extension) URL, so it
+cannot capture the redirect the way Chrome and Firefox do. The `webRequest.onBeforeRedirect`
+capture trick is out too, unavailable to an MV3 non-persistent worker. So Safari runs the
+same PKCE flow in a real tab: the worker builds the identical `/authorize` URL but points
+`redirect_to` at a hosted https page it controls (`crossy.party/auth/ext/callback`,
+settings.ts `AUTH_CALLBACK_URL`), opens it with `tabs.create`, and waits. GoTrue redirects
+that tab to the callback carrying `?code=`; a content script on the callback page reports
+the URL to the worker, which resolves the pending capture and runs the exact same code
+exchange, atomic persist, and refresh arming as every other browser. The capture is the
+only seam (`auth/launcher.ts` selects it by `identity` presence; `auth/callback.ts` pairs
+the opened tab with the awaiting attempt). The callback page is deliberately inert and
+loads no supabase-js, or the web app would detect and consume the single-use code first;
+it never reads or forwards the code. The worker closes the tab once the code is captured;
+a user who closes it first, or a five-minute timeout, settles the attempt as a cancel.
+This is interactive only, like Firefox: a tab is always visible, so there is no silent
+path, and the popup offers the same one-click "Continue as \<name\>" steered by the web
+signal. Safari still mints the extension's OWN independent, rotating session; nothing is
+borrowed from the web app's tokens. Owner setup: the callback URL must be in the Supabase
+auth redirect allowlist, and the user grants crossy.party site access (Safari host
+permissions are opt-in) for the callback content script to run.
+
 This is web-to-extension only. Extension-to-web is deliberately not done: pushing the
 extension's session back into the web origin would mean injecting tokens into
 crossy.party's storage and sharing a refresh token across the two contexts, which
@@ -183,6 +205,8 @@ The owner must add the identity redirect URLs to the Supabase auth URL allowlist
 - Firefox: `https://a9cefb33c7f1e3c38f826caa8834a8fc2b0fddd7.extensions.allizom.org/`
   (the host is the SHA-1 hex of the gecko id; confirm with
   `browser.identity.getRedirectURL()` in the extension console)
+- Safari: `https://crossy.party/auth/ext/callback` (Safari has no identity redirect; the
+  tab flow redirects here, a hosted inert page, settings.ts `AUTH_CALLBACK_URL`)
 
 ## Play surface (Wave 6.4)
 
