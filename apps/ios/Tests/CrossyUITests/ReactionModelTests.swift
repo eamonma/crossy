@@ -16,16 +16,19 @@ final class ReactionModelTests: XCTestCase {
         XCTAssertEqual(ReactionPolicy.decaySeconds, 5, accuracy: 1e-9)
     }
 
-    func test_sendSetIsTheV1Graphemes_PROTOCOL9() async {
-        XCTAssertEqual(ReactionPolicy.sendSet, ["🎉", "🤔", "👀", "💀", "🫡"])
+    func test_defaultSendSetIsTheD25Graphemes_PROTOCOL9() async {
+        // The D25 default five in slot order (owner ruling 2026-07-14); the Phase 7
+        // set (🎉 🤔 👀 💀 🫡) is retired. One constant, sourced from the spec twin.
+        XCTAssertEqual(ReactionPolicy.defaultSet, ["🔥", "🤔", "🐐", "💀", "😭"])
     }
 
     // MARK: - Receive-any, send-gated (PROTOCOL.md §9)
 
     func test_receiveRendersAnEmojiOutsideTheSendSet_PROTOCOL9() async {
         let model = ReactionModel()
-        model.receive(userId: "bee", emoji: "🔥", cell: 3, at: 100)
-        XCTAssertEqual(model.stickers.map(\.emoji), ["🔥"])
+        // 🎉 sits outside the D25 defaults now; receive-any renders it regardless.
+        model.receive(userId: "bee", emoji: "🎉", cell: 3, at: 100)
+        XCTAssertEqual(model.stickers.map(\.emoji), ["🎉"])
     }
 
     func test_receivesAreNeverRateCapped_PROTOCOL9() async {

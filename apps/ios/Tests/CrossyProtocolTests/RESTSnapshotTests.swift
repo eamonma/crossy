@@ -50,6 +50,10 @@ final class RESTSnapshotTests: XCTestCase {
             "NAME_REQUIRED": 422,
             "NAME_TOO_LONG": 422,
             "NAME_INVALID": 422,
+            // Reaction-set rejections (§12; D25): the same 422 lane, the NAME_* style.
+            "REACTION_SET_LENGTH": 422,
+            "REACTION_SET_INVALID": 422,
+            "REACTION_SET_DUPLICATE": 422,
             "RATE_LIMITED": 429,
         ]
         XCTAssertEqual(Set(APIErrorCode.allCases.map(\.rawValue)), Set(table.keys))

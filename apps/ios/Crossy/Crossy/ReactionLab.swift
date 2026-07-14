@@ -10,11 +10,12 @@
 //  calls the wire uses; the fan is the shipping component firing at the tapped cell.
 //
 //  Scenes:
-//    Single      one 🎉 lands at the selected cell (the entry slap: ~9% overshoot)
+//    Single      one 🔥 lands at the selected cell (the entry slap: ~9% overshoot)
 //    Pile of 4   four senders stack one cell (born-correct scatter; nothing moves)
 //    Fifth       a fifth sender replaces the stalest sticker (exit fade, no pop)
 //    Coalesce    the same sender repeats: the sticker pulses in place, timer refreshes
-//    Any 🔥      an emoji outside the send set renders anyway (receive-any, §9)
+//    Any 🎉      an emoji outside the default set (the retired Phase 7 party popper)
+//                renders anyway (receive-any, §9)
 //    Settle pair the #245/#247 proof: a fresh sticker beside a pre-settled twin;
 //                once the spring ends they must rest pixel-identically (watch the fresh one cross
 //                its settle boundary with no snap)
@@ -22,6 +23,10 @@
 //
 //  Toggles: Reduce Motion preview (upright, fade-only), receive haptics (the
 //  ReactionSettings default the room reads), the fan's standing/hold grammar.
+//
+//  The fan wears the PERSONAL set (Wave 8.5, D25): the lab reads the same
+//  UserDefaults-cached ReactionSetStore the room and Settings share, so the five you
+//  chose are the five this rig fires.
 //
 //  Evidence only: nothing in the room composes through this screen.
 //
@@ -36,7 +41,10 @@ import SwiftUI
 struct ReactionLab: View {
     @State private var store: GameStore
     @State private var reactions = ReactionModel()
-    @State private var fan = ReactionFanModel()
+    @State private var fan: ReactionFanModel
+    /// The personal set (D25), off the shared UserDefaults cache: the same five the
+    /// room's fan wears, so the rig judges what actually ships.
+    @State private var reactionSets: ReactionSetStore
     @State private var selection: GridSelection
     @State private var reduceMotionPreview = false
     @State private var receiveHaptics = ReactionSettings.receiveHapticsEnabled
@@ -52,6 +60,11 @@ struct ReactionLab: View {
         let store = GameStore()
         store.receive(.welcome(fixture.welcome))
         _store = State(initialValue: store)
+        // The fan is born wearing the cached personal five (or the defaults), the
+        // exact dressing SolveScreen gives the room's fan.
+        let sets = ReactionSetStore()
+        _reactionSets = State(initialValue: sets)
+        _fan = State(initialValue: ReactionFanModel(emojis: sets.slots))
     }
 
     private var ground: GridGround {
@@ -113,22 +126,25 @@ struct ReactionLab: View {
                         + "through the shipping model and envelopes; nothing here is "
                         + "a mock.")
 
-                scene("Single sticker", detail: "one 🎉: the entry slap, ~9% overshoot") {
-                    reactions.receive(userId: "bee", emoji: "🎉", cell: selection.cell, at: now)
+                scene("Single sticker", detail: "one 🔥: the entry slap, ~9% overshoot") {
+                    reactions.receive(userId: "bee", emoji: "🔥", cell: selection.cell, at: now)
                 }
                 scene("Pile of four", detail: "four senders, one cell: seeded scatter, nothing moves") {
                     for user in ["bee", "ada", "gus", "kit"] {
-                        reactions.receive(userId: user, emoji: "🎉", cell: selection.cell, at: now)
+                        reactions.receive(userId: user, emoji: "🔥", cell: selection.cell, at: now)
                     }
                 }
                 scene("Fifth replaces oldest", detail: "the stalest sticker exits; incumbents hold still") {
                     reactions.receive(userId: "mo", emoji: "👀", cell: selection.cell, at: now)
                 }
-                scene("Coalesce pulse", detail: "Bee repeats 🎉: a pulse in place, never a second sprite") {
-                    reactions.receive(userId: "bee", emoji: "🎉", cell: selection.cell, at: now)
-                }
-                scene("Receive-any 🔥", detail: "outside the send set, rendered anyway (§9)") {
+                scene("Coalesce pulse", detail: "Bee repeats 🔥: a pulse in place, never a second sprite") {
                     reactions.receive(userId: "bee", emoji: "🔥", cell: selection.cell, at: now)
+                }
+                scene(
+                    "Receive-any 🎉",
+                    detail: "retired from the defaults, rendered anyway (receive-any, §9)"
+                ) {
+                    reactions.receive(userId: "bee", emoji: "🎉", cell: selection.cell, at: now)
                 }
                 scene(
                     "Settle pair",
@@ -147,7 +163,7 @@ struct ReactionLab: View {
                     for index in 0..<8 {
                         let cell = (selection.cell + index) % puzzle.cellCount
                         if puzzle.blocks.contains(cell) { continue }
-                        if reactions.send(userId: "you", emoji: "🎉", cell: cell, at: now) {
+                        if reactions.send(userId: "you", emoji: "🔥", cell: cell, at: now) {
                             accepted += 1
                         }
                     }

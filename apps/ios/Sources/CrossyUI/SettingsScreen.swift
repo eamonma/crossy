@@ -23,6 +23,7 @@
 // on this surface, never silent, and stays retryable (the arrival error voice).
 
 import CrossyDesign
+import CrossyProtocol
 import SwiftUI
 
 /// The signed-in person as the settings surface renders them, plain data mapped by the
@@ -86,6 +87,14 @@ public struct SettingsScreen: View {
     /// Open a legal page (the WelcomeScreen grammar): the screen signals intent, the
     /// composition root maps it to the live page and presents the Safari sheet.
     private let onOpenLegal: (LegalPage) -> Void
+    /// The personal reaction set (Wave 8.5; D25), the shared store the composition root
+    /// also feeds the open room, so an edit here reaches the fan live. nil (the
+    /// harness, a pre-8.5 composition) renders no Reactions section at all.
+    private let reactionSets: ReactionSetStore?
+    /// Save the set through `PATCH /me` (null resets), digested to the typed outcome
+    /// the inline sentence keys on (the onSaveDisplayName shape). The composition root
+    /// mirrors a `.saved` canonical value into the store; this screen only renders.
+    private let onSaveReactionSet: (([String]?) async -> ReactionSetOutcome)?
 
     /// The per-device typing preferences (personal-settings slice 1), the shared store
     /// the composition root also feeds into the open room, so a change here reaches the
@@ -113,6 +122,17 @@ public struct SettingsScreen: View {
     // owns its own instance; without one the puck would have no cache to load from and
     // stay the colored initial (its one puck makes a shared cache unnecessary).
     @State private var avatarCache = AvatarImageCache()
+    // The Reactions slot editor (Wave 8.5; D25). One slot opens at a time; the draft
+    // is the free-entry field's content, filtered through ReactionSetSpec; the save
+    // spinner and the inline error key on the same states the name editor uses.
+    @State private var editingReactionSlot: Int?
+    @State private var reactionDraft = ""
+    @State private var savingReactions = false
+    @State private var reactionErrorCode: String?
+    @State private var reactionHasError = false
+    /// The gentle single-emoji rule, shown when typed input fails the local gate
+    /// (distinct from a server error: nothing was judged, the field just explains).
+    @State private var reactionRuleNudge = false
 
     /// The shared inset and card geometry, so the screen sits as a sibling of Rooms and
     /// Puzzles (both 16pt) and its cards echo the RoomCard silhouette (corner 16).
@@ -122,6 +142,13 @@ public struct SettingsScreen: View {
         static let rowPadding: CGFloat = 14
     }
 
+    /// The quick-grid house picks (owner strawman 2026-07-14): the default five first,
+    /// in slot order, then the crowd favorites, the retired Phase 7 three included.
+    static let reactionHousePicks: [String] = [
+        "🔥", "🤔", "🐐", "💀", "😭",
+        "🎉", "👀", "🫡", "🤯", "❤️", "👏", "🧠", "🙏", "✨", "😤", "🥳",
+    ]
+
     public init(
         identity: AccountIdentity,
         typingPrefs: NavigationSettingsStore,
@@ -129,6 +156,8 @@ public struct SettingsScreen: View {
         onSignOut: @escaping () -> Void,
         onDeleteAccount: @escaping () async -> ArrivalFailure?,
         onSaveDisplayName: ((String) async -> DisplayNameOutcome)? = nil,
+        reactionSets: ReactionSetStore? = nil,
+        onSaveReactionSet: (([String]?) async -> ReactionSetOutcome)? = nil,
         onOpenLegal: @escaping (LegalPage) -> Void
     ) {
         self.identity = identity
@@ -137,6 +166,8 @@ public struct SettingsScreen: View {
         self.onSignOut = onSignOut
         self.onDeleteAccount = onDeleteAccount
         self.onSaveDisplayName = onSaveDisplayName
+        self.reactionSets = reactionSets
+        self.onSaveReactionSet = onSaveReactionSet
         self.onOpenLegal = onOpenLegal
         // Seed the editable name from the composition root's identity (sourced from
         // /me). @State's initial value is honored only on first build, so the identity's
@@ -160,6 +191,15 @@ public struct SettingsScreen: View {
                     .padding(.top, 22)
                     .padding(.bottom, 8)
                 solvingCard
+
+                // The personal reaction set (Wave 8.5; D25): rendered only when the
+                // composition supplies the store, the onSaveDisplayName gating idiom.
+                if let reactionSets, onSaveReactionSet != nil {
+                    sectionHeader(ArrivalCopy.settingsReactionsSection)
+                        .padding(.top, 22)
+                        .padding(.bottom, 8)
+                    reactionsCard(reactionSets)
+                }
 
                 actions
                     .padding(.top, 24)
@@ -510,6 +550,265 @@ public struct SettingsScreen: View {
             .padding(.leading, Layout.rowPadding)
     }
 
+    // MARK: - Reactions (Wave 8.5; PROTOCOL.md §9, §12, D25)
+
+    /// The personal-set card: the five slots in slot order, an inline editor for the
+    /// open slot (a quick grid of house picks plus a one-emoji field on the system
+    /// emoji keyboard), and the reset-to-defaults affordance. Every change saves on
+    /// pick through PATCH /me; a named 422 renders inline (the name editor's grammar).
+    private func reactionsCard(_ store: ReactionSetStore) -> some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: ArrivalCopy.settingsReactionSetTitle)
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(rgb: ground.tokens.ink))
+                    Text(verbatim: ArrivalCopy.settingsReactionSetSubtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(rgb: ground.tokens.number))
+                }
+
+                HStack(spacing: 8) {
+                    ForEach(Array(store.slots.enumerated()), id: \.offset) { index, emoji in
+                        reactionSlotButton(index: index, emoji: emoji)
+                    }
+                }
+            }
+            .padding(Layout.rowPadding)
+
+            if let slot = editingReactionSlot {
+                rowDivider
+                reactionSlotEditor(slot: slot, store: store)
+            }
+
+            rowDivider
+
+            HStack(spacing: 10) {
+                Button(ArrivalCopy.settingsReactionSetReset) {
+                    Task { await saveReactionSet(nil) }
+                }
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(rgb: ground.tokens.number))
+                .buttonStyle(.plain)
+                // Already on the defaults: nothing to reset (a null PATCH would be a
+                // no-op write), so the affordance stands down rather than lying.
+                .disabled(savingReactions || store.personal == nil)
+                .opacity(store.personal == nil ? 0.4 : 1)
+                .accessibilityLabel(ArrivalCopy.settingsReactionSetReset)
+
+                Spacer(minLength: 0)
+
+                if savingReactions {
+                    ProgressView().tint(Color(rgb: ground.tokens.ink))
+                }
+            }
+            .padding(.horizontal, Layout.rowPadding)
+            .padding(.vertical, 12)
+
+            if reactionHasError {
+                Text(verbatim: ArrivalCopy.reactionSetError(forCode: reactionErrorCode))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Layout.rowPadding)
+                    .padding(.bottom, 12)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(cardBackground())
+    }
+
+    /// One slot: its emoji in a hairlined square, the open slot carrying the ink ring.
+    /// Tapping opens (or closes) that slot's editor; edits land through the editor.
+    private func reactionSlotButton(index: Int, emoji: String) -> some View {
+        let selected = editingReactionSlot == index
+        return Button {
+            if selected {
+                closeReactionEditor()
+            } else {
+                editingReactionSlot = index
+                reactionDraft = ""
+                reactionRuleNudge = false
+                reactionHasError = false
+                reactionErrorCode = nil
+            }
+        } label: {
+            Text(verbatim: emoji)
+                .font(.system(size: 26))
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(rgb: ground.tokens.ink).opacity(selected ? 0.08 : 0)))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            selected
+                                ? Color(rgb: ground.tokens.ink).opacity(0.55)
+                                : Color(rgb: ground.tokens.gridLine),
+                            lineWidth: 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(savingReactions)
+        .accessibilityLabel(Text(verbatim: "Slot \(index + 1): \(emoji)"))
+    }
+
+    /// The open slot's editor: the house-pick quick grid, then the free-entry field
+    /// whose input surface is the system emoji keyboard (EmojiKeyboardField), filtered
+    /// through the spec so only one emoji can land. A failed keystroke shows the
+    /// gentle rule, never an error tone: nothing was judged, the field just explains.
+    private func reactionSlotEditor(slot: Int, store: ReactionSetStore) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            let columns = Array(
+                repeating: GridItem(.flexible(), spacing: 6), count: 8)
+            LazyVGrid(columns: columns, spacing: 6) {
+                ForEach(Self.reactionHousePicks, id: \.self) { pick in
+                    Button {
+                        applyReactionPick(pick, slot: slot, store: store)
+                    } label: {
+                        Text(verbatim: pick)
+                            .font(.system(size: 24))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 40)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(rgb: ground.tokens.ink).opacity(0.05)))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(savingReactions)
+                    .accessibilityLabel(Text(verbatim: "Use \(pick)"))
+                }
+            }
+
+            reactionEntryField(slot: slot, store: store)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 14)
+                .modifier(ChromeGlassSurface(cornerRadius: 12))
+
+            if reactionRuleNudge {
+                Text(verbatim: ArrivalCopy.settingsReactionRule)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(rgb: ground.tokens.number))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isStaticText)
+            }
+        }
+        .padding(Layout.rowPadding)
+    }
+
+    /// The one-emoji field: the system emoji keyboard on iOS (the UIKit input-mode
+    /// hook), a plain field on the macOS test host. Both feed the same filter.
+    @ViewBuilder
+    private func reactionEntryField(slot: Int, store: ReactionSetStore) -> some View {
+        #if os(iOS)
+            EmojiKeyboardField(
+                text: $reactionDraft, placeholder: ArrivalCopy.settingsReactionFieldPrompt
+            )
+            .frame(height: 32)
+            .accessibilityLabel(ArrivalCopy.settingsReactionFieldLabel)
+            .onChange(of: reactionDraft) { old, new in
+                filterReactionDraft(from: old, to: new, slot: slot, store: store)
+            }
+        #else
+            TextField(ArrivalCopy.settingsReactionFieldPrompt, text: $reactionDraft)
+                .textFieldStyle(.plain)
+                .font(.system(size: 22))
+                .accessibilityLabel(ArrivalCopy.settingsReactionFieldLabel)
+                .onChange(of: reactionDraft) { old, new in
+                    filterReactionDraft(from: old, to: new, slot: slot, store: store)
+                }
+        #endif
+    }
+
+    /// The field's validator gate: a valid single emoji applies to the slot at once
+    /// (save on change); more than one grapheme keeps only the newest, so tapping a
+    /// second emoji swaps rather than appends; anything else is filtered back out and
+    /// the gentle rule shows. Assigning `reactionDraft` here re-enters this observer,
+    /// which the old-value comparisons make a no-op.
+    private func filterReactionDraft(
+        from old: String, to new: String, slot: Int, store: ReactionSetStore
+    ) {
+        guard new != old else { return }
+        if new.isEmpty {
+            reactionRuleNudge = false
+            return
+        }
+        if ReactionSetSpec.isReactionEmoji(new) {
+            reactionRuleNudge = false
+            applyReactionPick(new, slot: slot, store: store)
+            return
+        }
+        // Keep the newest grapheme when it stands alone as one emoji (the keyboard
+        // appends; the field swaps). Everything else filters out with the rule shown.
+        let newest = String(new.suffix(1))
+        if new.count > 1, ReactionSetSpec.isReactionEmoji(newest) {
+            reactionDraft = newest
+            reactionRuleNudge = false
+            applyReactionPick(newest, slot: slot, store: store)
+        } else {
+            reactionDraft = old
+            reactionRuleNudge = true
+        }
+    }
+
+    /// One slot changes: build the candidate five, gate locally with the spec (so a
+    /// duplicate names its rule without a round trip; the server stays the authority),
+    /// and save through PATCH /me. A pick equal to the standing emoji just closes.
+    private func applyReactionPick(_ emoji: String, slot: Int, store: ReactionSetStore) {
+        var candidate = store.slots
+        guard candidate.indices.contains(slot) else { return }
+        if candidate[slot] == emoji {
+            closeReactionEditor()
+            return
+        }
+        candidate[slot] = emoji
+        if let violation = ReactionSetSpec.validate(candidate) {
+            reactionErrorCode = violation.rawValue
+            reactionHasError = true
+            return
+        }
+        Task { await saveReactionSet(candidate) }
+    }
+
+    /// The one write path (PATCH /me; nil resets to the defaults). On success the
+    /// composition root has mirrored the canonical set into the store, so the slots
+    /// re-render themselves and the open fan follows live; the editor closes. A named
+    /// 422 or the rate limit renders inline and the edit stays standing (retryable).
+    private func saveReactionSet(_ set: [String]?) async {
+        guard let onSaveReactionSet, !savingReactions else { return }
+        savingReactions = true
+        reactionHasError = false
+        reactionErrorCode = nil
+        reactionRuleNudge = false
+        defer { savingReactions = false }
+
+        switch await onSaveReactionSet(set) {
+        case .saved:
+            closeReactionEditor()
+        case .rejected(let code):
+            reactionErrorCode = code
+            reactionHasError = true
+        case .rateLimited:
+            reactionErrorCode = "RATE_LIMITED"
+            reactionHasError = true
+        case .retryable(let code):
+            reactionErrorCode = code
+            reactionHasError = true
+        }
+    }
+
+    private func closeReactionEditor() {
+        editingReactionSlot = nil
+        reactionDraft = ""
+        reactionRuleNudge = false
+        reactionHasError = false
+        reactionErrorCode = nil
+    }
+
     /// The two standing actions: sign out (a plain glass capsule) and delete (glass, but
     /// its label carries the destructive tone; the confirmation is the real gate). Both
     /// disable while a delete is in flight.
@@ -612,6 +911,13 @@ private func previewTypingPrefs() -> NavigationSettingsStore {
         defaults: UserDefaults(suiteName: "preview.settings") ?? .standard)
 }
 
+/// The reactions twin: a throwaway personal-set store off the shared defaults.
+@available(iOS 17.0, macOS 14.0, *)
+@MainActor
+private func previewReactionSets() -> ReactionSetStore {
+    ReactionSetStore(defaults: UserDefaults(suiteName: "preview.settings") ?? .standard)
+}
+
 #Preview("Account, Studio") {
     if #available(iOS 17.0, macOS 14.0, *) {
         SettingsScreen(
@@ -624,6 +930,8 @@ private func previewTypingPrefs() -> NavigationSettingsStore {
             onSignOut: {},
             onDeleteAccount: { nil },
             onSaveDisplayName: { name in .saved(canonical: name) },
+            reactionSets: previewReactionSets(),
+            onSaveReactionSet: { set in .saved(set) },
             onOpenLegal: { _ in })
     }
 }

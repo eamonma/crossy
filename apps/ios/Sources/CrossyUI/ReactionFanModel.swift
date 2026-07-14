@@ -36,9 +36,11 @@ public struct ReactionFanModel: Equatable, Sendable {
     /// the button TOGGLES it closed instead of reopening it.
     private var holdBeganTapOpen = false
 
+    /// The five slots this fan offers, in slot order: the holder's personal set (D25),
+    /// defaulting to the protocol's default five for a surface with no store.
     public let emojis: [String]
 
-    public init(emojis: [String] = ReactionPolicy.sendSet) {
+    public init(emojis: [String] = ReactionPolicy.defaultSet) {
         self.emojis = emojis
     }
 

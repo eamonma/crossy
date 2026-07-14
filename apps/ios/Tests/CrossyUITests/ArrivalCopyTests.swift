@@ -183,4 +183,37 @@ final class ArrivalCopyTests: XCTestCase {
             XCTAssertFalse(line.contains("—"), "no em dashes: \(line)")
         }
     }
+
+    // MARK: - Reactions (Wave 8.5; PROTOCOL.md §12, D25)
+
+    func test_theReactionSetCopyMatchesTheSettingsSurface_D25() {
+        XCTAssertEqual(ArrivalCopy.settingsReactionsSection, "Reactions")
+        XCTAssertEqual(ArrivalCopy.settingsReactionSetTitle, "Your five")
+        XCTAssertEqual(
+            ArrivalCopy.settingsReactionSetSubtitle, "What the reaction fan offers")
+        XCTAssertEqual(ArrivalCopy.settingsReactionSetReset, "Use the defaults")
+        XCTAssertEqual(ArrivalCopy.settingsReactionRule, "One emoji fills a slot.")
+    }
+
+    func test_reactionSetErrorIsOneSentencePerCode_neverTheRawCode_PROTOCOL12() {
+        // The Settings editor's one error map (the displayNameError posture): each
+        // stable code reads plainly, no raw codes on screen.
+        let expected: [String: String] = [
+            "REACTION_SET_LENGTH": "A set is exactly five emoji.",
+            "REACTION_SET_INVALID": "One emoji fills a slot.",
+            "REACTION_SET_DUPLICATE": "Each slot needs its own emoji.",
+            "RATE_LIMITED": "Too many changes just now. Wait a moment, then try again.",
+        ]
+        for (code, sentence) in expected {
+            XCTAssertEqual(ArrivalCopy.reactionSetError(forCode: code), sentence)
+            XCTAssertFalse(
+                ArrivalCopy.reactionSetError(forCode: code).contains(code),
+                "no raw codes on screen (§12 posture): \(code)")
+        }
+        // Network weather (nil) and an unknown code degrade to plain sentences.
+        XCTAssertFalse(ArrivalCopy.reactionSetError(forCode: nil).isEmpty)
+        XCTAssertEqual(
+            ArrivalCopy.reactionSetError(forCode: "BARRED"),
+            "Couldn't save your reactions. Try again.")
+    }
 }

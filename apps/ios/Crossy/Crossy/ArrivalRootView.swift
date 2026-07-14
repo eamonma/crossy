@@ -600,6 +600,12 @@ struct ArrivalRootView: View {
                 // card keys on. On success the model adopts the canonical name into
                 // selfProfile too, so the identity stays consistent across the tab.
                 onSaveDisplayName: { name in await model.setDisplayName(name) },
+                // The Reactions section (Wave 8.5; D25): the model's ONE shared store,
+                // the same instance every room's fan reads, so an edit here reaches an
+                // open room live. The save is PATCH /me digested to the typed outcome;
+                // the model mirrors a saved canonical set into the store itself.
+                reactionSets: model.reactionSets,
+                onSaveReactionSet: { set in await model.setReactionSet(set) },
                 onOpenLegal: { settingsLegal = legalItem(for: $0) })
                 .sheet(item: $settingsLegal) { item in
                     SafariSheet(url: item.url)
@@ -645,17 +651,20 @@ struct ArrivalRootView: View {
                         // payload from it before the REST fetch.
                         seed: roomSeeds[gameId],
                         navigationPrefs: { typingPrefs.navigationPrefs }),
+                    // The model's shared personal-set store (D25): the fan is born
+                    // wearing the synced five and follows a Settings edit live.
+                    reactionSets: model.reactionSets,
                     onBack: pop,
                     onExit: pop
                 )
                 .modifier(RoomNavBarChrome())
             } else {
                 // Unreachable: roomRoute(for:) only builds .room with live facts.
-                DemoRoomView(onBack: pop)
+                DemoRoomView(reactionSets: model.reactionSets, onBack: pop)
                     .modifier(RoomNavBarChrome())
             }
         case .fixtureRoom:
-            DemoRoomView(onBack: pop)
+            DemoRoomView(reactionSets: model.reactionSets, onBack: pop)
                 .modifier(RoomNavBarChrome())
         }
     }

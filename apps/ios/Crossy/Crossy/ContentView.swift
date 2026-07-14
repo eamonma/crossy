@@ -104,6 +104,12 @@ struct DemoRoomView: View {
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
     @State private var shareURL: URL?
+    /// The personal reaction set the fan wears (D25): the arrival flow passes the
+    /// model's shared store so a Settings edit reaches this room live; the standalone
+    /// -i2*/-demoRoom rigs pass none and the fallback below still reads the cached
+    /// five off the shared UserDefaults, so every composition wears the person's set.
+    var reactionSets: ReactionSetStore?
+    @State private var fallbackReactionSets = ReactionSetStore()
     var onBack: () -> Void = {}
 
     var body: some View {
@@ -148,7 +154,10 @@ struct DemoRoomView: View {
             onKick: { _ in },
             // The Wave 7.5 placement pick (owner lean 2026-07-14): floating by
             // default, the in-bar corner behind -reactionFanClueBarCorner.
-            reactionFanPlacement: ContentView.reactionFanPlacement
+            reactionFanPlacement: ContentView.reactionFanPlacement,
+            // The personal five (D25): the shared store when the arrival flow
+            // composes this room, else the cache-backed fallback.
+            reactionSets: reactionSets ?? fallbackReactionSets
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController). `total` is
@@ -194,14 +203,21 @@ struct RealRoomView: View {
     /// One avatar cache shared by the room's live pucks and the island snapshot, so the
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
+    /// The personal reaction set the fan wears (D25): the arrival flow passes the
+    /// model's shared store, so a Settings edit reaches this room live; the harness
+    /// composition passes none and the fallback still reads the cached five.
+    private let reactionSets: ReactionSetStore?
+    @State private var fallbackReactionSets = ReactionSetStore()
     @Environment(\.colorScheme) private var colorScheme
 
     init(
         room: RealRoom,
+        reactionSets: ReactionSetStore? = nil,
         onBack: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {}
     ) {
         _room = State(initialValue: room)
+        self.reactionSets = reactionSets
         self.onBack = onBack
         self.onExit = onExit
     }
@@ -325,7 +341,10 @@ struct RealRoomView: View {
                     // 2026-07-13).
                     fetchAnalysis: { await room.fetchAnalysis() },
                     // The Wave 7.5 placement pick, same flag as the demo room.
-                    reactionFanPlacement: ContentView.reactionFanPlacement
+                    reactionFanPlacement: ContentView.reactionFanPlacement,
+                    // The personal five (D25): the shared store when the arrival
+                    // flow composes this room, else the cache-backed fallback.
+                    reactionSets: reactionSets ?? fallbackReactionSets
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so
