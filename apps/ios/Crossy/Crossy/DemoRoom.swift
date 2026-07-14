@@ -50,9 +50,9 @@
 //    -stress                extremes for chrome mockups (owner ask 2026-07-10):
 //                           eleven people with long names, a room name that must
 //                           truncate, an hours-old clock; composes with any -i2*
-//    -reactionFanDeckEdge   host the reaction fan at the deck's edge (the Wave 7.5
-//                           alternate placement) instead of the clue-bar corner;
-//                           Bee's periodic reactions run in every demo room
+//    -reactionFanClueBarCorner  host the reaction fan in the clue bar's corner
+//                           (the Wave 7.5 A/B variant) instead of the floating
+//                           default; Bee's periodic reactions run in every demo room
 //
 
 import CrossyProtocol

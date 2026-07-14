@@ -978,17 +978,24 @@ A fan button that opens the send set; hold-slide-release over the emoji via poin
 events, with a tap-tap fallback (tap the fan, tap an emoji). **Exit: a phone-only
 solver sends a reaction both ways.**
 
-### Wave 7.5 — iOS (in progress)
+### Wave 7.5 — iOS (shipped; polish pass in review)
 
-In progress on `reactions-5-ios`. `react`/`reaction` in CrossyProtocol (codec-test
-twins, shape-only emoji guard), a stateless `GameStore.react` plus an `onReaction`
-fan-out (nothing stored, D24), and a CrossyUI sticker layer in the grid's one Canvas
-pass: born-correct placement seeded from each sticker's stable key, the entry slap
-(~9% overshoot, settle clamped so rest is exact), coalesce pulse, 4-per-cell pile
-cap, 5/s send window, reduced-motion fade-only. The fan button rides the clue-bar
-corner (hold-slide-release plus tap-tap, pure state machine), with the deck-edge
-alternate behind `-reactionFanDeckEdge`; bundled `<`/`>` tap-area enlargement (owner
-note 2026-07-14). Haptics: light on send, soft on a near-word landing (toggleable).
+Shipped in #248: `react`/`reaction` in CrossyProtocol (codec-test twins, shape-only
+emoji guard), a stateless `GameStore.react` plus an `onReaction` fan-out (nothing
+stored, D24), the CrossyUI sticker book (born-correct placement seeded from each
+sticker's stable key, coalesce pulse, 4-per-cell pile cap, 5/s send window,
+reduced-motion fade-only), the fan (hold-slide-release plus tap-tap over a pure
+state machine), reaction haptics, and the bundled `<`/`>` tap-area enlargement.
 Review surfaces: DemoRoom's periodic teammate reactions (🔥 receive-any proof) and
-the `-reactionLab` rig. **Exit: owner device pass on look-and-feel and the fan
-placement pick.**
+the `-reactionLab` rig.
+
+The owner's device pass (2026-07-14) drives the polish branch
+`reactions-5b-ios-polish`: stickers render as a view overlay whose entry, pulse,
+and exit are Core Animation transforms of each glyph's one rasterized layer (the
+entry-shake fix, the same transform-not-repaint lesson as the web's #247), with
+geometry and curves matched to the web layer's numbers; the fan detaches to a
+floating glass button above the bar's trailing corner by default (the in-bar
+corner variant behind `-reactionFanClueBarCorner`), returning the fan slot's width
+to the clue; and the fan stands in every game status at melt rest, so the finished
+grid reacts like the web's completed board. **Exit: owner device pass on the steady
+entry and the detached fan.**

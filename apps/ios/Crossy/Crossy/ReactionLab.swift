@@ -15,8 +15,8 @@
 //    Fifth       a fifth sender replaces the stalest sticker (exit fade, no pop)
 //    Coalesce    the same sender repeats: the sticker pulses in place, timer refreshes
 //    Any 🔥      an emoji outside the send set renders anyway (receive-any, §9)
-//    Settle pair the #245 proof: a fresh sticker beside a pre-settled twin; after
-//                1.2 s they must rest pixel-identically (watch the fresh one cross
+//    Settle pair the #245/#247 proof: a fresh sticker beside a pre-settled twin;
+//                once the spring ends they must rest pixel-identically (watch the fresh one cross
 //                its settle boundary with no snap)
 //    Burst 8     eight rapid sends; the 5/s window accepts five (the counter shows)
 //
@@ -132,10 +132,11 @@ struct ReactionLab: View {
                 }
                 scene(
                     "Settle pair",
-                    detail: "a fresh sticker beside a twin born 1.5 s ago (already "
-                        + "settled); after 1.2 s the pair must rest identically, and "
-                        + "the fresh one must cross its settle boundary with no snap "
-                        + "(the web #245 proof)"
+                    detail: "a fresh sticker beside a twin born 1.5 s ago, which "
+                        + "mounts already settled; when the fresh one's spring ends "
+                        + "(~0.5 s) the pair must rest identically, with no snap and "
+                        + "no shimmer through the entry (the settle-pop and "
+                        + "entry-shake proof, webs #245/#247)"
                 ) {
                     let left = max(0, selection.cell - 1)
                     reactions.receive(userId: "pair", emoji: "🫡", cell: left, at: now - 1.5)
@@ -198,8 +199,9 @@ struct ReactionLab: View {
             caption(
                 "Fan grammar: hold the button and slide up to an emoji, release to "
                     + "fire; release elsewhere cancels. A plain tap stands the fan "
-                    + "open (tap an emoji, tap away, or wait ~3 s). Launch the demo "
-                    + "room with -reactionFanDeckEdge for the alternate placement.")
+                    + "open (tap an emoji, tap away, or wait ~3 s). The room floats "
+                    + "the fan above the bar's corner by default; launch the demo "
+                    + "room with -reactionFanClueBarCorner for the in-bar variant.")
         }
         .padding(.top, 6)
     }

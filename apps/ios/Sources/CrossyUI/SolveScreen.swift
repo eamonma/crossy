@@ -69,8 +69,9 @@ public struct SolveScreen: View {
     /// AD-2). Nil for compositions with no analysis (labs, some previews): there the
     /// completion keeps the old last-writer bloom and no panel summons.
     private let fetchAnalysis: (() async -> RoomAnalysis?)?
-    /// Where the reaction fan stands (Wave 7.5): the clue-bar corner by default,
-    /// the deck-edge alternate behind the lab toggle so the owner picks on device.
+    /// Where the reaction fan stands (Wave 7.5, revised by the owner's device pass
+    /// 2026-07-14): detached and floating by default, the in-bar corner variant
+    /// behind the launch flag so the A/B stays possible.
     private let reactionFanPlacement: ReactionFanPlacement
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
@@ -153,7 +154,7 @@ public struct SolveScreen: View {
         onEndGame: @escaping () -> Void = {},
         onKick: @escaping (String) -> Void = { _ in },
         fetchAnalysis: (() async -> RoomAnalysis?)? = nil,
-        reactionFanPlacement: ReactionFanPlacement = .clueBarCorner
+        reactionFanPlacement: ReactionFanPlacement = .floating
     ) {
         self.store = store
         self.puzzle = puzzle
@@ -274,17 +275,6 @@ public struct SolveScreen: View {
                         .asymmetric(
                             insertion: .move(edge: .bottom).combined(with: .opacity),
                             removal: .opacity))
-                    // The ALTERNATE fan placement (Wave 7.5, behind the lab
-                    // toggle): floating astride the deck's top edge, trailing.
-                    // Kept through every bottom zone, so the completed room still
-                    // reacts (§9: reactions on the finished grid are intended).
-                    .overlay(alignment: .topTrailing) {
-                        if reactionFanPlacement == .deckEdge {
-                            ReactionFan(fan: $fan, ground: ground, onFire: fireReaction)
-                                .padding(.trailing, ChromeLayout.inset + 6)
-                                .offset(y: -(ReactionFan.buttonSize / 2))
-                        }
-                    }
                 }
             }
             // Transient panels yield to intent (DESIGN.md §4): every touch
@@ -360,6 +350,25 @@ public struct SolveScreen: View {
                     // display's own corners clip it. Mid-solve the surface rests
                     // well above this, so it is inert then.
                     .ignoresSafeArea(.container, edges: .bottom)
+            }
+
+            // The DETACHED fan, the default placement (owner lean 2026-07-14:
+            // "separate from clue bar"): a lone glass button floating 10 pt above
+            // the bar's trailing corner, over the feather, aligned to the bar's
+            // trailing edge. It rides the slot's reported frame, so a wrapping
+            // clue lifts it with the bar; it stands in EVERY status at melt rest
+            // (completed and abandoned included: §9, reactions on the finished
+            // grid are intended, the web's completed board keeps its tray), and
+            // it clears the enlarged chevron targets by 4 pt plus topmost z. Any
+            // melt progress hides it instantly (SP-i1: nothing animates under a
+            // live finger; the open browser owns that geometry).
+            if reactionFanPlacement == .floating, chrome.meltProgress < 0.05,
+                let slot = chromeFrames[.clueBarSlot]
+            {
+                ReactionFan(fan: $fan, ground: ground, onFire: fireReaction)
+                    .position(
+                        x: slot.maxX - ReactionFan.buttonSize / 2,
+                        y: slot.minY - 10 - ReactionFan.buttonSize / 2)
             }
 
             // No tap-away catchers anywhere (DESIGN.md §4: transient panels

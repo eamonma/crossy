@@ -85,12 +85,13 @@ struct ContentView: View {
             || arguments.contains { $0.hasPrefix("-i2") }
     }
 
-    /// The reaction fan's placement (Wave 7.5): the clue-bar corner unless the
-    /// alternate's launch flag stands. One read for the demo room and the live one,
-    /// so the A/B never diverges between them.
+    /// The reaction fan's placement (Wave 7.5, revised 2026-07-14: the owner leaned
+    /// detached, so floating is the default and the in-bar corner is the flagged
+    /// variant). One read for the demo room and the live one, so the A/B never
+    /// diverges between them.
     static var reactionFanPlacement: ReactionFanPlacement {
-        ProcessInfo.processInfo.arguments.contains("-reactionFanDeckEdge")
-            ? .deckEdge : .clueBarCorner
+        ProcessInfo.processInfo.arguments.contains("-reactionFanClueBarCorner")
+            ? .clueBarCorner : .floating
     }
 }
 
@@ -145,8 +146,8 @@ struct DemoRoomView: View {
             },
             onEndGame: {},
             onKick: { _ in },
-            // The Wave 7.5 placement pick (owner judges on device): the clue-bar
-            // corner by default, the deck-edge alternate behind the launch flag.
+            // The Wave 7.5 placement pick (owner lean 2026-07-14): floating by
+            // default, the in-bar corner behind -reactionFanClueBarCorner.
             reactionFanPlacement: ContentView.reactionFanPlacement
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
