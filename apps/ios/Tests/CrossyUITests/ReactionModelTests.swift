@@ -1,9 +1,9 @@
 // The sticker book's semantics (PROTOCOL.md §9; root DESIGN.md D24), pinned with
 // injected time so no test owns a clock: the five-second decay, receive-any versus
-// the send-gated 5/s sliding window, coalescing (pulse in place, refresh the timer,
-// never a new sprite), the four-per-cell pile cap, and the born-correct placement
-// rules from the web review (seeded from the stable key alone, immutable for life,
-// incumbents hold still when a newcomer lands).
+// the send-gated 5/s sliding window, coalescing (replay the shout in place, refresh
+// the timer, never a new sprite), the four-per-cell pile cap, and the born-correct
+// placement rules from the web review (seeded from the stable key alone, immutable
+// for life, incumbents hold still when a newcomer lands).
 
 import CrossyUI
 import XCTest
@@ -94,8 +94,10 @@ final class ReactionModelTests: XCTestCase {
         XCTAssertEqual(model.stickers.count, 1, "never a new sprite")
         let refreshed = model.stickers[0]
         XCTAssertEqual(refreshed.id, born.id)
-        XCTAssertEqual(refreshed.bornAt, born.bornAt, "a coalesce must not replay the entry")
-        XCTAssertEqual(refreshed.refreshedAt, 102, "the pulse rides the refresh instant")
+        XCTAssertEqual(
+            refreshed.bornAt, born.bornAt,
+            "a coalesce never rewrites the birth (settled-mount detection reads the age)")
+        XCTAssertEqual(refreshed.refreshedAt, 102, "the loud replay rides the refresh instant")
         XCTAssertEqual(refreshed.endsAt, 107, accuracy: 1e-9, "the timer refreshes")
         // Born-correct: placement is untouched by the coalesce.
         XCTAssertEqual(refreshed.offsetX, born.offsetX)
