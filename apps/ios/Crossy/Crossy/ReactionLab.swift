@@ -4,21 +4,23 @@
 //
 //  The Wave 7.5 motion rig (the MeltLab precedent): deterministic reaction states
 //  over a REAL grid — the same CrossyGridView, sticker layer, and envelopes the room
-//  ships, never a second renderer — so the owner judges the slap, the pile, the
-//  coalesce pulse, and the fan on device with no teammates needed. Launch with
+//  ships, never a second renderer — so the owner judges the shout, the pile, the
+//  coalesce replay, and the fan on device with no teammates needed. Launch with
 //  -reactionLab. The buttons below place stickers through the same ReactionModel
 //  calls the wire uses; the fan is the shipping component firing at the tapped cell.
 //
 //  Scenes:
-//    Single      one 🔥 lands at the selected cell (the entry slap: ~9% overshoot)
+//    Single      one 🔥 lands at the selected cell (the loud entrance, owner ruling
+//                2026-07-14: fade in small, balloon to 1.9x, tremble, settle)
 //    Pile of 4   four senders stack one cell (born-correct scatter; nothing moves)
 //    Fifth       a fifth sender replaces the stalest sticker (exit fade, no pop)
-//    Coalesce    the same sender repeats: the sticker pulses in place, timer refreshes
+//    Coalesce    the same sender repeats: the WHOLE shout replays in place, timer
+//                refreshes (a repeat shout, not the retired 1.16 pulse)
 //    Any 🎉      an emoji outside the default set (the retired Phase 7 party popper)
 //                renders anyway (receive-any, §9)
 //    Settle pair the #245/#247 proof: a fresh sticker beside a pre-settled twin;
-//                once the spring ends they must rest pixel-identically (watch the fresh one cross
-//                its settle boundary with no snap)
+//                once the entrance ends they must rest pixel-identically (watch the fresh one
+//                cross its settle boundary with no snap)
 //    Burst 8     eight rapid sends; the 5/s window accepts five (the counter shows)
 //
 //  Toggles: Reduce Motion preview (upright, fade-only), receive haptics (the
@@ -126,7 +128,10 @@ struct ReactionLab: View {
                         + "through the shipping model and envelopes; nothing here is "
                         + "a mock.")
 
-                scene("Single sticker", detail: "one 🔥: the entry slap, ~9% overshoot") {
+                scene(
+                    "Single sticker",
+                    detail: "one 🔥: the loud entrance — small, balloon to 1.9x, tremble, settle"
+                ) {
                     reactions.receive(userId: "bee", emoji: "🔥", cell: selection.cell, at: now)
                 }
                 scene("Pile of four", detail: "four senders, one cell: seeded scatter, nothing moves") {
@@ -137,7 +142,10 @@ struct ReactionLab: View {
                 scene("Fifth replaces oldest", detail: "the stalest sticker exits; incumbents hold still") {
                     reactions.receive(userId: "mo", emoji: "👀", cell: selection.cell, at: now)
                 }
-                scene("Coalesce pulse", detail: "Bee repeats 🔥: a pulse in place, never a second sprite") {
+                scene(
+                    "Coalesce replay",
+                    detail: "Bee repeats 🔥: the whole shout replays in place, never a second sprite"
+                ) {
                     reactions.receive(userId: "bee", emoji: "🔥", cell: selection.cell, at: now)
                 }
                 scene(
@@ -149,10 +157,11 @@ struct ReactionLab: View {
                 scene(
                     "Settle pair",
                     detail: "a fresh sticker beside a twin born 1.5 s ago, which "
-                        + "mounts already settled; when the fresh one's spring ends "
-                        + "(~0.5 s) the pair must rest identically, with no snap and "
-                        + "no shimmer through the entry (the settle-pop and "
-                        + "entry-shake proof, webs #245/#247)"
+                        + "mounts already settled (no second shout); when the fresh "
+                        + "one's entrance ends (~1.05 s) the pair must rest "
+                        + "identically, with no snap and no shimmer through the "
+                        + "entrance (the settle-pop and entry-shake proof, webs "
+                        + "#245/#247)"
                 ) {
                     let left = max(0, selection.cell - 1)
                     reactions.receive(userId: "pair", emoji: "🫡", cell: left, at: now - 1.5)
@@ -192,7 +201,7 @@ struct ReactionLab: View {
             Toggle(isOn: $reduceMotionPreview) {
                 labelText(
                     "Reduce Motion preview",
-                    detail: "upright, fade-only; the pulse and the slap stand down")
+                    detail: "upright, fade-only; the balloon and the tremble stand down")
             }
             Toggle(
                 isOn: Binding(

@@ -12,8 +12,9 @@
 // lesson): a sticker's offset, lean, and rotation are derived ONCE at creation, seeded
 // only from its own stable key — never from sibling count or pile index — and never
 // change while it lives. Incumbents in a pile hold still when a newcomer lands, and
-// the resting transform is identical from entry-spring settle through exit-fade start
-// (StickerEnvelope clamps the settle boundary, so there is no post-entry snap).
+// the resting transform is identical from the loud entrance's settle through exit-fade
+// start (every StickerEnvelope track ends at exactly identity, so there is no
+// post-entrance snap).
 
 import CrossyProtocol
 import Foundation
@@ -81,10 +82,13 @@ public struct ReactionSticker: Identifiable, Equatable, Sendable {
     public let userId: String
     public let emoji: String
     public let cell: Int
-    /// Birth: drives the entry spring, never changes (a coalesce must not replay
-    /// the entry, only pulse in place).
+    /// Birth: never changes. Pre-settled mount detection reads this age (a sticker
+    /// already mid-life must not shout again when a layer re-renders); a coalesce
+    /// refreshes `refreshedAt` instead.
     public let bornAt: TimeInterval
-    /// The latest coalesce, driving the pulse; equals `bornAt` until one lands.
+    /// The latest coalesce, replaying the WHOLE loud gesture (owner ruling
+    /// 2026-07-14: a repeat shout, not a softer echo); equals `bornAt` until one
+    /// lands.
     public internal(set) var refreshedAt: TimeInterval
     /// When the sticker is gone. Coalescing pushes it out; pile eviction pulls it in.
     public internal(set) var endsAt: TimeInterval
@@ -221,8 +225,8 @@ public final class ReactionModel {
         let key = ReactionSticker.key(userId: userId, emoji: emoji, cell: cell)
 
         // Coalesce (§9 client guidance): the same sender repeating the same emoji at
-        // the same cell pulses the live sticker in place and refreshes its timer.
-        // Never a new sprite, and never a replayed entry: bornAt holds.
+        // the same cell replays the loud gesture in place and refreshes its timer.
+        // Never a new sprite, and bornAt holds: identity and placement are birth's.
         if let index = stickers.firstIndex(where: { $0.id == key && $0.endsAt > now }) {
             stickers[index].refreshedAt = now
             stickers[index].endsAt = now + ReactionPolicy.decaySeconds
@@ -259,80 +263,152 @@ public final class ReactionModel {
 
 /// The sticker's motion contract, one set of constants with closed-form curves as the
 /// pinned specification. The SHIPPING renderer (ReactionStickerLayer) does not sample
-/// these per frame: it builds SwiftUI spring and keyframe animations FROM these exact
-/// constants, so Core Animation transforms each glyph's one rasterized layer and the
-/// content is never re-rendered mid-flight (the owner's entry-shake finding
-/// 2026-07-14, the transform-not-repaint lesson both platforms converged on; the
-/// web's twin fix is #247). The closed forms remain normative: tests sample them to
-/// pin the character, and they are the reference for any future sampled use.
+/// these per frame: it builds SwiftUI keyframe animations FROM these exact constants,
+/// so Core Animation transforms each glyph's one rasterized layer and the content is
+/// never re-rendered mid-flight (the owner's entry-shake finding 2026-07-14, the
+/// transform-not-repaint lesson both platforms converged on; the web's twin fix is
+/// #247). The closed forms remain normative: tests sample them to pin the character,
+/// and they are the reference for any future sampled use.
 ///
-/// The numbers are the web layer's, measured from styles.css so the two clients share
-/// one slap: entry springs scale 0.3 to 1 (easing overshoot ~9.4%, which renders as a
-/// ~6.6% scale peak over the 0.7 step) with opacity riding the same spring, clamped;
-/// exit shrinks to 0.7 and fades over the final 380 ms of the 5 s life; the coalesce
-/// pulse rises to 1.16 at 45% of its 300 ms and returns to exactly 1. Past
-/// `entrySettleSeconds` the closed form is CLAMPED to exactly 1 (residual ~7e-5,
-/// below visual epsilon), so the resting transform is bit-identical from settle
-/// through exit start; SwiftUI's spring ends at the model value 1 exactly, giving the
-/// shipped render the same guarantee by construction.
+/// The numbers are the web layer's (styles.css), measured from the loud entrance the
+/// owner ruled in ("loud entry is good", 2026-07-14; the spring slap and the 1.16
+/// coalesce pulse retire together): one 1050 ms linear timeline with per-segment
+/// easing. The sticker fades in small (scale 0.35 to 1.9 with the whole opacity ramp,
+/// over the first 16%), holds the balloon while it trembles (+5/-5/+4/-2 degrees at
+/// 26/38/50/60%, each leg the CSS ease-in-out), comes home to 1.88 and 0 degrees at
+/// 68%, then settles to exactly 1 by 1050 ms. The tremble is a rotation that COMPOSES
+/// OVER the seeded static tilt, never replacing it. A coalesce replays the WHOLE
+/// gesture from the refresh instant: a repeat shout, not a softer echo. Every track
+/// ends at identity, so the resting transform is bit-identical from settle through
+/// exit start (#245's guarantee) with nothing held by a fill; the exit (shrink to
+/// 0.7, fade, final 380 ms of the 5 s life) is unchanged.
 public enum StickerEnvelope {
-    // Entry (the slap; the web spring's fitted parameters: peak at ~147 ms,
-    // easing overshoot ~9.4%).
-    public static let entryResponse: TimeInterval = 0.235
-    public static let entryDampingRatio: Double = 0.60
-    /// Where the entry starts: the web's sticker-in keyframe.
-    public static let entryFromScale: Double = 0.3
-    /// The settle horizon for the CLOSED FORM: beyond it the sampled scale is
-    /// exactly 1 (the clamp step is ~7e-5 of the 0.7 step, invisible).
-    public static let entrySettleSeconds: TimeInterval = 0.6
+    /// One tremble beat: the rotation the gesture reaches, `at` seconds into the
+    /// entrance. Degrees are the animated wobble alone; the renderer and the closed
+    /// forms both add them ON TOP of the sticker's seeded tilt.
+    public struct TrembleBeat: Equatable, Sendable {
+        public let at: TimeInterval
+        public let degrees: Double
+    }
+
+    /// One CSS cubic-bezier easing, evaluated in pure Swift so Linux tests pin the
+    /// exact curve the compositor runs. `value(at:)` solves the bezier's x for the
+    /// input progress by bisection (valid CSS control points keep x monotone), then
+    /// evaluates y. The renderer lifts the same control points into UnitCurves.
+    public struct EasingCurve: Equatable, Sendable {
+        public let x1: Double
+        public let y1: Double
+        public let x2: Double
+        public let y2: Double
+
+        public func value(at t: Double) -> Double {
+            let x = min(1, max(0, t))
+            if x <= 0 { return 0 }
+            if x >= 1 { return 1 }
+            var lower = 0.0
+            var upper = 1.0
+            for _ in 0..<64 {
+                let mid = (lower + upper) / 2
+                if Self.axis(mid, x1, x2) < x { lower = mid } else { upper = mid }
+            }
+            let u = (lower + upper) / 2
+            return Self.axis(u, y1, y2)
+        }
+
+        /// One bezier axis with endpoints 0 and 1:
+        /// B(u) = 3(1-u)^2 u c1 + 3(1-u) u^2 c2 + u^3.
+        private static func axis(_ u: Double, _ c1: Double, _ c2: Double) -> Double {
+            let inv = 1 - u
+            return 3 * inv * inv * u * c1 + 3 * inv * u * u * c2 + u * u * u
+        }
+    }
+
+    // The loud entrance: the web's sticker-in keyframes, absolute seconds into the
+    // 1050 ms timeline (the 16/26/38/50/60/68% rows).
+    public static let entranceSeconds: TimeInterval = 1.05
+    /// 0%: the sticker fades in small.
+    public static let entryFromScale: Double = 0.35
+    /// 16% (168 ms): the balloon at full presence; the opacity ramp ends here too.
+    public static let balloonScale: Double = 1.9
+    public static let balloonAt: TimeInterval = 0.168
+    /// The tremble's beats (26/38/50/60/68%): decaying swings, then home to zero.
+    public static let trembleBeats: [TrembleBeat] = [
+        TrembleBeat(at: 0.273, degrees: 5),
+        TrembleBeat(at: 0.399, degrees: -5),
+        TrembleBeat(at: 0.525, degrees: 4),
+        TrembleBeat(at: 0.630, degrees: -2),
+        TrembleBeat(at: 0.714, degrees: 0),
+    ]
+    /// The settle dip: the balloon eases 1.9 to 1.88 across the tremble's homecoming
+    /// leg (60% to 68%, the last two beats), then the settle runs 1.88 to exactly 1
+    /// over the tail.
+    public static let settleDipScale: Double = 1.88
+    public static let settleDipStartAt: TimeInterval = 0.630
+    public static let settleDipAt: TimeInterval = 0.714
+
+    /// The entrance's ease-out legs (0 to 16%, and the 68% to 100% settle): the
+    /// web's --ease-out token, cubic-bezier(0.16, 1, 0.3, 1). Monotone, so the
+    /// balloon is the exact peak and the settle never undershoots.
+    public static let entranceEaseOut = EasingCurve(x1: 0.16, y1: 1, x2: 0.3, y2: 1)
+    /// The tremble legs and the settle dip: the CSS ease-in-out keyword,
+    /// cubic-bezier(0.42, 0, 0.58, 1).
+    public static let trembleEaseInOut = EasingCurve(x1: 0.42, y1: 0, x2: 0.58, y2: 1)
 
     // Exit (shrink+fade inside the sticker's life; the web's sticker-out).
     public static let exitSeconds: TimeInterval = 0.38
     public static let exitFinalScale: Double = 0.7
 
-    // The coalesce pulse (the web's sticker-repulse: 300 ms, peak 1.16 at 45%).
-    public static let pulsePeak: Double = 0.16
-    public static let pulseSeconds: TimeInterval = 0.3
-    public static let pulsePeakAt: TimeInterval = 0.135
-
     // Reduce Motion: upright, fade-only (owner spec; the web's fade pair).
     public static let reducedMotionFadeInSeconds: TimeInterval = 0.18
 
-    /// The entry spring's unit step response (underdamped, released at rest),
-    /// clamped to exactly 1 past the settle horizon. Scale and opacity both ride it.
-    /// The horizon comparison absorbs float dust (an instant computed as `t - born`
-    /// can land a few ulps under the literal), which is the clamp's whole job.
-    static func entryUnit(_ elapsed: TimeInterval) -> Double {
-        if elapsed <= 0 { return 0 }
-        if elapsed >= entrySettleSeconds - 1e-9 { return 1 }
-        let omega = 2 * Double.pi / entryResponse
-        let zeta = entryDampingRatio
-        let damped = omega * (1 - zeta * zeta).squareRoot()
-        let decay = exp(-zeta * omega * elapsed)
-        return 1 - decay * (cos(damped * elapsed) + (zeta * omega / damped) * sin(damped * elapsed))
-    }
-
-    /// The entry scale: 0.3 springing to 1, so the rendered overshoot is the easing
-    /// overshoot scaled by the 0.7 step (~1.066 at the peak).
-    public static func entryScale(sinceBorn elapsed: TimeInterval) -> Double {
-        entryFromScale + (1 - entryFromScale) * entryUnit(elapsed)
-    }
-
-    /// The entry opacity: the same spring, clamped at 1 exactly as CSS clamps an
-    /// overshooting opacity.
-    public static func entryOpacity(sinceBorn elapsed: TimeInterval) -> Double {
-        min(1, max(0, entryUnit(elapsed)))
-    }
-
-    /// The coalesce pulse: 1 to 1.16 over the first 135 ms, back to exactly 1 at
-    /// 300 ms, each leg eased out (the CSS timing function applies per segment).
-    public static func pulseScale(sincePulse elapsed: TimeInterval) -> Double {
-        if elapsed <= 0 || elapsed >= pulseSeconds - 1e-9 { return 1 }
-        if elapsed < pulsePeakAt {
-            return 1 + pulsePeak * easeOut(elapsed / pulsePeakAt)
+    /// The entrance scale at `elapsed` since the shout (the birth, or a coalesce
+    /// replay). Piecewise over the web's rows; at and past `entranceSeconds` the
+    /// value is EXACTLY 1 (the bezier ends on 1, so the boundary carries no step).
+    public static func entranceScale(sinceShout elapsed: TimeInterval) -> Double {
+        if elapsed <= 0 { return entryFromScale }
+        if elapsed >= entranceSeconds - 1e-9 { return 1 }
+        if elapsed < balloonAt {
+            return entryFromScale
+                + (balloonScale - entryFromScale)
+                * entranceEaseOut.value(at: elapsed / balloonAt)
         }
-        let fall = (elapsed - pulsePeakAt) / (pulseSeconds - pulsePeakAt)
-        return 1 + pulsePeak * (1 - easeOut(fall))
+        if elapsed < settleDipStartAt { return balloonScale }
+        if elapsed < settleDipAt {
+            let progress = (elapsed - settleDipStartAt) / (settleDipAt - settleDipStartAt)
+            return balloonScale
+                + (settleDipScale - balloonScale) * trembleEaseInOut.value(at: progress)
+        }
+        let progress = (elapsed - settleDipAt) / (entranceSeconds - settleDipAt)
+        return settleDipScale + (1 - settleDipScale) * entranceEaseOut.value(at: progress)
+    }
+
+    /// The tremble rotation at `elapsed` since the shout: zero through the balloon,
+    /// the eased swings between beats, zero again from the homecoming on. This value
+    /// ADDS to the seeded static tilt (the web's keyframed rotate() composing after
+    /// the outer `rotate` property), never replaces it.
+    public static func entranceTrembleDegrees(sinceShout elapsed: TimeInterval) -> Double {
+        guard elapsed > balloonAt, let last = trembleBeats.last, elapsed < last.at else {
+            return 0
+        }
+        var fromAt = balloonAt
+        var fromDegrees = 0.0
+        for beat in trembleBeats {
+            if elapsed < beat.at {
+                let progress = (elapsed - fromAt) / (beat.at - fromAt)
+                return fromDegrees
+                    + (beat.degrees - fromDegrees) * trembleEaseInOut.value(at: progress)
+            }
+            fromAt = beat.at
+            fromDegrees = beat.degrees
+        }
+        return 0
+    }
+
+    /// The entrance opacity: the whole ramp rides the balloon leg, 0 to 1 by 16%.
+    public static func entranceOpacity(sinceShout elapsed: TimeInterval) -> Double {
+        if elapsed <= 0 { return 0 }
+        if elapsed >= balloonAt { return 1 }
+        return entranceEaseOut.value(at: elapsed / balloonAt)
     }
 
     /// The exit's shrink factor over the sticker's final `exitSeconds`; 1 before.
@@ -342,43 +418,53 @@ public enum StickerEnvelope {
         return 1 + (exitFinalScale - 1) * easeInOut(progress)
     }
 
-    /// The whole scale for one sticker at one instant. Reduce Motion renders at rest:
-    /// scale 1 always (fade-only entry and exit, no spring, no pulse, no shrink).
+    /// When the sticker's CURRENT gesture started: the latest coalesce already in
+    /// the past, else the birth (a replay is the whole gesture, re-run from its
+    /// refresh instant).
+    private static func shoutAt(_ sticker: ReactionSticker, at now: TimeInterval) -> TimeInterval {
+        now < sticker.refreshedAt ? sticker.bornAt : sticker.refreshedAt
+    }
+
+    /// The whole scale for one sticker at one instant. Reduce Motion renders at
+    /// rest: scale 1 always (fade-only entry and exit, no balloon, no shrink).
     public static func scale(
         _ sticker: ReactionSticker, at now: TimeInterval, reduceMotion: Bool
     ) -> Double {
         if reduceMotion { return 1 }
-        var value = entryScale(sinceBorn: now - sticker.bornAt)
-        if sticker.refreshedAt > sticker.bornAt {
-            value *= pulseScale(sincePulse: now - sticker.refreshedAt)
-        }
-        return value * exitScale(untilEnd: sticker.endsAt - now)
+        return entranceScale(sinceShout: now - shoutAt(sticker, at: now))
+            * exitScale(untilEnd: sticker.endsAt - now)
+    }
+
+    /// The whole rotation the sticker renders at: the seeded static tilt with the
+    /// tremble composing over it. Upright and motionless under Reduce Motion.
+    public static func rotationDegrees(
+        _ sticker: ReactionSticker, at now: TimeInterval, reduceMotion: Bool
+    ) -> Double {
+        if reduceMotion { return 0 }
+        return sticker.tiltDegrees
+            + entranceTrembleDegrees(sinceShout: now - shoutAt(sticker, at: now))
     }
 
     /// The whole opacity for one sticker at one instant. Reduce Motion swaps the
-    /// spring fade for the web's plain 180 ms ease.
+    /// ramp for the web's plain 180 ms ease from birth and ignores replays (the
+    /// existing fallback: fade in once, fade out once).
     public static func opacity(
         _ sticker: ReactionSticker, at now: TimeInterval, reduceMotion: Bool
     ) -> Double {
         let entry =
             reduceMotion
             ? min(1, max(0, (now - sticker.bornAt) / reducedMotionFadeInSeconds))
-            : entryOpacity(sinceBorn: now - sticker.bornAt)
+            : entranceOpacity(sinceShout: now - shoutAt(sticker, at: now))
         let remaining = sticker.endsAt - now
         guard remaining < exitSeconds else { return entry }
         guard remaining > 0 else { return 0 }
         return entry * (remaining / exitSeconds)
     }
 
-    /// The tilt the renderer applies: the born-correct angle, or upright under
-    /// Reduce Motion (owner spec).
+    /// The tilt the renderer applies statically: the born-correct angle, or upright
+    /// under Reduce Motion (owner spec).
     public static func tiltDegrees(_ sticker: ReactionSticker, reduceMotion: Bool) -> Double {
         reduceMotion ? 0 : sticker.tiltDegrees
-    }
-
-    private static func easeOut(_ t: Double) -> Double {
-        let clamped = min(1, max(0, t))
-        return 1 - (1 - clamped) * (1 - clamped) * (1 - clamped)
     }
 
     private static func easeInOut(_ t: Double) -> Double {
