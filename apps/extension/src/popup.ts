@@ -40,9 +40,9 @@ import type { PillSite } from "./pill/toggle";
 import {
   hasPuzzleSitePermissions,
   loadBases,
-  playIntentUrl,
   requestOriginPermissions,
   requestPuzzleSitePermissions,
+  selectPlayUrl,
 } from "./settings";
 import type { Bases } from "./settings";
 
@@ -289,7 +289,11 @@ function renderIngest(extraction: ExtractResponse & { ok: true }): void {
         fail(run);
         return;
       }
-      await chrome.tabs.create({ url: playIntentUrl(run.puzzleId) });
+      // Deep-link the app on iOS (the extension lives inside it), web intent elsewhere;
+      // the same selection the pill uses, so the two surfaces never diverge (settings.ts).
+      await chrome.tabs.create({
+        url: selectPlayUrl(navigator.userAgent)(run.puzzleId),
+      });
       window.close();
     })();
   });
