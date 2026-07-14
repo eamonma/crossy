@@ -200,6 +200,16 @@ public struct SolveScreen: View {
         let barSync: SyncState = barSettled ? store.sync : .connecting
 
         return ZStack {
+            // The room's own bounds in its coordinate space (owner ask
+            // 2026-07-13): a clear, inert layer whose reported frame gives the
+            // completed clue melt the room's full width and its safe-area bottom
+            // (meltMorph then bleeds past that edge). A flexible child accepting
+            // the proposed size, so it never resizes the ZStack; the board and
+            // slot frames are untouched.
+            Color.clear
+                .allowsHitTesting(false)
+                .reportChromeFrame(.roomContainer)
+
             // The base layer: the full-bleed board over the deck (the owner's
             // full-bleed ruling, 2026-07-10). The board runs from the screen's
             // top edge to the deck's top and never under the deck (ID-4: the
@@ -318,6 +328,12 @@ public struct SolveScreen: View {
                     // so it rides its own presence on the same spring instead of
                     // popping against the grid's fade.
                     .transition(.opacity)
+                    // The completed melt pours to the phone's bottom edge as a
+                    // sheet (owner ask 2026-07-13): let the surface draw past the
+                    // bottom safe area so the glass reaches the true edge and the
+                    // display's own corners clip it. Mid-solve the surface rests
+                    // well above this, so it is inert then.
+                    .ignoresSafeArea(.container, edges: .bottom)
             }
 
             // No tap-away catchers anywhere (DESIGN.md §4: transient panels
@@ -845,6 +861,30 @@ public struct SolveScreen: View {
         else { return nil }
         let top = roomBar.maxY + ChromeLayout.panelTopGap
         guard rest.maxY > top else { return nil }
+
+        // A completed room opens the melt as a bottom sheet (owner ask
+        // 2026-07-13): the deck is retired, so the surface pours to the phone's
+        // true edges (full width, past the bottom safe area) with its top corners
+        // only, the door capsule unfolding into a sheet. Mid-solve it stays the
+        // inset card that clears the live deck (glass never stacks, ID-4), so the
+        // sheet geometry is gated on `.completed` and borrows the full-bleed
+        // container frame the room reports for exactly this.
+        if roomStatus == .completed, let container = f[.roomContainer] {
+            // container is the room's SAFE-AREA rect, so bleed the panel past its
+            // bottom by more than any home-indicator inset; the display's own
+            // corners clip the overrun, leaving the glass flush to the phone's
+            // true edge with its square bottom corners hidden below it.
+            let open = CGRect(
+                x: container.minX, y: top,
+                width: container.width,
+                height: container.maxY + ChromeLayout.sheetBottomBleed - top)
+            return GlassMorph(
+                rest: rest,
+                open: open,
+                restCornerRadius: rest.height / 2,
+                openCornerRadius: ChromeLayout.sheetTopCornerRadius)
+        }
+
         return GlassMorph(
             rest: rest,
             open: CGRect(x: rest.minX, y: top, width: rest.width, height: rest.maxY - top),
