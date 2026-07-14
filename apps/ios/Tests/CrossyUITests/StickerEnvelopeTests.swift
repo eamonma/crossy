@@ -1,10 +1,12 @@
-// The sticker's motion character, pinned by sampling the closed forms (the
-// FlashEnvelope discipline): the entry slap's single ~9% overshoot and snappy settle,
-// the exit shrink+fade, the coalesce pulse that starts and ends at exactly 1, and the
-// Reduce Motion collapse to upright fade-only. The settle-boundary continuity tests
-// are the iOS mirror of the web's #245 settle-pop fix: the resting transform must be
-// bit-identical from entry-spring settle through exit-fade start, so the clamp steps
-// are pinned far below visual epsilon.
+// The sticker's motion character, pinned by sampling the closed forms. The shipping
+// renderer (ReactionStickerLayer) drives SwiftUI spring and keyframe animations built
+// from these SAME constants (the entry-shake fix, owner finding 2026-07-14: transform
+// a rasterized layer, never re-render content per frame), so these closed forms are
+// the normative curve both evaluators share. The numbers are the web layer's
+// (styles.css), so the two clients slap alike: entry 0.3 to 1 on a spring whose
+// easing overshoot ~9.4% renders as a ~6.6% scale peak, exit to 0.7 over the final
+// 380 ms, pulse to 1.16 at 45% of 300 ms. The settle-boundary continuity tests are
+// the #245/#247 lesson: rest must be exact, with no step at the spring's end.
 
 import CrossyUI
 import XCTest
@@ -27,23 +29,42 @@ final class StickerEnvelopeTests: XCTestCase {
         return model.stickers[0]
     }
 
-    // MARK: - Entry (the web's slap: snappy settle, ~9% overshoot)
+    // MARK: - Entry (the web's slap, shared numbers)
 
-    func test_entryStartsFromZeroAndOvershootsAboutNinePercent() async {
-        XCTAssertEqual(StickerEnvelope.entryScale(sinceBorn: 0), 0)
+    func test_entryStartsAtTheWebsFromScaleAndPeaksNearSixAndAHalfPercent() async {
+        XCTAssertEqual(
+            StickerEnvelope.entryScale(sinceBorn: 0), StickerEnvelope.entryFromScale)
         var peak = 0.0
         var step = 0.0
         while step <= StickerEnvelope.entrySettleSeconds {
             peak = max(peak, StickerEnvelope.entryScale(sinceBorn: step))
             step += 0.001
         }
-        XCTAssertEqual(peak, 1.09, accuracy: 0.01, "the slap's single overshoot is ~9%")
+        // The easing's ~9.4% overshoot renders over the 0.7 step: ~1.066, the same
+        // peak the web's linear() spring paints.
+        XCTAssertEqual(peak, 1.066, accuracy: 0.01)
+    }
+
+    func test_entryOpacityRidesTheSameSpringClamped() async {
+        let born = sticker(bornAt: 100)
+        XCTAssertEqual(StickerEnvelope.opacity(born, at: 100, reduceMotion: false), 0)
+        // The spring overshoots past 1; opacity clamps exactly as CSS clamps it.
+        var step = 0.0
+        while step <= StickerEnvelope.entrySettleSeconds {
+            XCTAssertLessThanOrEqual(
+                StickerEnvelope.opacity(born, at: 100 + step, reduceMotion: false), 1)
+            step += 0.01
+        }
+        XCTAssertEqual(
+            StickerEnvelope.opacity(
+                born, at: 100 + StickerEnvelope.entrySettleSeconds, reduceMotion: false),
+            1)
     }
 
     func test_entrySettleBoundaryIsContinuous_web245() async {
-        // #245's lesson: no visible step at the spring-to-rest handoff. The residual
-        // the clamp swallows is pinned below any visual epsilon, and past the
-        // horizon the value is EXACTLY 1, not approximately.
+        // #245/#247's lesson: no visible step at the spring-to-rest handoff. The
+        // residual the clamp swallows is pinned below any visual epsilon, and past
+        // the horizon the value is EXACTLY 1, not approximately.
         let horizon = StickerEnvelope.entrySettleSeconds
         let justBefore = StickerEnvelope.entryScale(sinceBorn: horizon - 1e-6)
         XCTAssertEqual(justBefore, 1, accuracy: 1e-4, "the clamp step must be invisible")
@@ -70,7 +91,7 @@ final class StickerEnvelopeTests: XCTestCase {
             StickerEnvelope.tiltDegrees(born, reduceMotion: false), born.tiltDegrees)
     }
 
-    // MARK: - Exit (shrink+fade inside the last quarter second)
+    // MARK: - Exit (the web's sticker-out: 380 ms to scale 0.7, faded)
 
     func test_exitShrinksAndFadesToNothingAtTheEnd() async {
         let born = sticker(bornAt: 100)
@@ -88,27 +109,18 @@ final class StickerEnvelopeTests: XCTestCase {
         XCTAssertEqual(StickerEnvelope.opacity(born, at: end, reduceMotion: false), 0)
     }
 
-    func test_entryFadeReachesFullPresenceQuickly() async {
-        let born = sticker(bornAt: 100)
-        XCTAssertEqual(StickerEnvelope.opacity(born, at: 100, reduceMotion: false), 0)
-        XCTAssertEqual(
-            StickerEnvelope.opacity(
-                born, at: 100 + StickerEnvelope.entryFadeSeconds, reduceMotion: false),
-            1, accuracy: 1e-9)
-    }
+    // MARK: - The coalesce pulse (the web's sticker-repulse: 1.16 at 45% of 300 ms)
 
-    // MARK: - The coalesce pulse (in place, spent back to exactly 1)
-
-    func test_pulseStartsAtOnePeaksAtThePinnedAmplitudeAndSpendsToExactlyOne() async {
+    func test_pulseStartsAtOnePeaksAtThePinnedAmplitudeAndEndsAtExactlyOne() async {
         XCTAssertEqual(StickerEnvelope.pulseScale(sincePulse: 0), 1)
         XCTAssertEqual(
             StickerEnvelope.pulseScale(sincePulse: StickerEnvelope.pulsePeakAt),
             1 + StickerEnvelope.pulsePeak, accuracy: 1e-9)
         let justBefore = StickerEnvelope.pulseScale(
-            sincePulse: StickerEnvelope.pulseSettleSeconds - 1e-6)
-        XCTAssertEqual(justBefore, 1, accuracy: 1e-3, "the pulse clamp step must be invisible")
+            sincePulse: StickerEnvelope.pulseSeconds - 1e-6)
+        XCTAssertEqual(justBefore, 1, accuracy: 1e-3, "the pulse ends where it began")
         XCTAssertEqual(
-            StickerEnvelope.pulseScale(sincePulse: StickerEnvelope.pulseSettleSeconds), 1)
+            StickerEnvelope.pulseScale(sincePulse: StickerEnvelope.pulseSeconds), 1)
     }
 
     func test_pulseRidesTheRefreshInstantNotTheBirth() async {
@@ -119,10 +131,13 @@ final class StickerEnvelopeTests: XCTestCase {
             "the entry has settled by the refresh, so the peak is the pulse alone")
         // A never-coalesced sticker never pulses.
         let born = sticker(bornAt: 100)
-        XCTAssertEqual(StickerEnvelope.scale(born, at: 102.09, reduceMotion: false), 1)
+        XCTAssertEqual(
+            StickerEnvelope.scale(
+                born, at: 100 + 2 + StickerEnvelope.pulsePeakAt, reduceMotion: false),
+            1)
     }
 
-    // MARK: - Reduce Motion (owner spec: upright, fade-only)
+    // MARK: - Reduce Motion (owner spec: upright, fade-only; the web's fade pair)
 
     func test_reduceMotionRendersUprightAtRestingScaleAlways() async {
         let refreshed = coalescedSticker(bornAt: 100, refreshedAt: 102)
@@ -130,7 +145,7 @@ final class StickerEnvelopeTests: XCTestCase {
             XCTAssertEqual(StickerEnvelope.scale(refreshed, at: at, reduceMotion: true), 1)
         }
         XCTAssertEqual(StickerEnvelope.tiltDegrees(refreshed, reduceMotion: true), 0)
-        // The fade-in stretches to read as presence, not motion.
+        // The plain 180 ms fade reaches presence later than the spring's ramp.
         XCTAssertLessThan(
             StickerEnvelope.opacity(refreshed, at: 100.1, reduceMotion: true),
             StickerEnvelope.opacity(refreshed, at: 100.1, reduceMotion: false))

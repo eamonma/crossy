@@ -12,11 +12,14 @@
 import CrossyDesign
 import SwiftUI
 
-/// Where the fan button stands (owner review on the Mac picks; the clue-bar corner is
-/// the default, the deck edge the lab-toggled alternate).
+/// Where the fan button stands. The owner's device pass (2026-07-14) leaned detached
+/// ("emoji button can be separate from clue bar?"), so FLOATING is the default: a
+/// lone glass button just above the bar's trailing corner, with the full clue width
+/// back in the bar. The in-bar corner variant stays behind the
+/// `-reactionFanClueBarCorner` launch flag for the A/B.
 public enum ReactionFanPlacement: String, CaseIterable, Sendable {
+    case floating
     case clueBarCorner
-    case deckEdge
 }
 
 @available(iOS 17.0, macOS 14.0, *)

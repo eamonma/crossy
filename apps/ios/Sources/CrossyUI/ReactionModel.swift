@@ -64,9 +64,12 @@ public enum ReactionSettings {
 }
 
 /// One live sticker. Placement (`offsetX`/`offsetY` in module units from the cell
-/// center, `leanDegrees`, `rotationDegrees`) is seeded at birth from the stable key
-/// alone and immutable for the sticker's life (the born-correct rule); only the
-/// timestamps move, and only through coalescing or eviction.
+/// origin, `tiltDegrees`) is seeded at birth from the stable key alone and immutable
+/// for the sticker's life (the born-correct rule); only the timestamps move, and only
+/// through coalescing or eviction. Geometry mirrors the web layer's owner retune
+/// (2026-07-14, apps/web ReactionStickers.tsx): anchored near-center with a slight
+/// lower-left bias, a square jitter of at most 8 units per axis, and a tilt whose
+/// magnitude is always 8 to 12 degrees, never near-upright.
 public struct ReactionSticker: Identifiable, Equatable, Sendable {
     /// The coalesce identity: same sender + emoji + cell is the same sticker
     /// (PROTOCOL.md §9's client guidance: repeats coalesce, never stack sprites).
@@ -82,14 +85,11 @@ public struct ReactionSticker: Identifiable, Equatable, Sendable {
     /// When the sticker is gone. Coalescing pushes it out; pile eviction pulls it in.
     public internal(set) var endsAt: TimeInterval
 
-    // Born-correct placement, module units and degrees.
+    // Born-correct placement: the anchor from the CELL ORIGIN, module units, jitter
+    // already folded in; and the static tilt.
     public let offsetX: Double
     public let offsetY: Double
-    public let leanDegrees: Double
-    public let rotationDegrees: Double
-
-    /// The one angle the renderer applies: lean and rotation compose.
-    public var tiltDegrees: Double { leanDegrees + rotationDegrees }
+    public let tiltDegrees: Double
 
     init(userId: String, emoji: String, cell: Int, at now: TimeInterval) {
         self.id = Self.key(userId: userId, emoji: emoji, cell: cell)
@@ -100,26 +100,31 @@ public struct ReactionSticker: Identifiable, Equatable, Sendable {
         self.refreshedAt = now
         self.endsAt = now + ReactionPolicy.decaySeconds
         let seed = StickerSeed.hash(id)
-        // A uniform scatter disc (sqrt keeps density even), generous but mostly
-        // inside the 36-unit cell: bleed happens by tilt at the rim, never by aim.
-        let angle = StickerSeed.unit(seed, lane: 0) * 2 * Double.pi
-        let radius = StickerSeed.unit(seed, lane: 1).squareRoot() * Self.scatterRadiusUnits
-        self.offsetX = cos(angle) * radius
-        self.offsetY = sin(angle) * radius
-        self.leanDegrees = (StickerSeed.unit(seed, lane: 2) * 2 - 1) * Self.maxLeanDegrees
-        self.rotationDegrees =
-            (StickerSeed.unit(seed, lane: 3) * 2 - 1) * Self.maxRotationDegrees
+        self.offsetX =
+            Self.anchorXUnits + (StickerSeed.unit(seed, lane: 0) * 2 - 1) * Self.scatterUnits
+        self.offsetY =
+            Self.anchorYUnits + (StickerSeed.unit(seed, lane: 1) * 2 - 1) * Self.scatterUnits
+        // Tilt magnitude 8..12, sign by its own lane: every sticker leans a little,
+        // none lies flat (the web retune's character).
+        let magnitude =
+            Self.minTiltDegrees
+            + StickerSeed.unit(seed, lane: 2) * (Self.maxTiltDegrees - Self.minTiltDegrees)
+        self.tiltDegrees = StickerSeed.unit(seed, lane: 3) < 0.5 ? -magnitude : magnitude
     }
 
     static func key(userId: String, emoji: String, cell: Int) -> String {
         "\(userId)|\(emoji)|\(cell)"
     }
 
-    /// Scatter bound, module units from the cell center. With the 21-unit glyph in
-    /// the 36-unit module this keeps every sticker mostly inside its cell.
-    public static let scatterRadiusUnits: Double = 7
-    public static let maxLeanDegrees: Double = 6
-    public static let maxRotationDegrees: Double = 12
+    /// The anchor in the 36-unit module: near-centered with a slight lower-left
+    /// bias (the web's 17,20), so the glyph reads seated rather than pinned.
+    public static let anchorXUnits: Double = 17
+    public static let anchorYUnits: Double = 20
+    /// Square jitter per axis, module units. With the 23-unit glyph this keeps a
+    /// sticker mostly inside its cell (bleed is possible by z-order, not a goal).
+    public static let scatterUnits: Double = 8
+    public static let minTiltDegrees: Double = 8
+    public static let maxTiltDegrees: Double = 12
 }
 
 /// Deterministic placement seeding: FNV-1a over the sticker's key bytes, mixed per
@@ -221,6 +226,11 @@ public final class ReactionModel {
             return
         }
 
+        // An EXPIRED same-key sticker the sweep has not yet retired leaves first:
+        // the book never holds two stickers with one identity (the render layer's
+        // ForEach keys on it).
+        stickers.removeAll { $0.id == key }
+
         // Pile cap: with maxVisiblePerCell already standing in this cell, the
         // stalest incumbent (oldest refresh) starts its exit now — replaced, not
         // popped, so the departure still reads as motion. Nothing else in the pile
@@ -243,46 +253,54 @@ public final class ReactionModel {
     }
 }
 
-/// The sticker's motion, all of it closed-form over elapsed time so the Canvas
-/// evaluates it per frame with no animation state (the FlashEnvelope pattern) and
-/// tests pin the curve's character by sampling.
+/// The sticker's motion contract, one set of constants with closed-form curves as the
+/// pinned specification. The SHIPPING renderer (ReactionStickerLayer) does not sample
+/// these per frame: it builds SwiftUI spring and keyframe animations FROM these exact
+/// constants, so Core Animation transforms each glyph's one rasterized layer and the
+/// content is never re-rendered mid-flight (the owner's entry-shake finding
+/// 2026-07-14, the transform-not-repaint lesson both platforms converged on; the
+/// web's twin fix is #247). The closed forms remain normative: tests sample them to
+/// pin the character, and they are the reference for any future sampled use.
 ///
-/// Entry is the web's slap: an underdamped spring from 0 with a single ~9% overshoot
-/// and a snappy settle. Past `entrySettleSeconds` the spring is CLAMPED to exactly 1
-/// (the residual there is ~1e-6, far below visual epsilon), so the resting transform
-/// is bit-identical from settle through exit start — the no-post-entry-snap rule, and
-/// the iOS mirror of the web's #245 settle-pop fix. Exit is a shrink+fade inside the
-/// sticker's last quarter second. The coalesce pulse is a smooth bump that starts at
-/// exactly 1, peaks fast, and is clamped back to exactly 1 once spent, so a pulse can
-/// never leave a sticker off its resting transform either.
+/// The numbers are the web layer's, measured from styles.css so the two clients share
+/// one slap: entry springs scale 0.3 to 1 (easing overshoot ~9.4%, which renders as a
+/// ~6.6% scale peak over the 0.7 step) with opacity riding the same spring, clamped;
+/// exit shrinks to 0.7 and fades over the final 380 ms of the 5 s life; the coalesce
+/// pulse rises to 1.16 at 45% of its 300 ms and returns to exactly 1. Past
+/// `entrySettleSeconds` the closed form is CLAMPED to exactly 1 (residual ~7e-5,
+/// below visual epsilon), so the resting transform is bit-identical from settle
+/// through exit start; SwiftUI's spring ends at the model value 1 exactly, giving the
+/// shipped render the same guarantee by construction.
 public enum StickerEnvelope {
-    // Entry (the slap).
-    public static let entryResponse: TimeInterval = 0.32
-    /// Damping ratio 0.608: first (only visible) overshoot = exp(-πζ/√(1-ζ²)) ≈ 9%.
-    public static let entryDampingRatio: Double = 0.608
-    /// The settle horizon: beyond it scale is exactly 1. The clamp step is ~1e-6.
-    public static let entrySettleSeconds: TimeInterval = 1.2
-    /// A short fade-in so the spring never pops from nothing.
-    public static let entryFadeSeconds: TimeInterval = 0.08
+    // Entry (the slap; the web spring's fitted parameters: peak at ~147 ms,
+    // easing overshoot ~9.4%).
+    public static let entryResponse: TimeInterval = 0.235
+    public static let entryDampingRatio: Double = 0.60
+    /// Where the entry starts: the web's sticker-in keyframe.
+    public static let entryFromScale: Double = 0.3
+    /// The settle horizon for the CLOSED FORM: beyond it the sampled scale is
+    /// exactly 1 (the clamp step is ~7e-5 of the 0.7 step, invisible).
+    public static let entrySettleSeconds: TimeInterval = 0.6
 
-    // Exit (shrink+fade, inside the sticker's life).
-    public static let exitSeconds: TimeInterval = 0.25
-    public static let exitFinalScale: Double = 0.6
+    // Exit (shrink+fade inside the sticker's life; the web's sticker-out).
+    public static let exitSeconds: TimeInterval = 0.38
+    public static let exitFinalScale: Double = 0.7
 
-    // The coalesce pulse.
+    // The coalesce pulse (the web's sticker-repulse: 300 ms, peak 1.16 at 45%).
     public static let pulsePeak: Double = 0.16
-    public static let pulsePeakAt: TimeInterval = 0.09
-    /// Beyond this the pulse is exactly spent (residual ~1e-4 of the peak).
-    public static let pulseSettleSeconds: TimeInterval = 0.8
+    public static let pulseSeconds: TimeInterval = 0.3
+    public static let pulsePeakAt: TimeInterval = 0.135
 
-    // Reduce Motion: upright, fade-only (owner spec).
-    public static let reducedMotionFadeSeconds: TimeInterval = 0.2
+    // Reduce Motion: upright, fade-only (owner spec; the web's fade pair).
+    public static let reducedMotionFadeInSeconds: TimeInterval = 0.18
 
-    /// The entry spring: unit step response of an underdamped oscillator released at
-    /// 0 with zero velocity, clamped to exactly 1 past the settle horizon.
-    public static func entryScale(sinceBorn elapsed: TimeInterval) -> Double {
+    /// The entry spring's unit step response (underdamped, released at rest),
+    /// clamped to exactly 1 past the settle horizon. Scale and opacity both ride it.
+    /// The horizon comparison absorbs float dust (an instant computed as `t - born`
+    /// can land a few ulps under the literal), which is the clamp's whole job.
+    static func entryUnit(_ elapsed: TimeInterval) -> Double {
         if elapsed <= 0 { return 0 }
-        if elapsed >= entrySettleSeconds { return 1 }
+        if elapsed >= entrySettleSeconds - 1e-9 { return 1 }
         let omega = 2 * Double.pi / entryResponse
         let zeta = entryDampingRatio
         let damped = omega * (1 - zeta * zeta).squareRoot()
@@ -290,20 +308,34 @@ public enum StickerEnvelope {
         return 1 - decay * (cos(damped * elapsed) + (zeta * omega / damped) * sin(damped * elapsed))
     }
 
-    /// The coalesce pulse's scale factor: 1 at t = 0, `1 + pulsePeak` at `pulsePeakAt`,
-    /// smoothly spent (t/tp · e^(1 − t/tp) rises and decays with no corner), clamped
-    /// to exactly 1 once settled.
+    /// The entry scale: 0.3 springing to 1, so the rendered overshoot is the easing
+    /// overshoot scaled by the 0.7 step (~1.066 at the peak).
+    public static func entryScale(sinceBorn elapsed: TimeInterval) -> Double {
+        entryFromScale + (1 - entryFromScale) * entryUnit(elapsed)
+    }
+
+    /// The entry opacity: the same spring, clamped at 1 exactly as CSS clamps an
+    /// overshooting opacity.
+    public static func entryOpacity(sinceBorn elapsed: TimeInterval) -> Double {
+        min(1, max(0, entryUnit(elapsed)))
+    }
+
+    /// The coalesce pulse: 1 to 1.16 over the first 135 ms, back to exactly 1 at
+    /// 300 ms, each leg eased out (the CSS timing function applies per segment).
     public static func pulseScale(sincePulse elapsed: TimeInterval) -> Double {
-        if elapsed <= 0 || elapsed >= pulseSettleSeconds { return 1 }
-        let normalized = elapsed / pulsePeakAt
-        return 1 + pulsePeak * normalized * exp(1 - normalized)
+        if elapsed <= 0 || elapsed >= pulseSeconds - 1e-9 { return 1 }
+        if elapsed < pulsePeakAt {
+            return 1 + pulsePeak * easeOut(elapsed / pulsePeakAt)
+        }
+        let fall = (elapsed - pulsePeakAt) / (pulseSeconds - pulsePeakAt)
+        return 1 + pulsePeak * (1 - easeOut(fall))
     }
 
     /// The exit's shrink factor over the sticker's final `exitSeconds`; 1 before.
     public static func exitScale(untilEnd remaining: TimeInterval) -> Double {
         guard remaining < exitSeconds else { return 1 }
         let progress = 1 - max(0, remaining) / exitSeconds
-        return 1 + (exitFinalScale - 1) * easeOut(progress)
+        return 1 + (exitFinalScale - 1) * easeInOut(progress)
     }
 
     /// The whole scale for one sticker at one instant. Reduce Motion renders at rest:
@@ -319,17 +351,19 @@ public enum StickerEnvelope {
         return value * exitScale(untilEnd: sticker.endsAt - now)
     }
 
-    /// The whole opacity for one sticker at one instant: a quick fade in, full
-    /// presence, and the exit fade out. Reduce Motion stretches only the fade-in.
+    /// The whole opacity for one sticker at one instant. Reduce Motion swaps the
+    /// spring fade for the web's plain 180 ms ease.
     public static func opacity(
         _ sticker: ReactionSticker, at now: TimeInterval, reduceMotion: Bool
     ) -> Double {
-        let fadeIn = reduceMotion ? reducedMotionFadeSeconds : entryFadeSeconds
-        let entry = min(1, max(0, (now - sticker.bornAt) / fadeIn))
+        let entry =
+            reduceMotion
+            ? min(1, max(0, (now - sticker.bornAt) / reducedMotionFadeInSeconds))
+            : entryOpacity(sinceBorn: now - sticker.bornAt)
         let remaining = sticker.endsAt - now
         guard remaining < exitSeconds else { return entry }
         guard remaining > 0 else { return 0 }
-        return entry * easeOut(remaining / exitSeconds)
+        return entry * (remaining / exitSeconds)
     }
 
     /// The tilt the renderer applies: the born-correct angle, or upright under
@@ -341,5 +375,10 @@ public enum StickerEnvelope {
     private static func easeOut(_ t: Double) -> Double {
         let clamped = min(1, max(0, t))
         return 1 - (1 - clamped) * (1 - clamped) * (1 - clamped)
+    }
+
+    private static func easeInOut(_ t: Double) -> Double {
+        let clamped = min(1, max(0, t))
+        return clamped * clamped * (3 - 2 * clamped)
     }
 }

@@ -97,8 +97,7 @@ final class ReactionModelTests: XCTestCase {
         // Born-correct: placement is untouched by the coalesce.
         XCTAssertEqual(refreshed.offsetX, born.offsetX)
         XCTAssertEqual(refreshed.offsetY, born.offsetY)
-        XCTAssertEqual(refreshed.leanDegrees, born.leanDegrees)
-        XCTAssertEqual(refreshed.rotationDegrees, born.rotationDegrees)
+        XCTAssertEqual(refreshed.tiltDegrees, born.tiltDegrees)
     }
 
     func test_differentSendersNeverCoalesce_PROTOCOL9() async {
@@ -171,25 +170,42 @@ final class ReactionModelTests: XCTestCase {
         let piled = try XCTUnwrap(crowded.stickers.first { $0.userId == "bee" })
         XCTAssertEqual(piled.offsetX, lone.offsetX)
         XCTAssertEqual(piled.offsetY, lone.offsetY)
-        XCTAssertEqual(piled.leanDegrees, lone.leanDegrees)
-        XCTAssertEqual(piled.rotationDegrees, lone.rotationDegrees)
+        XCTAssertEqual(piled.tiltDegrees, lone.tiltDegrees)
     }
 
-    func test_placementStaysInsideTheScatterBounds() async {
-        // Mostly inside the cell (owner ruling: bleed is possible by z-order, not a
-        // goal): the scatter disc and the tilt bands are hard bounds.
+    func test_placementStaysInsideTheWebParityBounds() async {
+        // The web layer's owner retune (2026-07-14): anchored at (17, 20) in the
+        // module with a square jitter of at most 8 units per axis, and a tilt whose
+        // magnitude is always 8 to 12 degrees, so no sticker sits flat and none
+        // strays past mostly-inside (bleed is possible by z-order, not a goal).
         let model = ReactionModel()
         for index in 0..<40 {
             model.receive(userId: "u\(index)", emoji: "🎉", cell: index, at: 100)
         }
         for sticker in model.stickers {
-            let radius = (sticker.offsetX * sticker.offsetX + sticker.offsetY * sticker.offsetY)
-                .squareRoot()
-            XCTAssertLessThanOrEqual(radius, ReactionSticker.scatterRadiusUnits + 1e-9)
-            XCTAssertLessThanOrEqual(abs(sticker.leanDegrees), ReactionSticker.maxLeanDegrees)
             XCTAssertLessThanOrEqual(
-                abs(sticker.rotationDegrees), ReactionSticker.maxRotationDegrees)
+                abs(sticker.offsetX - ReactionSticker.anchorXUnits),
+                ReactionSticker.scatterUnits + 1e-9)
+            XCTAssertLessThanOrEqual(
+                abs(sticker.offsetY - ReactionSticker.anchorYUnits),
+                ReactionSticker.scatterUnits + 1e-9)
+            XCTAssertGreaterThanOrEqual(
+                abs(sticker.tiltDegrees), ReactionSticker.minTiltDegrees - 1e-9)
+            XCTAssertLessThanOrEqual(
+                abs(sticker.tiltDegrees), ReactionSticker.maxTiltDegrees + 1e-9)
         }
+    }
+
+    func test_oneIdentityNeverHoldsTwoStickers() async {
+        // The render layer's ForEach keys on the sticker id, so an expired same-key
+        // sticker the sweep has not yet retired must leave when its successor is
+        // born: one identity, one sticker, always.
+        let model = ReactionModel()
+        model.receive(userId: "bee", emoji: "🎉", cell: 3, at: 100)
+        // Past the decay, un-swept: the repeat replaces it in place.
+        model.receive(userId: "bee", emoji: "🎉", cell: 3, at: 106)
+        XCTAssertEqual(model.stickers.count, 1)
+        XCTAssertEqual(model.stickers[0].bornAt, 106)
     }
 
     // MARK: - Revision (the hosting view's sweep key)

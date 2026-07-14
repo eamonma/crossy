@@ -49,11 +49,12 @@ public enum GridModule {
 
     // MARK: Reaction stickers (PROTOCOL.md §9; native emoji, no assets)
 
-    /// The sticker glyph's type size, module units: big enough to read as a cheer,
-    /// small enough that the scatter disc (ReactionSticker.scatterRadiusUnits) keeps
-    /// it mostly inside the 36-unit cell (owner ruling: bleed is possible by
-    /// z-order, not a goal).
-    public static let stickerFontSize: CGFloat = 21
+    /// The sticker glyph's type size, module units: 23/36 of the cell, the web
+    /// layer's owner-retuned size (2026-07-14, apps/web styles.css), so the two
+    /// clients' stickers read the same weight. The square scatter
+    /// (ReactionSticker.scatterUnits) keeps it mostly inside the cell (owner
+    /// ruling: bleed is possible by z-order, not a goal).
+    public static let stickerFontSize: CGFloat = 23
 
     // MARK: Lines
 
