@@ -47,6 +47,16 @@ describe("manifest", () => {
     expect(entry?.all_frames).toBeUndefined();
   });
 
+  it("matches the Safari sign-in callback script to the pinned path, at document_start", () => {
+    const byEntry = new Map(manifest.content_scripts.map((s) => [s.js[0], s]));
+    const entry = byEntry.get("auth/callback-content.js");
+    // The pinned redirect path only (settings.ts AUTH_CALLBACK_URL): it reads the ?code=
+    // and hands it to the worker. document_start grabs the URL before any redirect.
+    expect(entry?.matches).toEqual(["https://crossy.party/auth/ext/callback*"]);
+    expect(entry?.run_at).toBe("document_start");
+    expect(entry?.all_frames).toBeUndefined();
+  });
+
   it("commits the Chrome dev-id key; the Firefox transform strips it (owner warning)", () => {
     // Chrome derives the unpacked dev id from `key`; Firefox flags it and warns.
     expect(typeof manifest.key).toBe("string");

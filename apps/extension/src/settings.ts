@@ -23,6 +23,16 @@ export function playIntentUrl(puzzleId: string): string {
   return `${WEB_ORIGIN}/puzzles?play=${encodeURIComponent(puzzleId)}`;
 }
 
+/**
+ * Safari sign-in redirect target. Safari has no identity.getRedirectURL and refuses to
+ * redirect an OAuth provider to a custom-scheme (extension) URL, so redirect_to must be a
+ * real hosted https page. This inert page's content script hands the ?code= back to the
+ * worker (auth/callback.ts); the page must not run supabase-js, or the SPA would consume
+ * the single-use code first. Pinned to the web origin; must be in the Supabase auth
+ * redirect allowlist. Chrome and Firefox never use it (they capture via identity).
+ */
+export const AUTH_CALLBACK_URL = `${WEB_ORIGIN}/auth/ext/callback`;
+
 /** Public by design: the same publishable key the web client ships in /config.json. */
 export const DEFAULT_PUBLISHABLE_KEY =
   "sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd";

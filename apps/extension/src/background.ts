@@ -7,9 +7,13 @@
 
 import { postPuzzle } from "./api";
 import { runPkceAttempt } from "./auth/attempt";
+import type { AuthCallbackRequest } from "./auth/callback";
+import { AUTH_CALLBACK, PendingCaptures } from "./auth/callback";
 import type { Provider } from "./auth/flow";
 import type { AuthTarget } from "./auth/gotrue";
 import { revokeSession } from "./auth/gotrue";
+import type { AuthLauncher } from "./auth/launcher";
+import { identityLauncher, tabRedirectLauncher } from "./auth/launcher";
 import type {
   SignInReply,
   SilentSignInReply,
@@ -39,7 +43,7 @@ import { buildEnvelope } from "./envelope";
 import { PLAY_REQUEST } from "./pill/messages";
 import type { PlayReply, PlayRequest } from "./pill/messages";
 import { handlePlayRequest } from "./pill/play-handler";
-import { loadBases } from "./settings";
+import { AUTH_CALLBACK_URL, loadBases } from "./settings";
 
 // Firefox exposes the promise-based API on `browser`; Chrome promisifies `chrome`
 // itself in MV3. One shim, no polyfill dependency.
@@ -57,6 +61,46 @@ const LEGACY_SETTINGS_KEY = "settings";
 const SILENT_PROVIDER: Provider = "discord";
 
 const area = chromeLocalArea();
+
+// The redirect capture differs by browser: Chrome and Firefox have identity, Safari does
+// not, so Safari opens a tab to the hosted callback and awaits its report (auth/launcher.ts,
+// auth/callback.ts). Everything downstream of the capture is byte-identical, so the
+// extension keeps its own independent, rotating session on every browser. Chosen once at
+// worker start; capability does not change at runtime.
+const AUTH_TAB_TIMEOUT_MS = 5 * 60_000;
+const pending = new PendingCaptures();
+
+function selectLauncher(): AuthLauncher {
+  const identity = (ext as typeof chrome).identity as
+    typeof chrome.identity | undefined;
+  if (
+    identity !== undefined &&
+    typeof identity.launchWebAuthFlow === "function" &&
+    typeof identity.getRedirectURL === "function"
+  ) {
+    return identityLauncher(identity);
+  }
+  // Safari: no identity API. Mint the extension's own session via a hosted-callback tab.
+  return tabRedirectLauncher({
+    redirectUri: AUTH_CALLBACK_URL,
+    pending,
+    createTab: async (url) => (await ext.tabs.create({ url })).id,
+    removeTab: async (tabId) => {
+      try {
+        await ext.tabs.remove(tabId);
+      } catch {
+        // The tab is already gone (closed, or navigated away); nothing to close.
+      }
+    },
+    timeoutMs: AUTH_TAB_TIMEOUT_MS,
+    startTimer: (ms, onFire) => {
+      const handle = setTimeout(onFire, ms);
+      return () => clearTimeout(handle);
+    },
+  });
+}
+
+const launcher = selectLauncher();
 
 function nowSec(): number {
   return Math.floor(Date.now() / 1000);
@@ -117,9 +161,8 @@ async function signIn(provider: Provider): Promise<SignInReply> {
     const result = await runPkceAttempt(provider, {
       target: await authTarget(),
       area,
-      redirectUri: ext.identity.getRedirectURL(),
-      launch: (url) =>
-        ext.identity.launchWebAuthFlow({ url, interactive: true }),
+      redirectUri: launcher.redirectUri,
+      launch: (url) => launcher.capture(url, true),
       randomBytes,
       nowSec,
     });
@@ -152,9 +195,8 @@ const silent = new SilentSignIn({
     const result = await runPkceAttempt(web?.provider ?? SILENT_PROVIDER, {
       target: await authTarget(),
       area,
-      redirectUri: ext.identity.getRedirectURL(),
-      launch: (url) =>
-        ext.identity.launchWebAuthFlow({ url, interactive: false }),
+      redirectUri: launcher.redirectUri,
+      launch: (url) => launcher.capture(url, false),
       randomBytes,
       nowSec,
     });
@@ -223,8 +265,18 @@ async function playFromPill(request: PlayRequest): Promise<PlayReply> {
   });
 }
 
-ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const type = (message as { type?: unknown } | null)?.type;
+  if (type === AUTH_CALLBACK) {
+    // The Safari callback page reporting the redirect it landed on. Route it to the tab's
+    // waiter; the launcher resolves the capture and runPkceAttempt runs the exchange.
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) {
+      pending.deliver(tabId, (message as AuthCallbackRequest).url);
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
   if (type === PLAY_REQUEST) {
     void playFromPill(message as PlayRequest).then(sendResponse);
     return true;
@@ -258,6 +310,13 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 ext.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== REFRESH_ALARM) return;
   void runScheduledRefresh();
+});
+
+// A user who closes the Safari auth tab before it redirects cancels the capture: resolve
+// the waiter undefined so the sign-in settles as a cancel instead of hanging to timeout.
+// Any other tab has no capture pending, so this is a no-op there.
+ext.tabs.onRemoved.addListener((tabId) => {
+  pending.cancel(tabId);
 });
 
 async function rearm(): Promise<void> {
