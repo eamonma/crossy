@@ -686,6 +686,42 @@
   --sticker-out-dur: 380ms;
 }
 
+/* The completed mosaic's selection and aim layer (ui/MosaicSelectLayer.tsx). The container fills the
+   board wrapper and is pointer-transparent, so a block (which gets no target) and any gap fall
+   through to the mosaic; each target below re-enables pointer events on itself. */
+.mosaic-select {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* One playable cell's click target: a transparent box positioned and sized by percentage (set
+   inline). It carries no paint, only the pointer, so the mosaic art shows through untouched. */
+.mosaic-select-target {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* The selection ring: the completed board's stand-in for the live grid's current-cell fill, which
+   the mosaic art forbids (no repaint). It never contrasts with a single owner color, so it is a
+   triple hairline that holds on any cell in either ground: a dark outer line reads over a pale wash,
+   the gold accent core is the brand's selection warmth, a light inner line reads over a dark wash.
+   All three are inset, so the whole ring sits inside the cell and an edge cell renders it flush and
+   never clipped. Inert: it never takes the pointer. */
+.mosaic-select-ring {
+  position: absolute;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 20, 16, 0.5),
+    inset 0 0 0 3px var(--color-gold-9),
+    inset 0 0 0 4px rgba(255, 255, 255, 0.85);
+}
+
 /* The overlay fills the board wrapper; positioned, so it paints above the SVG in flow. Cell
    percentages inside it track any board resize with no script, and it is an inline-size
    container so the glyph size below can be pure CSS too. */
