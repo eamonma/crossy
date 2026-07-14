@@ -8,13 +8,21 @@ import { authedFetch } from "../net/authedFetch";
 import type {
   SetDisplayNameReason,
   SetDisplayNameResult,
+  SetReactionSetReason,
+  SetReactionSetResult,
   UserProfile,
 } from "../identity/types";
 
 // The payload and result types live on the Identity port (identity/types.ts), the single
 // vocabulary the UI and both adapters share; this data-access file imports them and the port's
 // adapters delegate here, so there is one shape and one decoder (DESIGN.md name-onboarding §6.1).
-export type { SetDisplayNameReason, SetDisplayNameResult, UserProfile };
+export type {
+  SetDisplayNameReason,
+  SetDisplayNameResult,
+  SetReactionSetReason,
+  SetReactionSetResult,
+  UserProfile,
+};
 
 /** True for the three server-named 422 name rejections, so a decoded error maps to a reason. */
 function isNameReason(code: string): code is SetDisplayNameReason {
@@ -25,8 +33,28 @@ function isNameReason(code: string): code is SetDisplayNameReason {
   );
 }
 
+/** True for the three server-named 422 reaction-set rejections (PROTOCOL.md §12). */
+function isReactionSetReason(code: string): code is SetReactionSetReason {
+  return (
+    code === "REACTION_SET_LENGTH" ||
+    code === "REACTION_SET_INVALID" ||
+    code === "REACTION_SET_DUPLICATE"
+  );
+}
+
+/** Narrow an unknown /me `reactionSet` field: an array of five-ish strings passes through, anything
+ *  else (absent on an older server, null, a malformed shape) reads as null, the defaults. */
+function toReactionSet(value: unknown): readonly string[] | null {
+  if (!Array.isArray(value)) return null;
+  if (!value.every((entry): entry is string => typeof entry === "string")) {
+    return null;
+  }
+  return value;
+}
+
 /** Narrow an unknown JSON body to the /me payload shape, tolerating a missing `needsName`
- *  (an older server): fold it to `!isAnonymous && displayName === null`, the same rule. */
+ *  (an older server): fold it to `!isAnonymous && displayName === null`, the same rule. A
+ *  missing `reactionSet` reads as null, the defaults (PROTOCOL.md §12). */
 function toProfile(body: unknown): UserProfile {
   const o = (body ?? {}) as Record<string, unknown>;
   const userId = typeof o.userId === "string" ? o.userId : "";
@@ -37,7 +65,15 @@ function toProfile(body: unknown): UserProfile {
     typeof o.needsName === "boolean"
       ? o.needsName
       : !isAnonymous && displayName === null;
-  return { userId, displayName, isAnonymous, avatarUrl, needsName };
+  const reactionSet = toReactionSet(o.reactionSet);
+  return {
+    userId,
+    displayName,
+    isAnonymous,
+    avatarUrl,
+    needsName,
+    reactionSet,
+  };
 }
 
 /** Parse a Retry-After header (delta-seconds, the shape the API's limiter sends) to ms, or
@@ -115,5 +151,58 @@ export async function setDisplayName(
     // A 4xx with no JSON body is unclassifiable; fall through to unknown.
   }
   if (isNameReason(code)) return { ok: false, reason: code };
+  return { ok: false, reason: "unknown" };
+}
+
+/**
+ * PATCH /me `{reactionSet}`: write the caller's personal reaction set (five emoji in slot order)
+ * or reset it to the defaults (null), and adopt the canonical profile the server returns. The same
+ * typed-result contract as setDisplayName: a 422 maps to its REACTION_SET_* code (an inline field
+ * error), a 429 to `rate_limited` with the Retry-After delay, a transport failure or a 5xx to
+ * `network`, anything else to `unknown`. Never throws.
+ */
+export async function setReactionSet(
+  apiBase: string,
+  bearer: Bearer,
+  set: readonly string[] | null,
+): Promise<SetReactionSetResult> {
+  let res: Response;
+  try {
+    res = await authedFetch(bearer, `${apiBase}/me`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reactionSet: set }),
+    });
+  } catch {
+    // authedFetch throws only when signed out (no bearer) or the transport failed outright;
+    // both are transient here, so `network`.
+    return { ok: false, reason: "network" };
+  }
+
+  if (res.ok) {
+    return { ok: true, profile: toProfile(await res.json()) };
+  }
+
+  if (res.status === 429) {
+    const retryAfterMs = retryAfterMsOf(res);
+    return retryAfterMs === undefined
+      ? { ok: false, reason: "rate_limited" }
+      : { ok: false, reason: "rate_limited", retryAfterMs };
+  }
+
+  // A 5xx is a server fault a retry should absorb, so surface it as network (transport-shaped).
+  if (res.status >= 500) return { ok: false, reason: "network" };
+
+  // A 4xx carries the standard { error, message } body; key on the stable code. A 422
+  // REACTION_SET_* is an inline field error; a 400 VALIDATION or a 401 is not user-fixable inline
+  // (the client validator gates the shapes VALIDATION names), so it is unknown.
+  let code = "";
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    if (typeof body.error === "string") code = body.error;
+  } catch {
+    // A 4xx with no JSON body is unclassifiable; fall through to unknown.
+  }
+  if (isReactionSetReason(code)) return { ok: false, reason: code };
   return { ok: false, reason: "unknown" };
 }

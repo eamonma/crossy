@@ -47,6 +47,7 @@ import { ChevronLeftIcon } from "@radix-ui/react-icons";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { useReactions } from "./reactions/useReactions";
+import { usePersonalReactionSet } from "./reactions/useReactionSet";
 import { ReactionTray } from "./reactions/ReactionTray";
 import { ReactionHud } from "./reactions/ReactionHud";
 import { ReactionStickers } from "./reactions/ReactionStickers";
@@ -774,7 +775,10 @@ function LiveGame({
   // store, plus the tray/HUD/key wiring. Reactions are role `any` (spectators cheer too, §9), so
   // this is not gated on role; the store refuses a react while `connecting`, and the affordances
   // below only mount once synced. Legal in any status, so a completed board still reacts.
-  const reactions = useReactions(store);
+  // The five the tray, ring, and keys offer are the personal set (Wave 8.4, §12), resolved live
+  // from the session: a Settings save applies here with no reload.
+  const reactionSet = usePersonalReactionSet(identity);
+  const reactions = useReactions(store, reactionSet);
   const frozen = store.status !== "ongoing";
   // Post-REST, pre-welcome: the store is `connecting`, so the real grid renders at its
   // true geometry with empty cells but de-emphasized, and input is locked until the first
@@ -1368,6 +1372,7 @@ function LiveGame({
                       cols={puzzle.cols}
                       rows={puzzle.rows}
                       cell={reactions.hudCell}
+                      options={reactionSet.options}
                       onReact={reactions.sendFromHud}
                     />
                   )}
@@ -1380,6 +1385,7 @@ function LiveGame({
             {!awaitingFirstSync && (
               <div className="mt-3 flex shrink-0 justify-center md:mt-4">
                 <ReactionTray
+                  options={reactionSet.options}
                   onReact={(emoji) => reactions.send(emoji, selection.cell)}
                 />
               </div>

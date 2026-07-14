@@ -10,12 +10,14 @@ import type {
   IdentitySession,
   SessionChangeCause,
   SetDisplayNameResult,
+  SetReactionSetResult,
   UserProfile,
 } from "./types";
 import {
   canonicalizeDisplayName,
   isCompleteDisplayName,
 } from "../profile/name";
+import { validateReactionSet } from "../reactions/reactionEmoji";
 
 export interface MockIdentityOptions {
   /** Mirrors config.guestsEnabled: when false, signInGuest returns "guests_disabled". */
@@ -68,6 +70,11 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
   // setDisplayName rewrites this, the single name store the mock UI reads through.
   let meName: string | null | undefined = opts.meDisplayName;
 
+  // The personal reaction set the mock /me reports (§12): in-memory only, so the Settings section
+  // is exercisable offline. Null means the defaults, exactly the wire contract; setReactionSet
+  // rewrites this and the session, the same one-store shape as meName.
+  let meReactionSet: readonly string[] | null = null;
+
   // Both mock sign-in paths are interactive by construction (a click in the UI), so they
   // emit "signed_in"; the initialSession option models an already-restored session and is
   // in place before anyone can subscribe, so load() never emits "restored" here.
@@ -97,6 +104,7 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
       isAnonymous: s.isAnonymous,
       avatarUrl: s.avatarUrl,
       needsName: !s.isAnonymous && displayName === null,
+      reactionSet: meReactionSet,
     };
   }
 
@@ -210,6 +218,27 @@ export function createMockIdentity(opts: MockIdentityOptions = {}): Identity {
       const canonical = canonicalizeDisplayName(name);
       meName = canonical;
       session = { ...session, displayName: canonical };
+      emit("refreshed");
+      return Promise.resolve({ ok: true, profile: profileOf(session) });
+    },
+    setReactionSet(
+      set: readonly string[] | null,
+    ): Promise<SetReactionSetResult> {
+      // Validate at the mock edge with the same rule the server runs (the client validator
+      // mirrors it, PROTOCOL.md §12), so an invalid set gets its named code offline. On success
+      // rewrite the store AND the session, then emit "refreshed" so the tray and the HUD
+      // re-render, mirroring the real adapter's adoptProfile.
+      if (session === null) {
+        return Promise.resolve({ ok: false, reason: "network" });
+      }
+      if (set !== null) {
+        const check = validateReactionSet(set);
+        if (!check.ok) {
+          return Promise.resolve({ ok: false, reason: check.code });
+        }
+      }
+      meReactionSet = set === null ? null : [...set];
+      session = { ...session, reactionSet: meReactionSet };
       emit("refreshed");
       return Promise.resolve({ ok: true, profile: profileOf(session) });
     },

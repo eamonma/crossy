@@ -13,6 +13,7 @@ import {
   optionForDirectKey,
   optionForLeaderKey,
 } from "./reactionSet";
+import type { ResolvedReactionSet } from "./reactionSet";
 
 export interface HudState {
   /** Whether the radial HUD is open. */
@@ -58,10 +59,14 @@ export interface ReactionKeyResult {
 }
 
 /**
- * Map one keydown against the current state. `cell` is the sender's current cursor cell (the
- * anchor for a direct-key fire and for opening the HUD); `repeat` is the event's key-repeat flag.
+ * Map one keydown against the current state and the sender's resolved reaction set. `set` carries
+ * the five emoji the leader and direct keys fire (the personal set, §9, §12); the geometry and the
+ * key bindings are fixed, only which emoji each slot holds rides in. `cell` is the sender's current
+ * cursor cell (the anchor for a direct-key fire and for opening the HUD); `repeat` is the event's
+ * key-repeat flag.
  */
 export function reactionKeyDown(
+  set: ResolvedReactionSet,
   state: ReactionKeyState,
   key: string,
   cell: number,
@@ -71,7 +76,7 @@ export function reactionKeyDown(
   // and nothing leaks to the grid. A NON-repeat keydown of the same key means its keyup was
   // missed (window blur, focus steal): release the capture and treat the press as a fresh key.
   if (state.captured !== null) {
-    const held = optionForLeaderKey(key);
+    const held = optionForLeaderKey(set, key);
     if (held !== undefined && held.leaderKey === state.captured.key) {
       if (repeat) {
         return {
@@ -85,7 +90,7 @@ export function reactionKeyDown(
   }
 
   // Direct keys fire with no HUD and dismiss an open one, whatever the state.
-  const direct = optionForDirectKey(key);
+  const direct = optionForDirectKey(set, key);
   if (direct !== undefined) {
     return {
       state: state.hud.open
@@ -125,7 +130,7 @@ export function reactionKeyDown(
         consumed: true,
       };
     }
-    const opt = optionForLeaderKey(key);
+    const opt = optionForLeaderKey(set, key);
     if (opt !== undefined) {
       // Fire and dismiss (owner ruling 2026-07-14): the ring's job is done the moment a slot
       // fires. The key is captured until its keyup so the mid-keydown auto-repeat neither types
@@ -152,13 +157,15 @@ export function reactionKeyDown(
   return { state, fire: null, consumed: false };
 }
 
-/** Map one keyup: releasing the captured key returns it to normal typing. */
+/** Map one keyup: releasing the captured key returns it to normal typing. Takes the resolved set so
+ *  the released key is matched by the same case-folded slot lookup the keydown used. */
 export function reactionKeyUp(
+  set: ResolvedReactionSet,
   state: ReactionKeyState,
   key: string,
 ): ReactionKeyState {
   if (state.captured === null) return state;
-  const released = optionForLeaderKey(key);
+  const released = optionForLeaderKey(set, key);
   if (released === undefined || released.leaderKey !== state.captured.key) {
     return state;
   }

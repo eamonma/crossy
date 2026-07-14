@@ -30,6 +30,7 @@ import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
 import { useReactions } from "./reactions/useReactions";
+import { usePersonalReactionSet } from "./reactions/useReactionSet";
 import { ReactionTray } from "./reactions/ReactionTray";
 import { ReactionHud } from "./reactions/ReactionHud";
 import { ReactionStickers } from "./reactions/ReactionStickers";
@@ -319,8 +320,10 @@ function DemoApp({
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
   // Reactions on the demo board (Wave 7.3): the same hook the live game uses, so send + local echo
   // + receive-any + the leader HUD run without a backend. The "Teammate reacts" button below drives
-  // the receive path through the fake session.
-  const reactions = useReactions(store);
+  // the receive path through the fake session. The set resolves from the identity session like the
+  // live game (Wave 8.4); with no backend and no personal set that is the default five.
+  const reactionSet = usePersonalReactionSet(identity);
+  const reactions = useReactions(store, reactionSet);
 
   const board = boardById(boardId);
   const puzzle = board.puzzle;
@@ -643,6 +646,7 @@ function DemoApp({
               cols={puzzle.cols}
               rows={puzzle.rows}
               cell={reactions.hudCell}
+              options={reactionSet.options}
               onReact={reactions.sendFromHud}
             />
           )}
@@ -651,6 +655,7 @@ function DemoApp({
       {/* The tray stands in every game status (post-completion celebration is intended, §9). */}
       <div className="mt-3 flex justify-center">
         <ReactionTray
+          options={reactionSet.options}
           onReact={(emoji) => reactions.send(emoji, selection.cell)}
         />
       </div>

@@ -164,6 +164,7 @@ describe("mock identity adapter", () => {
         isAnonymous: false,
         avatarUrl: null,
         needsName: true,
+        reactionSet: null,
       });
     });
 
