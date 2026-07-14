@@ -2417,7 +2417,7 @@ describe("presence and liveness (PROTOCOL.md §6, §9)", () => {
 // role including spectators, best-effort with silent drops (unpublished emoji, bad cell, over-rate),
 // fanned out to the others, never echoed to the sender, and recorded nowhere (no board.reactions).
 describe("reactions relay (PROTOCOL.md §9)", () => {
-  it("§9: relays a valid react to the others and never echoes it to the sender", async () => {
+  it("§9/D25: relays any single emoji grapheme, the new defaults and the retired-but-valid 🎉, and never echoes to the sender", async () => {
     const aId = randomUUID();
     const bId = randomUUID();
     const gameId = await seedGame({
@@ -2430,15 +2430,26 @@ describe("reactions relay (PROTOCOL.md §9)", () => {
     const a = await connectAndHello(gameId, aId);
     const b = await connectAndHello(gameId, bId);
 
+    // The allowlist is retired (D25): the gate takes any one emoji grapheme. Two new defaults (🔥
+    // 🐐) relay, and so does 🎉, which was dropped from the defaults yet is still a valid emoji, so
+    // it is sendable too. Any emoji is sendable; the personal set is a pure client preference.
+    a.client.sendJson({ type: "react", emoji: "🔥", cell: 0 });
+    a.client.sendJson({ type: "react", emoji: "🐐", cell: 1 });
     a.client.sendJson({ type: "react", emoji: "🎉", cell: 2 });
-    const relayed = (await b.client.waitForType("reaction")) as {
+    const relayed = (await b.client.waitForCount("reaction", 3)) as Array<{
       userId: string;
       emoji: string;
       cell: number;
-    };
-    expect(relayed).toMatchObject({ userId: aId, emoji: "🎉", cell: 2 });
+    }>;
+    expect(
+      relayed.map((r) => ({ userId: r.userId, emoji: r.emoji, cell: r.cell })),
+    ).toEqual([
+      { userId: aId, emoji: "🔥", cell: 0 },
+      { userId: aId, emoji: "🐐", cell: 1 },
+      { userId: aId, emoji: "🎉", cell: 2 },
+    ]);
 
-    // Barrier: once b sees a's cellSet, all of a's earlier frames (the react included) have been
+    // Barrier: once b sees a's cellSet, all of a's earlier frames (the reacts included) have been
     // processed in order, so any echo back to the sender would already have arrived.
     a.client.sendJson(placeLetter(0, "A"));
     await b.client.waitForType("cellSet");
@@ -2448,7 +2459,41 @@ describe("reactions relay (PROTOCOL.md §9)", () => {
     b.client.close();
   });
 
-  it("§9: drops an unpublished emoji, an out-of-range cell, and a black-square cell, each silently", async () => {
+  it("§9/D25: relays a multi-codepoint single grapheme within the byte bound (flag, skin tone, ZWJ sequence)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+
+    // Each `emoji` is ONE RGI grapheme spanning several code points, all within the 32-UTF-8-byte
+    // bound: a regional-indicator flag (🇨🇦, 8 bytes), a skin-tone modifier sequence (👍🏽, 8 bytes),
+    // and a ZWJ sequence (👨‍🌾, 11 bytes). `\p{RGI_Emoji}` matches the whole cluster, so each relays.
+    a.client.sendJson({ type: "react", emoji: "🇨🇦", cell: 0 });
+    a.client.sendJson({ type: "react", emoji: "👍🏽", cell: 1 });
+    a.client.sendJson({ type: "react", emoji: "👨‍🌾", cell: 2 });
+    const relayed = (await b.client.waitForCount("reaction", 3)) as Array<{
+      userId: string;
+      emoji: string;
+      cell: number;
+    }>;
+    expect(relayed.map((r) => ({ emoji: r.emoji, cell: r.cell }))).toEqual([
+      { emoji: "🇨🇦", cell: 0 },
+      { emoji: "👍🏽", cell: 1 },
+      { emoji: "👨‍🌾", cell: 2 },
+    ]);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("§9/D25: drops a non-emoji, a multi-grapheme send, a bad cell, and the codec-rejected shapes, each silently", async () => {
     const aId = randomUUID();
     const bId = randomUUID();
     const gameId = await seedGame({
@@ -2463,19 +2508,36 @@ describe("reactions relay (PROTOCOL.md §9)", () => {
     const b = await connectAndHello(gameId, bId);
     await a.client.waitForType("playerConnected");
 
-    a.client.sendJson({ type: "react", emoji: "🔥", cell: 0 }); // emoji outside the v1 set
+    // Send-gate drops (isSendableReaction: not exactly one RGI emoji grapheme), each on a VALID
+    // cell so the emoji is the sole reason it fails:
+    a.client.sendJson({ type: "react", emoji: "A", cell: 2 }); // a letter
+    a.client.sendJson({ type: "react", emoji: "lol", cell: 2 }); // a word
+    a.client.sendJson({ type: "react", emoji: "7", cell: 2 }); // a digit
+    a.client.sendJson({ type: "react", emoji: "🔥🔥", cell: 2 }); // two graphemes, not one
+    // ♥ (U+2665) is a text-presentation character with NO emoji variation selector, so
+    // `\p{RGI_Emoji}` rejects it (verified against the toolchain; ♥️ = U+2665 U+FE0F WOULD pass).
+    // The send gate drops it; it never relays.
+    a.client.sendJson({ type: "react", emoji: "♥", cell: 2 });
+    // These two die one layer earlier, at the codec (decodeClientMessage → asEmoji), never reaching
+    // the send gate: an empty string fails the non-empty shape rule and a >32-UTF-8-byte string
+    // fails the byte bound (PROTOCOL.md §9). The frame decodes as malformed and is dropped, no error.
+    a.client.sendJson({ type: "react", emoji: "", cell: 2 }); // empty: codec rejects
+    a.client.sendJson({ type: "react", emoji: "🔥".repeat(9), cell: 2 }); // 36 bytes > 32: codec rejects
+
+    // Cell-gate drops (isCursorTarget): a valid emoji on an out-of-range and on a black-square cell.
     a.client.sendJson({ type: "react", emoji: "🎉", cell: 99 }); // cell out of range
     a.client.sendJson({ type: "react", emoji: "🎉", cell: 1 }); // black square
-    a.client.sendJson({ type: "react", emoji: "🎉", cell: 2 }); // the one valid react
+
+    a.client.sendJson({ type: "react", emoji: "🎉", cell: 2 }); // the one fully valid react
     // Barrier: once b sees a's cellSet, all of a's earlier frames have been processed in order.
     a.client.sendJson(placeLetter(0, "A"));
     await b.client.waitForType("cellSet");
 
-    // Only the published-emoji, in-range, non-black react relayed; the three violations vanished.
+    // Only the valid react relayed; every drop above (send gate, codec, cell gate) vanished.
     const reactions = b.client.ofType("reaction");
     expect(reactions).toHaveLength(1);
     expect(reactions[0]).toMatchObject({ userId: aId, emoji: "🎉", cell: 2 });
-    // Every rejection is a silent drop: no error frame reaches the sender, and nothing relays
+    // Every rejection is a silent drop: no error frame reaches the sender or the peer
     // (INVALID_CELL stays a mutation-only mapping; §9 defines no reaction error).
     expect(a.client.ofType("error")).toHaveLength(0);
     expect(b.client.ofType("error")).toHaveLength(0);
