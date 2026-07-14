@@ -217,6 +217,19 @@ public struct CrossyAPIClient: Sendable {
                 body: try encode(UpdateDisplayNameRequest(displayName: name))))
     }
 
+    /// `PATCH /me`: set the caller's personal reaction set (§9, §12; D25). Five emoji
+    /// graphemes in slot order, sent byte-exact, or nil to reset to the default five
+    /// (the request encodes an explicit null; null is the reset command, not an
+    /// omission). Returns the canonical profile whose `reactionSet` the client mirrors.
+    /// A well-formed set that violates a rule throws `.api` with a `REACTION_SET_*`
+    /// code (422); a spent write window throws `.rateLimited` with the Retry-After.
+    public func updateReactionSet(_ set: [String]?) async throws -> MeResponse {
+        try await send(
+            Endpoint(
+                method: "PATCH", path: ["me"],
+                body: try encode(UpdateReactionSetRequest(reactionSet: set))))
+    }
+
     // MARK: - Request plumbing
 
     private struct Endpoint {

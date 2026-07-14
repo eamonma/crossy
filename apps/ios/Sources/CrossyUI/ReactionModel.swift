@@ -15,18 +15,22 @@
 // the resting transform is identical from entry-spring settle through exit-fade start
 // (StickerEnvelope clamps the settle boundary, so there is no post-entry snap).
 
+import CrossyProtocol
 import Foundation
 import Observation
 
-/// Client-side reaction policy: the v1 send set and the caps. Deliberately OUTSIDE the
-/// codec (PROTOCOL.md §9: decoders enforce shape only, never set membership) and
-/// outside the store (D24: the store holds nothing for reactions). The server's
-/// published set governs what relays; this is the client's own send gate and render
-/// budget.
+/// Client-side reaction policy: the default send set and the caps. Deliberately OUTSIDE
+/// the codec (PROTOCOL.md §9: decoders enforce shape only, never set membership) and
+/// outside the store (D24: the store holds nothing for reactions). The send set is a
+/// per-user preference now (D25, ReactionSetStore); this holds the defaults and the
+/// client's own rate and render budgets.
 public enum ReactionPolicy {
-    /// The v1 reaction send set, exactly these five graphemes (PROTOCOL.md §9).
-    /// Send-gated only: an inbound emoji outside this set still renders (receive-any).
-    public static let sendSet: [String] = ["🎉", "🤔", "👀", "💀", "🫡"]
+    /// The DEFAULT personal send set, exactly these five graphemes in slot order
+    /// (PROTOCOL.md §9; D25: 🔥 🤔 🐐 💀 😭, the Phase 7 five retired). What a null
+    /// `/me` `reactionSet` means, and what every send surface offers until an account
+    /// chooses its own five. Send-side only: an inbound emoji outside any set still
+    /// renders (receive-any, §9).
+    public static let defaultSet: [String] = ReactionSetSpec.defaultSet
 
     /// A sticker's whole life (PROTOCOL.md §9's ~5 seconds). The one decay constant;
     /// everything else derives from it.

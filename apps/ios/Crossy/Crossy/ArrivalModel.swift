@@ -77,17 +77,22 @@ protocol ProfileProviding {
     /// `PATCH /me`: set the display name; the outcome is digested to the typed shape the
     /// onboarding sheet and the Settings editor render (the ArrivalFailure precedent).
     func setDisplayName(_ name: String) async -> DisplayNameOutcome
+    /// `PATCH /me`: set the personal reaction set (nil resets to the defaults, §12;
+    /// D25); the outcome is digested to the typed shape the Settings editor renders.
+    func setReactionSet(_ set: [String]?) async -> ReactionSetOutcome
 }
 
 /// The `/me` payload as the composition root consumes it: the app-DB display name (nil
-/// when the account has not chosen one), the avatar for the live puck, and the
-/// server-computed onboarding trigger (§7.1). Plain data; the twin lives in CrossyProtocol.
+/// when the account has not chosen one), the avatar for the live puck, the
+/// server-computed onboarding trigger (§7.1), and the personal reaction set (nil =
+/// the default five, D25). Plain data; the twin lives in CrossyProtocol.
 struct SelfProfile: Sendable, Equatable {
     let userId: String
     let displayName: String?
     let isAnonymous: Bool
     let avatarUrl: String?
     let needsName: Bool
+    let reactionSet: [String]?
 }
 
 /// The rooms side: one page of cards, one join. Failures arrive pre-digested to the
@@ -313,7 +318,8 @@ struct RealProfile: ProfileProviding {
                 displayName: me.displayName,
                 isAnonymous: me.isAnonymous,
                 avatarUrl: me.avatarUrl,
-                needsName: me.needsName)
+                needsName: me.needsName,
+                reactionSet: me.reactionSet)
         } catch {
             return nil
         }
@@ -331,6 +337,19 @@ struct RealProfile: ProfileProviding {
             return .saved(canonical: me.displayName ?? name)
         } catch {
             return DisplayNameOutcome(digesting: error)
+        }
+    }
+
+    /// `PATCH /me {reactionSet}` to the typed Settings outcome (D25). Success carries
+    /// the server's canonical set (nil = the defaults) for the store to mirror; a
+    /// `REACTION_SET_*` 422 is a named rejection; a 429 is rate-limited; everything
+    /// else stays retryable (never a wall, INV-11).
+    func setReactionSet(_ set: [String]?) async -> ReactionSetOutcome {
+        do {
+            let me = try await api.updateReactionSet(set)
+            return .saved(me.reactionSet)
+        } catch {
+            return ReactionSetOutcome(digesting: error)
         }
     }
 }
@@ -357,6 +376,34 @@ extension DisplayNameOutcome {
             default:
                 // A 5xx / unknown code: retry, do not wall. Carry the code only so the
                 // calm sentence can key on it (it degrades to the generic fallback).
+                self = .retryable(code: envelope.error)
+            }
+        case .transport, .tokenUnavailable, .invalidResponse, .decodingFailed:
+            self = .retryable(code: nil)
+        }
+    }
+}
+
+extension ReactionSetOutcome {
+    /// CrossyAPIError to the Settings shape (§12; D25), the DisplayNameOutcome digest
+    /// exactly: a `REACTION_SET_*` 422 is a named rejection the person can fix; a 429
+    /// carries the Retry-After; transport, 5xx, a missing token, and an unknown code
+    /// are all retryable (the editor keeps the pick, never a sign-out, INV-11).
+    init(digesting error: any Error) {
+        guard let apiError = error as? CrossyAPIError else {
+            self = .retryable(code: nil)
+            return
+        }
+        switch apiError {
+        case .rateLimited(let retryAfter, _):
+            self = .rateLimited(retryAfter: retryAfter)
+        case .api(_, let envelope):
+            switch envelope.error {
+            case "REACTION_SET_LENGTH", "REACTION_SET_INVALID", "REACTION_SET_DUPLICATE":
+                self = .rejected(code: envelope.error)
+            case "RATE_LIMITED":
+                self = .rateLimited(retryAfter: nil)
+            default:
                 self = .retryable(code: envelope.error)
             }
         case .transport, .tokenUnavailable, .invalidResponse, .decodingFailed:
@@ -789,12 +836,19 @@ struct FixtureProfile: ProfileProviding {
     func loadProfile() async -> SelfProfile? {
         SelfProfile(
             userId: userId, displayName: "Ada Lovelace", isAnonymous: false,
-            avatarUrl: nil, needsName: false)
+            avatarUrl: nil, needsName: false, reactionSet: nil)
     }
 
     func setDisplayName(_ name: String) async -> DisplayNameOutcome {
         try? await Task.sleep(for: .milliseconds(400))
         return .saved(canonical: name)
+    }
+
+    /// The stubbed set write: succeed after a beat with the sent value as canonical,
+    /// so the Reactions editor (and the fan following it) is demoable offline.
+    func setReactionSet(_ set: [String]?) async -> ReactionSetOutcome {
+        try? await Task.sleep(for: .milliseconds(400))
+        return .saved(set)
     }
 }
 
@@ -815,6 +869,11 @@ final class ArrivalModel {
     /// composition root loads it on entering the signed-in shell and the Settings tab
     /// reads its name here. @ObservationIgnored is not used, so a load re-renders the view.
     var selfProfile: SelfProfile?
+    /// The personal reaction set (Wave 8.5; D25): ONE store for the whole composition,
+    /// handed to Settings (the editor) and to every room (the fan), so an edit reaches
+    /// an open room live. Born from the UserDefaults cache, so a cold start offline
+    /// wears the last-known five; `loadSelfProfile` reconciles it against `/me`.
+    let reactionSets = ReactionSetStore()
     /// nil in the fixture composition: cards open the loopback room, not RealRoom.
     let liveRoomFacts: (apiBaseURL: URL, sessionBaseURL: URL)?
     let authConfigured: Bool
@@ -980,6 +1039,10 @@ final class ArrivalModel {
         guard let profile else { return nil }
         guard let loaded = await profile.loadProfile() else { return nil }
         selfProfile = loaded
+        // Mirror the account's reaction set into the shared store (nil = the default
+        // five), so the fan and the Settings slots wear the synced five and the
+        // UserDefaults cache holds it for the next offline cold start (D25).
+        reactionSets.mirror(fromServer: loaded.reactionSet)
         return loaded
     }
 
@@ -993,7 +1056,8 @@ final class ArrivalModel {
             displayName: canonical,
             isAnonymous: existing.isAnonymous,
             avatarUrl: existing.avatarUrl,
-            needsName: false)
+            needsName: false,
+            reactionSet: existing.reactionSet)
     }
 
     /// The display-name write, digested to the typed outcome the onboarding sheet and the
@@ -1003,6 +1067,28 @@ final class ArrivalModel {
         guard let profile else { return .retryable(code: nil) }
         let outcome = await profile.setDisplayName(name)
         if case .saved(let canonical) = outcome { adoptDisplayName(canonical) }
+        return outcome
+    }
+
+    /// The reaction-set write (D25), digested to the typed outcome the Settings editor
+    /// renders. On success the canonical set (nil = the defaults) lands in the shared
+    /// store and in `selfProfile`, the same single-reconciliation shape the name takes,
+    /// so the open room's fan follows without a round trip.
+    func setReactionSet(_ set: [String]?) async -> ReactionSetOutcome {
+        guard let profile else { return .retryable(code: nil) }
+        let outcome = await profile.setReactionSet(set)
+        if case .saved(let canonical) = outcome {
+            reactionSets.mirror(fromServer: canonical)
+            if let existing = selfProfile {
+                selfProfile = SelfProfile(
+                    userId: existing.userId,
+                    displayName: existing.displayName,
+                    isAnonymous: existing.isAnonymous,
+                    avatarUrl: existing.avatarUrl,
+                    needsName: existing.needsName,
+                    reactionSet: canonical)
+            }
+        }
         return outcome
     }
 

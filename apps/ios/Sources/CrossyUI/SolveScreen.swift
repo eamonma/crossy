@@ -13,6 +13,7 @@
 // the demo room and I3's real connection.
 
 import CrossyDesign
+import CrossyProtocol
 import CrossyStore
 import SwiftUI
 
@@ -111,8 +112,13 @@ public struct SolveScreen: View {
     /// inside it (D24). The grid renders it; the fan and the store's fan-out feed it.
     @State private var reactions = ReactionModel()
     /// The fan's grammar (pure; ReactionFanModel). Owned here so the room's one
-    /// dismissal seam can close a standing fan like any transient.
-    @State private var fan = ReactionFanModel()
+    /// dismissal seam can close a standing fan like any transient. Rebuilt when the
+    /// personal set changes (below), so a Settings edit reaches an open room live.
+    @State private var fan: ReactionFanModel
+    /// The personal reaction set (D25), the shared store the composition root also
+    /// feeds Settings, so the fan wears the person's own five and follows an edit
+    /// live. nil (a rig with no store) reads the default five.
+    private let reactionSets: ReactionSetStore?
     /// One avatar cache for the room's live pucks (the pill cluster), url-keyed so a
     /// shared avatar fetches once and the 1 Hz clock tick never re-hits the network
     /// (AvatarImage.swift). Injected into the environment below. A composition root may
@@ -154,7 +160,8 @@ public struct SolveScreen: View {
         onEndGame: @escaping () -> Void = {},
         onKick: @escaping (String) -> Void = { _ in },
         fetchAnalysis: (() async -> RoomAnalysis?)? = nil,
-        reactionFanPlacement: ReactionFanPlacement = .floating
+        reactionFanPlacement: ReactionFanPlacement = .floating,
+        reactionSets: ReactionSetStore? = nil
     ) {
         self.store = store
         self.puzzle = puzzle
@@ -176,6 +183,12 @@ public struct SolveScreen: View {
         self.onKick = onKick
         self.fetchAnalysis = fetchAnalysis
         self.reactionFanPlacement = reactionFanPlacement
+        self.reactionSets = reactionSets
+        // The fan is born wearing the personal five (or the defaults); the onChange
+        // below re-dresses it if the set changes while the room stands.
+        _fan = State(
+            initialValue: ReactionFanModel(
+                emojis: reactionSets?.slots ?? ReactionPolicy.defaultSet))
         _model = State(initialValue: model ?? SelectionModel(store: store, puzzle: puzzle))
         _chrome = State(initialValue: chrome ?? RoomChromeModel())
         // A composition root that also drives the island snapshot passes the SAME cache it
@@ -585,6 +598,14 @@ public struct SolveScreen: View {
         // retarget from the 1x1 stand-in must re-wire it (the stand-in would drop
         // every reaction as out of range forever).
         .onChange(of: puzzle) { _, _ in wireReactionSink() }
+        // The personal set changed while the room stands (a Settings edit, or /me
+        // landing after the push): re-dress the fan with the new five (D25). The
+        // rebuild closes an open fan, which is the safe reading of a set change
+        // mid-gesture; receive-side rendering is untouched (receive-any, §9).
+        .onChange(of: reactionSets?.slots) { _, slots in
+            guard let slots, fan.emojis != slots else { return }
+            fan = ReactionFanModel(emojis: slots)
+        }
         .onDisappear {
             relayTrailing?.cancel()
             relay.trailingCancelled()
@@ -995,13 +1016,15 @@ public struct SolveScreen: View {
 
     // MARK: - Reactions (Wave 7.5; PROTOCOL.md §9, D24)
 
-    /// The fan fired: send-gate on the client's set (§9: only sending is gated),
-    /// echo locally through the model (which owns the 5/s cap), and put the frame on
-    /// the wire at the CURSOR cell — the reaction is anchored where you stand. A
+    /// The fan fired: send-gate on the fan's own slots (§9: only sending is gated,
+    /// and the fan wears the personal set, D25) plus the emoji-shape rule the wire
+    /// gate applies, so an out-of-set or malformed grapheme never leaves the client.
+    /// Then echo locally through the model (which owns the 5/s cap) and put the frame
+    /// on the wire at the CURSOR cell — the reaction is anchored where you stand. A
     /// capped attempt sends nothing anywhere. Spectators react by design (§9), so
     /// unlike the cursor relay nothing here checks the seat.
     private func fireReaction(_ emoji: String) {
-        guard ReactionPolicy.sendSet.contains(emoji) else { return }
+        guard fan.emojis.contains(emoji), ReactionSetSpec.isReactionEmoji(emoji) else { return }
         let cell = model.selection.cell
         guard
             reactions.send(

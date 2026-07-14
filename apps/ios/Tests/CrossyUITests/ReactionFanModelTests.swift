@@ -46,7 +46,7 @@ final class ReactionFanModelTests: XCTestCase {
         fan.holdBegan()
         fan.holdMoved(over: 0)
         let effect = fan.holdEnded(over: 0, onButton: false, at: 10)
-        XCTAssertEqual(effect, .fire("🎉"))
+        XCTAssertEqual(effect, .fire("🔥"), "slot 1 of the D25 defaults")
         XCTAssertEqual(fan.phase, .closed, "firing always dismisses the fan")
         XCTAssertNil(fan.highlighted)
     }
@@ -103,8 +103,30 @@ final class ReactionFanModelTests: XCTestCase {
         fan.holdBegan()
         fan.holdMoved(over: 4)
         let effect = fan.holdEnded(over: 4, onButton: false, at: 12)
-        XCTAssertEqual(effect, .fire("🫡"))
+        XCTAssertEqual(effect, .fire("😭"), "slot 5 of the D25 defaults")
         XCTAssertEqual(fan.phase, .closed)
+    }
+
+    // MARK: - Configurable slots (D25: the fan wears the personal set)
+
+    func test_defaultFanWearsTheD25DefaultFive_PROTOCOL9() {
+        XCTAssertEqual(ReactionFanModel().emojis, ReactionPolicy.defaultSet)
+        XCTAssertEqual(ReactionFanModel().emojis, ["🔥", "🤔", "🐐", "💀", "😭"])
+    }
+
+    func test_customSlotsFireTheCustomGrapheme_D25() {
+        // A personal set in slot order: every fire path returns the slot's OWN
+        // grapheme, so the fan is entirely set-agnostic (skin tones included:
+        // distinctness and identity are the exact strings, PROTOCOL.md §12).
+        let personal = ["🦆", "👍🏽", "❤️‍🔥", "🇨🇦", "🫶"]
+        var fan = ReactionFanModel(emojis: personal)
+        fan.holdBegan()
+        fan.holdMoved(over: 2)
+        XCTAssertEqual(fan.holdEnded(over: 2, onButton: false, at: 10), .fire("❤️‍🔥"))
+
+        fan.holdBegan()
+        _ = fan.holdEnded(over: nil, onButton: true, at: 12)
+        XCTAssertEqual(fan.tapEmoji(at: 3), .fire("🇨🇦"))
     }
 
     // MARK: - The standing fan
@@ -114,7 +136,7 @@ final class ReactionFanModelTests: XCTestCase {
         fan.holdBegan()
         _ = fan.holdEnded(over: nil, onButton: true, at: 10)
         let effect = fan.tapEmoji(at: 1)
-        XCTAssertEqual(effect, .fire("🤔"))
+        XCTAssertEqual(effect, .fire("🤔"), "slot 2 holds 🤔 in the defaults, old and new")
         XCTAssertEqual(fan.phase, .closed, "firing always dismisses the fan")
     }
 
@@ -157,7 +179,7 @@ final class ReactionFanModelTests: XCTestCase {
     // MARK: - The capsule layout (render and hit test share one geometry)
 
     func test_slotCentersFallInsideTheirOwnSlots() {
-        let count = ReactionPolicy.sendSet.count
+        let count = ReactionPolicy.defaultSet.count
         for index in 0..<count {
             let x = ReactionFanLayout.slotCenterX(index: index, count: count)
             XCTAssertEqual(

@@ -218,6 +218,43 @@ public enum ArrivalCopy {
     public static let settingsEndOfWordSubtitle = "Once the word is full"
     public static let settingsEndOfWordNextClue = "Next clue"
     public static let settingsEndOfWordFirstBlank = "First blank"
+
+    // Reactions (Wave 8.5; PROTOCOL.md §9, D25): the personal send set editor.
+    /// The quiet caps header over the reactions block.
+    public static let settingsReactionsSection = "Reactions"
+    /// The slot row's label and its one-line subtitle.
+    public static let settingsReactionSetTitle = "Your five"
+    public static let settingsReactionSetSubtitle = "What the reaction fan offers"
+    /// The reset affordance: back to the default five (a null PATCH, §12).
+    public static let settingsReactionSetReset = "Use the defaults"
+    /// The free-entry field's prompt and its a11y label: any single emoji.
+    public static let settingsReactionFieldPrompt = "Any emoji"
+    public static let settingsReactionFieldLabel = "Choose any emoji"
+    /// The gentle single-emoji rule, shown when typed input fails the local gate.
+    public static let settingsReactionRule = "One emoji fills a slot."
+
+    /// One human sentence per reaction-set failure, keyed on the stable §12 code (the
+    /// displayNameError pattern). nil is network weather (nothing was judged); the raw
+    /// code never renders. The named 422s are the server's authority: local gating
+    /// catches most of these first, but the sentence must stand when the server rules.
+    public static func reactionSetError(forCode code: String?) -> String {
+        switch code {
+        case nil:
+            return "Couldn't reach Crossy. Check your connection and try again."
+        case "REACTION_SET_LENGTH":
+            return "A set is exactly five emoji."
+        case "REACTION_SET_INVALID":
+            return "One emoji fills a slot."
+        case "REACTION_SET_DUPLICATE":
+            return "Each slot needs its own emoji."
+        case "RATE_LIMITED":
+            return "Too many changes just now. Wait a moment, then try again."
+        case "UNAUTHORIZED":
+            return "Your sign-in expired. Sign in again, then pick your five."
+        default:
+            return "Couldn't save your reactions. Try again."
+        }
+    }
     /// The provider line beneath the name, or the fallback when none is remembered.
     public static let providerDiscord = "Discord"
     public static let providerApple = "Apple"
