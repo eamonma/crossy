@@ -37,7 +37,13 @@ import {
   setPillDisabled,
 } from "./pill/toggle";
 import type { PillSite } from "./pill/toggle";
-import { loadBases, playIntentUrl, requestOriginPermissions } from "./settings";
+import {
+  hasPuzzleSitePermissions,
+  loadBases,
+  playIntentUrl,
+  requestOriginPermissions,
+  requestPuzzleSitePermissions,
+} from "./settings";
 import type { Bases } from "./settings";
 
 // Resolved once at init so click handlers never await before their permission
@@ -49,6 +55,9 @@ const statusEl = document.getElementById("status") as HTMLParagraphElement;
 const actionsEl = document.getElementById("actions") as HTMLDivElement;
 const resultEl = document.getElementById("result") as HTMLParagraphElement;
 const pillNoteEl = document.getElementById("pill-note") as HTMLParagraphElement;
+const siteAccessEl = document.getElementById(
+  "site-access",
+) as HTMLParagraphElement;
 const alignNoteEl = document.getElementById(
   "align-note",
 ) as HTMLParagraphElement;
@@ -362,11 +371,57 @@ async function showAgain(site: PillSite): Promise<void> {
   pillNoteEl.replaceChildren("Shown. Reload the page to see it.");
 }
 
+// The site-access offer: whenever host access to the crossword sites is not yet held, one
+// tap grants every crossword origin (PUZZLE_SITE_ORIGINS) so the extractor can inject.
+// Self-hiding, so it needs no browser sniff: a user who already granted access (including a
+// broad "every website" grant) never sees it, and Safari, which withholds access until
+// asked, does. Page-capability UI, not auth, so it runs on every init in either state (the
+// renderPillNote precedent).
+async function renderSiteAccess(): Promise<void> {
+  let held: boolean;
+  try {
+    held = await hasPuzzleSitePermissions();
+  } catch {
+    // A browser that rejects the contains query still deserves the offer.
+    held = false;
+  }
+  if (held) {
+    siteAccessEl.replaceChildren();
+    return;
+  }
+  const text = document.createElement("span");
+  text.textContent = "Let Crossy read crossword sites to add puzzles.";
+  const turnOn = document.createElement("button");
+  turnOn.className = "linklike";
+  turnOn.textContent = "Turn on";
+  turnOn.addEventListener("click", () => {
+    turnOn.disabled = true;
+    void (async () => {
+      // No await before the request: it opens the gesture (Firefox law; settings.ts).
+      const granted = await requestPuzzleSitePermissions();
+      if (granted) {
+        // Declared content scripts mount at page load, so an already-open puzzle page
+        // needs a reload before the extractor is there; that is the honest instruction.
+        siteAccessEl.replaceChildren(
+          "Access on. Reload the crossword page to add it.",
+        );
+        return;
+      }
+      // Denied or dismissed: keep the offer, retryable, with a nudge toward the grant.
+      text.textContent =
+        "Still off. Allow Crossy for these sites, then tap again.";
+      turnOn.disabled = false;
+    })();
+  });
+  siteAccessEl.replaceChildren(text, turnOn);
+}
+
 async function init(): Promise<void> {
   bases = await loadBases();
-  // The pill note is about page UI, not auth, so it renders on every init in either
-  // state, outside the silent flow's control path below.
+  // The pill note and the site-access offer are page-capability UI, not auth, so they
+  // render on every init in either state, outside the silent flow's control path below.
   await renderPillNote();
+  await renderSiteAccess();
   const area = chromeLocalArea();
   const session = await loadSession(area);
   const state = alignmentState(session, await loadWebIdentity(area));
