@@ -26,6 +26,15 @@ export interface IdentitySession {
    * lands (the same cure as #93). Null for guests and providers that ship no picture.
    */
   avatarUrl: string | null;
+  /**
+   * The account's personal reaction set (PROTOCOL.md §9, §12): five emoji in slot order, or null
+   * for the default five. Like displayName, this is /me-reconciled state riding the session so
+   * every surface reads one live value: it bootstraps absent (undefined, which renders as the
+   * defaults exactly like null), the adapter adopts the /me value on loadProfile and after a
+   * setReactionSet write, and each adoption fires onChange("refreshed") so the tray and the HUD
+   * re-render with the new five, no reload.
+   */
+  reactionSet?: readonly string[] | null;
 }
 
 /**
@@ -107,6 +116,9 @@ export interface UserProfile {
   isAnonymous: boolean;
   avatarUrl: string | null;
   needsName: boolean;
+  /** The personal reaction set (PROTOCOL.md §12): five emoji in slot order, or null for the
+   *  default five. Works for a guest (their durable users row holds the column like any account). */
+  reactionSet: readonly string[] | null;
 }
 
 /**
@@ -134,6 +146,29 @@ export type SetDisplayNameReason =
 export type SetDisplayNameResult =
   | { ok: true; profile: UserProfile }
   | { ok: false; reason: SetDisplayNameReason; retryAfterMs?: number };
+
+/**
+ * Why a reaction-set write did not land, mirroring SetDisplayNameReason's shape: the three
+ * REACTION_SET_* codes are the server's 422 domain rejections (PROTOCOL.md §12), shown as inline
+ * messages keyed on the code; `rate_limited` is the 429; `network` is a transport failure or a
+ * 5xx; `unknown` is anything else, so the union stays closed and the caller always has a sentence.
+ */
+export type SetReactionSetReason =
+  | "REACTION_SET_LENGTH"
+  | "REACTION_SET_INVALID"
+  | "REACTION_SET_DUPLICATE"
+  | "rate_limited"
+  | "network"
+  | "unknown";
+
+/**
+ * The result of setReactionSet. Success carries the canonical profile the server returned, so the
+ * caller adopts exactly what was kept (a null there means the account is back on the defaults).
+ * Never a thrown error, the same lockout-free contract as SetDisplayNameResult.
+ */
+export type SetReactionSetResult =
+  | { ok: true; profile: UserProfile }
+  | { ok: false; reason: SetReactionSetReason; retryAfterMs?: number };
 
 /**
  * Why a session change fired. Product vocabulary the port owns: it distinguishes an
@@ -240,6 +275,15 @@ export interface Identity {
    * inline, never a thrown error (R4).
    */
   setDisplayName(name: string): Promise<SetDisplayNameResult>;
+
+  /**
+   * Write the caller's personal reaction set via PATCH /me (PROTOCOL.md §12): five emoji in slot
+   * order, or null to reset to the defaults. On success the adapter adopts the canonical set the
+   * server returns into the session and fires onChange("refreshed"), so the tray and the HUD
+   * re-render with the new five live; the caller reads the canonical profile from the result. A
+   * failure is a typed reason the caller renders inline, never a thrown error.
+   */
+  setReactionSet(set: readonly string[] | null): Promise<SetReactionSetResult>;
 
   /**
    * Subscribe to session changes. Returns an unsubscribe function. The cause says why the

@@ -22,12 +22,13 @@
 // (identity removed, hosted games handed off or ended, past contributions stay as an anonymous
 // former participant, DESIGN.md §8), then DELETE /account with the bearer. On success the app
 // signs out locally and returns to the landing page; on failure an inline sentence, never silent.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ExitIcon } from "@radix-ui/react-icons";
 import type {
   Identity,
   IdentitySession,
   SetDisplayNameReason,
+  SetReactionSetReason,
 } from "../identity";
 import type { Navigate } from "../nav";
 import { homeHref } from "../nav";
@@ -41,6 +42,16 @@ import {
   canonicalizeDisplayName,
 } from "../profile/name";
 import { displayNameErrorOf } from "./onboardingMachine";
+import {
+  DEFAULT_REACTION_SET,
+  HOUSE_PICKS,
+  REACTION_SLOTS,
+} from "../reactions/reactionSet";
+import {
+  isReactionEmoji,
+  validateReactionSet,
+} from "../reactions/reactionEmoji";
+import { Keycap } from "../reactions/Keycap";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -123,17 +134,20 @@ export function Settings({
                   You&apos;re signed out.
                 </p>
               ) : (
-                <AccountGroup
-                  identity={identity}
-                  session={session}
-                  onSignOut={() => void identity.signOut()}
-                  apiBase={apiBase}
-                  bearer={bearer}
-                  onDeleted={async () => {
-                    await identity.signOut();
-                    navigate(homeHref(params));
-                  }}
-                />
+                <>
+                  <ReactionsGroup identity={identity} session={session} />
+                  <AccountGroup
+                    identity={identity}
+                    session={session}
+                    onSignOut={() => void identity.signOut()}
+                    apiBase={apiBase}
+                    bearer={bearer}
+                    onDeleted={async () => {
+                      await identity.signOut();
+                      navigate(homeHref(params));
+                    }}
+                  />
+                </>
               )}
             </div>
           </div>
@@ -228,6 +242,342 @@ function SolvingGroup() {
           />
         }
       />
+    </Group>
+  );
+}
+
+/** The plain sentence for each reaction-set save failure, keyed on the stable code (PROTOCOL.md
+ * §12) so the server's named 422s and the transport reasons each read as something actionable. */
+function reactionSetErrorOf(reason: SetReactionSetReason): string {
+  switch (reason) {
+    case "REACTION_SET_INVALID":
+      return "Each slot takes exactly one emoji.";
+    case "REACTION_SET_DUPLICATE":
+      return "Each slot needs a different emoji.";
+    case "REACTION_SET_LENGTH":
+      return "A set is exactly five emoji.";
+    case "rate_limited":
+      return "Too many changes too quickly. Give it a moment.";
+    case "network":
+      return "We couldn't save your reactions. Check your connection and try again.";
+    case "unknown":
+      return "We couldn't save your reactions. Give it another try.";
+  }
+}
+
+/** The five slots as the quiet strip the game tray renders: emoji stamps on the panel face, the
+ * two accelerator slots wearing their `!` and `?` keycaps. Read-only; the row's Edit opens the
+ * editor. Heights are rem literals (the Radix spacing trap; see Keycap.tsx). */
+function ReactionStripPreview({ set }: { set: readonly string[] }) {
+  return (
+    <div
+      className="inline-flex items-center gap-1 rounded-3 border border-border bg-panel px-1.5 py-1"
+      aria-label={`Your reactions: ${set.join(" ")}`}
+    >
+      {REACTION_SLOTS.map((meta, i) => (
+        <span
+          key={meta.leaderKey}
+          className="relative flex items-center justify-center rounded-2 leading-none"
+          style={{ width: "2rem", height: "2rem", fontSize: "1.15rem" }}
+        >
+          <span aria-hidden>{set[i]}</span>
+          {meta.directKey !== undefined && (
+            <span className="pointer-events-none absolute -bottom-1 -right-1">
+              <Keycap>{meta.directKey}</Keycap>
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Reactions: the personal reaction set (PROTOCOL.md §12; Wave 8.4), one row in the page grammar.
+ * Account-synced through PATCH /me so the five follow the user across web and iOS, and live: on a
+ * save the identity adapter adopts the canonical set and fires onChange, so the game tray and the
+ * `/` ring re-render with the new five, no reload (the same live-apply spirit as the Solving
+ * prefs). Read mode shows the five as the strip the tray renders; Edit swaps the control to
+ * Save/Cancel (the name editor's idiom) and opens the editor beneath the row: pick a slot, then
+ * fill it from the house quick-grid or by typing/pasting any emoji (the OS emoji picker is the
+ * picker; there is no curated catalog, §9). Picking an emoji another slot already holds swaps the
+ * two, so the grid can never build a duplicate. Validation mirrors the API rule byte for byte
+ * (reactionEmoji.ts) and a server rejection surfaces inline keyed on its named code. Works for a
+ * guest: their /me holds the set like any account's.
+ */
+function ReactionsGroup({
+  identity,
+  session,
+}: {
+  identity: Identity;
+  session: IdentitySession;
+}) {
+  const personal = session.reactionSet ?? null;
+  // The set the row shows and an edit starts from: the personal five, or the defaults.
+  const effective = useMemo(
+    () =>
+      personal !== null && personal.length === DEFAULT_REACTION_SET.length
+        ? personal
+        : DEFAULT_REACTION_SET,
+    [personal],
+  );
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<readonly string[]>(effective);
+  const [slot, setSlot] = useState(0);
+  const [entry, setEntry] = useState("");
+  const [entryError, setEntryError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<SetReactionSetReason | null>(null);
+
+  const dirty = draft.some((e, i) => e !== effective[i]);
+  // The swap rule below keeps a draft valid by construction; the check stays as the save gate so
+  // the client and the server can never disagree on what is submittable.
+  const ready = dirty && validateReactionSet(draft).ok;
+
+  function beginEdit(): void {
+    setDraft(effective);
+    setSlot(0);
+    setEntry("");
+    setEntryError(null);
+    setError(null);
+    setEditing(true);
+  }
+
+  function cancel(): void {
+    setEditing(false);
+    setError(null);
+    setEntryError(null);
+  }
+
+  /** Place `emoji` in the chosen slot. When another slot already holds it, the two slots swap, so
+   * a pick can rearrange but never duplicate. Selection advances to the next slot so five picks
+   * in a row fill the set. */
+  function assign(emoji: string): void {
+    setDraft((d) => {
+      const at = d.indexOf(emoji);
+      const next = [...d];
+      if (at !== -1) next[at] = next[slot] ?? "";
+      next[slot] = emoji;
+      return next;
+    });
+    setSlot((s) => Math.min(s + 1, REACTION_SLOTS.length - 1));
+    if (error !== null) setError(null);
+  }
+
+  function commitEntry(): void {
+    const value = entry.trim();
+    if (value === "") return;
+    // Mirror the API's per-slot rule exactly (one RGI emoji grapheme within 32 UTF-8 bytes), so
+    // what passes here is what the server accepts.
+    if (!isReactionEmoji(value)) {
+      setEntryError("That needs to be exactly one emoji.");
+      return;
+    }
+    assign(value);
+    setEntry("");
+  }
+
+  async function save(): Promise<void> {
+    if (!ready || saving) return;
+    const check = validateReactionSet(draft);
+    if (!check.ok) {
+      setError(check.code);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const result = await identity.setReactionSet([...draft]);
+    setSaving(false);
+    if (result.ok) {
+      // The adapter adopted the canonical set and fired onChange, so the row (and any open game
+      // surface) re-renders with the new five; just leave edit mode.
+      setEditing(false);
+      return;
+    }
+    setError(result.reason);
+  }
+
+  async function useDefaults(): Promise<void> {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    // Reset is null on the wire (PROTOCOL.md §12), never the five default emoji spelled out.
+    const result = await identity.setReactionSet(null);
+    setSaving(false);
+    if (result.ok) {
+      setEditing(false);
+      return;
+    }
+    setError(result.reason);
+  }
+
+  const control = editing ? (
+    <div className="flex items-center gap-1.5">
+      <Button
+        variant="inverse"
+        size="sm"
+        disabled={!ready || saving}
+        onClick={() => void save()}
+      >
+        {saving ? "Saving..." : "Save"}
+      </Button>
+      <Button variant="ghost" size="sm" disabled={saving} onClick={cancel}>
+        Cancel
+      </Button>
+    </div>
+  ) : (
+    <div className="flex flex-wrap items-center gap-3">
+      <ReactionStripPreview set={effective} />
+      <Button variant="ghost" size="sm" onClick={beginEdit}>
+        Edit
+      </Button>
+    </div>
+  );
+
+  return (
+    <Group label="Reactions">
+      <div>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 py-4">
+          <div className="min-w-[9rem] flex-1">
+            <div className="text-3 font-medium text-text">Your five</div>
+            <div className="mt-0.5 text-2 text-text-muted">
+              What the tray and the / ring send. ! and ? fire the first two.
+            </div>
+          </div>
+          <div className="ml-auto shrink-0">{control}</div>
+        </div>
+
+        {editing && (
+          <div className="pb-4">
+            {/* The five slots: pick one, then fill it. The chosen slot carries the gold face. */}
+            <div
+              role="radiogroup"
+              aria-label="Slot to change"
+              className="flex items-center gap-1.5"
+            >
+              {REACTION_SLOTS.map((meta, i) => {
+                const selected = i === slot;
+                return (
+                  <button
+                    key={meta.leaderKey}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={`Slot ${i + 1}: ${draft[i]}`}
+                    disabled={saving}
+                    onClick={() => setSlot(i)}
+                    className={cx(
+                      "relative flex items-center justify-center rounded-2 border leading-none",
+                      "transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
+                      selected
+                        ? "border-gold-9 bg-gold-3"
+                        : "border-border bg-panel hover:bg-sand-3",
+                    )}
+                    style={{
+                      width: "2.25rem",
+                      height: "2.25rem",
+                      fontSize: "1.25rem",
+                    }}
+                  >
+                    <span aria-hidden>{draft[i]}</span>
+                    {meta.directKey !== undefined && (
+                      <span className="pointer-events-none absolute -bottom-1 -right-1">
+                        <Keycap>{meta.directKey}</Keycap>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* The house quick-grid: the defaults first, then common picks. A pick lands in the
+                chosen slot and the selection advances, so five taps fill the set. */}
+            <div className="mt-3 flex flex-wrap gap-1">
+              {HOUSE_PICKS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  disabled={saving}
+                  aria-label={`Put ${emoji} in slot ${slot + 1}`}
+                  onClick={() => assign(emoji)}
+                  className={cx(
+                    "flex items-center justify-center rounded-2 leading-none",
+                    "transition-[transform,background-color] duration-100 ease-[var(--ease-out)]",
+                    "hover:bg-sand-3 active:scale-90 disabled:pointer-events-none",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
+                  )}
+                  style={{ width: "2rem", height: "2rem", fontSize: "1.15rem" }}
+                >
+                  <span aria-hidden>{emoji}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Free entry: any emoji, via the keyboard or the OS emoji picker. */}
+            <div className="mt-3 flex items-center gap-1.5">
+              <Input
+                value={entry}
+                disabled={saving}
+                aria-label="Any emoji"
+                aria-invalid={entryError !== null}
+                placeholder="Any emoji"
+                maxLength={16}
+                className="w-44"
+                onChange={(e) => {
+                  setEntry(e.target.value);
+                  if (entryError !== null) setEntryError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitEntry();
+                  }
+                }}
+              />
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={saving || entry.trim() === ""}
+                onClick={commitEntry}
+              >
+                Place
+              </Button>
+              {personal !== null && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={saving}
+                  className="ml-auto"
+                  onClick={() => void useDefaults()}
+                >
+                  Use defaults
+                </Button>
+              )}
+            </div>
+            <p className="mt-1.5 mb-0 text-1 text-text-subtle">
+              Type or paste any emoji, then place it in the chosen slot.
+            </p>
+            {entryError !== null && (
+              <p className="mt-1.5 mb-0 text-1 text-danger-text" role="alert">
+                {entryError}
+              </p>
+            )}
+          </div>
+        )}
+
+        {error !== null && (
+          <p
+            className={cx(
+              "text-1 text-danger-text",
+              editing ? "pb-3" : "-mt-1.5 pb-3",
+            )}
+            role="alert"
+          >
+            {reactionSetErrorOf(error)}
+          </p>
+        )}
+      </div>
     </Group>
   );
 }

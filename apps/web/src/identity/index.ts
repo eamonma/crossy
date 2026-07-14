@@ -13,6 +13,8 @@ export type {
   UserProfile,
   SetDisplayNameReason,
   SetDisplayNameResult,
+  SetReactionSetReason,
+  SetReactionSetResult,
 } from "./types";
 export { createIdentity, shouldUseSupabase } from "./createIdentity";
 export { createMockIdentity } from "./mockAdapter";

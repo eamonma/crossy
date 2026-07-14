@@ -3,14 +3,13 @@
 // board scale), and the ring itself renders through a portal at the anchor's screen point: the
 // board stage clips its overflow for sizing, and a ring on an edge cell must ride over that edge
 // (and the dashed rule beyond it) uncut. The five slots sit at the W / E / A / S / D compass
-// points from REACTION_SET, each labelled with its key (the teaching affordance), so the ring reads
-// as the keys under the hand. It is keyboard-first: the container is pointer-transparent and only
-// the slots take clicks, so an errant click falls through to the board. Motion (.hud-pop) lives in
-// styles.css with a reduced-motion fallback.
+// points of the caller's resolved personal set (§12), each labelled with its key (the teaching
+// affordance), so the ring reads as the keys under the hand. It is keyboard-first: the container is
+// pointer-transparent and only the slots take clicks, so an errant click falls through to the
+// board. Motion (.hud-pop) lives in styles.css with a reduced-motion fallback.
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ReactionSlot } from "./reactionSet";
-import { REACTION_SET } from "./reactionSet";
+import type { ReactionOption, ReactionSlot } from "./reactionSet";
 import { Keycap } from "./Keycap";
 
 // Unit compass vectors per slot; scaled by the ring radius below. Y grows downward (screen space).
@@ -30,12 +29,15 @@ export function ReactionHud({
   cols,
   rows,
   cell,
+  options,
   onReact,
 }: {
   cols: number;
   rows: number;
   /** The anchor cell (the cursor cell frozen when the HUD opened). */
   cell: number;
+  /** The caller's resolved reaction options in slot order (the personal set, §12). */
+  options: readonly ReactionOption[];
   /** Fire the slot's emoji; the hook anchors it to this HUD's cell and dismisses the ring. */
   onReact: (emoji: string) => void;
 }) {
@@ -72,16 +74,21 @@ export function ReactionHud({
         style={{ left: `${leftPct}%`, top: `${topPct}%` }}
       />
       {point !== null &&
-        createPortal(<Ring point={point} onReact={onReact} />, document.body)}
+        createPortal(
+          <Ring point={point} options={options} onReact={onReact} />,
+          document.body,
+        )}
     </>
   );
 }
 
 function Ring({
   point,
+  options,
   onReact,
 }: {
   point: { x: number; y: number };
+  options: readonly ReactionOption[];
   onReact: (emoji: string) => void;
 }) {
   return (
@@ -104,11 +111,13 @@ function Ring({
         className="absolute left-0 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold-9/70"
         style={{ width: "0.3rem", height: "0.3rem" }}
       />
-      {REACTION_SET.map((option) => {
+      {options.map((option) => {
         const v = SLOT_VECTOR[option.slot];
         return (
           <button
-            key={option.emoji}
+            // Keyed on the slot (its fixed key), not the emoji: a live set change re-renders the
+            // slot in place rather than remounting the ring.
+            key={option.leaderKey}
             type="button"
             // Keep board focus (so held keys keep repeating) yet still fire on click.
             onMouseDown={(e) => e.preventDefault()}

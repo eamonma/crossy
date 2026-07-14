@@ -56,8 +56,14 @@ function makeIdentity(initial: IdentitySession | null = null): {
         isAnonymous: session?.isAnonymous ?? false,
         avatarUrl: session?.avatarUrl ?? null,
         needsName: false,
+        reactionSet: null,
       }),
     setDisplayName: () =>
+      Promise.resolve({
+        ok: false,
+        reason: "unknown",
+      }),
+    setReactionSet: () =>
       Promise.resolve({
         ok: false,
         reason: "unknown",

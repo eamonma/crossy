@@ -22,6 +22,7 @@ import {
   reactionKeyUp,
 } from "./reactionKeys";
 import type { HudState, ReactionKeyState } from "./reactionKeys";
+import type { ResolvedReactionSet } from "./reactionSet";
 
 /** How long the radial HUD waits with no input before it closes itself (owner ruling: ~3 s). */
 const HUD_IDLE_MS = 3000;
@@ -52,7 +53,10 @@ export interface UseReactions {
   readonly handleKeyUp: (key: string) => void;
 }
 
-export function useReactions(store: GameStore): UseReactions {
+export function useReactions(
+  store: GameStore,
+  reactionSet: ResolvedReactionSet,
+): UseReactions {
   const model = useMemo(
     () =>
       new ReactionModel({
@@ -129,21 +133,27 @@ export function useReactions(store: GameStore): UseReactions {
 
   const handleKeyDown = useCallback(
     (key: string, cell: number, repeat: boolean): boolean => {
-      const result = reactionKeyDown(stateRef.current, key, cell, repeat);
+      const result = reactionKeyDown(
+        reactionSet,
+        stateRef.current,
+        key,
+        cell,
+        repeat,
+      );
       if (result.fire !== null) model.send(result.fire.emoji, result.fire.cell);
       applyState(result.state);
       if (result.state.hud.open) armIdle();
       else clearIdle();
       return result.consumed;
     },
-    [model, applyState, armIdle, clearIdle],
+    [reactionSet, model, applyState, armIdle, clearIdle],
   );
 
   const handleKeyUp = useCallback(
     (key: string): void => {
-      applyState(reactionKeyUp(stateRef.current, key));
+      applyState(reactionKeyUp(reactionSet, stateRef.current, key));
     },
-    [applyState],
+    [reactionSet, applyState],
   );
 
   return {

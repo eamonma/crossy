@@ -1,17 +1,20 @@
 // The persistent mini-tray (Wave 7.3). It reads as a small set of rubber stamps set beside the
 // puzzle, not a chat feature: a quiet sand strip of the five send-set emoji, each a stamp you press
 // to react at your current cell. It teaches its own shortcuts without shouting: the `/` leader hint
-// leads the strip, and the two direct-key slots (🎉, 🤔) wear their `!` and `?` keycaps. The strip
-// is the single source's view, so a change to REACTION_SET reshapes it with no edit here.
-import { REACTION_SET } from "./reactionSet";
+// leads the strip, and the two direct-key slots (slots 1 and 2) wear their `!` and `?` keycaps. The strip
+// renders the caller's resolved personal set (§12), so it reshapes to a user's five with no edit here.
+import type { ReactionOption } from "./reactionSet";
 import { Keycap } from "./Keycap";
 import { cn } from "@/lib/utils";
 
 export function ReactionTray({
+  options,
   onReact,
   disabled = false,
   className,
 }: {
+  /** The caller's resolved reaction options in slot order (the personal set, §12). */
+  options: readonly ReactionOption[];
   /** Fire the emoji at the caller's current cursor cell (rate-capped inside the model). */
   onReact: (emoji: string) => void;
   disabled?: boolean;
@@ -35,9 +38,11 @@ export function ReactionTray({
         <Keycap>/</Keycap>
       </span>
       <span aria-hidden className="mr-0.5 h-4 w-px bg-border" />
-      {REACTION_SET.map((option) => (
+      {options.map((option) => (
         <button
-          key={option.emoji}
+          // Keyed on the slot (its fixed key), not the emoji: a live set change re-renders the
+          // stamp in place rather than remounting the strip.
+          key={option.leaderKey}
           type="button"
           disabled={disabled}
           // Keep the board focused so the keyboard paths keep working after a click: preventing the
