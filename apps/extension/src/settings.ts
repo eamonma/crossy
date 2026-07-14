@@ -36,6 +36,17 @@ export function appPlayUrl(puzzleId: string): string {
 }
 
 /**
+ * The "Play in Crossy" URL builder for this runtime, the one place the app-vs-web choice
+ * lives. On Apple platforms (iOS/iPadOS) the extension ships inside the Crossy app, so both
+ * play surfaces (the on-page pill and the popup) deep-link the app; every other browser has
+ * no app and opens the web intent. Taking the userAgent as data keeps it testable and keeps
+ * the two call sites (background worker, popup) from drifting apart.
+ */
+export function selectPlayUrl(userAgent: string): (puzzleId: string) => string {
+  return /iP(hone|ad|od)/.test(userAgent) ? appPlayUrl : playIntentUrl;
+}
+
+/**
  * Safari sign-in redirect target. Safari has no identity.getRedirectURL and refuses to
  * redirect an OAuth provider to a custom-scheme (extension) URL, so redirect_to must be a
  * real hosted https page. This inert page's content script hands the ?code= back to the

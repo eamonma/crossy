@@ -173,6 +173,12 @@
   function playIntentUrl(puzzleId) {
     return `${WEB_ORIGIN}/puzzles?play=${encodeURIComponent(puzzleId)}`;
   }
+  function appPlayUrl(puzzleId) {
+    return `crossy://play/${encodeURIComponent(puzzleId)}`;
+  }
+  function selectPlayUrl(userAgent) {
+    return /iP(hone|ad|od)/.test(userAgent) ? appPlayUrl : playIntentUrl;
+  }
   var AUTH_CALLBACK_URL = `${WEB_ORIGIN}/auth/ext/callback`;
   var DEFAULT_PUBLISHABLE_KEY = "sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd";
   var OVERRIDES_KEY = "overrides";
@@ -402,7 +408,9 @@
           fail(run);
           return;
         }
-        await chrome.tabs.create({ url: playIntentUrl(run.puzzleId) });
+        await chrome.tabs.create({
+          url: selectPlayUrl(navigator.userAgent)(run.puzzleId)
+        });
         window.close();
       })();
     });

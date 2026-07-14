@@ -9,6 +9,7 @@ import {
   PUZZLE_SITE_ORIGINS,
   requestOriginPermissions,
   requestPuzzleSitePermissions,
+  selectPlayUrl,
 } from "./settings";
 
 afterEach(() => {
@@ -78,6 +79,23 @@ describe("hasPuzzleSitePermissions", () => {
     const held = await hasPuzzleSitePermissions();
     expect(held).toBe(false);
     expect(calls).toEqual([{ origins: [...PUZZLE_SITE_ORIGINS] }]);
+  });
+});
+
+describe("selectPlayUrl", () => {
+  const IPHONE =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+  const DESKTOP =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+
+  it("deep-links the app on iOS (the extension ships inside it there)", () => {
+    expect(selectPlayUrl(IPHONE)("p_01ABC")).toBe("crossy://play/p_01ABC");
+  });
+
+  it("opens the web play intent on a browser with no app", () => {
+    expect(selectPlayUrl(DESKTOP)("p_01ABC")).toBe(
+      "https://crossy.party/puzzles?play=p_01ABC",
+    );
   });
 });
 
