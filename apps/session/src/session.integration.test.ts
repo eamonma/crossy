@@ -2413,6 +2413,224 @@ describe("presence and liveness (PROTOCOL.md §6, §9)", () => {
   });
 });
 
+// Ephemeral emoji reactions (PROTOCOL.md §9), the presence-family sibling of cursor relay: any
+// role including spectators, best-effort with silent drops (unpublished emoji, bad cell, over-rate),
+// fanned out to the others, never echoed to the sender, and recorded nowhere (no board.reactions).
+describe("reactions relay (PROTOCOL.md §9)", () => {
+  it("§9: relays a valid react to the others and never echoes it to the sender", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+
+    a.client.sendJson({ type: "react", emoji: "🎉", cell: 2 });
+    const relayed = (await b.client.waitForType("reaction")) as {
+      userId: string;
+      emoji: string;
+      cell: number;
+    };
+    expect(relayed).toMatchObject({ userId: aId, emoji: "🎉", cell: 2 });
+
+    // Barrier: once b sees a's cellSet, all of a's earlier frames (the react included) have been
+    // processed in order, so any echo back to the sender would already have arrived.
+    a.client.sendJson(placeLetter(0, "A"));
+    await b.client.waitForType("cellSet");
+    expect(a.client.ofType("reaction")).toHaveLength(0);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("§9: drops an unpublished emoji, an out-of-range cell, and a black-square cell, each silently", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      // Cell 1 is a black square; the grid has 3 cells (indices 0..2).
+      snapshot: puzzle(1, 3, [1], ["A", null, "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+    await a.client.waitForType("playerConnected");
+
+    a.client.sendJson({ type: "react", emoji: "🔥", cell: 0 }); // emoji outside the v1 set
+    a.client.sendJson({ type: "react", emoji: "🎉", cell: 99 }); // cell out of range
+    a.client.sendJson({ type: "react", emoji: "🎉", cell: 1 }); // black square
+    a.client.sendJson({ type: "react", emoji: "🎉", cell: 2 }); // the one valid react
+    // Barrier: once b sees a's cellSet, all of a's earlier frames have been processed in order.
+    a.client.sendJson(placeLetter(0, "A"));
+    await b.client.waitForType("cellSet");
+
+    // Only the published-emoji, in-range, non-black react relayed; the three violations vanished.
+    const reactions = b.client.ofType("reaction");
+    expect(reactions).toHaveLength(1);
+    expect(reactions[0]).toMatchObject({ userId: aId, emoji: "🎉", cell: 2 });
+    // Every rejection is a silent drop: no error frame reaches the sender, and nothing relays
+    // (INVALID_CELL stays a mutation-only mapping; §9 defines no reaction error).
+    expect(a.client.ofType("error")).toHaveLength(0);
+    expect(b.client.ofType("error")).toHaveLength(0);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("§9: drops the 6th react inside one second, relaying only the first 5", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+
+    // Fire 6 valid reacts in one tight window; at most 5 relay to the other socket (§9).
+    for (let i = 0; i < 6; i++) {
+      a.client.sendJson({ type: "react", emoji: "🎉", cell: 2 });
+    }
+    // Barrier: once b sees a's cellSet, all of a's earlier frames have been processed in order.
+    a.client.sendJson(placeLetter(0, "A"));
+    await b.client.waitForType("cellSet");
+
+    const reactions = b.client.ofType("reaction");
+    expect(reactions).toHaveLength(5);
+    expect(reactions[0]).toMatchObject({ userId: aId, emoji: "🎉", cell: 2 });
+    // The sender never receives its own reaction back (broadcastExcept the origin).
+    expect(a.client.ofType("reaction")).toHaveLength(0);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("§9: relays a spectator's react (no role gate; spectators react by design)", async () => {
+    const spectatorId = randomUUID();
+    const observerId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: observerId, role: "solver" },
+        { userId: spectatorId, role: "spectator" },
+      ],
+    });
+    const observer = await connectAndHello(gameId, observerId);
+    const spectator = await connectAndHello(gameId, spectatorId);
+    // The observer learns the spectator arrived; a happens-before for the react that follows.
+    await observer.client.waitForType("playerConnected");
+
+    spectator.client.sendJson({ type: "react", emoji: "🤔", cell: 1 });
+    const relayed = (await observer.client.waitForType("reaction")) as {
+      userId: string;
+      emoji: string;
+      cell: number;
+    };
+    expect(relayed).toMatchObject({
+      userId: spectatorId,
+      emoji: "🤔",
+      cell: 1,
+    });
+
+    observer.client.close();
+    spectator.client.close();
+  });
+
+  it("§9: still relays a react after gameCompleted (no GAME_NOT_ONGOING gate)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    // 1x2, cell 0 pre-filled correctly; one cell left to complete (mirrors the INV-4 setup).
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 2, [], ["A", "B"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+      gameState: {
+        board: [
+          { v: "A", by: aId },
+          { v: null, by: null },
+        ],
+        lastSeq: 1,
+        firstFillAt: "2026-07-08T00:00:00.000Z",
+      },
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+
+    a.client.sendJson(placeLetter(1, "B")); // completes the game
+    await a.client.waitForType("gameCompleted");
+    await b.client.waitForType("gameCompleted");
+
+    // A mutation here would draw GAME_NOT_ONGOING (INV-4); a react must not, so it still relays.
+    a.client.sendJson({ type: "react", emoji: "💀", cell: 0 });
+    const relayed = (await b.client.waitForType("reaction")) as {
+      userId: string;
+      emoji: string;
+      cell: number;
+    };
+    expect(relayed).toMatchObject({ userId: aId, emoji: "💀", cell: 0 });
+
+    // Barrier: a sync round-trip to b flushes any (buggy) error the react might have produced.
+    b.client.sendJson({ type: "requestSync" });
+    await b.client.waitForType("sync");
+    expect(a.client.ofType("error")).toHaveLength(0);
+
+    a.client.close();
+    b.client.close();
+  });
+
+  it("§9: a snapshot after reactions carries no reaction trace (there is no board.reactions)", async () => {
+    const aId = randomUUID();
+    const bId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: aId, role: "solver" },
+        { userId: bId, role: "solver" },
+      ],
+    });
+    const a = await connectAndHello(gameId, aId);
+    const b = await connectAndHello(gameId, bId);
+    await a.client.waitForType("playerConnected");
+
+    // A baseline snapshot before any reaction.
+    b.client.sendJson({ type: "requestSync" });
+    const before = (await b.client.waitForType("sync")) as SyncMessage;
+    const beforeKeys = Object.keys(before.board).sort();
+
+    // A burst of valid reactions both ways; the cross-relays are a barrier that both were handled.
+    a.client.sendJson({ type: "react", emoji: "🎉", cell: 0 });
+    b.client.sendJson({ type: "react", emoji: "🫡", cell: 2 });
+    await a.client.waitForType("reaction");
+    await b.client.waitForType("reaction");
+
+    // A fresh snapshot afterward is byte-identical in shape: same board keys, no reactions field,
+    // and the whole board deep-equals the baseline (reactions record nothing, unlike cursors).
+    b.client.sendJson({ type: "requestSync" });
+    const syncs = (await b.client.waitForCount("sync", 2)) as SyncMessage[];
+    const after = syncs[1]!;
+    expect(Object.keys(after.board).sort()).toEqual(beforeKeys);
+    expect(after.board).not.toHaveProperty("reactions");
+    expect(after.board).toEqual(before.board);
+    // And no reaction leaks into the serialized frame at all.
+    expect(b.client.rawOfType("sync")[1]).not.toContain("reaction");
+
+    a.client.close();
+    b.client.close();
+  });
+});
+
 // The Live Activity token-read path (PROTOCOL.md "Live Activity push"; migration 0007). Folded into
 // this suite so there is still ONE Testcontainers boot per package: two container suites in one
 // vitest run race the Testcontainers reaper. The emitter reads live_activity_tokens under the
