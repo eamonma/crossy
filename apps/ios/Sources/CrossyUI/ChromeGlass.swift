@@ -47,6 +47,20 @@ enum ChromeLayout {
     // never the cluster's blend.
     /// Open panels (the browser, the roster).
     static let panelCornerRadius: CGFloat = 24
+    /// The completed sheet's TOP corner radius: a fixed design round, identical on
+    /// every device. It opens mid-screen (under the room bar), not at a display
+    /// edge, so it neither can nor needs to match a specific phone's corner
+    /// (matching the display corner read as too round on device). The BOTTOM is
+    /// where per-device shape matters, and it adapts for free: the sheet overshoots
+    /// the bottom (sheetBottomBleed) and the display's own corners clip it, tracing
+    /// each phone's real edge (rounded on Face ID phones, square on a Touch ID SE).
+    static let sheetTopCornerRadius: CGFloat = 40
+    /// How far past the room's safe-area bottom the completed sheet bleeds so it
+    /// meets the phone's true edge: wider than any home-indicator inset, and the
+    /// display's own rounded corners clip the overrun. A reported full-bleed
+    /// container proved unreliable (it came back as the safe-area rect), so the
+    /// panel overshoots and lets the display do the clipping.
+    static let sheetBottomBleed: CGFloat = 80
     /// Air between the room bar and an open panel's top edge.
     static let panelTopGap: CGFloat = 16
     /// The named coordinate space every chrome frame is measured in.
@@ -132,12 +146,25 @@ extension EnvironmentValues {
 /// During the clarity beat the register swaps to clear (§4: clear is the glass
 /// for events, and completion is the one scripted moment standing chrome joins).
 struct ChromeGlassSurface: ViewModifier {
-    let cornerRadius: CGFloat
+    let cornerRadii: RectangleCornerRadii
+
+    /// Uniform corners: the standing register (bars, pills, the melt at rest).
+    init(cornerRadius: CGFloat) {
+        self.cornerRadii = RectangleCornerRadii(
+            topLeading: cornerRadius, bottomLeading: cornerRadius,
+            bottomTrailing: cornerRadius, topTrailing: cornerRadius)
+    }
+
+    /// Per-corner radii: the completed clue melt docks as a bottom sheet (owner
+    /// ask 2026-07-13), top corners only, so its bottom flattens into the phone's.
+    init(cornerRadii: RectangleCornerRadii) {
+        self.cornerRadii = cornerRadii
+    }
 
     @Environment(\.chromeClarified) private var clarified
 
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    private var shape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(cornerRadii: cornerRadii, style: .continuous)
     }
 
     func body(content: Content) -> some View {
@@ -167,6 +194,13 @@ struct ChromeGlassSurface: ViewModifier {
 enum ChromePiece: Hashable {
     case roomBar
     case clueBarSlot
+    /// The room's own bounds in room space (origin, full width, and the
+    /// safe-area bottom). The completed clue melt reads this to open full width
+    /// and then bleed past the safe-area bottom to the phone's true edge
+    /// (SolveScreen.meltMorph + ChromeLayout.sheetBottomBleed). Read only in that
+    /// completed branch; mid-solve the melt uses the inset slot (glass never
+    /// stacks over the deck).
+    case roomContainer
     /// The full-bleed board itself: the camera's occlusion insets are the
     /// chrome frames converted into the board's own space, so the board
     /// reports where layout actually put it (never a hard-coded safe-area

@@ -77,8 +77,17 @@ struct ClueChrome: View {
     var body: some View {
         let progress = chrome.meltProgress
         let frame = morph.frame(at: progress)
-        let radius = morph.cornerRadius(at: progress)
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let topRadius = morph.cornerRadius(at: progress)
+        // The completed melt docks as a bottom sheet: its bottom corners flatten
+        // into the phone's own edge as it opens (owner ask 2026-07-13), melting
+        // from the rest capsule toward square with progress. Mid-solve (and at
+        // rest) the surface is a uniform capsule/card, the bottom tracking the top.
+        let bottomRadius =
+            completed ? GlassMorph.lerp(morph.restCornerRadius, 0, progress) : topRadius
+        let radii = RectangleCornerRadii(
+            topLeading: topRadius, bottomLeading: bottomRadius,
+            bottomTrailing: bottomRadius, topTrailing: topRadius)
+        let shape = UnevenRoundedRectangle(cornerRadii: radii, style: .continuous)
 
         ZStack(alignment: .top) {
             browserList
@@ -91,7 +100,7 @@ struct ClueChrome: View {
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(shape)
-        .modifier(ChromeGlassSurface(cornerRadius: radius))
+        .modifier(ChromeGlassSurface(cornerRadii: radii))
         .overlay {
             if let glint, progress < 0.1 {
                 GlintSweep(color: glint.color, reduceMotion: reduceMotion)
@@ -241,6 +250,10 @@ struct ClueChrome: View {
             selection: Binding(
                 get: { chrome.analysisTab },
                 set: { chrome.analysisTab = $0 }))
+            // The poured-open sheet is full width, so hold the segmented control
+            // off the rounded top corners; the pinned row's own inset is tuned
+            // for the rest capsule, not the full-bleed sheet.
+            .padding(.horizontal, 12)
     }
 
     private func chevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
