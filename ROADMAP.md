@@ -917,3 +917,68 @@ Crossy room with that puzzle; the popup does the same everywhere adapters work.*
 Chrome + Firefox store packaging, privacy policy, listing copy (no publisher
 trademarks). Store accounts and submissions are owner actions. **Exit: installable
 from both stores.**
+
+## Phase 7 — Ephemeral emoji reactions (post-M5 wave)
+
+Design landed: PROTOCOL.md §5/§6/§9 (the `react` command and the `reaction` notice)
+and DESIGN.md §6 + D24 (ephemeral, never persisted; the emoji grapheme rides the wire,
+so the set widens without a version bump; clients are receive-any, send-gated). A
+reaction is a ~5-second sticker anchored to a cell, sent by any connection (spectators
+included), fanned out to the other members and recorded nowhere. The precedent is
+cursor relay: presence-family, best-effort, with no reducer or store-state change.
+
+**No vectors this phase.** No reducer, comparator, or client-store semantics change (a
+reaction never enters sequenced state), so there is nothing for the shared runners to
+pin; the precedent is `moveCursor`/`cursor`, whose relay is pinned by the session's
+integration tests, not by vectors.
+
+### Wave 7.1 — contract (this PR)
+
+`react` and `reaction` in PROTOCOL.md (§5 table, §6 notices, §9 semantics), the D24
+decision and the DESIGN.md §6 paragraph, this phase in the roadmap, and
+`ReactMessage`/`ReactionNotice` plus `decodeReact`/`decodeReaction` with codec tests in
+`packages/protocol`. Docs and protocol only; no app code. **Exit: the four checks are
+green and the three build waves below have a contract to land against.**
+
+### Wave 7.2 — session relay
+
+`case "react"` beside `moveCursor` in `apps/session/src/server.ts`: a
+`REACTION_MAX_PER_SECOND = 5` sliding window per socket, an allowlist constant of the
+five v1 graphemes, silent drops (an unpublished emoji, an out-of-range or black-square
+cell, over-rate), no echo to the sender, and no recorded state. Integration tests:
+relay-not-echo, a silent drop on a bad emoji, on a bad cell, and over-rate, a spectator
+can react, and `react` still relays after `gameCompleted`. **Exit: two browsers see
+each other's reactions; every rejection is a silent drop; nothing lands in a snapshot.**
+
+### Wave 7.3 — web desktop
+
+Transient reaction state kept out of the sequenced store (a reaction never touches
+store state that reconciles against a snapshot); send plus local echo; exported
+`REACTION_DECAY_MS = 5000`. The surfaces:
+
+- **Persistent mini-tray** with the send set, and a `/` leader that opens a radial HUD
+  around the cursor cell: instant open; a mapped key fires its emoji; an unmapped key
+  closes the HUD AND passes through as a normal letter, so an accidental `/` never
+  swallows a keystroke; Esc closes; ~1.5 s idle timeout; hold-chord and tap-then-press
+  both work; a held key repeats at the rate cap.
+- **Direct keys**: `?` fires 🤔 and `!` fires 🎉 without opening the HUD.
+- **Sticker layer** in the SVG grid: bleed past the cell, seeded rotation, spring in,
+  pile offsets when several land, coalesce on re-tap, and a `prefers-reduced-motion`
+  fallback.
+- **Keyboard-teaching affordance** (always-on keycap hints): the 🎉 and 🤔 tray slots
+  wear `!` and `?` keycaps, the tray wears a `/` keycap, and the HUD labels every
+  sticker with its key.
+
+**Exit: a desktop solver reacts by tray, by leader HUD, and by the `!`/`?` direct keys;
+stickers decay after `REACTION_DECAY_MS`; the keycap hints teach the shortcuts.**
+
+### Wave 7.4 — web mobile
+
+A fan button that opens the send set; hold-slide-release over the emoji via pointer
+events, with a tap-tap fallback (tap the fan, tap an emoji). **Exit: a phone-only
+solver sends a reaction both ways.**
+
+### Wave 7.5 — iOS (parked)
+
+Parked. A fan button in the clue-bar corner with haptics, bundled with enlarging the
+`<`/`>` tap areas (owner note 2026-07-14). Lands when the iOS client next has a wave.

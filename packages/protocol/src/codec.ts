@@ -38,6 +38,8 @@ import type {
   PlaceLetterMessage,
   PlayerConnectedMessage,
   PlayerDisconnectedMessage,
+  ReactionNotice,
+  ReactMessage,
   ServerMessage,
   SyncMessage,
   WelcomeMessage,
@@ -130,6 +132,32 @@ function asErrorCode(x: unknown, what: string): ErrorCode {
     fail(`${what}: unknown error code "${s}"`);
   }
   return s as ErrorCode;
+}
+
+// UTF-8 byte length, computed without a platform encoder so the package stays dependency-free (no
+// TextEncoder or Buffer) and the Swift port mirrors it as `String.utf8.count`. `for...of` iterates
+// whole code points, so surrogate pairs count once as their 4-byte form.
+function utf8ByteLength(s: string): number {
+  let bytes = 0;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp <= 0x7f) bytes += 1;
+    else if (cp <= 0x7ff) bytes += 2;
+    else if (cp <= 0xffff) bytes += 3;
+    else bytes += 4;
+  }
+  return bytes;
+}
+
+// Reaction emoji shape check (PROTOCOL.md §9): a non-empty string of at most 32 UTF-8 bytes. Shape
+// only. The codec never checks set membership, so an emoji outside the v1 set still decodes
+// (receive-any, §9); the published set is session-service policy and MAY widen without a version
+// bump (§14), so encoding it here would wrongly reject a future reaction from a newer server.
+function asEmoji(x: unknown, what: string): string {
+  const s = asString(x, what);
+  if (s.length === 0) fail(`${what}: non-empty string required`);
+  if (utf8ByteLength(s) > 32) fail(`${what}: at most 32 UTF-8 bytes required`);
+  return s;
 }
 
 function decodeCell(x: unknown, what: string): Cell {
@@ -246,6 +274,14 @@ function decodeMoveCursor(o: Record<string, unknown>): MoveCursorMessage {
   };
 }
 
+function decodeReact(o: Record<string, unknown>): ReactMessage {
+  return {
+    type: "react",
+    emoji: asEmoji(o.emoji, "emoji"),
+    cell: asInt(o.cell, "cell"),
+  };
+}
+
 function decodeCheckRequest(o: Record<string, unknown>): CheckRequestMessage {
   return {
     type: "checkRequest",
@@ -271,6 +307,8 @@ export function decodeClientMessage(raw: unknown): Decoded<ClientMessage> {
         return { ok: true, value: decodeClearCell(o) };
       case "moveCursor":
         return { ok: true, value: decodeMoveCursor(o) };
+      case "react":
+        return { ok: true, value: decodeReact(o) };
       case "checkRequest":
         return { ok: true, value: decodeCheckRequest(o) };
       case "heartbeat":
@@ -380,6 +418,15 @@ function decodeCursorMessage(o: Record<string, unknown>): CursorMessage {
   };
 }
 
+function decodeReaction(o: Record<string, unknown>): ReactionNotice {
+  return {
+    type: "reaction",
+    userId: asString(o.userId, "userId"),
+    emoji: asEmoji(o.emoji, "emoji"),
+    cell: asInt(o.cell, "cell"),
+  };
+}
+
 function decodeCheckResult(o: Record<string, unknown>): CheckResultMessage {
   return {
     type: "checkResult",
@@ -430,6 +477,8 @@ export function decodeServerMessage(raw: unknown): Decoded<ServerMessage> {
         return { ok: true, value: decodePlayerDisconnected(o) };
       case "cursor":
         return { ok: true, value: decodeCursorMessage(o) };
+      case "reaction":
+        return { ok: true, value: decodeReaction(o) };
       case "checkResult":
         return { ok: true, value: decodeCheckResult(o) };
       case "kicked":
