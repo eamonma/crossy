@@ -660,18 +660,24 @@
 }
 
 /*
- * Reaction stickers (ROADMAP Phase 7 Wave 7.3). The feel is a physical slap-on, not a CSS fade:
- * the sticker arrives fast and overshoots (the spring below is a Motion-generated linear() curve
- * at ~9% overshoot, run over the snappy --sticker-in-dur rather than its full settle so it lands
- * like a stamp), rests, then shrinks and fades at decay. A coalesced re-tap remounts and plays the
+ * Reaction stickers (ROADMAP Phase 7 Wave 7.3), rendered as an HTML overlay above the board SVG
+ * (reactions/ReactionStickers.tsx). The feel is a physical slap-on, not a CSS fade: the sticker
+ * arrives fast and overshoots (the spring below is a Motion-generated linear() curve at ~9%
+ * overshoot, run over the snappy --sticker-in-dur rather than its full settle so it lands like a
+ * stamp), rests, then shrinks and fades at decay. A coalesced re-tap remounts and plays the
  * gentler --repulse pulse. Both entrances stack the same --out tail on one delay, so the model can
  * remove the node exactly as the fade ends.
  *
- * Rest-state rule (owner bug 2026-07-14): between the entrance and the exit NOTHING animates and
- * nothing is held by a fill, so the resting render is the element's natural state and cannot
- * mismatch either endpoint. Position lives on the wrapper's static SVG transform; the tilt is the
- * static CSS `rotate` property set inline (never animated, zeroed under reduced motion); the
- * keyframes touch only scale and opacity, and every scale keyframe ends at 1 = identity.
+ * Two rules keep the resting sticker pixel-still (owner bugs 2026-07-14):
+ * - Between the entrance and the exit NOTHING animates and nothing is held by a fill, so the
+ *   resting render is the element's natural state and cannot mismatch either endpoint. Position
+ *   and the static `rotate` tilt live on the outer .sticker; the keyframes touch only scale and
+ *   opacity on the inner .sticker-pop, and every scale keyframe ends at 1 = identity.
+ * - The settle pop proper: animating an SVG <text> transform swapped rasters at the animation
+ *   boundary (the compositor rasterizes against a fill-box-resolved origin, the static painter
+ *   re-resolves glyph geometry, and on hardware GPUs the handoff landed ~1px right, invisible to
+ *   layout values). The layer is HTML now, and will-change on .sticker-pop pins one compositor
+ *   layer per sticker from mount to unmount, so no promote/demote handoff exists to swap rasters.
  */
 :root {
   --sticker-life: 5000ms; /* REACTION_DECAY_MS: the model removes the node as this ends */
@@ -715,26 +721,51 @@
   );
 }
 
+/* The overlay fills the board wrapper; positioned, so it paints above the SVG in flow. Cell
+   percentages inside it track any board resize with no script, and it is an inline-size
+   container so the glyph size below can be pure CSS too. */
+.board-stickers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  container-type: inline-size;
+}
+
+/* One sticker's static frame: the anchor point (left/top percentages set inline), the centering
+   translate, and the seeded tilt. Never animated, so the resting position has exactly one
+   source of truth for the sticker's whole life. */
 .sticker {
-  transform-box: fill-box;
-  transform-origin: center;
+  position: absolute;
+  transform: translate(-50%, -50%);
   /* The seeded tilt, static for the sticker's whole life. It rides the `rotate` property (not the
      animated `transform`) via the inline --tilt so the reduced-motion rule below can zero it. */
   rotate: var(--tilt, none);
   pointer-events: none;
 }
 
+/* The animated node. will-change pins its compositor layer from mount to unmount (a bounded
+   cost: at most four 5-second stickers per cell), so the entry animation's end never demotes a
+   layer and swaps rasters: that raster swap was the settle pop on hardware GPUs. The glyph is
+   23/36 of one cell, and one cell is 100cqi over the column count (the overlay is the
+   container; --board-cols is set inline by ReactionStickers). */
+.sticker-pop {
+  display: block;
+  font-size: calc(100cqi * 23 / 36 / var(--board-cols, 15));
+  line-height: 1;
+  will-change: transform, opacity;
+}
+
 /* The entrance carries NO fill on purpose: it ends at scale 1 / opacity 1, exactly the natural
    values, so when it finishes the element simply rests unanimated until the delayed exit. The
    exit keeps `forwards` so a removal that lags a frame holds opacity 0 instead of flashing. */
-.sticker--in {
+.sticker-pop--in {
   animation:
     sticker-in var(--sticker-in-dur) var(--sticker-spring),
     sticker-out var(--sticker-out-dur) var(--ease-standard)
       calc(var(--sticker-life) - var(--sticker-out-dur)) forwards;
 }
 
-.sticker--repulse {
+.sticker-pop--repulse {
   animation:
     sticker-repulse var(--sticker-repulse-dur) var(--ease-out),
     sticker-out var(--sticker-out-dur) var(--ease-standard)
@@ -783,8 +814,8 @@
   .sticker {
     rotate: none;
   }
-  .sticker--in,
-  .sticker--repulse {
+  .sticker-pop--in,
+  .sticker-pop--repulse {
     animation:
       sticker-fade-in 180ms var(--ease-out) both,
       sticker-fade-out var(--sticker-out-dur) var(--ease-standard)
