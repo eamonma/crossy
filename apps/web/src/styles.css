@@ -661,18 +661,19 @@
 
 /*
  * Reaction stickers (ROADMAP Phase 7 Wave 7.3), rendered as an HTML overlay above the board SVG
- * (reactions/ReactionStickers.tsx). The feel is a physical slap-on, not a CSS fade: the sticker
- * arrives fast and overshoots (the spring below is a Motion-generated linear() curve at ~9%
- * overshoot, run over the snappy --sticker-in-dur rather than its full settle so it lands like a
- * stamp), rests, then shrinks and fades at decay. A coalesced re-tap remounts and plays the
- * gentler --repulse pulse. Both entrances stack the same --out tail on one delay, so the model can
- * remove the node exactly as the fade ends.
+ * (reactions/ReactionStickers.tsx). The feel is the iMessage-loud grammar (owner ruling
+ * 2026-07-14, replacing the original spring slap): the sticker fades in small, balloons to ~1.9x,
+ * trembles, settles to rest, then shrinks and fades at decay. The tremble rotates the animated
+ * `transform`, which composes AFTER the outer .sticker's static `rotate` tilt, so the wobble
+ * swings around the seeded lean rather than fighting it. A coalesced re-tap remounts into the
+ * same gesture: a repeat shout, not a softer echo. The entrance stacks the --out tail on one
+ * delay, so the model can remove the node exactly as the fade ends.
  *
  * Two rules keep the resting sticker pixel-still (owner bugs 2026-07-14):
  * - Between the entrance and the exit NOTHING animates and nothing is held by a fill, so the
  *   resting render is the element's natural state and cannot mismatch either endpoint. Position
- *   and the static `rotate` tilt live on the outer .sticker; the keyframes touch only scale and
- *   opacity on the inner .sticker-pop, and every scale keyframe ends at 1 = identity.
+ *   and the static `rotate` tilt live on the outer .sticker; the keyframes touch only transform
+ *   and opacity on the inner .sticker-pop, and every transform keyframe ends at identity.
  * - The settle pop proper: animating an SVG <text> transform swapped rasters at the animation
  *   boundary (the compositor rasterizes against a fill-box-resolved origin, the static painter
  *   re-resolves glyph geometry, and on hardware GPUs the handoff landed ~1px right, invisible to
@@ -681,44 +682,8 @@
  */
 :root {
   --sticker-life: 5000ms; /* REACTION_DECAY_MS: the model removes the node as this ends */
-  --sticker-in-dur: 440ms;
-  --sticker-repulse-dur: 300ms;
+  --sticker-in-dur: 1050ms;
   --sticker-out-dur: 380ms;
-  --sticker-spring: linear(
-    0,
-    0.0568,
-    0.1935,
-    0.3674,
-    0.5468,
-    0.7108,
-    0.8474,
-    0.9519,
-    1.0246,
-    1.0689,
-    1.0903,
-    1.0945,
-    1.0873,
-    1.0733,
-    1.0565,
-    1.0397,
-    1.0246,
-    1.0122,
-    1.0029,
-    0.9966,
-    0.9929,
-    0.9912,
-    0.9911,
-    0.992,
-    0.9934,
-    0.995,
-    0.9965,
-    0.9979,
-    0.999,
-    0.9999,
-    1.0004,
-    1,
-    1
-  );
 }
 
 /* The overlay fills the board wrapper; positioned, so it paints above the SVG in flow. Cell
@@ -757,43 +722,51 @@
 
 /* The entrance carries NO fill on purpose: it ends at scale 1 / opacity 1, exactly the natural
    values, so when it finishes the element simply rests unanimated until the delayed exit. The
-   exit keeps `forwards` so a removal that lags a frame holds opacity 0 instead of flashing. */
+   exit keeps `forwards` so a removal that lags a frame holds opacity 0 instead of flashing.
+   The animation's own easing is linear; each phase names its curve on the keyframe. */
 .sticker-pop--in {
   animation:
-    sticker-in var(--sticker-in-dur) var(--sticker-spring),
+    sticker-in var(--sticker-in-dur) linear,
     sticker-out var(--sticker-out-dur) var(--ease-standard)
       calc(var(--sticker-life) - var(--sticker-out-dur)) forwards;
 }
 
-.sticker-pop--repulse {
-  animation:
-    sticker-repulse var(--sticker-repulse-dur) var(--ease-out),
-    sticker-out var(--sticker-out-dur) var(--ease-standard)
-      calc(var(--sticker-life) - var(--sticker-out-dur)) forwards;
-}
-
-/* The overshoot lives in the spring easing extrapolating past scale 1, so these stay two clean
-   stops; the emoji squashes on contact without an authored bounce keyframe. */
+/* The loud entrance: fade in small, balloon to 1.9x, tremble around the seeded tilt, settle to
+   identity. The tremble decays (5 -> 5 -> 4 -> 2 degrees) so the settle reads as spent momentum,
+   not a cut. */
 @keyframes sticker-in {
   0% {
     opacity: 0;
-    transform: scale(0.3);
+    transform: scale(0.35) rotate(0deg);
+    animation-timing-function: var(--ease-out);
   }
-  100% {
+  16% {
     opacity: 1;
-    transform: scale(1);
+    transform: scale(1.9) rotate(0deg);
+    animation-timing-function: ease-in-out;
   }
-}
-
-@keyframes sticker-repulse {
-  0% {
-    transform: scale(1);
+  26% {
+    transform: scale(1.9) rotate(5deg);
+    animation-timing-function: ease-in-out;
   }
-  45% {
-    transform: scale(1.16);
+  38% {
+    transform: scale(1.9) rotate(-5deg);
+    animation-timing-function: ease-in-out;
+  }
+  50% {
+    transform: scale(1.9) rotate(4deg);
+    animation-timing-function: ease-in-out;
+  }
+  60% {
+    transform: scale(1.9) rotate(-2deg);
+    animation-timing-function: ease-in-out;
+  }
+  68% {
+    transform: scale(1.88) rotate(0deg);
+    animation-timing-function: var(--ease-out);
   }
   100% {
-    transform: scale(1);
+    transform: scale(1) rotate(0deg);
   }
 }
 
@@ -814,8 +787,7 @@
   .sticker {
     rotate: none;
   }
-  .sticker-pop--in,
-  .sticker-pop--repulse {
+  .sticker-pop--in {
     animation:
       sticker-fade-in 180ms var(--ease-out) both,
       sticker-fade-out var(--sticker-out-dur) var(--ease-standard)

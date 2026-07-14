@@ -11,12 +11,12 @@
 //
 // Everything else is unchanged from the SVG layer it replaces: placement, tilt, and scatter derive
 // only from the entry's own stable key (fixed at creation, so pile arrivals, coalesces, and
-// expiries never move an incumbent), the spring slap-in and delayed shrink-fade exit are the same
-// keyframes, a coalesced re-tap remounts the inner node to pulse in place, piles cap at the newest
-// four, and reduced motion falls back to fade-only with the tilt zeroed. Resize tracking is pure
-// CSS: positions are cell percentages of the overlay (which fills the board wrapper), and the
-// glyph size is container-query units against the overlay (styles.css), so no script measures
-// anything.
+// expiries never move an incumbent), the loud entrance and delayed shrink-fade exit live in
+// styles.css, a coalesced re-tap remounts the inner node to replay the shout in place, piles cap
+// at the newest four, and reduced motion falls back to fade-only with the tilt zeroed. Resize
+// tracking is pure CSS: positions are cell percentages of the overlay (which fills the board
+// wrapper), and the glyph size is container-query units against the overlay (styles.css), so no
+// script measures anything.
 import type { ReactionEntry } from "./reactionModel";
 
 // The grid's 36-unit cell module (CrosswordGrid CELL) and the sticker geometry retuned by the
@@ -72,16 +72,13 @@ function Sticker({
         ["--tilt" as string]: `${rot}deg`,
       }}
     >
-      {/* The animated node, remounted by the pulse key so a coalesced re-tap replays the gentler
-          pulse in place. will-change (styles.css) pins its compositor layer from mount to unmount,
+      {/* The animated node, remounted by the pulse key so a coalesced re-tap replays the whole
+          loud entrance in place: a repeat shout is the grammar, not a softer echo (owner ruling
+          2026-07-14). will-change (styles.css) pins its compositor layer from mount to unmount,
           so the entry animation's end swaps no rasters: the settle-pop fix proper. */}
       <span
         key={`${entry.key}:${entry.pulse}`}
-        className={
-          entry.pulse > 0
-            ? "sticker-pop sticker-pop--repulse"
-            : "sticker-pop sticker-pop--in"
-        }
+        className="sticker-pop sticker-pop--in"
         aria-hidden
       >
         {entry.emoji}
