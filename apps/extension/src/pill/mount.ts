@@ -140,6 +140,35 @@ const PILL_STYLES = `
     background: var(--wash);
     color: var(--text);
   }
+  /* Touch devices (iOS Safari, the reason the pill ships to phones): scale the whole
+     pill up. A bigger label and mark for legibility at arm's length, and the padding
+     moves onto the buttons so the tap area grows with the look, clearing the 44px
+     finger target (play ~48px tall, close 44px). The 16px mark inset holds: 6 pill +
+     10 play. Desktop keeps the compact cursor-scale pill above. */
+  @media (pointer: coarse) {
+    .pill {
+      gap: 4px;
+      max-width: 360px;
+      padding: 6px 6px 6px 16px;
+      font-size: 17px;
+    }
+    .play {
+      padding: 12px 6px;
+      gap: 12px;
+    }
+    .play .mark {
+      width: 18px;
+      height: 18px;
+    }
+    .hide {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      font-size: 20px;
+    }
+  }
 `;
 
 // The 3x3 brand mark at pill scale; currentColor tracks the label, gold is gold.

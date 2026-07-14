@@ -154,14 +154,23 @@ body.popup {
   width: 320px;
 }
 
-/* iOS Safari presents the popup as a device-width sheet (via the viewport meta in
-   popup.html), so fill it instead of sitting as a narrow 320 column. Chrome and Firefox
-   size the popup to this body's width, so the viewport there is ~320 and this never
-   matches, leaving the fixed width to hold. */
+/* iOS Safari presents the popup as a full tab-height bottom sheet that ignores the body's
+   own height and runs device-width (a known Safari limitation), so short content strands a
+   half-sheet of empty black below it. We cannot shrink the sheet, so we fill it: cap and
+   center the column for a symmetric width, own the sheet height, and let the flex column
+   center its content in that height rather than piling it in the top-left. Chrome and
+   Firefox size the popup to this body (viewport ~320, so this query never matches) and keep
+   the compact column above. */
 @media (min-width: 360px) {
   body.popup {
     width: 100vw;
     max-width: 420px;
+    margin-inline: auto;
+    min-height: 100dvh;
+  }
+  body.popup main {
+    min-height: 100dvh;
+    justify-content: center;
   }
 }
 
@@ -231,6 +240,32 @@ body.popup #align-note.align-warn button {
 }
 
 body.popup #align-note:empty {
+  display: none;
+}
+
+/* Site-access offer: the extension has no host access to the crossword sites yet, so it
+   cannot read the puzzle (on Safari the extractor never injects). The soft gold wash of a
+   caution, not an error; the "Turn on" action grants every crossword origin in one tap.
+   Empty and gone once access is held. */
+body.popup #site-access:not(:empty) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: var(--ring-halo);
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+body.popup #site-access button {
+  flex: none;
+  font-size: 12px;
+}
+
+body.popup #site-access:empty {
   display: none;
 }
 

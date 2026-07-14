@@ -176,6 +176,35 @@
     background: var(--wash);
     color: var(--text);
   }
+  /* Touch devices (iOS Safari, the reason the pill ships to phones): scale the whole
+     pill up. A bigger label and mark for legibility at arm's length, and the padding
+     moves onto the buttons so the tap area grows with the look, clearing the 44px
+     finger target (play ~48px tall, close 44px). The 16px mark inset holds: 6 pill +
+     10 play. Desktop keeps the compact cursor-scale pill above. */
+  @media (pointer: coarse) {
+    .pill {
+      gap: 4px;
+      max-width: 360px;
+      padding: 6px 6px 6px 16px;
+      font-size: 17px;
+    }
+    .play {
+      padding: 12px 6px;
+      gap: 12px;
+    }
+    .play .mark {
+      width: 18px;
+      height: 18px;
+    }
+    .hide {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      font-size: 20px;
+    }
+  }
 `;
   var MARK_SVG = `<svg class="mark" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><rect x="16" width="8" height="8" fill="currentColor"/><rect x="8" y="8" width="8" height="8" fill="currentColor"/><rect y="16" width="8" height="8" fill="currentColor"/><rect x="16" y="16" width="8" height="8" fill="#978365"/><path d="M8 0v24M16 0v24M0 8h24M0 16h24" stroke="currentColor" stroke-width="1.25" fill="none"/></svg>`;
   async function maybeMountPill(site, extract2) {
