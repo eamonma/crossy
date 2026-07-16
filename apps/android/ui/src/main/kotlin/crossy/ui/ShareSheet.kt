@@ -39,6 +39,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -175,6 +177,8 @@ fun QrTile(matrix: QrMatrix?, modifier: Modifier = Modifier) {
     val ink = GridGround.STUDIO.tokens.ink.toColor()
     Box(
         modifier = modifier
+            // One spoken node for the whole tile (iOS QRTile accessibilityLabel).
+            .semantics { contentDescription = "QR code to join this game" }
             .size(QrTileLayout.side)
             .clip(RoundedCornerShape(QrTileLayout.cornerRadius))
             .background(paper)

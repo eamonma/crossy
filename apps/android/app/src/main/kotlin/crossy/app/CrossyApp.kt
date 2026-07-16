@@ -92,6 +92,7 @@ import crossy.ui.ReactionSetOutcome
 import crossy.ui.PuzzlesScreen
 import crossy.ui.RoomScreen
 import crossy.ui.RosterAvatars
+import crossy.ui.rememberSolveHapticPlayer
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
 import crossy.ui.orderedByActivity
@@ -1143,6 +1144,10 @@ private fun RoomHost(
     // writes, read on room entry so a change made in Settings is honored the next time the room opens
     // (Android's single-screen shell never composes both at once, so entry read IS the live match).
     val navPrefs = rememberNavigationSettingsStore()
+    // The solve haptics (Wave 7.5 / DESIGN.md §7): the player over the live View and Vibrator, and the
+    // receive-haptics preference read on room entry (a stored default, ON, no Settings UI, matching iOS).
+    val haptics = rememberSolveHapticPlayer()
+    val reactionSettings = rememberReactionSettingsStore()
     // The store is born, then seeded with the tapped card's facts BEFORE the socket dials, so the
     // players pill stands at its true width and a done room retires its deck from the first frame
     // (the seeded-birth rule, DESIGN.md §4, §12; mirrors RealRoom.init). Each seed gates itself to
@@ -1230,6 +1235,8 @@ private fun RoomHost(
             reactionEmojis = reactionEmojis,
             reconnectRetryAt = reconnectRetryAt,
             navigationPrefs = navPrefs.navigationPrefs,
+            haptics = haptics,
+            receiveReactionHaptics = reactionSettings.receiveHapticsEnabled,
             avatars = avatars,
             // The host's end-game (POST /games/{id}/abandon, PROTOCOL.md §12; mirrors RealRoom.endGame):
             // the server settles the terminal state and the `gameAbandoned` event reaches the store over

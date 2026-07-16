@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.IntOffset
@@ -55,7 +56,9 @@ fun ReactionStickerLayer(
     camera: GridCamera? = null,
     reduceMotion: Boolean = rememberReduceMotion(),
 ) {
-    BoxWithConstraints(modifier) {
+    // Decorative: the ephemeral stickers are seen, not spoken (iOS ReactionStickerLayer
+    // accessibilityHidden), so the emoji glyphs never reach the reader.
+    BoxWithConstraints(modifier.clearAndSetSemantics {}) {
         val density = LocalDensity.current
         val cols = geometry.cols
         // At rest (no camera) the fit-to-width factor is the same one CrossyGrid derives when its own

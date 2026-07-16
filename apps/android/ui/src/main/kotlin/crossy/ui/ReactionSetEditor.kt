@@ -42,6 +42,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -297,6 +304,7 @@ fun ReactionSetSection(model: ReactionSetEditorModel) {
             model.slots.forEachIndexed { index, emoji ->
                 ReactionSlotButton(
                     emoji = emoji,
+                    label = "Slot ${index + 1}: $emoji",
                     selected = model.editingSlot == index,
                     enabled = !model.isSaving,
                     onClick = { model.toggleSlot(index) },
@@ -342,6 +350,8 @@ fun ReactionSetSection(model: ReactionSetEditorModel) {
 @Composable
 private fun ReactionSlotButton(
     emoji: String,
+    // The spoken name (iOS "Slot N: emoji"): the slot index and its emoji, so a reader hears which slot.
+    label: String,
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -353,6 +363,11 @@ private fun ReactionSlotButton(
             .size(48.dp)
             .clip(RoundedCornerShape(12.dp))
             .border(if (selected) 2.dp else 1.dp, border, RoundedCornerShape(12.dp))
+            .semantics {
+                contentDescription = label
+                role = Role.Button
+                if (selected) stateDescription = "editing"
+            }
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -376,6 +391,7 @@ private fun ReactionSlotEditor(model: ReactionSetEditorModel, slot: Int) {
                             .size(40.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .semantics { contentDescription = "Use $pick"; role = Role.Button }
                             .clickable(enabled = !model.isSaving) {
                                 model.applyPick(pick)
                                 field = ""
@@ -417,6 +433,7 @@ private fun ReactionSlotEditor(model: ReactionSetEditorModel, slot: Int) {
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Start,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
     }

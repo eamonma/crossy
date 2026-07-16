@@ -33,6 +33,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +59,10 @@ fun KeyDeck(
     // True while a rebus buffer is open (RoomScreen owns it): the rebus key wears a checkmark and
     // the press commits, mirroring iOS's DeckKeyView. Off, it opens the buffer.
     rebusActive: Boolean = false,
+    // The per-press haptic tick, fired at touch-DOWN alongside the visual press (iOS KeyHaptics.tick,
+    // fired in the deck's own gesture so it rides the press even as intent routing changes). No-op by
+    // default (previews, the demo room).
+    onKeyTick: () -> Unit = {},
     onKey: (DeckKey) -> Unit,
 ) {
     val tokens = ground.tokens
@@ -68,8 +76,13 @@ fun KeyDeck(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (index == ROWS.size - 1) {
-                    // The rebus key leads the last row, opposite backspace (iOS DeckLayout).
-                    DeckButton(ground, enabled, weight = 1.5f, onPress = { onKey(DeckKey.Rebus) }) {
+                    // The rebus key leads the last row, opposite backspace (iOS DeckLayout). Its label
+                    // tracks the mode, exactly as iOS's accessibilityName does.
+                    DeckButton(
+                        ground, enabled, weight = 1.5f,
+                        label = if (rebusActive) "Commit rebus" else "Rebus",
+                        onPress = { onKeyTick(); onKey(DeckKey.Rebus) },
+                    ) {
                         if (rebusActive) {
                             Text("✓", color = tokens.ink.toColor(), fontSize = 18.sp, fontWeight = FontWeight.Medium)
                         } else {
@@ -78,12 +91,20 @@ fun KeyDeck(
                     }
                 }
                 row.forEach { ch ->
-                    DeckButton(ground, enabled, weight = 1f, onPress = { onKey(DeckKey.Letter(ch)) }) {
+                    DeckButton(
+                        ground, enabled, weight = 1f,
+                        label = ch.toString(),
+                        onPress = { onKeyTick(); onKey(DeckKey.Letter(ch)) },
+                    ) {
                         Text(ch.toString(), color = tokens.ink.toColor(), fontSize = 18.sp, fontWeight = FontWeight(ground.glyphWeight))
                     }
                 }
                 if (index == ROWS.size - 1) {
-                    DeckButton(ground, enabled, weight = 1.5f, onPress = { onKey(DeckKey.Backspace) }) {
+                    DeckButton(
+                        ground, enabled, weight = 1.5f,
+                        label = "Delete",
+                        onPress = { onKeyTick(); onKey(DeckKey.Backspace) },
+                    ) {
                         Text("⌫", color = tokens.ink.toColor(), fontSize = 18.sp)
                     }
                 }
@@ -99,6 +120,8 @@ private fun androidx.compose.foundation.layout.RowScope.DeckButton(
     ground: GridGround,
     enabled: Boolean,
     weight: Float,
+    // The spoken name (iOS DeckKeyView.accessibilityName): the letter, "Delete", "Rebus"/"Commit rebus".
+    label: String,
     onPress: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -112,6 +135,7 @@ private fun androidx.compose.foundation.layout.RowScope.DeckButton(
             .scale(scale)
             .clip(RoundedCornerShape(8.dp))
             .background(surface)
+            .semantics { this.contentDescription = label; this.role = Role.Button }
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(

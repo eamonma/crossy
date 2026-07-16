@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,14 @@ object RoomFactsCopy {
     const val endGameConfirmBody = "This ends the game for everyone in the room."
     const val endGameConfirmAction = "End game"
     const val endGameCancelAction = "Keep playing"
+}
+
+/** The header's spoken line (twin of iOS RoomFactsSheet.accessibilityLine): the name, the clock, then
+ *  the facts with the visual " · " separator read as a comma pause. */
+internal fun factsAccessibilityLine(label: String, clock: String, detail: String?): String {
+    var line = "$label, $clock"
+    if (detail != null) line += ", " + detail.replace(" · ", ", ")
+    return line
 }
 
 /** The sheet's headline clock, one pure rule (twin of iOS RoomFactsClock): the server's stat leads
@@ -138,32 +148,42 @@ fun RoomFactsSheet(
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 32.dp),
         ) {
-            Text(
-                content.label.takeIf { it.isNotBlank() } ?: "Crossy",
-                color = tokens.number.toColor(),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                RoomFactsClock.headline(solveTimeSeconds, firstFillAt, freezeAt, now),
-                color = tokens.ink.toColor(),
-                fontSize = 52.sp,
-                fontWeight = FontWeight.SemiBold,
-                style = androidx.compose.ui.text.TextStyle.Default.withTabularNumerals(),
-                modifier = Modifier.padding(top = 10.dp),
-            )
-            content.detail?.let { detail ->
+            val label = content.label.takeIf { it.isNotBlank() } ?: "Crossy"
+            val clock = RoomFactsClock.headline(solveTimeSeconds, firstFillAt, freezeAt, now)
+            // The facts read as one element (iOS accessibilityElement children:.ignore +
+            // accessibilityLine "label, time, detail"); the End game row below stays its own node.
+            Column(
+                modifier = Modifier.fillMaxWidth().clearAndSetSemantics {
+                    contentDescription = factsAccessibilityLine(label, clock, content.detail)
+                },
+            ) {
                 Text(
-                    detail,
+                    label,
                     color = tokens.number.toColor(),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    clock,
+                    color = tokens.ink.toColor(),
+                    fontSize = 52.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    style = androidx.compose.ui.text.TextStyle.Default.withTabularNumerals(),
                     modifier = Modifier.padding(top = 10.dp),
                 )
+                content.detail?.let { detail ->
+                    Text(
+                        detail,
+                        color = tokens.number.toColor(),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                }
             }
             if (operations.canEndGame) {
                 Box(

@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,9 +58,12 @@ fun PuzzleCard(
             // signal that it is done so the trailing shelf reads finished without a loud badge (iOS
             // RoomCard solvedFingerprintOpacity, main 760e6e4). Only the fingerprint dims; the name
             // and people stay full ink. Colors are unchanged :design tokens; the dim is a layer alpha.
+            // Decorative geometry, hidden from the reader (iOS PuzzleSilhouette accessibilityHidden);
+            // the headline and people carry the card's spoken content.
             Silhouette(
                 game.puzzle.mask, game.puzzle.rows, game.puzzle.cols, ground,
-                Modifier.size(56.dp).alpha(if (game.isTerminal) TerminalSilhouetteAlpha else 1f),
+                Modifier.size(56.dp).alpha(if (game.isTerminal) TerminalSilhouetteAlpha else 1f)
+                    .clearAndSetSemantics {},
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
@@ -107,9 +111,10 @@ fun FeaturedRoomCard(
             // A square face fits the common 15x15 exactly and centers an oblong grid (the silhouette
             // keeps true aspect inside the square), filling the card's width: the featured card's
             // whole point is the puzzle read large.
+            // Decorative geometry, hidden from the reader (iOS PuzzleSilhouette accessibilityHidden).
             Silhouette(
                 game.puzzle.mask, game.puzzle.rows, game.puzzle.cols, ground,
-                Modifier.fillMaxWidth().aspectRatio(1f),
+                Modifier.fillMaxWidth().aspectRatio(1f).clearAndSetSemantics {},
             )
             Text(
                 game.headline,

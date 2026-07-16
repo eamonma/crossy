@@ -36,6 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -150,7 +153,8 @@ private fun LibraryPuzzleCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                GeometryFingerprint(puzzle.rows, puzzle.cols, ground, Modifier.size(52.dp))
+                // Decorative geometry, hidden from the reader (iOS PuzzleSilhouette accessibilityHidden).
+                GeometryFingerprint(puzzle.rows, puzzle.cols, ground, Modifier.size(52.dp).clearAndSetSemantics {})
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         puzzle.headline,
@@ -170,7 +174,15 @@ private fun LibraryPuzzleCard(
                         )
                     }
                 }
-                Button(onClick = onStart, enabled = !starting) {
+                // Name the action with the card it starts, so the reader hears which puzzle (iOS
+                // PuzzleCard: accessibilityLabel "New game: {headline}").
+                Button(
+                    onClick = onStart,
+                    enabled = !starting,
+                    modifier = Modifier.semantics {
+                        contentDescription = "${ArrivalCopy.puzzleStartGame}: ${puzzle.headline}"
+                    },
+                ) {
                     Text(if (starting) ArrivalCopy.puzzleStarting else ArrivalCopy.puzzleStartGame)
                 }
             }

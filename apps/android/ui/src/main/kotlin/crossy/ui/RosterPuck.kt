@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -45,6 +48,10 @@ import crossy.protocol.asciiUppercase
  * @param displayName  the initial source; empty renders the colored circle alone.
  * @param avatar  the resolved image, or null for the initial. The live surface passes the cache's
  *   current image (AvatarImageCache in :app); a preview passes null and shows the initial.
+ * @param contentDescription  the reader's name for a standalone puck that conveys identity on its
+ *   own; null (the default) hides it, the decorative case beside an already-labeled row or the bar
+ *   cluster (iOS RosterPuck body is accessibilityHidden(true); the cluster carries the combined
+ *   label instead). Every current call site shows the name adjacent, so all pass null.
  */
 @Composable
 fun RosterPuck(
@@ -54,11 +61,16 @@ fun RosterPuck(
     diameter: Dp,
     modifier: Modifier = Modifier,
     avatar: ImageBitmap? = null,
+    contentDescription: String? = null,
 ) {
     val fill = ground.rosterColor(IdentityRoster.color(userId)).toColor()
     val cell = ground.tokens.cell.toColor()
     Box(
         modifier = modifier
+            .then(
+                if (contentDescription == null) Modifier.clearAndSetSemantics {}
+                else Modifier.semantics { this.contentDescription = contentDescription },
+            )
             .size(diameter)
             .clip(CircleShape)
             .background(fill)
