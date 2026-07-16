@@ -1,6 +1,7 @@
-// The Supabase (GoTrue) auth REST leg (AAD-3). Twin of apps/ios SupabaseAuth.swift, trimmed to
-// tonight's scope: email/password sign-in and the refresh grant, plus best-effort sign-out. No
-// PKCE code exchange and no Apple id_token grant (no browser flow, no native providers tonight).
+// The Supabase (GoTrue) auth REST leg (AAD-3). Twin of apps/ios SupabaseAuth.swift: the password
+// grant, the refresh grant, email OTP / magic link, best-effort sign-out, and the OAuth web leg
+// (authorize URL + PKCE code exchange) for Discord, Apple, and hisbaan. No id_token grant: Android
+// has no native Apple SDK, so Apple rides the same web leg as the others.
 //
 // The issuer trap (deploy/README.md, it has caused an outage once): every request here rides the
 // CONFIGURED Supabase origin verbatim (the custom domain, `authBaseUrl`), while the tokens it
@@ -45,7 +46,78 @@ public data class SupabaseConfig(
     val authBaseUrl: HttpUrl,
     val apiKey: String,
     val issuer: String,
+    /** Where the OAuth web leg lands back: the custom-scheme deep link the browser redirect
+     *  returns to (already on the Supabase allowlist; iOS rides the same value). A String, not
+     *  an HttpUrl: okhttp cannot represent a custom scheme. Config, never derived or hardcoded
+     *  in client logic; the default keeps existing composition roots compiling until the browser
+     *  leg wires it explicitly. */
+    val redirectUrl: String = "crossy://auth/callback",
 )
+
+/**
+ * Which provider minted the session (display only; the token is the identity authority,
+ * DESIGN.md §8). `wireId` is exactly the `provider=` query value GoTrue expects, so the one
+ * web leg serves every entry with no branching. Twin of iOS `AuthProvider`.
+ */
+public enum class AuthProvider(public val wireId: String) {
+    DISCORD("discord"),
+
+    /** Apple rides the same web leg as the others on Android (no native Apple SDK, so no
+     *  id_token grant; the iOS-only leg stays iOS-only). */
+    APPLE("apple"),
+
+    /** The custom OIDC provider. Its wire id carries a colon, which the authorize URL
+     *  percent-encodes (`custom%3Ahisbaan`) so proxies never mis-split the query value. */
+    HISBAAN("custom:hisbaan"),
+
+    /** Email OTP / magic link: no web leg, the session arrives through the verify grant. The
+     *  entry exists so the provider marker can name it. GoTrue's own `email` provider string. */
+    EMAIL_OTP("email"),
+}
+
+/**
+ * What the OAuth redirect carried, parsed from the deep-link URI the browser leg hands back.
+ * A provider refusal arrives as `error`/`error_description` and no code; [code] is null then
+ * (and for an empty or absent value), which the session leg maps to a typed
+ * [SupabaseAuthError.InvalidCallback]. Twin of iOS `authorizationCode(fromCallback:)`, widened
+ * to surface the error pair for the screen.
+ */
+public data class OAuthCallback(
+    val code: String?,
+    val error: String?,
+    val errorDescription: String?,
+) {
+    public companion object {
+        /** Parse a callback URI (custom scheme, so java.net.URI, not okhttp). Malformed input
+         *  parses to an empty callback rather than throwing: a garbage URI is just a callback
+         *  that carried no code. */
+        public fun parse(uri: String): OAuthCallback {
+            val rawQuery = try {
+                java.net.URI(uri).rawQuery
+            } catch (e: Exception) {
+                null
+            }
+            val params = (rawQuery ?: "").split("&").mapNotNull { pair ->
+                if (pair.isEmpty()) return@mapNotNull null
+                val split = pair.indexOf('=')
+                val name = if (split >= 0) pair.substring(0, split) else pair
+                val value = if (split >= 0) pair.substring(split + 1) else ""
+                decode(name) to decode(value)
+            }.toMap()
+            return OAuthCallback(
+                code = params["code"]?.takeIf { it.isNotEmpty() },
+                error = params["error"],
+                errorDescription = params["error_description"],
+            )
+        }
+
+        private fun decode(value: String): String = try {
+            java.net.URLDecoder.decode(value, "UTF-8")
+        } catch (e: IllegalArgumentException) {
+            value
+        }
+    }
+}
 
 /**
  * One signed-in session as Supabase grants it and the store persists it. `@Serializable` because
@@ -88,6 +160,15 @@ public sealed class SupabaseAuthError(message: String, cause: Throwable? = null)
      *  when the token carried no readable `iss`, which fails the pin closed. */
     public class IssuerMismatch(public val expected: String, public val actual: String?) :
         SupabaseAuthError("token issuer $actual is not the pinned $expected")
+
+    /** The OAuth callback carried no code: the provider refused (its `error` and
+     *  `error_description` ride here for the screen) or the redirect was malformed. Typed and
+     *  thrown before any network call; there is nothing to exchange. Twin of iOS
+     *  `invalidCallback`, widened with the error pair. */
+    public class InvalidCallback(
+        public val error: String?,
+        public val errorDescription: String?,
+    ) : SupabaseAuthError("oauth callback carried no code${error?.let { " ($it)" } ?: ""}")
 }
 
 /** The vendor calls, a value over an injected OkHttpClient (tests stub via MockWebServer, the
@@ -107,6 +188,61 @@ public class SupabaseAuthClient(
             body = buildJsonObject {
                 put("email", email)
                 put("password", password)
+            },
+            nowSeconds = nowSeconds,
+        )
+
+    // MARK: - The OAuth web leg (authorize URL + PKCE exchange)
+
+    /** `GET {auth}/authorize?provider=<provider>&...`: where the browser leg navigates. The
+     *  query mirrors iOS exactly: `provider`, `redirect_to`, `code_challenge`,
+     *  `code_challenge_method=s256`, in that order. The provider value is percent-encoded
+     *  beyond okhttp's query rules so `custom:hisbaan` rides as `custom%3Ahisbaan` (a bare
+     *  colon in a query value survives okhttp, but some proxies mis-split it; the encoded form
+     *  is the contract). Only the provider value gets that treatment, so the Discord leg is
+     *  byte-identical to iOS's. Pure construction, no IO. */
+    public fun authorizeUrl(
+        provider: AuthProvider = AuthProvider.DISCORD,
+        codeChallenge: String,
+    ): HttpUrl =
+        config.authBaseUrl.newBuilder()
+            .addPathSegment("authorize")
+            .addEncodedQueryParameter("provider", percentEncodeProviderValue(provider.wireId))
+            .addQueryParameter("redirect_to", config.redirectUrl)
+            .addQueryParameter("code_challenge", codeChallenge)
+            .addQueryParameter("code_challenge_method", "s256")
+            .build()
+
+    /** Force every reserved character in the provider value into percent form (chiefly the ":"
+     *  of `custom:hisbaan`), leaving only the RFC 3986 unreserved set bare. The value still
+     *  decodes back to the raw wire id on the server's side. Twin of iOS
+     *  `providerValueAllowed`. */
+    private fun percentEncodeProviderValue(value: String): String = buildString {
+        for (byte in value.encodeToByteArray()) {
+            val c = byte.toInt().toChar()
+            if (c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c in "-._~") {
+                append(c)
+            } else {
+                append('%')
+                append("0123456789ABCDEF"[(byte.toInt() ushr 4) and 0xF])
+                append("0123456789ABCDEF"[byte.toInt() and 0xF])
+            }
+        }
+    }
+
+    /** `POST {auth}/token?grant_type=pkce`: exchange the callback's code plus the held verifier
+     *  for a session. Same decode, issuer pin, and error taxonomy as the password grant, so an
+     *  OAuth session is indistinguishable downstream. */
+    public suspend fun exchangeCode(
+        authCode: String,
+        verifier: String,
+        nowSeconds: Double,
+    ): SupabaseSession =
+        grant(
+            grantType = "pkce",
+            body = buildJsonObject {
+                put("auth_code", authCode)
+                put("code_verifier", verifier)
             },
             nowSeconds = nowSeconds,
         )

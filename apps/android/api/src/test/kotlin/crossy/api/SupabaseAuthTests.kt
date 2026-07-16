@@ -170,6 +170,112 @@ class SupabaseAuthTests : MockServerTest() {
         )
     }
 
+    // MARK: - The OAuth web leg (AAD-3): authorize URL + PKCE exchange
+
+    @Test
+    fun authorizeUrl_carriesTheFourQueryItemsInTheIOSOrderAgainstTheConfiguredOrigin() {
+        // The normative query set and order (apps/ios SupabaseAuth.swift authorizeURL): provider,
+        // redirect_to, code_challenge, code_challenge_method=s256. Built on the configured origin
+        // verbatim, never a rewritten one (the issuer-trap posture), and the redirect target is
+        // config, never a constant in client logic.
+        val url = authClient().authorizeUrl(AuthProvider.DISCORD, codeChallenge = "abc-123_XYZ")
+
+        assertEquals("/auth/v1/authorize", url.encodedPath)
+        assertEquals(server.url("/").host, url.host, "the configured origin, verbatim")
+        assertEquals("discord", url.queryParameter("provider"))
+        assertEquals("crossy://auth/callback", url.queryParameter("redirect_to"))
+        assertEquals("abc-123_XYZ", url.queryParameter("code_challenge"))
+        assertEquals("s256", url.queryParameter("code_challenge_method"))
+        assertTrue(
+            url.toString().substringAfter("?").startsWith("provider="),
+            "provider leads the query, the iOS item order",
+        )
+    }
+
+    @Test
+    fun authorizeUrl_percentEncodesTheHisbaanColonOnTheWire() {
+        // The iOS normative behavior (test_hisbaanRidesTheSameWebLegWithTheEncodedProvider...):
+        // custom:hisbaan rides as custom%3Ahisbaan (some proxies mis-split a bare colon in a
+        // query value) yet decodes back to the exact raw wire id GoTrue expects.
+        val url = authClient().authorizeUrl(AuthProvider.HISBAAN, codeChallenge = "c")
+
+        assertTrue(
+            url.toString().contains("provider=custom%3Ahisbaan"),
+            "the raw colon is percent-encoded on the wire, got $url",
+        )
+        assertEquals("custom:hisbaan", url.queryParameter("provider"), "and decodes back intact")
+    }
+
+    @Test
+    fun authorizeUrl_appleRidesTheSameWebLegNoIdTokenGrant() {
+        // Android has no native Apple SDK: Apple is one more provider value on the identical
+        // authorize flow, never the iOS-only id_token grant.
+        val url = authClient().authorizeUrl(AuthProvider.APPLE, codeChallenge = "c")
+
+        assertEquals("/auth/v1/authorize", url.encodedPath)
+        assertEquals("apple", url.queryParameter("provider"))
+    }
+
+    @Test
+    fun exchangeCode_postsThePkceGrantWithAuthCodeAndVerifier() = runBlocking {
+        // The exchange body is exactly {auth_code, code_verifier} on grant_type=pkce (the iOS
+        // exchangeCode twin); the response decodes on the same session shape as every grant.
+        server.enqueue(jsonResponse(200, grantBody()))
+
+        val session = authClient().exchangeCode("cb-code", "the-verifier", nowSeconds = 1_000_000.0)
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/auth/v1/token", request.requestUrl?.encodedPath)
+        assertEquals("pkce", request.requestUrl?.queryParameter("grant_type"))
+        assertEquals("sb_publishable_test", request.getHeader("apikey"))
+        val body = ProtocolJson.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals("cb-code", body["auth_code"]?.jsonPrimitive?.contentOrNull)
+        assertEquals("the-verifier", body["code_verifier"]?.jsonPrimitive?.contentOrNull)
+        assertEquals(setOf("auth_code", "code_verifier"), body.keys, "nothing else rides the body")
+
+        assertEquals("granted-refresh", session.refreshToken)
+        assertEquals("11111111-2222-3333-4444-555555555555", session.userId)
+    }
+
+    @Test
+    fun exchangeCode_ridesTheSameIssuerPinAsTheGrants() = runBlocking {
+        // OAuth is a new way in, not a new machine: a pkce-granted token minted under the wrong
+        // iss is rejected before it can be stored, exactly as the password grant is.
+        server.enqueue(jsonResponse(200, grantBody(issuer = "https://api.crossy.party/auth/v1")))
+
+        val error = runCatching {
+            authClient(issuer = REF_ISSUER).exchangeCode("cb-code", "v", 0.0)
+        }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.IssuerMismatch)
+        assertEquals("https://api.crossy.party/auth/v1", (error as SupabaseAuthError.IssuerMismatch).actual)
+    }
+
+    @Test
+    fun oauthCallback_parsesTheCodeAndTreatsAnEmptyOrAbsentOneAsNull() {
+        // The custom-scheme redirect parses without okhttp (HttpUrl cannot hold crossy://). An
+        // empty code is no code, the iOS authorizationCode(fromCallback:) rule.
+        val withCode = OAuthCallback.parse("crossy://auth/callback?code=abc123")
+        assertEquals("abc123", withCode.code)
+        assertNull(withCode.error)
+
+        assertNull(OAuthCallback.parse("crossy://auth/callback?code=").code)
+        assertNull(OAuthCallback.parse("crossy://auth/callback").code)
+        assertNull(OAuthCallback.parse("not a uri at all").code, "garbage parses to no code, never a throw")
+    }
+
+    @Test
+    fun oauthCallback_surfacesTheProviderErrorPairDecoded() {
+        val callback = OAuthCallback.parse(
+            "crossy://auth/callback?error=access_denied&error_description=user%20said%20no",
+        )
+
+        assertNull(callback.code)
+        assertEquals("access_denied", callback.error)
+        assertEquals("user said no", callback.errorDescription)
+    }
+
     // MARK: - Email OTP / magic link (#230)
 
     @Test
