@@ -52,13 +52,24 @@ public struct RoomAnalysis: Equatable, Sendable {
     /// The solve span as `M:SS` (the stat trio's "Time"): the momentum duration,
     /// the reach from the first fill to the last (design/post-game/ANALYSIS.md),
     /// which is what the web panel labels Time.
-    public var durationLabel: String { RoomAnalysis.formatMSS(momentum.durationSeconds) }
+    public var durationLabel: String { CrossyUI.formatMSS(momentum.durationSeconds) }
+}
 
-    /// `M:SS`, seconds floored, minutes uncapped. Pure so it pins headlessly.
-    public static func formatMSS(_ seconds: Double) -> String {
-        let total = max(0, Int(seconds))
-        return "\(total / 60):" + String(format: "%02d", total % 60)
-    }
+/// A seconds count as `M:SS`, or `H:MM:SS` past an hour, matching the web's
+/// formatMSS (apps/web/src/ui/analysisReadout.ts) byte for byte: seconds floored,
+/// the seconds and (when hours show) minutes fields zero-padded, negatives and
+/// non-finite input clamped to "0:00" so a degenerate span never reads "NaN:NaN".
+/// The one CrossyUI moment formatter, so the Analysis header (RoomAnalysis) and the
+/// solver-title claims (TitleLadder) render the same span identically, and both
+/// agree with the web digit for digit. Pure so it pins headlessly.
+func formatMSS(_ seconds: Double) -> String {
+    let safe = seconds.isFinite ? seconds : 0
+    let total = max(0, Int(safe.rounded(.down)))
+    let hours = total / 3600
+    let minutes = (total % 3600) / 60
+    let secs = total % 60
+    let pad = { (n: Int) in String(format: "%02d", n) }
+    return hours > 0 ? "\(hours):\(pad(minutes)):\(pad(secs))" : "\(minutes):\(pad(secs))"
 }
 
 /// The solving-tempo ribbon's data: a fixed-length, peak-normalized intensity
