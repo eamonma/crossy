@@ -172,6 +172,24 @@ export async function countDistinctWriters(
   return Number(rows[0]?.n ?? "0");
 }
 
+/**
+ * The game's cell-event timestamps as epoch ms, in the actor's write order (seq). Read inside
+ * the terminal flush transaction after the final append, so the list is the whole log the
+ * sittings stats describe (PROTOCOL.md §4, D29). Like `participantCount`, this is authoritative
+ * over cell_events rather than actor memory, which is lost on passivation. One narrow column
+ * over the `(game_id, seq)` primary key, an index range scan.
+ */
+export async function selectEventTimesAsc(
+  client: PoolClient,
+  gameId: string,
+): Promise<number[]> {
+  const { rows } = await client.query<{ at: Date | string }>(
+    "select at from cell_events where game_id = $1 order by seq asc",
+    [gameId],
+  );
+  return rows.map((r) => new Date(r.at).getTime());
+}
+
 /** Run `fn` inside one transaction on a dedicated client; rollback and rethrow on error. */
 async function inTransaction<T>(
   pool: Pool,
@@ -217,17 +235,21 @@ export async function flushToPostgres(
 
 /**
  * Terminal (completion) flush, synchronous before the broadcast (INV-3). The completing
- * cellSets are appended first, then participantCount is read DISTINCT over cell_events
- * inside the same transaction so it counts the completing writer, then the snapshot is
- * upserted with the stats. `buildSnapshot` receives the authoritative participantCount and
- * returns the snapshot to persist plus the stats to broadcast.
+ * cellSets are appended first, then participantCount is read DISTINCT over cell_events and
+ * the event timestamps are read in seq order inside the same transaction (so both count the
+ * completing writer's rows), then the snapshot is upserted with the stats. `buildSnapshot`
+ * receives the authoritative participantCount and the full log's epoch-ms timestamps (the
+ * sittings inputs, D29) and returns the snapshot to persist plus the stats to broadcast.
  */
 export async function flushTerminalToPostgres(
   pool: Pool,
   gameId: string,
   events: readonly CellSet[],
   checks: readonly CheckEventRow[],
-  buildSnapshot: (participantCount: number) => {
+  buildSnapshot: (
+    participantCount: number,
+    eventAtMs: readonly number[],
+  ) => {
     snap: StateSnapshot;
     stats: Stats;
   },
@@ -236,7 +258,8 @@ export async function flushTerminalToPostgres(
     await insertEvents(client, gameId, events);
     await insertCheckEvents(client, gameId, checks);
     const participantCount = await countDistinctWriters(client, gameId);
-    const { snap, stats } = buildSnapshot(participantCount);
+    const eventAtMs = await selectEventTimesAsc(client, gameId);
+    const { snap, stats } = buildSnapshot(participantCount, eventAtMs);
     await upsertSnapshot(client, gameId, snap);
     return stats;
   });
@@ -255,12 +278,18 @@ export interface GamePersistence {
     checks: readonly CheckEventRow[],
     snap: StateSnapshot,
   ): Promise<void>;
-  /** Terminal flush: append both logs, read authoritative participantCount, upsert snapshot. */
+  /**
+   * Terminal flush: append both logs, read the authoritative participantCount and the log's
+   * event timestamps (seq order, epoch ms; the sittings inputs, D29), upsert snapshot.
+   */
   flushTerminal(
     gameId: string,
     events: readonly CellSet[],
     checks: readonly CheckEventRow[],
-    buildSnapshot: (participantCount: number) => {
+    buildSnapshot: (
+      participantCount: number,
+      eventAtMs: readonly number[],
+    ) => {
       snap: StateSnapshot;
       stats: Stats;
     },

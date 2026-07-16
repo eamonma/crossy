@@ -21,8 +21,10 @@ import { asc, eq } from "drizzle-orm";
 import { schema } from "@crossy/db";
 import {
   awardTitles,
+  collapseIdle,
   momentum,
   moments,
+  sittings,
   solveSequence,
   solveTrace,
   titleStats,
@@ -52,7 +54,17 @@ const STARRED_MARK = /^\s*\*/;
  * solver superlatives (design/post-game/TITLES.md; PROTOCOL.md section 12): ordered by ladder
  * rank, at most one per solver and one per key, empty when fewer than two solvers wrote (the
  * engine's solo rule), each entry a userId, a lowercase-kebab title key, and its evidence count
- * or null. Every field carries userIds, cells, keys, and numbers only, so it is INV-6-safe by
+ * or null.
+ *
+ * All trace-projection times are ACTIVE seconds (DESIGN.md D29, design/post-game/SITTINGS.md):
+ * the trace is built from the idle-collapsed log (`solveTrace(collapseIdle(events), solution)`),
+ * so `momentum`, `moments`, and `sequence` measure concatenated active time on one shared axis;
+ * a game with no 30-minute gap is the identity mapping, byte-identical to the pre-D29 bundle.
+ * `sittings` describes the partition itself ({count, spans, wallSeconds}, spans contiguous on
+ * the same active axis, for the ribbon's seam ticks; `wallSeconds` the wall-clock trace span,
+ * flavor only). `titles` alone keep their wall-clock basis for now (D29 defers their re-base).
+ *
+ * Every field carries userIds, cells, keys, and numbers only, so it is INV-6-safe by
  * construction: there is no field that can hold a solution value or a raw event, so a leak is a
  * compile error, not a missed runtime strip. The client already holds the roster (names, colors)
  * from the game view's member data, so this never duplicates identity display.
@@ -71,6 +83,11 @@ export interface AnalysisView {
   };
   readonly sequence: { cell: number; atSeconds: number }[];
   readonly titles: TitleAward[];
+  readonly sittings: {
+    count: number;
+    spans: { startSeconds: number; endSeconds: number }[];
+    wallSeconds: number;
+  };
 }
 
 /**
@@ -157,15 +174,21 @@ export async function gameAnalysis(
     }),
   );
 
-  // One seq-ordered replay, three readings (ANALYSIS.md "What it stands on"). The owner map falls
-  // out of the trace (drop the timing), momentum buckets it, moments takes its extremes.
-  const trace = solveTrace(events, solution);
+  // One seq-ordered replay, three readings (ANALYSIS.md "What it stands on"), on the ACTIVE
+  // axis (D29): `collapseIdle` moves every gap of SITTING_GAP_MS or more to zero before the
+  // trace is built, so momentum buckets active time, moments' stall is within-sitting by
+  // construction, and the sequence's atSeconds are compact. The owner map falls out of the
+  // trace (drop the timing), and remapping never changes a cell or a userId, so owners are
+  // byte-identical to the wall-clock reading.
+  const trace = solveTrace(collapseIdle(events), solution);
   const owners = Object.fromEntries(trace.map((e) => [e.cell, e.userId]));
 
   // The titles, entirely the engine's (TITLES.md): titleStats counts, awardTitles walks the
   // ladder, and the solo rule (fewer than two writers -> []) lives inside awardTitles, never
   // here. This module only lifted the inputs; it reimplements no counting. The awards carry
   // userIds, title keys, and evidence numbers only (INV-6 by the TitleAward type).
+  // DELIBERATELY the RAW events, not the collapsed ones: titles keep their wall-clock basis
+  // this wave (D29 defers the ice-breaker re-base and marathoner to a named fast-follow).
   const titles = awardTitles(
     titleStats(events, solution, slots, {
       rows: puzzle.rows,
@@ -179,6 +202,9 @@ export async function gameAnalysis(
     moments: moments(trace),
     sequence: solveSequence(trace),
     titles,
+    // The partition itself (D29): computed from the RAW events (it does its own collapse and
+    // anchors spans to the trace internally), one extra linear walk, no new DB read.
+    sittings: sittings(events, solution),
   };
 
   // Cache the frozen bundle (INV-4). Write-once: a completed game's input can never change, so

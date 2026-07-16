@@ -1540,6 +1540,96 @@ describe("participantCount authoritative over cell_events (PROTOCOL.md §4)", ()
   });
 });
 
+describe("sittings stats authoritative over cell_events (PROTOCOL.md §4; D29)", () => {
+  it("a gapless solve is one sitting and activeSolveSeconds equals solveTimeSeconds exactly (D29 identity)", async () => {
+    const a = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: a, role: "solver" }],
+    });
+    const first = await connectAndHello(gameId, a);
+
+    // Three live fills milliseconds apart: no gap anywhere near SITTING_GAP_MS.
+    first.client.sendJson(placeLetter(0, "A"));
+    await first.client.waitForCount("cellSet", 1);
+    first.client.sendJson(placeLetter(1, "B"));
+    await first.client.waitForCount("cellSet", 2);
+    first.client.sendJson(placeLetter(2, "C"));
+    const completed = (await first.client.waitForType("gameCompleted")) as {
+      stats: {
+        solveTimeSeconds: number;
+        activeSolveSeconds: number;
+        sittingCount: number;
+      };
+    };
+
+    expect(completed.stats.sittingCount).toBe(1);
+    expect(completed.stats.activeSolveSeconds).toBe(
+      completed.stats.solveTimeSeconds,
+    );
+
+    // Persisted before broadcast (INV-3): the frozen stats row carries both fields.
+    const gs = await adminPool.query<{
+      stats: { activeSolveSeconds: number; sittingCount: number };
+    }>("select stats from game_state where game_id = $1", [gameId]);
+    expect(gs.rows[0]?.stats.sittingCount).toBe(1);
+    expect(gs.rows[0]?.stats.activeSolveSeconds).toBe(
+      completed.stats.activeSolveSeconds,
+    );
+
+    first.client.close();
+  });
+
+  it("a solve resumed after a long-dead first fill counts two sittings and collapses the idle from activeSolveSeconds (D29)", async () => {
+    const a = randomUUID();
+    // The first sitting happened long ago: one seeded fill (cell 0) whose cell_events row and
+    // firstFillAt are a fixed past instant, far more than SITTING_GAP_MS before the live
+    // completion below. The actor's memory never held it (hydrated from the snapshot), so the
+    // partition MUST come from the log read inside the terminal flush, like participantCount.
+    const longAgo = "2026-07-08T00:00:00.000Z";
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: a, role: "solver" }],
+      gameState: {
+        board: [
+          { v: "A", by: a },
+          { v: null, by: null },
+          { v: null, by: null },
+        ],
+        lastSeq: 1,
+        firstFillAt: longAgo,
+      },
+    });
+    await adminPool.query(
+      `insert into cell_events (game_id, seq, cell, user_id, value, at)
+         values ($1, 1, 0, $2, 'A', $3)`,
+      [gameId, a, longAgo],
+    );
+
+    const first = await connectAndHello(gameId, a);
+    first.client.sendJson(placeLetter(1, "B"));
+    await first.client.waitForCount("cellSet", 1);
+    first.client.sendJson(placeLetter(2, "C"));
+    const completed = (await first.client.waitForType("gameCompleted")) as {
+      stats: {
+        solveTimeSeconds: number;
+        activeSolveSeconds: number;
+        sittingCount: number;
+      };
+    };
+
+    // Two sittings: the seeded fill, then the live pair after the giant gap.
+    expect(completed.stats.sittingCount).toBe(2);
+    // The wall clock spans the whole dead stretch (>= 30 minutes by construction) …
+    expect(completed.stats.solveTimeSeconds).toBeGreaterThanOrEqual(1800);
+    // … while active time collapses it: the seeded fill IS firstFillAt and the live pair
+    // lands within seconds, so nearly nothing remains after the collapse.
+    expect(completed.stats.activeSolveSeconds).toBeLessThanOrEqual(5);
+
+    first.client.close();
+  });
+});
+
 describe("room check: one deliberate act, marked for everyone, neutral on the wire (PROTOCOL.md §10; D27)", () => {
   it("broadcasts a sequenced puzzleChecked with no by, snapshots the marks, and persists the check_events row (INV-6, INV-5)", async () => {
     const checker = randomUUID();
