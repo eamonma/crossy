@@ -1,12 +1,14 @@
 # Post-game analysis vectors
 
-Status: **data-only, ahead of the engine.** These fixtures pin four NEW engine projections,
-`solveTrace`, `momentum`, `moments`, and `solveSequence`, before they are implemented. Vectors
-are written before implementations (CLAUDE.md, PROTOCOL.md section 13). The consuming test and
-the engine functions land in a later PR; nothing globs this directory yet.
+Status: the four trace projections (`solveTrace`, `momentum`, `moments`, `solveSequence`)
+are implemented and bound (`packages/engine/src/analysis.test.ts`, a narrow per-file
+reader; no directory glob). `titles.json` is the family's **data-only, ahead-of-the-engine**
+member: it pins the two solver-titles reducers (ROADMAP Phase 10, Wave 10.2) before they
+exist. Vectors are written before implementations (CLAUDE.md, PROTOCOL.md section 13); the
+Wave 10.3 engine PR adopts `titles.json` with the same reader.
 
 Precedence when sources disagree: these vectors, then PROTOCOL.md, then any implementation.
-Companion design: `design/post-game/ANALYSIS.md`.
+Companion design: `design/post-game/ANALYSIS.md`; for titles, `design/post-game/TITLES.md`.
 
 ## The projections
 
@@ -82,6 +84,78 @@ replay (`design/post-game/REPLAY.md`).
   empty trace. INV-6-safe by shape: cells and times only, no `userId` (the client reads the owner
   from the bundle's `owners` map).
 
+## The titles reducers (`titles.json`)
+
+`titles.json` pins the two solver-titles reducers from `design/post-game/TITLES.md` (the
+law for every semantic below; constants and rules are cited by name, never re-derived):
+
+```
+titleStats(events, solution, slots) -> { solvers: per-solver stat sheet, room: { stallSeconds } }
+awardTitles(titleStats result)      -> [{ userId, title, evidence }]
+```
+
+Two functions share one file, so the file is a keyed object of two case clusters,
+`{ "titleStats": [...], "awardTitles": [...] }`, each cluster a case array in the house
+shape (`name`, `intent`, `given`, `then`) — the one deliberate departure from the
+bare-array convention, documented here so the Wave 10.3 reader binds each cluster to its
+function.
+
+### titleStats cases
+
+- `given`: `rows`, `cols` (grid geometry as data, INV-9: quadrants and spread need it),
+  `solution` (`[cell, expected]` pairs, as `solve-trace.json`), `events` (the
+  `solve-trace.json` event shape: `{ seq, cell, userId, value, at }`, `at` epoch ms,
+  `value` null for a clear), and `slots`: each `{ cells, starred }`, ordered cell indices
+  plus the starred flag, exactly as TITLES.md pins (slots are data; no slot model enters
+  the engine).
+- `then.solvers`: one row per solver appearing in the events (the pool is event
+  membership), keyed by userId. Rows follow the top-level assertion rule
+  (`vectors/README.md`): a row constrains exactly the fields it lists, an absent field is
+  unasserted, and an asserted absence is an explicit `null`. `then.room.stallSeconds` is
+  the floored whole-second stall from the same `moments()` projection the ribbon ships.
+- **Correctness is everywhere the engine comparator `matches`, never string equality**
+  (ASCII-case-insensitive, rebus first-char accepting; INV-1, D12). The rebus case pins
+  that a first-char-correct write is not a wrongWrite and a correct-to-correct rewrite is
+  not an overwrite.
+- Time conventions: `at` in `given` is epoch ms. `firstFill`/`lastFill` in the sheet are
+  raw `{ at, seq }` ordering keys, NOT relative seconds — they feed the award tie-breaks
+  and never render; `span` and `stallSeconds` are the display numbers, whole seconds,
+  `floor()`. The stat sheet is engine-internal (only `titles` ships on the wire), so the
+  relative-seconds rule of the trace projections does not apply to it.
+- Ordering: openingFills/closingFills slice the first/last `ceil(OPENING_SHARE * T)` of
+  the `(at, seq)`-ordered trace; `brokeStall` is pinned **byte-identical to the shipped
+  `moments()`** (`packages/engine/src/analysis.ts`), whose gap scan walks consecutive
+  trace entries in seq order — the skew case pins that where the two orderings disagree,
+  the `moments()` behavior wins.
+- Readings pinned where TITLES.md is silent, chosen for consistency with the sibling
+  projections: a zero-fill solver's row exists with `firstFill`/`lastFill` null and
+  `focus`, `span`, `spread` all `0` (never NaN); a trace of fewer than two entries has no
+  turning point, so nobody `brokeStall` and `room.stallSeconds` is `0`. The
+  home-quadrant tie ("earliest-reached") is unobservable in the output
+  (`homeQuadrantFills` is equal either way and the quadrant's identity never surfaces),
+  so no vector pins it.
+
+### awardTitles cases
+
+- `given` is a `titleStats` result verbatim: `solvers` (rows carry at least the columns
+  the ladder reads: fills, firstFill, openingFills, closingFills, writes, burst,
+  wrongWrites, overwrites, meddles, slotsTouched, marqueeLeads, spread, focus,
+  homeQuadrantFills, span, brokeStall; extra columns are ignored) and
+  `room.stallSeconds`.
+- `then.titles` is the full award array, ordered by ladder rank, at most one entry per
+  solver and per key, `evidence` a number or `null`. The ladder is the fixed TITLES.md
+  v1 table (a future engine constant, never a parameter); the walk, the gates, the two
+  tiers, the solo rule, "tie by fills", and the universal tie-break (earlier `firstFill`
+  by `(at, seq)`, zero-fill sorts last, final tie ascending ASCII userId, INV-1) are all
+  exercised by name in the case intents, so coverage is greppable.
+- Constants cited by the cases, never inlined (TITLES.md): `OPENING_SHARE = 0.2`,
+  `BURST_WINDOW_MS = 30000` (shared with momentum), `STALL_FLOOR_SECONDS = 120`,
+  `SABOTEUR_MIN = 3`, `BULLSEYE_MIN_FILLS = 5`, `SPRINTER_MIN_BURST = 4`,
+  `MEDDLER_MIN = 2`, `MARQUEE_MIN_LENGTH = 7`.
+- The reference pair: the last `titleStats` case (the 5x5 reference solve) and the last
+  `awardTitles` case (the reference walk) share one sheet byte for byte, so an
+  implementer can debug the whole pipeline end to end against a single narrative.
+
 ## Why a separate family, not under `v1/`
 
 `vectors/v1/` is a closed registry whose runner throws on an unrecognized family. These pin
@@ -97,7 +171,9 @@ Every output carries userIds, cell indices, and numbers only, never a solution v
 repo-and-server-only and never shipped to a client (as `vectors/first-correct/README.md` notes
 for its own grids). `momentum`, `moments`, and `solveSequence` take a valueless trace, so their
 fixtures never even name a solution, and `solveSequence` drops the `userId` too: its output is
-cells and times only.
+cells and times only. The titles reducers keep the same discipline: the stat sheet and the
+award array carry userIds, keys, and counts only, never a letter (`titles.json`'s
+`given.solution` is repo-and-server-only ground, like `solve-trace.json`'s).
 
 ## Layout
 
@@ -108,10 +184,11 @@ vectors/
     momentum.json      bucketing and peak-normalization of the tempo samples (N = 40)
     moments.json       first / last by at (seq tie-break), and the largest-gap turning point
     sequence.json      the ordered who-fell-when: each cell with atSeconds, sorted by (at, seq)
+    titles.json        the solver-titles stat sheet and award ladder (two clusters, one per reducer)
 ```
 
 One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (matches `v1/`,
-`first-correct/`).
+`first-correct/`). `titles.json` alone holds two clusters keyed by reducer (above).
 
 ## Case shape
 
@@ -126,4 +203,6 @@ One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (
 
 `solve-trace.json` cases carry `given.solution` and `given.events`; `momentum.json`,
 `moments.json`, and `sequence.json` cases carry `given.trace`. All times in `given` are epoch ms;
-all reported times in `then` are relative seconds.
+all reported times in `then` are relative seconds. `titles.json` differs as its section
+documents: its stat-sheet `then` carries raw `{ at, seq }` ordering keys plus floored
+whole-second spans, never relative fractional seconds.
