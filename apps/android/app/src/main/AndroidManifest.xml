@@ -42,6 +42,48 @@
                     android:host="auth"
                     android:path="/callback" />
             </intent-filter>
+            <!-- The custom-scheme invite route (iOS CrossyApp.onOpenURL crossy://game/<id>?code=):
+                 the web invite gate's "Open in the Crossy app" button, for taps that never became an
+                 App Link. DeepLinkRouter digests it through the same InviteScan the QR and paste
+                 paths use, so the join flow honors it identically. Host pinned to `game` so the auth
+                 lanes above are untouched; App Links (the https invite shapes /g/<code>, /<code>)
+                 stay owner-gated (PARITY.md) and are not registered here. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="game" />
+            </intent-filter>
+            <!-- The magic-link confirm route (roadmap I3b; iOS AuthConfirmLink /auth/confirm): a
+                 Supabase email link carrying token_hash + type. AuthConfirm parses the crossy-scheme
+                 shape registered here (host `auth`, path `/confirm`, distinct from /callback above)
+                 into completeMagicLink. Pointing Supabase's email template at the crossy scheme is
+                 the OWNER's server-side switch; until then the link stays https. AuthConfirm ALSO
+                 parses that https /auth/confirm shape, so the day App Links land (owner-gated
+                 verification, PARITY.md) the same parser drops in with no change and the https
+                 filter joins the invite App Links then. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="auth"
+                    android:path="/confirm" />
+            </intent-filter>
+            <!-- The Safari/Chrome "Play in Crossy" hand-off (iOS crossy://play/<puzzleId>): holds a
+                 PendingPlay for the Puzzles tab to open. Registered now; the navigation into the
+                 Puzzles library is a sibling's tab work (the seam is named in CrossyApp). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="play" />
+            </intent-filter>
         </activity>
     </application>
 

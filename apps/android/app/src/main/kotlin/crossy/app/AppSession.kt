@@ -151,6 +151,21 @@ class AppSession(
         return true
     }
 
+    /** Complete a magic link by its `token_hash` (roadmap I3b): the deep-link twin of
+     *  [verifyEmailOtp]. Same shape once the link-verify grant lands: the bearer speaks for the
+     *  session and the self id is seeded, so the shell routes on the phase alone. AuthSession
+     *  rethrows a bad or expired link; a false return means the machine did not reach SIGNED_IN
+     *  (including the no-op when a sign-in is already in flight, the honest outcome). No pending
+     *  verifier to persist the way OAuth does: the token_hash rides the URL itself, so nothing is
+     *  staged before the redirect and [AuthSession.completeMagicLink]'s own persist is enough. */
+    suspend fun completeMagicLink(tokenHash: String, type: String): Boolean {
+        auth.completeMagicLink(tokenHash, type)
+        if (auth.phase != AuthPhase.SIGNED_IN) return false
+        bearer.delegate = auth
+        selfUserId = auth.userId
+        return true
+    }
+
     /** Drop the bearer and the local identity. The persisted store is wiped by the paired
      *  [AuthSession.signOut] (or purgeForAccountDeletion) that the sign-out path also runs: its
      *  purge nulls the in-memory session and clears every store slot in one step, so the persisted

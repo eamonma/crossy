@@ -64,11 +64,15 @@ fun JoinCodeScreen(
     onJoin: (String) -> Unit,
     onBack: () -> Unit,
     scanState: JoinScanState = JoinScanState.NONE,
+    // A code an invite deep link prefills (iOS deepLinkPrefill): the field opens carrying it so the
+    // join is one tap away, no retype. Sanitized through the same alphabet as typing (INV-1); empty
+    // for a hand-tapped Join, the camera-first blank field as before.
+    initialCode: String = "",
     // The live camera view, built around this screen's ingest so a scanned payload takes exactly the
     // typed path. The composition root fills it with the CameraX preview; NONE never calls it.
     scanner: @Composable ((String) -> Unit) -> Unit = {},
 ) {
-    var code by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf(InviteCode.sanitize(initialCode)) }
     // The last code a scan attempted: one attempt per scanned code, so a QR lingering in front of the
     // lens never hammers the join call with a retry loop (iOS scannedAttempt). A fresh code supersedes.
     var scannedAttempt by remember { mutableStateOf<String?>(null) }

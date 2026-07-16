@@ -87,7 +87,9 @@ private sealed interface Screen {
     data class Onboarding(val prefill: String) : Screen
     data object Rooms : Screen
     data object Settings : Screen
-    data object Join : Screen
+    // prefill carries an invite deep link's code (empty for a hand-tapped Join): the field opens
+    // with it so the join is one tap away (iOS honorPendingInvite's deepLinkPrefill).
+    data class Join(val prefill: String = "") : Screen
     data object Create : Screen
     // wsUrl null = no live socket (the demo room): the room runs on the scripted transport.
     // inviteCode null = nothing to share (the demo room carries no code).
@@ -122,7 +124,12 @@ private fun GameView.seedRoster(): List<Participant> =
     }
 
 @Composable
-fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAuthRedirects) {
+fun CrossyApp(
+    session: AppSession,
+    factory: RoomTransportFactory,
+    redirects: OAuthRedirects,
+    pendingLinks: PendingLinks = PendingLinks(),
+) {
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
     // A cold start with a restored session (MainActivity called session.restore()) skips SignIn and
     // opens at the Arrival gate, which loads /me and routes on to Rooms; a signed-out start begins at
@@ -137,6 +144,44 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
     // and threaded to the room's send fan. Held here rather than in the room so a Settings edit is
     // reflected the NEXT time a room is entered (live mid-room propagation is not required).
     var reactionSet by remember { mutableStateOf<List<String>?>(null) }
+
+    // --- Deep-link honoring (parity-deeplinks): three self-contained blocks that consume the
+    // PendingLinks slots MainActivity's router fills. Kept narrow and top-level so the tab-shell
+    // restructuring landing this wave can reconcile them; nothing here reaches into a screen.
+
+    // The magic link (roadmap I3b): complete it against the session, then route on the phase exactly
+    // as a sign-in does (SignInHost.onSignedIn -> Arrival). One stable effect collecting the slot,
+    // never keyed on the value: consume() nulls the observed state, and a keyed effect would restart
+    // and cancel its own in-flight verify (the OAuthRedirects shape). Never logs the token (type-only
+    // logging, the standing policy). A failed or expired link is swallowed: SignIn already shows its
+    // plain retry for that phase, so a second surface would only double the message (iOS
+    // completePendingMagicLink).
+    LaunchedEffect(pendingLinks) {
+        snapshotFlow { pendingLinks.magicLink }.filterNotNull().collect { link ->
+            pendingLinks.consumeMagicLink(link)
+            val ok = runCatching { session.completeMagicLink(link.tokenHash, link.type) }
+                .getOrDefault(false)
+            if (ok) screen = Screen.Arrival
+        }
+    }
+
+    // The invite (iOS honorPendingInvite): held until signed-in AND arrived (Rooms is the arrived
+    // home here), then it opens the Join flow prefilled so the code is one tap from joining. Gating
+    // on Rooms keeps it from disrupting an active room, a create flow, or the sign-in/onboarding
+    // gates; it simply waits there and honors the moment Rooms is reached (the held-invite promise).
+    LaunchedEffect(pendingLinks) {
+        snapshotFlow { pendingLinks.invite to (screen == Screen.Rooms) }.collect { (invite, atRooms) ->
+            if (invite != null && atRooms) {
+                pendingLinks.consumeInvite(invite)
+                screen = Screen.Join(prefill = invite.code)
+            }
+        }
+    }
+
+    // The play hand-off (crossy://play/<puzzleId>): the seam is deliberately unwired. MainActivity
+    // holds it in pendingLinks.play; the Puzzles tab a sibling is building this wave consumes it
+    // (pendingLinks.play / consumePlay) and scrolls to that card. Wiring navigation into a Puzzles
+    // screen that does not exist yet would be a guess, so it waits here, named and held.
 
     CrossyShell(ground) {
         when (val s = screen) {
@@ -167,7 +212,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
                 session = session,
                 ground = ground,
                 onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
-                onJoin = { screen = Screen.Join },
+                onJoin = { screen = Screen.Join() },
                 onCreate = { screen = Screen.Create },
                 onOpenDemo = { screen = Screen.Room(RoomScripts.demoPuzzle, "Demo room", demo = true) },
                 onOpenSettings = { screen = Screen.Settings },
@@ -186,8 +231,9 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
                 onReactionSetChanged = { reactionSet = it },
             )
 
-            Screen.Join -> JoinHost(
+            is Screen.Join -> JoinHost(
                 session = session,
+                prefill = s.prefill,
                 onBack = { screen = Screen.Rooms },
                 onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
             )
@@ -582,7 +628,7 @@ private suspend fun submitDisplayName(session: AppSession, name: String): Displa
     }
 
 @Composable
-private fun JoinHost(session: AppSession, onBack: () -> Unit, onJoined: (GameView) -> Unit) {
+private fun JoinHost(session: AppSession, prefill: String = "", onBack: () -> Unit, onJoined: (GameView) -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -594,6 +640,8 @@ private fun JoinHost(session: AppSession, onBack: () -> Unit, onJoined: (GameVie
     JoinCodeScreen(
         isBusy = busy,
         error = error,
+        // An invite deep link's code, prefilled so the join is one tap away (iOS deepLinkPrefill).
+        initialCode = prefill,
         onJoin = { code ->
             scope.launch {
                 busy = true
