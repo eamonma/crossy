@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The themed-icon layer (Android 13+): the framed lattice and squares as one silhouette the system
+     tints. Same geometry as the foreground; the bone cells are transparent (they take the themed
+     background tint) and every ruled or filled cell is opaque (the themed foreground tint). The accent
+     flattens into the silhouette here, exactly as the iOS tinted variant renders it as one tone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:strokeColor="#1D1B18"
+        android:strokeWidth="1.0"
+        android:pathData="M18,18V90 M32.4,18V90 M46.8,18V90 M61.2,18V90 M75.6,18V90 M90,18V90 M18,18H90 M18,32.4H90 M18,46.8H90 M18,61.2H90 M18,75.6H90 M18,90H90" />
+    <path
+        android:fillColor="#1D1B18"
+        android:pathData="M32.4,18h14.4v14.4h-14.4z M18,32.4h14.4v14.4h-14.4z M61.2,32.4h14.4v14.4h-14.4z M46.8,46.8h14.4v14.4h-14.4z M32.4,61.2h14.4v14.4h-14.4z M75.6,61.2h14.4v14.4h-14.4z M61.2,75.6h14.4v14.4h-14.4z M61.2,61.2h14.4v14.4h-14.4z" />
+</vector>

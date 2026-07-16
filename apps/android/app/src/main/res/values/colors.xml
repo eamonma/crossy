@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The ground the launch window and Activity shell wear before Compose paints. Studio (light) here,
+     Observatory (dark) in values-night, so the pre-Compose frame never flashes the framework white
+     in either mode (apps/ios/DESIGN.md §5, ID-3: ground follows system appearance). These are the
+     window-chrome twins of :design's Ground tokens; the board itself is drawn from the tokens in :ui. -->
+<resources>
+    <!-- Studio (light) canvas: bone paper (apps/ios/DESIGN.md §5 table). -->
+    <color name="crossy_ground">#F2F1EC</color>
+</resources>

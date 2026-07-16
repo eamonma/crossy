@@ -7,7 +7,9 @@
          (10.0.2.2:8790-8792). A release variant pins https and drops this (a later track). -->
     <application
         android:label="@string/app_name"
-        android:theme="@style/Theme.Crossy"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Crossy.Splash"
         android:usesCleartextTraffic="true"
         android:supportsRtl="true">
         <!-- singleTask so the OAuth redirect re-enters the standing activity: the Custom Tab's

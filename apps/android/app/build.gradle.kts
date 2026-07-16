@@ -95,6 +95,9 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    // The launch window: androidx core-splashscreen installs the ground-colored splash and hands off
+    // to Compose (MainActivity.installSplashScreen). Backports the API below 31, so minSdk 29 is fine.
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.kotlinx.coroutines.core)
     // The OAuth browser leg (Custom Tabs) and the resume-without-redirect busy clear live in the
     // composition root: browsers, intents, and lifecycles are :app concerns, never :ui's (AAD-2).

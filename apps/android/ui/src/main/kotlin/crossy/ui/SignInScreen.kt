@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -280,6 +281,9 @@ private fun CodeEntry(
         label = { Text("Code") },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        // Tabular figures so the fixed-length code does not shuffle width as digits land
+        // (TypeScale.numericChromeRequiresTabularNumerals; apps/ios/DESIGN.md §6, invite codes).
+        textStyle = LocalTextStyle.current.withTabularNumerals(),
         modifier = Modifier.fillMaxWidth(),
     )
     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
@@ -295,7 +299,14 @@ private fun CodeEntry(
         },
         enabled = !isBusy && secondsLeft == 0,
         modifier = Modifier.fillMaxWidth(),
-    ) { Text(if (secondsLeft > 0) "Resend code in ${secondsLeft}s" else "Resend code") }
+    ) {
+        // Tabular figures so the ticking countdown holds its width in the two-digit range
+        // (TypeScale.numericChromeRequiresTabularNumerals; apps/ios/DESIGN.md §6).
+        Text(
+            if (secondsLeft > 0) "Resend code in ${secondsLeft}s" else "Resend code",
+            style = LocalTextStyle.current.withTabularNumerals(),
+        )
+    }
     TextButton(
         onClick = onUseDifferentEmail,
         enabled = !isBusy,
