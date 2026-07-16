@@ -42,6 +42,9 @@ fun SettingsScreen(
     onSave: () -> Unit,
     onSignOut: () -> Unit,
     onBack: () -> Unit,
+    // The personal reaction set editor (Wave 8.5; D25), or null when the composition supplies none
+    // (a pre-8.5 host): the Reactions section then does not render at all.
+    reactions: ReactionSetEditorModel? = null,
 ) {
     Scaffold { inner ->
         Column(
@@ -81,6 +84,11 @@ fun SettingsScreen(
                     saved = saved,
                     onSave = onSave,
                 )
+            }
+
+            if (reactions != null) {
+                HorizontalDivider()
+                ReactionSetSection(model = reactions)
             }
 
             HorizontalDivider()

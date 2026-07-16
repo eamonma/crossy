@@ -47,6 +47,11 @@ fun RoomScreen(
     // The room's share intent, or null when there is no code to share (the demo room). The
     // composition root builds the short link and fires the system share sheet (RoomBar surfaces it).
     onShare: (() -> Unit)? = null,
+    // The holder's personal reaction set (Wave 8.5; D25): the five the send fan offers, sourced from
+    // GET /me's reactionSet (null -> the defaults) and threaded by the composition root. Read at
+    // composition, so a Settings edit reaches the fan the next time a room is entered (live mid-room
+    // propagation is not required). Defaults to the protocol five for the demo room and previews.
+    reactionEmojis: List<String> = ReactionPolicy.defaultSet,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -167,6 +172,7 @@ fun RoomScreen(
             ReactionFan(
                 onPick = { fireReaction(it) },
                 ground = ground,
+                emojis = reactionEmojis,
                 enabled = render.sync != SyncState.CONNECTING,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
             )
