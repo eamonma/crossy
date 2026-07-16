@@ -73,4 +73,43 @@ class InputActionsTests {
     fun `a tap out of range returns null`() {
         assertNull(InputActions.tap(env(0, across = true), 999))
     }
+
+    // The input layer carries the navigation prefs, axis change included (personal-settings slice
+    // 1). The vector 5x4 (blocks 2, 6, 13); row 3 (cells 15..19) is one full across word.
+    private val prefsGeom = BoardNavigation.Geometry(cols = 5, rows = 4, blocks = setOf(2, 6, 13))
+
+    private fun prefsEnv(from: Int, filled: Set<Int>, prefs: BoardNavigation.NavigationPrefs) =
+        InputEnv(prefsGeom, filled, GridSelection(from, isAcross = true), frozen = false, navigationPrefs = prefs)
+
+    @Test
+    fun `a letter honors skip-off advancing to the next cell regardless of fill`() {
+        // 16 filled, skip-off: the letter lands on the very next cell 16.
+        val prefs = BoardNavigation.NavigationPrefs(skipFilledInWord = false, endOfWord = BoardNavigation.EndOfWord.FIRST_BLANK)
+        val effect = InputActions.letter(prefsEnv(15, setOf(16), prefs), 'a')
+        assertEquals(GridSelection(16, isAcross = true), effect.selection)
+        assertEquals(listOf<GridMutation>(GridMutation.Place(15, "A")), effect.mutations)
+    }
+
+    @Test
+    fun `a letter with next-clue completing a word crosses to the next clue and its axis`() {
+        // Row 3 has one blank (19) left; typing it completes the word. next-clue leaves for the Tab
+        // target and the effect adopts that clue's axis, so the axis is not pinned to the typed cell.
+        val before = setOf(15, 16, 17, 18)
+        val prefs = BoardNavigation.NavigationPrefs(skipFilledInWord = true, endOfWord = BoardNavigation.EndOfWord.NEXT_CLUE)
+        val effect = InputActions.letter(prefsEnv(19, before, prefs), 'a')
+        val tab = BoardNavigation.tabTarget(prefsGeom, isAcross = true, from = 19, forward = true, filled = before + 19)
+        assertEquals(tab.cell, effect.selection.cell)
+        assertEquals(tab.isAcross, effect.selection.isAcross)
+        assertEquals(listOf<GridMutation>(GridMutation.Place(19, "A")), effect.mutations)
+    }
+
+    @Test
+    fun `a letter with default prefs matches the bare typing op no behavior change`() {
+        // With the default env prefs, the letter path is the pre-slice op, so a person who never
+        // opens Settings sees zero change.
+        val before = setOf(16, 18)
+        val effect = InputActions.letter(prefsEnv(15, before, BoardNavigation.NavigationPrefs.DEFAULT), 'a')
+        assertEquals(BoardNavigation.typingAdvance(prefsGeom, isAcross = true, from = 15, filled = before + 15), effect.selection.cell)
+        assertEquals(true, effect.selection.isAcross)
+    }
 }

@@ -3,8 +3,9 @@
 // move goes through BoardNavigation, the store ring's facade over the engine's navigation ops
 // (the module graph keeps :engine out of :ui's direct imports), so the input layer cannot drift
 // from the navigation vectors. Mutations are intents for the store's command path
-// (GameStore.placeLetter / clearCell); nothing here touches a store. The Kotlin BoardNavigation
-// has no pref-aware typingAdvance yet, so this facade drives exactly the ops it ships.
+// (GameStore.placeLetter / clearCell); nothing here touches a store. The typing advance carries
+// the person's navigation prefs (personal-settings slice 1); `.DEFAULT` reproduces the pre-slice
+// behavior exactly, so callers that never set them are unchanged and the navigation vectors hold.
 
 package crossy.ui
 
@@ -31,8 +32,10 @@ data class InputEffect(val selection: GridSelection, val mutations: List<GridMut
 
 /**
  * Everything an input transform reads: geometry, the INV-10 rendered fill set (sequenced state
- * painted with the overlay), the cursor, and the terminal freeze. `frozen` is true after completed
- * or abandoned: navigation stays live, mutation freezes locally and never reaches the wire.
+ * painted with the overlay), the cursor, the terminal freeze, and the per-device navigation prefs
+ * (personal-settings slice 1). `frozen` is true after completed or abandoned: navigation stays
+ * live, mutation freezes locally and never reaches the wire. `navigationPrefs` defaults to the
+ * pre-slice behavior, so callers that never set them are unchanged and the navigation vectors hold.
  */
 data class InputEnv(
     val geometry: BoardNavigation.Geometry,
@@ -40,6 +43,9 @@ data class InputEnv(
     val filled: Set<Int>,
     val selection: GridSelection,
     val frozen: Boolean,
+    /** The person's typing-advance settings, per device and client-local; `.DEFAULT` reproduces
+     *  the pre-slice behavior exactly. */
+    val navigationPrefs: BoardNavigation.NavigationPrefs = BoardNavigation.NavigationPrefs.DEFAULT,
 )
 
 object InputActions {
@@ -107,9 +113,13 @@ object InputActions {
     private fun place(env: InputEnv, value: String): InputEffect {
         if (env.frozen) return refused(env)
         val filledAfter = env.filled + env.selection.cell
-        val next = BoardNavigation.typingAdvance(env.geometry, env.selection.isAcross, env.selection.cell, filledAfter)
+        // The pref-aware advance carries the person's skip-filled and end-of-word choices (slice 1).
+        // The end-of-word `.NEXT_CLUE` move may cross the across/down axis, so the landing axis rides
+        // back with the cell rather than being pinned here.
+        val next = BoardNavigation.typingAdvance(
+            env.geometry, env.selection.isAcross, env.selection.cell, filledAfter, env.navigationPrefs)
         return InputEffect(
-            selection = GridSelection(next, env.selection.isAcross),
+            selection = GridSelection(next.cell, next.isAcross),
             mutations = listOf(GridMutation.Place(env.selection.cell, value)),
         )
     }
