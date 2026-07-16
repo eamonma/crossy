@@ -11,6 +11,8 @@ package crossy.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -28,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -106,6 +109,9 @@ fun SignInScreen(
     onSendCode: (email: String) -> Unit = {},
     onResendCode: () -> Unit = {},
     onVerifyCode: (code: String) -> Unit = {},
+    // Open a legal page in a Custom Tab (the composition root owns the browser leg, AAD-2). The quiet
+    // privacy/terms footer at the screen's foot (iOS WelcomeScreen legalFooter, App Review 5.1.1).
+    onOpenLegal: (LegalPage) -> Unit = {},
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -143,6 +149,29 @@ fun SignInScreen(
                 onResend = onResendCode,
                 onUseDifferentEmail = onEmailStep,
             )
+        }
+
+        Spacer(Modifier.weight(1f))
+        LegalFooter(onOpenLegal)
+    }
+}
+
+/** The quiet legal footer standing at the screen's foot: privacy and terms, each opening its live
+ *  page in a Custom Tab (App Review 5.1.1: sign-in surfaces name the policy). Twin of iOS
+ *  WelcomeScreen.legalFooter. */
+@Composable
+private fun LegalFooter(onOpenLegal: (LegalPage) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = { onOpenLegal(LegalPage.PRIVACY) }) {
+            Text("Privacy", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(" · ", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { onOpenLegal(LegalPage.TERMS) }) {
+            Text("Terms", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

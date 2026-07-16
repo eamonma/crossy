@@ -12,6 +12,7 @@
 
 package crossy.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,16 +39,39 @@ fun DisplayNameOnboardingScreen(
     // The resolved inline error (from displayNameErrorCopy), or null when there is nothing to show.
     errorMessage: String?,
     onSubmit: () -> Unit,
+    // The self identity behind the live puck preview (iOS DisplayNameOnboardingSheet shows one in the
+    // gate): the roster color comes from the id, the initial recomputes as the person types, and the
+    // avatar layers when it has resolved. A blank userId (a preview) just shows a plain circle.
+    userId: String = "",
+    avatar: ImageBitmap? = null,
 ) {
+    val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Choose a display name", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Text(
+            "Choose a display name",
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.fillMaxWidth(),
+        )
         Text(
             "This is how you'll show up to everyone in a room. You can change it later in Settings.",
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        // The live puck: its initial follows the draft as it is typed (iOS's live preview), the whole
+        // point of showing one in the gate.
+        RosterPuck(
+            userId = userId,
+            displayName = draft,
+            ground = ground,
+            diameter = 64.dp,
+            avatar = avatar,
         )
 
         OutlinedTextField(

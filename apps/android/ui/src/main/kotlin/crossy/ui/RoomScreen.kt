@@ -62,6 +62,10 @@ fun RoomScreen(
     // room bar counts it down while the weather is reconnecting; a stale value left after the socket
     // returns live is never rendered (the chip gates on sync), so no clear step is needed.
     reconnectRetryAt: Long? = null,
+    // The person's typing-advance settings (personal-settings slice 1), threaded by the composition
+    // root from the persisted NavigationSettingsStore. DEFAULT reproduces the pre-slice behavior
+    // exactly, so the demo room and previews (which pass nothing) diverge from no navigation vector.
+    navigationPrefs: BoardNavigation.NavigationPrefs = BoardNavigation.NavigationPrefs.DEFAULT,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -69,10 +73,6 @@ fun RoomScreen(
     val geometry = remember(puzzle) { GridGeometry.from(puzzle) }
     val navGeom = remember(geometry) { BoardNavigation.Geometry(geometry.cols, geometry.rows, geometry.blocks) }
     var selection by remember(puzzle) { mutableStateOf(InputActions.initialSelection(navGeom)) }
-    // The person's typing-advance settings (personal-settings slice 1). The Settings UI for prefs is
-    // a later track (iOS's NavigationSettingsStore), so the room threads the pre-slice default for
-    // now: one obvious seam for the store-backed prefs to arrive through.
-    val navigationPrefs = BoardNavigation.NavigationPrefs.DEFAULT
     // The inline rebus entry in flight; null when rebus mode is off (iOS SelectionModel.rebusBuffer).
     // Moving the cursor away (a tap or a clue step) discards an open entry, exactly as iOS does.
     var rebusBuffer by remember(puzzle) { mutableStateOf<String?>(null) }
