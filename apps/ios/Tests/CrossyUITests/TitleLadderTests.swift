@@ -17,17 +17,19 @@ final class TitleLadderTests: XCTestCase {
         TitleLadder.card(for: RoomTitle(userId: userId, key: key, evidence: evidence))
     }
 
-    // MARK: - Coverage (the pinned v1 ladder)
+    // MARK: - Coverage (the pinned ladder)
 
-    func test_ladderCoversExactlyTheFifteenPinnedKeys_inLadderRankOrder() {
+    func test_ladderCoversExactlyTheSixteenPinnedKeys_inLadderRankOrder() {
         // The TITLES.md ladder table, rank order: exactly the engine TITLE_LADDER's
-        // keys, no more, no fewer. A ladder edit lands here as a failing diff.
+        // keys, no more, no fewer (v1's fifteen plus the D29 fast-follow's marathoner
+        // at rank 8). A ladder edit lands here as a failing diff.
         XCTAssertEqual(
             TitleLadder.keys,
             [
                 "saboteur", "one-hit-wonder", "ice-breaker", "bullseye", "headliner",
-                "sprinter", "meddler", "quick-starter", "closer", "specialist",
-                "long-hauler", "wanderer", "scribbler", "collector", "workhorse",
+                "sprinter", "meddler", "marathoner", "quick-starter", "closer",
+                "specialist", "long-hauler", "wanderer", "scribbler", "collector",
+                "workhorse",
             ])
         for key in TitleLadder.keys {
             // Every pinned key resolves to a card with a non-empty label, and an
@@ -52,6 +54,7 @@ final class TitleLadderTests: XCTestCase {
             ("headliner", 3, "The headliner", "Led 3 of the long ones"),
             ("sprinter", 9, "The sprinter", "9 squares in 30 seconds"),
             ("meddler", 2, "The meddler", "Finished 2 words others started"),
+            ("marathoner", 3, "The marathoner", "Showed up for all 3 sittings"),
             ("quick-starter", 8, "The quick starter", "8 squares in the opening stretch"),
             ("closer", 5, "The closer", "5 squares in the closing stretch"),
             ("specialist", 11, "The specialist", "Kept to one corner, 11 squares"),
@@ -79,6 +82,10 @@ final class TitleLadderTests: XCTestCase {
         XCTAssertEqual(card("meddler", 2)?.detail, "Finished 2 words others started")
         XCTAssertEqual(card("workhorse", 1)?.detail, "1 square filled")
         XCTAssertEqual(card("saboteur", 1)?.detail, "Overwrote 1 correct square")
+        // The marathoner's evidence is the sitting count, floored at 2 by its gate
+        // (TITLES.md rank 8), so the plural branch is the only one the wire can reach.
+        XCTAssertEqual(card("marathoner", 2)?.detail, "Showed up for both sittings")
+        XCTAssertEqual(card("marathoner", 5)?.detail, "Showed up for all 5 sittings")
     }
 
     func test_wholeSecondsRungsRenderMSS_iceBreakerStallAndLongHaulerSpan() {
@@ -111,14 +118,15 @@ final class TitleLadderTests: XCTestCase {
     // MARK: - Forward compatibility (PROTOCOL §12: a client MUST ignore an unknown key)
 
     func test_unknownTitleKeyResolvesToNoCard_protocolSection12MustIgnore() {
-        // A newer server's ladder grew (say, the deferred marathoner): the older client
-        // drops the award and keeps the rest, never a crash and never a placeholder.
-        XCTAssertNil(card("marathoner", 5))
+        // A newer server's ladder grew (as it did with marathoner, once this test's own
+        // unknown example): the older client drops the award and keeps the rest, never
+        // a crash and never a placeholder.
+        XCTAssertNil(card("night-owl", 5))
         XCTAssertNil(card("not-a-title", nil))
         XCTAssertNil(card("", 1))
         // The panel's exact derivation: compactMap keeps the known awards in wire order.
         let titles = [
-            RoomTitle(userId: "u-mara", key: "marathoner", evidence: 5),
+            RoomTitle(userId: "u-noor", key: "night-owl", evidence: 5),
             RoomTitle(userId: "me", key: "workhorse", evidence: 12),
             RoomTitle(userId: "u-jia", key: "not-a-title", evidence: nil),
         ]

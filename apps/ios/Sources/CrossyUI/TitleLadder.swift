@@ -33,11 +33,12 @@ public struct TitleCard: Equatable, Sendable {
     }
 }
 
-/// The pinned v1 ladder's display copy, keyed by the wire's title keys.
+/// The pinned ladder's display copy, keyed by the wire's title keys.
 public enum TitleLadder {
-    /// The pinned v1 keys, in ladder rank order (the TITLES.md ladder table; exactly
-    /// the engine TITLE_LADDER's keys). The wire already orders titles by rank, so this
-    /// list exists to pin the display table's coverage, not to sort.
+    /// The pinned keys, in ladder rank order (the TITLES.md ladder table; exactly the
+    /// engine TITLE_LADDER's keys — v1's fifteen plus the D29 fast-follow's marathoner
+    /// at rank 8). The wire already orders titles by rank, so this list exists to pin
+    /// the display table's coverage, not to sort.
     public static let keys: [String] = [
         "saboteur",
         "one-hit-wonder",
@@ -46,6 +47,7 @@ public enum TitleLadder {
         "headliner",
         "sprinter",
         "meddler",
+        "marathoner",
         "quick-starter",
         "closer",
         "specialist",
@@ -68,7 +70,10 @@ public enum TitleLadder {
             // Evidence: none (the rung cites nothing); the copy is the whole claim.
             copy = ("The one-hit wonder", "One square, flawlessly chosen")
         case "ice-breaker":
-            // Evidence: the room's stall in whole seconds, read as a duration.
+            // Evidence: the room's stall in whole seconds, read as a duration. The D29
+            // revisit re-based the stall onto within-sitting active time (TITLES.md, the
+            // wrinkle retired), so the silence is one the room actually sat through; the
+            // copy already read that way and did not move.
             copy = ("The ice breaker", e.map { "Ended the room's \(formatMSS($0)) silence" })
         case "bullseye":
             copy = ("The bullseye", e.map { "\(counted($0, "square")), none wrong" })
@@ -82,6 +87,14 @@ public enum TitleLadder {
             copy = ("The sprinter", e.map { "\(counted($0, "square")) in 30 seconds" })
         case "meddler":
             copy = ("The meddler", e.map { "Finished \(counted($0, "word")) others started" })
+        case "marathoner":
+            // Evidence: the room's sitting count, floored at 2 by the gate (the rung is
+            // silent in a one-sitting room). "Both" keeps the common two-sitting card
+            // reading like English; web renders the same strings.
+            copy = (
+                "The marathoner",
+                e.map { $0 == 2 ? "Showed up for both sittings" : "Showed up for all \($0) sittings" }
+            )
         case "quick-starter":
             copy = ("The quick starter", e.map { "\(counted($0, "square")) in the opening stretch" })
         case "closer":
