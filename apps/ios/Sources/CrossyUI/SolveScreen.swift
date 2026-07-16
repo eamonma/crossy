@@ -694,6 +694,9 @@ public struct SolveScreen: View {
                 // recesses toward paper. One truth on CompletionModel, read by
                 // the legend rows and this draw pass alike.
                 mosaicIsolation: completion.isolation,
+                // The approved directional loupe belongs only to the settled completed board's
+                // Analysis reading. The Clues tab keeps the established frozen paper treatment.
+                showsWordLoupe: analysisResting && completion.mosaicSettled,
                 // The BOARD's standing occlusion is constant-built (DESIGN.md §2,
                 // SLICE C): the top inset is the room container's system-bar height
                 // (roomTopInset, read off the room's own container), never the
