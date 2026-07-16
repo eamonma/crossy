@@ -12,11 +12,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +33,8 @@ import crossy.protocol.GameStatus
 import crossy.store.BoardNavigation
 import crossy.store.GameStore
 import crossy.store.RenderModel
+import crossy.store.SyncState
+import kotlinx.coroutines.delay
 
 @Composable
 fun RoomScreen(
@@ -62,6 +66,41 @@ fun RoomScreen(
         if (AttributionSwitches.colorInMotionEnabled) Presence.selfColor(render.participants, render.selfUserId, ground)
         else ground.tokens.ink
     val activeClue = remember(selection, puzzle) { activeClueOf(puzzle, selection) }
+
+    // Ephemeral reactions (PROTOCOL.md §9; D24): a transient sticker book held HERE beside the
+    // store, never inside it, so a snapshot or resync is provably unable to touch a sticker. The
+    // store fans inbound reactions out on `reactions`; the fan's local echo places its own sticker
+    // (the server never echoes a react). ReactionBook keeps the book a pure transform on an
+    // immutable list, so Compose observes every placement, coalesce, and sweep.
+    val reduceMotion = rememberReduceMotion()
+    var stickers by remember(puzzle) { mutableStateOf(emptyList<ReactionSticker>()) }
+    var reactionSentAt by remember(puzzle) { mutableStateOf(emptyList<Double>()) }
+
+    LaunchedEffect(store) {
+        store.reactions.collect { event ->
+            stickers = ReactionBook.place(stickers, event.userId, event.emoji, event.cell, reactionNow())
+        }
+    }
+    // The sweep (the FlashBook pattern): re-armed on every mutation, it sleeps to the soonest end,
+    // then retires everything past it; the layer's own exit fade already played by then.
+    LaunchedEffect(stickers) {
+        val next = ReactionBook.nextExpiry(stickers) ?: return@LaunchedEffect
+        val waitMs = ((next - reactionNow()) * 1000).toLong()
+        if (waitMs > 0) delay(waitMs + 20)
+        stickers = ReactionBook.sweep(stickers, reactionNow())
+    }
+
+    // Fire a reaction at the current cursor cell: the 5/s sliding-window cap decides, an accepted
+    // send echoes locally at once (the server never echoes, §9) and goes to the wire. A capped
+    // attempt sends nothing and echoes nothing.
+    fun fireReaction(emoji: String) {
+        val self = render.selfUserId ?: return
+        val now = reactionNow()
+        if (!ReactionSendCap.allows(reactionSentAt, now)) return
+        reactionSentAt = ReactionSendCap.record(reactionSentAt, now)
+        stickers = ReactionBook.place(stickers, self, emoji, selection.cell, now)
+        store.react(emoji, selection.cell)
+    }
 
     // The input env is rebuilt per intent so it reads the latest filled set and freeze.
     fun env() = InputEnv(navGeom, filled, selection, frozen)
@@ -98,6 +137,25 @@ fun RoomScreen(
                         relayCursor(it)
                     }
                 },
+            )
+            // The sticker overlay ABOVE the grid, sized to it (same fillMaxWidth + aspectRatio, so
+            // one module edge governs both): reactions render at their cell as native emoji. It
+            // never hit-tests, so grid taps pass through untouched.
+            ReactionStickerLayer(
+                stickers = stickers,
+                geometry = geometry,
+                reduceMotion = reduceMotion,
+                modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
+            )
+            // The floating fan at the grid's trailing-bottom corner (near the clue bar's trailing
+            // corner). It is composed here, OUTSIDE the terminal deck retirement below, so it stays
+            // visible in any status (reactions are legal post-completion, §9). Gated only before the
+            // first welcome, where there is no cursor to aim at yet.
+            ReactionFan(
+                onPick = { fireReaction(it) },
+                ground = ground,
+                enabled = render.sync != SyncState.CONNECTING,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
             )
         }
         ClueBar(
