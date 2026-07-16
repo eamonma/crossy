@@ -43,6 +43,7 @@ import {
 import type {
   BoardState,
   Cell,
+  CheckPuzzle,
   Command,
   Direction,
   Grid,
@@ -59,6 +60,7 @@ const FAMILIES = [
   "comparator",
   "navigation",
   "completion",
+  "check",
   "client-store",
   "clue-runs",
 ] as const;
@@ -76,6 +78,7 @@ const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   comparator: runComparator,
   navigation: runNavigation,
   completion: runCompletion,
+  check: runCompletion,
   "client-store": null,
   "clue-runs": null,
 };
@@ -348,6 +351,26 @@ function completionShapeProblems(c: JsonObject): string[] {
 }
 
 /**
+ * Check cases share the completion shape (they need `given.solution` for the
+ * comparator) plus the room-check fields (PROTOCOL §10, vectors/README.md): `given`
+ * may carry standing `checkedWrong` marks and a `checkCount`, and a rejection follows
+ * the reducer convention (`then.error` a string when present).
+ */
+function checkShapeProblems(c: JsonObject): string[] {
+  const problems = completionShapeProblems(c);
+  if (isObject(c.given)) {
+    const g = c.given;
+    if (g.checkedWrong !== undefined && !isIntArray(g.checkedWrong))
+      problems.push("given.checkedWrong: int[] when present");
+    if (g.checkCount !== undefined && !isInt(g.checkCount))
+      problems.push("given.checkCount: integer when present");
+  }
+  if (isObject(c.then) && c.then.error !== undefined && !isString(c.then.error))
+    problems.push("then.error: string when present");
+  return problems;
+}
+
+/**
  * Client-store cases carry a store state (sequenced `seq` + `sync` + sparse `cells`
  * plus an `overlay`), a `when` sequence of local commands and server messages, and
  * the resulting `overlay`, `render`, `send`, `seq`, and `sync`. The encoding is
@@ -503,6 +526,7 @@ const shapeProblems: Record<Family, (c: JsonObject) => string[]> = {
   comparator: comparatorShapeProblems,
   navigation: navigationShapeProblems,
   completion: completionShapeProblems,
+  check: checkShapeProblems,
   "client-store": clientStoreShapeProblems,
   "clue-runs": clueRunsShapeProblems,
 };
@@ -545,11 +569,18 @@ function buildBoardState(given: JsonObject): BoardState {
         : (given.firstFillAt as string | null),
     cells,
     filledCount,
+    // Room-check fields (PROTOCOL §10): optional in `given`, defaulting to no marks
+    // and a zero count, so every pre-check reducer/completion case stays valid.
+    checkedWrong: new Set((given.checkedWrong as number[] | undefined) ?? []),
+    checkCount: (given.checkCount as number | undefined) ?? 0,
   };
 }
 
 /** A `when` entry (wire command plus server meta) is the engine command as plain data. */
-function asCommand(w: JsonObject): Command {
+function asCommand(w: JsonObject): Command | CheckPuzzle {
+  // checkPuzzle carries only commandId: no `by`, no `at` (PROTOCOL §6, D27).
+  if (w.type === "checkPuzzle")
+    return { type: "checkPuzzle", commandId: w.commandId as string };
   if (w.type === "placeLetter")
     return {
       type: "placeLetter",
@@ -579,6 +610,10 @@ function serializeState(state: BoardState): JsonObject {
     filledCount: state.filledCount,
     firstFillAt: state.firstFillAt,
     cells,
+    // Always emitted, ascending (PROTOCOL §10); cases predating the check leave both
+    // unasserted per the assertion rule.
+    checkedWrong: [...state.checkedWrong].sort((a, b) => a - b),
+    checkCount: state.checkCount,
   };
 }
 
@@ -617,7 +652,12 @@ function runReducer(c: JsonObject): void {
   const events: unknown[] = [];
   let error: string | undefined;
   for (const w of c.when as JsonObject[]) {
-    const result = reduce(state, asCommand(w));
+    const command = asCommand(w);
+    if (command.type === "checkPuzzle")
+      throw new Error(
+        "checkPuzzle belongs to the check family; the reducer never sees it (PROTOCOL §10)",
+      );
+    const result = reduce(state, command);
     state = result.state;
     for (const e of result.events) events.push(e);
     if (result.error !== undefined) error = result.error;
@@ -731,21 +771,26 @@ function buildSolution(given: JsonObject): Solution {
  * Completion runner: apply each command in mailbox order through the two-phase driver,
  * accumulating the full sequenced stream. Concurrency collapses to this total order
  * (PROTOCOL §10), and the level-triggered check re-runs on same-count overwrites
- * (DESIGN §3). A rejected trailing command emits nothing (INV-4).
+ * (DESIGN §3). A rejected trailing command emits nothing (INV-4). The check family
+ * binds here too: checkPuzzle routes through the same driver (PROTOCOL §10, D27), and
+ * the last error is tracked like runReducer's so rejection cases assert their code.
  */
 function runCompletion(c: JsonObject): void {
   const given = c.given as JsonObject;
   const solution = buildSolution(given);
   let state = buildBoardState(given);
   const events: unknown[] = [];
+  let error: string | undefined;
   for (const w of c.when as JsonObject[]) {
     const result = applyWithCompletion(state, asCommand(w), solution);
     state = result.state;
     for (const e of result.events) events.push(e);
+    if (result.error !== undefined) error = result.error;
   }
   const then = c.then as JsonObject;
   expectMatch(events, then.events, "then.events");
   expectMatch(serializeState(state), then.state, "then.state");
+  if ("error" in then) expect(error, "then.error").toBe(then.error);
 }
 
 interface VectorFile {
