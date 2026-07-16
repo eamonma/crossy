@@ -48,4 +48,10 @@ object GridModule {
     const val CURRENT_ALPHA: Float = 0.30f
     const val ACTIVE_WORD_ALPHA: Float = 0.13f
     const val TEAMMATE_ALPHA: Float = 0.10f
+
+    // The cross-reference wash (DESIGN.md §10 / D26): the cells of the clues the active clue names.
+    // A wash of cursorTint like the current/word tints, fainter than the active word and sitting
+    // just above it in precedence (CellFill.CROSS_REFERENCE), so where a referenced word crosses
+    // the active one the crossing cell reads as a reference. Twin of the iOS Paint.crossReferenceAlpha.
+    const val CROSS_REFERENCE_ALPHA: Float = 0.07f
 }
