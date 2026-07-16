@@ -1297,6 +1297,7 @@ function LiveGame({
           roomActions={{
             status: store.status,
             spectator: isSpectator,
+            sync: store.sync,
             emptyCount,
             checkCount: store.checkCount,
             onCheckPuzzle: requestCheck,

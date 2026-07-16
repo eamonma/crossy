@@ -395,7 +395,9 @@ struct RoomFactsSheet: View {
             Button("Check puzzle", action: onCheckPuzzle)
             Button("Keep solving", role: .cancel) {}
         } message: {
-            Text(verbatim: "Wrong letters get marked for the whole room.")
+            // Word-for-word the web dialog's body: the permanence disclosure (D27's
+            // permanent count) reaches every platform the same way.
+            Text(verbatim: "Wrong letters get marked for the whole room. This is recorded.")
         }
     }
 

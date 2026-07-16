@@ -23,6 +23,7 @@ import {
 } from "@radix-ui/react-icons";
 import { renderSVG } from "uqr";
 import type { GameStatus } from "@crossy/protocol";
+import type { SyncState } from "../store/gameStore";
 import { AvatarStack, CapsLabel } from "./primitives";
 import type { StackMember } from "./primitives";
 import { abandonGame, isHost, kickMember, partitionRoster } from "./roomAdmin";
@@ -72,6 +73,9 @@ export interface RoomActions {
   status: GameStatus;
   /** Spectators see neither row, so the whole trigger hides for them (design doc §5). */
   spectator: boolean;
+  /** The store's connection state: pre-first-welcome (`connecting`) the status above is
+   * only a placeholder, so the trigger waits for authoritative state. */
+  sync: SyncState;
   /** Empty playable cells by SEQUENCED state only (R9); 0 enables the check row. */
   emptyCount: number;
   /** The game's accepted checks so far, for the quiet "Checked N times" line (R10). */
@@ -756,7 +760,11 @@ export function GameToolbar({
             Room actions renders only while ongoing and never for spectators (R4, §5). */}
         {roomActions !== null &&
           roomActions !== undefined &&
-          showRoomActions(roomActions.status, roomActions.spectator) && (
+          showRoomActions(
+            roomActions.status,
+            roomActions.spectator,
+            roomActions.sync,
+          ) && (
             <RoomActionsPopover
               actions={roomActions}
               admin={admin}

@@ -24,16 +24,23 @@ function pending(cell: number, value: string | null = "A"): PendingCommand {
 
 describe("showRoomActions (R4: the popover renders only while ongoing)", () => {
   it("stands for a host or solver in an ongoing game", () => {
-    expect(showRoomActions("ongoing", false)).toBe(true);
+    expect(showRoomActions("ongoing", false, "live")).toBe(true);
   });
   it("hides once completed", () => {
-    expect(showRoomActions("completed", false)).toBe(false);
+    expect(showRoomActions("completed", false, "live")).toBe(false);
   });
   it("hides once abandoned: terminal means terminal, not completed (R4)", () => {
-    expect(showRoomActions("abandoned", false)).toBe(false);
+    expect(showRoomActions("abandoned", false, "live")).toBe(false);
   });
   it("hides from spectators, who see neither row (design doc §5)", () => {
-    expect(showRoomActions("ongoing", true)).toBe(false);
+    expect(showRoomActions("ongoing", true, "live")).toBe(false);
+  });
+  it("waits for the first welcome: pre-handshake `ongoing` is a placeholder, not a status", () => {
+    expect(showRoomActions("ongoing", false, "connecting")).toBe(false);
+  });
+  it("stands through resync and reconnect, which are real states of a known room", () => {
+    expect(showRoomActions("ongoing", false, "resyncing")).toBe(true);
+    expect(showRoomActions("ongoing", false, "reconnecting")).toBe(true);
   });
 });
 
