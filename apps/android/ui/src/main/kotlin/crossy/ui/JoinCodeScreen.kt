@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,7 +61,11 @@ enum class JoinScanState {
 @Composable
 fun JoinCodeScreen(
     isBusy: Boolean,
-    error: String?,
+    // The last join failure as one coded sentence (null = nothing to show). The composition root maps
+    // the §12 code through ArrivalFailure, so the raw exception never reaches this screen. A DENIED
+    // failure is final (isFinal): the screen retires the judged code and stops inviting a resubmit of
+    // it (mirrors iOS JoinCodeScreen.deadCode), never a dead end because the field still stands.
+    failure: ArrivalFailure?,
     onJoin: (String) -> Unit,
     onBack: () -> Unit,
     scanState: JoinScanState = JoinScanState.NONE,
@@ -76,25 +81,48 @@ fun JoinCodeScreen(
     // The last code a scan attempted: one attempt per scanned code, so a QR lingering in front of the
     // lens never hammers the join call with a retry loop (iOS scannedAttempt). A fresh code supersedes.
     var scannedAttempt by remember { mutableStateOf<String?>(null) }
+    // The code a final failure (DENIED) judged: resubmitting it is refusing to hear, so the Join button
+    // disables and a scan of it is swallowed until the code is edited away (iOS deadCode).
+    var deadCode by remember { mutableStateOf<String?>(null) }
+    // The code the last submit attempted, so an incoming final failure knows which code to retire.
+    var lastSubmitted by remember { mutableStateOf<String?>(null) }
+    // A fresh edit hides a stale sentence (unless the edit lands back on the dead code); a submit shows
+    // the next one. Mirrors iOS clearing `failure` on a non-dead edit.
+    var dismissed by remember { mutableStateOf(false) }
+
+    // A final failure retires the code it judged; the sentence keeps showing beneath the field.
+    LaunchedEffect(failure) {
+        if (failure?.isFinal == true) deadCode = lastSubmitted
+    }
+    val shownFailure = failure?.takeUnless { dismissed }
+
+    // Every submit path (a typed Join, a scan) records the attempted code and clears the dismissal, so
+    // the next failure shows and a final one retires the right code.
+    fun submit(attempt: String) {
+        dismissed = false
+        lastSubmitted = attempt
+        onJoin(attempt)
+    }
 
     // A scanned payload takes the typed path exactly: digest through InviteScan, fill the field,
-    // submit. One attempt per scanned code; a busy join swallows the scan (iOS ingest).
+    // submit. One attempt per scanned code, and never the dead code; a busy join swallows the scan
+    // (iOS ingest).
     fun ingest(payload: String) {
         if (isBusy) return
         val scanned = InviteScan.parse(payload) ?: return
-        if (scanned == scannedAttempt) return
+        if (scanned == scannedAttempt || scanned == deadCode) return
         scannedAttempt = scanned
         code = scanned
         // Haptic feedback on a locked scan is a later haptics track (iOS .sensoryFeedback on
         // scannedAttempt): the seam is here, deliberately unwired.
-        onJoin(scanned)
+        submit(scanned)
     }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Join a room", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+        Text(ArrivalCopy.joinTitle, fontSize = 24.sp, fontWeight = FontWeight.Bold)
 
         if (scanState != JoinScanState.NONE) {
             Viewport(scanState) { scanner(::ingest) }
@@ -115,17 +143,24 @@ fun JoinCodeScreen(
             value = code,
             // A pasted link digests to its code inline (InviteScan); a partial code sanitizes as
             // typed (InviteCode). Both keep the field to the read-aloud alphabet, INV-1.
-            onValueChange = { raw -> code = InviteScan.parse(raw) ?: InviteCode.sanitize(raw) },
+            onValueChange = { raw ->
+                code = InviteScan.parse(raw) ?: InviteCode.sanitize(raw)
+                // Editing away from the judged code clears the stale sentence (iOS: code != deadCode).
+                if (code != deadCode) dismissed = true
+            },
             label = { Text("Invite code or link") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        if (shownFailure != null) {
+            Text(shownFailure.sentence, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+        }
         Button(
-            onClick = { onJoin(code) },
-            enabled = !isBusy && InviteCode.isComplete(code),
+            onClick = { submit(code) },
+            // The dead code stops inviting a resubmit (a denylist does not change on retry, §12).
+            enabled = !isBusy && InviteCode.isComplete(code) && code != deadCode,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (isBusy) "Joining..." else "Join") }
+        ) { Text(if (isBusy) "Joining..." else ArrivalCopy.joinAction) }
         TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Back") }
     }
 }
@@ -146,7 +181,7 @@ private fun Viewport(scanState: JoinScanState, scanner: @Composable () -> Unit) 
         when (scanState) {
             JoinScanState.LIVE -> scanner()
             JoinScanState.DENIED -> Text(
-                "Camera access is off. Type the code below to join, or turn the camera on in Settings.",
+                ArrivalCopy.joinScanDenied,
                 fontSize = 14.sp,
                 color = GridGround.OBSERVATORY.tokens.number.toColor(),
                 textAlign = TextAlign.Center,

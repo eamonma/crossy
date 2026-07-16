@@ -78,7 +78,7 @@ fun PuzzlesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            "Puzzles",
+                            ArrivalCopy.puzzlesTitle,
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -107,7 +107,7 @@ fun PuzzlesScreen(
                 }
                 puzzles.isEmpty() -> item(key = "empty") {
                     Text(
-                        "No puzzles yet. Upload one to start a game from it.",
+                        ArrivalCopy.puzzlesEmpty,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(vertical = 16.dp),
@@ -171,7 +171,7 @@ private fun LibraryPuzzleCard(
                     }
                 }
                 Button(onClick = onStart, enabled = !starting) {
-                    Text(if (starting) "Starting..." else "New game")
+                    Text(if (starting) ArrivalCopy.puzzleStarting else ArrivalCopy.puzzleStartGame)
                 }
             }
             failure?.let {

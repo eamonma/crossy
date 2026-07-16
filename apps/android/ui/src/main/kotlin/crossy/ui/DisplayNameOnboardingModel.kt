@@ -133,12 +133,8 @@ class DisplayNameOnboardingModel(
     }
 }
 
-/** The inline error copy keyed on the server's NAME_* code (the iOS ArrivalCopy twin). A null code
- *  is a transport/rate-limit failure after the bounded retries, so it reads as a retry prompt, never
- *  a validation message. Kept in :ui so the screen and Settings editor share one wording. */
-fun displayNameErrorCopy(code: String?): String = when (code) {
-    "NAME_REQUIRED" -> "Enter a name to continue."
-    "NAME_TOO_LONG" -> "That name is too long. Keep it to ${DisplayName.MAX_GRAPHEMES} characters."
-    "NAME_INVALID" -> "That name has characters that aren't allowed."
-    else -> "Couldn't save your name. Check your connection and try again."
-}
+/** The inline error copy keyed on the server's NAME_* code. A thin alias now: the sentences live on
+ *  [ArrivalCopy.displayNameError] (the sentence-for-sentence iOS port), so this name only stands for
+ *  the callers that already read it. A null code is network weather after the bounded retries; the
+ *  raw code never renders. */
+fun displayNameErrorCopy(code: String?): String = ArrivalCopy.displayNameError(code)

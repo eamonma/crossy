@@ -83,7 +83,7 @@ fun RoomsListScreen(
                 fullSpan("header") {
                     Column {
                         Text(
-                            "Rooms",
+                            ArrivalCopy.roomsTitle,
                             fontSize = 32.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -102,7 +102,9 @@ fun RoomsListScreen(
                         ) { Text("Open demo room (scripted)") }
                         if (error != null) {
                             Text(
-                                "Could not load games: $error",
+                                // Already a coded sentence (the composition root maps the §12 code
+                                // through ArrivalFailure); the raw exception never reaches here.
+                                error,
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 13.sp,
                                 modifier = Modifier.padding(top = 8.dp),
@@ -122,7 +124,7 @@ fun RoomsListScreen(
                     }
                     games.isEmpty() -> fullSpan("empty") {
                         Text(
-                            "No games yet. Create one, join by code, or open the demo room.",
+                            ArrivalCopy.roomsEmpty,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 14.sp,
                             modifier = Modifier.padding(vertical = 16.dp),
@@ -141,14 +143,14 @@ fun RoomsListScreen(
                             LoadMoreOnLast(game.gameId, lastId, onLoadMore)
                         }
                         if (shelves.solved.isNotEmpty()) {
-                            fullSpan("section-solved") { SectionHeader("Solved") }
+                            fullSpan("section-solved") { SectionHeader(ArrivalCopy.roomsSolvedSection) }
                             fullSpanItems(shelves.solved) { game ->
                                 PuzzleCard(game, ground, onOpen = { onOpen(game) })
                                 LoadMoreOnLast(game.gameId, lastId, onLoadMore)
                             }
                         }
                         if (shelves.ended.isNotEmpty()) {
-                            fullSpan("section-ended") { SectionHeader("Ended") }
+                            fullSpan("section-ended") { SectionHeader(ArrivalCopy.roomsEndedSection) }
                             fullSpanItems(shelves.ended) { game ->
                                 PuzzleCard(game, ground, onOpen = { onOpen(game) })
                                 LoadMoreOnLast(game.gameId, lastId, onLoadMore)

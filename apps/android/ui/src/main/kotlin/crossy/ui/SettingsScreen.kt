@@ -62,14 +62,11 @@ sealed interface DeleteAccountResult {
     data class Failure(val code: String?) : DeleteAccountResult
 }
 
-/** One human sentence per delete failure, keyed on the stable §12 code (same voice as the arrival
- *  errors: say what happened, offer the retry, no apology). The raw code never renders. Mirrors iOS
- *  `ArrivalCopy.deleteFailure`. */
-fun deleteAccountErrorCopy(code: String?): String = when (code) {
-    null -> "Couldn't reach Crossy to delete your account. Try again."
-    "UNAUTHORIZED" -> "Your sign-in expired. Sign in again, then delete your account."
-    else -> "Couldn't delete your account. Try again."
-}
+/** One human sentence per delete failure, keyed on the stable §12 code. A thin alias now: the
+ *  sentences live on [ArrivalCopy.deleteFailure] (the sentence-for-sentence iOS port), so this name
+ *  only stands for the callers that already read it. A null code is network weather; the raw code
+ *  never renders. */
+fun deleteAccountErrorCopy(code: String?): String = ArrivalCopy.deleteFailure(code)
 
 @Composable
 fun SettingsScreen(
@@ -130,7 +127,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Settings", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(ArrivalCopy.settingsTitle, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 TextButton(onClick = onBack) { Text("Done") }
             }
 
@@ -186,7 +183,7 @@ fun SettingsScreen(
 
             HorizontalDivider()
 
-            OutlinedButton(onClick = onSignOut, enabled = !deleting, modifier = Modifier.fillMaxWidth()) { Text("Sign out") }
+            OutlinedButton(onClick = onSignOut, enabled = !deleting, modifier = Modifier.fillMaxWidth()) { Text(ArrivalCopy.signOutAction) }
 
             if (onDeleteAccount != null) {
                 // The destructive action carries the error tone on its label; the confirmation is the
@@ -199,7 +196,7 @@ fun SettingsScreen(
                     if (deleting) {
                         CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
                     }
-                    Text("Delete account", color = MaterialTheme.colorScheme.error)
+                    Text(ArrivalCopy.deleteAccountAction, color = MaterialTheme.colorScheme.error)
                 }
                 if (deleteFailed) {
                     Text(
@@ -218,9 +215,9 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LegalLink("Privacy", LegalPage.PRIVACY, onOpenLegal)
+                LegalLink(ArrivalCopy.privacyPolicy, LegalPage.PRIVACY, onOpenLegal)
                 Text(" · ", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LegalLink("Terms", LegalPage.TERMS, onOpenLegal)
+                LegalLink(ArrivalCopy.termsOfService, LegalPage.TERMS, onOpenLegal)
             }
 
             if (versionLabel != null) {
@@ -241,14 +238,8 @@ fun SettingsScreen(
     if (confirmingDelete && onDeleteAccount != null) {
         AlertDialog(
             onDismissRequest = { confirmingDelete = false },
-            title = { Text("Delete your account?") },
-            text = {
-                Text(
-                    "Your account is removed. Games you host pass to another solver, or end if you " +
-                        "are the last one. Your past answers stay in those rooms, credited to a former " +
-                        "participant with no name.",
-                )
-            },
+            title = { Text(ArrivalCopy.deleteAccountConfirmTitle) },
+            text = { Text(ArrivalCopy.deleteAccountConfirmBody) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmingDelete = false
@@ -268,11 +259,11 @@ fun SettingsScreen(
                         deleting = false
                     }
                 }) {
-                    Text("Delete account", color = MaterialTheme.colorScheme.error)
+                    Text(ArrivalCopy.deleteAccountConfirmAction, color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmingDelete = false }) { Text("Keep my account") }
+                TextButton(onClick = { confirmingDelete = false }) { Text(ArrivalCopy.deleteAccountCancelAction) }
             },
         )
     }
