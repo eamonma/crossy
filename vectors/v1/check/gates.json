@@ -1,0 +1,68 @@
+[
+  {
+    "name": "§5/§10: checkPuzzle below a full grid is GRID_NOT_FULL; no event, no seq (INV-2)",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 6,
+      "solution": { "0": "A", "1": "B" },
+      "cells": { "0": { "v": "A", "by": "u1" } }
+    },
+    "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
+    "then": {
+      "events": [],
+      "state": {
+        "status": "ongoing",
+        "seq": 6,
+        "filledCount": 1,
+        "checkedWrong": [],
+        "checkCount": 0
+      },
+      "error": "GRID_NOT_FULL"
+    }
+  },
+  {
+    "name": "§10/INV-4: checkPuzzle on a completed board is GAME_NOT_ONGOING",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "completed",
+      "seq": 8,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "B", "by": "u2" }
+      }
+    },
+    "when": [{ "type": "checkPuzzle", "commandId": "c2" }],
+    "then": {
+      "events": [],
+      "state": { "status": "completed", "seq": 8, "checkCount": 0 },
+      "error": "GAME_NOT_ONGOING"
+    }
+  },
+  {
+    "name": "§10/INV-4: checkPuzzle on an abandoned board is GAME_NOT_ONGOING",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "abandoned",
+      "seq": 5,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      }
+    },
+    "when": [{ "type": "checkPuzzle", "commandId": "c3" }],
+    "then": {
+      "events": [],
+      "state": { "status": "abandoned", "seq": 5, "checkCount": 0 },
+      "error": "GAME_NOT_ONGOING"
+    }
+  }
+]

@@ -70,6 +70,8 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
   "completedAt": null,
   "abandonedAt": null,
   "cells": [ {"v":"A","by":"<userId>"}, {"v":null,"by":null}, ... ],
+  "checkedWrongCells": [3, 17],
+  "checkCount": 1,
   "participants": [ {"userId":"...","displayName":"Ana","avatarUrl":"https://...","color":"#7F77DD","role":"host","connected":true} ],
   "cursors": [ {"userId":"...","cell":17,"direction":"across"} ],
   "recentCommandIds": ["<uuid>", "..."],
@@ -78,7 +80,8 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 ```
 
 - `cells` has length `rows * cols`. Black squares are present, always `{"v":null,"by":null}`, and immutable. A cleared or no-op'd playable cell keeps a non-null `by` (the writer or clearer), so `{"v":null,"by":null}` is reserved for black squares and never-written cells, while `{"v":null,"by":"<userId>"}` is a cell a writer set or cleared to null. This matches section 6 (a `cellSet` for a clear updates `by`) and the reducer vectors (section 13), which list such cells explicitly in `then.state.cells`.
-- `status` is one of `ongoing`, `completed`, `abandoned`. `stats` is non-null only when completed: `solveTimeSeconds` = `completedAt` − `firstFillAt`; `totalEvents` = the terminal event's `seq` − 1 (the count of sequenced events before it); `participantCount` = distinct users who sent at least one accepted mutation (not mere joiners, not spectators), computed as `DISTINCT user_id` over `cell_events` on the completion path, since it is not derivable from the board snapshot (last writer per cell only) nor from actor memory (lost on passivation).
+- `checkedWrongCells` is the standing room-check marks (section 10): the playable cells whose value failed the comparator at the game's most recent `checkPuzzle` and whose value has not changed since, ascending, `[]` when none stand. `checkCount` is the game's total accepted checks, `0` before the first. Both are cell indices and a count, never values or answers (INV-6). They ride every snapshot, so reconnect and resync heal the marks with no delta replay.
+- `status` is one of `ongoing`, `completed`, `abandoned`. `stats` is non-null only when completed: `solveTimeSeconds` = `completedAt` − `firstFillAt`; `totalEvents` = the terminal event's `seq` − 1 (the count of sequenced events before it); `participantCount` = distinct users who sent at least one accepted mutation (not mere joiners, not spectators), computed as `DISTINCT user_id` over `cell_events` on the completion path, since it is not derivable from the board snapshot (last writer per cell only) nor from actor memory (lost on passivation); `checkCount` = the same permanent count the board payload carries, frozen at completion.
 - `recentCommandIds` is the last K applied `commandId`s, letting a client confirm and clear overlay entries whose echo fell inside a gap (section 8; DESIGN.md section 6).
 - Each participant carries `avatarUrl`, an opaque nullable string. It is resolved server-side, once, where the display name is (DESIGN.md section 8), and is the same field on every participant-carrying payload: the `welcome` and `sync` participants, `playerConnected` (section 6), and the `GET /games/{id}` member listing (section 12). A client renders the image when it is present and falls back to its existing initial avatar when it is `null`, while loading, or on a load error; `null` is a first-class value, not an error. The value is opaque by contract: a client MUST NOT infer which provider produced it or reconstruct any input to it. The server never puts an email or any hash input on the wire (DESIGN.md INV-6 spirit).
 - Solutions are never present in any message on this protocol (DESIGN.md INV-6).
@@ -92,7 +95,7 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 | `clearCell`    | host, solver      | `commandId`, `cell`          | board mutation; value becomes null |
 | `moveCursor`   | any               | `cell`, `direction`          | ephemeral; at most 10/s; spectator cursors suppressed client-side by default |
 | `react`        | any               | `emoji`, `cell`              | ephemeral; at most 5/s; any role incl. spectator; legal in any status (section 9) |
-| `checkRequest` | host, solver      | `commandId`                  | whole-grid check                   |
+| `checkPuzzle`  | host, solver      | `commandId`                  | room-wide check; grid must be full |
 | `heartbeat`    | any               | none                         | every 15 s                         |
 | `requestSync`  | any               | none                         | server replies `sync`              |
 
@@ -103,6 +106,7 @@ Validation and error mapping (non-fatal unless stated):
 - game not ongoing: `GAME_NOT_ONGOING`
 - `cell` out of range, or a black square: `INVALID_CELL`
 - `value` fails the pattern: `INVALID_VALUE`
+- `checkPuzzle` while any playable cell is empty: `GRID_NOT_FULL`
 - role too low for the message: `ROLE_FORBIDDEN`
 - over a rate limit: `RATE_LIMITED`
 - duplicate `commandId`: dropped silently; no error, no event (the state it produced, if any, arrives via events or sync)
@@ -156,12 +160,28 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
   "stats": {
     "solveTimeSeconds": 2272,
     "totalEvents": 899,
-    "participantCount": 4
+    "participantCount": 4,
+    "checkCount": 2
   }
 }
 ```
 
 `at` and `stats` are actor-supplied, not engine output. The reducer's completion result carries neither: `gameCompleted` at the next `seq` is all the engine emits (the completion vectors, section 13, pin no `stats`). The session adapter stamps `at` from the server clock and fills `stats` (`solveTimeSeconds` from the timestamps, `totalEvents` and `participantCount` as section 4 defines) before broadcast.
+
+`puzzleChecked`, emitted for every accepted `checkPuzzle` (section 10) and broadcast to the whole room:
+
+```json
+{
+  "type": "puzzleChecked",
+  "seq": 742,
+  "wrongCells": [3, 17, 44],
+  "checkCount": 2,
+  "commandId": "<origin>",
+  "at": "2026-07-07T19:31:40Z"
+}
+```
+
+`wrongCells` lists, ascending, every playable cell whose value fails the comparator (section 10) at the moment the check runs; cell indices only, never values or answers (INV-6). The gate in section 10 guarantees the grid is full when a check is accepted, so `wrongCells` is never empty (a full and correct board has already completed and a terminal board rejects the command). `checkCount` is the game's total accepted checks including this one; it is permanent state, never reset. The event deliberately carries no `by`: a check is a room act recorded neutrally, and no client can attribute it because the attribution never crosses the wire (the server retains the actor server-side, DESIGN.md section 9). The sender recognizes its own `commandId` echo, which is all a client needs. `at` is stamped by the session adapter from the server clock, like `gameCompleted`'s.
 
 `gameAbandoned`:
 
@@ -175,7 +195,6 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 - `playerConnected {userId, displayName, avatarUrl, color, role}` and `playerDisconnected {userId}`. `avatarUrl` is the same opaque nullable field as the participant carries (section 4).
 - `cursor {userId, cell, direction}`
 - `reaction {userId, emoji, cell}`: relayed to the other connections on a valid `react`, never echoed to the sender (like `cursor`). Even lighter than a cursor: the server records nothing, so a reaction never appears in a `welcome` or `sync` `board` snapshot (there is no `board.reactions`). Semantics in section 9.
-- `checkResult {commandId, wrongCells:[int]}`: unicast to the requester. Lists filled cells whose value fails the comparator; empty cells are never listed.
 - `kicked {reason}`, followed by close `1008`.
 - `error {code, message, fatal, commandId?}`
 
@@ -221,8 +240,16 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 ## 10. Completion and check
 
 - The server tracks `filledCount`. After every accepted mutation, while `filledCount` equals the playable-cell count (including a same-value or corrective overwrite that does not change the count), the server MUST validate the whole board against the solution. The check is level-triggered, not edge-triggered: it MUST re-run on a same-count overwrite, so a full-but-wrong board corrected in place still completes. Pass: exactly one `gameCompleted`, persisted before broadcast. Fail: nothing is emitted; play continues.
-- After `gameCompleted` or `gameAbandoned`: `placeLetter`, `clearCell`, and `checkRequest` receive `GAME_NOT_ONGOING`. The connection stays open for the post-game screen. A terminal state is final: a second `abandon`, or a late completion attempt, is a no-op (INV-4).
-- `checkRequest` compares only filled cells and unicasts `checkResult`. Client guidance, non-normative: render wrong cells in the check style until the cell is next edited.
+- After `gameCompleted` or `gameAbandoned`: `placeLetter`, `clearCell`, and `checkPuzzle` receive `GAME_NOT_ONGOING`. The connection stays open for the post-game screen. A terminal state is final: a second `abandon`, or a late completion attempt, is a no-op (INV-4).
+
+**Room check.** The check is a deliberate, room-wide act: one command marks every incorrect entry for everyone, without revealing answers. There is no private check.
+
+- `checkPuzzle` is legal only while the game is ongoing and the grid is full (`filledCount` equals the playable-cell count); otherwise `GAME_NOT_ONGOING` or `GRID_NOT_FULL` (section 5). Because completion is level-triggered, a full and correct board is never ongoing, so an accepted check always finds at least one wrong cell.
+- An accepted `checkPuzzle` consumes a `seq` and broadcasts one `puzzleChecked` (section 6) carrying `wrongCells`, every cell whose value fails the comparator, ascending. The event replaces any standing marks wholesale and increments the permanent `checkCount`.
+- A mark stands until the cell's **value changes**: a `cellSet` that sets a different letter, or clears to null, removes that cell's mark; a same-value no-op keeps it, because the mark is still true. This is reducer semantics, identical in both ports and pinned by the `check` vectors (section 13).
+- At completion no mark stands: every marked cell was wrong, and passing the comparator required its value to change, which cleared the mark. Pinned by vectors.
+- `checkCount` is permanent, neutral state: it never resets, it survives passivation in the snapshot, it freezes into `stats.checkCount` at completion, and nothing on the wire attributes any check to a user (section 6). Future scoring surfaces may tax it; nothing displays who checked.
+- Client guidance, non-normative: a check affects the whole room, so a client SHOULD interpose a confirmation step before sending `checkPuzzle`; the command is the confirmed intent and the server needs no ceremony. Render `checkedWrongCells` in the check style; a cell with a pending optimistic overlay entry renders the overlay, not the mark.
 - **Comparator, normative** (mirrored in vectors): a filled value passes for a cell iff, case-insensitively, it equals the cell's full solution string, or it equals the solution's first character.
 - **Open question (unresolved):** whether the full-string branch accepts a solution string that no legal input can produce. For a rebus solution like `A/B`, the string `A/B` fails the `^[A-Z0-9]{1,10}$` charset, so it can never be entered, yet the literal rule above would still "match" it. The comparator vectors pin the enterable cases (solution `A/B` accepts `A`/`a`, rejects `B`/`AB`) but deliberately leave the unenterable full string `A/B` in neither `accept` nor `reject`. It is moot at runtime, because ingestion rejects whole-symbol cells (section 12; DESIGN.md section 7) and the input charset blocks entry, but the rule text is silent. Resolve before the comparator is considered final.
 
@@ -238,6 +265,7 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 | `GAME_NOT_ONGOING`             | no     | mutation after a terminal state                          |
 | `INVALID_CELL`                 | no     | out of range, or a black square                          |
 | `INVALID_VALUE`                | no     | fails `^[A-Z0-9]{1,10}$`                                 |
+| `GRID_NOT_FULL`                | no     | `checkPuzzle` while a playable cell is empty             |
 | `ROLE_FORBIDDEN`               | no     | a spectator sent a mutation                              |
 | `RATE_LIMITED`                 | no     | slow down                                                |
 | `UNKNOWN_TYPE`                 | no     | unrecognized command type                                |
@@ -545,6 +573,8 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) and
 
 **Completion matrix vectors** (reducer cases plus actor integration): repeated completion attempts yield exactly one `gameCompleted`; a filled-but-wrong board emits nothing and stays `ongoing`; **a full-but-wrong board made correct by an in-place overwrite (no change to `filledCount`) completes exactly once**; two players filling the last two cells concurrently yield exactly one completion; any mutation after completion is rejected; a client disconnected across the completion learns of it from the snapshot.
 
+**Check vectors** (`check` family): the completion case shape (it needs `given.solution` for the comparator), with `given` optionally carrying standing `checkedWrong` marks and a `checkCount`, and `then.state` asserting both. The suite pins: an accepted check on a full-but-wrong board emits one `puzzleChecked` with `wrongCells` ascending and exactly the comparator failures (first-char rebus acceptance included); the gates (`GRID_NOT_FULL` below full, `GAME_NOT_ONGOING` on a terminal board); mark clearing on value change only (a same-value no-op keeps the mark, a different letter or a clear removes it, an edit elsewhere touches nothing); a second check replacing marks wholesale and incrementing the count; and the completion interplay (correcting the last wrong cell completes with zero standing marks).
+
 **Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `error`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells, and where a case pins it the store's derived `firstFillAt` (the timer origin the first fill's `cellSet` carries on the delta path, section 6). A non-fatal `error` is in scope because it is what clears the immortal overlay (section 8), the case this family must cover. These pin the duplicated web + iOS reconciliation logic (overlay clear on echo, gap-to-sync re-send, rollback) where drift is most expensive, and cover the immortal-overlay case in section 8.
 
 **Clue-runs vectors** (`clue-runs` family): given a raw vendor-HTML clue string, assert the normalized `{text, runs}` the section 12 laws produce. Each case cites the law it defends. Like `client-store`, this is a _foreign_ family: its consumer is the clue-run parser and renderer in `apps/web` and iOS, not `packages/engine`, so the engine runner shape-validates it but never executes it. The cluster covers each style in the vocabulary, nesting-to-set flattening, adjacent merge, unknown-tag stripping, the `<br>` forms, entity decoding and the parse-before-decode order law, whitespace collapse across a style boundary, trimming an emptied run, the starred-clue literal, the markup-only clue, and the two malformed-tag shapes (section 12 law 12).
@@ -555,4 +585,6 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) and
 - The server supports N and N-1. The deprecation window follows the iOS release cadence; App Store review lag is the reason N-1 exists at all.
 - Every bump requires: a changelog entry here, updated vectors, the prior version's vectors frozen under `vectors/frozen/vN-1/` and run in CI against the current server (otherwise "supports N-1" is asserted, not tested), and both clients green in CI before deploy.
 
-Changelog: v1, 2026-07-07, initial.
+**Pre-release amendments.** While v1 is the only version ever deployed and every client deploys continuously from main, v1 may be amended in place, including breaking changes such as a new sequenced event, by owner ruling (2026-07-15). The bump discipline above starts at the first externally frozen release.
+
+Changelog: v1, 2026-07-07, initial. Amended 2026-07-15 (pre-release, owner ruling): room check lands as the sequenced `puzzleChecked` plus the `checkPuzzle` command, `GRID_NOT_FULL`, and the board payload's `checkedWrongCells`/`checkCount`; the never-implemented per-user `checkRequest`/`checkResult` pair is removed (the room check is the only check).

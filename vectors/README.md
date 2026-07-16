@@ -18,6 +18,7 @@ vectors/
     comparator/
     navigation/
     completion/
+    check/
     client-store/
     clue-runs/
 ```
@@ -25,7 +26,7 @@ vectors/
 - One JSON file per behavior cluster, kebab-case basename, `.json` extension. Each
   file is a bare JSON array of cases, UTF-8, prettier-formatted.
 - The directory name is the family. Runners MUST fail on a family they do not
-  recognize; skipping silently is forbidden. The five families from PROTOCOL.md §13
+  recognize; skipping silently is forbidden. The six families from PROTOCOL.md §13
   plus `clue-runs` (PROTOCOL.md §12) are registered. `client-store` and `clue-runs`
   are _foreign_ families (see below): the engine runner discovers and shape-validates
   them but never executes them.
@@ -273,6 +274,49 @@ reducer never emits (PROTOCOL.md §10, §13; DESIGN.md §3). Shape:
   overwrite re-runs the comparator, so a full-but-wrong board corrected in place
   completes. Exactly one `gameCompleted` ever (INV-3); a terminal board freezes and
   rejects further mutations, yielding no second completion (INV-4).
+
+## Check cases
+
+The room check (PROTOCOL.md §10) shares the completion shape: it needs
+`given.solution` for the comparator and asserts events the reducer never emits. Two
+additions, both optional in `given` and following the assertion rule in `then.state`:
+`checkedWrong`, an ascending int array of standing marks (default none), and
+`checkCount`, the permanent count (default 0). A `when` entry of type `checkPuzzle`
+carries only `commandId`; the engine command has no `by` or `at` (the wire event is
+neutral and the adapter stamps `at`, PROTOCOL.md §6). Rejections follow the reducer
+convention: `then.events` `[]`, unchanged `then.state`, and `then.error`
+(`GRID_NOT_FULL`, `GAME_NOT_ONGOING`).
+
+```json
+{
+  "name": "§10: a full-but-wrong board checks; wrongCells ascending, marks replace, count increments",
+  "given": {
+    "cols": 2,
+    "rows": 1,
+    "blocks": [],
+    "status": "ongoing",
+    "seq": 6,
+    "solution": { "0": "A", "1": "B" },
+    "cells": { "0": { "v": "X", "by": "u1" }, "1": { "v": "B", "by": "u2" } }
+  },
+  "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
+  "then": {
+    "events": [
+      { "type": "puzzleChecked", "seq": 7, "wrongCells": [0], "checkCount": 1, "commandId": "c1" }
+    ],
+    "state": { "status": "ongoing", "seq": 7, "checkedWrong": [0], "checkCount": 1 }
+  }
+}
+```
+
+- `then.state.checkedWrong` serializes as an ascending int array; `then.events`
+  `wrongCells` likewise. Marks and count are asserted only where listed (the
+  assertion rule), so reducer and completion cases predating the check stay
+  untouched.
+- Mark clearing is reducer semantics (a marked cell's mark clears exactly when its
+  value changes; PROTOCOL.md §10), but its cases live here, not in the reducer
+  family, because a meaningful starting state carries marks that only a check can
+  mint.
 
 ## Foreign families
 
