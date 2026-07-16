@@ -29,11 +29,33 @@ import androidx.compose.ui.unit.sp
  *  the same one honest sentence the other clients do. The store already refuses mutations after a
  *  terminal status (InputActions, the store's status gate); this is the kicked-exit copy only. */
 object RoomTerminal {
+    /** The completion notice, the one lexicon sentence (EXPERIENCE.md §5, verbatim from apps/ios
+     *  RoomTerminal.completedNotice): the solved room reads "Solved together" once the moment settles.
+     *  Verbatim contract, so the three clients say the same one sentence. */
+    const val completedNotice: String = "Solved together"
+
     /** The kicked notice, the one honest sentence (EXPERIENCE.md lexicon: kicked). */
     const val kickedNotice: String = "The host removed you from this room"
 
     /** The kicked exit's affordance: home is Rooms, so the way out says so plainly (ID-5). */
     const val kickedExitWord: String = "Back to Rooms"
+}
+
+/** The solved room's quiet notice (apps/ios RoomTerminal.completedNotice): once the completion moment
+ *  settles the room reads "Solved together" where the retired key deck stood, the lexicon sentence in
+ *  the ground's ink. A pure function of the ground; the room decides WHEN to show it (after the mosaic
+ *  bloom settles on a live finish, at once on a reconnect into a room already solved). Its own region
+ *  here so the sibling that owns the abandoned notice can add its line beside it without a conflict. */
+@Composable
+fun SolvedNotice(ground: GridGround, modifier: Modifier = Modifier) {
+    Text(
+        RoomTerminal.completedNotice,
+        color = ground.tokens.ink.toColor(),
+        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+        modifier = modifier,
+    )
 }
 
 /** Replaces the room after a kick (apps/ios KickedExit): the honest sentence, then the plain way back
