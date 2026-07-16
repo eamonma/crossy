@@ -1132,3 +1132,67 @@ section.**
 
 The same swap in the analysis sheet, copy and order matching web. **Exit: the same room
 shows the same titles on both platforms.**
+
+## Phase 11 — Sittings (active time over the event log)
+
+Design landed: `design/post-game/SITTINGS.md` (plan of record: the partition, the
+active-time mapping, the wire and stats amendments, the presentation rules), DESIGN.md
+D29 plus the §2 timer sentence, the PROTOCOL amendments (§4/§6 stats, §12 bundle), and
+the vectors. A **sitting** is a maximal run of cell events with consecutive gaps under
+`SITTING_GAP_MS` (30 minutes, frozen beside `BURST_WINDOW_MS`); activity is any cell
+event, and the partition is a pure projection over the append-only log — no pause
+command, "there is no pause" stands. The analysis bundle re-bases onto concatenated
+active time (`solveTrace(collapseIdle(events), solution)`; field names and shapes
+unchanged; single-sitting games byte-identical), gains the additive `sittings` field
+(`{count, spans, wallSeconds}`), and `game_state.stats` gains additive
+`activeSolveSeconds` and `sittingCount` (expand/contract; `solveTimeSeconds` keeps wall
+clock). Active time becomes the headline Time stat; the sitting count is context; wall
+clock is flavor only. Titles keep their wall-clock basis this phase (owner ruling: the
+ice-breaker re-base and `marathoner` are a named fast-follow).
+
+**Vectors first.** The partition and the remap are shared normative ground:
+`vectors/analysis/sittings.json` and the composed multi-sitting cases in the three
+trace-projection files land with the contract, ahead of the engine.
+
+### Wave 11.1 — contract (this PR)
+
+SITTINGS.md, the DESIGN.md D29 entry and §2 sentence, the PROTOCOL §4/§6/§12
+amendments, `vectors/analysis/sittings.json`, the composed cases in `momentum.json` /
+`moments.json` / `sequence.json`, the vectors README, this phase. Docs and vectors only;
+no app or engine code. **Exit: the four checks are green, every pre-existing vector case
+is byte-identical, and the waves below have a contract to land against.**
+
+### Wave 11.2 — engine (blocked on 11.1)
+
+`SITTING_GAP_MS`, `collapseIdle(events)`, and `sittings(events, solution)` in
+`packages/engine` beside the shipped reducers (which are not edited), greened against
+the Wave 11.1 vectors: the two `sittings.json` clusters bind with the same narrow
+reader, and the three composed cases assert the
+`f(solveTrace(collapseIdle(events), solution))` pipeline. **Exit: the vectors pass; the
+reducers are pure (INV-9) and the pre-sittings cases still pass byte-identical.**
+
+### Wave 11.3 — server (blocked on 11.2)
+
+Two halves, one wave. The API's Archive module inserts `collapseIdle` ahead of the trace
+and appends `sittings` to the bundle (gate, cache, INV-4 reasoning unchanged; every
+completed game gains the re-base retroactively on read). The session's terminal flush
+computes `activeSolveSeconds` and `sittingCount` from the flushed event log (importing
+the engine reducer, timestamps as data) and freezes them into `stats` beside
+`solveTimeSeconds`; `packages/protocol`'s `Stats` gains the two optional fields. **Exit:
+a multi-sitting completed game ships a compact bundle with seams; new completions carry
+both stats fields; historic frozen rows still decode (fields absent, clients fall
+back).**
+
+### Wave 11.4 — web (blocked on 11.3)
+
+Active time becomes the headline Time stat everywhere stats render; "· n sittings"
+context appears at 2 or more; the momentum ribbon draws seam ticks from `spans`; wall
+clock survives only as flavor copy from `wallSeconds`. **Exit: a two-evening solve reads
+as minutes of presence with two seams, and a single-sitting game renders exactly as
+before.**
+
+### Wave 11.5 — iOS (blocked on 11.3)
+
+The same swap in the completion stats and the analysis sheet, copy and placement
+matching web. **Exit: the same room reads the same time, count, and seams on both
+platforms.**
