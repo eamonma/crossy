@@ -12,11 +12,11 @@ class FixtureCoverageTests {
     // Every wire fixture WireSnapshotTests pins (each appears in exactly one pin*Frame call there).
     private val pinnedWire = setOf(
         "hello", "hello-minimal",
-        "placeLetter", "clearCell", "moveCursor", "checkRequest", "heartbeat", "requestSync",
+        "placeLetter", "clearCell", "moveCursor", "react", "checkRequest", "heartbeat", "requestSync",
         "welcome", "sync", "sync-completed",
         "cellSet", "cellSet-clear", "cellSet-firstFill",
         "gameCompleted", "gameAbandoned",
-        "playerConnected", "playerDisconnected", "cursor", "checkResult", "kicked",
+        "playerConnected", "playerDisconnected", "cursor", "reaction", "checkResult", "kicked",
         "error-nonfatal", "error-fatal",
     )
 

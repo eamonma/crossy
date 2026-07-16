@@ -92,6 +92,12 @@ class WireSnapshotTests {
     }
 
     @Test
+    fun reactRoundTripsTheSection5Example() {
+        val message = pinClientFrame(ReactMessage.serializer(), "react")
+        assertEquals(ReactMessage(emoji = "🎉", cell = 17), message)
+    }
+
+    @Test
     fun checkRequestRoundTrips() {
         val message = pinClientFrame(CheckRequestMessage.serializer(), "checkRequest")
         assertEquals(CheckRequestMessage(commandId = "c3"), message)
@@ -174,6 +180,14 @@ class WireSnapshotTests {
     }
 
     @Test
+    fun reactionRoundTrips() {
+        // §6, §9: the fan-out notice carries the sender, the grapheme, and the cell; the same shape
+        // rule the outbound react enforces (receive-any, one rule both directions).
+        val notice = pinServerFrame(ReactionMessage.serializer(), "reaction")
+        assertEquals(ReactionMessage(userId = "u2", emoji = "🎉", cell = 5), notice)
+    }
+
+    @Test
     fun checkResultRoundTrips() {
         val notice = pinServerFrame(CheckResultMessage.serializer(), "checkResult")
         assertEquals(CheckResultMessage(commandId = "c4", wrongCells = listOf(3, 7, 12)), notice)
@@ -219,7 +233,7 @@ class WireSnapshotTests {
         }
         val ephemeral = listOf(
             "welcome", "sync", "sync-completed", "playerConnected", "playerDisconnected",
-            "cursor", "checkResult", "kicked", "error-nonfatal", "error-fatal",
+            "cursor", "reaction", "checkResult", "kicked", "error-nonfatal", "error-fatal",
         )
         for (name in ephemeral) {
             val message = ProtocolJson.decodeFromString(ServerMessageSerializer, Fixtures.text(FixtureGroup.WIRE, name))
