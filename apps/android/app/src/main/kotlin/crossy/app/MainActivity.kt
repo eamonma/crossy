@@ -1,9 +1,13 @@
 // The composition root's entry point: build the shared HTTP client, the session/API wiring, and
 // the room transport factory once, then hand them to CrossyApp. Adapters are wired here and nowhere
-// else (ARCHITECTURE.md: ":app wires everything"). Nothing else of substance lives in this class.
+// else (ARCHITECTURE.md: ":app wires everything"). This is also where the OAuth deep link lands:
+// the crossy://auth/callback redirect re-enters through onNewIntent (singleTask, the warm return)
+// or through the launch intent (a cold start after the tab outlived the app), and either way the
+// URI is delivered into OAuthRedirects exactly once per intent.
 
 package crossy.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,6 +15,10 @@ import crossy.api.TurnstileMintPolicy
 import okhttp3.OkHttpClient
 
 class MainActivity : ComponentActivity() {
+    /** The deep-link hand-off into compose. Lives with the activity so both intent entry points
+     *  can deliver into the one holder the sign-in host observes. */
+    private val redirects = OAuthRedirects()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val http = OkHttpClient()
@@ -24,8 +32,28 @@ class MainActivity : ComponentActivity() {
             if (siteKey.isNotEmpty()) TurnstileMintPolicy(WebViewTurnstileMinter(this, siteKey)) else null
         val session = AppSession(AppConfig.urls(), AppConfig.supabase(), http, turnstile)
         val factory = ScriptedRoomTransportFactory()
+        // The cold-start half of the OAuth return: the redirect arrived as this launch's intent.
+        // Guarded on a fresh instance state so a recreation (rotation) never re-digests the same
+        // intent: once per intent, not once per onCreate.
+        if (savedInstanceState == null) deliverAuthRedirect(intent)
         setContent {
-            CrossyApp(session = session, factory = factory)
+            CrossyApp(session = session, factory = factory, redirects = redirects)
+        }
+    }
+
+    /** The warm return: singleTask routes the redirect VIEW intent into the standing instance. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        deliverAuthRedirect(intent)
+    }
+
+    /** Deliver an OAuth callback URI into [redirects], and nothing else: the launcher intent has
+     *  no data, and the shape check keeps any future crossy:// route from riding the auth lane. */
+    private fun deliverAuthRedirect(intent: Intent?) {
+        val uri = intent?.data ?: return
+        if (uri.scheme == "crossy" && uri.host == "auth" && uri.path == "/callback") {
+            redirects.deliver(uri.toString())
         }
     }
 }

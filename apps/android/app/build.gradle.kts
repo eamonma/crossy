@@ -96,6 +96,10 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
+    // The OAuth browser leg (Custom Tabs) and the resume-without-redirect busy clear live in the
+    // composition root: browsers, intents, and lifecycles are :app concerns, never :ui's (AAD-2).
+    implementation(libs.browser)
+    implementation(libs.lifecycle.runtime.compose)
     // The composition root builds the REST client and the Supabase auth leg, whose constructors
     // take okhttp types (HttpUrl, OkHttpClient); :api keeps okhttp internal, so the root declares it.
     implementation(libs.okhttp)
