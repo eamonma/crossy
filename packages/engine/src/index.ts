@@ -39,6 +39,31 @@ export type {
   TraceEntry,
   TurningPoint,
 } from "./analysis";
+export {
+  awardTitles,
+  BULLSEYE_MIN_FILLS,
+  MARQUEE_MIN_LENGTH,
+  MEDDLER_MIN,
+  OPENING_SHARE,
+  SABOTEUR_MIN,
+  SPRINTER_MIN_BURST,
+  STALL_FLOOR_SECONDS,
+  TITLE_LADDER,
+  titleStats,
+} from "./titles";
+export type {
+  FillMark,
+  Geometry,
+  RungContext,
+  SolverStats,
+  StatColumn,
+  TitleAward,
+  TitleKey,
+  TitleRow,
+  TitleRung,
+  TitleSlot,
+  TitleStatsResult,
+} from "./titles";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,
