@@ -265,15 +265,10 @@ val reactionHousePicks: List<String> = listOf(
 )
 
 /** The inline error copy keyed on the server's REACTION_SET_* code (or a local rule of the same
- *  name). A null code is a transport/rate-limit failure after the bounded retries, so it reads as a
- *  retry prompt. Kept in :ui so the section shares one wording, the displayNameErrorCopy twin. */
-fun reactionSetErrorCopy(code: String?): String = when (code) {
-    "REACTION_SET_LENGTH" -> "Pick exactly five reactions."
-    "REACTION_SET_INVALID" -> "That isn't a single emoji we can use."
-    "REACTION_SET_DUPLICATE" -> "Each reaction has to be different."
-    "RATE_LIMITED" -> "You're changing your reactions too fast. Try again in a moment."
-    else -> "Couldn't save your reactions. Check your connection and try again."
-}
+ *  name). A thin alias now: the sentences live on [ArrivalCopy.reactionSetError] (the sentence-for-
+ *  sentence iOS port), so this name only stands for the callers that already read it. A null code is
+ *  network weather after the bounded retries; the raw code never renders. */
+fun reactionSetErrorCopy(code: String?): String = ArrivalCopy.reactionSetError(code)
 
 /**
  * The Settings reactions section (Wave 8.5): the five slots in slot order, an inline editor for the

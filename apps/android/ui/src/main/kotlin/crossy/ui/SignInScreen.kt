@@ -52,11 +52,12 @@ enum class SignInProvider {
     HISBAAN,
 }
 
-/** The provider buttons' copy, iOS ArrivalCopy verbatim. Internal so a test can pin it. */
+/** The provider buttons' copy, straight off [ArrivalCopy] (the sentence-for-sentence iOS port).
+ *  Internal so a test can pin it. */
 internal fun signInProviderLabel(provider: SignInProvider): String = when (provider) {
-    SignInProvider.APPLE -> "Continue with Apple"
-    SignInProvider.DISCORD -> "Continue with Discord"
-    SignInProvider.HISBAAN -> "Continue with Hisbaan"
+    SignInProvider.APPLE -> ArrivalCopy.continueWithApple
+    SignInProvider.DISCORD -> ArrivalCopy.continueWithDiscord
+    SignInProvider.HISBAAN -> ArrivalCopy.continueWithHisbaan
 }
 
 /**
@@ -121,7 +122,7 @@ fun SignInScreen(
         // LocalContentColor would stay default black and vanish on the Observatory ground.
         Text("Crossy", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         Text(
-            "Sign in to solve together.",
+            ArrivalCopy.welcomeLine,
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -167,11 +168,11 @@ private fun LegalFooter(onOpenLegal: (LegalPage) -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TextButton(onClick = { onOpenLegal(LegalPage.PRIVACY) }) {
-            Text("Privacy", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(ArrivalCopy.privacyPolicy, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(" · ", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextButton(onClick = { onOpenLegal(LegalPage.TERMS) }) {
-            Text("Terms", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(ArrivalCopy.termsOfService, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -200,7 +201,7 @@ private fun Providers(
             onClick = { anotherWay = true },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Continue another way") }
+        ) { Text(ArrivalCopy.continueAnotherWay) }
     } else {
         OutlinedButton(
             onClick = { onProvider(SignInProvider.HISBAAN) },
@@ -217,7 +218,7 @@ private fun Providers(
             onClick = onContinueWithEmail,
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Continue with email") }
+        ) { Text(ArrivalCopy.continueWithEmail) }
     }
 }
 
@@ -248,7 +249,7 @@ private fun EmailEntry(
 ) {
     var email by remember { mutableStateOf("") }
 
-    Text("Continue with email", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+    Text(ArrivalCopy.emailEntryTitle, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
     OutlinedTextField(
         value = email,
         onValueChange = { email = it },
@@ -258,7 +259,7 @@ private fun EmailEntry(
         modifier = Modifier.fillMaxWidth(),
     )
     Text(
-        "We'll email you a $EMAIL_OTP_CODE_LENGTH-digit code to sign in.",
+        ArrivalCopy.emailEntryHint,
         fontSize = 13.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -268,7 +269,7 @@ private fun EmailEntry(
         // The provider is the real validator; this only stops an obviously empty submit.
         enabled = !isBusy && email.isNotBlank() && email.contains("@"),
         modifier = Modifier.fillMaxWidth(),
-    ) { Text(if (isBusy) "Sending..." else "Send code") }
+    ) { Text(if (isBusy) "Sending..." else ArrivalCopy.emailSendCode) }
     TextButton(onClick = onBack, enabled = !isBusy, modifier = Modifier.fillMaxWidth()) {
         Text("Back")
     }
@@ -299,9 +300,9 @@ private fun CodeEntry(
         }
     }
 
-    Text("Enter the code", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+    Text(ArrivalCopy.codeEntryTitle, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
     Text(
-        "We sent a code to $email. Enter it to sign in.",
+        ArrivalCopy.codeEntryHint(email),
         fontSize = 13.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -322,7 +323,7 @@ private fun CodeEntry(
         onClick = { onVerify(code) },
         enabled = !isBusy && isOtpCodeComplete(code),
         modifier = Modifier.fillMaxWidth(),
-    ) { Text(if (isBusy) "Verifying..." else "Verify") }
+    ) { Text(if (isBusy) "Verifying..." else ArrivalCopy.codeVerify) }
     TextButton(
         onClick = {
             resendNonce += 1
@@ -334,7 +335,7 @@ private fun CodeEntry(
         // Tabular figures so the ticking countdown holds its width in the two-digit range
         // (TypeScale.numericChromeRequiresTabularNumerals; apps/ios/DESIGN.md §6).
         Text(
-            if (secondsLeft > 0) "Resend code in ${secondsLeft}s" else "Resend code",
+            if (secondsLeft > 0) ArrivalCopy.codeResendCountdown(secondsLeft) else ArrivalCopy.codeResend,
             style = LocalTextStyle.current.withTabularNumerals(),
         )
     }

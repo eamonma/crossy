@@ -72,6 +72,8 @@ import crossy.protocol.PuzzleSummary
 import crossy.session.SessionDriver
 import crossy.session.WebSocketTransport
 import crossy.store.GameStore
+import crossy.ui.ArrivalCopy
+import crossy.ui.ArrivalFailure
 import crossy.ui.CreateGameScreen
 import crossy.ui.CrossyTheme
 import crossy.ui.DeleteAccountResult
@@ -524,7 +526,7 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
                 android.util.Log.w("CrossyAuth", "OAuth completion returned false (stray callback or machine refused)")
             }
             busyProvider = null
-            if (result.getOrDefault(false)) onSignedIn() else error = "Sign-in didn't finish. Try again."
+            if (result.getOrDefault(false)) onSignedIn() else error = ArrivalCopy.signInFailed
         }
     }
 
@@ -564,7 +566,7 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
                 otpStep = if (sent) {
                     EmailOtpStep.Code(email, null)
                 } else {
-                    EmailOtpStep.Email("Couldn't send the code. Check the address and try again.")
+                    EmailOtpStep.Email(ArrivalCopy.emailSendFailed)
                 }
             }
         },
@@ -588,10 +590,7 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
                 if (ok) {
                     onSignedIn()
                 } else {
-                    otpStep = EmailOtpStep.Code(
-                        step.email,
-                        "That code didn't work. Check it and try again, or resend.",
-                    )
+                    otpStep = EmailOtpStep.Code(step.email, ArrivalCopy.codeVerifyFailed)
                 }
             }
         },
@@ -626,6 +625,15 @@ internal fun providerLabel(provider: AuthProvider?): String? = when (provider) {
 /** The quiet version footer ("0.1.0 (1)") from BuildConfig, iOS versionFooter's shape. */
 private fun appVersionLabel(): String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
 
+/** The §12 code a REST failure carries, lifted into the [ArrivalFailure] the screens render as one
+ *  coded sentence: the stable code string when the server spoke ([CrossyApiError.Api] /
+ *  [CrossyApiError.RateLimited]), null for network weather (transport, a missing token, a broken
+ *  frame) or any non-API throwable. The raw exception text never rides along; the sentence derives
+ *  from the code alone, never from server prose. Internal so a host-mapping test pins
+ *  CrossyApiError -> code -> sentence. */
+internal fun Throwable.arrivalFailure(): ArrivalFailure =
+    ArrivalFailure((this as? CrossyApiError)?.apiCodeString)
+
 @Composable
 private fun RoomsHost(
     session: AppSession,
@@ -656,7 +664,9 @@ private fun RoomsHost(
                 nextBefore = page.nextBefore
                 exhausted = page.nextBefore == null
             }
-            .onFailure { error = it.message ?: it::class.simpleName }
+            // The §12 code through ArrivalFailure, rendered as one coded sentence; the raw exception
+            // stays out of the UI (INV: no server prose on screen).
+            .onFailure { error = it.arrivalFailure().sentence }
     }
 
     LaunchedEffect(Unit) {
@@ -677,7 +687,7 @@ private fun RoomsHost(
                     // The tapped card carries the room's terminal facts (§12): thread them into the
                     // store's birth so a done room retires its deck from the first frame (iOS seed).
                     .onSuccess { onOpenGame(it, summary.completedAt, summary.abandonedAt) }
-                    .onFailure { error = it.message ?: it::class.simpleName }
+                    .onFailure { error = it.arrivalFailure().sentence }
             }
         },
         onRefresh = { scope.launch { refreshing = true; reload(); refreshing = false } },
@@ -738,7 +748,7 @@ private fun PuzzlesHost(
                 nextBefore = page.nextBefore
                 exhausted = page.nextBefore == null
             }
-            .onFailure { error = it.message ?: it::class.simpleName }
+            .onFailure { error = it.arrivalFailure().sentence }
     }
 
     LaunchedEffect(Unit) {
@@ -767,8 +777,11 @@ private fun PuzzlesHost(
                         session.api.game(created.gameId)
                     }
                         .onSuccess { onStarted(it) }
+                        // The inline card sentence keys on the §12 code (null for network weather);
+                        // the raw exception never reaches the card.
                         .onFailure {
-                            startFailures = startFailures + (puzzle.puzzleId to (it.message ?: it::class.simpleName ?: "Couldn't start the game."))
+                            val code = (it as? CrossyApiError)?.apiCodeString
+                            startFailures = startFailures + (puzzle.puzzleId to ArrivalCopy.puzzleStartFailure(code))
                         }
                     startingId = null
                 }
@@ -810,7 +823,7 @@ private fun ArrivalHost(
         error = null
         runCatching { session.api.me() }
             .onSuccess { me -> if (me.needsName) onNeedsName(me) else onReady(me) }
-            .onFailure { error = it.message ?: it::class.simpleName }
+            .onFailure { error = it.arrivalFailure().sentence }
     }
     Scaffold { inner ->
         Column(
@@ -877,7 +890,7 @@ private fun SettingsHost(
     var reloadKey by remember { mutableStateOf(0) }
     LaunchedEffect(reloadKey) {
         error = null
-        runCatching { session.api.me() }.onSuccess { me = it }.onFailure { error = it.message ?: it::class.simpleName }
+        runCatching { session.api.me() }.onSuccess { me = it }.onFailure { error = it.arrivalFailure().sentence }
     }
     val loaded = me
     if (loaded == null) {
@@ -892,6 +905,14 @@ private fun SettingsHost(
                     CircularProgressIndicator()
                 } else {
                     Text("Couldn't load Settings.", fontSize = 15.sp)
+                    // The coded §12 sentence (the composition root mapped the code through
+                    // ArrivalFailure); the raw exception never reaches the screen.
+                    Text(
+                        message,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                     Button(onClick = { reloadKey += 1 }, modifier = Modifier.padding(top = 12.dp)) { Text("Try again") }
                     Button(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text("Back") }
                 }
@@ -1023,7 +1044,10 @@ private suspend fun submitDisplayName(session: AppSession, name: String): Displa
 @Composable
 private fun JoinHost(session: AppSession, prefill: String = "", onBack: () -> Unit, onJoined: (GameView) -> Unit) {
     var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    // The last join failure as a coded verdict (null = nothing to show): the §12 code through
+    // ArrivalFailure, so the screen renders one sentence and treats DENIED as final. The raw
+    // exception never crosses into :ui.
+    var failure by remember { mutableStateOf<ArrivalFailure?>(null) }
     val scope = rememberCoroutineScope()
     // Camera-first (iOS JoinCodeScreen): the app target resolves the scan verdict and fills the
     // scanner slot with the CameraX preview (JoinCameraScan, AAD-2 — camera plumbing is not :ui's).
@@ -1032,17 +1056,17 @@ private fun JoinHost(session: AppSession, prefill: String = "", onBack: () -> Un
     val scanState = rememberJoinScanState()
     JoinCodeScreen(
         isBusy = busy,
-        error = error,
+        failure = failure,
         // An invite deep link's code, prefilled so the join is one tap away (iOS deepLinkPrefill).
         initialCode = prefill,
         onJoin = { code ->
             scope.launch {
                 busy = true
-                error = null
+                failure = null
                 runCatching {
                     val membership = session.api.joinGame(code)
                     session.api.game(membership.gameId)
-                }.onSuccess { onJoined(it) }.onFailure { error = it.message ?: it::class.simpleName }
+                }.onSuccess { onJoined(it) }.onFailure { failure = it.arrivalFailure() }
                 busy = false
             }
         },
@@ -1074,7 +1098,7 @@ private fun CreateHost(session: AppSession, onBack: () -> Unit, onCreated: (Game
                 runCatching {
                     val created = session.api.createGame(CreateGameRequest(puzzleId, name))
                     session.api.game(created.gameId)
-                }.onSuccess { onCreated(it) }.onFailure { error = it.message ?: it::class.simpleName }
+                }.onSuccess { onCreated(it) }.onFailure { error = it.arrivalFailure().sentence }
                 busy = false
             }
         },

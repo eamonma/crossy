@@ -83,7 +83,7 @@ class ReactionSetEditorModelTests {
         model.toggleSlot(1)
         model.applyPick("🔥")
         assertFalse(model.canSave, "a duplicate cannot save (the server would 422)")
-        assertEquals("Each reaction has to be different.", model.validationMessage)
+        assertEquals("Each slot needs its own emoji.", model.validationMessage)
         runBlocking { model.save() }
         assertEquals(0, spy.calls.size, "a locally-invalid draft never reaches the wire")
     }
@@ -143,7 +143,7 @@ class ReactionSetEditorModelTests {
         assertTrue(model.applyEntry("🐐‍🔥"), "the heuristic accepts the non-RGI chain")
         runBlocking { model.save() }
         assertTrue(model.hasServerError)
-        assertEquals("That isn't a single emoji we can use.", model.validationMessage)
+        assertEquals("One emoji fills a slot.", model.validationMessage)
         assertEquals("🐐‍🔥", model.slots[0], "the draft is kept for a correction")
         assertEquals(1, spy.calls.size, "a named rejection does not retry")
     }
@@ -198,14 +198,17 @@ class ReactionSetEditorModelTests {
     }
 
     @Test
-    fun errorCopyKeysOnTheNamedCodes() {
-        assertEquals("Pick exactly five reactions.", reactionSetErrorCopy("REACTION_SET_LENGTH"))
-        assertEquals("That isn't a single emoji we can use.", reactionSetErrorCopy("REACTION_SET_INVALID"))
-        assertEquals("Each reaction has to be different.", reactionSetErrorCopy("REACTION_SET_DUPLICATE"))
+    fun errorCopyKeysOnTheNamedCodes_PROTOCOL12() {
+        // The helper is now a thin alias over ArrivalCopy.reactionSetError (the sentence-for-sentence
+        // iOS port); this pins that the codes still key one sentence each and never render raw.
+        assertEquals("A set is exactly five emoji.", reactionSetErrorCopy("REACTION_SET_LENGTH"))
+        assertEquals("One emoji fills a slot.", reactionSetErrorCopy("REACTION_SET_INVALID"))
+        assertEquals("Each slot needs its own emoji.", reactionSetErrorCopy("REACTION_SET_DUPLICATE"))
         assertEquals(
-            "You're changing your reactions too fast. Try again in a moment.",
+            "Too many changes just now. Wait a moment, then try again.",
             reactionSetErrorCopy("RATE_LIMITED"),
         )
-        assertTrue(reactionSetErrorCopy(null).startsWith("Couldn't save"))
+        assertEquals(ArrivalCopy.reactionSetError("REACTION_SET_LENGTH"), reactionSetErrorCopy("REACTION_SET_LENGTH"))
+        assertTrue(reactionSetErrorCopy(null).startsWith("Couldn't reach"))
     }
 }

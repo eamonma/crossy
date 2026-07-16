@@ -91,7 +91,7 @@ fun DisplayNameOnboardingScreen(
             onClick = onSubmit,
             enabled = canSubmit,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(if (isSaving) "Saving..." else "Continue") }
+        ) { Text(if (isSaving) "Saving..." else ArrivalCopy.displayNameSave) }
     }
 }
 
@@ -124,7 +124,7 @@ internal fun DisplayNameEditor(
             Text("Saved", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         }
         Button(onClick = onSave, enabled = canSave, modifier = Modifier.align(Alignment.End)) {
-            Text(if (isSaving) "Saving..." else "Save")
+            Text(if (isSaving) "Saving..." else ArrivalCopy.settingsNameSave)
         }
     }
 }
