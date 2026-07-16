@@ -8,11 +8,16 @@
 package crossy.app
 
 import android.content.Intent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -96,7 +101,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
     // reflected the NEXT time a room is entered (live mid-room propagation is not required).
     var reactionSet by remember { mutableStateOf<List<String>?>(null) }
 
-    CrossyTheme(ground) {
+    CrossyShell(ground) {
         when (val s = screen) {
             Screen.SignIn -> SignInHost(session, redirects, onSignedIn = { screen = Screen.Arrival })
 
@@ -169,6 +174,24 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
                 reactionEmojis = reactionSet ?: ReactionPolicy.defaultSet,
                 onExit = { screen = Screen.Rooms },
             )
+        }
+    }
+}
+
+/** CrossyTheme plus the edge-to-edge shell (targetSdk 36 enforces edge-to-edge): the ground paints
+ *  the whole window, behind the system bars, while content lays out inside the safe drawing area.
+ *  The insets are consumed here once, so nested Scaffolds see nothing left to pad and no screen
+ *  can bleed into the status bar. */
+@Composable
+private fun CrossyShell(ground: GridGround, content: @Composable () -> Unit) {
+    CrossyTheme(ground) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .windowInsetsPadding(WindowInsets.safeDrawing),
+        ) {
+            content()
         }
     }
 }

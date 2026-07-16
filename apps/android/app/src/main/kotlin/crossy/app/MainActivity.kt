@@ -11,6 +11,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import crossy.api.TurnstileMintPolicy
 import okhttp3.OkHttpClient
 
@@ -21,6 +22,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Edge-to-edge with contrast-aware system bar icons (dark-on-light, light-on-dark); the
+        // safe-area shell in CrossyApp keeps content out from under the bars.
+        enableEdgeToEdge()
         val http = OkHttpClient()
         // The captcha minter is a hidden WebView owned here by the app target (WebKit is not in :ui
         // or :api, AAD-2; the twin of iOS's app-target TurnstileProvider). Built only when this build
