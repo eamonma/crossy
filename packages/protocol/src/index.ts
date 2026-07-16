@@ -14,3 +14,4 @@ export * from "./errors";
 export * from "./messages";
 export * from "./codec";
 export * from "./display-name";
+export * from "./room-colors";
