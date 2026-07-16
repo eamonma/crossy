@@ -39,28 +39,46 @@ import kotlin.math.roundToInt
  * Draw every live sticker over the grid. `stickers` is the host's book (a pure `List` it mutates via
  * ReactionBook); `geometry` maps a cell index to its rect. The layer sizes to the grid: give it the
  * grid's own `fillMaxWidth().aspectRatio(cols/rows)` so its cell math matches CrossyGrid's exactly.
+ *
+ * `camera` is the grid's live transform (CrossyGrid.onCamera), threaded so the stickers ride the same
+ * zoom and pan the board does (iOS passes its resolved GridCamera into the sticker layer). Null while
+ * nothing has moved the board: at rest the layer keeps its own fit-to-width math, so nothing changes.
+ * A non-null camera is already clamped by the grid, so its scale (dp per module unit) and offset (the
+ * board origin in dp) place each sticker exactly where its cell renders, and the glyph grows with the
+ * zoom just as the board's letters do.
  */
 @Composable
 fun ReactionStickerLayer(
     stickers: List<ReactionSticker>,
     geometry: GridGeometry,
     modifier: Modifier = Modifier,
+    camera: GridCamera? = null,
     reduceMotion: Boolean = rememberReduceMotion(),
 ) {
     BoxWithConstraints(modifier) {
         val density = LocalDensity.current
         val cols = geometry.cols
-        // aspectRatio pins width/cols == height/rows, so one square module edge governs placement,
-        // the same unit factor CrossyGrid derives (cell = width / cols, unitScale = cell / 36).
-        val cellPx = with(density) { maxWidth.toPx() } / cols
-        val unitScale = cellPx / GridModule.UNIT
-        val fontSize = with(density) { (GridModule.STICKER_FONT_SIZE * unitScale).toSp() }
+        // At rest (no camera) the fit-to-width factor is the same one CrossyGrid derives when its own
+        // camera is null: cell = width / cols, unit = cell / 36. With a camera the factor is the
+        // camera's dp-per-unit scale converted to px, and the board origin shifts by the camera's dp
+        // offset (both converted by display density). One `unitPx`/`originX`/`originY` covers both,
+        // so the sticker anchor is `origin + moduleUnits * unitPx`, matching the grid's draw exactly.
+        val d = density.density
+        val restUnitPx = (with(density) { maxWidth.toPx() } / cols) / GridModule.UNIT
+        val unitPx = if (camera != null) camera.scale * d else restUnitPx
+        val originX = if (camera != null) camera.offsetX * d else 0f
+        val originY = if (camera != null) camera.offsetY * d else 0f
+        val fontSize = with(density) { (GridModule.STICKER_FONT_SIZE * unitPx).toSp() }
 
         for (sticker in stickers) {
             // A reaction anchored on a black square never renders (the web/iOS layer's rule).
             if (sticker.cell in geometry.blocks) continue
+            val col = sticker.cell % cols
+            val row = sticker.cell / cols
+            val anchorX = originX + (col * GridModule.UNIT + sticker.offsetX.toFloat()) * unitPx
+            val anchorY = originY + (row * GridModule.UNIT + sticker.offsetY.toFloat()) * unitPx
             key(sticker.id) {
-                StickerGlyph(sticker, cols, cellPx, unitScale, fontSize, reduceMotion)
+                StickerGlyph(sticker, anchorX, anchorY, fontSize, reduceMotion)
             }
         }
     }
@@ -70,23 +88,17 @@ fun ReactionStickerLayer(
  * One sticker: a single native-emoji Text whose scale, tremble rotation, and opacity are transforms
  * of its one rasterized layer, sampled each frame from StickerEnvelope's closed forms. The seeded
  * tilt is folded into the rotation the closed form returns (tremble composes OVER it). The glyph's
- * center sits at its cell anchor; graphicsLayer recenters (translate by -size/2) and transforms
- * about that center, so nothing re-lays-out mid-flight.
+ * center sits at its cell anchor (in px, already through the camera); graphicsLayer recenters
+ * (translate by -size/2) and transforms about that center, so nothing re-lays-out mid-flight.
  */
 @Composable
 private fun StickerGlyph(
     sticker: ReactionSticker,
-    cols: Int,
-    cellPx: Float,
-    unitScale: Float,
+    anchorX: Float,
+    anchorY: Float,
     fontSize: androidx.compose.ui.unit.TextUnit,
     reduceMotion: Boolean,
 ) {
-    val col = sticker.cell % cols
-    val row = sticker.cell / cols
-    val anchorX = col * cellPx + sticker.offsetX.toFloat() * unitScale
-    val anchorY = row * cellPx + sticker.offsetY.toFloat() * unitScale
-
     // The per-frame sample of the shared monotonic clock (the same origin the book stamped bornAt
     // from). Reading it inside withFrameNanos ties the sample to the compositor's frame cadence
     // without re-rendering the glyph's content — only its transform changes.
