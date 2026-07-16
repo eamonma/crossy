@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +67,8 @@ import crossy.ui.SignInProvider
 import crossy.ui.SignInScreen
 import crossy.ui.displayNameErrorCopy
 import crossy.ui.ReactionPolicy
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 private sealed interface Screen {
@@ -220,14 +223,27 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
     // exactly as the email verify does. A provider refusal (typed InvalidCallback), network
     // weather, and a stray callback with no pending begin (false: the process died under the tab,
     // taking the in-memory verifier) all land the same calm retry sentence, never a crash.
-    val redirect = redirects.latest
-    LaunchedEffect(redirect) {
-        if (redirect == null) return@LaunchedEffect
-        redirects.consume(redirect)
-        error = null
-        val ok = runCatching { session.completeOAuth(redirect.uri) }.getOrDefault(false)
-        busyProvider = null
-        if (ok) onSignedIn() else error = "Sign-in didn't finish. Try again."
+    //
+    // One stable effect collecting the holder, never an effect keyed on the redirect value:
+    // consume() nulls the observed state, and a keyed effect would restart on that change and
+    // cancel its own in-flight exchange (the bug this shape replaced).
+    LaunchedEffect(redirects) {
+        snapshotFlow { redirects.latest }.filterNotNull().collect { redirect ->
+            redirects.consume(redirect)
+            error = null
+            // The failure reason is logged by type, never the URI: the callback query carries the
+            // single-use auth code. Same policy as the Turnstile minter's token-length-only logs.
+            val result = runCatching { session.completeOAuth(redirect.uri) }
+            result.exceptionOrNull()?.let { e ->
+                if (e is CancellationException) throw e
+                android.util.Log.w("CrossyAuth", "OAuth completion failed: $e")
+            }
+            if (result.getOrNull() == false) {
+                android.util.Log.w("CrossyAuth", "OAuth completion returned false (stray callback or machine refused)")
+            }
+            busyProvider = null
+            if (result.getOrDefault(false)) onSignedIn() else error = "Sign-in didn't finish. Try again."
+        }
     }
 
     // Coming back to the foreground with no redirect in hand means the person left the browser
@@ -253,10 +269,6 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
                 busyProvider = null
                 error = "Couldn't open a browser to sign in. Try again."
             }
-        },
-        onDevToken = { token ->
-            session.useDevToken(token)
-            onSignedIn()
         },
         otpStep = otpStep,
         otpBusy = otpBusy,
