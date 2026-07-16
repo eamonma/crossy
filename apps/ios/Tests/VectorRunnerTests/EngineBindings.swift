@@ -17,9 +17,9 @@ import CrossyEngine
 // VectorEngineAdapter.swift; a runner throws `VectorMismatch` on a failed assertion, which
 // the calling XCTest method surfaces as a located failure.
 enum EngineBindings {
-    /// Families the Wave 3 port implements. Kept in sync with `run` and drained from
-    /// vectors.skip.json as each binds.
-    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion]
+    /// Families the Wave 3 port implements (plus `check`, bound the moment it landed,
+    /// D27). Kept in sync with `run` and drained from vectors.skip.json as each binds.
+    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion, .check]
 
     /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
     /// has not implemented (which after Wave 3 is only the foreign client-store family).
@@ -33,6 +33,8 @@ enum EngineBindings {
             try runComparator(rawCase)
         case .completion:
             try runCompletion(rawCase)
+        case .check:
+            try runCheck(rawCase)
         default:
             throw VectorError.noEngineBinding(family)
         }
@@ -162,6 +164,43 @@ enum EngineBindings {
         }
         if let expectedState = then["state"] {
             try expectMatch(serializeState(state), expectedState, "then.state")
+        }
+    }
+
+    // MARK: - Check
+
+    /// The room check (PROTOCOL §10, D27): the completion driver's shape plus the
+    /// reducer's rejection convention. Apply each command in mailbox order through the
+    /// two-phase driver, accumulating the sequenced stream; a rejected command (the
+    /// GRID_NOT_FULL / GAME_NOT_ONGOING gates) emits nothing, consumes no seq (INV-2),
+    /// and surfaces its code for `then.error`.
+    private static func runCheck(_ c: [String: Any]) throws {
+        guard let given = c["given"] as? [String: Any],
+            let when = c["when"] as? [Any],
+            let then = c["then"] as? [String: Any]
+        else {
+            throw VectorMismatch("check case missing given/when/then")
+        }
+        let solution = buildSolution(given)
+        var state = buildBoardState(given)
+        var events: [[String: Any]] = []
+        var error: String?
+        for step in when {
+            guard let w = step as? [String: Any] else { continue }
+            let result = applyWithCompletion(state, asCommand(w), solution)
+            state = result.state
+            for event in result.events { events.append(serializeEvent(event)) }
+            if let code = result.error { error = code.rawValue }
+        }
+        if let expectedEvents = then["events"] {
+            try expectMatch(events as [Any], expectedEvents, "then.events")
+        }
+        if let expectedState = then["state"] {
+            try expectMatch(serializeState(state), expectedState, "then.state")
+        }
+        // then.error follows the reducer convention; unasserted when absent.
+        if then.keys.contains("error"), let expected = then["error"] {
+            try expectMatch(jsonScalar(error), expected, "then.error")
         }
     }
 }

@@ -407,10 +407,12 @@ public final class GameStore {
             // carry one. Hand the notice to the sticker layer and return.
             onReaction?(notice)
             return
-        case .checkResult:
-            // Check styling is M6 scope (root ROADMAP Phase 5); ignored here exactly
-            // as the web store skeleton ignores it.
-            return
+        case .puzzleChecked(let event):
+            // Sequenced (PROTOCOL.md §6, §10; D27): the seq gate must advance exactly
+            // as for cellSet, or the next event would look like a gap and force a
+            // needless resync. The marks and count themselves are render state for the
+            // consolidated check-control wave; until it lands the payload is unused.
+            applySequenced(event.seq) {}
         case .kicked(let notice):
             // Followed by close 1008; the transport surfaces the closure. Nothing to
             // reconcile in sequenced state (the notice carries no seq), so the store

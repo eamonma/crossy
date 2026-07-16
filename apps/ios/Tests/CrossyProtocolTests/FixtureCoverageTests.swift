@@ -11,11 +11,11 @@ final class FixtureCoverageTests: XCTestCase {
     private static let pinnedWire: Set<String> = [
         "hello", "hello-minimal",
         "placeLetter", "clearCell", "moveCursor", "react",
-        "checkRequest", "heartbeat", "requestSync",
+        "checkPuzzle", "heartbeat", "requestSync",
         "welcome", "sync", "sync-completed",
         "cellSet", "cellSet-clear", "cellSet-firstFill",
-        "gameCompleted", "gameAbandoned",
-        "playerConnected", "playerDisconnected", "cursor", "reaction", "checkResult", "kicked",
+        "gameCompleted", "puzzleChecked", "gameAbandoned",
+        "playerConnected", "playerDisconnected", "cursor", "reaction", "kicked",
         "error-nonfatal", "error-fatal",
     ]
 

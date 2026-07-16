@@ -236,10 +236,11 @@ public struct ReactMessage: Sendable, Equatable, Codable {
     }
 }
 
-/// Request a whole-grid check (PROTOCOL.md §5). The server replies with a unicast
-/// checkResult.
-public struct CheckRequestMessage: Sendable, Equatable, Codable {
-    public static let wireType = "checkRequest"
+/// Request the room-wide check (PROTOCOL.md §5, §10; D27): one command marks every
+/// incorrect entry for everyone, without revealing answers. Legal only while the game
+/// is ongoing and the grid is full; the server broadcasts the sequenced puzzleChecked.
+public struct CheckPuzzleMessage: Sendable, Equatable, Codable {
+    public static let wireType = "checkPuzzle"
 
     public let commandId: String
 
@@ -422,6 +423,61 @@ public struct GameCompletedMessage: Sendable, Equatable, Codable {
         try container.encode(seq, forKey: .seq)
         try container.encode(at, forKey: .at)
         try container.encode(stats, forKey: .stats)
+    }
+}
+
+/// Broadcast for every accepted checkPuzzle (PROTOCOL.md §6, §10; D27). Sequenced: an
+/// accepted check mutates durable state (the standing marks and the permanent count),
+/// so it consumes a `seq` and rides the §7 gap check like cellSet. `wrongCells` lists,
+/// ascending, every playable cell whose value fails the comparator; indices only, never
+/// values or answers (INV-6), and never empty (the §10 gates). Deliberately no `by`:
+/// a check is a room act recorded neutrally; the sender recognizes its own `commandId`
+/// echo, which is all a client needs. `at` is stamped by the session adapter from the
+/// server clock, like gameCompleted's.
+public struct PuzzleCheckedMessage: Sendable, Equatable, Codable {
+    public static let wireType = "puzzleChecked"
+
+    public let seq: Int
+    public let wrongCells: [Int]
+    public let checkCount: Int
+    public let commandId: String
+    public let at: String
+
+    public init(seq: Int, wrongCells: [Int], checkCount: Int, commandId: String, at: String) {
+        self.seq = seq
+        self.wrongCells = wrongCells
+        self.checkCount = checkCount
+        self.commandId = commandId
+        self.at = at
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case seq
+        case wrongCells
+        case checkCount
+        case commandId
+        case at
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        seq = try container.decode(Int.self, forKey: .seq)
+        wrongCells = try container.decode([Int].self, forKey: .wrongCells)
+        checkCount = try container.decode(Int.self, forKey: .checkCount)
+        commandId = try container.decode(String.self, forKey: .commandId)
+        at = try container.decode(String.self, forKey: .at)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(seq, forKey: .seq)
+        try container.encode(wrongCells, forKey: .wrongCells)
+        try container.encode(checkCount, forKey: .checkCount)
+        try container.encode(commandId, forKey: .commandId)
+        try container.encode(at, forKey: .at)
     }
 }
 
@@ -707,40 +763,6 @@ public struct ReactionMessage: Sendable, Equatable, Codable {
     }
 }
 
-/// Unicast reply to checkRequest (PROTOCOL.md §6, §10). Lists filled cells whose value
-/// fails the comparator; empty cells are never listed.
-public struct CheckResultMessage: Sendable, Equatable, Codable {
-    public static let wireType = "checkResult"
-
-    public let commandId: String
-    public let wrongCells: [Int]
-
-    public init(commandId: String, wrongCells: [Int]) {
-        self.commandId = commandId
-        self.wrongCells = wrongCells
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case type
-        case commandId
-        case wrongCells
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        try expectWireType(container, CodingKeys.type, Self.wireType)
-        commandId = try container.decode(String.self, forKey: .commandId)
-        wrongCells = try container.decode([Int].self, forKey: .wrongCells)
-    }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(Self.wireType, forKey: .type)
-        try container.encode(commandId, forKey: .commandId)
-        try container.encode(wrongCells, forKey: .wrongCells)
-    }
-}
-
 /// The caller was removed (PROTOCOL.md §6, §12). Followed by a 1008 close.
 public struct KickedMessage: Sendable, Equatable, Codable {
     public static let wireType = "kicked"
@@ -832,7 +854,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
     case clearCell(ClearCellMessage)
     case moveCursor(MoveCursorMessage)
     case react(ReactMessage)
-    case checkRequest(CheckRequestMessage)
+    case checkPuzzle(CheckPuzzleMessage)
     case heartbeat(HeartbeatMessage)
     case requestSync(RequestSyncMessage)
 
@@ -844,7 +866,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
         case .clearCell: return ClearCellMessage.wireType
         case .moveCursor: return MoveCursorMessage.wireType
         case .react: return ReactMessage.wireType
-        case .checkRequest: return CheckRequestMessage.wireType
+        case .checkPuzzle: return CheckPuzzleMessage.wireType
         case .heartbeat: return HeartbeatMessage.wireType
         case .requestSync: return RequestSyncMessage.wireType
         }
@@ -864,8 +886,8 @@ public enum ClientMessage: Sendable, Equatable, Codable {
             self = .moveCursor(try MoveCursorMessage(from: decoder))
         case ReactMessage.wireType:
             self = .react(try ReactMessage(from: decoder))
-        case CheckRequestMessage.wireType:
-            self = .checkRequest(try CheckRequestMessage(from: decoder))
+        case CheckPuzzleMessage.wireType:
+            self = .checkPuzzle(try CheckPuzzleMessage(from: decoder))
         case HeartbeatMessage.wireType:
             self = .heartbeat(try HeartbeatMessage(from: decoder))
         case RequestSyncMessage.wireType:
@@ -882,7 +904,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
         case .clearCell(let message): try message.encode(to: encoder)
         case .moveCursor(let message): try message.encode(to: encoder)
         case .react(let message): try message.encode(to: encoder)
-        case .checkRequest(let message): try message.encode(to: encoder)
+        case .checkPuzzle(let message): try message.encode(to: encoder)
         case .heartbeat(let message): try message.encode(to: encoder)
         case .requestSync(let message): try message.encode(to: encoder)
         }
@@ -896,6 +918,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
     // Sequenced events: exactly the messages that mutate durable state (§6).
     case cellSet(CellSetMessage)
     case gameCompleted(GameCompletedMessage)
+    case puzzleChecked(PuzzleCheckedMessage)
     case gameAbandoned(GameAbandonedMessage)
     // Ephemeral notices: no seq (§6).
     case welcome(WelcomeMessage)
@@ -904,7 +927,6 @@ public enum ServerMessage: Sendable, Equatable, Codable {
     case playerDisconnected(PlayerDisconnectedMessage)
     case cursor(CursorMessage)
     case reaction(ReactionMessage)
-    case checkResult(CheckResultMessage)
     case kicked(KickedMessage)
     case error(ErrorMessage)
 
@@ -913,6 +935,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         switch self {
         case .cellSet: return CellSetMessage.wireType
         case .gameCompleted: return GameCompletedMessage.wireType
+        case .puzzleChecked: return PuzzleCheckedMessage.wireType
         case .gameAbandoned: return GameAbandonedMessage.wireType
         case .welcome: return WelcomeMessage.wireType
         case .sync: return SyncMessage.wireType
@@ -920,7 +943,6 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .playerDisconnected: return PlayerDisconnectedMessage.wireType
         case .cursor: return CursorMessage.wireType
         case .reaction: return ReactionMessage.wireType
-        case .checkResult: return CheckResultMessage.wireType
         case .kicked: return KickedMessage.wireType
         case .error: return ErrorMessage.wireType
         }
@@ -933,9 +955,10 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         switch self {
         case .cellSet(let message): return message.seq
         case .gameCompleted(let message): return message.seq
+        case .puzzleChecked(let message): return message.seq
         case .gameAbandoned(let message): return message.seq
         case .welcome, .sync, .playerConnected, .playerDisconnected, .cursor,
-            .reaction, .checkResult, .kicked, .error:
+            .reaction, .kicked, .error:
             return nil
         }
     }
@@ -948,6 +971,8 @@ public enum ServerMessage: Sendable, Equatable, Codable {
             self = .cellSet(try CellSetMessage(from: decoder))
         case GameCompletedMessage.wireType:
             self = .gameCompleted(try GameCompletedMessage(from: decoder))
+        case PuzzleCheckedMessage.wireType:
+            self = .puzzleChecked(try PuzzleCheckedMessage(from: decoder))
         case GameAbandonedMessage.wireType:
             self = .gameAbandoned(try GameAbandonedMessage(from: decoder))
         case WelcomeMessage.wireType:
@@ -962,8 +987,6 @@ public enum ServerMessage: Sendable, Equatable, Codable {
             self = .cursor(try CursorMessage(from: decoder))
         case ReactionMessage.wireType:
             self = .reaction(try ReactionMessage(from: decoder))
-        case CheckResultMessage.wireType:
-            self = .checkResult(try CheckResultMessage(from: decoder))
         case KickedMessage.wireType:
             self = .kicked(try KickedMessage(from: decoder))
         case ErrorMessage.wireType:
@@ -977,6 +1000,7 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         switch self {
         case .cellSet(let message): try message.encode(to: encoder)
         case .gameCompleted(let message): try message.encode(to: encoder)
+        case .puzzleChecked(let message): try message.encode(to: encoder)
         case .gameAbandoned(let message): try message.encode(to: encoder)
         case .welcome(let message): try message.encode(to: encoder)
         case .sync(let message): try message.encode(to: encoder)
@@ -984,7 +1008,6 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .playerDisconnected(let message): try message.encode(to: encoder)
         case .cursor(let message): try message.encode(to: encoder)
         case .reaction(let message): try message.encode(to: encoder)
-        case .checkResult(let message): try message.encode(to: encoder)
         case .kicked(let message): try message.encode(to: encoder)
         case .error(let message): try message.encode(to: encoder)
         }

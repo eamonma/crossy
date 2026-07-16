@@ -186,7 +186,7 @@ final class WebSocketTransportTests: XCTestCase {
             .placeLetter(PlaceLetterMessage(commandId: "c1", cell: 17, value: "A")))
         await harness.transport.send(.clearCell(ClearCellMessage(commandId: "c2", cell: 17)))
         await harness.transport.send(.moveCursor(MoveCursorMessage(cell: 17, direction: .across)))
-        await harness.transport.send(.checkRequest(CheckRequestMessage(commandId: "c3")))
+        await harness.transport.send(.checkPuzzle(CheckPuzzleMessage(commandId: "c3")))
         await harness.transport.send(.heartbeat(HeartbeatMessage()))
         await harness.transport.send(.requestSync(RequestSyncMessage()))
 
@@ -195,7 +195,7 @@ final class WebSocketTransportTests: XCTestCase {
         try assertJSONEqual(sent[1], fixture: "placeLetter")
         try assertJSONEqual(sent[2], fixture: "clearCell")
         try assertJSONEqual(sent[3], fixture: "moveCursor")
-        try assertJSONEqual(sent[4], fixture: "checkRequest")
+        try assertJSONEqual(sent[4], fixture: "checkPuzzle")
         try assertJSONEqual(sent[5], fixture: "heartbeat")
         try assertJSONEqual(sent[6], fixture: "requestSync")
     }
