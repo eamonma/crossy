@@ -15,6 +15,7 @@ import {
   fetchAttributionOnce,
   fetchAttributionWithRetry,
   lastWriterOwnerMap,
+  readSittings,
   rosterOf,
   shouldBloomOnCompletion,
 } from "./completionAttribution";
@@ -225,6 +226,79 @@ describe("fetchAnalysisOnce (the whole bundle; titles tolerate an older API)", (
         expect(bundle?.titles).toEqual([]);
       },
     );
+  });
+
+  it("passes the wire's sittings through untouched (count, spans, wallSeconds; PROTOCOL §12, D29)", async () => {
+    const sittings = {
+      count: 2,
+      spans: [
+        { startSeconds: 0, endSeconds: 300 },
+        { startSeconds: 300, endSeconds: 360 },
+      ],
+      wallSeconds: 29160,
+    };
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: {}, sittings } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.sittings).toEqual(sittings);
+      },
+    );
+  });
+
+  it("omits sittings when the field is absent (an older cached bundle degrades, PROTOCOL §12, D29)", async () => {
+    await withFetch(stubFetch({ ok: true, json: { owners: {} } }), async () => {
+      const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+      expect(bundle?.sittings).toBeUndefined();
+    });
+  });
+});
+
+describe("readSittings (the additive field never poisons the bundle, D29)", () => {
+  it("reads a sound shape, spans in order", () => {
+    expect(
+      readSittings({
+        count: 2,
+        spans: [
+          { startSeconds: 0, endSeconds: 300 },
+          { startSeconds: 300, endSeconds: 360 },
+        ],
+        wallSeconds: 29160,
+      }),
+    ).toEqual({
+      count: 2,
+      spans: [
+        { startSeconds: 0, endSeconds: 300 },
+        { startSeconds: 300, endSeconds: 360 },
+      ],
+      wallSeconds: 29160,
+    });
+  });
+
+  it("reads any malformed shape as absence, so the surface degrades instead of crashing", () => {
+    expect(readSittings(undefined)).toBeUndefined();
+    expect(readSittings("nope")).toBeUndefined();
+    expect(readSittings({ count: 2 })).toBeUndefined();
+    expect(
+      readSittings({ count: "2", spans: [], wallSeconds: 1 }),
+    ).toBeUndefined();
+    expect(
+      readSittings({ count: 2, spans: "nope", wallSeconds: 1 }),
+    ).toBeUndefined();
+    expect(
+      readSittings({
+        count: 2,
+        spans: [{ startSeconds: 0 }],
+        wallSeconds: 1,
+      }),
+    ).toBeUndefined();
+    expect(
+      readSittings({
+        count: 2,
+        spans: [{ startSeconds: 0, endSeconds: Number.NaN }],
+        wallSeconds: 1,
+      }),
+    ).toBeUndefined();
   });
 });
 

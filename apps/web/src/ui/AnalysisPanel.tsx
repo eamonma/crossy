@@ -149,10 +149,32 @@ export function AnalysisPanel({
 
   // The salient headline the retired completion popup used to carry: time, solvers, squares. Sourced
   // from the bundle (not the wire stats), so the tab and the mosaic can never disagree on the counts.
-  const stats: { key: string; label: string; value: string }[] = [
-    { key: "time", label: "Time", value: summary.durationLabel },
-    { key: "solvers", label: "Solvers", value: String(summary.solverCount) },
-    { key: "squares", label: "Squares", value: String(summary.entryCount) },
+  // Time is active time (D29: the bundle's durationSeconds is on the active axis by contract), with
+  // the sitting count as quiet context under it, never a second stat.
+  const stats: {
+    key: string;
+    label: string;
+    value: string;
+    context: string | null;
+  }[] = [
+    {
+      key: "time",
+      label: "Time",
+      value: summary.durationLabel,
+      context: summary.sittingsContext,
+    },
+    {
+      key: "solvers",
+      label: "Solvers",
+      value: String(summary.solverCount),
+      context: null,
+    },
+    {
+      key: "squares",
+      label: "Squares",
+      value: String(summary.entryCount),
+      context: null,
+    },
   ];
 
   return (
@@ -176,6 +198,11 @@ export function AnalysisPanel({
             <dd className="m-0 font-mono text-5 text-text tabular-nums">
               {cell.value}
             </dd>
+            {/* The sitting count, quiet context under the headline time, never a second stat
+                (D29): present only when the room sat down more than once. */}
+            {cell.context !== null && (
+              <div className="text-1 text-text-subtle">{cell.context}</div>
+            )}
           </div>
         ))}
       </dl>

@@ -41,6 +41,50 @@ describe("completionCells", () => {
     expect(cells[2]!.value).toBe("—");
   });
 
+  it("makes active time THE time when stats carry it, with the count as context (D29)", () => {
+    const cells = completionCells(
+      {
+        solveTimeSeconds: 29160,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 0,
+        activeSolveSeconds: 360,
+        sittingCount: 2,
+      },
+      0,
+    );
+    // The headline is the active 6:00, never the 8:06:00 wall night; the count rides under it.
+    expect(cells[0]).toMatchObject({ value: "6:00", context: "2 sittings" });
+  });
+
+  it("renders no sittings context for a single sitting (reads exactly as today, D29)", () => {
+    const cells = completionCells(
+      {
+        solveTimeSeconds: 2272,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 0,
+        activeSolveSeconds: 2272,
+        sittingCount: 1,
+      },
+      0,
+    );
+    expect(cells[0]).toMatchObject({ value: "37:52", context: null });
+  });
+
+  it("falls back to the wall-clock time on stats frozen before sittings shipped (PROTOCOL §4)", () => {
+    const cells = completionCells(
+      {
+        solveTimeSeconds: 2272,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 0,
+      },
+      0,
+    );
+    expect(cells[0]).toMatchObject({ value: "37:52", context: null });
+  });
+
   it("keeps a stable three-cell shape either way, so the grid never reflows", () => {
     expect(completionCells(null, 0)).toHaveLength(3);
     expect(

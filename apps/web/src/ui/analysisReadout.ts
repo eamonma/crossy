@@ -14,6 +14,7 @@
 import type { AnalysisResponse } from "./completionAttribution";
 import type { Roster } from "./mosaicReveal";
 import { identityColor } from "./identityRoster";
+import { sittingsSuffix } from "./sittingsReadout";
 
 /**
  * M:SS from a seconds count, tabular-friendly: floor to whole seconds, zero-pad the seconds field,
@@ -34,7 +35,9 @@ export function formatMSS(totalSeconds: number): string {
 
 /** The headline stats above the ribbon: the solve's duration, how many distinct people first-solved
  * a square, and how many squares were solved (the owner map's entry count). Derived from the bundle
- * alone so the tab and the mosaic never disagree on the count. */
+ * alone so the tab and the mosaic never disagree on the count. The duration is
+ * `momentum.durationSeconds`, which is active seconds by contract once the server re-bases
+ * (PROTOCOL §12, D29), so the headline Time is active time with no preference logic here. */
 export interface AnalysisSummary {
   readonly durationSeconds: number;
   /** Distinct owning userIds across the owner map. */
@@ -43,6 +46,9 @@ export interface AnalysisSummary {
   readonly entryCount: number;
   /** M:SS of the duration, ready to render. */
   readonly durationLabel: string;
+  /** The sitting count as quiet context under the time ("2 sittings", D29: context, never a
+   * second stat), or null for a single sitting or a bundle that predates sittings. */
+  readonly sittingsContext: string | null;
 }
 
 export function analysisSummary(bundle: AnalysisResponse): AnalysisSummary {
@@ -54,6 +60,7 @@ export function analysisSummary(bundle: AnalysisResponse): AnalysisSummary {
     solverCount: distinct.size,
     entryCount: entries.length,
     durationLabel: formatMSS(bundle.momentum.durationSeconds),
+    sittingsContext: sittingsSuffix(bundle.sittings?.count),
   };
 }
 

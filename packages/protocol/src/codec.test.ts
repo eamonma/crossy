@@ -67,6 +67,44 @@ describe("board payload (PROTOCOL.md §4)", () => {
     if (result.ok) expect(result.value.stats).toEqual(completed.stats);
   });
 
+  it("decodes stats carrying activeSolveSeconds and sittingCount (additive, §4, D29)", () => {
+    const completed = {
+      ...BOARD_FIXTURE,
+      status: "completed",
+      completedAt: "2026-07-07T19:40:03Z",
+      stats: {
+        solveTimeSeconds: 29160,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 2,
+        activeSolveSeconds: 360,
+        sittingCount: 2,
+      },
+    };
+    const result = decodeBoard(completed);
+    assertOk(result);
+    if (result.ok) expect(result.value.stats).toEqual(completed.stats);
+  });
+
+  it("tolerates stats frozen before sittings shipped: absence decodes clean, no keys invented (§4, D29)", () => {
+    const frozen = {
+      solveTimeSeconds: 2272,
+      totalEvents: 899,
+      participantCount: 4,
+      checkCount: 2,
+    };
+    const result = decodeBoard({
+      ...BOARD_FIXTURE,
+      status: "completed",
+      completedAt: "2026-07-07T19:40:03Z",
+      stats: frozen,
+    });
+    assertOk(result);
+    // No activeSolveSeconds/sittingCount keys appear, so `toEqual` against the input holds and
+    // a client's fallback to solveTimeSeconds engages (§4: never backfilled).
+    if (result.ok) expect(result.value.stats).toEqual(frozen);
+  });
+
   it("rejects a board missing a required field as malformed", () => {
     const { seq, ...noSeq } = BOARD_FIXTURE;
     void seq;

@@ -1,12 +1,14 @@
 // The completion card's facts, derived only from what the wire carries: the
 // `gameCompleted`/snapshot `stats` object (PROTOCOL.md section 4: solveTimeSeconds,
-// totalEvents, participantCount) plus the derived timer as the time's fallback while
-// stats are in flight. Nothing here invents a number the server never sent; a missing
+// totalEvents, participantCount, and the additive D29 pair activeSolveSeconds +
+// sittingCount) plus the derived timer as the time's fallback while stats are in
+// flight. Nothing here invents a number the server never sent; a missing
 // stat renders as a quiet placeholder, never a guess. Future stats (accuracy, checks
 // used, per-solver contribution once the Archive read models land, DESIGN.md D16)
 // join this list and the card's grid takes them without layout surgery.
 import type { Stats } from "@crossy/protocol";
 import { formatDuration } from "./gameTime";
+import { headlineSolveSeconds, sittingsSuffix } from "./sittingsReadout";
 
 export interface CompletionCell {
   key: string;
@@ -14,6 +16,9 @@ export interface CompletionCell {
   label: string;
   /** Render-ready text, tabular; "—" when the wire has not supplied the fact. */
   value: string;
+  /** A quiet qualifier under the value ("2 sittings", D29: context, never a second
+   * stat), or null for none. */
+  context: string | null;
 }
 
 /** The placeholder for a fact the wire has not supplied (the PartyView convention). */
@@ -22,8 +27,11 @@ const MISSING = "—";
 /**
  * The stat cells in display order. Time leads (the one fact everyone asks for; ID-2 on
  * iOS makes the frozen clock the headline for the same reason), then the people, then
- * the work. `fallbackSeconds` is the client's derived timer, used only while `stats`
- * has not landed so the card never shows a blank time over a completed board.
+ * the work. Time is ACTIVE time (D29 sittings): `activeSolveSeconds` when the stats
+ * carry it, the wall-clock `solveTimeSeconds` on frozen pre-D29 rows, with the sitting
+ * count as quiet context only when the room sat down more than once. `fallbackSeconds`
+ * is the client's derived timer, used only while `stats` has not landed so the card
+ * never shows a blank time over a completed board.
  */
 export function completionCells(
   stats: Stats | null,
@@ -33,17 +41,22 @@ export function completionCells(
     {
       key: "time",
       label: "Time",
-      value: formatDuration(stats?.solveTimeSeconds ?? fallbackSeconds),
+      value: formatDuration(
+        stats === null ? fallbackSeconds : headlineSolveSeconds(stats),
+      ),
+      context: sittingsSuffix(stats?.sittingCount),
     },
     {
       key: "solvers",
       label: "Solvers",
       value: stats === null ? MISSING : String(stats.participantCount),
+      context: null,
     },
     {
       key: "entries",
       label: "Entries",
       value: stats === null ? MISSING : String(stats.totalEvents),
+      context: null,
     },
   ];
 }
