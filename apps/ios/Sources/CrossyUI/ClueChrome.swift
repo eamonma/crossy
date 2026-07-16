@@ -334,6 +334,14 @@ struct ClueChrome: View {
             }
         }
         .scrollIndicators(.hidden)
+        // The completed sheet's frame overshoots the safe-area bottom by
+        // sheetBottomBleed so the display's corners clip it (SolveScreen's melt
+        // geometry), which puts the viewport's bottom edge off-screen. Margin
+        // the content by the same bleed so fully-scrolled content lands at the
+        // safe-area bottom instead of under the home indicator. Mid-solve the
+        // panel's bottom is anchored on-screen, so no margin then.
+        .contentMargins(
+            .bottom, completed ? ChromeLayout.sheetBottomBleed : 0, for: .scrollContent)
         // The takeover freezes the list (isScrollEnabled off cancels a live
         // pan), so once the surface owns the finger the scroll never fights it.
         .scrollDisabled(dismissTakeover)
