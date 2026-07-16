@@ -579,17 +579,24 @@ public struct SolveScreen: View {
         // ruling 2026-07-13). Only the LIVE completion edge blooms (the gate fired,
         // celebrationFiredAt set): a ready bundle blooms in first-correct color and
         // arms the panel summon; an absent bundle falls back to the last-writer bloom
-        // with no summon. A reconnect into a completed room fetched for the tab but
-        // never blooms or summons (the celebration is a live-edge moment, INV-3).
+        // with no summon. A reconnect into a completed room never blooms or summons
+        // (the celebration is a live-edge moment, INV-3) — but the terminal board
+        // WEARS the settled wash once the bundle lands (standMosaic): the record
+        // stands on every visit, it does not exist only inside the one bloom (the
+        // flash-then-disappear fix's revisit half). An absent bundle stands nothing:
+        // the wash is first-correct truth, and without the bundle there is none.
         .onChange(of: analysis.phase) { _, phase in
-            guard completion.celebrationFiredAt != nil else { return }
-            switch phase {
-            case .ready:
-                completion.startMosaic(summonOnSettle: true, reduceMotion: reduceMotion)
-            case .absent:
-                completion.startMosaic(summonOnSettle: false, reduceMotion: reduceMotion)
-            case .idle, .loading:
-                break
+            if completion.celebrationFiredAt != nil {
+                switch phase {
+                case .ready:
+                    completion.startMosaic(summonOnSettle: true, reduceMotion: reduceMotion)
+                case .absent:
+                    completion.startMosaic(summonOnSettle: false, reduceMotion: reduceMotion)
+                case .idle, .loading:
+                    break
+                }
+            } else if roomStatus == .completed, case .ready = phase {
+                completion.standMosaic()
             }
         }
         // The panel arrives AFTER the bloom settles (owner ruling 2026-07-13): melt
@@ -670,6 +677,10 @@ public struct SolveScreen: View {
                 // lands (owner ruling 2026-07-13); nil until then, where the grid
                 // falls back to the event log's last writer (the absent fallback).
                 mosaicOwners: analysis.bundle?.owners,
+                // Once the envelope lands the wash STANDS and the grid's timeline
+                // pauses (the flash-then-disappear fix: the settle returns the
+                // letters to ink, never the board to plain).
+                mosaicSettled: completion.mosaicSettled,
                 // The BOARD's standing occlusion is constant-built (DESIGN.md §2,
                 // SLICE C): the top inset is the room container's system-bar height
                 // (roomTopInset, read off the room's own container), never the
