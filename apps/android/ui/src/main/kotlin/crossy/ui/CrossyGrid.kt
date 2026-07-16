@@ -83,6 +83,11 @@ fun CrossyGrid(
     // Conflict flashes in flight (GameStore.onConflictFlash routed through RoomScreen). Empty on the
     // happy path; a non-empty book drives a per-frame redraw until it sweeps.
     flashes: FlashBook = FlashBook(),
+    // The completion mosaic (apps/ios/DESIGN.md §8; CompletionMoment): the palette and trigger
+    // instant the room hands down on gated completion (INV-3). Null on the happy path; a non-null
+    // wash blooms every filled cell to its writer's color and drives the per-frame redraw the way a
+    // live flash does, retiring when its envelope settles (the room nils it). Drawn OVER the ink pass.
+    mosaic: MosaicWash? = null,
     // Reduce Motion holds the flash as a step and skips the frame loop, and snaps the camera follow
     // instead of gliding it (RoomScreen's rememberReduceMotion; iOS gates the follow on the same
     // accessibilityReduceMotion signal).
@@ -94,6 +99,11 @@ fun CrossyGrid(
     keepClear: GridOcclusion? = null,
     onCellTap: (Int) -> Unit = {},
     onSwipe: (SwipeIntent) -> Unit = {},
+    // The live camera reported up to the room so a sibling overlay (ReactionStickerLayer) can ride the
+    // same transform when zoomed or panned (iOS threads the resolved camera into its sticker layer).
+    // Null while nothing has moved the board, so at rest the overlay keeps its own fit-to-width math
+    // and nothing changes; a gesture or a follow glide reports the stored (already clamped) camera.
+    onCamera: (GridCamera?) -> Unit = {},
 ) {
     val tokens = ground.tokens
     val measurer = rememberTextMeasurer()
@@ -115,15 +125,32 @@ fun CrossyGrid(
     // on selection, so it must not close over a stale one).
     val isAcrossState = rememberUpdatedState(selection?.isAcross ?: true)
 
-    // The per-frame sample of the monotonic seconds clock (the flash book's own origin), read inside
-    // withFrameNanos so it rides the compositor's cadence without re-rendering anything but the flash
-    // rects. Only armed while a flash is live and motion is allowed.
+    // The per-frame sample of the monotonic seconds clock (the flash book's and the mosaic's shared
+    // origin), read inside withFrameNanos so it rides the compositor's cadence without re-rendering
+    // anything but the flash rects and the mosaic bloom. Only armed while a flash is live or the
+    // mosaic plays and motion is allowed; under Reduce Motion the value is sampled once (the flash and
+    // the mosaic step, held until the room retires the book or nils the wash).
     var now by remember { mutableStateOf(reactionNow()) }
-    LaunchedEffect(flashes, reduceMotion) {
-        if (flashes.isEmpty) return@LaunchedEffect
+    LaunchedEffect(flashes, mosaic, reduceMotion) {
+        if (flashes.isEmpty && mosaic == null) return@LaunchedEffect
         now = reactionNow()
         if (reduceMotion) return@LaunchedEffect
         while (true) withFrameNanos { now = reactionNow() }
+    }
+
+    // Report the live camera up to the room so a sibling overlay can ride the same transform (iOS
+    // hands its resolved camera to the sticker layer). Null at rest, so the overlay keeps its own
+    // fit math and nothing changes; once a gesture or follow glide stores one, the report clamps
+    // against the measured viewport exactly as the draw does, so the overlay and the draw can never
+    // disagree on where a cell sits. rememberUpdatedState keeps the latest callback without re-keying.
+    val onCameraUpdated = rememberUpdatedState(onCamera)
+    LaunchedEffect(camera, viewportPx) {
+        onCameraUpdated.value(
+            camera?.let {
+                if (viewportPx.width == 0 || viewportPx.height == 0) it
+                else it.clamped(viewportPx.width / density, viewportPx.height / density, rows, cols, occlusion)
+            },
+        )
     }
 
     // Camera follow (I2c): a selection jump (a typing advance across words, a clue chevron, a resync)
@@ -342,6 +369,32 @@ fun CrossyGrid(
                 drawPuck(origin, s, mark.color.toColor(), mark.initial, measurer)
             } else {
                 drawCountBadge(origin, s, marks.first().color.toColor(), marks.size, measurer)
+            }
+        }
+
+        // Pass 6b: the completion mosaic (apps/ios/DESIGN.md §8), painted OVER the ink pass and under
+        // the flashes exactly as iOS orders it (drawMosaic before drawFlashes): every filled cell's
+        // paper washes in its writer's color and the glyph crossfades from ink to that color, both
+        // scaled by the envelope's intensity, so tint, hold, and settle fall out of one clock. A cell
+        // without a mosaic color (empty, or cleared with no letter) never tints. Under Reduce Motion
+        // the intensity is a held step (no eased rise or settle); the room nils the wash on settle.
+        val mosaicIntensity = mosaic?.let { MosaicEnvelope.intensity(now - it.startedAt, reduceMotion) } ?: 0.0
+        if (mosaic != null && mosaicIntensity > 0.0) {
+            val glyphWeightMosaic = FontWeight(ground.glyphWeight)
+            for ((c, color) in mosaic.colors) {
+                if (c in geometry.blocks || !onScreen(c)) continue
+                val origin = Offset(offX + (c % cols) * cellPx, offY + (c / cols) * cellPx)
+                val tinted = color.toColor()
+                drawRect(tinted.copy(alpha = GridMosaic.WASH_ALPHA * mosaicIntensity.toFloat()), origin, Size(cellPx, cellPx))
+                val value = values[c]
+                if (value.isNullOrEmpty()) continue
+                val fontUnits = glyphUnits(value.length)
+                val layout = measurer.measure(
+                    value,
+                    TextStyle(color = tinted.copy(alpha = mosaicIntensity.toFloat()), fontSize = (fontUnits * s).toSp(), fontWeight = glyphWeightMosaic),
+                )
+                val center = cellCenter(c, cols, cellPx, offX, offY)
+                drawText(layout, topLeft = Offset(center.x - layout.size.width / 2f, center.y - layout.size.height / 2f))
             }
         }
 

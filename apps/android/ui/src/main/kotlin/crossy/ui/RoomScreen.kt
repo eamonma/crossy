@@ -34,6 +34,7 @@ import crossy.design.IdentityRoster
 import crossy.protocol.ClientPuzzle
 import crossy.protocol.Clue
 import crossy.protocol.GameStatus
+import crossy.protocol.Role
 import crossy.store.BoardNavigation
 import crossy.store.GameStore
 import crossy.store.RenderModel
@@ -150,6 +151,80 @@ fun RoomScreen(
         stickers = ReactionBook.sweep(stickers, reactionNow())
     }
 
+    // The completion moment (apps/ios/DESIGN.md §8; CompletionMoment): the celebration derives from
+    // the store's status TRANSITIONS, observed here from render, never as a render fact (INV-3). The
+    // gate is the exactly-once fold; it lives beside the render model as view state so a snapshot or
+    // resync provably cannot touch it, and it fires the mosaic bloom and confetti exactly once per
+    // completed room, never on a reconnect into an already-solved one. Android wires no GET /analysis
+    // bloom, so the palette is the sequenced event log's last writer (the iOS "absent" fallback), and
+    // the mosaic arms at once on the gate's firing rather than waiting for a bundle.
+    val roomStatus = RoomStatus.from(render.status)
+    var gate by remember(puzzle) { mutableStateOf(CelebrationGate()) }
+    var mosaicStartedAt by remember(puzzle) { mutableStateOf<Double?>(null) }
+    var confettiStartedAt by remember(puzzle) { mutableStateOf<Double?>(null) }
+    var celebrationFired by remember(puzzle) { mutableStateOf(false) }
+    // The solved notice shows where the retired deck stood, AFTER the moment settles on a live finish,
+    // and at once on a reconnect into a room already solved (there is no moment to wait on).
+    var solvedNoticeVisible by remember(puzzle) { mutableStateOf(false) }
+
+    LaunchedEffect(roomStatus, render.sync) {
+        val step = gate.observe(roomStatus, render.sync == SyncState.LIVE)
+        gate = step.gate
+        if (!step.fired) return@LaunchedEffect
+        val now = reactionNow()
+        celebrationFired = true
+        // The §7 completion haptic rides the gate's one firing here; a wave-4 track owns haptics, so
+        // this is the seam where SolveHaptics.play(.completion) lands, left unwired on purpose.
+        if (AttributionSwitches.completionMosaicEnabled) mosaicStartedAt = now
+        // The confetti is skipped whole under Reduce Motion (a static confetto is just litter); it
+        // rides the same instant as the mosaic otherwise (owner ask 2026-07-11).
+        if (AttributionSwitches.completionConfettiEnabled && !reduceMotion) confettiStartedAt = now
+    }
+    // The mosaic retires when its envelope settles: the room nils the wash so the grid drops the pass
+    // and the finished board settles back to ink (iOS CompletionModel nils mosaicStartedAt on settle).
+    LaunchedEffect(mosaicStartedAt) {
+        val start = mosaicStartedAt ?: return@LaunchedEffect
+        delay((MosaicEnvelope.DURATION_SECONDS * 1000).toLong())
+        if (mosaicStartedAt == start) mosaicStartedAt = null
+    }
+    // The confetti unmounts when its drift ends (iOS nils confettiStartedAt on the same clock).
+    LaunchedEffect(confettiStartedAt) {
+        val start = confettiStartedAt ?: return@LaunchedEffect
+        delay((ConfettiEnvelope.DURATION_SECONDS * 1000).toLong())
+        if (confettiStartedAt == start) confettiStartedAt = null
+    }
+    // The solved notice's timing: on the live finish it waits out the mosaic settle so the line lands
+    // after the bloom, not during it; on a reconnect into a solved room (no celebration fired) it
+    // shows at once, the terminal state without a replayed moment.
+    LaunchedEffect(roomStatus, celebrationFired) {
+        if (roomStatus != RoomStatus.COMPLETED) {
+            solvedNoticeVisible = false
+            return@LaunchedEffect
+        }
+        if (celebrationFired) delay((MosaicEnvelope.DURATION_SECONDS * 1000).toLong())
+        solvedNoticeVisible = true
+    }
+
+    // The mosaic palette: every filled cell to its writer's roster color, from the sequenced event log
+    // (never the optimistic overlay), resolved the way Presence resolves a dot (GridMosaic). Rebuilt
+    // only when the sequenced cells or the roster change, so the bloom paints stable color per frame.
+    val mosaic = remember(render.cells, render.participants, ground, mosaicStartedAt) {
+        mosaicStartedAt?.let {
+            MosaicWash(GridMosaic.colors(sequencedWriters(render.cells), render.participants, ground), it)
+        }
+    }
+    // The confetti field: the room's writers in their roster colors (the people are the only color,
+    // §1), spectators lending none, deterministically seeded so the drift is stable across renders.
+    val confettiField = remember(render.participants, ground) {
+        val colors = render.participants
+            .filter { it.role != Role.SPECTATOR }
+            .map { ground.rosterColor(IdentityRoster.colorForWireColor(it.color) ?: IdentityRoster.color(it.userId)) }
+        ConfettiField.make(colors)
+    }
+    // The grid's live camera, reported up from CrossyGrid so the sticker overlay rides the same zoom
+    // and pan (iOS threads its resolved camera into the sticker layer). Null at rest, so nothing moves.
+    var gridCamera by remember(puzzle) { mutableStateOf<GridCamera?>(null) }
+
     // Fire a reaction at the current cursor cell: the 5/s sliding-window cap decides, an accepted
     // send echoes locally at once (the server never echoes, §9) and goes to the wire. A capped
     // attempt sends nothing and echoes nothing.
@@ -223,7 +298,8 @@ fun RoomScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(ground.tokens.canvas.toColor())) {
+    Box(modifier = modifier.fillMaxSize()) {
+      Column(modifier = Modifier.fillMaxSize().background(ground.tokens.canvas.toColor())) {
         RoomBar(roomName, render.participants, render.sync, render.status, ground, onExit = onExit, onShare = onShare, reconnectRetryAt = reconnectRetryAt)
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
@@ -239,8 +315,10 @@ fun RoomScreen(
                 cursorTint = cursorTint,
                 crossReference = crossReference,
                 flashes = flashes,
+                mosaic = mosaic,
                 reduceMotion = reduceMotion,
                 modifier = Modifier.fillMaxWidth(),
+                onCamera = { gridCamera = it },
                 onCellTap = { cell ->
                     InputActions.tap(env(), cell)?.let {
                         rebusBuffer = null // moving the cursor away discards an open rebus entry
@@ -262,6 +340,7 @@ fun RoomScreen(
             ReactionStickerLayer(
                 stickers = stickers,
                 geometry = geometry,
+                camera = gridCamera,
                 reduceMotion = reduceMotion,
                 modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
             )
@@ -298,9 +377,20 @@ fun RoomScreen(
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235
             // host-ended): the deck just leaves, a small spacer keeps the bottom breath (iOS
-            // completed: Color.clear.frame(height: 12)). The abandoned one-line notice and the
-            // deck's own glass are a later design track, not the Wave A4 functional bar.
-            Spacer(Modifier.height(12.dp))
+            // completed: Color.clear.frame(height: 12)).
+            //
+            // The solved line (my region): a solved room reads "Solved together" where the deck
+            // stood, after the completion moment settles (celebration path) or at once on a reconnect
+            // into an already-solved room (SolvedNotice / TerminalChrome). The abandoned notice is a
+            // sibling's line, added beside this one.
+            if (roomStatus == RoomStatus.COMPLETED && solvedNoticeVisible) {
+                SolvedNotice(
+                    ground = ground,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                )
+            } else {
+                Spacer(Modifier.height(12.dp))
+            }
         } else {
             // The inline rebus field sits over the deck while a buffer is open (iOS SolveScreen):
             // multi-glyph entry types into it and the rebus key commits it back through the deck.
@@ -313,6 +403,18 @@ fun RoomScreen(
             }
             KeyDeck(ground = ground, rebusActive = rebusBuffer != null, onKey = { onDeckKey(it) })
         }
+      }
+      // The completion confetti over the WHOLE room (not the grid), between the room and any chrome
+      // (§1: people between): a restrained roster-colored drift riding the celebration's instant. The
+      // model owns its clock (never set under Reduce Motion, nilled when the drift ends), so this
+      // layer simply unmounts; it is hit-inert, so every touch still reaches the room beneath it.
+      confettiStartedAt?.let { start ->
+          ConfettiOverlay(
+              field = confettiField,
+              startedAt = start,
+              modifier = Modifier.matchParentSize(),
+          )
+      }
     }
 }
 
