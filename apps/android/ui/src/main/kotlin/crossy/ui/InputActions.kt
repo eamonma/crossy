@@ -93,6 +93,16 @@ object InputActions {
     fun toggleDirection(env: InputEnv): InputEffect =
         InputEffect(GridSelection(env.selection.cell, !env.selection.isAcross))
 
+    /** A grid swipe: along the solving direction is next/previous word, across it toggles (root
+     *  DESIGN.md §5). The one entry the grid's drag-end classification feeds (SwipeClassifier), so the
+     *  swipe intents map to the same navigation the deck and clue chevrons use. Twin of the iOS
+     *  SelectionModel.swipe dispatch. */
+    fun swipe(env: InputEnv, intent: SwipeIntent): InputEffect = when (intent) {
+        SwipeIntent.NEXT_WORD -> nextWord(env)
+        SwipeIntent.PREVIOUS_WORD -> previousWord(env)
+        SwipeIntent.TOGGLE_DIRECTION -> toggleDirection(env)
+    }
+
     /** The pointer path (web `cellClick`, v2 verbatim): a playable non-current cell moves the cursor
      *  and keeps direction; the current cell toggles direction; a block returns null. Taps never
      *  mutate, so they stay live after a terminal state. */

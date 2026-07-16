@@ -64,6 +64,15 @@ class InputActionsTests {
     }
 
     @Test
+    fun `swipe dispatches to next-word, previous-word, and toggle (iOS SelectionModel_swipe)`() {
+        // The grid's drag-end classification feeds these; each must equal the direct navigation call.
+        val e = env(7, across = true)
+        assertEquals(InputActions.nextWord(e), InputActions.swipe(e, SwipeIntent.NEXT_WORD))
+        assertEquals(InputActions.previousWord(e), InputActions.swipe(e, SwipeIntent.PREVIOUS_WORD))
+        assertEquals(InputActions.toggleDirection(e), InputActions.swipe(e, SwipeIntent.TOGGLE_DIRECTION))
+    }
+
+    @Test
     fun `a tap on the current cell toggles direction, another cell keeps it`() {
         assertEquals(GridSelection(3, isAcross = false), InputActions.tap(env(3, across = true), 3))
         assertEquals(GridSelection(8, isAcross = true), InputActions.tap(env(3, across = true), 8))
