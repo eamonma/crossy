@@ -52,6 +52,7 @@ describe("parseRoute (paths select the surface)", () => {
     expect(parseRoute("/", p("?puzzles=1"))).toEqual({ kind: "puzzles" });
     expect(parseRoute("/", p("?create=1"))).toEqual({ kind: "create" });
     expect(parseRoute("/", p("?demo=1"))).toEqual({ kind: "demo" });
+    expect(parseRoute("/", p("?loupe=1"))).toEqual({ kind: "loupe-lab" });
   });
 
   it("legacy query keys win over the path, so the first paint is right pre-canonicalization", () => {
@@ -205,6 +206,10 @@ describe("canonicalHref (one-time redirect of legacy URLs to the path form)", ()
   it("maps ?puzzles=1 and ?create=1 to their paths", () => {
     expect(canonicalHref("/", p("?puzzles=1"))).toBe("/puzzles");
     expect(canonicalHref("/", p("?create=1"))).toBe("/new");
+  });
+
+  it("leaves the loupe lab on its explicit query URL", () => {
+    expect(canonicalHref("/", p("?loupe=1"))).toBeNull();
   });
 
   it("keeps the play intent when canonicalizing a legacy ?puzzles=1 link", () => {

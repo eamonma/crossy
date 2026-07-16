@@ -47,6 +47,9 @@ public struct CrossyGridView: View {
     /// only once the wash has settled (the model gates the toggle), and nil is
     /// the full multi-color record.
     private let mosaicIsolation: MosaicIsolation?
+    /// The completed Analysis tab's directional loupe. It is a clear glass view above the Canvas,
+    /// never a grid fill; the caller gates it to the settled post-game mosaic.
+    private let showsWordLoupe: Bool
     /// The reaction sticker book (PROTOCOL.md §9), rendered by the view overlay
     /// above the draw pass (ReactionStickerLayer; the entry-shake fix keeps
     /// stickers out of the per-frame Canvas). Nil for callers without reactions
@@ -111,6 +114,7 @@ public struct CrossyGridView: View {
         mosaicOwners: [Int: String]? = nil,
         mosaicSettled: Bool = false,
         mosaicIsolation: MosaicIsolation? = nil,
+        showsWordLoupe: Bool = false,
         occlusion: GridOcclusion = .none,
         keepClear: GridOcclusion? = nil,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
@@ -127,6 +131,7 @@ public struct CrossyGridView: View {
         self.mosaicOwners = mosaicOwners
         self.mosaicSettled = mosaicSettled
         self.mosaicIsolation = mosaicIsolation
+        self.showsWordLoupe = showsWordLoupe
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
         self.onSwipe = onSwipe
@@ -145,7 +150,10 @@ public struct CrossyGridView: View {
                     viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
                     occlusion: occlusion)
             let frame = GridFrame(
-                store: store, puzzle: puzzle, selection: selection, ground: ground,
+                store: store, puzzle: puzzle,
+                // Completed Analysis replaces the paper tint with the glass loupe and its etched
+                // focus square. Every other grid keeps the established fill precedence.
+                selection: showsWordLoupe ? nil : selection, ground: ground,
                 crossReference: crossReference)
             // The mosaic snapshot (DESIGN.md §8): palette from the first-correct
             // owners when GET /analysis has landed (owner ruling 2026-07-13),
@@ -193,6 +201,16 @@ public struct CrossyGridView: View {
                 }
             }
             .background(Color(rgb: ground.tokens.canvas))
+            // The word loupe is glass ABOVE paper, not a new Canvas role. It tracks the same camera
+            // projection as the draw pass, including pan and zoom, and deliberately mounts before
+            // reactions so celebration stickers remain the topmost board paint.
+            .overlay {
+                if showsWordLoupe, let selection {
+                    WordLoupeOverlay(
+                        puzzle: puzzle, selection: selection,
+                        camera: camera, ground: ground)
+                }
+            }
             // The sticker layer, a view overlay above the whole draw pass (mosaic
             // included, so completed-grid reactions paint over the bloom exactly as
             // the web overlay paints above its SVG). Its own view, so sticker
