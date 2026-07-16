@@ -676,7 +676,11 @@ reduced-motion equivalent that crossfades instead of moving.
 
 - **The mosaic.** On `gameCompleted`, every letter tints to its writer's color: the
   solve's fingerprint, who carried the theme, who cleaned the corners. It holds for
-  a breath, then settles back to ink. Derived entirely from the event log. This is
+  a breath, then the letters settle back to ink while the wash beneath them stands:
+  the completed board keeps the fingerprint as its record (web parity — the reveal
+  arc ends at the settled wash, never back at plain ink), and a reconnect into a
+  completed room wears the settled wash without replaying the celebration.
+  Derived entirely from the event log. This is
   the celebration's centerpiece. A restrained confetti drift rides the same instant
   (owner ask 2026-07-11, amending this section's original no-confetti rule):
   roster-colored flecks between paper and glass, deliberately quieter than the

@@ -145,4 +145,57 @@ final class CompletionModelTests: XCTestCase {
         XCTAssertFalse(model.isClarityBeat)
         XCTAssertNil(model.celebrationFiredAt)
     }
+
+    // The flash-then-disappear fix: the settle lands on the STANDING wash, never
+    // back on plain ink. mosaicStartedAt survives the envelope (the wash keeps
+    // drawing), mosaicSettled pauses the grid's timeline, and the summon still
+    // rides the settle's landing.
+    func test_settleLandsOnTheStandingWash_neverBackToInk() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
+        model.startMosaic(summonOnSettle: true, now: 200)
+        XCTAssertFalse(model.mosaicSettled, "the bloom runs on the clock first")
+        model.settleMosaic(summonOnSettle: true)
+        XCTAssertEqual(
+            model.mosaicStartedAt, 200,
+            "the settled mosaic stands; the trigger is never nilled")
+        XCTAssertTrue(model.mosaicSettled)
+        XCTAssertEqual(model.summonToken, 1, "the settle's landing is still the summon's cue")
+    }
+
+    // A reconnect into a completed room wears the settled wash once first-correct
+    // owners land — terminal-state rendering, not a celebration (INV-3): no bloom,
+    // no clarity beat, no summon.
+    func test_standMosaic_reconnectWearsTheSettledWash_withoutCelebrating_INV3() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: false, now: 100)  // connecting
+        model.observe(status: .completed, live: true, now: 200)  // welcome, terminal
+        XCTAssertNil(model.celebrationFiredAt)
+        model.standMosaic(now: 500)
+        XCTAssertNotNil(model.mosaicStartedAt, "the record stands")
+        XCTAssertTrue(model.mosaicSettled, "born settled: no bloom plays")
+        XCTAssertFalse(model.isClarityBeat)
+        XCTAssertEqual(model.summonToken, 0, "a stand never summons the panel")
+    }
+
+    // The stand and the bloom share one arming, so neither can follow the other:
+    // a stood wash is never re-bloomed, a bloomed mosaic is never re-stood.
+    func test_standAndBloomShareOneArming() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
+        model.startMosaic(summonOnSettle: true, now: 200)
+        model.standMosaic(now: 300)
+        XCTAssertEqual(model.mosaicStartedAt, 200, "the bloom stands; the stand is a no-op")
+        XCTAssertFalse(model.mosaicSettled, "the envelope still owns the settle")
+    }
+
+    // ID-1: a muted mosaic stands nothing on the reconnect path either.
+    func test_standMosaic_mutedSwitchDerivesNothing_ID1() {
+        let model = CompletionModel()
+        model.standMosaic(mosaicEnabled: false, now: 500)
+        XCTAssertNil(model.mosaicStartedAt)
+        XCTAssertFalse(model.mosaicSettled)
+    }
 }

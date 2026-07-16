@@ -35,6 +35,12 @@ public struct CrossyGridView: View {
     /// back to the event log's last writer (sequencedWriters): the fallback when the
     /// fetch is absent, and every non-completion caller.
     private let mosaicOwners: [Int: String]?
+    /// True once the mosaic's envelope has landed (CompletionModel.mosaicSettled):
+    /// the wash is a constant now (wash standing, letters back in ink), so the
+    /// draw pass skips the clock and the timeline pauses. The settled wash is the
+    /// completed board's record — it never reverts to plain ink (the
+    /// flash-then-disappear fix; web parity: the reveal arc ends at WASH).
+    private let mosaicSettled: Bool
     /// The reaction sticker book (PROTOCOL.md §9), rendered by the view overlay
     /// above the draw pass (ReactionStickerLayer; the entry-shake fix keeps
     /// stickers out of the per-frame Canvas). Nil for callers without reactions
@@ -91,6 +97,7 @@ public struct CrossyGridView: View {
         simulatesReduceMotion: Bool = false,
         mosaicStartedAt: TimeInterval? = nil,
         mosaicOwners: [Int: String]? = nil,
+        mosaicSettled: Bool = false,
         occlusion: GridOcclusion = .none,
         keepClear: GridOcclusion? = nil,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
@@ -105,6 +112,7 @@ public struct CrossyGridView: View {
         self.simulatesReduceMotion = simulatesReduceMotion
         self.mosaicStartedAt = mosaicStartedAt
         self.mosaicOwners = mosaicOwners
+        self.mosaicSettled = mosaicSettled
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
         self.onSwipe = onSwipe
@@ -141,17 +149,21 @@ public struct CrossyGridView: View {
                                 color: $0.color, isSpectator: $0.role == .spectator)
                         },
                         ground: ground),
-                    startedAt: startedAt)
+                    startedAt: startedAt,
+                    settled: mosaicSettled)
             }
             // The timeline drives redraws only while a flash decays or the mosaic
-            // plays; at rest the Canvas redraws only when the snapshot inputs change.
+            // BLOOMS; a settled mosaic is a constant wash, so it pauses like rest
+            // (the Canvas redraws only when the snapshot inputs change).
             // Reaction stickers deliberately do NOT ride this Canvas: per-frame
             // Canvas redraws re-rasterize the emoji at every intermediate scale,
             // which read as entry shake on device (owner finding 2026-07-14). They
             // live in the view overlay below, where Core Animation transforms each
             // glyph's one rasterized layer (ReactionStickerLayer).
             TimelineView(
-                .animation(minimumInterval: nil, paused: flashes.isEmpty && mosaic == nil)
+                .animation(
+                    minimumInterval: nil,
+                    paused: flashes.isEmpty && (mosaic?.settled ?? true))
             ) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
                 Canvas { context, size in
@@ -609,8 +621,12 @@ extension CrossyGridView {
     }
 
     /// The mosaic (apps/ios/DESIGN.md §8): every letter tints to its writer's
-    /// color while the paper beneath it washes in the same color, scaled by the
-    /// envelope's intensity, so tint, hold, and settle all fall out of one clock.
+    /// color while the paper beneath it washes in the same color, one clock for
+    /// both. On the settle the GLYPH returns to ink (`intensity` falls to zero)
+    /// while the WASH stands (`washIntensity` holds 1): the completed board keeps
+    /// the room's fingerprint, the web reveal arc's settled WASH, never reverting
+    /// to plain ink (the flash-then-disappear fix). A settled mosaic skips the
+    /// clock entirely, so the paused timeline's frozen date cannot misdraw it.
     /// Painted over the ink pass: the tinted glyph crossfades in over the ink one
     /// and back out on the settle, and a cell without a mosaic color (empty, or
     /// cleared with no letter) never tints.
@@ -619,8 +635,10 @@ extension CrossyGridView {
         _ mosaic: MosaicWash, _ now: TimeInterval, _ ground: GridGround,
         _ context: inout GraphicsContext
     ) {
-        let intensity = MosaicEnvelope.intensity(elapsed: now - mosaic.startedAt)
-        guard intensity > 0 else { return }
+        let elapsed = now - mosaic.startedAt
+        let wash = mosaic.settled ? 1 : MosaicEnvelope.washIntensity(elapsed: elapsed)
+        let intensity = mosaic.settled ? 0 : MosaicEnvelope.intensity(elapsed: elapsed)
+        guard wash > 0 else { return }
         let puzzle = frame.puzzle
         for row in visible.rows {
             for col in visible.cols {
@@ -629,8 +647,8 @@ extension CrossyGridView {
                 context.fill(
                     Path(GridModule.cellRect(cell, cols: puzzle.cols)),
                     with: .color(
-                        Color(rgb: color).opacity(GridMosaic.washAlpha * intensity)))
-                guard let value = frame.values[cell] else { continue }
+                        Color(rgb: color).opacity(GridMosaic.washAlpha * wash)))
+                guard intensity > 0, let value = frame.values[cell] else { continue }
                 let origin = GridModule.cellOrigin(cell, cols: puzzle.cols)
                 let size = GridModule.glyphSize(forLength: value.count)
                 let hasMarks = !(frame.presence[cell] ?? []).isEmpty

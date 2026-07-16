@@ -22,9 +22,31 @@ final class GridMosaicTests: XCTestCase {
         XCTAssertEqual(
             MosaicEnvelope.intensity(
                 elapsed: holdStart + MosaicEnvelope.holdDuration / 2), 1)
-        // Settle: back to ink, and stays there.
+        // Settle: the LETTERS back to ink, and they stay there (the wash under
+        // them rides its own clock below and never leaves).
         XCTAssertEqual(MosaicEnvelope.intensity(elapsed: MosaicEnvelope.duration), 0)
         XCTAssertEqual(MosaicEnvelope.intensity(elapsed: MosaicEnvelope.duration + 10), 0)
+    }
+
+    // The wash's clock (the flash-then-disappear fix): the same rise as the glyph
+    // tint — one bloom, one clock — then 1 forever. The settled wash is the
+    // completed board's record (web parity: the reveal arc ends at WASH); an
+    // envelope that fell back to zero erased the fingerprint ~3 s after it
+    // appeared, which was the bug.
+    func test_envelope_washRisesWithTheTintAndStandsForever_section8() {
+        XCTAssertEqual(MosaicEnvelope.washIntensity(elapsed: 0), 0)
+        // One clock through the rise: wash and glyph bloom together.
+        for step in 0...10 {
+            let elapsed = MosaicEnvelope.riseDuration * Double(step) / 10
+            XCTAssertEqual(
+                MosaicEnvelope.washIntensity(elapsed: elapsed),
+                MosaicEnvelope.intensity(elapsed: elapsed),
+                accuracy: 1e-9, "rise t=\(elapsed)")
+        }
+        // The hold, the settle, and everything after: the wash stands.
+        XCTAssertEqual(MosaicEnvelope.washIntensity(elapsed: MosaicEnvelope.clarityDuration), 1)
+        XCTAssertEqual(MosaicEnvelope.washIntensity(elapsed: MosaicEnvelope.duration), 1)
+        XCTAssertEqual(MosaicEnvelope.washIntensity(elapsed: MosaicEnvelope.duration + 3600), 1)
     }
 
     func test_envelope_riseAndSettleAreMonotonic_section8() {
