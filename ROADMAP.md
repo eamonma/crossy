@@ -1080,7 +1080,9 @@ forbidden; the unlock moment killed, both owner rulings 2026-07-16), and the `ti
 field on the analysis bundle (PROTOCOL.md section 12). Every solver in a completed
 multi-solver room gets at most one superlative (the saboteur, the ice breaker, the
 workhorse), awarded by a deterministic gate-and-argmax ladder over a per-solver stat
-sheet, both pure engine reducers. The person moment cards (First square, Last square)
+sheet, both pure engine reducers. The ladder's floor tier is ordinal (its claims exist
+for any solver with a fill), so every solver who filled a square is guaranteed a title
+in rooms of up to six such solvers. The person moment cards (First square, Last square)
 retire in favor of the title cards; the turning point stays on the ribbon.
 
 **Vectors first.** The stat sheet and the ladder are shared normative ground: web and iOS
@@ -1098,8 +1100,10 @@ contract to land against.**
 `vectors/analysis/titles.json`: stat-sheet cases (each stat exercised, the
 overwrite-vs-wrongWrite boundary, marquee slots via starred and via the length-tier
 fallback) and award cases (gate refusals, the already-titled fall-through, both
-tie-breaks, the solo rule, the untitled remainder). **Exit: the runner shape-validates
-the family; every case cites the TITLES.md rule it defends.**
+tie-breaks, the solo rule, the coverage theorem: every specialty gate failing still
+titles six solvers off the ordinal floor, a seventh is the documented remainder).
+**Exit: the runner shape-validates the family; every case cites the TITLES.md rule it
+defends.**
 
 ### Wave 10.3 — engine (blocked on 10.2)
 

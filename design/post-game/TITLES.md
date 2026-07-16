@@ -59,10 +59,28 @@ things, and nothing else, so every future title debate is a data edit:
 
 Award walks the ladder top to bottom. Each rung awards at most once; each solver receives
 at most one title; a rung whose argmax winner is already titled falls to the next eligible
-solver, which maximizes coverage. Ladder order is the editorial surface: distinctive beats
-generic, so the roast and specialty rungs sit above the volume rungs, and the bottom rungs
-gate near zero so coverage is all but guaranteed at friends scale. A solver left untitled
-(every gate excluded them) gets nothing; the client renders no placeholder.
+solver, which maximizes coverage.
+
+The ladder has two tiers, and the split is what makes "everyone gets a superlative" a
+theorem instead of a hope:
+
+- **Specialty tier** (gated): the memorable rungs. A gate is the minimum signal below
+  which the rung never awards, so no specialty title lands on noise. A gated rung may
+  award nobody; that is the gate working.
+- **Floor tier** (ordinal): the guarantee. A floor rung's only gate is `fills >= 1`, and
+  its claim is an argmax or argmin over a stat that exists for every solver with a fill
+  (earliest first fill, most fills, widest spread). An ordinal claim over a non-empty set
+  always has a winner (ties break by the universal rule below), so **a floor rung can
+  never refuse to award while an untitled solver remains**. Coverage is therefore
+  arithmetic: every solver with at least one fill gets a title in any room with at most
+  as many such solvers as the floor has rungs (six in v1). Specialty awards only widen
+  the margin. A larger room can leave its least-distinguished solvers untitled until the
+  ladder grows, which is a vector diff, not a design change; an untitled solver renders
+  nothing, never a placeholder.
+
+**Outside the promise**: a member with zero fills. There is nothing to count (reactions
+are ephemeral by D24 and are recorded nowhere), and a title over nothing would have to
+interpret. The promise is exact: everyone who solved gets a superlative.
 
 **Determinism** (INV-9, INV-1): no randomness anywhere. Every argmax tie breaks by the
 earlier first fill, ordered by `(at, seq)`, then by ascending ASCII `userId`. Title keys
@@ -97,6 +115,8 @@ flag; geometry as data, INV-9). Let `T` be the trace length and the trace be ord
 - **spread**: distinct rows touched plus distinct columns touched, over owned entries.
 - **focus**: the share of `u`'s fills falling in their busiest quadrant (the grid split
   at `ceil(rows/2)`, `ceil(cols/2)`).
+- **span**: whole seconds between `u`'s first and last owned trace entries (0 for a
+  single fill).
 - **brokeStall**: 1 if `u` owns the trace entry that ended the longest gap (the
   turning point's break, `ANALYSIS.md`), else 0.
 
@@ -114,43 +134,46 @@ flag; geometry as data, INV-9). Let `T` be the trace length and the trace be ord
 Constants, cited by vectors, never inlined: `OPENING_SHARE = 0.2` (also the closing
 share), `BURST_WINDOW_MS = 30_000` (shared with momentum), `STALL_FLOOR_SECONDS = 120`,
 `BULLSEYE_MIN_FILLS = 5`, `SPRINTER_MIN_BURST = 4`, `MEDDLER_MIN = 2`,
-`SPECIALIST_MIN_FILLS = 3`, `SPECIALIST_MIN_FOCUS = 0.7`, `MARQUEE_MIN_LENGTH = 7`.
+`MARQUEE_MIN_LENGTH = 7`.
 
 ## The v1 ladder (pinned)
 
 Order is rank; the walk is top to bottom. Display copy belongs to the clients; the wire
 carries the key and the evidence.
 
-| #   | key              | gate                                                                | claim (argmax)                    | evidence                    |
-| --- | ---------------- | ------------------------------------------------------------------- | --------------------------------- | --------------------------- |
-| 1   | `saboteur`       | overwrites >= 1                                                     | overwrites                        | overwrites                  |
-| 2   | `one-hit-wonder` | fills == 1 and the room's max fills >= 3                            | latest single fill by `(at, seq)` | none                        |
-| 3   | `ice-breaker`    | brokeStall and stallSeconds >= `STALL_FLOOR_SECONDS`                | brokeStall (the break's owner)    | stallSeconds, whole seconds |
-| 4   | `bullseye`       | wrongWrites == 0 and fills >= `BULLSEYE_MIN_FILLS`                  | fills                             | fills                       |
-| 5   | `headliner`      | marqueeLeads >= 1                                                   | marqueeLeads                      | marqueeLeads                |
-| 6   | `sprinter`       | burst >= `SPRINTER_MIN_BURST`                                       | burst                             | burst                       |
-| 7   | `meddler`        | meddles >= `MEDDLER_MIN`                                            | meddles                           | meddles                     |
-| 8   | `specialist`     | fills >= `SPECIALIST_MIN_FILLS` and focus >= `SPECIALIST_MIN_FOCUS` | focus, tie by fills               | fills in the home quadrant  |
-| 9   | `wanderer`       | fills >= 2                                                          | spread, tie by fills              | none                        |
-| 10  | `quick-starter`  | openingFills >= 1                                                   | openingFills                      | openingFills                |
-| 11  | `closer`         | closingFills >= 1                                                   | closingFills                      | closingFills                |
-| 12  | `workhorse`      | fills >= 1                                                          | fills                             | fills                       |
+| #   | key              | gate                                                 | claim (argmax)                         | evidence                    |
+| --- | ---------------- | ---------------------------------------------------- | -------------------------------------- | --------------------------- |
+| 1   | `saboteur`       | overwrites >= 1                                      | overwrites                             | overwrites                  |
+| 2   | `one-hit-wonder` | fills == 1 and the room's max fills >= 3             | latest single fill by `(at, seq)`      | none                        |
+| 3   | `ice-breaker`    | brokeStall and stallSeconds >= `STALL_FLOOR_SECONDS` | brokeStall (the break's owner)         | stallSeconds, whole seconds |
+| 4   | `bullseye`       | wrongWrites == 0 and fills >= `BULLSEYE_MIN_FILLS`   | fills                                  | fills                       |
+| 5   | `headliner`      | marqueeLeads >= 1                                    | marqueeLeads                           | marqueeLeads                |
+| 6   | `sprinter`       | burst >= `SPRINTER_MIN_BURST`                        | burst                                  | burst                       |
+| 7   | `meddler`        | meddles >= `MEDDLER_MIN`                             | meddles                                | meddles                     |
+| 8   | `specialist`     | fills >= 1 (floor)                                   | focus, tie by fills                    | fills in the home quadrant  |
+| 9   | `long-hauler`    | fills >= 1 (floor)                                   | span, tie by fills                     | span, whole seconds         |
+| 10  | `wanderer`       | fills >= 1 (floor)                                   | spread, tie by fills                   | none                        |
+| 11  | `quick-starter`  | fills >= 1 (floor)                                   | earliest own first fill by `(at, seq)` | openingFills, null when 0   |
+| 12  | `closer`         | fills >= 1 (floor)                                   | latest own last fill by `(at, seq)`    | closingFills, null when 0   |
+| 13  | `workhorse`      | fills >= 1 (floor)                                   | fills                                  | fills                       |
 
-Reading the order: the roast (`saboteur`) and the cameo (`one-hit-wonder`) are the most
-memorable and claim first. The specialty rungs (3 through 9) each tell a story a volume
-count cannot. The bottom three are the coverage tier: gates near zero, so in a room of up
-to five solvers everyone lands a title except in degenerate corners, which render as
-fewer cards, never a placeholder.
+Reading the order: rungs 1 through 7 are the specialty tier. The roast (`saboteur`) and
+the cameo (`one-hit-wonder`) are the most memorable and claim first; each specialty rung
+tells a story a volume count cannot, and each may award nobody. Rungs 8 through 13 are
+the floor tier: every claim is ordinal over solvers with a fill, so each awards
+unconditionally while an untitled solver remains, six guaranteed rungs deep. A floor
+title's copy must survive its degenerate corner (a one-fill specialist is "kept to their
+corner", which is true; the tie-breaks make even an all-equal room resolve).
 
 Suggested copy, to set the register (clients own the final words): the saboteur
 "overwrote 7 correct squares", the ice breaker "ended the room's 4-minute silence", the
 one hit wonder "one square, flawlessly chosen", the headliner "led 3 of the long ones",
-the workhorse "42 squares".
+the long-hauler "on the case from start to finish", the workhorse "42 squares".
 
 **Deferred rungs.** `marathoner` (present in every sitting) waits on the sittings
-projection and joins the ladder above the coverage tier when it lands. The ladder grows
-by a vector diff plus a rung entry here; clients ignore unknown keys, so the server may
-grow the ladder without client lockstep.
+projection and joins the specialty tier when it lands. The ladder grows by a vector diff
+plus a rung entry here; clients ignore unknown keys, so the server may grow the ladder
+(or deepen the floor for bigger rooms) without client lockstep.
 
 ## The wire
 
@@ -195,7 +218,9 @@ stories live on as `quick-starter` and `closer`. The turning point stays on the 
 - **PR2** `vectors/analysis/titles.json`: stat-sheet cases (each stat exercised, the
   overwrite-vs-wrongWrite boundary, marquee via starred and via length tier) and award
   cases (gate refusals, the already-titled fall-through, both tie-breaks, the solo rule,
-  the untitled remainder). Data ahead of the engine, the house rule.
+  the coverage theorem: a room where every specialty gate fails still titles all six
+  solvers off the floor, and a seventh solver in that room is the documented untitled
+  remainder). Data ahead of the engine, the house rule.
 - **PR3** the engine reducers, greened against PR2.
 - **PR4** the API: slot lift, bundle field.
 - **PR5** web: the Titles section replaces the person moment cards.
