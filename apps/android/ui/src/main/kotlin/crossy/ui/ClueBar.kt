@@ -1,23 +1,42 @@
-// The active-clue bar (DESIGN.md §10: "a tappable active-clue bar"; iOS ClueBook / ClueChrome).
-// Shows the clue running through the cursor with prev/next controls that step the word cycle. A
-// pure function of the resolved active clue; the room screen owns clue selection and the step
-// intents. Rich clue-run styling (ClueRunText) is a later track: the plain `text` is the permanent
-// fallback and the only field a functional bar needs (PROTOCOL.md §12, Clue.runs is additive).
+// The active-clue bar (DESIGN.md §10: "a tappable active-clue bar"; iOS ClueChrome). Shows the clue
+// running through the cursor with prev/next controls that step the word cycle, and grows an expand
+// affordance into the clue browser: a tap on the clue opens a scrollable Across/Down list where a tap
+// jumps the cursor to a clue. The browser marks the active row and washes the crossing and
+// cross-referenced rows (achromatic emphasis, DESIGN.md §3; D26), and de-emphasizes a fully filled
+// word. iOS melts the bar into the browser as one glass surface (SP-i1); here the browser is a bottom
+// sheet on a solid token surface (the glass melt is a later material pass), with swipe-down to dismiss
+// carried by the sheet. A near-pure function of the resolved clue and the browser rows; the room screen
+// owns clue selection, the step intents, and the jump.
 
 package crossy.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,10 +51,18 @@ fun ClueBar(
     clue: ActiveClue?,
     ground: GridGround,
     modifier: Modifier = Modifier,
+    // The clue browser's rows (ClueBrowser.rows), Across then Down; empty renders no expand affordance
+    // (the demo room and previews pass nothing, so the bar stays the plain stepping bar).
+    acrossRows: List<ClueBrowserRow> = emptyList(),
+    downRows: List<ClueBrowserRow> = emptyList(),
     onPrev: () -> Unit = {},
     onNext: () -> Unit = {},
+    // Jump the cursor to a browser row (the room screen sets the selection and closes the browser).
+    onJump: (ClueBrowserRow) -> Unit = {},
 ) {
     val tokens = ground.tokens
+    val hasBrowser = acrossRows.isNotEmpty() || downRows.isNotEmpty()
+    var expanded by remember { mutableStateOf(false) }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = tokens.cell.toColor(),
@@ -47,7 +74,15 @@ fun ClueBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Chevron("‹", tokens.number.toColor(), onPrev)
-            androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
+            androidx.compose.foundation.layout.Column(
+                modifier = Modifier
+                    .weight(1f)
+                    // The whole clue is the expand affordance (iOS: the bar row melts open); it opens
+                    // the browser when there is one to open (a live room), a no-op otherwise.
+                    .pointerInput(hasBrowser) {
+                        if (hasBrowser) detectTapGestures { expanded = true }
+                    },
+            ) {
                 Text(
                     clue?.label.orEmpty(),
                     color = tokens.number.toColor(),
@@ -64,6 +99,113 @@ fun ClueBar(
             }
             Chevron("›", tokens.number.toColor(), onNext)
         }
+    }
+
+    if (expanded && hasBrowser) {
+        ClueBrowserSheet(
+            acrossRows = acrossRows,
+            downRows = downRows,
+            ground = ground,
+            onJump = { row -> onJump(row); expanded = false },
+            onDismiss = { expanded = false },
+        )
+    }
+}
+
+/** The clue browser: the scrollable Across/Down list the bar opens (iOS ClueChrome.browserList). A
+ *  bottom sheet carries the swipe-down dismissal; a tap on a row jumps and closes. The active row wears
+ *  a quiet ink wash, the crossing word half of one, a cross-referenced clue a fainter rung, and a
+ *  filled word de-emphasizes (achromatic emphasis, DESIGN.md §3). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ClueBrowserSheet(
+    acrossRows: List<ClueBrowserRow>,
+    downRows: List<ClueBrowserRow>,
+    ground: GridGround,
+    onJump: (ClueBrowserRow) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val tokens = ground.tokens
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = tokens.canvas.toColor(),
+        contentColor = tokens.ink.toColor(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            ClueBrowserSection("Across", acrossRows, ground, onJump)
+            ClueBrowserSection("Down", downRows, ground, onJump)
+        }
+    }
+}
+
+@Composable
+private fun ClueBrowserSection(
+    title: String,
+    rows: List<ClueBrowserRow>,
+    ground: GridGround,
+    onJump: (ClueBrowserRow) -> Unit,
+) {
+    if (rows.isEmpty()) return
+    val tokens = ground.tokens
+    Text(
+        title.uppercase(),
+        color = tokens.number.toColor(),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp),
+    )
+    for (row in rows) {
+        ClueBrowserRowItem(row, ground, onJump)
+    }
+}
+
+@Composable
+private fun ClueBrowserRowItem(row: ClueBrowserRow, ground: GridGround, onJump: (ClueBrowserRow) -> Unit) {
+    val tokens = ground.tokens
+    // Achromatic emphasis (DESIGN.md §3): the current word leans on a quiet ink wash, the crossing word
+    // on half of one, a referenced clue on a fainter rung, everything else nothing.
+    val wash = when {
+        row.isCurrent -> 0.10f
+        row.isCrossing -> 0.05f
+        row.isReferenced -> 0.03f
+        else -> 0f
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(tokens.ink.toColor().copy(alpha = wash))
+            .pointerInput(row) { detectTapGestures { onJump(row) } }
+            .padding(horizontal = 8.dp, vertical = 8.dp)
+            .alpha(if (row.isDimmed) 0.4f else 1f),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "${row.number}",
+            color = tokens.number.toColor(),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            style = TextStyle.Default.withTabularNumerals(),
+            modifier = Modifier.size(width = 26.dp, height = 20.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+        )
+        Text(
+            row.text,
+            color = tokens.ink.toColor(),
+            fontSize = 14.sp,
+            fontWeight = if (row.isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

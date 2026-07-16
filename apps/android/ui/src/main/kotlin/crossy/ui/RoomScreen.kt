@@ -8,7 +8,9 @@
 package crossy.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +19,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -27,7 +32,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import crossy.design.AttributionSwitches
 import crossy.design.IdentityRoster
@@ -67,6 +76,19 @@ fun RoomScreen(
     // root from the persisted NavigationSettingsStore. DEFAULT reproduces the pre-slice behavior
     // exactly, so the demo room and previews (which pass nothing) diverge from no navigation vector.
     navigationPrefs: BoardNavigation.NavigationPrefs = BoardNavigation.NavigationPrefs.DEFAULT,
+    // The resolved-avatar bridge for the roster sheet's pucks (threaded from :app's AvatarImageCache).
+    // The demo room and previews pass the no-cache provider, which renders every roster row as its
+    // initial (PROTOCOL.md §4, the first-class fallback).
+    avatars: RosterAvatars = RosterAvatars.none,
+    // The host's end-game intent (POST /games/{id}/abandon), or null when there is nothing to end this
+    // way (the demo room, or a non-host composition). The facts sheet offers End game only when the
+    // self is host AND this is wired; the composition root swallows the REST call's failure.
+    onEndGame: (() -> Unit)? = null,
+    // Kick a member (host, DELETE .../members/{id}) and a spectator's promote (POST .../role). Wired by
+    // the composition root to the REST client; no-ops in the demo room. The roster sheet gates Kick to
+    // the host on other people's rows, and Join in to a self-spectator; the server enforces both.
+    onKick: (String) -> Unit = {},
+    onJoinIn: () -> Unit = {},
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -97,10 +119,35 @@ fun RoomScreen(
     val activeClue = activeEntry?.let {
         ActiveClue("${it.number} ${if (selection.isAcross) "ACROSS" else "DOWN"}", it.text)
     }
-    val crossReference = remember(activeEntry, selection.isAcross, puzzle) {
-        val keys = referencedKeys(activeEntry, selection.isAcross, puzzle.clues.across, puzzle.clues.down)
-        referencedCells(keys, puzzle.clues.across, puzzle.clues.down)
+    val referencedKeySet = remember(activeEntry, selection.isAcross, puzzle) {
+        referencedKeys(activeEntry, selection.isAcross, puzzle.clues.across, puzzle.clues.down)
     }
+    val crossReference = remember(referencedKeySet, puzzle) {
+        referencedCells(referencedKeySet, puzzle.clues.across, puzzle.clues.down)
+    }
+
+    // The roster the bar and its sheet read (RosterList.membersFrom maps participants + live cursors +
+    // the self id), and the two gates it decides: whether the self holds the spectator seat (the
+    // watching edge, below) and whether it is host (the facts sheet's End game).
+    val members = remember(render.participants, render.cursors, render.selfUserId) {
+        RosterList.membersFrom(render.participants, render.cursors, render.selfUserId)
+    }
+    val spectating = RosterList.selfIsSpectator(members, render.selfUserId)
+    val selfIsHost = RosterList.selfIsHost(members, render.selfUserId)
+
+    // The clue browser's rows (ClueBrowser.rows): the active row marked, the crossing and
+    // cross-referenced rows washed (D26), a filled word de-emphasized. Rebuilt when the selection, the
+    // rendered fill set, or the referenced keys change.
+    val acrossRows = remember(puzzle, selection, filled, referencedKeySet) {
+        ClueBrowser.rows(puzzle.clues.across, isAcross = true, selection, filled, referencedKeySet)
+    }
+    val downRows = remember(puzzle, selection, filled, referencedKeySet) {
+        ClueBrowser.rows(puzzle.clues.down, isAcross = false, selection, filled, referencedKeySet)
+    }
+
+    // The facts sheet the time pill opens (iOS openFacts): a mid-solve surface only, gated to
+    // `ongoing`, so a tap on a sealed terminal pill opens nothing.
+    var factsOpen by remember(puzzle) { mutableStateOf(false) }
 
     // Ephemeral reactions (PROTOCOL.md §9; D24): a transient sticker book held HERE beside the
     // store, never inside it, so a snapshot or resync is provably unable to touch a sticker. The
@@ -248,6 +295,9 @@ fun RoomScreen(
     var trailingRelay by remember(puzzle) { mutableStateOf<Job?>(null) }
 
     fun relayCursor(sel: GridSelection) {
+        // Spectators never send (their cursors are suppressed by default, DESIGN.md §15; iOS
+        // relayCursor's spectating gate): browsing stays local, nothing reaches the wire.
+        if (spectating) return
         when (val verdict = relay.selectionChanged(reactionNow())) {
             is CursorRelayThrottle.Verdict.Send -> store.moveCursor(sel.cell, sel.direction)
             is CursorRelayThrottle.Verdict.ScheduleTrailing -> {
@@ -300,7 +350,51 @@ fun RoomScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
       Column(modifier = Modifier.fillMaxSize().background(ground.tokens.canvas.toColor())) {
-        RoomBar(roomName, render.participants, render.sync, render.status, ground, onExit = onExit, onShare = onShare, reconnectRetryAt = reconnectRetryAt)
+        RoomBar(
+            roomName = roomName,
+            participants = render.participants,
+            cursors = render.cursors,
+            selfUserId = render.selfUserId,
+            sync = render.sync,
+            status = render.status,
+            firstFillAt = render.firstFillAt,
+            // The clock freezes at either terminal instant (ID-2): completion by design, and a
+            // host-ended room stops at the abandonment rather than ticking over a dead board.
+            freezeAt = render.completedAt ?: render.abandonedAt,
+            ground = ground,
+            avatars = avatars,
+            onExit = onExit,
+            onShare = onShare,
+            // The tap opens the facts sheet mid-solve only (iOS gates openFacts to `ongoing`).
+            onTapTime = { if (render.status == GameStatus.ONGOING) factsOpen = true },
+            // Go to a member's cursor: jump the local selection (the camera follows) exactly as a clue
+            // step does, discarding any open rebus entry. A pure move-away, so it relays the cursor.
+            onGoTo = { cursor ->
+                rebusBuffer = null
+                val target = GridSelection(cursor.cell, cursor.isAcross)
+                selection = target
+                relayCursor(target)
+            },
+            onKick = onKick,
+            onJoinIn = onJoinIn,
+            reconnectRetryAt = reconnectRetryAt,
+        )
+        // The room-facts sheet (iOS RoomFactsSheet), presented off the time pill's tap while ongoing:
+        // the room name, the live clock, and the host's End game under a two-beat confirm. A
+        // ModalBottomSheet, so it renders as its own surface over the room and dismisses on swipe-down
+        // or outside tap. End game shows only for a host with the intent wired (the demo room has none).
+        if (factsOpen && render.status == GameStatus.ONGOING) {
+            RoomFactsSheet(
+                ground = ground,
+                content = RoomFactsContent.make(roomName?.takeIf { it.isNotBlank() } ?: "Crossy"),
+                operations = FactsOperations.make(isHost = selfIsHost && onEndGame != null),
+                solveTimeSeconds = render.stats?.solveTimeSeconds,
+                firstFillAt = render.firstFillAt,
+                freezeAt = render.completedAt ?: render.abandonedAt,
+                onEndGame = { onEndGame?.invoke() },
+                onDismiss = { factsOpen = false },
+            )
+        }
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center,
@@ -370,27 +464,43 @@ fun RoomScreen(
         ClueBar(
             clue = activeClue,
             ground = ground,
+            acrossRows = acrossRows,
+            downRows = downRows,
             // A clue step is a move-away, so it discards an open rebus entry (iOS swipe rule).
             onPrev = { rebusBuffer = null; apply(InputActions.previousWord(env())) },
             onNext = { rebusBuffer = null; apply(InputActions.nextWord(env())) },
+            // A browser jump is the pointer's clueClick (iOS ClueBrowserList.jumpTarget): the clue's
+            // first cell, its axis set. A move-away, so it discards an open rebus entry and relays.
+            onJump = { row ->
+                rebusBuffer = null
+                val target = ClueBrowser.jumpTarget(row)
+                selection = target
+                relayCursor(target)
+            },
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235
-            // host-ended): the deck just leaves, a small spacer keeps the bottom breath (iOS
-            // completed: Color.clear.frame(height: 12)).
-            //
-            // The solved line (my region): a solved room reads "Solved together" where the deck
-            // stood, after the completion moment settles (celebration path) or at once on a reconnect
-            // into an already-solved room (SolvedNotice / TerminalChrome). The abandoned notice is a
-            // sibling's line, added beside this one.
+            // host-ended): a solved room reads "Solved together" where the deck stood, after the
+            // completion moment settles or at once on a reconnect into an already-solved room
+            // (SolvedNotice); a host-ended room shows the one quiet abandoned notice (iOS
+            // abandonedZone); otherwise a small spacer keeps the bottom breath (iOS completed:
+            // Color.clear.frame(height: 12)).
             if (roomStatus == RoomStatus.COMPLETED && solvedNoticeVisible) {
                 SolvedNotice(
                     ground = ground,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 )
+            } else if (render.status == GameStatus.ABANDONED) {
+                AbandonedNotice(ground)
             } else {
                 Spacer(Modifier.height(12.dp))
             }
+        } else if (spectating) {
+            // The spectator edge (iOS watchingZone; EXPERIENCE.md Watching): the full live room,
+            // read-only, one affordance. The deck leaves; Join in promotes the seat (changeRole to
+            // solver, wired by the composition root). A spectator's input is refused anyway (their
+            // cursor is suppressed, DESIGN.md §15), so retiring the deck is the honest surface.
+            WatchingZone(ground, onJoinIn)
         } else {
             // The inline rebus field sits over the deck while a buffer is open (iOS SolveScreen):
             // multi-glyph entry types into it and the rebus key commits it back through the deck.
@@ -415,6 +525,48 @@ fun RoomScreen(
               modifier = Modifier.matchParentSize(),
           )
       }
+    }
+}
+
+/** The spectator edge (iOS SolveScreen `watchingZone`; EXPERIENCE.md Watching): the full live room,
+ *  read-only, one affordance. The quiet Watching word names the seat and the Join in pill promotes it
+ *  (changeRole spectator -> solver, the only server-supported transition, PROTOCOL.md §12); the words
+ *  are plain (ID-5). Sits where the deck would, so the room's shape holds when the seat changes. */
+@Composable
+private fun WatchingZone(ground: GridGround, onJoinIn: () -> Unit) {
+    val tokens = ground.tokens
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(tokens.canvas.toColor())
+            .padding(horizontal = 10.dp)
+            .padding(top = 10.dp, bottom = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            "Watching",
+            color = tokens.number.toColor(),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Surface(
+            color = tokens.cell.toColor(),
+            contentColor = tokens.ink.toColor(),
+            shape = RoundedCornerShape(23.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) { detectTapGestures { onJoinIn() } },
+        ) {
+            Text(
+                "Join in",
+                color = tokens.ink.toColor(),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 13.dp),
+            )
+        }
     }
 }
 

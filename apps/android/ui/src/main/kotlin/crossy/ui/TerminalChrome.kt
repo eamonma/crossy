@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -30,8 +31,9 @@ import androidx.compose.ui.unit.sp
  *  terminal status (InputActions, the store's status gate); this is the kicked-exit copy only. */
 object RoomTerminal {
     /** The completion notice, the one lexicon sentence (EXPERIENCE.md §5, verbatim from apps/ios
-     *  RoomTerminal.completedNotice): the solved room reads "Solved together" once the moment settles.
-     *  Verbatim contract, so the three clients say the same one sentence. */
+     *  RoomTerminal.completedNotice): the solved room reads "Solved together" once the moment
+     *  settles (SolvedNotice), and any other surface that says it (the facts headline, analysis)
+     *  reads verbatim. Verbatim contract, so the three clients say the same one sentence. */
     const val completedNotice: String = "Solved together"
 
     /** The kicked notice, the one honest sentence (EXPERIENCE.md lexicon: kicked). */
@@ -39,6 +41,10 @@ object RoomTerminal {
 
     /** The kicked exit's affordance: home is Rooms, so the way out says so plainly (ID-5). */
     const val kickedExitWord: String = "Back to Rooms"
+
+    /** The abandoned notice (EXPERIENCE.md lexicon: abandoned), the one line a host-ended room shows
+     *  where the deck was (iOS SolveScreen `abandonedZone`): terminal and quiet, nothing else. */
+    const val abandonedNotice: String = "The host ended this game"
 }
 
 /** The solved room's quiet notice (apps/ios RoomTerminal.completedNotice): once the completion moment
@@ -94,4 +100,25 @@ fun KickedExit(ground: GridGround, onExit: () -> Unit, modifier: Modifier = Modi
             )
         }
     }
+}
+
+/** The abandoned room's one-line notice (iOS SolveScreen `abandonedZone`): a host-ended room freezes
+ *  the board with this single quiet sentence where the deck was, terminal and quiet (EXPERIENCE.md).
+ *  Unlike the kicked exit, there is still a board to browse, so this replaces only the deck, not the
+ *  room. The completed room prints no notice here (the deck just leaves; the time pill's seal is the
+ *  record), so this is the abandoned case alone. */
+@Composable
+fun AbandonedNotice(ground: GridGround, modifier: Modifier = Modifier) {
+    val tokens = ground.tokens
+    Text(
+        RoomTerminal.abandonedNotice,
+        color = tokens.number.toColor(),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(tokens.canvas.toColor())
+            .padding(top = 16.dp, bottom = 18.dp),
+    )
 }
