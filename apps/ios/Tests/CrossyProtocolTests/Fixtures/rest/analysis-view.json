@@ -17,5 +17,13 @@
   "titles": [
     { "userId": "mate", "title": "one-hit-wonder", "evidence": null },
     { "userId": "host", "title": "quick-starter", "evidence": 1 }
-  ]
+  ],
+  "sittings": {
+    "count": 2,
+    "spans": [
+      { "startSeconds": 0, "endSeconds": 45 },
+      { "startSeconds": 45, "endSeconds": 60 }
+    ],
+    "wallSeconds": 1860
+  }
 }

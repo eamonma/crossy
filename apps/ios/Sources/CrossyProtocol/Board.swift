@@ -148,14 +148,28 @@ public struct Stats: Sendable, Equatable, Codable {
     /// Always present from a current server; decoded tolerantly (default 0, the
     /// avatarUrl posture toward additive fields) so a pre-check payload still decodes.
     public let checkCount: Int
+    /// `solveTimeSeconds` with idle collapsed: same endpoints, same rounding, minus
+    /// every gap of `SITTING_GAP_MS` or more between consecutive cell events, clamped
+    /// at 0 (the sittings partition, PROTOCOL.md §4; DESIGN.md D29). Additive
+    /// (2026-07-16) and never backfilled: stats frozen before it shipped lack it, so
+    /// it stays optional and absence keeps meaning "fall back to `solveTimeSeconds`"
+    /// (`headlineSolveSeconds`), never a default that fakes a number.
+    public let activeSolveSeconds: Int?
+    /// The sittings partition's count (PROTOCOL.md §4; DESIGN.md D29). Additive like
+    /// `activeSolveSeconds`: nil from a frozen pre-D29 row, and nil renders exactly
+    /// as one sitting does (no context suffix).
+    public let sittingCount: Int?
 
     public init(
-        solveTimeSeconds: Int, totalEvents: Int, participantCount: Int, checkCount: Int = 0
+        solveTimeSeconds: Int, totalEvents: Int, participantCount: Int, checkCount: Int = 0,
+        activeSolveSeconds: Int? = nil, sittingCount: Int? = nil
     ) {
         self.solveTimeSeconds = solveTimeSeconds
         self.totalEvents = totalEvents
         self.participantCount = participantCount
         self.checkCount = checkCount
+        self.activeSolveSeconds = activeSolveSeconds
+        self.sittingCount = sittingCount
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -163,6 +177,8 @@ public struct Stats: Sendable, Equatable, Codable {
         case totalEvents
         case participantCount
         case checkCount
+        case activeSolveSeconds
+        case sittingCount
     }
 
     public init(from decoder: any Decoder) throws {
@@ -171,6 +187,8 @@ public struct Stats: Sendable, Equatable, Codable {
         totalEvents = try container.decode(Int.self, forKey: .totalEvents)
         participantCount = try container.decode(Int.self, forKey: .participantCount)
         checkCount = try container.decodeIfPresent(Int.self, forKey: .checkCount) ?? 0
+        activeSolveSeconds = try container.decodeIfPresent(Int.self, forKey: .activeSolveSeconds)
+        sittingCount = try container.decodeIfPresent(Int.self, forKey: .sittingCount)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -179,6 +197,17 @@ public struct Stats: Sendable, Equatable, Codable {
         try container.encode(totalEvents, forKey: .totalEvents)
         try container.encode(participantCount, forKey: .participantCount)
         try container.encode(checkCount, forKey: .checkCount)
+        // Absent stays absent (unlike checkCount, whose 0 is a real count): a frozen
+        // pre-D29 stats row re-encodes without the keys, keeping the round trip honest.
+        try container.encodeIfPresent(activeSolveSeconds, forKey: .activeSolveSeconds)
+        try container.encodeIfPresent(sittingCount, forKey: .sittingCount)
+    }
+
+    /// The headline Time everywhere stats render (owner ruling, DESIGN.md D29;
+    /// PROTOCOL.md §4): active time is THE time, and a frozen pre-D29 row falls back
+    /// to the wall-clock `solveTimeSeconds` it always showed.
+    public var headlineSolveSeconds: Int {
+        activeSolveSeconds ?? solveTimeSeconds
     }
 }
 

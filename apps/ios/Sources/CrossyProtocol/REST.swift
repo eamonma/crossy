@@ -860,6 +860,36 @@ public struct AnalysisView: Sendable, Equatable, Codable {
         }
     }
 
+    /// The sittings partition (§12; DESIGN.md D29): `count` sittings, one `spans` entry
+    /// per sitting ON THE ACTIVE AXIS (the same axis as `momentum.durationSeconds`, so a
+    /// client places ribbon seam ticks by lookup; contiguous, first start 0, last end
+    /// the duration), and `wallSeconds`, the wall-clock trace span the pre-D29
+    /// `durationSeconds` reported, kept for flavor copy only. Numbers only, so INV-6
+    /// holds.
+    public struct Sittings: Sendable, Equatable, Codable {
+        /// One sitting's reach on the active axis. A sitting holding no trace entry
+        /// clamps to a zero-width span at the axis edge (§12), which draws nothing.
+        public struct Span: Sendable, Equatable, Codable {
+            public let startSeconds: Double
+            public let endSeconds: Double
+
+            public init(startSeconds: Double, endSeconds: Double) {
+                self.startSeconds = startSeconds
+                self.endSeconds = endSeconds
+            }
+        }
+
+        public let count: Int
+        public let spans: [Span]
+        public let wallSeconds: Double
+
+        public init(count: Int, spans: [Span], wallSeconds: Double) {
+            self.count = count
+            self.spans = spans
+            self.wallSeconds = wallSeconds
+        }
+    }
+
     /// The mosaic owner map (§12): the first-correct owner per solved cell. The wire is a
     /// JSON object whose keys are the cell indices as strings (JSON object keys are always
     /// strings), values the owning userId. Kept as `[String: String]` so the round trip is
@@ -873,17 +903,24 @@ public struct AnalysisView: Sendable, Equatable, Codable {
     /// the key, and the synthesized optional also tolerates an older server that omits
     /// it (§14 additive evolution), which reads the same as no titles at all.
     public let titles: [Title]?
+    /// The sittings partition (§12; DESIGN.md D29). Optional for the titles reason: a
+    /// client MUST tolerate the field's absence (an older cached bundle) and degrade to
+    /// rendering without seams, so the synthesized optional reads an omitted key as nil,
+    /// never a decode failure.
+    public let sittings: Sittings?
 
     public init(
         owners: [String: String],
         momentum: Momentum,
         moments: Moments,
-        titles: [Title]? = nil
+        titles: [Title]? = nil,
+        sittings: Sittings? = nil
     ) {
         self.owners = owners
         self.momentum = momentum
         self.moments = moments
         self.titles = titles
+        self.sittings = sittings
     }
 
     /// The owner map with its keys parsed back to cell indices. Non-integer keys are

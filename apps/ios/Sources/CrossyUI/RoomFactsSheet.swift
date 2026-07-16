@@ -22,7 +22,10 @@ import SwiftUI
 /// when it exists (stats arrive only with `gameCompleted`, PROTOCOL.md §6);
 /// otherwise the ambient clock's value, which ticks against `now` while the
 /// room runs and freezes at the terminal instant (ID-2), exactly the bar
-/// clock's own arithmetic.
+/// clock's own arithmetic. The caller passes the HEADLINE stat seconds —
+/// `Stats.headlineSolveSeconds`, active time first with the wall-clock
+/// fallback (owner ruling, D29) — so the preference rule lives once, on the
+/// stats twin.
 public enum RoomFactsClock {
     public static func headline(
         solveTimeSeconds: Int?, firstFillAt: String?, completedAt: String?, now: Date
@@ -65,7 +68,8 @@ public struct RoomFactsContent: Equatable, Sendable {
         completed: Bool,
         totalEvents: Int?,
         participantCount: Int?,
-        checkCount: Int = 0
+        checkCount: Int = 0,
+        sittingCount: Int? = nil
     ) -> RoomFactsContent {
         if completed {
             var parts: [String] = []
@@ -75,6 +79,12 @@ public struct RoomFactsContent: Equatable, Sendable {
             if let participantCount {
                 parts.append(
                     participantCount == 1 ? "1 solver" : "\(participantCount) solvers")
+            }
+            // The sitting count is context among the facts, never a second stat
+            // (owner ruling, D29): the " · " grammar, only at two or more. One
+            // sitting, or a frozen pre-D29 stats row (nil), reads exactly as today.
+            if let sittingCount, sittingCount >= 2 {
+                parts.append("\(sittingCount) sittings")
             }
             return RoomFactsContent(
                 label: RoomTerminal.completedNotice,
