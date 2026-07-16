@@ -5,7 +5,10 @@ are implemented and bound (`packages/engine/src/analysis.test.ts`, a narrow per-
 reader; no directory glob). `titles.json` is the family's **data-only, ahead-of-the-engine**
 member: it pins the two solver-titles reducers (ROADMAP Phase 10, Wave 10.2) before they
 exist. Vectors are written before implementations (CLAUDE.md, PROTOCOL.md section 13); the
-Wave 10.3 engine PR adopts `titles.json` with the same reader.
+Wave 10.3 engine PR adopts `titles.json` with the same reader. `sittings.json` is the
+second data-only member: it pins the sittings partition and the active-time remap
+(DESIGN.md D29, `design/post-game/SITTINGS.md`; ROADMAP Phase 11) ahead of the Wave 11.2
+engine PR, which adopts it the same way.
 
 Precedence when sources disagree: these vectors, then PROTOCOL.md, then any implementation.
 Companion design: `design/post-game/ANALYSIS.md`; for titles, `design/post-game/TITLES.md`.
@@ -29,9 +32,10 @@ solveSequence(trace)         -> [{ cell, atSeconds }]         // sorted by (at, 
 `at` is **epoch milliseconds** (a number), the shape `cell_events.at` carries as data into the
 pure engine (INV-9: the engine takes timestamps as data, it never reads a clock). Every reported
 time is **relative seconds** from the solve's start: `t0 = min(at)` over the trace, and a
-reported time is `(at - t0) / 1000`. Two named engine constants: `N = 40` (momentum sample
-count) and `BURST_WINDOW = 30s` (the turning-point burst window). A vector cites these, never a
-magic number.
+reported time is `(at - t0) / 1000`, exact division, never rounded (the engine subtracts and
+divides, it does not round). Three named engine constants: `N = 40` (momentum sample count),
+`BURST_WINDOW = 30s` (the turning-point burst window), and `SITTING_GAP_MS = 1_800_000` (30
+minutes, the sitting boundary; DESIGN.md D29). A vector cites these, never a magic number.
 
 ### solveTrace
 
@@ -83,6 +87,55 @@ replay (`design/post-game/REPLAY.md`).
   order, since clock skew across writers can put a later-seq fill at an earlier `at`. `[]` for an
   empty trace. INV-6-safe by shape: cells and times only, no `userId` (the client reads the owner
   from the bundle's `owners` map).
+
+## The sittings reducers (`sittings.json`)
+
+`sittings.json` pins the sittings projection from `design/post-game/SITTINGS.md` (DESIGN.md
+D29): the partition of the event log into sittings and the active-time re-base of the whole
+bundle. Like `titles.json`, the file holds two keyed case clusters, one per function,
+`{ "collapseIdle": [...], "sittings": [...] }`, each cluster a case array in the house shape.
+
+```
+collapseIdle(events)        -> events'                          // at moved onto the active axis
+sittings(events, solution)  -> { count, spans, wallSeconds }    // the wire projection
+```
+
+- **The partition**: a sitting is a maximal run of events whose consecutive gaps (seq order,
+  `at[i+1] - at[i]`) are all under `SITTING_GAP_MS`. A gap of **exactly** `SITTING_GAP_MS`
+  is a boundary (`>=` splits; both edges are vector-pinned). A negative gap (clock skew) is
+  under the threshold, so skew never splits. Activity is **any** event, writes, wrong writes,
+  and clears alike: the partition runs over the full event log, never the first-correct trace
+  (the bridge case and its contrast pin this).
+- **collapseIdle**: `given.events` (the `solve-trace.json` event shape) to `then.events`,
+  the same events with each `at` replaced by `at - (sum of collapsed gaps before it)`. A
+  collapsed gap is subtracted in full, so the boundary events share one active instant (the
+  seam). A log with no boundary is the **identity mapping**: every analysis case predating
+  sittings is single-sitting, which is why the re-base leaves them all byte-identical (the
+  compat proof; the D29 amendment only appended cases to this family).
+- **sittings**: `given.events` plus `given.solution` (repo-and-server-only ground, as in
+  `solve-trace.json`) to the wire field: `count` sittings; `spans`, one per sitting on the
+  **active axis of the remapped trace** (the ribbon's axis), contiguous
+  (`spans[k+1].startSeconds == spans[k].endSeconds`, first start `0`, last end
+  `momentum.durationSeconds`), each boundary clamped to `[0, durationSeconds]` and
+  non-decreasing, so a sitting with no trace entry degenerates to a zero-width span at the
+  axis edge while the count stays honest; and `wallSeconds`, `(max at - min at) / 1000` over
+  the **unremapped** trace, the number `durationSeconds` reported before the re-base, flavor
+  only. All numbers exact division, unrounded (the identity `wallSeconds == durationSeconds`
+  for a single sitting demands it; the one-ms-under case pins 1799.999).
+
+### Composed cases in the trace-projection files (D29)
+
+Production feeds the reducers the remapped trace: the pipeline is
+`solveTrace(collapseIdle(events), solution)`, then `momentum`/`moments`/`solveSequence`
+unchanged. To pin that composition end to end, `momentum.json`, `moments.json`, and
+`sequence.json` each carry one **composed case**, named `COMPOSED (D29): ...`, whose `given`
+holds `events` and `solution` **beside** the usual `trace`, with the pinned equality that
+`given.trace` is exactly `solveTrace(collapseIdle(given.events), given.solution)`. The
+shipped reader keeps running `f(given.trace)` and stays green with no engine change; the
+Wave 11.2 reader additionally asserts the equality, closing the pipeline. The cases pin the
+active basis (compact `durationSeconds` and `atSeconds`, the within-sitting turning point,
+the seam sharing one active instant and bucket). Every pre-existing case is untouched and
+byte-identical; the reducers themselves did not change.
 
 ## The titles reducers (`titles.json`)
 
@@ -174,7 +227,11 @@ for its own grids). `momentum`, `moments`, and `solveSequence` take a valueless 
 fixtures never even name a solution, and `solveSequence` drops the `userId` too: its output is
 cells and times only. The titles reducers keep the same discipline: the stat sheet and the
 award array carry userIds, keys, and counts only, never a letter (`titles.json`'s
-`given.solution` is repo-and-server-only ground, like `solve-trace.json`'s).
+`given.solution` is repo-and-server-only ground, like `solve-trace.json`'s). `sittings.json`
+follows suit: the wire projection outputs counts and seconds only, and its fixtures
+(`collapseIdle` events carry values, `sittings` carries a solution) are the same
+repo-and-server-only ground, server-side inputs that never ship (the remap happens before
+the trace drops the values).
 
 ## Layout
 
@@ -186,10 +243,11 @@ vectors/
     moments.json       first / last by at (seq tie-break), and the largest-gap turning point
     sequence.json      the ordered who-fell-when: each cell with atSeconds, sorted by (at, seq)
     titles.json        the solver-titles stat sheet and award ladder (two clusters, one per reducer)
+    sittings.json      the sitting partition and active-time remap, plus the wire projection (two clusters)
 ```
 
 One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (matches `v1/`,
-`first-correct/`). `titles.json` alone holds two clusters keyed by reducer (above).
+`first-correct/`). `titles.json` and `sittings.json` hold two clusters keyed by reducer (above).
 
 ## Case shape
 
@@ -203,7 +261,10 @@ One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (
 ```
 
 `solve-trace.json` cases carry `given.solution` and `given.events`; `momentum.json`,
-`moments.json`, and `sequence.json` cases carry `given.trace`. All times in `given` are epoch ms;
-all reported times in `then` are relative seconds. `titles.json` differs as its section
-documents: its stat-sheet `then` carries raw `{ at, seq }` ordering keys plus floored
-whole-second spans, never relative fractional seconds.
+`moments.json`, and `sequence.json` cases carry `given.trace`, and each file's one composed
+D29 case carries `given.events` and `given.solution` beside it (its section above). All times in
+`given` are epoch ms; all reported times in `then` are relative seconds. `titles.json` differs
+as its section documents: its stat-sheet `then` carries raw `{ at, seq }` ordering keys plus
+floored whole-second spans, never relative fractional seconds. `sittings.json`'s `collapseIdle`
+cluster differs the other way: its `then.events` stay epoch-anchored ms, since the remap moves
+timestamps, it does not report seconds.

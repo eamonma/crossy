@@ -86,5 +86,37 @@
     "then": {
       "sequence": []
     }
+  },
+  {
+    "name": "COMPOSED (D29): the seam fills share one active second and the axis is compact",
+    "intent": "A composed case: given carries events and solution beside the trace, and given.trace IS solveTrace(collapseIdle(events), solution), the pipeline equality the Wave 11.2 reader asserts (today's reader runs the reducer on the trace as usual). The two-hour gap (7,200,000 ms >= SITTING_GAP_MS) collapses in full, so the last fill of sitting 1 and the first of sitting 2 land on the same active second (15) and order by seq, the existing (at, seq) tie rule; the replay axis is compact (30 s, not 7230).",
+    "given": {
+      "trace": [
+        { "cell": 0, "userId": "u1", "seq": 1, "at": 0 },
+        { "cell": 1, "userId": "u2", "seq": 2, "at": 15000 },
+        { "cell": 2, "userId": "u1", "seq": 3, "at": 15000 },
+        { "cell": 3, "userId": "u2", "seq": 4, "at": 30000 }
+      ],
+      "solution": [
+        [0, "A"],
+        [1, "B"],
+        [2, "C"],
+        [3, "D"]
+      ],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+        { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 15000 },
+        { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 7215000 },
+        { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 7230000 }
+      ]
+    },
+    "then": {
+      "sequence": [
+        { "cell": 0, "atSeconds": 0 },
+        { "cell": 1, "atSeconds": 15 },
+        { "cell": 2, "atSeconds": 15 },
+        { "cell": 3, "atSeconds": 30 }
+      ]
+    }
   }
 ]
