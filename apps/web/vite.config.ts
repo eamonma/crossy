@@ -6,8 +6,9 @@ import { defineConfig } from "vitest/config";
 // Vitest config is folded into the Vite config so the client has one source of truth.
 // Tailwind v4 runs as a Vite plugin (no PostCSS config, no content globs: it scans the
 // source itself). The navigation and store suites are pure and run under node, so no
-// jsdom/happy-dom dependency is pulled in. The `@` alias mirrors tsconfig's paths entry;
-// shadcn/ui's generated components import through it.
+// jsdom/happy-dom dependency is pulled in; the .tsx suites render static markup through
+// react-dom/server, which is node-clean too. The `@` alias mirrors tsconfig's paths
+// entry; shadcn/ui's generated components import through it.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -17,6 +18,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

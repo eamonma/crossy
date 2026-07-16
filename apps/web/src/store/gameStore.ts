@@ -178,6 +178,17 @@ export class GameStore {
   }
 
   /**
+   * The cell's SEQUENCED value only, never the optimistic overlay. The grid-full derivation
+   * reads exactly this (R9, docs/design/room-actions-control.md): the client gates the check
+   * row on the same state the server gates `checkPuzzle` on (PROTOCOL.md §5, §10), so a
+   * just-typed optimistic last letter leaves the row disabled for a beat instead of letting
+   * the platforms diverge.
+   */
+  sequencedValue(cell: number): string | null {
+    return this.cellsValue.get(cell)?.v ?? null;
+  }
+
+  /**
    * The last writer of a cell's sequenced value: the `by` already on the wire (PROTOCOL.md
    * section 8, the same field the conflict flash reads). Null for an empty or never-written
    * cell. Read-only over confirmed state (the optimistic overlay carries no attribution), so
@@ -246,6 +257,25 @@ export class GameStore {
   react(emoji: string, cell: number): void {
     if (this.syncValue === "connecting") return;
     this.transport.send({ type: "react", emoji, cell });
+  }
+
+  /**
+   * The room-wide check (PROTOCOL.md §5, §10; D27): a commandId-minted intent like any
+   * mutation, but with no overlay entry, because a check owns no cell and paints nothing
+   * optimistically. That absence is load-bearing for the rejection path (R2): a non-fatal
+   * `GRID_NOT_FULL`/`GAME_NOT_ONGOING` echo finds no overlay entry to clear and falls through
+   * as a silent no-op, which is the designed posture — the room's own state shows why.
+   * The confirmation dialog is the caller's job; this command IS the confirmed intent (§10).
+   */
+  checkPuzzle(commandId?: string): void {
+    // The same gates as sendMutation: no authoritative board yet, or a terminal board the
+    // server would answer with GAME_NOT_ONGOING anyway (INV-4 scope).
+    if (this.syncValue === "connecting") return;
+    if (this.statusValue !== "ongoing") return;
+    this.transport.send({
+      type: "checkPuzzle",
+      commandId: commandId ?? this.newCommandId(),
+    });
   }
 
   private sendMutation(
