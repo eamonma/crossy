@@ -1,6 +1,7 @@
 // The auth session: the one object that walks AuthStateMachine and owns the effects around it.
-// Twin of apps/ios AuthSession.swift, scoped to AAD-3 (email/password + the token path). Sign-in
-// is a Supabase password grant, persistence is the TokenStore seam, and currentToken() is the
+// Twin of apps/ios AuthSession.swift (AAD-3). Sign-in is a Supabase password grant, an email OTP
+// verify, or the split OAuth flow (beginOAuth hands the browser leg its URL, completeOAuth digests
+// the deep-link callback); persistence is the TokenStore seam, and currentToken() is the
 // silent-refresh path every REST call rides (BearerTokenProvider, so CrossyApiClient consumes this
 // directly). The injected dev-token path (InjectedTokenProvider) is the interchangeable other side
 // of that seam and never constructs this type.
@@ -13,6 +14,7 @@ package crossy.api
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import okhttp3.HttpUrl
 
 /** Thrown by the token path when there is no session to speak for, and by a mid-flight refresh
  *  whose session was purged under it. Surfaces as [CrossyApiError.TokenUnavailable] at the REST
@@ -32,8 +34,24 @@ public class AuthSession(
      *  is the token itself, DESIGN.md §8). */
     public val userId: String? get() = stored?.userId
 
+    /** Which provider minted the standing session, remembered from the leg that ran (display
+     *  only). In-memory tonight: the persisted marker rides the Keystore token-store track
+     *  (PARITY.md), so a relaunch names no provider rather than misreporting one. Twin of iOS
+     *  `provider`, minus the Keychain marker. */
+    public var provider: AuthProvider? = null
+        private set
+
     @Volatile
     private var stored: SupabaseSession? = null
+
+    /** The one in-flight OAuth attempt: the provider the browser was sent to and the verifier
+     *  its challenge was derived from. A second begin supersedes it (the stale verifier can
+     *  never match a newer challenge anyway); any completion attempt spends it. */
+    @Volatile
+    private var pendingOAuth: PendingOAuth? = null
+
+    private data class PendingOAuth(val provider: AuthProvider, val verifier: String)
+
     private val refreshMutex = Mutex()
 
     // MARK: - Lifecycle
@@ -60,6 +78,54 @@ public class AuthSession(
         }
     }
 
+    // MARK: - OAuth over the browser leg (Discord / Apple / hisbaan)
+    //
+    // Where iOS runs the whole web hop in-process (ASWebAuthenticationSession awaits the
+    // callback), Android's flow is split: the app launches a Custom Tab and the redirect comes
+    // back later through a deep link. So the one iOS signIn(provider:) becomes a begin/complete
+    // pair, mirroring the sendEmailOTP/verifyEmailOTP two-step: begin is effect-free on the
+    // machine (like the OTP send), complete walks it (like the verify).
+
+    /** Step one of the split OAuth flow: mint a fresh PKCE verifier for this attempt, remember
+     *  the pending {provider, verifier}, and return the authorize URL for the browser leg to
+     *  open. No phase change and no network: an abandoned browser trip leaves nothing to undo,
+     *  and a second begin simply supersedes the stale pending. Every provider rides this same
+     *  leg, Apple included (no native Apple SDK on Android). */
+    public fun beginOAuth(provider: AuthProvider): HttpUrl {
+        val verifier = Pkce.verifier()
+        pendingOAuth = PendingOAuth(provider, verifier)
+        return client.authorizeUrl(provider, Pkce.challenge(verifier))
+    }
+
+    /** Step two: the deep-link callback. Parses the redirect URI; a provider refusal
+     *  (`error`/`error_description`, no code) is a typed [SupabaseAuthError.InvalidCallback]
+     *  thrown with no network call. A code exchanges through the pkce grant (same issuer pin as
+     *  every grant), persists, remembers the provider, and lands SIGNED_IN. Walks the machine
+     *  exactly as verifyEmailOTP does and rethrows on failure so the screen can render the
+     *  inline reason. Returns false, touching nothing, for a stray callback with no pending
+     *  begin (or one racing an in-flight sign-in). Either way the pending attempt is spent:
+     *  retry means a new begin, a new verifier. */
+    public suspend fun completeOAuth(callbackUri: String): Boolean {
+        val pending = pendingOAuth ?: return false
+        if (!machine.apply(AuthEvent.SIGN_IN_STARTED)) return false
+        pendingOAuth = null
+        try {
+            val callback = OAuthCallback.parse(callbackUri)
+            val code = callback.code ?: throw SupabaseAuthError.InvalidCallback(
+                callback.error,
+                callback.errorDescription,
+            )
+            val session = client.exchangeCode(code, pending.verifier, nowSeconds())
+            persist(session)
+            provider = pending.provider
+            machine.apply(AuthEvent.SIGN_IN_COMPLETED)
+            return true
+        } catch (e: Throwable) {
+            machine.apply(AuthEvent.SIGN_IN_FAILED)
+            throw e
+        }
+    }
+
     // MARK: - Email OTP / magic link (roadmap I3b, mirrors #230)
 
     /** Step one of the email OTP flow: ask the server to email the code (and the magic link). No
@@ -82,6 +148,7 @@ public class AuthSession(
         try {
             val session = client.verifyEmailOTP(email, code, nowSeconds())
             persist(session)
+            provider = AuthProvider.EMAIL_OTP
             machine.apply(AuthEvent.SIGN_IN_COMPLETED)
         } catch (e: Throwable) {
             machine.apply(AuthEvent.SIGN_IN_FAILED)
@@ -97,6 +164,7 @@ public class AuthSession(
         try {
             val session = client.verifyEmailLink(tokenHash, type, nowSeconds())
             persist(session)
+            provider = AuthProvider.EMAIL_OTP
             machine.apply(AuthEvent.SIGN_IN_COMPLETED)
         } catch (e: Throwable) {
             machine.apply(AuthEvent.SIGN_IN_FAILED)
@@ -196,10 +264,12 @@ public class AuthSession(
         store.write(session)
     }
 
-    /** Drop the in-memory session and clear the store. Shared by sign-out and account deletion;
-     *  never waits on the network. */
+    /** Drop the in-memory session, provider, and pending OAuth attempt, and clear the store.
+     *  Shared by sign-out and account deletion; never waits on the network. */
     private fun purgeLocal() {
         stored = null
+        provider = null
+        pendingOAuth = null
         store.clear()
     }
 

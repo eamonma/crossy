@@ -3,9 +3,9 @@
 // headlessly; only the default verifier() reaches for the system CSPRNG. S256 only: the
 // plain method exists in the RFC for clients that cannot hash, which we are not.
 //
-// AAD-3 scope: the browser leg that spends these values (authorize URL, code exchange)
-// is deliberately unimplemented on this side tonight (no web-based PKCE flow). These
-// helpers ride along ready for the native-provider track that lands the flow later.
+// AAD-3: the OAuth leg that spends these values is AuthSession.beginOAuth (a fresh
+// verifier and its challenge per attempt) and completeOAuth (the verifier into the
+// pkce code exchange).
 
 package crossy.api
 
@@ -23,8 +23,8 @@ public object Pkce {
      */
     public fun verifier(bytes: ByteArray): String = urlEncoder.encodeToString(bytes)
 
-    /** A fresh random verifier (32 bytes from the system CSPRNG). Only the unimplemented
-     *  browser leg calls this; the pure helpers above are what the RFC vector pins. */
+    /** A fresh random verifier (32 bytes from the system CSPRNG). beginOAuth mints one per
+     *  attempt; the pure helpers above are what the RFC vector pins. */
     public fun verifier(): String {
         val bytes = ByteArray(32)
         SecureRandom().nextBytes(bytes)

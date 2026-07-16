@@ -1,13 +1,20 @@
 // The auth session lifecycle over real vendor calls (MockWebServer) and the in-memory TokenStore:
-// the AAD-3 slice of apps/ios AuthSessionTests.swift (password sign-in instead of the web leg; no
-// provider marker, no Apple name push). The token path is the load-bearing part: silent refresh
-// inside the margin, weather-tolerant currentToken, weather-rethrowing refreshedToken (the 401
-// seam's supplier, INV-11), and the terminal purge.
+// the AAD-3 slice of apps/ios AuthSessionTests.swift (a split begin/complete OAuth leg instead of
+// the in-process web sheet; the provider marker is in-memory pending the Keystore store; no Apple
+// name push). The token path is the load-bearing part: silent refresh inside the margin,
+// weather-tolerant currentToken, weather-rethrowing refreshedToken (the 401 seam's supplier,
+// INV-11), and the terminal purge.
 
 package crossy.api
 
+import crossy.protocol.ProtocolJson
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -83,6 +90,7 @@ class AuthSessionTests : MockServerTest() {
         session.verifyEmailOTP("ada@example.test", "123456")
 
         assertEquals(AuthPhase.SIGNED_IN, session.phase, "SIGNED_OUT -> AUTHENTICATING -> SIGNED_IN")
+        assertEquals(AuthProvider.EMAIL_OTP, session.provider, "the leg remembers the email provider")
         assertEquals("11111111-2222-3333-4444-555555555555", session.userId)
         assertEquals("otp-refresh", store.read()?.refreshToken, "the verified session persists like a password one")
         assertTrue(session.currentToken().isNotEmpty(), "the token provider serves it with no further network")
@@ -138,6 +146,168 @@ class AuthSessionTests : MockServerTest() {
         assertEquals("refresh_token", refresh.requestUrl?.queryParameter("grant_type"), "the OTP session refreshes on the token grant")
         assertEquals("next-refresh", store.read()?.refreshToken, "the rotated session persisted")
         assertEquals(AuthPhase.SIGNED_IN, session.phase)
+    }
+
+    // MARK: - OAuth over the split browser leg (AAD-3): begin hands out the URL, the deep link
+    // comes back to complete. Normative behaviors ported from apps/ios AuthSessionTests.swift
+    // (test_hisbaanRidesTheSameWebLegWithTheEncodedProviderAndRemembersItself and kin).
+
+    @Test
+    fun beginOAuth_mintsAFreshVerifierPerAttemptAndTouchesNothing() = runBlocking {
+        // PKCE hygiene: every attempt gets its own verifier, so two begins yield two different
+        // challenges. Begin is the OTP send's twin: no phase change, no network, nothing to undo
+        // when the browser trip is abandoned.
+        val (session, store) = makeSession()
+
+        val first = session.beginOAuth(AuthProvider.DISCORD)
+        val second = session.beginOAuth(AuthProvider.DISCORD)
+
+        assertEquals("/auth/v1/authorize", first.encodedPath)
+        assertNotEquals(
+            first.queryParameter("code_challenge"),
+            second.queryParameter("code_challenge"),
+            "a fresh verifier per begin, never a reused one",
+        )
+        assertEquals(AuthPhase.SIGNED_OUT, session.phase, "begin walks no machine")
+        assertNull(store.read())
+        assertEquals(0, server.requestCount, "begin is pure construction")
+    }
+
+    @Test
+    fun completeOAuth_hisbaanRidesTheWebLegWithTheEncodedProviderAndRemembersItself() = runBlocking {
+        // The iOS normative case: hisbaan is a custom OIDC provider on the identical PKCE flow
+        // Discord rides; only the provider value and the remembered marker differ. The colon
+        // lands on the wire percent-encoded yet decodes back to the raw wire id, and the
+        // exchange hits the pkce grant with the begin's own verifier ({auth_code, code_verifier}).
+        server.enqueue(jsonResponse(200, grantBody("granted", "oauth-refresh", 4_102_444_800.0)))
+        val (session, store) = makeSession()
+
+        val authorize = session.beginOAuth(AuthProvider.HISBAAN)
+        val landed = session.completeOAuth("crossy://auth/callback?code=cb-code")
+
+        assertTrue(landed)
+        assertEquals(AuthPhase.SIGNED_IN, session.phase)
+        assertEquals(AuthProvider.HISBAAN, session.provider, "the leg remembers hisbaan")
+        assertEquals("oauth-refresh", store.read()?.refreshToken, "the session persists like every grant")
+
+        assertTrue(
+            authorize.toString().contains("provider=custom%3Ahisbaan"),
+            "the raw colon is percent-encoded on the wire",
+        )
+        assertEquals("custom:hisbaan", authorize.queryParameter("provider"))
+
+        val exchange = server.takeRequest()
+        assertEquals("/auth/v1/token", exchange.requestUrl?.encodedPath)
+        assertEquals("pkce", exchange.requestUrl?.queryParameter("grant_type"))
+        val body = ProtocolJson.parseToJsonElement(exchange.body.readUtf8()).jsonObject
+        assertEquals("cb-code", body["auth_code"]?.jsonPrimitive?.contentOrNull)
+        val spentVerifier = body["code_verifier"]?.jsonPrimitive?.contentOrNull
+        assertEquals(
+            authorize.queryParameter("code_challenge"),
+            Pkce.challenge(spentVerifier ?: ""),
+            "the exchange spends the exact verifier the begin's challenge was derived from",
+        )
+    }
+
+    @Test
+    fun completeOAuth_aSecondBeginSupersedesTheStalePending() = runBlocking {
+        // The user backs out of the browser and taps sign-in again: the second begin's verifier
+        // is the live one, and the callback exchanges against it, never the stale first.
+        server.enqueue(jsonResponse(200, grantBody("granted", "r", 4_102_444_800.0)))
+        val (session, _) = makeSession()
+
+        val stale = session.beginOAuth(AuthProvider.DISCORD)
+        val live = session.beginOAuth(AuthProvider.DISCORD)
+        session.completeOAuth("crossy://auth/callback?code=cb-code")
+
+        val body = ProtocolJson.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        val spentChallenge = Pkce.challenge(body["code_verifier"]?.jsonPrimitive?.contentOrNull ?: "")
+        assertEquals(live.queryParameter("code_challenge"), spentChallenge, "the live pending won")
+        assertNotEquals(stale.queryParameter("code_challenge"), spentChallenge, "the stale one is gone")
+    }
+
+    @Test
+    fun completeOAuth_anErrorCallbackIsATypedFailureWithNoNetworkCall() = runBlocking {
+        // A provider refusal comes back as error/error_description and no code: a typed
+        // InvalidCallback thrown before any exchange, landing FAILED (the retry state) with
+        // nothing persisted.
+        val (session, store) = makeSession()
+        session.beginOAuth(AuthProvider.DISCORD)
+
+        val error = runCatching {
+            session.completeOAuth(
+                "crossy://auth/callback?error=access_denied&error_description=user%20said%20no",
+            )
+        }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.InvalidCallback, "typed, got $error")
+        error as SupabaseAuthError.InvalidCallback
+        assertEquals("access_denied", error.error)
+        assertEquals("user said no", error.errorDescription)
+        assertEquals(AuthPhase.FAILED, session.phase)
+        assertNull(store.read(), "a refused callback persists nothing")
+        assertEquals(0, server.requestCount, "no code, no exchange, no network")
+        assertNull(session.provider, "a failed leg remembers nothing")
+    }
+
+    @Test
+    fun completeOAuth_aStrayCallbackWithNoPendingBeginReturnsFalseAndTouchesNothing() = runBlocking {
+        // A deep link with no attempt behind it (a replayed link, a cold start) speaks for no
+        // one: false, no machine walk, no network.
+        val (session, store) = makeSession()
+
+        val landed = session.completeOAuth("crossy://auth/callback?code=cb-code")
+
+        assertFalse(landed)
+        assertEquals(AuthPhase.SIGNED_OUT, session.phase)
+        assertNull(store.read())
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun completeOAuth_anIssuerMismatchIsRejectedBeforeStorage() = runBlocking {
+        // The pin rides the pkce grant exactly as it rides the others (deploy/README.md issuer
+        // trap): a token minted under the wrong iss never reaches the store, the attempt lands
+        // FAILED, and the typed mismatch rethrows for the screen.
+        server.enqueue(
+            jsonResponse(
+                200,
+                """
+                {
+                  "access_token": "${jwtWithIssuer("https://api.crossy.party/auth/v1")}",
+                  "refresh_token": "evil-refresh",
+                  "expires_in": 3600
+                }
+                """.trimIndent(),
+            ),
+        )
+        val (session, store) = makeSession()
+        session.beginOAuth(AuthProvider.DISCORD)
+
+        val error = runCatching {
+            session.completeOAuth("crossy://auth/callback?code=cb-code")
+        }.exceptionOrNull()
+
+        assertTrue(error is SupabaseAuthError.IssuerMismatch, "the pin fired, got $error")
+        assertNull(store.read(), "the mismatched token never reached the store")
+        assertEquals(AuthPhase.FAILED, session.phase)
+        assertNull(session.provider)
+    }
+
+    @Test
+    fun signOut_forgetsTheRememberedProvider() = runBlocking {
+        // The iOS marker rule (test_signOutForgetsTheProviderMarker): the provider clears with
+        // the session it named.
+        server.enqueue(jsonResponse(200, grantBody("granted", "r", 4_102_444_800.0)))
+        val (session, _) = makeSession()
+        session.beginOAuth(AuthProvider.DISCORD)
+        session.completeOAuth("crossy://auth/callback?code=cb-code")
+        assertEquals(AuthProvider.DISCORD, session.provider)
+
+        server.enqueue(jsonResponse(204, ""))
+        session.signOut()
+
+        assertNull(session.provider, "the provider clears alongside the session")
     }
 
     @Test
