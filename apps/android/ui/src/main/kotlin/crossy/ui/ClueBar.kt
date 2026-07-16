@@ -7,6 +7,11 @@
 // sheet on a solid token surface (the glass melt is a later material pass), with swipe-down to dismiss
 // carried by the sheet. A near-pure function of the resolved clue and the browser rows; the room screen
 // owns clue selection, the step intents, and the jump.
+//
+// A COMPLETED room grows the analysis surface (owner ruling 2026-07-13; iOS ClueChrome ~217-284): the
+// bar's rest content becomes the gold "Analysis" door, and the browser sheet gains a Clues/Analysis
+// segmented pair (AnalysisTabPicker), the Analysis tab showing the post-game AnalysisPanel. The ongoing
+// room's bar is untouched (the `completed` branch is the only new path).
 
 package crossy.ui
 
@@ -27,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -59,6 +67,18 @@ fun ClueBar(
     onNext: () -> Unit = {},
     // Jump the cursor to a browser row (the room screen sets the selection and closes the browser).
     onJump: (ClueBrowserRow) -> Unit = {},
+    // The completed room grows the analysis surface (owner ruling 2026-07-13). False mid-solve, where
+    // the bar stays exactly the stepping bar; true swaps the rest content for the gold Analysis door and
+    // the sheet for the tabbed Clues/Analysis surface.
+    completed: Boolean = false,
+    // The analysis fetch's state, shown under the Analysis tab (read only when `completed`).
+    analysisPhase: AnalysisModel.Phase = AnalysisModel.Phase.Idle,
+    // The room's people, for the legend and moment names/colors (same list the roster reads).
+    analysisMembers: List<RosterMember> = emptyList(),
+    selfUserId: String? = null,
+    // Fired when the completed room's analysis surface is opened, so the room can kick the idempotent
+    // fetch on a tab-open as well as on the completion edge.
+    onOpenAnalysis: () -> Unit = {},
 ) {
     val tokens = ground.tokens
     val hasBrowser = acrossRows.isNotEmpty() || downRows.isNotEmpty()
@@ -68,46 +88,88 @@ fun ClueBar(
         color = tokens.cell.toColor(),
         contentColor = tokens.ink.toColor(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Chevron("‹", tokens.number.toColor(), onPrev)
-            androidx.compose.foundation.layout.Column(
-                modifier = Modifier
-                    .weight(1f)
-                    // The whole clue is the expand affordance (iOS: the bar row melts open); it opens
-                    // the browser when there is one to open (a live room), a no-op otherwise.
-                    .pointerInput(hasBrowser) {
-                        if (hasBrowser) detectTapGestures { expanded = true }
-                    },
+        if (completed) {
+            // The finished bar's affordance into the analysis (iOS analysisDoor): the gold ANALYSIS
+            // label and a chevron; a tap opens the sheet on the Analysis tab.
+            AnalysisDoor(ground) { expanded = true; onOpenAnalysis() }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    clue?.label.orEmpty(),
-                    color = tokens.number.toColor(),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    clue?.text.orEmpty(),
-                    color = tokens.ink.toColor(),
-                    fontSize = 16.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Chevron("‹", tokens.number.toColor(), onPrev)
+                androidx.compose.foundation.layout.Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        // The whole clue is the expand affordance (iOS: the bar row melts open); it opens
+                        // the browser when there is one to open (a live room), a no-op otherwise.
+                        .pointerInput(hasBrowser) {
+                            if (hasBrowser) detectTapGestures { expanded = true }
+                        },
+                ) {
+                    Text(
+                        clue?.label.orEmpty(),
+                        color = tokens.number.toColor(),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        clue?.text.orEmpty(),
+                        color = tokens.ink.toColor(),
+                        fontSize = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Chevron("›", tokens.number.toColor(), onNext)
             }
-            Chevron("›", tokens.number.toColor(), onNext)
         }
     }
 
-    if (expanded && hasBrowser) {
+    if (expanded && (hasBrowser || completed)) {
         ClueBrowserSheet(
             acrossRows = acrossRows,
             downRows = downRows,
             ground = ground,
             onJump = { row -> onJump(row); expanded = false },
             onDismiss = { expanded = false },
+            completed = completed,
+            analysisPhase = analysisPhase,
+            analysisMembers = analysisMembers,
+            selfUserId = selfUserId,
+            onOpenAnalysis = onOpenAnalysis,
+        )
+    }
+}
+
+/** The gold Analysis door, the completed bar's rest content (iOS analysisDoor): the ANALYSIS label in
+ *  the text gold, a trailing chevron in the line gold, over a faint gold ground. A tap melts the sheet
+ *  open on the Analysis tab. */
+@Composable
+private fun AnalysisDoor(ground: GridGround, onTap: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(AnalysisPalette.doorWash(ground).toColor())
+            .pointerInput(Unit) { detectTapGestures { onTap() } }
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .semantics { contentDescription = "See the analysis" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            "ANALYSIS",
+            color = AnalysisPalette.goldText(ground).toColor(),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 1.4.sp,
+        )
+        Text(
+            "›",
+            color = AnalysisPalette.gold(ground).toColor(),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }
@@ -124,9 +186,22 @@ private fun ClueBrowserSheet(
     ground: GridGround,
     onJump: (ClueBrowserRow) -> Unit,
     onDismiss: () -> Unit,
+    completed: Boolean = false,
+    analysisPhase: AnalysisModel.Phase = AnalysisModel.Phase.Idle,
+    analysisMembers: List<RosterMember> = emptyList(),
+    selfUserId: String? = null,
+    onOpenAnalysis: () -> Unit = {},
 ) {
     val tokens = ground.tokens
     val sheetState = rememberModalBottomSheetState()
+    // A completed room opens on the Analysis tab (the gold door leads there); the picker switches to the
+    // clue sections. A live room never carries the tab pair (AnalysisChrome.tabbed), so this is Clues.
+    var tab by remember { mutableStateOf(if (completed) AnalysisTab.ANALYSIS else AnalysisTab.CLUES) }
+    // Kick the idempotent fetch whenever the Analysis tab is the one showing (the tab-open edge, beside
+    // the completion edge the room already drives).
+    LaunchedEffect(tab, completed) {
+        if (AnalysisChrome.showsAnalysis(completed, tab)) onOpenAnalysis()
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -140,8 +215,24 @@ private fun ClueBrowserSheet(
                 .padding(horizontal = 12.dp)
                 .padding(bottom = 24.dp),
         ) {
-            ClueBrowserSection("Across", acrossRows, ground, onJump)
-            ClueBrowserSection("Down", downRows, ground, onJump)
+            if (AnalysisChrome.tabbed(completed)) {
+                AnalysisTabPicker(
+                    selection = tab,
+                    onSelect = { tab = it },
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                )
+            }
+            if (AnalysisChrome.showsAnalysis(completed, tab)) {
+                AnalysisPanel(
+                    phase = analysisPhase,
+                    members = analysisMembers,
+                    selfUserId = selfUserId,
+                    ground = ground,
+                )
+            } else {
+                ClueBrowserSection("Across", acrossRows, ground, onJump)
+                ClueBrowserSection("Down", downRows, ground, onJump)
+            }
         }
     }
 }

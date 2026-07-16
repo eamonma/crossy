@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import crossy.api.AuthProvider
 import crossy.api.CrossyApiError
+import crossy.protocol.AnalysisView
 import crossy.protocol.ClientPuzzle
 import crossy.protocol.CreateGameRequest
 import crossy.protocol.GameSummary
@@ -90,7 +91,11 @@ import crossy.ui.LegalPage
 import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
 import crossy.ui.PuzzlesScreen
+import crossy.ui.RoomAnalysis
+import crossy.ui.RoomBeat
+import crossy.ui.RoomMomentum
 import crossy.ui.RoomScreen
+import crossy.ui.RoomTurningPoint
 import crossy.ui.RosterAvatars
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
@@ -169,6 +174,25 @@ private fun GameView.seedRoster(): List<Participant> =
             avatarUrl = it.avatarUrl,
         )
     }
+
+/** Map the post-game analysis view to the room's render shape (owner ruling 2026-07-13; mirrors iOS
+ *  RoomMapping.analysis). The wire `owners` map is string-keyed (JSON object keys); `ownersByCell`
+ *  parses them to cell indices. INV-6 rides through untouched: AnalysisView carries userIds, cells, and
+ *  numbers only, and RoomAnalysis holds nothing solution-shaped either. The composition root owns this
+ *  wire->render translation (AAD-2), keeping :ui out of the REST ring. */
+internal fun analysisFromView(view: AnalysisView): RoomAnalysis =
+    RoomAnalysis(
+        owners = view.ownersByCell,
+        momentum = RoomMomentum(
+            durationSeconds = view.momentum.durationSeconds,
+            samples = view.momentum.samples,
+        ),
+        firstToFall = view.moments.firstToFall?.let { RoomBeat(it.cell, it.userId, it.atSeconds) },
+        lastSquare = view.moments.lastSquare?.let { RoomBeat(it.cell, it.userId, it.atSeconds) },
+        turningPoint = view.moments.turningPoint?.let {
+            RoomTurningPoint(it.stallSeconds, it.breakSeconds, it.burst)
+        },
+    )
 
 @Composable
 fun CrossyApp(
@@ -1269,6 +1293,15 @@ private fun RoomHost(
                             .onFailure { android.util.Log.w("CrossyRoom", "role change failed: ${it::class.simpleName}") }
                     }
                 }
+            },
+            // The post-game analysis fetch (GET /games/{id}/analysis, mapped to the render shape here in
+            // the composition root; mirrors iOS RealRoom.fetchAnalysis). Null for the demo room (no
+            // gameId), where absent stands and nothing is fetched. Member-gated and completed-only
+            // server-side (PROTOCOL.md §12); a 404 during the completion race, transport weather, or a
+            // decode fault returns null, and AnalysisModel retries a few times before it calls the game
+            // absent. INV-6-safe (userIds and numbers only).
+            fetchAnalysis = gameId?.let { id ->
+                suspend { runCatching { analysisFromView(session.api.gameAnalysis(id)) }.getOrNull() }
             },
         )
     }
