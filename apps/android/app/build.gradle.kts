@@ -103,4 +103,12 @@ dependencies {
     // The composition root builds the REST client and the Supabase auth leg, whose constructors
     // take okhttp types (HttpUrl, OkHttpClient); :api keeps okhttp internal, so the root declares it.
     implementation(libs.okhttp)
+    // The camera-first invite scan lives in the app target (CameraX + PreviewView are platform, not
+    // :ui, the same AAD-2 split WebViewTurnstileMinter holds). zxing-core decodes QR off the frame;
+    // ML Kit is deliberately avoided (JoinCameraScan.kt header).
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.view)
+    implementation(libs.zxing.core)
 }

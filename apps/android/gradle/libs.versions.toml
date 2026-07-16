@@ -11,6 +11,8 @@ composeBom = "2025.06.01"
 activityCompose = "1.10.1"
 lifecycle = "2.9.1"
 browser = "1.10.0"
+camerax = "1.4.2"
+zxing = "3.5.3"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -29,6 +31,15 @@ compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview"
 activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 browser = { module = "androidx.browser:browser", version.ref = "browser" }
+# Camera-first invite scan (JoinCameraScan, :app only): CameraX runs one back-camera preview +
+# analysis, zxing-core decodes QR off the luminance plane. zxing-core is a pure JVM library, no
+# Play-services ML Kit (chosen deliberately: no Google-services plugin, no Play-services dependency
+# on a Discord/email app, a small jar over a large SDK; recorded in JoinCameraScan.kt's header).
+camera-core = { module = "androidx.camera:camera-core", version.ref = "camerax" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
