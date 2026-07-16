@@ -859,10 +859,10 @@ than a blank-page spec. M4's dogfood exit stands unchanged. Landed and deployed:
 UX flesh-out gate at entry: M6 items are interaction surfaces (rebus entry, check
 styling, highlight precedence), not just mechanics. Spec them per platform first.
 
-- **M6**: check styling, rebus input on both platforms, cross-reference highlighting,
-  circles/shading, image clues; validate the rebus length-10 cap against real puzzles
-  (SP5's corpus is the data). **Exit: the v2 parity checklist is green, walked
-  personally by the owner on both platforms.**
+- **M6**: check styling, rebus input on both platforms, cross-reference highlighting
+  (numeric refs and starred clues, D26), circles/shading, image clues; validate the
+  rebus length-10 cap against real puzzles (SP5's corpus is the data). **Exit: the
+  v2 parity checklist is green, walked personally by the owner on both platforms.**
 - **M7**: OG preview images (geometry only, never fills), passivation tuning, presence
   colors everywhere, nightly simulation runs. **Exit: a link pasted in Discord unfurls
   with the grid image.**

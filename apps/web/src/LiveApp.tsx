@@ -67,7 +67,7 @@ import { useBearer } from "./ui/useResource";
 import { useNavPrefs } from "./ui/useNavPrefs";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
-import { parseClueRefs, referencedCells } from "./ui/clueRefs";
+import { referencedCells, referencedKeys } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
@@ -1096,26 +1096,14 @@ function LiveGame({
   const activeDown =
     clueOn(puzzle.downClues, "down", selection.cell)?.number ?? null;
 
-  // Clues the active clue names ("See 42-Down", "17, 20, and 49 across"), keyed
-  // `${direction}-${number}` like the presence map so a list row looks itself up in O(1). The
-  // parser reads intent only; here we filter to entries that actually exist in this puzzle, so a
-  // reference to a clue this grid lacks (or the active clue naming itself) never lights a row.
-  const referenced = useMemo(() => {
-    const exists = new Set<string>();
-    for (const c of puzzle.acrossClues) exists.add(`across-${c.number}`);
-    for (const c of puzzle.downClues) exists.add(`down-${c.number}`);
-    const marks = new Set<string>();
-    for (const ref of parseClueRefs(activeClue?.text)) {
-      const key = `${ref.direction}-${ref.number}`;
-      if (
-        exists.has(key) &&
-        key !== `${activeClue?.direction}-${activeClue?.number}`
-      ) {
-        marks.add(key);
-      }
-    }
-    return marks;
-  }, [activeClue, puzzle]);
+  // Clues the active clue names ("See 42-Down", "17, 20, and 49 across", or the starred set),
+  // keyed `${direction}-${number}` like the presence map so a list row looks itself up in O(1).
+  // Resolution, existence filtering, and self-exclusion all live in clueRefs (D26); this memo
+  // only caches the result per selection.
+  const referenced = useMemo(
+    () => referencedKeys(activeClue, puzzle.acrossClues, puzzle.downClues),
+    [activeClue, puzzle],
+  );
 
   // The board half of the reference cue: the same existence-filtered keys, resolved to the cells
   // those clues cover so CrosswordGrid can paint them faintly (DESIGN.md section 10).
