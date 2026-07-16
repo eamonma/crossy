@@ -686,6 +686,15 @@ reduced-motion equivalent that crossfades instead of moving.
   roster-colored flecks between paper and glass, deliberately quieter than the
   web's, skipped whole under Reduce Motion, muteable by one constant (the ID-1
   pattern, `AttributionSwitches.completionConfettiEnabled`).
+- **The isolation filter.** Once the wash has settled, tapping a solver's legend
+  row in the analysis panel isolates their hand on the board: their cells hold the
+  full wash while everyone else's recess toward paper (the wash composites as alpha
+  over the ground, so a lower alpha is the recessive step on both grounds by
+  construction — `GridMosaic.isolationDim`). The same row again clears; another
+  row switches. A fast, quiet crossfade — a filter, not a celebration: it exists
+  only on the standing record, one truth on `CompletionModel`, and can never
+  re-arm or replay the bloom (INV-3). Web parity: the AnalysisPanel legend rows
+  toggle the same dim on the web mosaic.
 - **The clarity beat.** During the mosaic, all standing glass momentarily clears,
   then refrosts as the stats arrive.
 - **Honest weather.** Three connection states, three registers (PROTOCOL.md

@@ -21,6 +21,14 @@ struct AnalysisPanel: View {
     let members: [RosterMember]
     let selfUserId: String?
     let ground: GridGround
+    /// The isolated solver on the settled wash (the legend chips' selected
+    /// state), or nil at the full multi-color record.
+    let isolatedSolverId: String?
+    /// Isolate a solver from their legend chip: same-tap clears, another
+    /// switches (CompletionModel.toggleIsolation). Nil while isolation is
+    /// unavailable — the bloom still playing — where the chips stay the plain
+    /// labels they always were.
+    let onIsolateSolver: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -59,21 +67,15 @@ struct AnalysisPanel: View {
 
         let legend = legendRows(analysis)
         if !legend.isEmpty {
-            FlowLayout(spacing: 14, lineSpacing: 8) {
+            // Tighter chip spacing once the rows wear the tappable capsule
+            // (its own padding carries the air); the plain labels keep theirs.
+            FlowLayout(spacing: onIsolateSolver == nil ? 14 : 8, lineSpacing: 8) {
                 ForEach(legend) { row in
-                    HStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(Color(rgb: row.color))
-                            .frame(width: 10, height: 10)
-                        Text(verbatim: row.name)
-                            .font(.system(size: 12.5, weight: row.isSelf ? .semibold : .regular))
-                            .foregroundStyle(
-                                Color(rgb: row.isSelf ? ground.tokens.ink : ground.tokens.number))
-                    }
+                    legendChip(row)
                 }
             }
             .padding(.top, 14)
-            Text(verbatim: "Each square shows who solved it first.")
+            Text(verbatim: legendCaption(legend))
                 .font(.system(size: 11))
                 .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
                 .padding(.top, 6)
@@ -115,6 +117,79 @@ struct AnalysisPanel: View {
                 }
             }
         }
+    }
+
+    // MARK: The legend
+
+    /// One legend row. Once the wash settles the row is a button that isolates
+    /// its solver on the board: a quiet capsule marks it tappable (the stat
+    /// trio's hairline vocabulary), and the selected chip wears its solver's
+    /// color — color stays with the person, chrome stays achromatic (DESIGN.md
+    /// §3). While the bloom still plays (`onIsolateSolver` nil) the row is the
+    /// plain label it always was.
+    @ViewBuilder
+    private func legendChip(_ row: LegendRow) -> some View {
+        let isIsolated = row.id == isolatedSolverId
+        let label = HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Color(rgb: row.color))
+                .frame(width: 10, height: 10)
+            Text(verbatim: row.name)
+                .font(
+                    .system(
+                        size: 12.5, weight: row.isSelf || isIsolated ? .semibold : .regular))
+                .foregroundStyle(
+                    Color(
+                        rgb: row.isSelf || isIsolated
+                            ? ground.tokens.ink : ground.tokens.number))
+        }
+        if let onIsolateSolver {
+            Button {
+                onIsolateSolver(row.id)
+            } label: {
+                label
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color(rgb: row.color).opacity(isIsolated ? 0.16 : 0)))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(
+                                isIsolated
+                                    ? Color(rgb: row.color).opacity(0.55)
+                                    : Color(rgb: ground.tokens.number).opacity(0.22),
+                                lineWidth: 1))
+                    .contentShape(Capsule(style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: row.name))
+            .accessibilityHint(
+                Text(
+                    verbatim: isIsolated
+                        ? "Shows everyone\u{2019}s squares again."
+                        : row.isSelf
+                            ? "Shows only your squares on the board."
+                            : "Shows only their squares on the board."))
+            .accessibilityAddTraits(isIsolated ? .isSelected : [])
+        } else {
+            label
+        }
+    }
+
+    /// The legend's one caption: what the squares mean; then, once the chips
+    /// can isolate, what a tap does; then who is isolated. The caption is the
+    /// tappability affordance in words, matching the web legend's grammar.
+    private func legendCaption(_ legend: [LegendRow]) -> String {
+        guard onIsolateSolver != nil else {
+            return "Each square shows who solved it first."
+        }
+        if let isolated = legend.first(where: { $0.id == isolatedSolverId }) {
+            return isolated.isSelf
+                ? "Showing only your squares. Tap again for everyone."
+                : "Showing only \(isolated.name)\u{2019}s squares. Tap again for everyone."
+        }
+        return "Each square shows who solved it first. Tap a solver to see just theirs."
     }
 
     // MARK: The stat trio

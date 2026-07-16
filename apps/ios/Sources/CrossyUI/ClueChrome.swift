@@ -40,6 +40,13 @@ struct ClueChrome: View {
     /// roster colors). Same list the roster menu reads.
     let analysisMembers: [RosterMember]
     let selfUserId: String?
+    /// The isolated solver on the settled wash, or nil at the full record: the
+    /// Analysis legend rows' selected state (CompletionModel.isolation).
+    let isolatedSolverId: String?
+    /// Isolate a solver from their legend row, or nil while isolation is
+    /// unavailable (the bloom still playing): the rows render as the plain
+    /// labels they always were then.
+    let onIsolateSolver: ((String) -> Void)?
     /// Transient panels yield to intent (DESIGN.md §4): any touch on the clue
     /// chrome is intent, so the room dismisses an open roster or stats card
     /// through this while the touch still lands here. Fired by the surface's
@@ -315,7 +322,9 @@ struct ClueChrome: View {
                     phase: analysisPhase,
                     members: analysisMembers,
                     selfUserId: selfUserId,
-                    ground: ground)
+                    ground: ground,
+                    isolatedSolverId: isolatedSolverId,
+                    onIsolateSolver: onIsolateSolver)
             } else {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     section(title: "Across", rows: acrossRows)
