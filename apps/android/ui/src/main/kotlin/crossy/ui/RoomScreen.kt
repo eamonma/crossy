@@ -89,6 +89,12 @@ fun RoomScreen(
     // the host on other people's rows, and Join in to a self-spectator; the server enforces both.
     onKick: (String) -> Unit = {},
     onJoinIn: () -> Unit = {},
+    // The post-game analysis fetch (GET /games/{id}/analysis mapped to the render shape), or null when
+    // there is no game behind the room (the demo room, previews): there absent stands and nothing is
+    // fetched. The composition root closes over the REST client and game id and does the wire->render
+    // mapping, keeping :ui out of the REST ring (the AvatarImageCache/AAD-2 pattern). Idempotent: the
+    // room drives it on the completion edge and on a tab-open, and AnalysisModel fetches at most once.
+    fetchAnalysis: (suspend () -> RoomAnalysis?)? = null,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -206,6 +212,21 @@ fun RoomScreen(
     // bloom, so the palette is the sequenced event log's last writer (the iOS "absent" fallback), and
     // the mosaic arms at once on the gate's firing rather than waiting for a bundle.
     val roomStatus = RoomStatus.from(render.status)
+    // The post-game analysis, fetched exactly once per completed room (twin of iOS SolveScreen's
+    // AnalysisModel drive). The fetch fires on the completion edge (roomStatus turns completed, whether a
+    // live finish or a reconnect into a solved room) AND on a tab-open (analysisRequested, set by the
+    // ClueBar's Analysis door / tab): both ask, the model resolves at most once (idempotent). A room
+    // with no fetch wired (the demo room) resolves absent through a null-returning fetch, so the panel
+    // reads the quiet line rather than loading forever.
+    val analysisModel = remember(puzzle) { AnalysisModel() }
+    var analysisRequested by remember(puzzle) { mutableStateOf(false) }
+    LaunchedEffect(roomStatus, analysisRequested) {
+        if (roomStatus == RoomStatus.COMPLETED || analysisRequested) {
+            // A null fetch (the demo room) resolves absent through a null-returning walk, so the panel
+            // reads the quiet line rather than loading forever.
+            analysisModel.load { fetchAnalysis?.invoke() }
+        }
+    }
     var gate by remember(puzzle) { mutableStateOf(CelebrationGate()) }
     var mosaicStartedAt by remember(puzzle) { mutableStateOf<Double?>(null) }
     var confettiStartedAt by remember(puzzle) { mutableStateOf<Double?>(null) }
@@ -255,9 +276,15 @@ fun RoomScreen(
     // The mosaic palette: every filled cell to its writer's roster color, from the sequenced event log
     // (never the optimistic overlay), resolved the way Presence resolves a dot (GridMosaic). Rebuilt
     // only when the sequenced cells or the roster change, so the bloom paints stable color per frame.
-    val mosaic = remember(render.cells, render.participants, ground, mosaicStartedAt) {
+    // The palette upgrades from last-writer to first-correct owners when the analysis bundle lands
+    // (iOS owner ruling 2026-07-13): before the bundle the bloom paints the sequenced event log's last
+    // writer (the absent fallback), and once GET /analysis resolves it repaints in first-correct owner
+    // color. Both are a cell->userId map, so the GridMosaic seam takes either with no reshaping; the
+    // bundle joins the key so the bloom repaints the frame it arrives on.
+    val mosaic = remember(render.cells, render.participants, ground, mosaicStartedAt, analysisModel.bundle) {
         mosaicStartedAt?.let {
-            MosaicWash(GridMosaic.colors(sequencedWriters(render.cells), render.participants, ground), it)
+            val writers = analysisModel.bundle?.owners ?: sequencedWriters(render.cells)
+            MosaicWash(GridMosaic.colors(writers, render.participants, ground), it)
         }
     }
     // The confetti field: the room's writers in their roster colors (the people are the only color,
@@ -477,6 +504,14 @@ fun RoomScreen(
                 selection = target
                 relayCursor(target)
             },
+            // A completed room grows the analysis surface: the bar becomes the gold Analysis door and
+            // the browser sheet gains the Clues/Analysis tab pair (iOS ClueChrome). The ongoing bar is
+            // untouched (completed is false). Opening the surface kicks the idempotent fetch too.
+            completed = roomStatus == RoomStatus.COMPLETED,
+            analysisPhase = analysisModel.phase,
+            analysisMembers = members,
+            selfUserId = render.selfUserId,
+            onOpenAnalysis = { analysisRequested = true },
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235
