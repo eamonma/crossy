@@ -10,18 +10,41 @@
           [0, "A"],
           [1, "B"]
         ],
-        "slots": [{ "cells": [0, 1], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u2", "value": "Z", "at": 2000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "Z",
+            "at": 2000
+          }
         ]
       },
       "then": {
         "solvers": {
           "u1": {
             "fills": 1,
-            "firstFill": { "at": 1000, "seq": 1 },
-            "lastFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "lastFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 1,
             "closingFills": 1,
             "writes": 1,
@@ -61,7 +84,9 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 0 }
+        "room": {
+          "stallSeconds": 0
+        }
       }
     },
     {
@@ -75,20 +100,71 @@
           [1, "B"],
           [2, "C"]
         ],
-        "slots": [{ "cells": [0, 1, 2], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u2", "value": "Z", "at": 2000 },
-          { "seq": 3, "cell": 0, "userId": "u2", "value": "Z", "at": 3000 },
-          { "seq": 4, "cell": 0, "userId": "u2", "value": null, "at": 4000 },
-          { "seq": 5, "cell": 0, "userId": "u1", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 0, "userId": "u2", "value": null, "at": 6000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "Z",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 0,
+            "userId": "u2",
+            "value": "Z",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 0,
+            "userId": "u2",
+            "value": null,
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 0,
+            "userId": "u2",
+            "value": null,
+            "at": 6000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "fills": 1, "writes": 2, "wrongWrites": 0, "overwrites": 0 },
-          "u2": { "fills": 0, "writes": 4, "wrongWrites": 2, "overwrites": 2 }
+          "u1": {
+            "fills": 1,
+            "writes": 2,
+            "wrongWrites": 0,
+            "overwrites": 0
+          },
+          "u2": {
+            "fills": 0,
+            "writes": 4,
+            "wrongWrites": 2,
+            "overwrites": 2
+          }
         }
       }
     },
@@ -102,18 +178,57 @@
           [0, "STAR"],
           [1, "TEN"]
         ],
-        "slots": [{ "cells": [0, 1], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "S", "at": 1000 },
-          { "seq": 2, "cell": 0, "userId": "u1", "value": "STAR", "at": 2000 },
-          { "seq": 3, "cell": 1, "userId": "u2", "value": "T", "at": 3000 },
-          { "seq": 4, "cell": 1, "userId": "u1", "value": "TEN", "at": 4000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "S",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 0,
+            "userId": "u1",
+            "value": "STAR",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 1,
+            "userId": "u2",
+            "value": "T",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 1,
+            "userId": "u1",
+            "value": "TEN",
+            "at": 4000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "fills": 1, "writes": 3, "wrongWrites": 0, "overwrites": 0 },
-          "u2": { "fills": 1, "writes": 1, "wrongWrites": 0, "overwrites": 0 }
+          "u1": {
+            "fills": 1,
+            "writes": 3,
+            "wrongWrites": 0,
+            "overwrites": 0
+          },
+          "u2": {
+            "fills": 1,
+            "writes": 1,
+            "wrongWrites": 0,
+            "overwrites": 0
+          }
         }
       }
     },
@@ -128,20 +243,71 @@
           [1, "B"],
           [2, "C"]
         ],
-        "slots": [{ "cells": [0, 1, 2], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "B", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 3000 },
-          { "seq": 4, "cell": 0, "userId": "u1", "value": "Z", "at": 4000 },
-          { "seq": 5, "cell": 1, "userId": "u1", "value": null, "at": 5000 },
-          { "seq": 6, "cell": 2, "userId": "u2", "value": "Z", "at": 6000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "B",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "C",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 0,
+            "userId": "u1",
+            "value": "Z",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 1,
+            "userId": "u1",
+            "value": null,
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 2,
+            "userId": "u2",
+            "value": "Z",
+            "at": 6000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "fills": 3, "writes": 5, "wrongWrites": 1, "overwrites": 0 },
-          "u2": { "fills": 0, "writes": 1, "wrongWrites": 1, "overwrites": 1 }
+          "u1": {
+            "fills": 3,
+            "writes": 5,
+            "wrongWrites": 1,
+            "overwrites": 0
+          },
+          "u2": {
+            "fills": 0,
+            "writes": 1,
+            "wrongWrites": 1,
+            "overwrites": 1
+          }
         }
       }
     },
@@ -160,19 +326,70 @@
           [5, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2], "starred": false },
-          { "cells": [3, 4, 5], "starred": false },
-          { "cells": [0, 3], "starred": false },
-          { "cells": [1, 4], "starred": false },
-          { "cells": [2, 5], "starred": false }
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          },
+          {
+            "cells": [3, 4, 5],
+            "starred": false
+          },
+          {
+            "cells": [0, 3],
+            "starred": false
+          },
+          {
+            "cells": [1, 4],
+            "starred": false
+          },
+          {
+            "cells": [2, 5],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "u2", "value": "A", "at": 3000 },
-          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 4000 },
-          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 5, "userId": "u1", "value": "A", "at": 6000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          }
         ]
       },
       "then": {
@@ -213,25 +430,244 @@
           [9, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], "starred": false }
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 3000 },
-          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 4000 },
-          { "seq": 5, "cell": 4, "userId": "u2", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 5, "userId": "u1", "value": "A", "at": 6000 },
-          { "seq": 7, "cell": 6, "userId": "u2", "value": "A", "at": 7000 },
-          { "seq": 8, "cell": 7, "userId": "u1", "value": "A", "at": 8000 },
-          { "seq": 9, "cell": 8, "userId": "u2", "value": "A", "at": 9000 },
-          { "seq": 10, "cell": 9, "userId": "u2", "value": "A", "at": 10000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 6,
+            "userId": "u2",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 7,
+            "userId": "u1",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 8,
+            "userId": "u2",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 9,
+            "userId": "u2",
+            "value": "A",
+            "at": 10000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "openingFills": 2, "closingFills": 0 },
-          "u2": { "openingFills": 0, "closingFills": 2 }
+          "u1": {
+            "openingFills": 2,
+            "closingFills": 0
+          },
+          "u2": {
+            "openingFills": 0,
+            "closingFills": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "opening/closing at T=15, the exact-integer boundary: window is ceil(T/5)=3, so the 4th-earliest and 4th-latest entries are OUTSIDE the stretch",
+      "intent": "TITLES.md: openingFills/closingFills slice the first/last ceil(OPENING_SHARE * T) of the (at, seq)-ordered trace, OPENING_SHARE = 0.2 = 1/5. At T = 15 the window is exactly ceil(15/5) = 3; the share is a rational fifth, never a float multiply that could round 0.2*15 up to a 4th entry. u2 owns only the 4th-earliest and 4th-latest entries (1-based), both just outside the size-3 opening and closing stretches, so its openingFills and closingFills are 0; u1 owns the three opening and three closing entries. Ordinal, not temporal (INV-9).",
+      "given": {
+        "rows": 1,
+        "cols": 15,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 6,
+            "userId": "u1",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 7,
+            "userId": "u1",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 8,
+            "userId": "u1",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 9,
+            "userId": "u1",
+            "value": "A",
+            "at": 10000
+          },
+          {
+            "seq": 11,
+            "cell": 10,
+            "userId": "u1",
+            "value": "A",
+            "at": 11000
+          },
+          {
+            "seq": 12,
+            "cell": 11,
+            "userId": "u2",
+            "value": "A",
+            "at": 12000
+          },
+          {
+            "seq": 13,
+            "cell": 12,
+            "userId": "u1",
+            "value": "A",
+            "at": 13000
+          },
+          {
+            "seq": 14,
+            "cell": 13,
+            "userId": "u1",
+            "value": "A",
+            "at": 14000
+          },
+          {
+            "seq": 15,
+            "cell": 14,
+            "userId": "u1",
+            "value": "A",
+            "at": 15000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "openingFills": 3,
+            "closingFills": 3
+          },
+          "u2": {
+            "openingFills": 0,
+            "closingFills": 0
+          }
         }
       }
     },
@@ -246,19 +682,48 @@
           [1, "A"],
           [2, "A"]
         ],
-        "slots": [{ "cells": [0, 1, 2], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u2", "value": "A", "at": 100000 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 5000 },
-          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 110000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u2",
+            "value": "A",
+            "at": 100000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 110000
+          }
         ]
       },
       "then": {
         "solvers": {
           "u1": {
             "fills": 2,
-            "firstFill": { "at": 5000, "seq": 2 },
-            "lastFill": { "at": 110000, "seq": 3 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 2
+            },
+            "lastFill": {
+              "at": 110000,
+              "seq": 3
+            },
             "openingFills": 1,
             "closingFills": 1,
             "span": 105,
@@ -266,14 +731,19 @@
           },
           "u2": {
             "fills": 1,
-            "firstFill": { "at": 100000, "seq": 1 },
+            "firstFill": {
+              "at": 100000,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "span": 0,
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 105 }
+        "room": {
+          "stallSeconds": 105
+        }
       }
     },
     {
@@ -290,21 +760,62 @@
           [4, "A"],
           [5, "A"]
         ],
-        "slots": [{ "cells": [0, 1, 2, 3, 4, 5], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 10000 },
-          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 30000 },
-          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 30001 },
-          { "seq": 5, "cell": 4, "userId": "u2", "value": "A", "at": 60002 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 0
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 10000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 30000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 30001
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u2",
+            "value": "A",
+            "at": 60002
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "burst": 3 },
-          "u2": { "burst": 1 }
+          "u1": {
+            "burst": 3
+          },
+          "u2": {
+            "burst": 1
+          }
         },
-        "room": { "stallSeconds": 30 }
+        "room": {
+          "stallSeconds": 30
+        }
       }
     },
     {
@@ -341,34 +852,132 @@
           [24, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2, 3, 4], "starred": false },
-          { "cells": [5, 6, 7, 8, 9], "starred": false },
-          { "cells": [10, 11, 12, 13, 14], "starred": false },
-          { "cells": [15, 16, 17, 18, 19], "starred": false },
-          { "cells": [20, 21, 22, 23, 24], "starred": false },
-          { "cells": [0, 5, 10, 15, 20], "starred": false },
-          { "cells": [1, 6, 11, 16, 21], "starred": false },
-          { "cells": [2, 7, 12, 17, 22], "starred": false },
-          { "cells": [3, 8, 13, 18, 23], "starred": false },
-          { "cells": [4, 9, 14, 19, 24], "starred": false }
+          {
+            "cells": [0, 1, 2, 3, 4],
+            "starred": false
+          },
+          {
+            "cells": [5, 6, 7, 8, 9],
+            "starred": false
+          },
+          {
+            "cells": [10, 11, 12, 13, 14],
+            "starred": false
+          },
+          {
+            "cells": [15, 16, 17, 18, 19],
+            "starred": false
+          },
+          {
+            "cells": [20, 21, 22, 23, 24],
+            "starred": false
+          },
+          {
+            "cells": [0, 5, 10, 15, 20],
+            "starred": false
+          },
+          {
+            "cells": [1, 6, 11, 16, 21],
+            "starred": false
+          },
+          {
+            "cells": [2, 7, 12, 17, 22],
+            "starred": false
+          },
+          {
+            "cells": [3, 8, 13, 18, 23],
+            "starred": false
+          },
+          {
+            "cells": [4, 9, 14, 19, 24],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 12, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 0, "userId": "u1", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 6, "userId": "u1", "value": "A", "at": 3000 },
-          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 4000 },
-          { "seq": 5, "cell": 13, "userId": "u1", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 17, "userId": "u1", "value": "A", "at": 6000 },
-          { "seq": 7, "cell": 18, "userId": "u1", "value": "A", "at": 7000 },
-          { "seq": 8, "cell": 15, "userId": "u2", "value": "A", "at": 8000 },
-          { "seq": 9, "cell": 19, "userId": "u2", "value": "A", "at": 9000 },
-          { "seq": 10, "cell": 23, "userId": "u2", "value": "A", "at": 10000 }
+          {
+            "seq": 1,
+            "cell": 12,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 6,
+            "userId": "u1",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 13,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 17,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 18,
+            "userId": "u1",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 15,
+            "userId": "u2",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 19,
+            "userId": "u2",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 23,
+            "userId": "u2",
+            "value": "A",
+            "at": 10000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "homeQuadrantFills": 3, "focus": 0.5, "spread": 8 },
-          "u2": { "homeQuadrantFills": 2, "focus": 0.5, "spread": 6 }
+          "u1": {
+            "homeQuadrantFills": 3,
+            "focus": 0.5,
+            "spread": 8
+          },
+          "u2": {
+            "homeQuadrantFills": 2,
+            "focus": 0.5,
+            "spread": 6
+          }
         }
       }
     },
@@ -382,17 +991,39 @@
           [0, "A"],
           [1, "B"]
         ],
-        "slots": [{ "cells": [0, 1], "starred": false }],
+        "slots": [
+          {
+            "cells": [0, 1],
+            "starred": false
+          }
+        ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "B", "at": 91750 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "B",
+            "at": 91750
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "span": 90, "brokeStall": 1 }
+          "u1": {
+            "span": 90,
+            "brokeStall": 1
+          }
         },
-        "room": { "stallSeconds": 90 }
+        "room": {
+          "stallSeconds": 90
+        }
       }
     },
     {
@@ -420,41 +1051,173 @@
           [15, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2, 3, 4, 5, 6, 7], "starred": false },
-          { "cells": [8, 9, 10, 11, 12, 13, 14, 15], "starred": true },
-          { "cells": [0, 8], "starred": true },
-          { "cells": [1, 9], "starred": false },
-          { "cells": [2, 10], "starred": false },
-          { "cells": [3, 11], "starred": false },
-          { "cells": [4, 12], "starred": false },
-          { "cells": [5, 13], "starred": false },
-          { "cells": [6, 14], "starred": false },
-          { "cells": [7, 15], "starred": false }
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7],
+            "starred": false
+          },
+          {
+            "cells": [8, 9, 10, 11, 12, 13, 14, 15],
+            "starred": true
+          },
+          {
+            "cells": [0, 8],
+            "starred": true
+          },
+          {
+            "cells": [1, 9],
+            "starred": false
+          },
+          {
+            "cells": [2, 10],
+            "starred": false
+          },
+          {
+            "cells": [3, 11],
+            "starred": false
+          },
+          {
+            "cells": [4, 12],
+            "starred": false
+          },
+          {
+            "cells": [5, 13],
+            "starred": false
+          },
+          {
+            "cells": [6, 14],
+            "starred": false
+          },
+          {
+            "cells": [7, 15],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u2", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "u2", "value": "A", "at": 3000 },
-          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 4000 },
-          { "seq": 5, "cell": 4, "userId": "u2", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 5, "userId": "u2", "value": "A", "at": 6000 },
-          { "seq": 7, "cell": 6, "userId": "u2", "value": "A", "at": 7000 },
-          { "seq": 8, "cell": 7, "userId": "u2", "value": "A", "at": 8000 },
-          { "seq": 9, "cell": 8, "userId": "u1", "value": "A", "at": 9000 },
-          { "seq": 10, "cell": 9, "userId": "u1", "value": "A", "at": 10000 },
-          { "seq": 11, "cell": 10, "userId": "u1", "value": "A", "at": 11000 },
-          { "seq": 12, "cell": 11, "userId": "u1", "value": "A", "at": 12000 },
-          { "seq": 13, "cell": 12, "userId": "u1", "value": "A", "at": 13000 },
-          { "seq": 14, "cell": 13, "userId": "u2", "value": "A", "at": 14000 },
-          { "seq": 15, "cell": 14, "userId": "u2", "value": "A", "at": 15000 },
-          { "seq": 16, "cell": 15, "userId": "u3", "value": "A", "at": 16000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u2",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u2",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 6,
+            "userId": "u2",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 7,
+            "userId": "u2",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 8,
+            "userId": "u1",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 9,
+            "userId": "u1",
+            "value": "A",
+            "at": 10000
+          },
+          {
+            "seq": 11,
+            "cell": 10,
+            "userId": "u1",
+            "value": "A",
+            "at": 11000
+          },
+          {
+            "seq": 12,
+            "cell": 11,
+            "userId": "u1",
+            "value": "A",
+            "at": 12000
+          },
+          {
+            "seq": 13,
+            "cell": 12,
+            "userId": "u1",
+            "value": "A",
+            "at": 13000
+          },
+          {
+            "seq": 14,
+            "cell": 13,
+            "userId": "u2",
+            "value": "A",
+            "at": 14000
+          },
+          {
+            "seq": 15,
+            "cell": 14,
+            "userId": "u2",
+            "value": "A",
+            "at": 15000
+          },
+          {
+            "seq": 16,
+            "cell": 15,
+            "userId": "u3",
+            "value": "A",
+            "at": 16000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "marqueeLeads": 1 },
-          "u2": { "marqueeLeads": 0 },
-          "u3": { "marqueeLeads": 0 }
+          "u1": {
+            "marqueeLeads": 1
+          },
+          "u2": {
+            "marqueeLeads": 0
+          },
+          "u3": {
+            "marqueeLeads": 0
+          }
         }
       }
     },
@@ -494,28 +1257,104 @@
           [26, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8], "starred": false },
-          { "cells": [9, 10, 11, 12, 13, 14, 15], "starred": false },
-          { "cells": [16, 17], "starred": false },
-          { "cells": [18, 19, 20, 21, 22, 23, 24, 25, 26], "starred": false }
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            "starred": false
+          },
+          {
+            "cells": [9, 10, 11, 12, 13, 14, 15],
+            "starred": false
+          },
+          {
+            "cells": [16, 17],
+            "starred": false
+          },
+          {
+            "cells": [18, 19, 20, 21, 22, 23, 24, 25, 26],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "u2", "value": "A", "at": 3000 },
-          { "seq": 4, "cell": 9, "userId": "u2", "value": "A", "at": 4000 },
-          { "seq": 5, "cell": 10, "userId": "u2", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 13, "userId": "u1", "value": "A", "at": 6000 },
-          { "seq": 7, "cell": 18, "userId": "u1", "value": "A", "at": 7000 },
-          { "seq": 8, "cell": 19, "userId": "u1", "value": "A", "at": 8000 },
-          { "seq": 9, "cell": 20, "userId": "u2", "value": "A", "at": 9000 },
-          { "seq": 10, "cell": 16, "userId": "u2", "value": "A", "at": 10000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 9,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 10,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 13,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 18,
+            "userId": "u1",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 19,
+            "userId": "u1",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 20,
+            "userId": "u2",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 16,
+            "userId": "u2",
+            "value": "A",
+            "at": 10000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "marqueeLeads": 2 },
-          "u2": { "marqueeLeads": 1 }
+          "u1": {
+            "marqueeLeads": 2
+          },
+          "u2": {
+            "marqueeLeads": 1
+          }
         }
       }
     },
@@ -544,23 +1383,72 @@
           [15, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2, 3, 4, 5, 6, 7], "starred": false },
-          { "cells": [8, 9, 10, 11, 12, 13], "starred": false },
-          { "cells": [14, 15], "starred": false }
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7],
+            "starred": false
+          },
+          {
+            "cells": [8, 9, 10, 11, 12, 13],
+            "starred": false
+          },
+          {
+            "cells": [14, 15],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 },
-          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "u2", "value": "A", "at": 3000 },
-          { "seq": 4, "cell": 8, "userId": "u2", "value": "A", "at": 4000 },
-          { "seq": 5, "cell": 9, "userId": "u2", "value": "A", "at": 5000 },
-          { "seq": 6, "cell": 10, "userId": "u2", "value": "A", "at": 6000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 8,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 9,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 10,
+            "userId": "u2",
+            "value": "A",
+            "at": 6000
+          }
         ]
       },
       "then": {
         "solvers": {
-          "u1": { "marqueeLeads": 1 },
-          "u2": { "marqueeLeads": 0 }
+          "u1": {
+            "marqueeLeads": 1
+          },
+          "u2": {
+            "marqueeLeads": 0
+          }
         }
       }
     },
@@ -596,56 +1484,272 @@
           [24, "A"]
         ],
         "slots": [
-          { "cells": [0, 1, 2, 3], "starred": false },
-          { "cells": [5, 6, 7, 8, 9], "starred": false },
-          { "cells": [10, 11, 12, 13, 14], "starred": false },
-          { "cells": [15, 16, 17, 18, 19], "starred": false },
-          { "cells": [21, 22, 23, 24], "starred": false },
-          { "cells": [0, 5, 10, 15], "starred": false },
-          { "cells": [1, 6, 11, 16, 21], "starred": false },
-          { "cells": [2, 7, 12, 17, 22], "starred": false },
-          { "cells": [3, 8, 13, 18, 23], "starred": false },
-          { "cells": [9, 14, 19, 24], "starred": false }
+          {
+            "cells": [0, 1, 2, 3],
+            "starred": false
+          },
+          {
+            "cells": [5, 6, 7, 8, 9],
+            "starred": false
+          },
+          {
+            "cells": [10, 11, 12, 13, 14],
+            "starred": false
+          },
+          {
+            "cells": [15, 16, 17, 18, 19],
+            "starred": false
+          },
+          {
+            "cells": [21, 22, 23, 24],
+            "starred": false
+          },
+          {
+            "cells": [0, 5, 10, 15],
+            "starred": false
+          },
+          {
+            "cells": [1, 6, 11, 16, 21],
+            "starred": false
+          },
+          {
+            "cells": [2, 7, 12, 17, 22],
+            "starred": false
+          },
+          {
+            "cells": [3, 8, 13, 18, 23],
+            "starred": false
+          },
+          {
+            "cells": [9, 14, 19, 24],
+            "starred": false
+          }
         ],
         "events": [
-          { "seq": 1, "cell": 0, "userId": "ub", "value": "A", "at": 0 },
-          { "seq": 2, "cell": 1, "userId": "ub", "value": "A", "at": 2000 },
-          { "seq": 3, "cell": 2, "userId": "ub", "value": "A", "at": 4000 },
-          { "seq": 4, "cell": 3, "userId": "ub", "value": "A", "at": 6000 },
-          { "seq": 5, "cell": 5, "userId": "uh", "value": "A", "at": 20000 },
-          { "seq": 6, "cell": 6, "userId": "uh", "value": "A", "at": 35000 },
-          { "seq": 7, "cell": 7, "userId": "uh", "value": "A", "at": 50000 },
-          { "seq": 8, "cell": 8, "userId": "uh", "value": "A", "at": 65000 },
-          { "seq": 9, "cell": 9, "userId": "uh", "value": "A", "at": 80000 },
-          { "seq": 10, "cell": 10, "userId": "uh", "value": "A", "at": 95000 },
-          { "seq": 11, "cell": 11, "userId": "uh", "value": "A", "at": 110000 },
-          { "seq": 12, "cell": 17, "userId": "us", "value": "Z", "at": 120000 },
-          { "seq": 13, "cell": 17, "userId": "us", "value": "A", "at": 125000 },
-          { "seq": 14, "cell": 0, "userId": "us", "value": "Z", "at": 130000 },
-          { "seq": 15, "cell": 1, "userId": "us", "value": null, "at": 135000 },
-          { "seq": 16, "cell": 5, "userId": "us", "value": "Z", "at": 140000 },
-          { "seq": 17, "cell": 0, "userId": "uh", "value": "A", "at": 150000 },
-          { "seq": 18, "cell": 1, "userId": "uh", "value": "A", "at": 155000 },
-          { "seq": 19, "cell": 5, "userId": "ub", "value": "A", "at": 160000 },
-          { "seq": 20, "cell": 12, "userId": "uh", "value": "A", "at": 215000 },
-          { "seq": 21, "cell": 14, "userId": "uh", "value": "A", "at": 225000 },
-          { "seq": 22, "cell": 13, "userId": "us", "value": "A", "at": 240000 },
-          { "seq": 23, "cell": 16, "userId": "uh", "value": "A", "at": 250000 },
-          { "seq": 24, "cell": 15, "userId": "us", "value": "A", "at": 260000 },
-          { "seq": 25, "cell": 18, "userId": "uh", "value": "A", "at": 270000 },
-          { "seq": 26, "cell": 19, "userId": "uh", "value": "A", "at": 280000 },
-          { "seq": 27, "cell": 21, "userId": "us", "value": "A", "at": 290000 },
-          { "seq": 28, "cell": 22, "userId": "us", "value": "A", "at": 300000 },
-          { "seq": 29, "cell": 23, "userId": "ub", "value": "A", "at": 315000 },
-          { "seq": 30, "cell": 24, "userId": "ub", "value": "A", "at": 330000 }
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "ub",
+            "value": "A",
+            "at": 0
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "ub",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "ub",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "ub",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 5,
+            "cell": 5,
+            "userId": "uh",
+            "value": "A",
+            "at": 20000
+          },
+          {
+            "seq": 6,
+            "cell": 6,
+            "userId": "uh",
+            "value": "A",
+            "at": 35000
+          },
+          {
+            "seq": 7,
+            "cell": 7,
+            "userId": "uh",
+            "value": "A",
+            "at": 50000
+          },
+          {
+            "seq": 8,
+            "cell": 8,
+            "userId": "uh",
+            "value": "A",
+            "at": 65000
+          },
+          {
+            "seq": 9,
+            "cell": 9,
+            "userId": "uh",
+            "value": "A",
+            "at": 80000
+          },
+          {
+            "seq": 10,
+            "cell": 10,
+            "userId": "uh",
+            "value": "A",
+            "at": 95000
+          },
+          {
+            "seq": 11,
+            "cell": 11,
+            "userId": "uh",
+            "value": "A",
+            "at": 110000
+          },
+          {
+            "seq": 12,
+            "cell": 17,
+            "userId": "us",
+            "value": "Z",
+            "at": 120000
+          },
+          {
+            "seq": 13,
+            "cell": 17,
+            "userId": "us",
+            "value": "A",
+            "at": 125000
+          },
+          {
+            "seq": 14,
+            "cell": 0,
+            "userId": "us",
+            "value": "Z",
+            "at": 130000
+          },
+          {
+            "seq": 15,
+            "cell": 1,
+            "userId": "us",
+            "value": null,
+            "at": 135000
+          },
+          {
+            "seq": 16,
+            "cell": 5,
+            "userId": "us",
+            "value": "Z",
+            "at": 140000
+          },
+          {
+            "seq": 17,
+            "cell": 0,
+            "userId": "uh",
+            "value": "A",
+            "at": 150000
+          },
+          {
+            "seq": 18,
+            "cell": 1,
+            "userId": "uh",
+            "value": "A",
+            "at": 155000
+          },
+          {
+            "seq": 19,
+            "cell": 5,
+            "userId": "ub",
+            "value": "A",
+            "at": 160000
+          },
+          {
+            "seq": 20,
+            "cell": 12,
+            "userId": "uh",
+            "value": "A",
+            "at": 215000
+          },
+          {
+            "seq": 21,
+            "cell": 14,
+            "userId": "uh",
+            "value": "A",
+            "at": 225000
+          },
+          {
+            "seq": 22,
+            "cell": 13,
+            "userId": "us",
+            "value": "A",
+            "at": 240000
+          },
+          {
+            "seq": 23,
+            "cell": 16,
+            "userId": "uh",
+            "value": "A",
+            "at": 250000
+          },
+          {
+            "seq": 24,
+            "cell": 15,
+            "userId": "us",
+            "value": "A",
+            "at": 260000
+          },
+          {
+            "seq": 25,
+            "cell": 18,
+            "userId": "uh",
+            "value": "A",
+            "at": 270000
+          },
+          {
+            "seq": 26,
+            "cell": 19,
+            "userId": "uh",
+            "value": "A",
+            "at": 280000
+          },
+          {
+            "seq": 27,
+            "cell": 21,
+            "userId": "us",
+            "value": "A",
+            "at": 290000
+          },
+          {
+            "seq": 28,
+            "cell": 22,
+            "userId": "us",
+            "value": "A",
+            "at": 300000
+          },
+          {
+            "seq": 29,
+            "cell": 23,
+            "userId": "ub",
+            "value": "A",
+            "at": 315000
+          },
+          {
+            "seq": 30,
+            "cell": 24,
+            "userId": "ub",
+            "value": "A",
+            "at": 330000
+          }
         ]
       },
       "then": {
         "solvers": {
           "ub": {
             "fills": 6,
-            "firstFill": { "at": 0, "seq": 1 },
-            "lastFill": { "at": 330000, "seq": 30 },
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
+            "lastFill": {
+              "at": 330000,
+              "seq": 30
+            },
             "openingFills": 4,
             "closingFills": 2,
             "writes": 7,
@@ -665,8 +1769,14 @@
           },
           "uh": {
             "fills": 12,
-            "firstFill": { "at": 20000, "seq": 5 },
-            "lastFill": { "at": 280000, "seq": 26 },
+            "firstFill": {
+              "at": 20000,
+              "seq": 5
+            },
+            "lastFill": {
+              "at": 280000,
+              "seq": 26
+            },
             "openingFills": 1,
             "closingFills": 1,
             "writes": 14,
@@ -686,8 +1796,14 @@
           },
           "us": {
             "fills": 5,
-            "firstFill": { "at": 125000, "seq": 13 },
-            "lastFill": { "at": 300000, "seq": 28 },
+            "firstFill": {
+              "at": 125000,
+              "seq": 13
+            },
+            "lastFill": {
+              "at": 300000,
+              "seq": 28
+            },
             "openingFills": 0,
             "closingFills": 2,
             "writes": 9,
@@ -706,7 +1822,9 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 90 }
+        "room": {
+          "stallSeconds": 90
+        }
       }
     }
   ],
@@ -718,7 +1836,10 @@
         "solvers": {
           "u1": {
             "fills": 10,
-            "firstFill": { "at": 0, "seq": 1 },
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
             "openingFills": 2,
             "closingFills": 2,
             "writes": 12,
@@ -735,9 +1856,13 @@
             "brokeStall": 1
           }
         },
-        "room": { "stallSeconds": 300 }
+        "room": {
+          "stallSeconds": 300
+        }
       },
-      "then": { "titles": [] }
+      "then": {
+        "titles": []
+      }
     },
     {
       "name": "two event members where only one has fills: titles award (the pool is event membership, not trace membership)",
@@ -746,7 +1871,10 @@
         "solvers": {
           "u1": {
             "fills": 5,
-            "firstFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 1,
             "closingFills": 1,
             "writes": 6,
@@ -781,10 +1909,18 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 90 }
+        "room": {
+          "stallSeconds": 90
+        }
       },
       "then": {
-        "titles": [{ "userId": "u1", "title": "bullseye", "evidence": 5 }]
+        "titles": [
+          {
+            "userId": "u1",
+            "title": "bullseye",
+            "evidence": 5
+          }
+        ]
       }
     },
     {
@@ -794,7 +1930,10 @@
         "solvers": {
           "u1": {
             "fills": 8,
-            "firstFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 2,
             "closingFills": 2,
             "writes": 9,
@@ -829,12 +1968,22 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 100 }
+        "room": {
+          "stallSeconds": 100
+        }
       },
       "then": {
         "titles": [
-          { "userId": "u2", "title": "saboteur", "evidence": 3 },
-          { "userId": "u1", "title": "bullseye", "evidence": 8 }
+          {
+            "userId": "u2",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "u1",
+            "title": "bullseye",
+            "evidence": 8
+          }
         ]
       }
     },
@@ -845,7 +1994,10 @@
         "solvers": {
           "s1": {
             "fills": 1,
-            "firstFill": { "at": 200000, "seq": 30 },
+            "firstFill": {
+              "at": 200000,
+              "seq": 30
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 1,
@@ -863,7 +2015,10 @@
           },
           "s2": {
             "fills": 4,
-            "firstFill": { "at": 10000, "seq": 2 },
+            "firstFill": {
+              "at": 10000,
+              "seq": 2
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 5,
@@ -881,7 +2036,10 @@
           },
           "s3": {
             "fills": 6,
-            "firstFill": { "at": 5000, "seq": 1 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 9,
@@ -899,7 +2057,10 @@
           },
           "s4": {
             "fills": 4,
-            "firstFill": { "at": 20000, "seq": 4 },
+            "firstFill": {
+              "at": 20000,
+              "seq": 4
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 7,
@@ -917,7 +2078,10 @@
           },
           "s5": {
             "fills": 4,
-            "firstFill": { "at": 12000, "seq": 3 },
+            "firstFill": {
+              "at": 12000,
+              "seq": 3
+            },
             "openingFills": 3,
             "closingFills": 0,
             "writes": 5,
@@ -935,7 +2099,10 @@
           },
           "s6": {
             "fills": 4,
-            "firstFill": { "at": 30000, "seq": 6 },
+            "firstFill": {
+              "at": 30000,
+              "seq": 6
+            },
             "openingFills": 0,
             "closingFills": 2,
             "writes": 6,
@@ -953,7 +2120,10 @@
           },
           "s7": {
             "fills": 1,
-            "firstFill": { "at": 100000, "seq": 10 },
+            "firstFill": {
+              "at": 100000,
+              "seq": 10
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 2,
@@ -970,17 +2140,47 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 150 }
+        "room": {
+          "stallSeconds": 150
+        }
       },
       "then": {
         "titles": [
-          { "userId": "s1", "title": "one-hit-wonder", "evidence": null },
-          { "userId": "s2", "title": "ice-breaker", "evidence": 150 },
-          { "userId": "s3", "title": "headliner", "evidence": 2 },
-          { "userId": "s4", "title": "meddler", "evidence": 3 },
-          { "userId": "s5", "title": "quick-starter", "evidence": 3 },
-          { "userId": "s6", "title": "closer", "evidence": 2 },
-          { "userId": "s7", "title": "specialist", "evidence": 1 }
+          {
+            "userId": "s1",
+            "title": "one-hit-wonder",
+            "evidence": null
+          },
+          {
+            "userId": "s2",
+            "title": "ice-breaker",
+            "evidence": 150
+          },
+          {
+            "userId": "s3",
+            "title": "headliner",
+            "evidence": 2
+          },
+          {
+            "userId": "s4",
+            "title": "meddler",
+            "evidence": 3
+          },
+          {
+            "userId": "s5",
+            "title": "quick-starter",
+            "evidence": 3
+          },
+          {
+            "userId": "s6",
+            "title": "closer",
+            "evidence": 2
+          },
+          {
+            "userId": "s7",
+            "title": "specialist",
+            "evidence": 1
+          }
         ]
       }
     },
@@ -991,7 +2191,10 @@
         "solvers": {
           "f1": {
             "fills": 2,
-            "firstFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 5,
@@ -1009,7 +2212,10 @@
           },
           "f2": {
             "fills": 1,
-            "firstFill": { "at": 300000, "seq": 40 },
+            "firstFill": {
+              "at": 300000,
+              "seq": 40
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 2,
@@ -1027,7 +2233,10 @@
           },
           "f3": {
             "fills": 4,
-            "firstFill": { "at": 2000, "seq": 2 },
+            "firstFill": {
+              "at": 2000,
+              "seq": 2
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 6,
@@ -1045,7 +2254,10 @@
           },
           "f4": {
             "fills": 8,
-            "firstFill": { "at": 3000, "seq": 3 },
+            "firstFill": {
+              "at": 3000,
+              "seq": 3
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 12,
@@ -1063,7 +2275,10 @@
           },
           "f5": {
             "fills": 5,
-            "firstFill": { "at": 4000, "seq": 4 },
+            "firstFill": {
+              "at": 4000,
+              "seq": 4
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 15,
@@ -1081,7 +2296,10 @@
           },
           "f6": {
             "fills": 6,
-            "firstFill": { "at": 5000, "seq": 5 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 5
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 10,
@@ -1098,16 +2316,42 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 119 }
+        "room": {
+          "stallSeconds": 119
+        }
       },
       "then": {
         "titles": [
-          { "userId": "f1", "title": "specialist", "evidence": 2 },
-          { "userId": "f3", "title": "long-hauler", "evidence": 400 },
-          { "userId": "f4", "title": "wanderer", "evidence": null },
-          { "userId": "f5", "title": "scribbler", "evidence": 15 },
-          { "userId": "f6", "title": "collector", "evidence": 7 },
-          { "userId": "f2", "title": "workhorse", "evidence": 1 }
+          {
+            "userId": "f1",
+            "title": "specialist",
+            "evidence": 2
+          },
+          {
+            "userId": "f3",
+            "title": "long-hauler",
+            "evidence": 400
+          },
+          {
+            "userId": "f4",
+            "title": "wanderer",
+            "evidence": null
+          },
+          {
+            "userId": "f5",
+            "title": "scribbler",
+            "evidence": 15
+          },
+          {
+            "userId": "f6",
+            "title": "collector",
+            "evidence": 7
+          },
+          {
+            "userId": "f2",
+            "title": "workhorse",
+            "evidence": 1
+          }
         ]
       }
     },
@@ -1118,7 +2362,10 @@
         "solvers": {
           "f1": {
             "fills": 2,
-            "firstFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 5,
@@ -1136,7 +2383,10 @@
           },
           "f2": {
             "fills": 1,
-            "firstFill": { "at": 300000, "seq": 40 },
+            "firstFill": {
+              "at": 300000,
+              "seq": 40
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 2,
@@ -1154,7 +2404,10 @@
           },
           "f3": {
             "fills": 4,
-            "firstFill": { "at": 2000, "seq": 2 },
+            "firstFill": {
+              "at": 2000,
+              "seq": 2
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 6,
@@ -1172,7 +2425,10 @@
           },
           "f4": {
             "fills": 8,
-            "firstFill": { "at": 3000, "seq": 3 },
+            "firstFill": {
+              "at": 3000,
+              "seq": 3
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 12,
@@ -1190,7 +2446,10 @@
           },
           "f5": {
             "fills": 5,
-            "firstFill": { "at": 4000, "seq": 4 },
+            "firstFill": {
+              "at": 4000,
+              "seq": 4
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 15,
@@ -1208,7 +2467,10 @@
           },
           "f6": {
             "fills": 6,
-            "firstFill": { "at": 5000, "seq": 5 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 5
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 10,
@@ -1226,7 +2488,10 @@
           },
           "f7": {
             "fills": 4,
-            "firstFill": { "at": 6000, "seq": 6 },
+            "firstFill": {
+              "at": 6000,
+              "seq": 6
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 5,
@@ -1243,16 +2508,42 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 119 }
+        "room": {
+          "stallSeconds": 119
+        }
       },
       "then": {
         "titles": [
-          { "userId": "f1", "title": "specialist", "evidence": 2 },
-          { "userId": "f3", "title": "long-hauler", "evidence": 400 },
-          { "userId": "f4", "title": "wanderer", "evidence": null },
-          { "userId": "f5", "title": "scribbler", "evidence": 15 },
-          { "userId": "f6", "title": "collector", "evidence": 7 },
-          { "userId": "f7", "title": "workhorse", "evidence": 4 }
+          {
+            "userId": "f1",
+            "title": "specialist",
+            "evidence": 2
+          },
+          {
+            "userId": "f3",
+            "title": "long-hauler",
+            "evidence": 400
+          },
+          {
+            "userId": "f4",
+            "title": "wanderer",
+            "evidence": null
+          },
+          {
+            "userId": "f5",
+            "title": "scribbler",
+            "evidence": 15
+          },
+          {
+            "userId": "f6",
+            "title": "collector",
+            "evidence": 7
+          },
+          {
+            "userId": "f7",
+            "title": "workhorse",
+            "evidence": 4
+          }
         ]
       }
     },
@@ -1263,7 +2554,10 @@
         "solvers": {
           "u1": {
             "fills": 5,
-            "firstFill": { "at": 0, "seq": 1 },
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 12,
@@ -1281,7 +2575,10 @@
           },
           "u2": {
             "fills": 4,
-            "firstFill": { "at": 5000, "seq": 3 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 3
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 6,
@@ -1299,7 +2596,10 @@
           },
           "u3": {
             "fills": 4,
-            "firstFill": { "at": 10000, "seq": 7 },
+            "firstFill": {
+              "at": 10000,
+              "seq": 7
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 5,
@@ -1316,13 +2616,27 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 200 }
+        "room": {
+          "stallSeconds": 200
+        }
       },
       "then": {
         "titles": [
-          { "userId": "u1", "title": "saboteur", "evidence": 4 },
-          { "userId": "u2", "title": "sprinter", "evidence": 4 },
-          { "userId": "u3", "title": "specialist", "evidence": 3 }
+          {
+            "userId": "u1",
+            "title": "saboteur",
+            "evidence": 4
+          },
+          {
+            "userId": "u2",
+            "title": "sprinter",
+            "evidence": 4
+          },
+          {
+            "userId": "u3",
+            "title": "specialist",
+            "evidence": 3
+          }
         ]
       }
     },
@@ -1333,7 +2647,10 @@
         "solvers": {
           "u1": {
             "fills": 5,
-            "firstFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 7,
@@ -1351,7 +2668,10 @@
           },
           "u2": {
             "fills": 10,
-            "firstFill": { "at": 2000, "seq": 2 },
+            "firstFill": {
+              "at": 2000,
+              "seq": 2
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 11,
@@ -1368,12 +2688,22 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 60 }
+        "room": {
+          "stallSeconds": 60
+        }
       },
       "then": {
         "titles": [
-          { "userId": "u2", "title": "specialist", "evidence": 8 },
-          { "userId": "u1", "title": "long-hauler", "evidence": 300 }
+          {
+            "userId": "u2",
+            "title": "specialist",
+            "evidence": 8
+          },
+          {
+            "userId": "u1",
+            "title": "long-hauler",
+            "evidence": 300
+          }
         ]
       }
     },
@@ -1384,7 +2714,10 @@
         "solvers": {
           "u1": {
             "fills": 2,
-            "firstFill": { "at": 5000, "seq": 9 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 9
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 6,
@@ -1402,7 +2735,10 @@
           },
           "u2": {
             "fills": 2,
-            "firstFill": { "at": 5000, "seq": 4 },
+            "firstFill": {
+              "at": 5000,
+              "seq": 4
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 5,
@@ -1420,7 +2756,10 @@
           },
           "u3": {
             "fills": 2,
-            "firstFill": { "at": 4000, "seq": 20 },
+            "firstFill": {
+              "at": 4000,
+              "seq": 20
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 4,
@@ -1437,13 +2776,27 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 30 }
+        "room": {
+          "stallSeconds": 30
+        }
       },
       "then": {
         "titles": [
-          { "userId": "u3", "title": "saboteur", "evidence": 3 },
-          { "userId": "u2", "title": "specialist", "evidence": 1 },
-          { "userId": "u1", "title": "long-hauler", "evidence": 50 }
+          {
+            "userId": "u3",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "u2",
+            "title": "specialist",
+            "evidence": 1
+          },
+          {
+            "userId": "u1",
+            "title": "long-hauler",
+            "evidence": 50
+          }
         ]
       }
     },
@@ -1490,7 +2843,10 @@
           },
           "uz": {
             "fills": 1,
-            "firstFill": { "at": 900000, "seq": 90 },
+            "firstFill": {
+              "at": 900000,
+              "seq": 90
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 4,
@@ -1507,10 +2863,18 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 30 }
+        "room": {
+          "stallSeconds": 30
+        }
       },
       "then": {
-        "titles": [{ "userId": "uz", "title": "saboteur", "evidence": 3 }]
+        "titles": [
+          {
+            "userId": "uz",
+            "title": "saboteur",
+            "evidence": 3
+          }
+        ]
       }
     },
     {
@@ -1556,7 +2920,10 @@
           },
           "um": {
             "fills": 2,
-            "firstFill": { "at": 1000, "seq": 1 },
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
             "openingFills": 0,
             "closingFills": 0,
             "writes": 3,
@@ -1573,12 +2940,22 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 45 }
+        "room": {
+          "stallSeconds": 45
+        }
       },
       "then": {
         "titles": [
-          { "userId": "ua", "title": "saboteur", "evidence": 3 },
-          { "userId": "um", "title": "specialist", "evidence": 1 }
+          {
+            "userId": "ua",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "um",
+            "title": "specialist",
+            "evidence": 1
+          }
         ]
       }
     },
@@ -1589,8 +2966,14 @@
         "solvers": {
           "ub": {
             "fills": 6,
-            "firstFill": { "at": 0, "seq": 1 },
-            "lastFill": { "at": 330000, "seq": 30 },
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
+            "lastFill": {
+              "at": 330000,
+              "seq": 30
+            },
             "openingFills": 4,
             "closingFills": 2,
             "writes": 7,
@@ -1610,8 +2993,14 @@
           },
           "uh": {
             "fills": 12,
-            "firstFill": { "at": 20000, "seq": 5 },
-            "lastFill": { "at": 280000, "seq": 26 },
+            "firstFill": {
+              "at": 20000,
+              "seq": 5
+            },
+            "lastFill": {
+              "at": 280000,
+              "seq": 26
+            },
             "openingFills": 1,
             "closingFills": 1,
             "writes": 14,
@@ -1631,8 +3020,14 @@
           },
           "us": {
             "fills": 5,
-            "firstFill": { "at": 125000, "seq": 13 },
-            "lastFill": { "at": 300000, "seq": 28 },
+            "firstFill": {
+              "at": 125000,
+              "seq": 13
+            },
+            "lastFill": {
+              "at": 300000,
+              "seq": 28
+            },
             "openingFills": 0,
             "closingFills": 2,
             "writes": 9,
@@ -1651,13 +3046,27 @@
             "brokeStall": 0
           }
         },
-        "room": { "stallSeconds": 90 }
+        "room": {
+          "stallSeconds": 90
+        }
       },
       "then": {
         "titles": [
-          { "userId": "us", "title": "saboteur", "evidence": 3 },
-          { "userId": "uh", "title": "bullseye", "evidence": 12 },
-          { "userId": "ub", "title": "sprinter", "evidence": 4 }
+          {
+            "userId": "us",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "uh",
+            "title": "bullseye",
+            "evidence": 12
+          },
+          {
+            "userId": "ub",
+            "title": "sprinter",
+            "evidence": 4
+          }
         ]
       }
     }
