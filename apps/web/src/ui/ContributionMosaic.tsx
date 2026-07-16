@@ -29,6 +29,7 @@ import {
   settleDelay,
   WASH_ALPHA,
 } from "./mosaicReveal";
+import { isolationAlpha } from "./mosaicIsolation";
 
 const CELL = 36;
 
@@ -83,6 +84,15 @@ export interface ContributionMosaicProps {
   readonly roster: Roster;
   /** Static frame or the running reveal. Defaults to the reveal. */
   readonly behavior?: Behavior;
+  /**
+   * The isolated solver (the Analysis legend's spotlight), or null/absent for the full wash.
+   * Isolation rides the color rect's `fill-opacity` — a plain React-rendered attribute — while
+   * the reveal arc and the replay animate the independent `opacity` channel imperatively. The
+   * two multiply, so toggling isolation repaints tints in place (over the settled wash, the
+   * bloom's field, or whatever cells the replay has revealed at time T) and can never re-arm
+   * the sweep: it never enters the reveal effect's dependency key (the #204 discipline).
+   */
+  readonly isolatedId?: string | null | undefined;
   /** Fires as the arc crosses each beat (0 solved, 1 bloom, 2 settled), for a beat indicator. */
   readonly onBeat?: (beat: 0 | 1 | 2) => void;
   /** An accessible label for the SVG; defaults to a geometry description. */
@@ -133,6 +143,7 @@ export function ContributionMosaic({
   ownerMap,
   roster,
   behavior = { kind: "reveal" },
+  isolatedId = null,
   onBeat,
   ariaLabel,
 }: ContributionMosaicProps) {
@@ -358,6 +369,8 @@ export function ContributionMosaic({
         return (
           <g key={cell.index}>
             {cell.color !== null && (
+              // fill-opacity is the isolation channel: React-rendered, multiplying whatever
+              // `opacity` the arc or the replay painted imperatively. Ink letters never dim.
               <rect
                 ref={(el) => {
                   if (el) rectRefs.current.set(cell.index, el);
@@ -369,6 +382,7 @@ export function ContributionMosaic({
                 width={CELL}
                 height={CELL}
                 fill={cell.color}
+                fillOpacity={isolationAlpha(ownerMap[cell.index], isolatedId)}
                 style={initialRectStyle}
               />
             )}

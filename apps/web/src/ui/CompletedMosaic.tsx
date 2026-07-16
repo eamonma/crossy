@@ -126,6 +126,7 @@ export function CompletedMosaicBoard({
   replayKey,
   replayTime,
   sequence,
+  isolatedId,
   ariaLabel,
 }: {
   puzzle: Puzzle;
@@ -143,6 +144,9 @@ export function CompletedMosaicBoard({
   /** The solve order the replay gates on: cell index -> its solve time. INV-6: cells and times only,
    * never a letter (the letters come from the `letters` prop). */
   sequence?: readonly { cell: number; atSeconds: number }[] | undefined;
+  /** The legend's isolated solver, or null for the full wash. A fill-opacity multiplier inside the
+   * mosaic, so it composes with the bloom, the wash, and the replay without re-arming anything. */
+  isolatedId?: string | null | undefined;
   ariaLabel?: string | undefined;
 }) {
   // cell index -> its solve time, memoized on the sequence so a per-frame replayTime change never
@@ -173,6 +177,7 @@ export function CompletedMosaicBoard({
       ownerMap={ownerMap}
       roster={roster}
       behavior={behavior}
+      isolatedId={isolatedId}
       ariaLabel={
         ariaLabel ?? "The solved board, painted by who solved each square"
       }
@@ -200,6 +205,7 @@ export function CompletedMosaic({
   replayKey,
   replayTime,
   sequence,
+  isolatedId,
   source,
   ariaLabel,
 }: {
@@ -215,6 +221,8 @@ export function CompletedMosaic({
   replayTime?: number | null | undefined;
   /** The solve order the replay gates on ({cell, atSeconds}); INV-6: cells and times only. */
   sequence?: readonly { cell: number; atSeconds: number }[] | undefined;
+  /** The legend's isolated solver (Analysis panel), or null for the full wash. */
+  isolatedId?: string | null | undefined;
   source?: AttributionSource | undefined;
   ariaLabel?: string | undefined;
 }) {
@@ -235,6 +243,7 @@ export function CompletedMosaic({
       replayKey={replayKey}
       replayTime={replayTime}
       sequence={sequence}
+      isolatedId={isolatedId}
       ariaLabel={ariaLabel}
     />
   );
