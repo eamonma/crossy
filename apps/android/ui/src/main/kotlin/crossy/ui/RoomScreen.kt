@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import crossy.design.AttributionSwitches
 import crossy.protocol.ClientPuzzle
+import crossy.protocol.Clue
 import crossy.protocol.GameStatus
 import crossy.store.BoardNavigation
 import crossy.store.GameStore
@@ -61,7 +62,18 @@ fun RoomScreen(
     val cursorTint =
         if (AttributionSwitches.colorInMotionEnabled) Presence.selfColor(render.participants, render.selfUserId, ground)
         else ground.tokens.ink
-    val activeClue = remember(selection, puzzle) { activeClueOf(puzzle, selection) }
+    // The active clue and, from its prose, the cells of every clue it cross-references (numeric refs
+    // plus, when it is a revealer, the starred clues; D26). One resolution, so the bar and the board
+    // tint read the same active clue. The grid tint is the only surface here: Android has no clue
+    // rail (ClueBar shows just the active clue), so the adjacent-clue lift-up has no home yet.
+    val activeEntry = remember(selection, puzzle) { activeClueEntry(puzzle, selection) }
+    val activeClue = activeEntry?.let {
+        ActiveClue("${it.number} ${if (selection.isAcross) "ACROSS" else "DOWN"}", it.text)
+    }
+    val crossReference = remember(activeEntry, selection.isAcross, puzzle) {
+        val keys = referencedKeys(activeEntry, selection.isAcross, puzzle.clues.across, puzzle.clues.down)
+        referencedCells(keys, puzzle.clues.across, puzzle.clues.down)
+    }
 
     // The input env is rebuilt per intent so it reads the latest filled set and freeze.
     fun env() = InputEnv(navGeom, filled, selection, frozen)
@@ -91,6 +103,7 @@ fun RoomScreen(
                 presence = presence,
                 ground = ground,
                 cursorTint = cursorTint,
+                crossReference = crossReference,
                 modifier = Modifier.fillMaxWidth(),
                 onCellTap = { cell ->
                     InputActions.tap(env(), cell)?.let {
@@ -145,11 +158,11 @@ private fun buildValues(render: RenderModel, geometry: GridGeometry): Map<Int, S
     return out
 }
 
-/** The clue running through the cursor on its axis: the one whose cell list contains the selection.
- *  Null when no clue names the cell (a lone cell or a gap), which renders an empty bar. */
-private fun activeClueOf(puzzle: ClientPuzzle, selection: GridSelection): ActiveClue? {
+/** The clue running through the cursor on its axis: the one whose cell list contains the selection,
+ *  on the solving axis. Null when no clue names the cell (a lone cell or a gap), which renders an
+ *  empty bar and tints nothing. The bar label and the cross-reference resolution both read this one
+ *  clue, so they can never disagree on which clue is active. */
+private fun activeClueEntry(puzzle: ClientPuzzle, selection: GridSelection): Clue? {
     val list = if (selection.isAcross) puzzle.clues.across else puzzle.clues.down
-    val clue = list.firstOrNull { selection.cell in it.cellIndices } ?: return null
-    val axis = if (selection.isAcross) "ACROSS" else "DOWN"
-    return ActiveClue("${clue.number} $axis", clue.text)
+    return list.firstOrNull { selection.cell in it.cellIndices }
 }

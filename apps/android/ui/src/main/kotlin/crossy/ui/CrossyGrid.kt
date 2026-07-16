@@ -52,6 +52,9 @@ fun CrossyGrid(
     ground: GridGround,
     cursorTint: RGBColor,
     modifier: Modifier = Modifier,
+    // The cells of the clues the active clue cross-references (ClueRefs.referencedCells), tinted
+    // faintly relative to the selection. Empty on read-only surfaces that carry no active clue.
+    crossReference: Set<Int> = emptySet(),
     onCellTap: (Int) -> Unit = {},
 ) {
     val tokens = ground.tokens
@@ -90,8 +93,12 @@ fun CrossyGrid(
                 continue
             }
             drawRect(tokens.cell.toColor(), origin, cellSize)
+            // The when arms encode the §10 background precedence (CellFill): current > check (M6) >
+            // cross-reference > active word > teammate. A referenced cell outranks the active word,
+            // so where a referenced word crosses the active one the crossing cell paints xref.
             when {
                 c == selection?.cell -> drawRect(tint.copy(alpha = GridModule.CURRENT_ALPHA), origin, cellSize)
+                c in crossReference -> drawRect(tint.copy(alpha = GridModule.CROSS_REFERENCE_ALPHA), origin, cellSize)
                 c in activeWord -> drawRect(tint.copy(alpha = GridModule.ACTIVE_WORD_ALPHA), origin, cellSize)
                 presence.containsKey(c) ->
                     drawRect(presence.getValue(c).first().color.toColor().copy(alpha = GridModule.TEAMMATE_ALPHA), origin, cellSize)
