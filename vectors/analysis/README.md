@@ -90,8 +90,8 @@ replay (`design/post-game/REPLAY.md`).
 law for every semantic below; constants and rules are cited by name, never re-derived):
 
 ```
-titleStats(events, solution, slots) -> { solvers: per-solver stat sheet, room: { stallSeconds } }
-awardTitles(titleStats result)      -> [{ userId, title, evidence }]
+titleStats(events, solution, slots, geometry) -> { solvers: per-solver stat sheet, room: { stallSeconds } }
+awardTitles(titleStats result)                -> [{ userId, title, evidence }]
 ```
 
 Two functions share one file, so the file is a keyed object of two case clusters,
@@ -102,7 +102,8 @@ function.
 
 ### titleStats cases
 
-- `given`: `rows`, `cols` (grid geometry as data, INV-9: quadrants and spread need it),
+- `given`: `rows`, `cols` (grid geometry as data, INV-9: quadrants and spread need it;
+  the reader passes them as the reducer's `geometry` argument, `{ rows, cols }`),
   `solution` (`[cell, expected]` pairs, as `solve-trace.json`), `events` (the
   `solve-trace.json` event shape: `{ seq, cell, userId, value, at }`, `at` epoch ms,
   `value` null for a clear), and `slots`: each `{ cells, starred }`, ordered cell indices
