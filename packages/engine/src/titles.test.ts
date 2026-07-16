@@ -98,8 +98,8 @@ function pick(
 }
 
 describe("titleStats vectors (vectors/analysis/titles.json, titleStats cluster)", () => {
-  it("adopts all 14 cases; a miscount means a case was silently skipped", () => {
-    expect(titlesFixture.titleStats).toHaveLength(14);
+  it("adopts all 15 cases; a miscount means a case was silently skipped", () => {
+    expect(titlesFixture.titleStats).toHaveLength(15);
   });
 
   for (const c of titlesFixture.titleStats) {

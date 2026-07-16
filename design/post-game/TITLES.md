@@ -119,8 +119,10 @@ the events:
 - **firstFill / lastFill**: the `(at, seq)` of `u`'s earliest and latest trace entries;
   absent for a zero-fill solver.
 - **openingFills / closingFills**: owned entries among the first / last
-  `ceil(OPENING_SHARE * T)` trace entries. Ordinal, not temporal, so an overnight gap
-  cannot smear the stretch (and sittings, when they land, change nothing here).
+  `ceil(T / 5)` trace entries (`OPENING_SHARE` is the readable name for that fifth; the
+  window is computed from the exact rational, never a `0.2 * T` float multiply that could
+  round a boundary T up by one). Ordinal, not temporal, so an overnight gap cannot smear
+  the stretch (and sittings, when they land, change nothing here).
 - **writes**: all events by `u`, writes and clears. (`writes >= fills` always, since a
   fill is `u`'s event.)
 - **burst**: the max count of `u`'s own fills inside any closed window
