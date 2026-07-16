@@ -1,12 +1,11 @@
 // Sign in, providers first (the iOS WelcomeScreen shape): Apple then Discord as the two primary
-// buttons (Apple leads, per Apple's guideline 4.8; web AuthBar agrees), a quiet "Continue another
-// way" affordance revealing Hisbaan and the email one-time code (mirrors #230), and the dev-token
-// fallback tucked at the bottom (the twin of iOS FixedTokenProvider and the web `?token=`
-// override). There are no passwords in production, so no password form. The screen knows nothing
-// of browsers or intents: a provider tap is an intent the host maps to the Custom Tab leg
-// (AAD-2: browser concerns live in :app). A pure function of the passed state: the composition
-// root runs the network and owns the busy/error and which OTP step is showing; the screen renders
-// it and emits intents back.
+// buttons (Apple leads, per Apple's guideline 4.8; web AuthBar agrees), and a quiet "Continue
+// another way" affordance revealing Hisbaan and the email one-time code (mirrors #230). There are
+// no passwords in production, so no password form. The screen knows nothing of browsers or
+// intents: a provider tap is an intent the host maps to the Custom Tab leg (AAD-2: browser
+// concerns live in :app). A pure function of the passed state: the composition root runs the
+// network and owns the busy/error and which OTP step is showing; the screen renders it and emits
+// intents back.
 
 package crossy.ui
 
@@ -17,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -98,7 +96,6 @@ fun SignInScreen(
     busyProvider: SignInProvider?,
     error: String?,
     onProvider: (SignInProvider) -> Unit,
-    onDevToken: (String) -> Unit,
     otpStep: EmailOtpStep = EmailOtpStep.Closed,
     otpBusy: Boolean = false,
     // Closed -> Email, and Code -> Email ("use a different email"): both land on a fresh address step.
@@ -121,11 +118,10 @@ fun SignInScreen(
         )
 
         when (val step = otpStep) {
-            EmailOtpStep.Closed -> ProvidersAndDevToken(
+            EmailOtpStep.Closed -> Providers(
                 busyProvider = busyProvider,
                 error = error,
                 onProvider = onProvider,
-                onDevToken = onDevToken,
                 onContinueWithEmail = onEmailStep,
             )
 
@@ -148,19 +144,17 @@ fun SignInScreen(
     }
 }
 
-/** Providers lead: Apple then Discord as the primary buttons, the quiet "Continue another way"
- *  affordance revealing Hisbaan and the email one-time code, then the dev-token fallback at the
- *  bottom. The inline error sits above the buttons (the iOS footer's read): calm, one sentence. */
+/** Providers lead: Apple then Discord as the primary buttons, then the quiet "Continue another
+ *  way" affordance revealing Hisbaan and the email one-time code. The inline error sits above the
+ *  buttons (the iOS footer's read): calm, one sentence. */
 @Composable
-private fun ProvidersAndDevToken(
+private fun Providers(
     busyProvider: SignInProvider?,
     error: String?,
     onProvider: (SignInProvider) -> Unit,
-    onDevToken: (String) -> Unit,
     onContinueWithEmail: () -> Unit,
 ) {
     var anotherWay by remember { mutableStateOf(false) }
-    var devToken by remember { mutableStateOf("") }
     val busy = busyProvider != null
 
     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
@@ -193,27 +187,6 @@ private fun ProvidersAndDevToken(
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Continue with email") }
     }
-
-    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-    Text(
-        "Developer",
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    OutlinedTextField(
-        value = devToken,
-        onValueChange = { devToken = it },
-        label = { Text("Dev bearer token") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedButton(
-        onClick = { onDevToken(devToken) },
-        enabled = devToken.isNotBlank(),
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text("Use dev token") }
 }
 
 /** One primary provider button. The busy label shows on the tapped provider alone; every provider

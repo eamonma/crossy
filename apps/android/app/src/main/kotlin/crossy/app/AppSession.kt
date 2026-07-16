@@ -1,9 +1,8 @@
 // The composition root's session and API wiring (ARCHITECTURE.md: ":app wires everything"). It
 // builds the Supabase auth leg and the REST client from BuildConfig, and it holds the one bearer
-// provider both auth paths feed: the AuthSession (OAuth over the browser leg and email OTP; there
-// are no passwords in production) and the injected dev-token (the twin of iOS FixedTokenProvider).
-// Token storage is in-memory tonight; the Keystore-backed TokenStore is a later track
-// (AAD-3 / AD-4), wired here and nowhere else when it lands.
+// provider every auth path feeds: the AuthSession (OAuth over the browser leg and email OTP;
+// there are no passwords in production). Token storage is in-memory tonight; the Keystore-backed
+// TokenStore is a later track (AAD-3 / AD-4), wired here and nowhere else when it lands.
 
 package crossy.app
 
@@ -13,7 +12,6 @@ import crossy.api.AuthSession
 import crossy.api.BearerTokenProvider
 import crossy.api.CrossyApiClient
 import crossy.api.InMemoryTokenStore
-import crossy.api.InjectedTokenProvider
 import crossy.api.SignedOutError
 import crossy.api.SupabaseAuthClient
 import crossy.api.SupabaseConfig
@@ -49,9 +47,9 @@ object AppConfig {
     fun turnstileSiteKey(): String = BuildConfig.TURNSTILE_SITE_KEY
 }
 
-/** A bearer provider whose backing swaps at runtime: null before sign-in, the AuthSession after an
- *  email grant, an InjectedTokenProvider after a dev token. The REST client holds one of these for
- *  its whole life, so the auth path can change under it without rebuilding the client. */
+/** A bearer provider whose backing swaps at runtime: null before sign-in, the AuthSession after a
+ *  grant. The REST client holds one of these for its whole life, so the auth path can change under
+ *  it without rebuilding the client. */
 class SwitchableTokenProvider : BearerTokenProvider {
     @Volatile
     var delegate: BearerTokenProvider? = null
@@ -135,31 +133,9 @@ class AppSession(
         return true
     }
 
-    /** The dev-token path (AAD-3): a fixed bearer that never refreshes, so a 401 surfaces as
-     *  UNAUTHORIZED rather than looping. */
-    fun useDevToken(token: String) {
-        bearer.delegate = InjectedTokenProvider(token)
-        selfUserId = subClaim(token)
-    }
-
     /** Drop the bearer and the local identity. The vendor logout is best-effort and never awaited. */
     fun clearSession() {
         bearer.delegate = null
         selfUserId = null
-    }
-
-    /** The `sub` claim of a JWT, read for display only (no verification; the servers verify the
-     *  signature). Null when the token is not a readable JWT (a bare dev token), which the room
-     *  falls back from. */
-    private fun subClaim(token: String): String? {
-        val parts = token.split(".")
-        if (parts.size < 2) return null
-        return try {
-            val padded = parts[1].padEnd((parts[1].length + 3) / 4 * 4, '=')
-            val json = android.util.Base64.decode(padded, android.util.Base64.URL_SAFE).decodeToString()
-            Regex("\"sub\"\\s*:\\s*\"([^\"]+)\"").find(json)?.groupValues?.get(1)
-        } catch (e: Exception) {
-            null
-        }
     }
 }
