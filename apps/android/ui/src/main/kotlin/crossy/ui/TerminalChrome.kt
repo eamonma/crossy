@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
@@ -34,6 +35,16 @@ object RoomTerminal {
 
     /** The kicked exit's affordance: home is Rooms, so the way out says so plainly (ID-5). */
     const val kickedExitWord: String = "Back to Rooms"
+
+    /** The completion notice (EXPERIENCE.md lexicon: completion). The finished room does not print
+     *  this over the board (the deck just leaves and the seal on the time pill is the record, iOS
+     *  SolveScreen `.completed`); the line is here so all three clients name completion identically and
+     *  a surface that does say it (the facts headline, analysis) reads verbatim. */
+    const val completedNotice: String = "Solved together"
+
+    /** The abandoned notice (EXPERIENCE.md lexicon: abandoned), the one line a host-ended room shows
+     *  where the deck was (iOS SolveScreen `abandonedZone`): terminal and quiet, nothing else. */
+    const val abandonedNotice: String = "The host ended this game"
 }
 
 /** Replaces the room after a kick (apps/ios KickedExit): the honest sentence, then the plain way back
@@ -72,4 +83,25 @@ fun KickedExit(ground: GridGround, onExit: () -> Unit, modifier: Modifier = Modi
             )
         }
     }
+}
+
+/** The abandoned room's one-line notice (iOS SolveScreen `abandonedZone`): a host-ended room freezes
+ *  the board with this single quiet sentence where the deck was, terminal and quiet (EXPERIENCE.md).
+ *  Unlike the kicked exit, there is still a board to browse, so this replaces only the deck, not the
+ *  room. The completed room prints no notice here (the deck just leaves; the time pill's seal is the
+ *  record), so this is the abandoned case alone. */
+@Composable
+fun AbandonedNotice(ground: GridGround, modifier: Modifier = Modifier) {
+    val tokens = ground.tokens
+    Text(
+        RoomTerminal.abandonedNotice,
+        color = tokens.number.toColor(),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Medium,
+        textAlign = TextAlign.Center,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(tokens.canvas.toColor())
+            .padding(top = 16.dp, bottom = 18.dp),
+    )
 }

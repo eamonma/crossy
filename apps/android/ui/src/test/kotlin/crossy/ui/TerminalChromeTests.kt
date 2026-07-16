@@ -16,4 +16,14 @@ class TerminalChromeTests {
     fun `EXPERIENCE5 the kicked exit says where it goes`() {
         assertEquals("Back to Rooms", RoomTerminal.kickedExitWord)
     }
+
+    @Test
+    fun `EXPERIENCE5 the abandoned notice is terminal and quiet, verbatim from iOS`() {
+        assertEquals("The host ended this game", RoomTerminal.abandonedNotice)
+    }
+
+    @Test
+    fun `EXPERIENCE5 the completion lexicon names the shared solve, verbatim from iOS`() {
+        assertEquals("Solved together", RoomTerminal.completedNotice)
+    }
 }

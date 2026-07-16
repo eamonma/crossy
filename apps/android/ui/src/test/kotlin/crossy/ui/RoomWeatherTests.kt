@@ -48,4 +48,20 @@ class RoomWeatherTests {
         assertEquals("Reconnecting", RoomWeather.reconnectLine(retryAtMillis = null, nowMillis = 1_000))
         assertEquals("Reconnecting", RoomWeather.reconnectLine(retryAtMillis = 1_000, nowMillis = 1_000))
     }
+
+    @Test
+    fun `DESIGN8 the dot's three registers, calm live, breathing resync, dimmed while not live`() {
+        assertEquals(RoomWeather.Dot.CALM, RoomWeather.dot(SyncState.LIVE))
+        assertEquals(RoomWeather.Dot.BREATHING, RoomWeather.dot(SyncState.RESYNCING))
+        assertEquals(RoomWeather.Dot.DIMMED, RoomWeather.dot(SyncState.CONNECTING))
+        assertEquals(RoomWeather.Dot.DIMMED, RoomWeather.dot(SyncState.RECONNECTING))
+    }
+
+    @Test
+    fun `DESIGN8 only a reconnect names itself, the first connect and the calm states stay wordless`() {
+        assertEquals("Reconnecting", RoomWeather.label(SyncState.RECONNECTING))
+        assertNull(RoomWeather.label(SyncState.CONNECTING))
+        assertNull(RoomWeather.label(SyncState.LIVE))
+        assertNull(RoomWeather.label(SyncState.RESYNCING))
+    }
 }

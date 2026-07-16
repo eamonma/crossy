@@ -69,6 +69,7 @@ import crossy.protocol.GameView
 import crossy.protocol.MeResponse
 import crossy.protocol.Participant
 import crossy.protocol.PuzzleSummary
+import crossy.protocol.Role
 import crossy.session.SessionDriver
 import crossy.session.WebSocketTransport
 import crossy.store.GameStore
@@ -88,6 +89,7 @@ import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
 import crossy.ui.PuzzlesScreen
 import crossy.ui.RoomScreen
+import crossy.ui.RosterAvatars
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
 import crossy.ui.orderedByActivity
@@ -126,6 +128,9 @@ private sealed interface Screen {
         val puzzle: ClientPuzzle,
         val name: String?,
         val demo: Boolean,
+        // The game's REST id, the §12 operations' key (abandon, kick, role change). Null for the demo
+        // room, which supports none of them (their affordances no-op or hide there).
+        val gameId: String? = null,
         val wsUrl: String? = null,
         val inviteCode: String? = null,
         // The REST game view's roster (the seeded-birth rule, DESIGN.md §4, §12): the room's members
@@ -235,6 +240,7 @@ fun CrossyApp(
             puzzle = view.puzzle,
             name = view.name,
             demo = false,
+            gameId = view.gameId,
             wsUrl = view.session.ws,
             inviteCode = view.inviteCode,
             roster = view.seedRoster(),
@@ -325,6 +331,7 @@ fun CrossyApp(
                     roomName = s.name,
                     selfUserId = session.selfUserId ?: "you",
                     demo = s.demo,
+                    gameId = s.gameId,
                     wsUrl = s.wsUrl,
                     inviteCode = s.inviteCode,
                     // The seeded-birth roster from the REST view (empty for the demo room).
@@ -1096,6 +1103,9 @@ private fun RoomHost(
     roomName: String?,
     selfUserId: String,
     demo: Boolean,
+    // The game's REST id, the §12 room operations' key (abandon, kick, role change); null for the
+    // demo room, which has no REST game behind it, so those affordances no-op or hide.
+    gameId: String?,
     wsUrl: String?,
     inviteCode: String?,
     roster: List<Participant>,
@@ -1179,6 +1189,11 @@ private fun RoomHost(
     // A kicked player gets the calm terminal treatment (EXPERIENCE.md §5): the room is replaced by the
     // one honest sentence and the way back to Rooms, no board left to browse (mirrors iOS SolveScreen's
     // kicked branch). Every other state renders the room.
+    // The roster sheet's avatar bridge: the room owns one url-keyed cache (the AAD-2 split the
+    // Settings puck already holds) and hands :ui a resolved-image reader; every roster row shares it,
+    // so one member's avatar fetches once however many times the sheet opens.
+    val avatarCache = rememberAvatarImageCache()
+    val avatars = RosterAvatars { url -> rememberAvatarBitmap(avatarCache, url) }
     if (kicked) {
         KickedExit(ground = ground, onExit = onExit)
     } else {
@@ -1191,6 +1206,46 @@ private fun RoomHost(
             reactionEmojis = reactionEmojis,
             reconnectRetryAt = reconnectRetryAt,
             navigationPrefs = navPrefs.navigationPrefs,
+            avatars = avatars,
+            // The host's end-game (POST /games/{id}/abandon, PROTOCOL.md §12; mirrors RealRoom.endGame):
+            // the server settles the terminal state and the `gameAbandoned` event reaches the store over
+            // the live socket, so the room freezes through the same path a peer's abandon would.
+            // Host-only is the server's to enforce; the facts sheet offers this only to the host. A
+            // failure is swallowed with a log (the room has no REST error surface yet, the iOS-reported
+            // gap). Null for the demo room, so its facts sheet never offers End game.
+            onEndGame = gameId?.let { id ->
+                {
+                    scope.launch {
+                        runCatching { session.api.abandonGame(id) }
+                            .onFailure { android.util.Log.w("CrossyRoom", "abandon failed: ${it::class.simpleName}") }
+                    }
+                }
+            },
+            // Kick (host, DELETE /games/{id}/members/{userId}; mirrors RealRoom.kick): the server
+            // removes membership, writes the denylist, and disconnects their sockets. No frame tells
+            // THIS host's socket, so the confirmed removal is reflected into the store at once instead
+            // of at the next snapshot (PROTOCOL.md §12).
+            onKick = { userId ->
+                gameId?.let { id ->
+                    scope.launch {
+                        runCatching {
+                            session.api.kickMember(id, userId)
+                            store.removeParticipant(userId)
+                        }.onFailure { android.util.Log.w("CrossyRoom", "kick failed: ${it::class.simpleName}") }
+                    }
+                }
+            },
+            // Join in (spectator -> solver, POST /games/{id}/role, the only server-supported
+            // transition): the promoted seat reaches everyone through the room's next snapshot; the
+            // wire stays the authority, so nothing is reflected locally here.
+            onJoinIn = {
+                gameId?.let { id ->
+                    scope.launch {
+                        runCatching { session.api.changeRole(id, Role.SOLVER) }
+                            .onFailure { android.util.Log.w("CrossyRoom", "role change failed: ${it::class.simpleName}") }
+                    }
+                }
+            },
         )
     }
     // The share sheet the chip opens: pure :ui over the link (ShareSheet), presented here so it can
