@@ -82,8 +82,12 @@ fun RoomBar(
     }
 }
 
-// The share affordance: a quiet pill matching the SyncChip idiom, tapping it fires the room's share
-// intent (the composition root builds the short link and hands it to the system share sheet).
+// The share affordance: a quiet pill matching the SyncChip idiom. Tapping it opens the room's share
+// surface (iOS ShareMenu: copy-link, system-share, and show-QR over the invite link). The menu and
+// the QR sheet (ShareSheet) live in :ui and are pure over the link, but the composition root
+// PRESENTS them, because the invite code and short link live there and cannot reach this chip
+// through RoomScreen (an untouched sibling region); onShare is that "open the share surface" intent.
+// This keeps the AD-2 split iOS holds: :ui reports, the app target owns the clipboard and the sheet.
 @Composable
 private fun ShareChip(ground: GridGround, onShare: () -> Unit) {
     val tokens = ground.tokens
