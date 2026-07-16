@@ -24,6 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.rotateRad
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.semantics.clearAndSetSemantics
 
 /**
  * Draw the confetti drift. `field` is the seeded flecks and their palette (built once per
@@ -51,7 +52,8 @@ fun ConfettiOverlay(
         }
     }
 
-    Canvas(modifier = modifier) {
+    // Decorative: the drift is seen, not spoken (iOS ConfettiOverlay accessibilityHidden).
+    Canvas(modifier = modifier.clearAndSetSemantics {}) {
         val elapsed = now - startedAt
         if (elapsed < 0.0 || elapsed > ConfettiEnvelope.DURATION_SECONDS) return@Canvas
         val width = size.width

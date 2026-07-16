@@ -49,6 +49,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -92,6 +97,13 @@ fun CrossyGrid(
     // instead of gliding it (RoomScreen's rememberReduceMotion; iOS gates the follow on the same
     // accessibilityReduceMotion signal).
     reduceMotion: Boolean = false,
+    // The board's TalkBack semantics (iOS CrossyGridView.accessibilityLabel; the largest a11y gap the
+    // wave closes). `gridContentDescription` names the board's shape once; `activeCellDescription` is
+    // the live line for the cursor's cell (position, entered letter, axis), announced politely as the
+    // cursor travels so a screen reader can drive the solve. Null on read-only surfaces and previews,
+    // where the grid carries no cursor to describe.
+    gridContentDescription: String? = null,
+    activeCellDescription: String? = null,
     // The standing chrome's cover over the board (GridCamera clamp window) and the live cover the
     // selected cell must escape (follow only). Android's grid lays out in its own row rather than
     // full-bleed, so the room passes NONE; the seam a full-bleed board would grow through.
@@ -187,6 +199,19 @@ fun CrossyGrid(
     Canvas(
         modifier = modifier
             .aspectRatio(cols.toFloat() / rows.toFloat())
+            // The board's one accessible element (a Canvas has no per-cell nodes; iOS labels the whole
+            // grid too). It names the shape, carries the cursor cell as a live state line, and announces
+            // politely as the cursor travels so TalkBack can drive the solve.
+            .then(
+                if (gridContentDescription == null) Modifier
+                else Modifier.semantics {
+                    contentDescription = gridContentDescription
+                    if (activeCellDescription != null) {
+                        stateDescription = activeCellDescription
+                        liveRegion = LiveRegionMode.Polite
+                    }
+                },
+            )
             .onSizeChanged { viewportPx = it }
             // Pinch and pan, then the drag-end swipe (one recognizer, iOS's simultaneous magnify+drag).
             .pointerInput(geometry, occlusion) {

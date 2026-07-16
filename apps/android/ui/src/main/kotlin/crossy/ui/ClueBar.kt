@@ -42,8 +42,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -98,12 +102,24 @@ fun ClueBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Chevron("‹", tokens.number.toColor(), onPrev)
+                Chevron("‹", "Previous clue", tokens.number.toColor(), onPrev)
                 androidx.compose.foundation.layout.Column(
                     modifier = Modifier
                         .weight(1f)
                         // The whole clue is the expand affordance (iOS: the bar row melts open); it opens
-                        // the browser when there is one to open (a live room), a no-op otherwise.
+                        // the browser when there is one to open (a live room), a no-op otherwise. One merged
+                        // element reads the clue label and prose; a button that shows all clues where one opens.
+                        .then(
+                            if (hasBrowser) {
+                                Modifier.semantics(mergeDescendants = true) {
+                                    contentDescription = "${clue?.label.orEmpty()}, ${clue?.text.orEmpty()}"
+                                    role = Role.Button
+                                    stateDescription = "Show all clues"
+                                }
+                            } else {
+                                Modifier.semantics(mergeDescendants = true) {}
+                            },
+                        )
                         .pointerInput(hasBrowser) {
                             if (hasBrowser) detectTapGestures { expanded = true }
                         },
@@ -122,7 +138,7 @@ fun ClueBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Chevron("›", tokens.number.toColor(), onNext)
+                Chevron("›", "Next clue", tokens.number.toColor(), onNext)
             }
         }
     }
@@ -251,7 +267,9 @@ private fun ClueBrowserSection(
         color = tokens.number.toColor(),
         fontSize = 11.sp,
         fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 6.dp, top = 12.dp, bottom = 4.dp),
+        modifier = Modifier
+            .padding(start = 6.dp, top = 12.dp, bottom = 4.dp)
+            .semantics { heading() },
     )
     for (row in rows) {
         ClueBrowserRowItem(row, ground, onJump)
@@ -269,12 +287,24 @@ private fun ClueBrowserRowItem(row: ClueBrowserRow, ground: GridGround, onJump: 
         row.isReferenced -> 0.03f
         else -> 0f
     }
+    // One spoken row (iOS browserList row label "tag, text"): the number and prose merge, and the
+    // active/filled state rides as a state word.
+    val rowState = when {
+        row.isCurrent -> "current"
+        row.isDimmed -> "filled"
+        else -> null
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(tokens.ink.toColor().copy(alpha = wash))
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${row.number}, ${row.text}"
+                role = Role.Button
+                if (rowState != null) stateDescription = rowState
+            }
             .pointerInput(row) { detectTapGestures { onJump(row) } }
             .padding(horizontal = 8.dp, vertical = 8.dp)
             .alpha(if (row.isDimmed) 0.4f else 1f),
@@ -301,13 +331,14 @@ private fun ClueBrowserRowItem(row: ClueBrowserRow, ground: GridGround, onJump: 
 }
 
 @Composable
-private fun Chevron(glyph: String, color: androidx.compose.ui.graphics.Color, onTap: () -> Unit) {
+private fun Chevron(glyph: String, label: String, color: androidx.compose.ui.graphics.Color, onTap: () -> Unit) {
     Text(
         glyph,
         color = color,
         fontSize = 26.sp,
         modifier = Modifier
             .size(36.dp)
+            .semantics { contentDescription = label; role = Role.Button }
             .pointerInput(Unit) { detectTapGestures { onTap() } }
             .padding(top = 2.dp),
         textAlign = androidx.compose.ui.text.style.TextAlign.Center,

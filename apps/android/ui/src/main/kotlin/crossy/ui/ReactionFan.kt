@@ -42,6 +42,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -59,6 +63,9 @@ fun ReactionFan(
     modifier: Modifier = Modifier,
     emojis: List<String> = ReactionPolicy.defaultSet,
     enabled: Boolean = true,
+    // Reduce Motion opens the fan on opacity alone (no scale pop) and drops the highlight enlargement,
+    // matching iOS ReactionFan's reduceMotion transition and its scaleEffect guard.
+    reduceMotion: Boolean = false,
 ) {
     var fan by remember(emojis) { mutableStateOf(ReactionFanModel(emojis)) }
 
@@ -84,13 +91,15 @@ fun ReactionFan(
     ) {
         AnimatedVisibility(
             visible = fan.isOpen,
-            enter = fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.85f),
-            exit = fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 0.85f),
+            // Reduce Motion: fade only (iOS's .opacity transition); otherwise the scale pop rides in.
+            enter = if (reduceMotion) fadeIn(tween(150)) else fadeIn(tween(120)) + scaleIn(tween(120), initialScale = 0.85f),
+            exit = if (reduceMotion) fadeOut(tween(150)) else fadeOut(tween(90)) + scaleOut(tween(90), targetScale = 0.85f),
         ) {
             FanCapsule(
                 emojis = fan.emojis,
                 highlighted = fan.highlighted,
                 ground = ground,
+                reduceMotion = reduceMotion,
                 onTap = { index ->
                     val step = fan.tapEmoji(at = index)
                     fan = step.model
@@ -171,6 +180,7 @@ private fun FanButton(
             .size(BUTTON_SIZE_DP.dp)
             .clip(CircleShape)
             .background(surface)
+            .semantics { contentDescription = "React"; role = Role.Button }
             .pointerInput(enabled, count) {
                 if (!enabled) return@pointerInput
                 awaitEachGesture {
@@ -202,6 +212,7 @@ private fun FanCapsule(
     emojis: List<String>,
     highlighted: Int?,
     ground: GridGround,
+    reduceMotion: Boolean,
     onTap: (Int) -> Unit,
 ) {
     val surface = if (ground.isDark) Color.White.copy(alpha = 0.10f) else Color.Black.copy(alpha = 0.06f)
@@ -218,11 +229,13 @@ private fun FanCapsule(
                 modifier = Modifier
                     .size(ReactionFanLayout.SLOT_SIZE.dp)
                     .clip(CircleShape)
+                    .semantics { contentDescription = "React with $emoji"; role = Role.Button }
                     .pointerInput(emojis) { detectTapGestures(onTap = { onTap(index) }) },
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(emoji, fontSize = if (highlighted == index) 26.sp else 22.sp)
+                // Reduce Motion drops the highlight enlargement (iOS scaleEffect guard).
+                Text(emoji, fontSize = if (highlighted == index && !reduceMotion) 26.sp else 22.sp)
             }
         }
     }

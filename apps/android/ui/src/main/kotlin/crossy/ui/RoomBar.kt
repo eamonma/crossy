@@ -40,6 +40,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,7 +103,10 @@ fun RoomBar(
                 "‹",
                 color = tokens.ink.toColor(),
                 fontSize = 24.sp,
-                modifier = Modifier.size(28.dp).pointerInput(Unit) { detectTapGestures { onExit() } },
+                modifier = Modifier
+                    .size(28.dp)
+                    .semantics { contentDescription = "Back"; role = Role.Button }
+                    .pointerInput(Unit) { detectTapGestures { onExit() } },
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             Text(
@@ -140,7 +149,14 @@ private fun RosterCluster(members: List<RosterMember>, ground: GridGround, onOpe
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.pointerInput(Unit) { detectTapGestures { onOpen() } },
+        modifier = Modifier
+            // One spoken cluster with the room's head count (iOS RosterList label): the pucks below are
+            // decorative once the cluster names the roster.
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Roster, ${members.size} in the room"
+                role = Role.Button
+            }
+            .pointerInput(Unit) { detectTapGestures { onOpen() } },
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy((-7).dp)) {
             for (member in pucks) {
@@ -177,7 +193,9 @@ private fun ShareChip(ground: GridGround, onShare: () -> Unit) {
         color = tokens.cell.toColor(),
         contentColor = tokens.ink.toColor(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-        modifier = Modifier.pointerInput(Unit) { detectTapGestures { onShare() } },
+        modifier = Modifier
+            .semantics { contentDescription = "Share"; role = Role.Button }
+            .pointerInput(Unit) { detectTapGestures { onShare() } },
     ) {
         Text("Share", fontSize = 11.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
     }
@@ -210,11 +228,30 @@ private fun RoomTimePill(
         }
     }
     val clock = AmbientClock.display(firstFillAt, freezeAt, now)
+    // The pill's spoken line (iOS TimePillRegister.accessibilityLabel + weatherAccessibilityLabel): the
+    // register's phrase, the live weather word, and the clock value, read as one element. A polite live
+    // region so the weather's turn (connected, catching up, reconnecting) is announced as it changes.
+    val weatherSpoken = when (RoomWeather.dot(sync)) {
+        RoomWeather.Dot.CALM -> "Connected"
+        RoomWeather.Dot.BREATHING -> "Catching up"
+        RoomWeather.Dot.DIMMED -> if (RoomWeather.showsCountdown(sync)) "Reconnecting" else "Connecting"
+    }
+    val pillLabel = when (status) {
+        GameStatus.ONGOING -> "Shared time, $weatherSpoken, $clock, show room facts"
+        GameStatus.COMPLETED -> "Solved together, $clock, show stats"
+        GameStatus.ABANDONED -> "Final time, $clock, show room facts"
+    }
     Surface(
         color = tokens.cell.toColor(),
         contentColor = tokens.number.toColor(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
-        modifier = Modifier.pointerInput(Unit) { detectTapGestures { onTap() } },
+        modifier = Modifier
+            .semantics(mergeDescendants = true) {
+                contentDescription = pillLabel
+                role = Role.Button
+                liveRegion = LiveRegionMode.Polite
+            }
+            .pointerInput(Unit) { detectTapGestures { onTap() } },
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),

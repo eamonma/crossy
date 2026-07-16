@@ -3,6 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The solve's haptic grammar (DESIGN.md §7; SolveHapticPlayer): the double-tick and completion
+         patterns play through the Vibrator, which needs this. The single-pulse ticks and thuds run
+         through View.performHapticFeedback and need no permission; a device without a motor no-ops. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- The camera-first invite scan (JoinCameraScan): a back camera reads the host's QR. Both the
          camera and autofocus are required=false, so a device without either still installs and joins
          by typed code (the scan viewport resolves to DENIED, never a dead end). -->

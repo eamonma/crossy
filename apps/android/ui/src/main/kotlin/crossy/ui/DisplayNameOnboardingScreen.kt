@@ -26,6 +26,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,16 +86,29 @@ fun DisplayNameOnboardingScreen(
             singleLine = true,
             isError = errorMessage != null,
             enabled = !isSaving,
-            modifier = Modifier.fillMaxWidth(),
+            // The error rides the field as its a11y value, so a change is spoken (iOS field
+            // accessibilityValue = displayNameError when hasError).
+            modifier = Modifier.fillMaxWidth().semantics {
+                if (errorMessage != null) error(errorMessage)
+            },
         )
         if (errorMessage != null) {
-            Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            // Announce the error the instant it changes (iOS errorLine .isStaticText).
+            Text(
+                errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 13.sp,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
 
         Button(
             onClick = onSubmit,
             enabled = canSubmit,
-            modifier = Modifier.fillMaxWidth(),
+            // Stable label through the saving beat (iOS accessibilityLabel = displayNameSave).
+            modifier = Modifier.fillMaxWidth().semantics {
+                contentDescription = ArrivalCopy.displayNameSave
+            },
         ) { Text(if (isSaving) "Saving..." else ArrivalCopy.displayNameSave) }
     }
 }
@@ -116,14 +134,36 @@ internal fun DisplayNameEditor(
             singleLine = true,
             isError = errorMessage != null,
             enabled = !isSaving,
-            modifier = Modifier.fillMaxWidth(),
+            // The error rides the field as its a11y value (iOS SettingsScreen name field
+            // accessibilityValue = displayNameError when hasError).
+            modifier = Modifier.fillMaxWidth().semantics {
+                if (errorMessage != null) error(errorMessage)
+            },
         )
         if (errorMessage != null) {
-            Text(errorMessage, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            // Announce the error, and the Saved confirmation, the instant it changes.
+            Text(
+                errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 13.sp,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         } else if (saved) {
-            Text("Saved", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            Text(
+                "Saved",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
-        Button(onClick = onSave, enabled = canSave, modifier = Modifier.align(Alignment.End)) {
+        Button(
+            onClick = onSave,
+            enabled = canSave,
+            // Stable label through the saving beat (iOS accessibilityLabel = settingsNameSave).
+            modifier = Modifier.align(Alignment.End).semantics {
+                contentDescription = ArrivalCopy.settingsNameSave
+            },
+        ) {
             Text(if (isSaving) "Saving..." else ArrivalCopy.settingsNameSave)
         }
     }

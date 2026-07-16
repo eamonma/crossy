@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,6 +96,14 @@ fun RoomScreen(
     // mapping, keeping :ui out of the REST ring (the AvatarImageCache/AAD-2 pattern). Idempotent: the
     // room drives it on the completion edge and on a tab-open, and AnalysisModel fetches at most once.
     fetchAnalysis: (suspend () -> RoomAnalysis?)? = null,
+    // The solve's haptic player (DESIGN.md §7; the Vibrator-and-View-backed twin of iOS
+    // SolveHaptics.shared). The composition root builds it from the live View and Vibrator; previews
+    // and the demo room pass the inert NONE, so nothing buzzes off-device.
+    haptics: SolveHapticPlayer = SolveHapticPlayer.NONE,
+    // The receive-haptics preference (Wave 7.5; iOS ReactionSettings.receiveHapticsEnabled): a
+    // received sticker taps softly only when this is on AND it lands near the active word. A stored
+    // default, ON, with no Settings UI (matching iOS); the composition root reads it on room entry.
+    receiveReactionHaptics: Boolean = true,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -113,6 +122,18 @@ fun RoomScreen(
     // reads the same fact to remove the deck itself below.
     val frozen = deckRetired(render)
     val activeWord = remember(selection, geometry) { geometry.wordCells(selection.cell, selection.isAcross) }
+    // The board's TalkBack semantics (the largest a11y gap; iOS CrossyGridView labels the grid, and
+    // Android carries the active cell besides so the solve is drivable): the grid names its shape, and
+    // a live description of the cursor's cell carries position, entered letter, and axis so a screen
+    // reader hears where it stands and what it holds as the cursor travels.
+    val gridA11yLabel = "${geometry.cols} by ${geometry.rows} crossword grid"
+    val activeCellA11y = remember(selection, values, geometry) {
+        val row = selection.cell / geometry.cols + 1
+        val col = selection.cell % geometry.cols + 1
+        val letter = values[selection.cell]?.let { "letter $it" } ?: "empty"
+        val axis = if (selection.isAcross) "across" else "down"
+        "Row $row, column $col, $letter, $axis"
+    }
     val presence = remember(render, ground) { Presence.marks(render.cursors, render.participants, render.selfUserId, ground) }
     val cursorTint =
         if (AttributionSwitches.colorInMotionEnabled) Presence.selfColor(render.participants, render.selfUserId, ground)
@@ -161,6 +182,10 @@ fun RoomScreen(
     // (the server never echoes a react). ReactionBook keeps the book a pure transform on an
     // immutable list, so Compose observes every placement, coalesce, and sweep.
     val reduceMotion = rememberReduceMotion()
+    // The board's haptic grammar (DESIGN.md §7): one pure fold per room derives at most one moment per
+    // observed (filled, selection) pair; whose hand moved is derived, never plumbed. Fed below from the
+    // same composite the grid draws (the iOS observeHaptics observation point).
+    val hapticFold = remember(puzzle) { SolveHapticFold() }
     var stickers by remember(puzzle) { mutableStateOf(emptyList<ReactionSticker>()) }
     var reactionSentAt by remember(puzzle) { mutableStateOf(emptyList<Double>()) }
 
@@ -190,9 +215,20 @@ fun RoomScreen(
         flashes = flashes.sweep(reactionNow())
     }
 
+    // The pref read live inside the long-lived collect without restarting it (the subscription must
+    // not drop events on a toggle); selection is read live through its own state.
+    val receiveHapticsState = rememberUpdatedState(receiveReactionHaptics)
     LaunchedEffect(store) {
         store.reactions.collect { event ->
             stickers = ReactionBook.place(stickers, event.userId, event.emoji, event.cell, reactionNow())
+            // The receive tap (Wave 7.5; iOS wireReactionSink): an inbound sticker taps softly only
+            // when the pref is on AND it lands on or beside the active word, so a lively room never
+            // buzzes for a reaction across the board (ReactionProximity, the teammate-letter rule).
+            if (receiveHapticsState.value &&
+                ReactionProximity.landsNearActiveWord(event.cell, selection, geometry)
+            ) {
+                haptics.play(SolveHaptic.REACTION_LANDED)
+            }
         }
     }
     // The sweep (the FlashBook pattern): re-armed on every mutation, it sleeps to the soonest end,
@@ -241,12 +277,21 @@ fun RoomScreen(
         if (!step.fired) return@LaunchedEffect
         val now = reactionNow()
         celebrationFired = true
-        // The §7 completion haptic rides the gate's one firing here; a wave-4 track owns haptics, so
-        // this is the seam where SolveHaptics.play(.completion) lands, left unwired on purpose.
+        // The §7 completion haptic rides the gate's one firing (INV-3), never the fold: the distinct
+        // pattern the player renders as the board's celebration, played exactly once per completed room.
+        haptics.play(SolveHaptic.COMPLETION)
         if (AttributionSwitches.completionMosaicEnabled) mosaicStartedAt = now
         // The confetti is skipped whole under Reduce Motion (a static confetto is just litter); it
         // rides the same instant as the mosaic otherwise (owner ask 2026-07-11).
         if (AttributionSwitches.completionConfettiEnabled && !reduceMotion) confettiStartedAt = now
+    }
+    // The board's haptic moments (iOS observeHaptics): the same (filled, selection) the grid draws
+    // feeds the fold, and the one moment it derives plays. Keyed on both plus the status so it fires on
+    // either change and stays silent in a frozen room (a finished board is an object, not a solve). The
+    // fold's first observation seeds and never buzzes, so the effect's first run is silent by construction.
+    LaunchedEffect(filled, selection, roomStatus) {
+        if (roomStatus != RoomStatus.ONGOING) return@LaunchedEffect
+        hapticFold.observe(filled, selection, geometry)?.let { haptics.play(it) }
     }
     // The mosaic retires when its envelope settles: the room nils the wash so the grid drops the pass
     // and the finished board settles back to ink (iOS CompletionModel nils mosaicStartedAt on settle).
@@ -309,6 +354,9 @@ fun RoomScreen(
         reactionSentAt = ReactionSendCap.record(reactionSentAt, now)
         stickers = ReactionBook.place(stickers, self, emoji, selection.cell, now)
         store.react(emoji, selection.cell)
+        // A light confirmation under the fan's fire (iOS fireReaction; Wave 7.5): the send is the only
+        // reaction haptic that never gates, it is your own hand.
+        haptics.play(SolveHaptic.REACTION_SENT)
     }
 
     // The input env is rebuilt per intent so it reads the latest filled set, freeze, and prefs.
@@ -438,6 +486,8 @@ fun RoomScreen(
                 flashes = flashes,
                 mosaic = mosaic,
                 reduceMotion = reduceMotion,
+                gridContentDescription = gridA11yLabel,
+                activeCellDescription = activeCellA11y,
                 modifier = Modifier.fillMaxWidth(),
                 onCamera = { gridCamera = it },
                 onCellTap = { cell ->
@@ -474,6 +524,7 @@ fun RoomScreen(
                 ground = ground,
                 emojis = reactionEmojis,
                 enabled = render.sync != SyncState.CONNECTING,
+                reduceMotion = reduceMotion,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
             )
             // Reconnecting (and the pre-welcome connecting state) dims the board (DESIGN.md §8;
@@ -546,7 +597,14 @@ fun RoomScreen(
                     modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 6.dp),
                 )
             }
-            KeyDeck(ground = ground, rebusActive = rebusBuffer != null, onKey = { onDeckKey(it) })
+            KeyDeck(
+                ground = ground,
+                rebusActive = rebusBuffer != null,
+                onKey = { onDeckKey(it) },
+                // The per-press tick at touch-DOWN (iOS KeyHaptics), fired for every deck key including
+                // rebus edits, the light confirm that reads as one weighted press with the visual pop.
+                onKeyTick = { haptics.keyTick() },
+            )
         }
       }
       // The completion confetti over the WHOLE room (not the grid), between the room and any chrome
