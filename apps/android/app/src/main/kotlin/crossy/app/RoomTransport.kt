@@ -15,6 +15,7 @@ import crossy.protocol.Cursor
 import crossy.protocol.Direction
 import crossy.protocol.GameStatus
 import crossy.protocol.Participant
+import crossy.protocol.ReactionMessage
 import crossy.protocol.Role
 import crossy.protocol.ServerMessage
 import crossy.protocol.WelcomeMessage
@@ -37,6 +38,7 @@ class ScriptedRoomTransport(
     private val welcome: ServerMessage.Welcome,
     private val selfUserId: String,
     startSeq: Int,
+    private val demoReaction: ReactionMessage? = null,
 ) : Transport {
     private val channel = Channel<ServerMessage>(Channel.UNLIMITED)
     private var seq = startSeq
@@ -46,6 +48,10 @@ class ScriptedRoomTransport(
 
     override suspend fun connect() {
         channel.trySend(welcome)
+        // Demo parity (PROTOCOL.md §6, §9): a single teammate reaction so the sticker layer is
+        // demonstrable without a server. Ephemeral and un-sequenced, exactly as the real fan-out is;
+        // the sticker decays on its own five-second clock. Cheap: one frame, no infrastructure.
+        demoReaction?.let { channel.trySend(ServerMessage.Reaction(it)) }
     }
 
     override suspend fun send(message: ClientMessage) {
@@ -80,7 +86,9 @@ class ScriptedRoomTransport(
 class ScriptedRoomTransportFactory : RoomTransportFactory {
     override fun create(puzzle: ClientPuzzle, selfUserId: String, seedDemo: Boolean): Transport {
         val welcome = RoomScripts.welcome(puzzle, selfUserId, seedDemo)
-        return ScriptedRoomTransport(welcome, selfUserId, startSeq = welcome.message.board.seq)
+        // In demo mode the teammate cheers a middle cell once, so the sticker layer shows on arrival.
+        val demoReaction = if (seedDemo) ReactionMessage(userId = RoomScripts.DEMO_MATE, emoji = "🐐", cell = 12) else null
+        return ScriptedRoomTransport(welcome, selfUserId, startSeq = welcome.message.board.seq, demoReaction = demoReaction)
     }
 }
 

@@ -16,6 +16,8 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -41,6 +43,32 @@ public sealed class WireDecodingException(message: String) : SerializationExcept
 
         override fun hashCode(): Int = wireType.hashCode()
     }
+}
+
+/**
+ * A reaction emoji, shape-checked (PROTOCOL.md §9): a non-empty string of at most 32 UTF-8 bytes.
+ * Twin of the codec's `asEmoji` (`String.encodeToByteArray().size` is the byte count codec.ts and
+ * the Swift `String.utf8.count` compute) and the Swift `decodeEmoji`. Shape only: set membership is
+ * session-service policy and is NEVER checked here, so an emoji outside the v1 set still decodes
+ * (receive-any, §9) and the published set MAY widen without a protocol version bump (§14). Applied
+ * to the `emoji` field of react/reaction; encoding writes the string verbatim.
+ */
+public object EmojiSerializer : KSerializer<String> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("crossy.protocol.Emoji", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): String {
+        val emoji = decoder.decodeString()
+        if (emoji.isEmpty()) {
+            throw SerializationException("emoji: non-empty string required (PROTOCOL.md §9)")
+        }
+        if (emoji.encodeToByteArray().size > 32) {
+            throw SerializationException("emoji: at most 32 UTF-8 bytes required (PROTOCOL.md §9)")
+        }
+        return emoji
+    }
+
+    override fun serialize(encoder: Encoder, value: String): Unit = encoder.encodeString(value)
 }
 
 // --- Client to server (PROTOCOL.md §2, §5) ---
@@ -89,6 +117,21 @@ public data class MoveCursorMessage(
     @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
 ) {
     public companion object { public const val WIRE_TYPE: String = "moveCursor" }
+}
+
+/**
+ * Send an emoji reaction at a cell (PROTOCOL.md §5, §9). MoveCursor's presence-family sibling:
+ * ephemeral, no commandId, no seq, at most 5/s, role `any` (spectators react by design), legal in
+ * any game status. The wire carries the emoji grapheme itself, never a symbolic token (§9); the
+ * decoder enforces shape only (non-empty, at most 32 UTF-8 bytes), never set membership.
+ */
+@Serializable
+public data class ReactMessage(
+    @Serializable(with = EmojiSerializer::class) val emoji: String,
+    val cell: Int,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "react" }
 }
 
 /** Request a whole-grid check (PROTOCOL.md §5). The server replies with a unicast checkResult. */
@@ -228,6 +271,23 @@ public data class CursorMessage(
 }
 
 /**
+ * Another participant reacted (PROTOCOL.md §6, §9). Relayed on a valid `react`, never echoed to the
+ * sender (like `cursor`) and even lighter: the server records nothing, so a reaction never appears
+ * in a `welcome` or `sync` `board` snapshot (there is no `board.reactions`). Receive-any: a client
+ * renders or ignores any well-formed emoji and MUST NOT reject one outside its own send set (§9);
+ * the decoder enforces shape only, exactly as the outbound `react` does (one rule, both directions).
+ */
+@Serializable
+public data class ReactionMessage(
+    val userId: String,
+    @Serializable(with = EmojiSerializer::class) val emoji: String,
+    val cell: Int,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "reaction" }
+}
+
+/**
  * Unicast reply to checkRequest (PROTOCOL.md §6, §10). Lists filled cells whose value fails
  * the comparator; empty cells are never listed.
  */
@@ -288,6 +348,9 @@ public sealed class ClientMessage {
     public data class MoveCursor(val message: MoveCursorMessage) : ClientMessage() {
         override val type: String get() = MoveCursorMessage.WIRE_TYPE
     }
+    public data class React(val message: ReactMessage) : ClientMessage() {
+        override val type: String get() = ReactMessage.WIRE_TYPE
+    }
     public data class CheckRequest(val message: CheckRequestMessage) : ClientMessage() {
         override val type: String get() = CheckRequestMessage.WIRE_TYPE
     }
@@ -338,6 +401,9 @@ public sealed class ServerMessage {
     public data class Cursor(val message: CursorMessage) : ServerMessage() {
         override val type: String get() = CursorMessage.WIRE_TYPE
     }
+    public data class Reaction(val message: ReactionMessage) : ServerMessage() {
+        override val type: String get() = ReactionMessage.WIRE_TYPE
+    }
     public data class CheckResult(val message: CheckResultMessage) : ServerMessage() {
         override val type: String get() = CheckResultMessage.WIRE_TYPE
     }
@@ -376,6 +442,8 @@ public object ClientMessageSerializer : KSerializer<ClientMessage> {
                 ClientMessage.ClearCell(input.json.decodeFromJsonElement(ClearCellMessage.serializer(), element))
             MoveCursorMessage.WIRE_TYPE ->
                 ClientMessage.MoveCursor(input.json.decodeFromJsonElement(MoveCursorMessage.serializer(), element))
+            ReactMessage.WIRE_TYPE ->
+                ClientMessage.React(input.json.decodeFromJsonElement(ReactMessage.serializer(), element))
             CheckRequestMessage.WIRE_TYPE ->
                 ClientMessage.CheckRequest(input.json.decodeFromJsonElement(CheckRequestMessage.serializer(), element))
             HeartbeatMessage.WIRE_TYPE ->
@@ -394,6 +462,7 @@ public object ClientMessageSerializer : KSerializer<ClientMessage> {
             is ClientMessage.PlaceLetter -> output.json.encodeToJsonElement(PlaceLetterMessage.serializer(), value.message)
             is ClientMessage.ClearCell -> output.json.encodeToJsonElement(ClearCellMessage.serializer(), value.message)
             is ClientMessage.MoveCursor -> output.json.encodeToJsonElement(MoveCursorMessage.serializer(), value.message)
+            is ClientMessage.React -> output.json.encodeToJsonElement(ReactMessage.serializer(), value.message)
             is ClientMessage.CheckRequest -> output.json.encodeToJsonElement(CheckRequestMessage.serializer(), value.message)
             is ClientMessage.Heartbeat -> output.json.encodeToJsonElement(HeartbeatMessage.serializer(), value.message)
             is ClientMessage.RequestSync -> output.json.encodeToJsonElement(RequestSyncMessage.serializer(), value.message)
@@ -428,6 +497,8 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
                 ServerMessage.PlayerDisconnected(input.json.decodeFromJsonElement(PlayerDisconnectedMessage.serializer(), element))
             CursorMessage.WIRE_TYPE ->
                 ServerMessage.Cursor(input.json.decodeFromJsonElement(CursorMessage.serializer(), element))
+            ReactionMessage.WIRE_TYPE ->
+                ServerMessage.Reaction(input.json.decodeFromJsonElement(ReactionMessage.serializer(), element))
             CheckResultMessage.WIRE_TYPE ->
                 ServerMessage.CheckResult(input.json.decodeFromJsonElement(CheckResultMessage.serializer(), element))
             KickedMessage.WIRE_TYPE ->
@@ -450,6 +521,7 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
             is ServerMessage.PlayerConnected -> output.json.encodeToJsonElement(PlayerConnectedMessage.serializer(), value.message)
             is ServerMessage.PlayerDisconnected -> output.json.encodeToJsonElement(PlayerDisconnectedMessage.serializer(), value.message)
             is ServerMessage.Cursor -> output.json.encodeToJsonElement(CursorMessage.serializer(), value.message)
+            is ServerMessage.Reaction -> output.json.encodeToJsonElement(ReactionMessage.serializer(), value.message)
             is ServerMessage.CheckResult -> output.json.encodeToJsonElement(CheckResultMessage.serializer(), value.message)
             is ServerMessage.Kicked -> output.json.encodeToJsonElement(KickedMessage.serializer(), value.message)
             is ServerMessage.Error -> output.json.encodeToJsonElement(ErrorMessage.serializer(), value.message)

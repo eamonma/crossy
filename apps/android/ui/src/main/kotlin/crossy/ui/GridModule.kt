@@ -20,6 +20,12 @@ object GridModule {
     // Entry glyph, centered (web baseline parity: 24-unit type).
     const val GLYPH_FONT_SIZE: Float = 24f
 
+    // Reaction sticker glyph (PROTOCOL.md §9; native emoji, no assets). 23/36 of the cell module,
+    // the web/iOS clients' size, so all three read the same weight (iOS GridModule.stickerFontSize).
+    // The square scatter (ReactionSticker.SCATTER_UNITS) keeps it mostly inside the cell with slight
+    // bleed possible (owner ruling 2026-07-14, not a goal).
+    const val STICKER_FONT_SIZE: Float = 23f
+
     // Circles (DESIGN.md §10: inset rings). Shaded circles are a soft achromatic wash.
     const val CIRCLE_RADIUS: Float = UNIT / 2.1f
     const val CIRCLE_STROKE: Float = 0.8f
