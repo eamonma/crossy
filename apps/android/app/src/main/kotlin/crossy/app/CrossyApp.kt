@@ -55,6 +55,7 @@ import crossy.session.WebSocketTransport
 import crossy.store.GameStore
 import crossy.ui.CreateGameScreen
 import crossy.ui.CrossyTheme
+import crossy.ui.DeleteAccountResult
 import crossy.ui.DisplayNameOnboardingModel
 import crossy.ui.DisplayNameOnboardingScreen
 import crossy.ui.DisplayNameOutcome
@@ -63,6 +64,7 @@ import crossy.ui.GridGround
 import crossy.ui.JoinCodeScreen
 import crossy.ui.JoinScanState
 import crossy.ui.KickedExit
+import crossy.ui.LegalPage
 import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
 import crossy.ui.RoomScreen
@@ -72,8 +74,11 @@ import crossy.ui.ShareInvite
 import crossy.ui.ShareSheet
 import crossy.ui.SignInProvider
 import crossy.ui.SignInScreen
+import crossy.ui.SolvingPrefs
 import crossy.ui.displayNameErrorCopy
 import crossy.ui.ReactionPolicy
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
@@ -181,6 +186,9 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
                     session.clearSession()
                     screen = Screen.SignIn
                 },
+                // Account deletion lands back at sign-in (the server tombstoned the account; the local
+                // purge already ran inside the host's delete closure).
+                onDeleted = { screen = Screen.SignIn },
                 // A saved reaction set (null = the defaults) updates the shell root, so the next room
                 // entry's fan wears it (live mid-room propagation is not required).
                 onReactionSetChanged = { reactionSet = it },
@@ -349,8 +357,36 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
                 }
             }
         },
+        // The legal footer opens its live page in a Custom Tab (the AuthBrowser leg; App Review
+        // 5.1.1: the person stays in the flow).
+        onOpenLegal = { page -> AuthBrowser.open(context, legalUrl(page)) },
     )
 }
+
+/** The web origin the legal pages live under (iOS ArrivalConfig.defaultWebOrigin). Committed
+ *  config-as-code: no BuildConfig field exists for it, and it is the same host in every backend. */
+private const val WEB_ORIGIN = "https://crossy.party"
+
+/** The live URL for a legal page (iOS ArrivalModel privacyURL/termsURL: the web origin plus the
+ *  static path). */
+private fun legalUrl(page: LegalPage): HttpUrl = when (page) {
+    LegalPage.PRIVACY -> "$WEB_ORIGIN/privacy".toHttpUrl()
+    LegalPage.TERMS -> "$WEB_ORIGIN/terms".toHttpUrl()
+}
+
+/** The provider line the identity card shows (iOS ArrivalModel.providerLabel), or null when no
+ *  marker survived a restore, in which case the card shows its own neutral fallback. Internal so a
+ *  test pins the mapping. */
+internal fun providerLabel(provider: AuthProvider?): String? = when (provider) {
+    AuthProvider.DISCORD -> "Discord"
+    AuthProvider.APPLE -> "Apple"
+    AuthProvider.HISBAAN -> "Hisbaan"
+    AuthProvider.EMAIL_OTP -> "Email"
+    null -> null
+}
+
+/** The quiet version footer ("0.1.0 (1)") from BuildConfig, iOS versionFooter's shape. */
+private fun appVersionLabel(): String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
 
 @Composable
 private fun RoomsHost(
@@ -455,6 +491,9 @@ private fun OnboardingHost(session: AppSession, prefill: String, onDone: () -> U
         isSaving = model.isSaving,
         errorMessage = if (model.hasError) displayNameErrorCopy(model.errorCode) else null,
         onSubmit = { scope.launch { model.submitDraft() } },
+        // The live puck preview reads the person's real roster color from their id (iOS shows one in
+        // the gate); the avatar is left to the Settings card, which has the /me url in hand.
+        userId = session.selfUserId ?: "",
     )
 }
 
@@ -466,6 +505,7 @@ private fun SettingsHost(
     session: AppSession,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
+    onDeleted: () -> Unit,
     onReactionSetChanged: (List<String>?) -> Unit,
 ) {
     var me by remember { mutableStateOf<MeResponse?>(null) }
@@ -495,7 +535,7 @@ private fun SettingsHost(
         }
         return
     }
-    SettingsContent(session, loaded, onBack, onSignOut, onReactionSetChanged)
+    SettingsContent(session, loaded, onBack, onSignOut, onDeleted, onReactionSetChanged)
 }
 
 @Composable
@@ -504,9 +544,16 @@ private fun SettingsContent(
     me: MeResponse,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
+    onDeleted: () -> Unit,
     onReactionSetChanged: (List<String>?) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // The per-device typing prefs (the same persisted store the room reads) and the avatar cache the
+    // identity puck reads (iOS: this screen owns its own instance, outside the room).
+    val navPrefs = rememberNavigationSettingsStore()
+    val avatarCache = rememberAvatarImageCache()
+    val avatar = rememberAvatarBitmap(avatarCache, me.avatarUrl)
     var shownName by remember { mutableStateOf(me.displayName) }
     var saved by remember { mutableStateOf(false) }
     val model = remember {
@@ -532,6 +579,7 @@ private fun SettingsContent(
         userId = me.userId,
         isAnonymous = me.isAnonymous,
         currentName = shownName,
+        providerLabel = providerLabel(session.auth.provider),
         nickname = model.draft,
         onNicknameChange = {
             saved = false
@@ -544,6 +592,33 @@ private fun SettingsContent(
         onSave = { scope.launch { model.submitDraft() } },
         onSignOut = onSignOut,
         onBack = onBack,
+        avatar = avatar,
+        solving = SolvingPrefs(
+            skipFilledInWord = navPrefs.skipFilledInWord,
+            endOfWordIsNextClue = navPrefs.endOfWordIsNextClue,
+        ),
+        onSkipFilledChange = navPrefs::updateSkipFilledInWord,
+        onEndOfWordNextClueChange = navPrefs::updateEndOfWordIsNextClue,
+        // The two-beat delete: tombstone the account (DELETE /account), purge the local session the
+        // same way sign-out does (but no vendor logout: the account is gone), then land at sign-in.
+        // A rejection carries its §12 code back for the inline sentence (INV-11: never a lockout).
+        onDeleteAccount = {
+            try {
+                session.api.deleteAccount()
+                session.auth.purgeForAccountDeletion()
+                session.clearSession()
+                onDeleted()
+                DeleteAccountResult.Success
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: CrossyApiError) {
+                DeleteAccountResult.Failure(e.apiCodeString)
+            } catch (e: Exception) {
+                DeleteAccountResult.Failure(null)
+            }
+        },
+        onOpenLegal = { page -> AuthBrowser.open(context, legalUrl(page)) },
+        versionLabel = appVersionLabel(),
         reactions = reactions,
     )
 }
@@ -662,6 +737,10 @@ private fun RoomHost(
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    // The person's typing-advance prefs (personal-settings slice 1): the same persisted store Settings
+    // writes, read on room entry so a change made in Settings is honored the next time the room opens
+    // (Android's single-screen shell never composes both at once, so entry read IS the live match).
+    val navPrefs = rememberNavigationSettingsStore()
     // The store is born, then seeded with the REST view's roster BEFORE the socket dials, so the
     // players pill stands at its true width from the first frame (the seeded-birth rule, DESIGN.md
     // §4, §12; mirrors RealRoom.init). seedRoster gates itself to `connecting`, so the welcome always
@@ -736,6 +815,7 @@ private fun RoomHost(
             onShare = onShare,
             reactionEmojis = reactionEmojis,
             reconnectRetryAt = reconnectRetryAt,
+            navigationPrefs = navPrefs.navigationPrefs,
         )
     }
     // The share sheet the chip opens: pure :ui over the link (ShareSheet), presented here so it can
