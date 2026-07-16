@@ -4,18 +4,20 @@
 //     salient headline the retired completion popup used to carry.
 //   - a legend of solvers in the mosaic's exact colors (self reads "You")
 //   - the momentum ribbon with a plain gloss of what the shaded pause and the marker mean
-//   - two moment cards, "First square" and "Last square", each just the author's colored dot and
-//     name. Neither shows a time: on real data firstToFall is always at t=0 and lastSquare is always
-//     the full duration (already in the stat block), so a number there would be meaningless or
-//     redundant (engine analysis.ts, vectors/analysis/moments.json). "The unlock" is a fast-follow
-//     with no v1 data, so it is NOT rendered; the turning point lives on the ribbon as the marker.
+//   - the Titles section (TITLES.md): one card per titled solver, dot + name + the title's caps
+//     label + its evidence line. Titles replaced the person moment cards ("First square", "Last
+//     square"), whose stories live on as the quick-starter and closer rungs; the turning point
+//     stays on the ribbon as the marker. Copy and evidence formatting live in titlesReadout.ts;
+//     an unknown key from a newer server is dropped there (PROTOCOL §12), and an empty titles
+//     array (a solo solve, or an older API) renders no section at all.
 //
-// The one law (ANALYSIS.md): moments may be judged, people are never scored against each other. No
-// leaderboard, no rate, no ranking; a name appears only as the incidental author of a moment.
+// The one law (ANALYSIS.md, amended for titles): titles count, they never interpret, and people
+// are never scored against each other. No leaderboard, no rate, no shared axis; a card cites only
+// its own number.
 //
-// Degenerate solves collapse cleanly: a null moment hides its card (never a gap where a third was),
-// an all-zero momentum draws a flat ribbon, and the stat block's time reads a real M:SS, never NaN.
-import { useMemo } from "react";
+// Degenerate solves collapse cleanly: an empty titles array hides the section, an all-zero
+// momentum draws a flat ribbon, and the stat block's time reads a real M:SS, never NaN.
+import { Fragment, useMemo } from "react";
 import { PauseIcon, PlayIcon } from "@radix-ui/react-icons";
 import type { StackMember } from "./primitives";
 import { CapsLabel, cx, Divider } from "./primitives";
@@ -23,11 +25,11 @@ import { rosterOf } from "./completionAttribution";
 import type { AnalysisResponse } from "./completionAttribution";
 import {
   analysisSummary,
-  colorOf,
   legendSolvers,
   momentumHasSignal,
-  nameOf,
 } from "./analysisReadout";
+import { titleCards } from "./titlesReadout";
+import type { TitleCard } from "./titlesReadout";
 import { MomentumRibbon } from "./MomentumRibbon";
 import { useTheme } from "./useTheme";
 import { Button } from "@/components/ui/button";
@@ -45,7 +47,7 @@ export interface ReplayControls {
   onSeek(t: number): void;
 }
 
-/** A colored presence dot, the legend's and the moment card's shared marker. Falls back to a neutral
+/** A colored presence dot, the legend's and the title card's shared marker. Falls back to a neutral
  * sand dot when the id resolves to no color (a member who left the snapshot), never a crash. */
 function Dot({ color, size = 10 }: { color: string | null; size?: number }) {
   return (
@@ -61,39 +63,24 @@ function Dot({ color, size = 10 }: { color: string | null; size?: number }) {
   );
 }
 
-/** One moment card: the caps label and the author's dot + name.
- *
- * No numeric time here on purpose. On real data (engine analysis.ts, vectors/analysis/moments.json)
- * both beats are timing-degenerate: firstToFall.atSeconds is always 0 (the earliest fill, measured
- * relative to itself), and lastSquare.atSeconds always equals momentum.durationSeconds (the last
- * fill = tEnd), which the summary header already shows. Rendering either number would print a
- * meaningless "0:00" or a second copy of the duration. So a moment names only the person and the beat
- * (the label carries the meaning). The one law: moments may be judged, people are never scored
- * against each other, so this stays celebratory, never a rate or a rank.
- *
- * Rendered only when its datum exists, so a degenerate solve simply shows fewer cards, never an
- * empty row. */
-function Moment({
-  label,
-  members,
-  roster,
-  selfId,
-  userId,
-}: {
-  label: string;
-  members: readonly StackMember[];
-  roster: ReturnType<typeof rosterOf>;
-  selfId: string | null;
-  userId: string;
-}) {
+/** One title card: the caps label ("THE SABOTEUR"), the solver's dot + name, and the evidence
+ * line, the exact idiom the moment cards carried (dot + eyebrow + name) plus one subtle line for
+ * the number the title cites. The amended law: a title cites its own evidence and nothing else, so
+ * the detail is a single fact ("Overwrote 7 correct squares"), never a rate or two people's
+ * numbers together. A rung with no evidence (the wanderer) carries its fixed line; a numeric rung
+ * whose number is missing drops the line rather than printing a blank. */
+function TitleRow({ card }: { card: TitleCard }) {
   return (
     <div className="flex items-center gap-3 py-3">
-      <Dot color={colorOf(roster, userId)} size={10} />
+      <Dot color={card.color} size={10} />
       <div className="min-w-0">
-        <CapsLabel className="text-text-subtle">{label}</CapsLabel>
-        <div className="mt-0.5 text-2 text-text font-medium">
-          {nameOf(members, userId, selfId)}
-        </div>
+        <CapsLabel className="text-text-subtle">{card.label}</CapsLabel>
+        <div className="mt-0.5 text-2 text-text font-medium">{card.name}</div>
+        {card.detail !== null && (
+          <div className="mt-0.5 text-1 leading-relaxed text-text-subtle">
+            {card.detail}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -131,7 +118,12 @@ export function AnalysisPanel({
     [bundle, members, selfId, isDark],
   );
 
-  const { firstToFall, lastSquare } = bundle.moments;
+  // The titles, resolved to render-ready cards (wire order = ladder rank; unknown keys dropped,
+  // the PROTOCOL §12 MUST-ignore rule). Empty means no section, never an empty-state box.
+  const titles = useMemo(
+    () => titleCards(bundle.titles, members, selfId, roster),
+    [bundle, members, selfId, roster],
+  );
 
   // The transport rides only where there is a solve to replay: a real duration and a shaped series.
   // A single-instant solve has one instant, so no play button and no scrub (nothing to fill in).
@@ -229,32 +221,22 @@ export function AnalysisPanel({
         {canReplay ? " Play or drag the ribbon to replay the solve." : ""}
       </p>
 
-      {/* Moments: only the cards with data. Never a placeholder for the absent unlock. */}
-      {(firstToFall !== null || lastSquare !== null) && (
+      {/* Titles: everyone's superlative, one card per titled solver, in ladder-rank order (the
+          wire's order; the server walks the pinned ladder, most memorable first). A solo solve
+          (or an older API) ships an empty array and the section vanishes entirely, never an
+          empty-state box. */}
+      {titles.length > 0 && (
         <>
           <CapsLabel className="mt-6 mb-1 block text-text-subtle">
-            Moments
+            Titles
           </CapsLabel>
           <div>
-            {firstToFall !== null && (
-              <Moment
-                label="First square"
-                members={members}
-                roster={roster}
-                selfId={selfId}
-                userId={firstToFall.userId}
-              />
-            )}
-            {firstToFall !== null && lastSquare !== null && <Divider />}
-            {lastSquare !== null && (
-              <Moment
-                label="Last square"
-                members={members}
-                roster={roster}
-                selfId={selfId}
-                userId={lastSquare.userId}
-              />
-            )}
+            {titles.map((card, i) => (
+              <Fragment key={card.userId}>
+                {i > 0 && <Divider />}
+                <TitleRow card={card} />
+              </Fragment>
+            ))}
           </div>
         </>
       )}
