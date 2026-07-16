@@ -47,6 +47,17 @@ export interface ReplayControls {
   onSeek(t: number): void;
 }
 
+/** The legend's isolation wiring (owner ruling): tapping a solver's row spotlights their squares
+ * on the mosaic; the same row again clears, a different row switches. The state lives on the
+ * parent (LiveGame) beside the replay clock, so every copy of the panel — rail, dock, sheet —
+ * drives the one mosaic. Optional and inert when absent: the legend renders plain rows. */
+export interface IsolationControl {
+  /** The solver currently isolated on the mosaic, or null when the full wash shows. */
+  readonly isolatedId: string | null;
+  /** Toggle isolation for a tapped legend row (nextIsolation semantics, mosaicIsolation.ts). */
+  onToggle(userId: string): void;
+}
+
 /** A colored presence dot, the legend's and the title card's shared marker. Falls back to a neutral
  * sand dot when the id resolves to no color (a member who left the snapshot), never a crash. */
 function Dot({ color, size = 10 }: { color: string | null; size?: number }) {
@@ -97,6 +108,7 @@ export function AnalysisPanel({
   idBase,
   className,
   replay,
+  isolation,
 }: {
   bundle: AnalysisResponse;
   members: readonly StackMember[];
@@ -107,6 +119,9 @@ export function AnalysisPanel({
   /** The replay transport, present only where the board and ribbon are co-visible (the rail and the
    * dock). Absent on the phone sheet, which covers the board, so the ribbon shows no playhead. */
   replay?: ReplayControls | undefined;
+  /** The legend's isolation wiring, shared across every copy of the panel. Absent (a caller with
+   * no mosaic to drive) leaves the legend as plain rows. */
+  isolation?: IsolationControl | undefined;
 }) {
   // The ground the identity palette resolves against: the mosaic, the legend, and the moment dots all
   // read the same theme so they paint one player one color (and match iOS). Rebuilds on a theme flip.
@@ -165,23 +180,51 @@ export function AnalysisPanel({
         ))}
       </dl>
 
-      {/* Legend: the room in the mosaic's exact colors, so the board's wash is legible by name. */}
+      {/* Legend: the room in the mosaic's exact colors, so the board's wash is legible by name.
+          With isolation wired, each row is a toggle button: pressing it spotlights that solver's
+          squares on the mosaic (the same row again clears, another row switches; your own row is
+          how you isolate yourself). The pressed state is the app's quiet sand-3 tint (the ghost
+          button's expanded face), no new chrome. */}
       <ul className="mt-4 flex flex-wrap gap-x-3.5 gap-y-1.5 m-0 p-0 list-none">
-        {legend.map((s) => (
-          <li
-            key={s.userId}
-            className="inline-flex items-center gap-1.5 text-2 text-text-muted"
-          >
-            <span
-              aria-hidden
-              className="inline-block h-2.5 w-2.5 shrink-0 rounded-[3px]"
-              style={{ background: s.color }}
-            />
-            <span className={cx(s.self ? "text-text font-medium" : "")}>
-              {s.name}
-            </span>
-          </li>
-        ))}
+        {legend.map((s) => {
+          const chip = (
+            <>
+              <span
+                aria-hidden
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-[3px]"
+                style={{ background: s.color }}
+              />
+              <span className={cx(s.self ? "text-text font-medium" : "")}>
+                {s.name}
+              </span>
+            </>
+          );
+          return (
+            <li key={s.userId}>
+              {isolation !== undefined ? (
+                <button
+                  type="button"
+                  aria-pressed={isolation.isolatedId === s.userId}
+                  onClick={() => isolation.onToggle(s.userId)}
+                  className={cx(
+                    // Negative margins offset the padding so the resting legend keeps its exact
+                    // optical rhythm; the padding exists for the hover/pressed tint and hit area.
+                    "-mx-1.5 -my-0.5 inline-flex cursor-pointer items-center gap-1.5 rounded-2 px-1.5 py-0.5 text-2 text-text-muted",
+                    "transition-colors duration-[var(--duration-fast)]",
+                    "hover:bg-sand-3 hover:text-text aria-pressed:bg-sand-3 aria-pressed:text-text",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring",
+                  )}
+                >
+                  {chip}
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-2 text-text-muted">
+                  {chip}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
       <p className="mt-2 text-1 leading-relaxed text-text-subtle">
         Each square shows who solved it first.

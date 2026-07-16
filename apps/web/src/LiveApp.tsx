@@ -75,6 +75,8 @@ import { PartyView } from "./ui/PartyView";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
+import type { IsolationControl } from "./ui/AnalysisPanel";
+import { nextIsolation } from "./ui/mosaicIsolation";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
 import { useReplayClock } from "./ui/useReplayClock";
 import type { PanelTab } from "./ui/PanelTabs";
@@ -1198,6 +1200,22 @@ function LiveGame({
     if (!showMosaic) replay.reset();
   }, [showMosaic, replay]);
 
+  // The legend's solver isolation (owner ruling): tapping a legend row spotlights that solver's
+  // squares on the mosaic; the same row clears, another row switches, your own row is self-
+  // isolation. One piece of state beside the replay clock, so every copy of the panel (rail,
+  // dock, sheet) drives the one mosaic. Inside the mosaic it is a fill-opacity multiplier, so it
+  // composes with the replay (dimming whatever cells are revealed at time T) and never re-arms
+  // the bloom (it stays out of the reveal effect's dependency key, the #204 discipline).
+  const [isolatedSolver, setIsolatedSolver] = useState<string | null>(null);
+  const isolation: IsolationControl = useMemo(
+    () => ({
+      isolatedId: isolatedSolver,
+      onToggle: (userId: string) =>
+        setIsolatedSolver((cur) => nextIsolation(cur, userId)),
+    }),
+    [isolatedSolver],
+  );
+
   // The Analysis panel body. Two forms of the same panel: the rail and the dock keep the board and
   // the ribbon co-visible, so they carry the replay transport; the phone bottom sheet covers the
   // board (a playhead there would drive a board you cannot see, REPLAY.md), so its copy omits the
@@ -1216,6 +1234,7 @@ function LiveGame({
           onToggle: replay.toggle,
           onSeek: replay.seek,
         }}
+        isolation={isolation}
       />
     ) : (
       <AnalysisPanelPlaceholder state={analysis.status} />
@@ -1227,6 +1246,7 @@ function LiveGame({
         members={members}
         selfId={ready.selfId}
         idBase="sheet"
+        isolation={isolation}
       />
     ) : (
       <AnalysisPanelPlaceholder state={analysis.status} />
@@ -1377,6 +1397,7 @@ function LiveGame({
                     bloom={bloomOnCompletion}
                     replayTime={replay.time}
                     sequence={sequence}
+                    isolatedId={isolatedSolver}
                     source={{ apiBase, gameId, bearer }}
                   />
                   {/* The selection and aim layer: pointer targets and the selection ring over the

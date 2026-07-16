@@ -892,7 +892,12 @@
  * animated default and the inline override is the honest exception.
  */
 .board-mosaic .mosaic-color {
-  transition: opacity 480ms var(--ease-out);
+  /* fill-opacity is the legend's isolation channel (ui/mosaicIsolation.ts): a React-rendered
+     multiplier over the arc's animated opacity, so a dim fades quietly in place and never
+     touches the sweep. Where the replay sets an inline transition, the dim snaps instead. */
+  transition:
+    opacity 480ms var(--ease-out),
+    fill-opacity 200ms var(--ease-out);
 }
 
 .board-mosaic .mosaic-letter {
