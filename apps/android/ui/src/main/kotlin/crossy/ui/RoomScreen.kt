@@ -198,9 +198,8 @@ fun RoomScreen(
     }
 
     // A deck key while a rebus buffer is open (iOS SelectionModel.pressInRebusMode): letters grow
-    // the buffer, backspace edits and exits, the rebus key commits, and the direction toggle leaves
-    // the buffer like every other move-away. Outside the buffer, the rebus key opens it and the rest
-    // run the vectored input actions.
+    // the buffer, backspace edits and exits, the rebus key commits. Outside the buffer, the rebus
+    // key opens it and the rest run the vectored input actions.
     fun onDeckKey(key: DeckKey) {
         val buffer = rebusBuffer
         if (buffer != null) {
@@ -214,14 +213,12 @@ fun RoomScreen(
                     is RebusStep.Commit -> { rebusBuffer = null; apply(InputActions.rebus(env(), step.value)) }
                     else -> rebusBuffer = null
                 }
-                DeckKey.DirectionToggle -> { rebusBuffer = null; apply(InputActions.toggleDirection(env())) }
             }
             return
         }
         when (key) {
             is DeckKey.Letter -> apply(InputActions.letter(env(), key.character))
             DeckKey.Backspace -> apply(InputActions.backspace(env()))
-            DeckKey.DirectionToggle -> apply(InputActions.toggleDirection(env()))
             DeckKey.Rebus -> rebusBuffer = ""
         }
     }
