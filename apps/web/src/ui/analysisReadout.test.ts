@@ -35,6 +35,7 @@ function bundle(over: Partial<AnalysisResponse> = {}): AnalysisResponse {
       turningPoint: null,
     },
     sequence: over.sequence ?? [],
+    titles: over.titles ?? [],
   };
 }
 

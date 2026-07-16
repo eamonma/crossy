@@ -85,13 +85,26 @@ export function rosterOf(
   return roster;
 }
 
+/** One solver superlative off the wire (PROTOCOL §12 titles row): the solver, a lowercase-kebab
+ * title key from the pinned ladder, and the title's own count or null. `title` is a plain string,
+ * NOT the engine's TitleKey: the ladder grows server-first, so a client MUST ignore a key it has
+ * never heard of (the forward-compatibility rule); the type admits the unknown and the readout
+ * (titlesReadout.ts) drops it. */
+export interface WireTitle {
+  readonly userId: string;
+  readonly title: string;
+  readonly evidence: number | null;
+}
+
 /** The analysis wire payload (apps/api archive/analysis.ts AnalysisView): the whole completed
  * surface in one fetch. `owners` is the mosaic's first-correct map (cell index, a string key since
  * JSON has no numeric keys, -> the owning userId); `momentum` and `moments` are the tab's readings;
- * `sequence` is the replay's ordered fills ({cell, atSeconds}, ascending by (at, seq)). Every field
- * carries userIds, cells, and numbers only, so INV-6 rides the shape, not a runtime strip. This
- * mount is load-bearing on `owners` alone; the momentum/moments/sequence fields are typed here so
- * the shape is complete, but the Analysis tab and the replay (a later PR) are what consume them. */
+ * `sequence` is the replay's ordered fills ({cell, atSeconds}, ascending by (at, seq)); `titles`
+ * is the solver superlatives (TITLES.md, ordered by ladder rank, at most one per solver and one
+ * per key; empty when fewer than two solvers wrote, the solo rule). Every field carries userIds,
+ * cells, keys, and numbers only, so INV-6 rides the shape, not a runtime strip. This mount is
+ * load-bearing on `owners` alone; the rest is typed here so the shape is complete, and the
+ * Analysis tab and the replay are what consume it. */
 export interface AnalysisResponse {
   readonly owners: Record<number, string>;
   readonly momentum: { durationSeconds: number; samples: number[] };
@@ -105,6 +118,7 @@ export interface AnalysisResponse {
     } | null;
   };
   readonly sequence: { cell: number; atSeconds: number }[];
+  readonly titles: WireTitle[];
 }
 
 /**
@@ -177,6 +191,9 @@ export async function fetchAnalysisOnce(
         turningPoint: null,
       },
       sequence: Array.isArray(body.sequence) ? body.sequence : [],
+      // Absent on an older API (the field is additive, PROTOCOL §12): read as empty, never crash,
+      // so the Titles section simply does not render against a server that predates the ladder.
+      titles: Array.isArray(body.titles) ? body.titles : [],
     };
   } catch {
     return null;
