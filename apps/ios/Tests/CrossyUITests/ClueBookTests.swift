@@ -75,10 +75,10 @@ final class ClueBookTests: XCTestCase {
         XCTAssertFalse(ClueBrowserList.isFilled(empty, filled: []))
     }
 
-    // Cross-references (mirror of the web's LiveApp memo, ~L915): the current clue's
-    // text is parsed, filtered to entries that actually exist in this book, and the
-    // current clue itself excluded, so a self-reference or a reference to a clue this
-    // grid lacks never lights a row.
+    // Cross-references (mirror of the web's `referencedKeys` in apps/web/src/ui/clueRefs.ts):
+    // the current clue's text is parsed, filtered to entries that actually exist in this
+    // book, and the current clue itself excluded, so a self-reference or a reference to a
+    // clue this grid lacks never lights a row.
     private let refBook = ClueBook(
         across: [
             // 1-Across names 2-Down (exists) and 9-Down (does not) and itself (1-Across).
@@ -92,7 +92,7 @@ final class ClueBookTests: XCTestCase {
             ClueEntry(number: 2, text: "Second down", cells: [1, 4], isAcross: false),
         ])
 
-    func test_referencedIds_filtersToExistingEntriesAndDropsSelf_webLiveAppMemo() {
+    func test_referencedIds_filtersToExistingEntriesAndDropsSelf_webReferencedKeys() {
         let current = refBook.across[0]  // 1-Across
         let ids = refBook.referencedIds(for: current)
         // 2-Down exists and is named; 9-Down is named but absent; 1-Across is self.
@@ -129,5 +129,45 @@ final class ClueBookTests: XCTestCase {
             refBook.across, selection: selection, filled: [], referenced: ["1A"])
         XCTAssertTrue(across[0].isCurrent)
         XCTAssertFalse(across[0].isReferenced, "the current word never doubles as referenced")
+    }
+
+    // Starred clues (D26), the second kind of reference resolved at this same chokepoint. The
+    // grammar is pinned in StarredClueTests; here it meets a real clue list, so these are the
+    // existence and self-exclusion guards and the union with numeric refs. The reference puzzle
+    // is refPuzzleAcross / refPuzzleDown, shared with the grammar cases.
+    private let refPuzzle = ClueBook(across: refPuzzleAcross, down: refPuzzleDown)
+
+    func test_referencedIds_resolvesTheRevealerToExactlyTheFourStarredEntries() {
+        let revealer = refPuzzleAcross[4]  // 61-Across
+        XCTAssertEqual(refPuzzle.referencedIds(for: revealer), ["18A", "29A", "37A", "50A"])
+    }
+
+    func test_referencedIds_isOneWay_aStarredClueResolvesToEmpty() {
+        XCTAssertEqual(refPuzzle.referencedIds(for: refPuzzleAcross[0]), [])  // 18-Across
+    }
+
+    func test_referencedIds_resolvesARevealerToEmptyWhenNoClueWearsTheStar() {
+        let starless = ClueBook(across: [refPuzzleAcross[4]], down: refPuzzleDown)
+        XCTAssertEqual(starless.referencedIds(for: refPuzzleAcross[4]), [])
+    }
+
+    // Self-exclusion, the starred path: a revealer that itself wears the star satisfies both
+    // predicates, so without the guard it would light itself. It lights its siblings only,
+    // exactly as "8-Down, see also 8-Down" on 8-Down lights nothing.
+    func test_referencedIds_excludesAStarredRevealerFromTheSetItNames() {
+        let selfNaming = ClueEntry(
+            number: 61, text: "*A hint to the starred clues", cells: [8, 9], isAcross: true)
+        let book = ClueBook(
+            across: Array(refPuzzleAcross[0..<4]) + [selfNaming], down: refPuzzleDown)
+        XCTAssertEqual(book.referencedIds(for: selfNaming), ["18A", "29A", "37A", "50A"])
+    }
+
+    func test_referencedIds_unionsANumericRefAndAStarredRefIntoOneSet() {
+        let clue = ClueEntry(
+            number: 1, text: "With 61-Across, a hint to the starred answers", cells: [0, 2],
+            isAcross: false)
+        let book = ClueBook(across: refPuzzleAcross, down: [clue])
+        XCTAssertEqual(
+            book.referencedIds(for: clue), ["61A", "18A", "29A", "37A", "50A"])
     }
 }
