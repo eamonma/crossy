@@ -28,15 +28,20 @@ export { firstCorrect } from "./first-correct";
 export type { OwnerMap, WriteEvent } from "./first-correct";
 export {
   BURST_WINDOW_MS,
+  collapseIdle,
   MOMENTUM_SAMPLES,
   moments,
   momentum,
+  SITTING_GAP_MS,
+  sittings,
   solveSequence,
   solveTrace,
 } from "./analysis";
 export type {
   Beat,
   SequenceStep,
+  SittingSpan,
+  SittingsResult,
   SolveEvent,
   TraceEntry,
   TurningPoint,
