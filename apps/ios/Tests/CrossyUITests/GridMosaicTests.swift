@@ -149,6 +149,92 @@ final class GridMosaicTests: XCTestCase {
         XCTAssertTrue(colors.isEmpty)
     }
 
+    // MARK: - The isolation filter (§8: isolation on the settled wash)
+
+    // No isolation is the full wash: the filter is pure presentation, absent by
+    // default, so a room that never taps a legend row draws exactly as before.
+    func test_isolation_nilIsTheFullWash_section8() {
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "you", isolation: nil, elapsed: 99), 1)
+    }
+
+    // Past the fade, the isolated solver's cells hold the full wash and every
+    // other hand rests at the dim floor: recessed toward paper (a lower alpha
+    // over the ground IS the step toward it), never erased.
+    func test_isolation_isolatedKeepsTint_othersDimTowardPaper_section8() {
+        let isolation = MosaicIsolation(solverId: "you", previousSolverId: nil, changedAt: 0)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "you", isolation: isolation, elapsed: 1), 1)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "bee", isolation: isolation, elapsed: 1),
+            GridMosaic.isolationDim)
+        XCTAssertGreaterThan(
+            GridMosaic.isolationDim, 0, "dimmed, never erased: the record stays traceable")
+        XCTAssertLessThan(GridMosaic.isolationDim, 1)
+    }
+
+    // The crossfade: the from-side at the toggle, the to-side by the fade's
+    // end, monotone between — fast and quiet, a filter, not a celebration (and
+    // already the §7 reduced-motion form: a pure opacity crossfade).
+    func test_isolation_crossfadeIsMonotoneOverTheFade_section8() {
+        let isolation = MosaicIsolation(solverId: "you", previousSolverId: nil, changedAt: 0)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "bee", isolation: isolation, elapsed: 0), 1)
+        var previous = 1.001
+        for step in 0...20 {
+            let elapsed = GridMosaic.isolationFadeDuration * Double(step) / 20
+            let value = GridMosaic.isolationMultiplier(
+                owner: "bee", isolation: isolation, elapsed: elapsed)
+            XCTAssertLessThanOrEqual(value, previous, "fade t=\(elapsed)")
+            previous = value
+        }
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(
+                owner: "bee", isolation: isolation,
+                elapsed: GridMosaic.isolationFadeDuration),
+            GridMosaic.isolationDim)
+    }
+
+    // A switch (you -> bee): your hand fades down as bee's fades up, and a
+    // third hand holds the floor with no pulse through the crossfade.
+    func test_isolation_switchCrossfadesBothHands_section8() {
+        let isolation = MosaicIsolation(
+            solverId: "bee", previousSolverId: "you", changedAt: 0)
+        let fade = GridMosaic.isolationFadeDuration
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "you", isolation: isolation, elapsed: 0), 1)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "you", isolation: isolation, elapsed: fade),
+            GridMosaic.isolationDim)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "bee", isolation: isolation, elapsed: 0),
+            GridMosaic.isolationDim)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "bee", isolation: isolation, elapsed: fade), 1)
+        for step in 0...10 {
+            let elapsed = fade * Double(step) / 10
+            XCTAssertEqual(
+                GridMosaic.isolationMultiplier(
+                    owner: "cee", isolation: isolation, elapsed: elapsed),
+                GridMosaic.isolationDim, "a third hand never pulses, t=\(elapsed)")
+        }
+    }
+
+    // A clear (nil current) fades every hand back to the full wash; the
+    // previously isolated hand was already there and stays put.
+    func test_isolation_clearReturnsToTheFullWash_section8() {
+        let isolation = MosaicIsolation(solverId: nil, previousSolverId: "you", changedAt: 0)
+        let fade = GridMosaic.isolationFadeDuration
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "bee", isolation: isolation, elapsed: 0),
+            GridMosaic.isolationDim)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(owner: "bee", isolation: isolation, elapsed: fade), 1)
+        XCTAssertEqual(
+            GridMosaic.isolationMultiplier(
+                owner: "you", isolation: isolation, elapsed: fade / 2), 1)
+    }
+
     // MARK: - The attribution source (§8: derived entirely from the event log)
 
     // Sequenced letters tint; a cleared cell (by with no value) and a pending

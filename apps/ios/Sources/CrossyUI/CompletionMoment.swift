@@ -113,6 +113,28 @@ public enum MosaicEnvelope {
     }
 }
 
+/// The isolation filter's value (web legend parity: the analysis legend rows
+/// toggle the same dim on the web mosaic): which solver the settled wash
+/// isolates, who it isolated before, and the toggle's instant — enough for the
+/// draw pass to crossfade between the two dims statelessly. Pure presentation
+/// over the standing MosaicWash; it never touches the celebration (INV-3) or
+/// the wash's own clock.
+public struct MosaicIsolation: Equatable, Sendable {
+    /// The isolated solver's userId, or nil while a clear fades back to the
+    /// full multi-color wash.
+    public let solverId: String?
+    /// The previous value, the crossfade's from-side (nil = the full wash).
+    public let previousSolverId: String?
+    /// Reference-date seconds at the toggle.
+    public let changedAt: TimeInterval
+
+    public init(solverId: String?, previousSolverId: String?, changedAt: TimeInterval) {
+        self.solverId = solverId
+        self.previousSolverId = previousSolverId
+        self.changedAt = changedAt
+    }
+}
+
 /// The mosaic's palette: writer attribution to roster color, one entry per cell
 /// that holds a sequenced letter with a writer. Derived entirely from the event
 /// log's `by` attribution (DESIGN.md §8), never from the optimistic overlay; a
@@ -123,6 +145,45 @@ public enum GridMosaic {
     /// The paper wash under the tinted glyph, scaled by the envelope's intensity.
     /// Louder than the teammate wash (0.12): the mosaic is the celebration.
     public static let washAlpha: Double = 0.30
+
+    /// The isolation dim's floor: the fraction of the standing wash a
+    /// non-isolated cell keeps. The wash composites as alpha OVER the paper, so
+    /// a lower alpha IS a step toward the ground color on both grounds by
+    /// construction — the dimmed hands recess into paper while the isolated one
+    /// holds the full wash. Dimmed, never erased: the record stays traceable.
+    public static let isolationDim: Double = 0.18
+
+    /// The isolation crossfade: fast and quiet (a filter, not a celebration),
+    /// and already the §7 reduced-motion form (a pure opacity crossfade).
+    public static let isolationFadeDuration: TimeInterval = 0.25
+
+    /// The per-cell wash multiplier under an isolation, `elapsed` seconds after
+    /// the toggle: an ease-in-out crossfade from the previous value's dim to
+    /// the current one's. Nil isolation is the full wash. Pure math, so the
+    /// filter pins headlessly and any frame past the fade (a paused timeline's
+    /// frozen date included) draws the exact target.
+    public static func isolationMultiplier(
+        owner: String, isolation: MosaicIsolation?, elapsed: TimeInterval
+    ) -> Double {
+        guard let isolation else { return 1 }
+        let from = isolationTarget(owner: owner, solverId: isolation.previousSolverId)
+        let to = isolationTarget(owner: owner, solverId: isolation.solverId)
+        if from == to { return to }
+        if elapsed <= 0 { return from }
+        let t = elapsed / isolationFadeDuration
+        if t >= 1 { return to }
+        // The settle's own ease-in-out: the filter leaves one value as gently
+        // as it lands on the other.
+        let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+        return from + (to - from) * eased
+    }
+
+    /// One side's resting multiplier: the full wash for no isolation or the
+    /// isolated solver's own hand, the dim floor for everyone else's.
+    private static func isolationTarget(owner: String, solverId: String?) -> Double {
+        guard let solverId else { return 1 }
+        return owner == solverId ? 1 : isolationDim
+    }
 
     /// Colors by cell. `writers` maps a cell to the userId whose letter it holds
     /// (sequenced state only); slotting follows the presence rule: the wire color
@@ -275,6 +336,10 @@ public struct ConfettiField: Equatable, Sendable {
 /// the render clock.
 public struct MosaicWash: Equatable, Sendable {
     public let colors: [Int: RGBColor]
+    /// Cell to the writer whose hand it is — the same map `colors` derives from,
+    /// carried alongside because the isolation filter keys per cell on the
+    /// OWNER, not the color (two solvers can share a roster slot's color).
+    public let writers: [Int: String]
     /// Reference-date seconds at the celebration trigger.
     public let startedAt: TimeInterval
     /// True once the envelope has landed (or when the wash stands without ever
@@ -282,11 +347,20 @@ public struct MosaicWash: Equatable, Sendable {
     /// standing wash (wash 1, glyph 0) with no clock, and the grid's timeline
     /// pauses — a settled mosaic costs no frames.
     public let settled: Bool
+    /// The isolation filter over the settled wash (CompletionModel.isolation),
+    /// or nil at the full multi-color record.
+    public let isolation: MosaicIsolation?
 
-    public init(colors: [Int: RGBColor], startedAt: TimeInterval, settled: Bool = false) {
+    public init(
+        colors: [Int: RGBColor], writers: [Int: String] = [:],
+        startedAt: TimeInterval, settled: Bool = false,
+        isolation: MosaicIsolation? = nil
+    ) {
         self.colors = colors
+        self.writers = writers
         self.startedAt = startedAt
         self.settled = settled
+        self.isolation = isolation
     }
 }
 
@@ -309,6 +383,16 @@ public final class CompletionModel {
     /// True once the envelope has landed (or immediately, for a stand without a
     /// bloom): the wash is a constant now, so the grid's timeline pauses.
     public private(set) var mosaicSettled = false
+
+    /// The isolation filter's one truth: a tapped legend row isolates that
+    /// solver on the settled wash; nil is the full multi-color record. The
+    /// analysis panel's rows and the grid's draw pass both read this, so a
+    /// toggle is a value change, never a re-render of the wash arc.
+    public private(set) var isolation: MosaicIsolation?
+
+    /// The isolated solver, or nil at the full wash (the legend rows' selected
+    /// state).
+    public var isolatedSolverId: String? { isolation?.solverId }
 
     /// The §4 clarity beat: true through the tint and the hold on iOS 26 glass
     /// (the fallback below 26 stays inert; §8 names no fallback).
@@ -425,6 +509,24 @@ public final class CompletionModel {
     func settleMosaic(summonOnSettle: Bool) {
         mosaicSettled = true
         if summonOnSettle { summonToken += 1 }
+    }
+
+    /// Toggle isolation from a legend row: the same solver clears back to the
+    /// full wash, another switches to them. Isolation exists only on the
+    /// SETTLED wash — a bloom in flight ignores the tap outright (the one
+    /// arming and the celebration gate are untouchable, INV-3), and an
+    /// unsettled room has no standing record to filter. A pure presentation
+    /// value: nothing here moves the gate, the arming, the clock, or the
+    /// summon.
+    public func toggleIsolation(
+        _ userId: String, now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
+    ) {
+        guard mosaicSettled else { return }
+        let current = isolation?.solverId
+        isolation = MosaicIsolation(
+            solverId: current == userId ? nil : userId,
+            previousSolverId: current,
+            changedAt: now)
     }
 
     /// Stand the settled wash without a celebration: the reconnect-into-completed
