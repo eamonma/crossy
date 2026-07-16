@@ -33,13 +33,15 @@ state shows why. Implementation note: the web store's rejection handler only cle
 optimistic overlay entries today; the `checkPuzzle` path must not assume an overlay
 entry exists for its commandId.
 
-**R3 (was High). Party mode stays in the sidebar UserCard; the popover is check and
-end-game only.** The review found party's actual home — the AppShell UserCard menu,
-available on any game route including completed rooms, where the projector shows the
-finished mosaic on a TV. Folding it into an ongoing-only popover would regress that, and
-a second entry point would defeat §2's own thesis. The deeper read: party is a display
-toggle, not an act on the game state, so it never belonged on this surface. §2's table
-and §3/§5 lose their party rows; iOS remains without party mode.
+**R3 (was High; owner ruling 2026-07-16). Party mode moves to the Share popover; the
+room-actions popover is check and end-game only.** The review found party's actual home
+— the AppShell UserCard menu, available on any game route including completed rooms,
+where the projector shows the finished mosaic on a TV. Party is a display toggle, not an
+act on the game state, so it never belonged on the room-actions surface; the owner ruled
+it out of the UserCard too. Its home is Share — putting the room on a TV is the room's
+reach, §2's own definition. The Share popover gains the party row (all statuses, so the
+completed-mosaic projector stays reachable), the UserCard entry is removed, and §2's
+table and §3/§5 lose their room-actions party rows; iOS remains without party mode.
 
 **R4 (was Medium). Terminal means terminal, not completed.** The toolbar's only status
 input today is `done = status === "completed"` (`LiveApp.tsx:1242`); an abandoned room
