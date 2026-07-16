@@ -91,7 +91,10 @@ export class RecordingPersistence implements GamePersistence {
     _gameId: string,
     events: readonly CellSet[],
     checks: readonly CheckEventRow[],
-    buildSnapshot: (participantCount: number) => {
+    buildSnapshot: (
+      participantCount: number,
+      eventAtMs: readonly number[],
+    ) => {
       snap: StateSnapshot;
       stats: import("@crossy/protocol").Stats;
     },
@@ -99,7 +102,11 @@ export class RecordingPersistence implements GamePersistence {
     this.append(events);
     this.appendChecks(checks);
     const participantCount = new Set(this.log.map((e) => e.by)).size;
-    const { snap, stats } = buildSnapshot(participantCount);
+    // Mirror the real terminal read (D29): the whole log's timestamps in seq order.
+    const eventAtMs = [...this.log]
+      .sort((a, b) => a.seq - b.seq)
+      .map((e) => Date.parse(e.at));
+    const { snap, stats } = buildSnapshot(participantCount, eventAtMs);
     this.snapshot = snap;
     this.flushes.push({
       batch: events.length,

@@ -16,6 +16,7 @@
 
 import {
   applyWithCompletion,
+  SITTING_GAP_MS,
   type BoardState,
   type CellSet,
   type PuzzleChecked,
@@ -511,8 +512,13 @@ export class GameActor {
       this.gameId,
       events,
       checks,
-      (participantCount) => {
-        const s = this.computeStats(terminalSeq, at, participantCount);
+      (participantCount, eventAtMs) => {
+        const s = this.computeStats(
+          terminalSeq,
+          at,
+          participantCount,
+          eventAtMs,
+        );
         return { snap: this.snapshotForFlush(s), stats: s };
       },
     );
@@ -700,11 +706,14 @@ export class GameActor {
    * participantCount is the authoritative DISTINCT user_id over cell_events, passed in
    * from inside the terminal flush transaction (not derived from the board's last-writer
    * map, which would undercount, nor from actor memory, which is lost on passivation).
+   * `eventAtMs` is the whole log's timestamps from that same transaction (seq order,
+   * epoch ms), the sittings inputs (D29) — same provenance rationale as participantCount.
    */
   private computeStats(
     terminalSeq: number,
     completedAt: string,
     participantCount: number,
+    eventAtMs: readonly number[],
   ): Stats {
     const firstFill = this.state.firstFillAt;
     const solveTimeSeconds =
@@ -716,12 +725,40 @@ export class GameActor {
               (Date.parse(completedAt) - Date.parse(firstFill)) / 1000,
             ),
           );
+    // The sittings partition over the log (PROTOCOL.md §4, D29): one walk in seq order; a
+    // gap of SITTING_GAP_MS or more collapses in full and closes a sitting (`>=` at the
+    // boundary, a negative skew gap never splits) — the engine's `collapseIdle` rule under
+    // the engine's constant, so the two readings cannot disagree on the threshold.
+    let collapsedMs = 0;
+    let sittingCount = eventAtMs.length === 0 ? 0 : 1;
+    for (let i = 1; i < eventAtMs.length; i++) {
+      const gap = eventAtMs[i]! - eventAtMs[i - 1]!;
+      if (gap >= SITTING_GAP_MS) {
+        collapsedMs += gap;
+        sittingCount += 1;
+      }
+    }
+    // activeSolveSeconds: solveTimeSeconds with idle collapsed — same endpoints, same
+    // rounding, minus the collapsed milliseconds, clamped at 0 (PROTOCOL.md §4). A gapless
+    // game yields activeSolveSeconds === solveTimeSeconds exactly.
+    const activeSolveSeconds =
+      firstFill === null
+        ? 0
+        : Math.max(
+            0,
+            Math.round(
+              (Date.parse(completedAt) - Date.parse(firstFill) - collapsedMs) /
+                1000,
+            ),
+          );
     return {
       solveTimeSeconds,
       totalEvents: terminalSeq - 1,
       participantCount,
       // The permanent count freezes into the stats at completion (PROTOCOL.md §4, §10).
       checkCount: this.state.checkCount,
+      activeSolveSeconds,
+      sittingCount,
     };
   }
 

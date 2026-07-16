@@ -3827,7 +3827,8 @@ async function seedAttributionEvent(
 
 /** The analysis wire shape: the owner map, the momentum ribbon, the named moments, the
  * replay sequence (ordered {cell, atSeconds}, ascending by (at, seq); cells and times only),
- * and the solver titles (ordered by ladder rank; userIds, kebab keys, and counts only). */
+ * the solver titles (ordered by ladder rank; userIds, kebab keys, and counts only), and the
+ * sittings partition (count, spans on the active axis, the wall-clock span; D29). */
 interface AnalysisBody {
   owners: Record<string, string>;
   momentum: { durationSeconds: number; samples: number[] };
@@ -3842,6 +3843,11 @@ interface AnalysisBody {
   };
   sequence: { cell: number; atSeconds: number }[];
   titles: { userId: string; title: string; evidence: number | null }[];
+  sittings: {
+    count: number;
+    spans: { startSeconds: number; endSeconds: number }[];
+    wallSeconds: number;
+  };
 }
 
 describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/post-game/ANALYSIS.md; DESIGN.md §7, §9; INV-6)", () => {
@@ -4015,6 +4021,200 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
       stallSeconds: 100,
       breakSeconds: 110,
       burst: 2,
+    });
+  });
+
+  it("D29: a single-sitting game is the identity mapping and carries a one-span sittings field", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    // Four fills over one minute, no gap anywhere near SITTING_GAP_MS: the active axis IS the
+    // wall axis (the compat proof the contract states), and the partition is one sitting.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-15T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-15T10:00:20.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-15T10:00:40.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-15T10:01:00.000Z",
+    );
+    await seedGameState(gameId, "2026-06-15T10:01:00.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // Identity: same duration and sequence a pre-D29 bundle reported.
+    expect(body.momentum.durationSeconds).toBe(60);
+    expect(body.sequence).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 20 },
+      { cell: 2, atSeconds: 40 },
+      { cell: 3, atSeconds: 60 },
+    ]);
+    // One sitting, one span [0, durationSeconds], wallSeconds equal to it (PROTOCOL.md §12).
+    expect(body.sittings).toEqual({
+      count: 1,
+      spans: [{ startSeconds: 0, endSeconds: 60 }],
+      wallSeconds: 60,
+    });
+  });
+
+  it("D29: an overnight gap collapses — the bundle measures active time and the sittings field carries the partition", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    // Two sittings eight wall-hours apart: cells 0,1 in the evening; cells 2,3 the next
+    // morning, with a real 100s stall INSIDE the second sitting. On the active axis the
+    // overnight gap is exactly zero (the seam at 10s), so the turning point is the 100s
+    // within-sitting stall, never the night (the D29 re-base the vectors pin).
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-16T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-16T10:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-16T18:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-16T18:01:50.000Z",
+    );
+    await seedGameState(gameId, "2026-06-16T18:01:50.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // Active duration: 10s evening + 100s morning = 110s, not the 28910s wall span.
+    expect(body.momentum.durationSeconds).toBe(110);
+    // The sequence is compact: the seam fills share the active instant 10.
+    expect(body.sequence).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 10 },
+      { cell: 2, atSeconds: 10 },
+      { cell: 3, atSeconds: 110 },
+    ]);
+    // The turning point is the within-sitting stall (100s ending at 110s, burst of 1), not
+    // the collapsed night.
+    expect(body.moments.turningPoint).toEqual({
+      stallSeconds: 100,
+      breakSeconds: 110,
+      burst: 1,
+    });
+    // The partition itself: two contiguous spans on the active axis, wall span for flavor.
+    expect(body.sittings).toEqual({
+      count: 2,
+      spans: [
+        { startSeconds: 0, endSeconds: 10 },
+        { startSeconds: 10, endSeconds: 110 },
+      ],
+      wallSeconds: 28910,
+    });
+  });
+
+  it("D29: titles keep their wall-clock basis — the overnight stall still crowns the ice breaker (deferred re-base, owner ruling)", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // Host fills the evening; mate returns after the 8h night and breaks the stall. On the
+    // ACTIVE axis the largest stall is 10s (nowhere near the 120s floor), so an accidental
+    // re-base of the titles would award no ice breaker at all. On the raw wall clock the
+    // stall is 28800s and mate broke it: the ice breaker stands, evidence citing the raw
+    // stall — the pin that titleStats still receives the UNREMAPPED events (D29 defers the
+    // titles re-base to the named fast-follow).
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-17T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-17T10:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      3,
+      2,
+      "O",
+      "2026-06-17T18:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      4,
+      3,
+      "N",
+      "2026-06-17T18:00:20.000Z",
+    );
+    await seedGameState(gameId, "2026-06-17T18:00:20.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    expect(body.titles).toContainEqual({
+      userId: mateId,
+      title: "ice-breaker",
+      evidence: 28800,
     });
   });
 
@@ -4227,13 +4427,15 @@ describe("GET /games/{id}/analysis titles (design/post-game/TITLES.md; PROTOCOL.
       { userId: hostId, title: "quick-starter", evidence: 1 },
     ]);
 
-    // Additive change only: the bundle carries exactly the four pre-existing fields plus
-    // `titles`, and each pre-existing field reads exactly as it did before the addition.
+    // Additive change only: the bundle carries exactly the pinned field set (`titles` from
+    // Wave 10.4, `sittings` from D29), and each pre-existing field reads exactly as it did
+    // before each addition.
     expect(Object.keys(body).sort()).toEqual([
       "moments",
       "momentum",
       "owners",
       "sequence",
+      "sittings",
       "titles",
     ]);
     expect(body.owners).toEqual({
