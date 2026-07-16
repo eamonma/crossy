@@ -251,11 +251,17 @@ class WebViewTurnstileMinter(
     private fun setRevealed(view: WebView, revealed: Boolean) {
         if (revealed) {
             val density = activity.resources.displayMetrics.density
-            view.layoutParams = FrameLayout.LayoutParams(
+            val params = FrameLayout.LayoutParams(
                 (CHALLENGE_WIDTH_DP * density).toInt(),
                 (CHALLENGE_HEIGHT_DP * density).toInt(),
                 Gravity.CENTER,
             )
+            // Breathing room from the dialog it floats over: dead center puts the box flush
+            // under the send sheet's cancel button, so nudge it down and keep side margins for
+            // narrow screens.
+            val margin = (CHALLENGE_MARGIN_DP * density).toInt()
+            params.setMargins(margin, (CHALLENGE_TOP_NUDGE_DP * density).toInt(), margin, 0)
+            view.layoutParams = params
             view.visibility = View.VISIBLE
             view.bringToFront()
         } else {
@@ -321,5 +327,11 @@ class WebViewTurnstileMinter(
         /** The revealed challenge surface, sized for the Turnstile interactive box. */
         const val CHALLENGE_WIDTH_DP = 300
         const val CHALLENGE_HEIGHT_DP = 240
+
+        /** Side breathing room, and the downward nudge that clears the send sheet's controls
+         *  (a FrameLayout centers the child inclusive of margins, so the top margin shifts the
+         *  box below dead center). */
+        const val CHALLENGE_MARGIN_DP = 24
+        const val CHALLENGE_TOP_NUDGE_DP = 96
     }
 }
