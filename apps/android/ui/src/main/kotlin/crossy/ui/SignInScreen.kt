@@ -111,7 +111,9 @@ fun SignInScreen(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Crossy", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+        // Explicit onSurface: this screen draws on the window ground with no wrapping Surface, so
+        // LocalContentColor would stay default black and vanish on the Observatory ground.
+        Text("Crossy", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         Text(
             "Sign in to solve together.",
             fontSize = 14.sp,
@@ -217,7 +219,7 @@ private fun EmailEntry(
 ) {
     var email by remember { mutableStateOf("") }
 
-    Text("Continue with email", fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+    Text("Continue with email", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
     OutlinedTextField(
         value = email,
         onValueChange = { email = it },
