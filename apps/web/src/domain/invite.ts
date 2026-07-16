@@ -59,3 +59,19 @@ export function buildAppLink(args: {
   if (code === null) return null;
   return `crossy://game/${encodeURIComponent(gameId)}?code=${code}`;
 }
+
+/**
+ * Build the same-origin path to the `/ios` install landing page, the first-class path for an
+ * invitee who does not yet have the app (the beta era: the app is TestFlight-only, so a fresh
+ * invitee almost never has it installed). It carries only the code, the one capability a new
+ * visitor needs, so once they install and open the app that page can offer a re-entry link. A
+ * browser reaching `/ios` stays in the browser because `/ios` is not an app-claimed Universal Link
+ * (AASA) path, so the page loads instead of a dead deep link firing. The code alphabet is URL-safe
+ * (`^[2-9A-HJ-NP-Z]{8}$`), so it interpolates plainly like `buildShareUrl`, no encoding needed. A
+ * null code yields the bare `/ios`, since the install page is worth offering even without a code.
+ */
+export function buildIosAppUrl(args: { code: string | null }): string {
+  const { code } = args;
+  if (code === null) return "/ios";
+  return `/ios?code=${code}`;
+}

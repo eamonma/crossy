@@ -93,6 +93,20 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    # The Safari extension sign-in callback (public/auth-ext-callback.html). The Crossy
+    # browser extension on Safari cannot use identity.launchWebAuthFlow, so it runs its own
+    # OAuth in a tab and redirects here; the extension's content script reads the ?code= off
+    # this URL and hands it to its worker. This MUST bypass the SPA below: the app's
+    # supabase-js would detect and consume the single-use ?code= first. So it serves a
+    # standalone page that loads no app bundle. Never cached: it is a one-shot redirect
+    # target. The URL is pinned by the extension (settings.ts AUTH_CALLBACK_URL) and must be
+    # in the Supabase auth redirect allowlist for the provider to redirect here at all.
+    location = /auth/ext/callback {
+        default_type text/html;
+        try_files /auth-ext-callback.html =404;
+        add_header Cache-Control "no-store";
+    }
+
     # SPA shell. The client routes by path (/game/<id>, /puzzles, /new; legacy ?game= links
     # redirect client-side), so deep links MUST fall back to the single index.html here; a
     # 404 on /game/<id> would break every invite link. Optional ?api=/?token= overrides ride

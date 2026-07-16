@@ -48,6 +48,12 @@ struct ClueChrome: View {
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onJump: (ClueEntry) -> Void
+    /// The reaction fan riding the bar's corner (Wave 7.5; PROTOCOL.md §9). The
+    /// model lives on SolveScreen so the room's one dismissal seam can close a
+    /// standing fan; nil when the room hosts the fan elsewhere (the deck-edge
+    /// placement) or not at all.
+    let reactionFan: Binding<ReactionFanModel>?
+    let onReactionFire: (String) -> Void
 
     @State private var dragBase: CGFloat = 0
     @State private var isDragActive = false
@@ -77,8 +83,17 @@ struct ClueChrome: View {
     var body: some View {
         let progress = chrome.meltProgress
         let frame = morph.frame(at: progress)
-        let radius = morph.cornerRadius(at: progress)
-        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        let topRadius = morph.cornerRadius(at: progress)
+        // The completed melt docks as a bottom sheet: its bottom corners flatten
+        // into the phone's own edge as it opens (owner ask 2026-07-13), melting
+        // from the rest capsule toward square with progress. Mid-solve (and at
+        // rest) the surface is a uniform capsule/card, the bottom tracking the top.
+        let bottomRadius =
+            completed ? GlassMorph.lerp(morph.restCornerRadius, 0, progress) : topRadius
+        let radii = RectangleCornerRadii(
+            topLeading: topRadius, bottomLeading: bottomRadius,
+            bottomTrailing: bottomRadius, topTrailing: topRadius)
+        let shape = UnevenRoundedRectangle(cornerRadii: radii, style: .continuous)
 
         ZStack(alignment: .top) {
             browserList
@@ -91,7 +106,7 @@ struct ClueChrome: View {
         }
         .frame(width: frame.width, height: frame.height, alignment: .top)
         .clipShape(shape)
-        .modifier(ChromeGlassSurface(cornerRadius: radius))
+        .modifier(ChromeGlassSurface(cornerRadii: radii))
         .overlay {
             if let glint, progress < 0.1 {
                 GlintSweep(color: glint.color, reduceMotion: reduceMotion)
@@ -111,6 +126,23 @@ struct ClueChrome: View {
         // list scrolls, and a pull that runs the list into its top hands the
         // surface over mid-gesture).
         .simultaneousGesture(dismissDrag)
+        // The fan in the bar's corner (the banked mockup): the button rides the
+        // pinned row's trailing slot, but as an overlay ADDED AFTER the surface's
+        // gesture wrappers, so a touch on the fan is the fan's alone — the row's
+        // high-priority melt drag cannot steal the hold-slide, and the surface's
+        // dismiss tap cannot close a standing fan under the very tap meant for its
+        // emoji. The row and its layout twin reserve the slot (fanSlotWidth), so
+        // the clue wraps at the same width in both. Standing only at rest: any
+        // melt progress hides it, and the open browser owns that geometry.
+        .overlay(alignment: .topTrailing) {
+            if let reactionFan, progress < 0.05 {
+                ReactionFan(fan: reactionFan, ground: ground, onFire: onReactionFire)
+                    .padding(.trailing, 8)
+                    .padding(.top, (ChromeLayout.barHeight - ReactionFan.buttonSize) / 2)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .crossyChrome, value: progress < 0.05)
         .position(x: frame.midX, y: frame.midY)
         // The bar borrows the slot's height through a preference (ChromeFramesKey
         // -> onPreferenceChange -> frames), which lands as a raw @State change and
@@ -142,6 +174,10 @@ struct ClueChrome: View {
             }
         }
         .padding(.horizontal, 10)
+        // The fan's corner slot (Wave 7.5): reserved whenever the fan rides this
+        // bar, constant across melt progress so the row never re-wraps as the
+        // browser opens. The layout twin (ClueBarSizer) reserves the same span.
+        .padding(.trailing, reactionFan != nil ? ChromeLayout.clueFanSlotWidth : 0)
         .frame(minHeight: ChromeLayout.barHeight)
         // The row owns its natural height even while the melting surface's
         // frame is still travelling toward it: a new line reveals as the bar
@@ -241,6 +277,10 @@ struct ClueChrome: View {
             selection: Binding(
                 get: { chrome.analysisTab },
                 set: { chrome.analysisTab = $0 }))
+            // The poured-open sheet is full width, so hold the segmented control
+            // off the rounded top corners; the pinned row's own inset is tuned
+            // for the rest capsule, not the full-bleed sheet.
+            .padding(.horizontal, 12)
     }
 
     private func chevron(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
@@ -248,8 +288,15 @@ struct ClueChrome: View {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color(rgb: ground.tokens.ink))
-                .frame(width: ChromeLayout.clueChevronWidth, height: 40)
-                .contentShape(Rectangle())
+                // The full bar height plus a negative-inset content shape: the tap
+                // target grows well past the glyph (owner ask, bundled with Wave
+                // 7.5) while the pixels hold exactly as they were. Overlaps resolve
+                // by sibling order (the later view wins the hit), so the leading
+                // chevron yields its label-side sliver to the clue button and the
+                // trailing chevron takes one from it: both biases favor the target
+                // being grown.
+                .frame(width: ChromeLayout.clueChevronWidth, height: ChromeLayout.barHeight)
+                .contentShape(Rectangle().inset(by: -6))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: label))
@@ -547,11 +594,15 @@ struct ClueBarLabel: View {
 struct ClueBarSizer: View {
     let ground: GridGround
     let current: ClueEntry?
+    /// Mirrors the pinned row's fan slot (Wave 7.5): reserved here too whenever
+    /// the fan rides the bar, so slot and row wrap at one width.
+    var reservesFanSlot: Bool = false
 
     var body: some View {
         ClueBarLabel(ground: ground, current: current)
             .padding(.horizontal, ChromeLayout.clueChevronWidth)
             .padding(.horizontal, 10)
+            .padding(.trailing, reservesFanSlot ? ChromeLayout.clueFanSlotWidth : 0)
             .frame(minHeight: ChromeLayout.barHeight)
             .hidden()
             .accessibilityHidden(true)

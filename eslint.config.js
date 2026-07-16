@@ -7,6 +7,10 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/dist-firefox/**",
+      // The extension's built output, mirrored into the iOS app as a committed
+      // derived cache (sync-safari-extension.sh) so the Xcode build stays node-free.
+      // It is dist/ under another name, never hand-edited, never linted.
+      "apps/ios/Crossy/SafariResources/**",
       "**/coverage/**",
       ".claude/**",
       ".agents/**",

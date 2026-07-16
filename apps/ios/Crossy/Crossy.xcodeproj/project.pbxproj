@@ -13,6 +13,7 @@
 		FB3E59F53000D30A004CA5C7 /* CrossyAPI in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F23000D30A004CA5C7 /* CrossyAPI */; };
 		FB3E59F63000D30A004CA5C7 /* CrossySession in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F33000D30A004CA5C7 /* CrossySession */; };
 		FB3E59F73000D30A004CA5C7 /* CrossyProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = FB3E59F83000D30A004CA5C7 /* CrossyProtocol */; };
+		FB88DA303005CE0900225951 /* Safari.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FB88DA183005CE0900225951 /* Safari.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		FBAD5E013001AAAA004CA5C7 /* PostHog in Frameworks */ = {isa = PBXBuildFile; productRef = FBAD5E023001AAAA004CA5C7 /* PostHog */; };
 /* End PBXBuildFile section */
 
@@ -24,6 +25,13 @@
 			remoteGlobalIDString = FB15AC023000D30A004CA5C7;
 			remoteInfo = CrossyWidgets;
 		};
+		FB88DA2E3005CE0900225951 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FB3E59D33000D30A004CA5C7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FB88DA173005CE0900225951;
+			remoteInfo = Safari;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -33,6 +41,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
+				FB88DA303005CE0900225951 /* Safari.appex in Embed Foundation Extensions */,
 				FB15AC0F3000D30A004CA5C7 /* CrossyWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
@@ -43,6 +52,7 @@
 /* Begin PBXFileReference section */
 		FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CrossyWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FB3E59DB3000D30A004CA5C7 /* Crossy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Crossy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FB88DA183005CE0900225951 /* Safari.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = Safari.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -59,6 +69,13 @@
 				Info.plist,
 			);
 			target = FB3E59DA3000D30A004CA5C7 /* Crossy */;
+		};
+		FB88DA343005CE0900225951 /* Exceptions for "Safari" folder in "Safari" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FB88DA173005CE0900225951 /* Safari */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -84,6 +101,18 @@
 			path = Crossy;
 			sourceTree = "<group>";
 		};
+		FB88DA193005CE0900225951 /* Safari */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FB88DA343005CE0900225951 /* Exceptions for "Safari" folder in "Safari" target */,
+			);
+			explicitFolders = (
+				Resources/_locales,
+				Resources/images,
+			);
+			path = Safari;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -107,6 +136,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FB88DA153005CE0900225951 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -116,6 +152,7 @@
 				FB3E59DD3000D30A004CA5C7 /* Crossy */,
 				FB15AC063000D30A004CA5C7 /* CrossyWidgets */,
 				FB15AC083000D30A004CA5C7 /* Shared */,
+				FB88DA193005CE0900225951 /* Safari */,
 				FB3E59DC3000D30A004CA5C7 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -125,6 +162,7 @@
 			children = (
 				FB3E59DB3000D30A004CA5C7 /* Crossy.app */,
 				FB15AC013000D30A004CA5C7 /* CrossyWidgets.appex */,
+				FB88DA183005CE0900225951 /* Safari.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -169,6 +207,7 @@
 			);
 			dependencies = (
 				FB15AC0D3000D30A004CA5C7 /* PBXTargetDependency */,
+				FB88DA2F3005CE0900225951 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				FB15AC083000D30A004CA5C7 /* Shared */,
@@ -186,6 +225,29 @@
 			productReference = FB3E59DB3000D30A004CA5C7 /* Crossy.app */;
 			productType = "com.apple.product-type.application";
 		};
+		FB88DA173005CE0900225951 /* Safari */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FB88DA313005CE0900225951 /* Build configuration list for PBXNativeTarget "Safari" */;
+			buildPhases = (
+				FB88DA143005CE0900225951 /* Sources */,
+				FB88DA153005CE0900225951 /* Frameworks */,
+				FB88DA163005CE0900225951 /* Resources */,
+				FB5A11E0000000000000EE01 /* Bundle web extension resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FB88DA193005CE0900225951 /* Safari */,
+			);
+			name = Safari;
+			packageProductDependencies = (
+			);
+			productName = Safari;
+			productReference = FB88DA183005CE0900225951 /* Safari.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -200,6 +262,9 @@
 						CreatedOnToolsVersion = 26.5;
 					};
 					FB3E59DA3000D30A004CA5C7 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					FB88DA173005CE0900225951 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -224,6 +289,7 @@
 			targets = (
 				FB3E59DA3000D30A004CA5C7 /* Crossy */,
 				FB15AC023000D30A004CA5C7 /* CrossyWidgets */,
+				FB88DA173005CE0900225951 /* Safari */,
 			);
 		};
 /* End PBXProject section */
@@ -243,7 +309,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FB88DA163005CE0900225951 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		FB5A11E0000000000000EE01 /* Bundle web extension resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle web extension resources";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Mirror the built browser extension (SafariResources/, synced from apps/extension/dist\n# by apps/ios/scripts/sync-safari-extension.sh) into the appex, preserving the nested tree\n# (nyt/, auth/, web-signal/, amuselabs/, icons/) that Copy Bundle Resources would flatten.\nset -e\nditto \"${SRCROOT}/SafariResources\" \"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		FB15AC033000D30A004CA5C7 /* Sources */ = {
@@ -260,6 +351,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FB88DA143005CE0900225951 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -267,6 +365,11 @@
 			isa = PBXTargetDependency;
 			target = FB15AC023000D30A004CA5C7 /* CrossyWidgets */;
 			targetProxy = FB15AC0C3000D30A004CA5C7 /* PBXContainerItemProxy */;
+		};
+		FB88DA2F3005CE0900225951 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FB88DA173005CE0900225951 /* Safari */;
+			targetProxy = FB88DA2E3005CE0900225951 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -526,6 +629,74 @@
 			};
 			name = Release;
 		};
+		FB88DA323005CE0900225951 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MTF6T25BP8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Safari/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Safari;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eamonma.Crossy.Safari;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FB88DA333005CE0900225951 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = MTF6T25BP8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Safari/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Safari;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.eamonma.Crossy.Safari;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -552,6 +723,15 @@
 			buildConfigurations = (
 				FB3E59E73000D30D004CA5C7 /* Debug */,
 				FB3E59E83000D30D004CA5C7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FB88DA313005CE0900225951 /* Build configuration list for PBXNativeTarget "Safari" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FB88DA323005CE0900225951 /* Debug */,
+				FB88DA333005CE0900225951 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

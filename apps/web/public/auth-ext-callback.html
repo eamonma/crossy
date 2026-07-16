@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossy</title>
+    <!--
+      The Safari sign-in callback. The Crossy browser extension on Safari cannot use
+      identity.launchWebAuthFlow, so it runs its own OAuth in a tab and redirects here;
+      the extension's content script reads the ?code= off this URL and hands it to its
+      worker, which finishes the exchange and closes this tab. This page is deliberately
+      inert: it loads no app bundle and no supabase-js, so the SPA never consumes the
+      single-use code first, and it never reads, stores, or forwards the code itself.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fdfdfc;
+        --text: #21201c;
+        --text-muted: #63635e;
+        --gold: #978365;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111110;
+          --text: #eeeeec;
+          --text-muted: #b5b3ad;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+          sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      main {
+        max-width: 22rem;
+        text-align: center;
+      }
+      .mark {
+        width: 40px;
+        height: 40px;
+        display: block;
+        margin: 0 auto 20px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--text-muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="16" width="8" height="8" fill="currentColor" />
+        <rect x="8" y="8" width="8" height="8" fill="currentColor" />
+        <rect y="16" width="8" height="8" fill="currentColor" />
+        <rect x="16" y="16" width="8" height="8" fill="var(--gold)" />
+      </svg>
+      <h1>Signing you in</h1>
+      <p>You can close this tab and return to Crossy. We are finishing up.</p>
+    </main>
+  </body>
+</html>

@@ -35,7 +35,7 @@ final class INV6NoSolutionTests: XCTestCase {
         for name in try FixtureLayout.namesOnDisk(.wire) {
             let data = try fixtureData(.wire, name)
             let value: Any
-            if name.hasPrefix("hello") || ["placeLetter", "clearCell", "moveCursor", "checkRequest", "heartbeat", "requestSync"].contains(name) {
+            if name.hasPrefix("hello") || ["placeLetter", "clearCell", "moveCursor", "react", "checkRequest", "heartbeat", "requestSync"].contains(name) {
                 value = try JSONDecoder().decode(ClientMessage.self, from: data)
             } else {
                 value = try JSONDecoder().decode(ServerMessage.self, from: data)

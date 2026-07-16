@@ -29,6 +29,7 @@ import type { Bearer } from "./net/authedFetch";
 import { computeLayout } from "./domain/layout";
 import {
   buildAppLink,
+  buildIosAppUrl,
   buildShareUrl,
   resolveInviteField,
 } from "./domain/invite";
@@ -45,6 +46,11 @@ import type { Selection } from "./input/actions";
 import { ChevronLeftIcon } from "@radix-ui/react-icons";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
+import { useReactions } from "./reactions/useReactions";
+import { usePersonalReactionSet } from "./reactions/useReactionSet";
+import { ReactionTray } from "./reactions/ReactionTray";
+import { ReactionHud } from "./reactions/ReactionHud";
+import { ReactionStickers } from "./reactions/ReactionStickers";
 import type { StackMember } from "./ui/primitives";
 import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
@@ -61,11 +67,12 @@ import { useBearer } from "./ui/useResource";
 import { useNavPrefs } from "./ui/useNavPrefs";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
-import { parseClueRefs, referencedCells } from "./ui/clueRefs";
+import { referencedCells, referencedKeys } from "./ui/clueRefs";
 import { Keyboard } from "./ui/Keyboard";
 import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
+import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
 import { useReplayClock } from "./ui/useReplayClock";
@@ -433,12 +440,19 @@ export function LiveApp({
     return <LoadingGameShell inShell={inShell} />;
   }
   if (state.phase === "needs-auth") {
-    // A signed-out invitee on iOS may already have the app. Universal Links do not fire for a
-    // same-domain Safari tap or an in-app browser (Discord), which is exactly where this page
-    // loads, so offer the crossy:// handoff as a button: one tap into the app, where Sign in with
-    // Apple is native and the invite survives it (iOS ArrivalRootView). Everyone else signs in on
-    // the web below. Null off iOS or without a code, so no dead deep link is ever rendered.
-    const appLink = isAppleMobile(navigator.userAgent, navigator.maxTouchPoints)
+    // A signed-out invitee on iOS almost never has the app: it is TestFlight-only in the beta era,
+    // so install-first is the honest default. Lead with "Get the Crossy app", routing to the /ios
+    // install page (which stays in the browser, since /ios is not an app-claimed Universal Link
+    // path) and carrying the code so that page can offer a re-entry link once installed. The
+    // crossy:// deep link is demoted to the quiet "already have it" escape hatch: Universal Links
+    // do not fire for a same-domain Safari tap or an in-app browser (Discord), which is exactly
+    // where this page loads, so an existing user needs the custom scheme to reach the app they
+    // already installed. Everyone else signs in on the web below. The install button shows for
+    // every iOS visitor; the deep link stays null without a code, hiding only the "already have it"
+    // link (never a dead one), and off iOS the whole block is absent.
+    const isIos = isAppleMobile(navigator.userAgent, navigator.maxTouchPoints);
+    const iosUrl = buildIosAppUrl({ code: params.get("code") });
+    const appLink = isIos
       ? buildAppLink({
           gameId,
           code: params.get("code"),
@@ -469,21 +483,32 @@ export function LiveApp({
           <Divider className="m-0" />
           <div className="bg-panel px-6 py-5">
             <div className="mx-auto max-w-[18rem]">
-              {appLink !== null && (
+              {isIos && (
                 <div className="mb-4 flex flex-col gap-2.5">
+                  {/* Hero: install-first. The one gold CTA, the clear primary within the ticket. */}
                   <Button
                     asChild
-                    variant="secondary"
+                    variant="default"
                     size="lg"
                     className="w-full"
                   >
-                    <a href={appLink}>Open in the Crossy app</a>
+                    <a href={iosUrl}>Get the Crossy app</a>
                   </Button>
-                  {/* The system's dashed rule carries the fork: open the app, or continue here. */}
-                  <div className="flex items-center gap-3" aria-hidden>
+                  {/* Quiet escape hatch for people who already installed it (only when a code is
+                      present, so the crossy:// deep link is never dead). */}
+                  {appLink !== null && (
+                    <a
+                      href={appLink}
+                      className="text-1 text-text-subtle underline underline-offset-2 hover:text-text"
+                    >
+                      Already have the app? Open it
+                    </a>
+                  )}
+                  {/* The system's dashed rule carries the fork: get the app, or solve here. */}
+                  <div className="mt-1.5 flex items-center gap-3" aria-hidden>
                     <Divider className="m-0 flex-1" />
                     <span className="text-1 text-text-subtle">
-                      or continue on the web
+                      or solve on the web
                     </span>
                     <Divider className="m-0 flex-1" />
                   </div>
@@ -740,6 +765,10 @@ function LiveGame({
   const { prefs: navPrefs } = useNavPrefs();
   const flashNonce = useRef(0);
   const gridRef = useRef<HTMLDivElement>(null);
+  // The completed mosaic's own focus target: the interactive grid and the mosaic can both be
+  // mounted at once (the Clues tab keeps the grid alive while the mosaic hides), so the mosaic
+  // cannot share gridRef and needs its own to take keyboard focus on a cell click.
+  const mosaicRef = useRef<HTMLDivElement>(null);
   // Cursor relay throttle (PROTOCOL.md §9): a leading send plus one coalesced trailing send,
   // capped at 10/s. `selectionRef` carries the latest selection to a pending trailing send.
   const cursorLastSentRef = useRef(0);
@@ -747,6 +776,14 @@ function LiveGame({
   const selectionRef = useRef(selection);
 
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
+  // Ephemeral reactions (Wave 7.3): a transient sprite model kept entirely outside the sequenced
+  // store, plus the tray/HUD/key wiring. Reactions are role `any` (spectators cheer too, §9), so
+  // this is not gated on role; the store refuses a react while `connecting`, and the affordances
+  // below only mount once synced. Legal in any status, so a completed board still reacts.
+  // The five the tray, ring, and keys offer are the personal set (Wave 8.4, §12), resolved live
+  // from the session: a Settings save applies here with no reload.
+  const reactionSet = usePersonalReactionSet(identity);
+  const reactions = useReactions(store, reactionSet);
   const frozen = store.status !== "ongoing";
   // Post-REST, pre-welcome: the store is `connecting`, so the real grid renders at its
   // true geometry with empty cells but de-emphasized, and input is locked until the first
@@ -945,11 +982,38 @@ function LiveGame({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Reaction keys run first (the `/` leader, mapped fire, `?`/`!` direct keys, and a captured
+    // key's held repeats), once synced and off the mosaic. An unmapped key inside the HUD returns
+    // false, so it falls through to the letter handler below and never gets swallowed (Wave 7.3).
+    if (
+      !awaitingFirstSync &&
+      reactions.handleKeyDown(e.key, selection.cell, e.repeat)
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (handleKey(e.key, e.shiftKey)) e.preventDefault();
+  }
+
+  function onKeyUp(e: React.KeyboardEvent<HTMLDivElement>): void {
+    // Releases a mapped key captured by a HUD fire back to normal typing (owner ruling
+    // 2026-07-14). Unconditional: a release must land even if sync state changed mid-hold.
+    reactions.handleKeyUp(e.key);
   }
 
   function onCellClick(cell: number): void {
     gridRef.current?.focus();
+    const next = cellClick(grid, selection, cell);
+    if (next !== null) setSelection(next);
+  }
+
+  // The completed mosaic's click path: identical selection logic to onCellClick (blocks return null,
+  // the same cell toggles axis, INV-4 keeps it mutation-free), but focus goes to the mosaic wrapper
+  // so the keyboard aim keeps working after a click. The selection change relays moveCursor through
+  // the effect above, exactly as the live grid does (PROTOCOL.md §9), so the tray and HUD anchor
+  // their reaction to wherever you last aimed on the finished board.
+  function onMosaicCellClick(cell: number): void {
+    mosaicRef.current?.focus();
     const next = cellClick(grid, selection, cell);
     if (next !== null) setSelection(next);
   }
@@ -1032,26 +1096,14 @@ function LiveGame({
   const activeDown =
     clueOn(puzzle.downClues, "down", selection.cell)?.number ?? null;
 
-  // Clues the active clue names ("See 42-Down", "17, 20, and 49 across"), keyed
-  // `${direction}-${number}` like the presence map so a list row looks itself up in O(1). The
-  // parser reads intent only; here we filter to entries that actually exist in this puzzle, so a
-  // reference to a clue this grid lacks (or the active clue naming itself) never lights a row.
-  const referenced = useMemo(() => {
-    const exists = new Set<string>();
-    for (const c of puzzle.acrossClues) exists.add(`across-${c.number}`);
-    for (const c of puzzle.downClues) exists.add(`down-${c.number}`);
-    const marks = new Set<string>();
-    for (const ref of parseClueRefs(activeClue?.text)) {
-      const key = `${ref.direction}-${ref.number}`;
-      if (
-        exists.has(key) &&
-        key !== `${activeClue?.direction}-${activeClue?.number}`
-      ) {
-        marks.add(key);
-      }
-    }
-    return marks;
-  }, [activeClue, puzzle]);
+  // Clues the active clue names ("See 42-Down", "17, 20, and 49 across", or the starred set),
+  // keyed `${direction}-${number}` like the presence map so a list row looks itself up in O(1).
+  // Resolution, existence filtering, and self-exclusion all live in clueRefs (D26); this memo
+  // only caches the result per selection.
+  const referenced = useMemo(
+    () => referencedKeys(activeClue, puzzle.acrossClues, puzzle.downClues),
+    [activeClue, puzzle],
+  );
 
   // The board half of the reference cue: the same existence-filtered keys, resolved to the cells
   // those clues cover so CrosswordGrid can paint them faintly (DESIGN.md section 10).
@@ -1258,9 +1310,13 @@ function LiveGame({
                   and is only hidden on the Clues tab, so switching tabs never re-fires the bloom. */}
               {boardCompleted && (
                 <div
-                  className="board-wrap"
+                  className="board-wrap relative outline-none"
                   aria-label="Solved crossword grid"
                   hidden={!showMosaic}
+                  ref={mosaicRef}
+                  tabIndex={0}
+                  onKeyDown={onKeyDown}
+                  onKeyUp={onKeyUp}
                 >
                   <CompletedMosaic
                     store={store}
@@ -1272,19 +1328,50 @@ function LiveGame({
                     sequence={sequence}
                     source={{ apiBase, gameId, bearer }}
                   />
+                  {/* The selection and aim layer: pointer targets and the selection ring over the
+                      mosaic art, so a reaction anchors anywhere on the finished board (PROTOCOL.md
+                      §9). Above the mosaic (its clicks land) and below the stickers (which are
+                      pointer-transparent, so order never steals a click). It never repaints the
+                      mosaic, so the bloom is untouched. */}
+                  <MosaicSelectLayer
+                    grid={grid}
+                    selectedCell={selection.cell}
+                    onSelect={onMosaicCellClick}
+                  />
+                  {/* Reactions stay legal in any game status (PROTOCOL.md §9): the completed
+                      board celebrates, so stickers paint over the mosaic exactly as they paint
+                      over the live grid (iOS renders them over its mosaic the same way). */}
+                  <ReactionStickers
+                    cols={puzzle.cols}
+                    rows={puzzle.rows}
+                    blocks={puzzle.blocks}
+                    reactions={reactions.entries}
+                  />
+                  {/* The `/` leader ring on the mosaic, same props as the live-grid mount so the aim
+                      HUD works post-completion. Anchored to the selection the overlay now moves. */}
+                  {reactions.hudOpen && reactions.hudCell !== null && (
+                    <ReactionHud
+                      cols={puzzle.cols}
+                      rows={puzzle.rows}
+                      cell={reactions.hudCell}
+                      options={reactionSet.options}
+                      onReact={reactions.sendFromHud}
+                    />
+                  )}
                 </div>
               )}
               {/* The interactive grid: the live board while solving, and the Clues-tab treatment once
                   completed (frozen, so a clue jump highlights its answer on the plain solved board). */}
               {!showMosaic && (
                 <div
-                  className={`board-wrap outline-none transition-opacity duration-300 motion-reduce:transition-none${
+                  className={`board-wrap relative outline-none transition-opacity duration-300 motion-reduce:transition-none${
                     awaitingFirstSync ? " opacity-45" : ""
                   }`}
                   data-testid="grid"
                   ref={gridRef}
                   tabIndex={0}
                   onKeyDown={onKeyDown}
+                  onKeyUp={onKeyUp}
                   aria-label="Crossword grid"
                   aria-busy={awaitingFirstSync}
                 >
@@ -1298,9 +1385,40 @@ function LiveGame({
                     onCellClick={onCellClick}
                     onFlashEnd={onFlashEnd}
                   />
+                  {/* The sticker layer, an HTML overlay above the SVG (the settle-pop fix;
+                      reactions/ReactionStickers.tsx). Inside the board wrapper so its cell
+                      percentages land at any board scale. */}
+                  <ReactionStickers
+                    cols={puzzle.cols}
+                    rows={puzzle.rows}
+                    blocks={puzzle.blocks}
+                    reactions={reactions.entries}
+                  />
+                  {/* The `/` leader ring, positioned over the anchor cell. Rendered inside the
+                      board wrapper so its cell-percentage math lands at any board scale. */}
+                  {reactions.hudOpen && reactions.hudCell !== null && (
+                    <ReactionHud
+                      cols={puzzle.cols}
+                      rows={puzzle.rows}
+                      cell={reactions.hudCell}
+                      options={reactionSet.options}
+                      onReact={reactions.sendFromHud}
+                    />
+                  )}
                 </div>
               )}
             </div>
+            {/* The persistent mini-tray, set quietly below the board. Present once synced, in
+                every game status (post-completion celebration is intended, §9), mosaic included;
+                reactions anchor to the current cursor cell, which survives completion. */}
+            {!awaitingFirstSync && (
+              <div className="mt-3 flex shrink-0 justify-center md:mt-4">
+                <ReactionTray
+                  options={reactionSet.options}
+                  onReact={(emoji) => reactions.send(emoji, selection.cell)}
+                />
+              </div>
+            )}
           </div>
 
           <ClueRail

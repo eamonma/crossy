@@ -35,6 +35,15 @@ public struct CrossyGridView: View {
     /// back to the event log's last writer (sequencedWriters): the fallback when the
     /// fetch is absent, and every non-completion caller.
     private let mosaicOwners: [Int: String]?
+    /// The reaction sticker book (PROTOCOL.md §9), rendered by the view overlay
+    /// above the draw pass (ReactionStickerLayer; the entry-shake fix keeps
+    /// stickers out of the per-frame Canvas). Nil for callers without reactions
+    /// (previews, older rigs): the overlay never mounts then.
+    private let reactions: ReactionModel?
+    /// The ReactionLab's Reduce Motion preview (the system environment value is the
+    /// system's to set; a rig cannot). True renders the sticker layer upright and
+    /// fade-only exactly as the real setting would; the room always passes false.
+    private let simulatesReduceMotion: Bool
     /// The standing chrome's cover over the full-bleed board (the clamp's
     /// scroll-inset window): constant under clue growth by construction, so the
     /// board never moves with clue length.
@@ -78,6 +87,8 @@ public struct CrossyGridView: View {
         selection: GridSelection?,
         crossReference: Set<Int> = [],
         initialCamera: GridCamera? = nil,
+        reactions: ReactionModel? = nil,
+        simulatesReduceMotion: Bool = false,
         mosaicStartedAt: TimeInterval? = nil,
         mosaicOwners: [Int: String]? = nil,
         occlusion: GridOcclusion = .none,
@@ -90,6 +101,8 @@ public struct CrossyGridView: View {
         self.ground = ground
         self.selection = selection
         self.crossReference = crossReference
+        self.reactions = reactions
+        self.simulatesReduceMotion = simulatesReduceMotion
         self.mosaicStartedAt = mosaicStartedAt
         self.mosaicOwners = mosaicOwners
         self.occlusion = occlusion
@@ -132,6 +145,11 @@ public struct CrossyGridView: View {
             }
             // The timeline drives redraws only while a flash decays or the mosaic
             // plays; at rest the Canvas redraws only when the snapshot inputs change.
+            // Reaction stickers deliberately do NOT ride this Canvas: per-frame
+            // Canvas redraws re-rasterize the emoji at every intermediate scale,
+            // which read as entry shake on device (owner finding 2026-07-14). They
+            // live in the view overlay below, where Core Animation transforms each
+            // glyph's one rasterized layer (ReactionStickerLayer).
             TimelineView(
                 .animation(minimumInterval: nil, paused: flashes.isEmpty && mosaic == nil)
             ) { timeline in
@@ -144,6 +162,18 @@ public struct CrossyGridView: View {
                 }
             }
             .background(Color(rgb: ground.tokens.canvas))
+            // The sticker layer, a view overlay above the whole draw pass (mosaic
+            // included, so completed-grid reactions paint over the bloom exactly as
+            // the web overlay paints above its SVG). Its own view, so sticker
+            // mutations re-evaluate only its body, never this one; hit-inert, so
+            // the grid keeps every touch.
+            .overlay {
+                if let reactions {
+                    ReactionStickerLayer(
+                        reactions: reactions, puzzle: puzzle, camera: camera,
+                        reduceMotion: reduceMotion || simulatesReduceMotion)
+                }
+            }
             .gesture(
                 SpatialTapGesture().onEnded { value in
                     guard

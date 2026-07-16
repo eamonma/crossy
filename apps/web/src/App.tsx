@@ -29,8 +29,14 @@ import {
 import type { Selection } from "./input/actions";
 import { CrosswordGrid } from "./ui/CrosswordGrid";
 import type { FlashEntry, PresenceEntry } from "./ui/CrosswordGrid";
+import { useReactions } from "./reactions/useReactions";
+import { usePersonalReactionSet } from "./reactions/useReactionSet";
+import { ReactionTray } from "./reactions/ReactionTray";
+import { ReactionHud } from "./reactions/ReactionHud";
+import { ReactionStickers } from "./reactions/ReactionStickers";
 import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
+import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
 import type { StackMember } from "./ui/primitives";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
@@ -313,6 +319,12 @@ function DemoApp({
 
   const store = session.store;
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
+  // Reactions on the demo board (Wave 7.3): the same hook the live game uses, so send + local echo
+  // + receive-any + the leader HUD run without a backend. The "Teammate reacts" button below drives
+  // the receive path through the fake session. The set resolves from the identity session like the
+  // live game (Wave 8.4); with no backend and no personal set that is the default five.
+  const reactionSet = usePersonalReactionSet(identity);
+  const reactions = useReactions(store, reactionSet);
 
   const board = boardById(boardId);
   const puzzle = board.puzzle;
@@ -441,6 +453,12 @@ function DemoApp({
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>): void {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Reaction keys first (leader HUD, mapped fire, `?`/`!` direct keys, captured held repeats);
+    // an unmapped key inside the HUD falls through to the letter handler below (Wave 7.3).
+    if (reactions.handleKeyDown(e.key, selection.cell, e.repeat)) {
+      e.preventDefault();
+      return;
+    }
     const effect = keyEffect(
       { grid, filled, selection, frozen, prefs: navPrefs },
       e.key,
@@ -518,6 +536,13 @@ function DemoApp({
           <Button
             variant="secondary"
             size="sm"
+            onClick={() => session.teammateReact()}
+          >
+            Teammate reacts
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => session.completeGame()}
           >
             Complete game
@@ -573,8 +598,12 @@ function DemoApp({
         // live bloom. The demo has no backend, so no `source`: the owner map is last-writer only,
         // resolved through mosaicMembers (which colors the seeded cells so the preview paints).
         <div
-          className="board-wrap max-w-[620px] mx-auto"
+          className="board-wrap relative outline-none max-w-[620px] mx-auto"
           aria-label="Solved crossword grid"
+          ref={gridRef}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onKeyUp={(e) => reactions.handleKeyUp(e.key)}
         >
           <CompletedMosaic
             store={store}
@@ -583,13 +612,41 @@ function DemoApp({
             members={mosaicMembers}
             bloom={bloomOnCompletion}
           />
+          {/* The same selection and aim layer LiveApp mounts, so `?demo=1` proves the completed
+              board is selectable without a live room: click a cell, the ring moves, the tray and
+              the `/` HUD anchor there (§9). The demo's onCellClick focuses this wrapper (gridRef),
+              so keyboard aim survives a click; the grid and mosaic never mount at once here (the
+              ternary), so they share the one ref safely. */}
+          <MosaicSelectLayer
+            grid={grid}
+            selectedCell={selection.cell}
+            onSelect={onCellClick}
+          />
+          {/* Reactions stay legal in any game status (§9): stickers paint over the mosaic
+              exactly as over the live grid, the same treatment LiveApp mounts. */}
+          <ReactionStickers
+            cols={puzzle.cols}
+            rows={puzzle.rows}
+            blocks={puzzle.blocks}
+            reactions={reactions.entries}
+          />
+          {reactions.hudOpen && reactions.hudCell !== null && (
+            <ReactionHud
+              cols={puzzle.cols}
+              rows={puzzle.rows}
+              cell={reactions.hudCell}
+              options={reactionSet.options}
+              onReact={reactions.sendFromHud}
+            />
+          )}
         </div>
       ) : (
         <div
-          className="board-wrap outline-none max-w-[620px] mx-auto"
+          className="board-wrap relative outline-none max-w-[620px] mx-auto"
           ref={gridRef}
           tabIndex={0}
           onKeyDown={onKeyDown}
+          onKeyUp={(e) => reactions.handleKeyUp(e.key)}
           aria-label="Crossword grid. Arrow keys move, letters fill, Tab jumps clues."
         >
           <CrosswordGrid
@@ -601,8 +658,31 @@ function DemoApp({
             onCellClick={onCellClick}
             onFlashEnd={onFlashEnd}
           />
+          {/* The sticker layer, an HTML overlay above the SVG (the settle-pop fix). */}
+          <ReactionStickers
+            cols={puzzle.cols}
+            rows={puzzle.rows}
+            blocks={puzzle.blocks}
+            reactions={reactions.entries}
+          />
+          {reactions.hudOpen && reactions.hudCell !== null && (
+            <ReactionHud
+              cols={puzzle.cols}
+              rows={puzzle.rows}
+              cell={reactions.hudCell}
+              options={reactionSet.options}
+              onReact={reactions.sendFromHud}
+            />
+          )}
         </div>
       )}
+      {/* The tray stands in every game status (post-completion celebration is intended, §9). */}
+      <div className="mt-3 flex justify-center">
+        <ReactionTray
+          options={reactionSet.options}
+          onReact={(emoji) => reactions.send(emoji, selection.cell)}
+        />
+      </div>
 
       {store.status === "completed" && !dismissedCompletion && (
         // The completion card, layered over the mosaic board above exactly as in LiveApp: the

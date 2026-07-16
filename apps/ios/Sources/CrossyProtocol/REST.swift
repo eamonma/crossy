@@ -44,6 +44,11 @@ public enum APIErrorCode: String, Codable, Sendable, Equatable, CaseIterable {
     case nameRequired = "NAME_REQUIRED"
     case nameTooLong = "NAME_TOO_LONG"
     case nameInvalid = "NAME_INVALID"
+    // Named reaction-set rejections (§9, §12; DESIGN.md D25), the NAME_* style: a
+    // well-formed body whose `reactionSet` violates a rule the person can read and fix.
+    case reactionSetLength = "REACTION_SET_LENGTH"
+    case reactionSetInvalid = "REACTION_SET_INVALID"
+    case reactionSetDuplicate = "REACTION_SET_DUPLICATE"
     // The write window is spent (PATCH /me is rate-limited per user); carries Retry-After.
     case rateLimited = "RATE_LIMITED"
 
@@ -57,7 +62,8 @@ public enum APIErrorCode: String, Codable, Sendable, Equatable, CaseIterable {
         case .internalError: return 500
         case .rateLimited: return 429
         case .unsolvableCell, .rebusTooLong, .oversizeGrid, .ambiguousSolution,
-            .degenerateGrid, .diagramless, .nameRequired, .nameTooLong, .nameInvalid:
+            .degenerateGrid, .diagramless, .nameRequired, .nameTooLong, .nameInvalid,
+            .reactionSetLength, .reactionSetInvalid, .reactionSetDuplicate:
             return 422
         }
     }
@@ -891,19 +897,26 @@ public struct MeResponse: Sendable, Equatable, Codable {
     /// The server-computed onboarding trigger: true iff a permanent account is nameless.
     /// Present onboarding iff this is true (R3: the naming policy lives on the server).
     public let needsName: Bool
+    /// The caller's personal reaction set: five emoji graphemes in slot order, or nil
+    /// for the default five (PROTOCOL.md §9, §12; D25). A current server always writes
+    /// the key (null until an account chooses); the synthesized optional also tolerates
+    /// an older server that omits it (§14), which reads the same as null: the defaults.
+    public let reactionSet: [String]?
 
     public init(
         userId: String,
         displayName: String?,
         isAnonymous: Bool,
         avatarUrl: String?,
-        needsName: Bool
+        needsName: Bool,
+        reactionSet: [String]? = nil
     ) {
         self.userId = userId
         self.displayName = displayName
         self.isAnonymous = isAnonymous
         self.avatarUrl = avatarUrl
         self.needsName = needsName
+        self.reactionSet = reactionSet
     }
 }
 
@@ -916,5 +929,35 @@ public struct UpdateDisplayNameRequest: Sendable, Equatable, Codable {
 
     public init(displayName: String) {
         self.displayName = displayName
+    }
+}
+
+/// The `PATCH /me` request body for the personal reaction set (§9, §12; D25): five
+/// graphemes in slot order, or null to reset to the defaults. The Codable is
+/// hand-written because null is a VALUE here, not an omission: the server reads a
+/// missing `reactionSet` as "nothing to update" (400 VALIDATION on an otherwise empty
+/// patch), so encode always writes the key, explicit null included, and decode requires
+/// it. The set is sent byte-exact; the server owns validation (the REACTION_SET_* 422s),
+/// though `ReactionSetSpec.validate` lets an editor name the same rule at the edge.
+public struct UpdateReactionSetRequest: Sendable, Equatable, Codable {
+    public let reactionSet: [String]?
+
+    public init(reactionSet: [String]?) {
+        self.reactionSet = reactionSet
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case reactionSet
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reactionSet = try container.decode([String]?.self, forKey: .reactionSet)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        // Explicit null when nil: null IS the reset command (§12), never an absence.
+        try container.encode(reactionSet, forKey: .reactionSet)
     }
 }

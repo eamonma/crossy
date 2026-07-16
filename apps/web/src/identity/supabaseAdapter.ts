@@ -26,11 +26,12 @@ import type {
   IdentitySession,
   SessionChangeCause,
   SetDisplayNameResult,
+  SetReactionSetResult,
   SignInProvider,
   UserProfile,
 } from "./types";
 import type { Bearer } from "../net/authedFetch";
-import { getMe, setDisplayName } from "../profile/api";
+import { getMe, setDisplayName, setReactionSet } from "../profile/api";
 
 /** Refresh the token when it has under a minute left, so REST and the WS hello get a fresh one. */
 const REFRESH_THRESHOLD_SEC = 60;
@@ -123,6 +124,16 @@ export function avatarUrlOf(user: User): string | null {
     }
   }
   return null;
+}
+
+/** Same personal reaction set? Null (the defaults) equals only null; arrays compare elementwise on
+ *  the exact grapheme strings (PROTOCOL.md §12: distinctness and identity are byte-exact). */
+function reactionSetsEqual(
+  a: readonly string[] | null,
+  b: readonly string[] | null,
+): boolean {
+  if (a === null || b === null) return a === b;
+  return a.length === b.length && a.every((e, i) => e === b[i]);
 }
 
 function toSession(session: Session | null): IdentitySession | null {
@@ -313,20 +324,27 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
   };
 
   /**
-   * Reconcile IdentitySession.displayName to the app-DB value (R5): the single point where the
-   * chrome's name becomes the /me truth rather than the empty bootstrap. Only a permanent
-   * account adopts a non-null /me name; an anonymous guest keeps its "Guest" label. When the
-   * name actually changed, notify listeners with "refreshed" so the chrome re-renders (the
-   * identity itself did not change, so identityChanged would not have fired). Returns nothing;
-   * the caller already holds the profile it read.
+   * Reconcile the session to the /me app-DB values: the single point where the chrome's state
+   * becomes the /me truth rather than the bootstrap. The display name (R5): only a permanent
+   * account adopts a non-null /me name; an anonymous guest keeps its "Guest" label. The reaction
+   * set (§12): every account adopts it, guests included (their /me works and holds the column
+   * like any account's). When anything actually changed, notify listeners with "refreshed" so the
+   * chrome, the tray, and the HUD re-render (the identity itself did not change, so
+   * identityChanged would not have fired). Returns nothing; the caller already holds the profile.
    */
-  function adoptProfileName(profile: UserProfile): void {
+  function adoptProfile(profile: UserProfile): void {
     if (current === null) return;
     if (current.userId !== profile.userId) return;
-    if (profile.isAnonymous) return;
-    const next = profile.displayName;
-    if (next === null || next === current.displayName) return;
-    current = { ...current, displayName: next };
+    let next = current;
+    const name = profile.displayName;
+    if (!profile.isAnonymous && name !== null && name !== next.displayName) {
+      next = { ...next, displayName: name };
+    }
+    if (!reactionSetsEqual(next.reactionSet ?? null, profile.reactionSet)) {
+      next = { ...next, reactionSet: profile.reactionSet };
+    }
+    if (next === current) return;
+    current = next;
     for (const cb of listeners) cb(current, "refreshed");
   }
 
@@ -484,11 +502,11 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       return { ok: true };
     },
     async loadProfile(): Promise<UserProfile> {
-      // GET /me over the shared bearer. On success reconcile the session name to the app-DB
-      // truth (R5) so the chrome renders /me, not the token-metadata derivation. A throw
-      // (transport or non-2xx) propagates to the caller, which retries; it is never a sign-out.
+      // GET /me over the shared bearer. On success reconcile the session to the app-DB truth
+      // (the name, R5, and the reaction set, §12) so the chrome renders /me, not the bootstrap.
+      // A throw (transport or non-2xx) propagates to the caller, which retries; never a sign-out.
       const profile = await getMe(deps.apiBase, bearer);
-      adoptProfileName(profile);
+      adoptProfile(profile);
       return profile;
     },
     async setDisplayName(name: string): Promise<SetDisplayNameResult> {
@@ -496,7 +514,17 @@ export function createSupabaseIdentity(deps: SupabaseIdentityDeps): Identity {
       // (firing onChange("refreshed") so the chrome updates). A failure is a typed reason the
       // caller renders inline; this method never throws (R4).
       const result = await setDisplayName(deps.apiBase, bearer, name);
-      if (result.ok) adoptProfileName(result.profile);
+      if (result.ok) adoptProfile(result.profile);
+      return result;
+    },
+    async setReactionSet(
+      set: readonly string[] | null,
+    ): Promise<SetReactionSetResult> {
+      // PATCH /me `{reactionSet}` and, on success, adopt the canonical set the server returns
+      // into the session (firing onChange("refreshed") so the tray and the HUD re-render with
+      // the new five, no reload). A failure is a typed reason the caller renders inline.
+      const result = await setReactionSet(deps.apiBase, bearer, set);
+      if (result.ok) adoptProfile(result.profile);
       return result;
     },
     async signOut(): Promise<void> {

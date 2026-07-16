@@ -27,6 +27,11 @@ struct ContentView: View {
         // The glassEffectID recheck rig (MorphLab.swift): evidence only.
         if ProcessInfo.processInfo.arguments.contains("-morphLab") {
             MorphLab()
+        } else if ProcessInfo.processInfo.arguments.contains("-reactionLab") {
+            // The reaction sticker/fan rig (ReactionLab.swift, Wave 7.5): the
+            // motion review surface for stickers, piles, the coalesce pulse, the
+            // settle-boundary proof, and the fan. Evidence only.
+            ReactionLab()
         } else if ProcessInfo.processInfo.arguments.contains("-meltLab") {
             // The scrubbed melt's recheck rig (MeltLab.swift): evidence only.
             MeltLab()
@@ -79,6 +84,15 @@ struct ContentView: View {
         return arguments.contains("-demoRoom")
             || arguments.contains { $0.hasPrefix("-i2") }
     }
+
+    /// The reaction fan's placement (Wave 7.5, revised 2026-07-14: the owner leaned
+    /// detached, so floating is the default and the in-bar corner is the flagged
+    /// variant). One read for the demo room and the live one, so the A/B never
+    /// diverges between them.
+    static var reactionFanPlacement: ReactionFanPlacement {
+        ProcessInfo.processInfo.arguments.contains("-reactionFanClueBarCorner")
+            ? .clueBarCorner : .floating
+    }
 }
 
 /// The offline fixture room (DemoRoom): a typeable board with no network.
@@ -90,6 +104,12 @@ struct DemoRoomView: View {
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
     @State private var shareURL: URL?
+    /// The personal reaction set the fan wears (D25): the arrival flow passes the
+    /// model's shared store so a Settings edit reaches this room live; the standalone
+    /// -i2*/-demoRoom rigs pass none and the fallback below still reads the cached
+    /// five off the shared UserDefaults, so every composition wears the person's set.
+    var reactionSets: ReactionSetStore?
+    @State private var fallbackReactionSets = ReactionSetStore()
     var onBack: () -> Void = {}
 
     var body: some View {
@@ -131,7 +151,13 @@ struct DemoRoomView: View {
                     gameId: room.gameId, code: room.inviteCode)
             },
             onEndGame: {},
-            onKick: { _ in }
+            onKick: { _ in },
+            // The Wave 7.5 placement pick (owner lean 2026-07-14): floating by
+            // default, the in-bar corner behind -reactionFanClueBarCorner.
+            reactionFanPlacement: ContentView.reactionFanPlacement,
+            // The personal five (D25): the shared store when the arrival flow
+            // composes this room, else the cache-backed fallback.
+            reactionSets: reactionSets ?? fallbackReactionSets
         )
         // The island (I5a): starts on backgrounding an ongoing room, per the
         // policy the composition root feeds (SolveActivityController). `total` is
@@ -177,14 +203,21 @@ struct RealRoomView: View {
     /// One avatar cache shared by the room's live pucks and the island snapshot, so the
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
+    /// The personal reaction set the fan wears (D25): the arrival flow passes the
+    /// model's shared store, so a Settings edit reaches this room live; the harness
+    /// composition passes none and the fallback still reads the cached five.
+    private let reactionSets: ReactionSetStore?
+    @State private var fallbackReactionSets = ReactionSetStore()
     @Environment(\.colorScheme) private var colorScheme
 
     init(
         room: RealRoom,
+        reactionSets: ReactionSetStore? = nil,
         onBack: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {}
     ) {
         _room = State(initialValue: room)
+        self.reactionSets = reactionSets
         self.onBack = onBack
         self.onExit = onExit
     }
@@ -306,7 +339,12 @@ struct RealRoomView: View {
                     // (AD-2: CrossyUI stays out of the REST ring); the solve screen
                     // owns the when (completed) and the retries (owner ruling
                     // 2026-07-13).
-                    fetchAnalysis: { await room.fetchAnalysis() }
+                    fetchAnalysis: { await room.fetchAnalysis() },
+                    // The Wave 7.5 placement pick, same flag as the demo room.
+                    reactionFanPlacement: ContentView.reactionFanPlacement,
+                    // The personal five (D25): the shared store when the arrival
+                    // flow composes this room, else the cache-backed fallback.
+                    reactionSets: reactionSets ?? fallbackReactionSets
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so

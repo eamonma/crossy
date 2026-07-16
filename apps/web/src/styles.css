@@ -660,6 +660,230 @@
 }
 
 /*
+ * Reaction stickers (ROADMAP Phase 7 Wave 7.3), rendered as an HTML overlay above the board SVG
+ * (reactions/ReactionStickers.tsx). The feel is the iMessage-loud grammar (owner ruling
+ * 2026-07-14, replacing the original spring slap): the sticker fades in small, balloons to ~1.9x,
+ * trembles, settles to rest, then shrinks and fades at decay. The tremble rotates the animated
+ * `transform`, which composes AFTER the outer .sticker's static `rotate` tilt, so the wobble
+ * swings around the seeded lean rather than fighting it. A coalesced re-tap remounts into the
+ * same gesture: a repeat shout, not a softer echo. The entrance stacks the --out tail on one
+ * delay, so the model can remove the node exactly as the fade ends.
+ *
+ * Two rules keep the resting sticker pixel-still (owner bugs 2026-07-14):
+ * - Between the entrance and the exit NOTHING animates and nothing is held by a fill, so the
+ *   resting render is the element's natural state and cannot mismatch either endpoint. Position
+ *   and the static `rotate` tilt live on the outer .sticker; the keyframes touch only transform
+ *   and opacity on the inner .sticker-pop, and every transform keyframe ends at identity.
+ * - The settle pop proper: animating an SVG <text> transform swapped rasters at the animation
+ *   boundary (the compositor rasterizes against a fill-box-resolved origin, the static painter
+ *   re-resolves glyph geometry, and on hardware GPUs the handoff landed ~1px right, invisible to
+ *   layout values). The layer is HTML now, and will-change on .sticker-pop pins one compositor
+ *   layer per sticker from mount to unmount, so no promote/demote handoff exists to swap rasters.
+ */
+:root {
+  --sticker-life: 5000ms; /* REACTION_DECAY_MS: the model removes the node as this ends */
+  --sticker-in-dur: 1050ms;
+  --sticker-out-dur: 380ms;
+}
+
+/* The completed mosaic's selection and aim layer (ui/MosaicSelectLayer.tsx). The container fills the
+   board wrapper and is pointer-transparent, so a block (which gets no target) and any gap fall
+   through to the mosaic; each target below re-enables pointer events on itself. */
+.mosaic-select {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* One playable cell's click target: a transparent box positioned and sized by percentage (set
+   inline). It carries no paint, only the pointer, so the mosaic art shows through untouched. */
+.mosaic-select-target {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* The selection ring: the completed board's stand-in for the live grid's current-cell fill, which
+   the mosaic art forbids (no repaint). It never contrasts with a single owner color, so it is a
+   triple hairline that holds on any cell in either ground: a dark outer line reads over a pale wash,
+   the gold accent core is the brand's selection warmth, a light inner line reads over a dark wash.
+   All three are inset, so the whole ring sits inside the cell and an edge cell renders it flush and
+   never clipped. Inert: it never takes the pointer. */
+.mosaic-select-ring {
+  position: absolute;
+  pointer-events: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(20, 20, 16, 0.5),
+    inset 0 0 0 3px var(--color-gold-9),
+    inset 0 0 0 4px rgba(255, 255, 255, 0.85);
+}
+
+/* The overlay fills the board wrapper; positioned, so it paints above the SVG in flow. Cell
+   percentages inside it track any board resize with no script, and it is an inline-size
+   container so the glyph size below can be pure CSS too. */
+.board-stickers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  container-type: inline-size;
+}
+
+/* One sticker's static frame: the anchor point (left/top percentages set inline), the centering
+   translate, and the seeded tilt. Never animated, so the resting position has exactly one
+   source of truth for the sticker's whole life. */
+.sticker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  /* The seeded tilt, static for the sticker's whole life. It rides the `rotate` property (not the
+     animated `transform`) via the inline --tilt so the reduced-motion rule below can zero it. */
+  rotate: var(--tilt, none);
+  pointer-events: none;
+}
+
+/* The animated node. will-change pins its compositor layer from mount to unmount (a bounded
+   cost: at most four 5-second stickers per cell), so the entry animation's end never demotes a
+   layer and swaps rasters: that raster swap was the settle pop on hardware GPUs. The glyph is
+   23/36 of one cell, and one cell is 100cqi over the column count (the overlay is the
+   container; --board-cols is set inline by ReactionStickers). */
+.sticker-pop {
+  display: block;
+  font-size: calc(100cqi * 23 / 36 / var(--board-cols, 15));
+  line-height: 1;
+  will-change: transform, opacity;
+}
+
+/* The entrance carries NO fill on purpose: it ends at scale 1 / opacity 1, exactly the natural
+   values, so when it finishes the element simply rests unanimated until the delayed exit. The
+   exit keeps `forwards` so a removal that lags a frame holds opacity 0 instead of flashing.
+   The animation's own easing is linear; each phase names its curve on the keyframe. */
+.sticker-pop--in {
+  animation:
+    sticker-in var(--sticker-in-dur) linear,
+    sticker-out var(--sticker-out-dur) var(--ease-standard)
+      calc(var(--sticker-life) - var(--sticker-out-dur)) forwards;
+}
+
+/* The loud entrance: fade in small, balloon to 1.9x, tremble around the seeded tilt, settle to
+   identity. The tremble decays (5 -> 5 -> 4 -> 2 degrees) so the settle reads as spent momentum,
+   not a cut. */
+@keyframes sticker-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.35) rotate(0deg);
+    animation-timing-function: var(--ease-out);
+  }
+  16% {
+    opacity: 1;
+    transform: scale(1.9) rotate(0deg);
+    animation-timing-function: ease-in-out;
+  }
+  26% {
+    transform: scale(1.9) rotate(5deg);
+    animation-timing-function: ease-in-out;
+  }
+  38% {
+    transform: scale(1.9) rotate(-5deg);
+    animation-timing-function: ease-in-out;
+  }
+  50% {
+    transform: scale(1.9) rotate(4deg);
+    animation-timing-function: ease-in-out;
+  }
+  60% {
+    transform: scale(1.9) rotate(-2deg);
+    animation-timing-function: ease-in-out;
+  }
+  68% {
+    transform: scale(1.88) rotate(0deg);
+    animation-timing-function: var(--ease-out);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes sticker-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+
+/* Reduced motion: fade in and out only, no spring, no scale, and no tilt (the inline static
+   `rotate` is zeroed here, so the sticker sits upright and just dissolves). */
+@media (prefers-reduced-motion: reduce) {
+  .sticker {
+    rotate: none;
+  }
+  .sticker-pop--in {
+    animation:
+      sticker-fade-in 180ms var(--ease-out) both,
+      sticker-fade-out var(--sticker-out-dur) var(--ease-standard)
+        calc(var(--sticker-life) - var(--sticker-out-dur)) forwards;
+  }
+}
+
+@keyframes sticker-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sticker-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * The reaction HUD ring (Wave 7.3): a quick origin-centered pop on open, its transform keeping the
+ * -50%/-50% centering the component sets inline. Reduced motion swaps the scale for a plain fade.
+ */
+.hud-pop {
+  animation: hud-pop 130ms var(--ease-out) both;
+}
+
+@keyframes hud-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-pop {
+    animation: hud-fade 120ms var(--ease-out) both;
+  }
+}
+
+@keyframes hud-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/*
  * Contribution mosaic (ui/ContributionMosaic.tsx): the post-game reveal treatment of the solved
  * board. Each cell's owner color and its letter animate opacity as the arc moves INK -> FIELD ->
  * WASH; the per-cell transition-delay is set inline by the component to drive the diagonal sweep.

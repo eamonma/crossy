@@ -99,6 +99,32 @@ const PASSIVATE_SWEEP_INTERVAL_MS = 60_000;
 const CURSOR_MAX_PER_SECOND = 10;
 const CURSOR_WINDOW_MS = 1000;
 
+/** At most 5 `react` relays per second per socket (PROTOCOL.md §9); excess is dropped. */
+const REACTION_MAX_PER_SECOND = 5;
+
+/**
+ * The reaction send gate (PROTOCOL.md §9; DESIGN.md D25). The v1 five-grapheme allowlist is
+ * retired: a `react` is sendable iff its `emoji` is exactly one RGI emoji grapheme, so any one
+ * well-formed emoji is accepted and the personal reaction set stays a pure client preference the
+ * session never learns (D24, D25). The codec already shape-guards the field (non-empty, at most
+ * 32 UTF-8 bytes); this is the one rule the session layers on top. `\p{RGI_Emoji}` is the canonical
+ * Unicode property, matched anchored so the whole string must be exactly one emoji: "A", a digit,
+ * "🔥🔥" (two graphemes), and a bare text-presentation character like ♥ (U+2665, lacking the emoji
+ * variation selector U+FE0F) all fail; a flag, a skin-tone modifier, or a ZWJ sequence that is one
+ * RGI grapheme within the byte bound passes. No hand-rolled emoji ranges.
+ *
+ * RGI_Emoji is a Unicode *property of strings*, so it requires the regex `v` flag (under `u` it is a
+ * runtime SyntaxError, "Invalid property name"); a `u`-flag fallback is therefore not possible. Node
+ * >=24 (the repo's `engines`) supports `v` at runtime, but the TS toolchain targets ES2023 (< es2024)
+ * and rejects a `/…/v` literal (TS1501). The RegExp constructor keeps the required `v` flag and the
+ * ES2023 target with no config change, since its string flag is not target-checked. `.test` is
+ * stateless without the `g` flag, so this one shared instance is reused safely.
+ */
+const RGI_EMOJI = new RegExp("^\\p{RGI_Emoji}$", "v");
+function isSendableReaction(emoji: string): boolean {
+  return RGI_EMOJI.test(emoji);
+}
+
 /** Snapshot frames are the only ones worth compressing (SP4). */
 function isSnapshotFrame(frame: ServerMessage): boolean {
   return frame.type === "welcome" || frame.type === "sync";
@@ -410,6 +436,22 @@ function handleConnection(
     return true;
   };
 
+  // Per-socket reaction rate limit (PROTOCOL.md §9): the same sliding 1 s window as the cursor
+  // limit, capped at 5 relays, but a separate budget, so one presence family never consumes the
+  // other's.
+  const reactionSentAt: number[] = [];
+  const allowReaction = (nowMs: number): boolean => {
+    while (
+      reactionSentAt.length > 0 &&
+      nowMs - reactionSentAt[0]! >= CURSOR_WINDOW_MS
+    ) {
+      reactionSentAt.shift();
+    }
+    if (reactionSentAt.length >= REACTION_MAX_PER_SECOND) return false;
+    reactionSentAt.push(nowMs);
+    return true;
+  };
+
   ws.on("message", (data: RawData) => {
     // Any inbound frame resets liveness (PROTOCOL.md §9), heartbeat included, before routing.
     resetLiveness();
@@ -556,6 +598,32 @@ function handleConnection(
             userId: connection.userId,
             cell: message.cell,
             direction: message.direction,
+          });
+        }
+        return;
+      case "react":
+        // Relay the reaction to the other connections, rate-capped at 5/s, and record NOTHING: a
+        // reaction never enters a snapshot (there is no board.reactions), so this is pure fan-out,
+        // lighter than moveCursor which records the cursor for §4. The send gate (isSendableReaction,
+        // D25): `emoji` must be exactly one RGI emoji grapheme, and `cell` a valid target (in range,
+        // not a black square, the same isCursorTarget rule); any violation, a non-emoji `emoji`, a bad
+        // cell, or over-rate, is dropped silently, the same best-effort posture as moveCursor
+        // (PROTOCOL.md §9 defines no reaction error). Role is not gated: any participant, spectators
+        // included, may react (PROTOCOL.md §5), and it is legal in any game status, so no
+        // GAME_NOT_ONGOING gate touches it (§9). The emoji and cell checks precede allowReaction, so
+        // only a valid react spends the rate budget, exactly as the cursor relay guards allowCursor.
+        if (
+          actor !== null &&
+          connection !== null &&
+          isSendableReaction(message.emoji) &&
+          actor.isCursorTarget(message.cell) &&
+          allowReaction(Date.now())
+        ) {
+          actor.broadcastExcept(connection, {
+            type: "reaction",
+            userId: connection.userId,
+            emoji: message.emoji,
+            cell: message.cell,
           });
         }
         return;

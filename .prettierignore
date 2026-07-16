@@ -13,6 +13,11 @@ reports/
 *.xcassets/
 *.xcodeproj/
 
+# The extension's built output, mirrored into the iOS app as a committed derived cache
+# (sync-safari-extension.sh) so the Xcode build stays node-free. It is dist/ under
+# another name: never hand-edited, so never formatted.
+apps/ios/Crossy/SafariResources/
+
 # Untracked local reference bundle (never committed); ignored so local `format:check`
 # matches what CI sees on a clean clone.
 crossy-design-system (v2 reference)/

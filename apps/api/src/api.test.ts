@@ -259,6 +259,45 @@ afterAll(async () => {
   await container?.stop();
 }, 60_000);
 
+// CORS preflight: the SPA calls this API from a different origin (crossy.party ->
+// rest.crossy.party), so any request carrying Authorization is preceded by an OPTIONS
+// preflight. The allow-methods header must advertise every method the API routes, or the
+// browser blocks the real call. Regression: #236 added PATCH /me but left PATCH out of the
+// list, so the display-name write failed the preflight cross-origin (DESIGN.md §7).
+describe("CORS preflight advertises every served method (DESIGN.md §7)", () => {
+  const corsApp = () =>
+    buildApp({
+      db: createDb(apiPool),
+      authPort: auth,
+      sessionWsBase: SESSION_WS_BASE,
+      membershipNotifier,
+      vendorIdentity,
+      inviteHost: INVITE_HOST,
+      webOrigin: WEB_ORIGIN,
+      corsOrigin: WEB_ORIGIN,
+    });
+
+  it("answers OPTIONS /me with PATCH in allow-methods, so the SPA's display-name write is not blocked", async () => {
+    const res = await corsApp().request("/me", {
+      method: "OPTIONS",
+      headers: {
+        origin: WEB_ORIGIN,
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "authorization, content-type",
+      },
+    });
+    expect(res.status).toBe(204);
+    const methods = res.headers.get("access-control-allow-methods") ?? "";
+    for (const method of ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]) {
+      expect(methods).toContain(method);
+    }
+    expect(res.headers.get("access-control-allow-origin")).toBe(WEB_ORIGIN);
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "authorization",
+    );
+  });
+});
+
 describe("auth + JIT upsert (DESIGN.md §8; INV-7 users single writer)", () => {
   it("rejects a request with no bearer token as UNAUTHORIZED (PROTOCOL.md §12)", async () => {
     const res = await app.request("/puzzles", {
@@ -463,6 +502,7 @@ describe("self display identity /me (DESIGN.md name-onboarding; PROTOCOL.md §12
     isAnonymous: boolean;
     avatarUrl: string | null;
     needsName: boolean;
+    reactionSet: string[] | null;
   }
 
   it("GET /me returns needsName true and displayName null for a nameless permanent mint (R3)", async () => {
@@ -598,6 +638,120 @@ describe("self display identity /me (DESIGN.md name-onboarding; PROTOCOL.md §12
     expect(last!.status).toBe(429);
     await expectError(last!, "RATE_LIMITED");
     expect(last!.headers.get("retry-after")).not.toBeNull();
+  });
+
+  // Personal reaction sets (PROTOCOL.md §9, §12; DESIGN.md D25). The set is a nullable jsonb column
+  // the API owns (INV-7 single writer of users); null means the default five and is every account's
+  // state until it configures a set. A multi-codepoint single grapheme, one valid slot.
+  const FLAG_CA = "\u{1F1E8}\u{1F1E6}"; // 🇨🇦
+  const VALID_SET = ["🔥", "🤔", "🐐", "💀", "😭"];
+
+  it("GET /me returns reactionSet null by default (null means the default five, PROTOCOL.md §9)", async () => {
+    const res = await get("/me", await auth.mintUpgraded());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MeBody;
+    expect(body.reactionSet).toBeNull();
+  });
+
+  it("PATCH /me sets reactionSet byte-exact and GET /me round-trips it (INV-7 single writer of users)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    const set = ["🔥", "🤔", FLAG_CA, "💀", "😭"];
+    const patched = await patchJson("/me", token, { reactionSet: set });
+    expect(patched.status).toBe(200);
+    const body = (await patched.json()) as MeBody;
+    // Stored and returned byte-exact: no normalization strips the multi-codepoint grapheme.
+    expect(body.reactionSet).toEqual(set);
+    // The write is the single authoritative source: a later GET /me reads it back unchanged.
+    const after = (await (await get("/me", token)).json()) as MeBody;
+    expect(after.reactionSet).toEqual(set);
+  });
+
+  it("PATCH /me with reactionSet null resets to the defaults (the column back to null)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    await patchJson("/me", token, { reactionSet: VALID_SET });
+    const reset = await patchJson("/me", token, { reactionSet: null });
+    expect(reset.status).toBe(200);
+    expect(((await reset.json()) as MeBody).reactionSet).toBeNull();
+  });
+
+  it("PATCH /me patches reactionSet without touching displayName, and vice versa (INV-7, independent writes)", async () => {
+    const sub = randomUUID();
+    const token = await auth.mintUpgraded({ sub });
+    // Set only the name.
+    await patchJson("/me", token, { displayName: "Ada Lovelace" });
+    // Patch only the reaction set: the name must survive untouched.
+    const afterSet = (await (
+      await patchJson("/me", token, { reactionSet: VALID_SET })
+    ).json()) as MeBody;
+    expect(afterSet.displayName).toBe("Ada Lovelace");
+    expect(afterSet.reactionSet).toEqual(VALID_SET);
+    // Patch only the name: the reaction set must survive untouched.
+    const afterName = (await (
+      await patchJson("/me", token, { displayName: "Grace Hopper" })
+    ).json()) as MeBody;
+    expect(afterName.displayName).toBe("Grace Hopper");
+    expect(afterName.reactionSet).toEqual(VALID_SET);
+  });
+
+  it("PATCH /me writes both displayName and reactionSet in one patch", async () => {
+    const token = await auth.mintUpgraded({ sub: randomUUID() });
+    const res = await patchJson("/me", token, {
+      displayName: "Ada",
+      reactionSet: VALID_SET,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MeBody;
+    expect(body.displayName).toBe("Ada");
+    expect(body.reactionSet).toEqual(VALID_SET);
+  });
+
+  it("PATCH /me lets a guest configure a reaction set (its durable users row holds the column, DESIGN.md §8)", async () => {
+    const token = await auth.mintAnonymous({ sub: randomUUID() });
+    const res = await patchJson("/me", token, { reactionSet: VALID_SET });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as MeBody).reactionSet).toEqual(VALID_SET);
+  });
+
+  it("PATCH /me rejects a reactionSet that is not five entries as 422 REACTION_SET_LENGTH", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      reactionSet: ["🔥", "🤔", "🐐", "💀"],
+    });
+    expect(res.status).toBe(422);
+    await expectError(res, "REACTION_SET_LENGTH");
+  });
+
+  it("PATCH /me rejects a reactionSet entry that is not one emoji as 422 REACTION_SET_INVALID", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      reactionSet: ["🔥", "🤔", "🐐", "💀", "nope"],
+    });
+    expect(res.status).toBe(422);
+    await expectError(res, "REACTION_SET_INVALID");
+  });
+
+  it("PATCH /me rejects a repeated reactionSet entry as 422 REACTION_SET_DUPLICATE", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      reactionSet: ["🔥", "🤔", "🐐", "💀", "🔥"],
+    });
+    expect(res.status).toBe(422);
+    await expectError(res, "REACTION_SET_DUPLICATE");
+  });
+
+  it("PATCH /me rejects a non-array reactionSet as 400 VALIDATION (wrong type, not a 422)", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      reactionSet: "🔥🤔🐐💀😭",
+    });
+    expect(res.status).toBe(400);
+    await expectError(res, "VALIDATION");
+  });
+
+  it("PATCH /me rejects a reactionSet array with a non-string element as 400 VALIDATION", async () => {
+    const res = await patchJson("/me", await auth.mintUpgraded(), {
+      reactionSet: ["🔥", "🤔", "🐐", "💀", 5],
+    });
+    expect(res.status).toBe(400);
+    await expectError(res, "VALIDATION");
   });
 });
 

@@ -53,6 +53,9 @@ struct ArrivalRootView: View {
     /// inside Rooms. A per-tab path keeps a room started from Puzzles landing back on
     /// Puzzles, and its own tab bar hides while the room is up (the full-bleed ruling).
     @State private var puzzlesPath: [ArrivalRoute] = []
+    /// The puzzle a crossy://play deep link preselects in the library (CrossyApp set it via
+    /// PendingPlay): handed to PuzzlesScreen, which scrolls to and briefly rings that card.
+    @State private var puzzlesPlayIntent: String?
     /// The join sheet's presentation state and its zoom namespace. The namespace
     /// lives here, not in RoomsScreen, because the sheet is presented from this
     /// hierarchy; the button downstream stamps itself as the matching source.
@@ -125,6 +128,9 @@ struct ArrivalRootView: View {
     @Environment(\.colorScheme) private var colorScheme
     /// The invite a Universal Link delivered (CrossyApp set it via InviteScan).
     @Environment(PendingInvite.self) private var pendingInvite
+    /// The puzzle a crossy://play deep link delivered (CrossyApp set it): the Safari
+    /// extension's "Play in Crossy" hand-off, played here via the library's startGame.
+    @Environment(PendingPlay.self) private var pendingPlay
     /// The magic link a Universal Link delivered (CrossyApp set it via AuthConfirm,
     /// roadmap I3b): completed against the session here, the PendingInvite precedent.
     @Environment(PendingMagicLink.self) private var pendingMagicLink
@@ -216,6 +222,7 @@ struct ArrivalRootView: View {
         .task {
             if let userId = model.session.userId { analytics.identify(userId: userId) }
             honorPendingInvite()
+            honorPendingPlay()
             // A cold launch straight from a magic link: the link is set before this
             // view's observers register (the invite's cold-launch reasoning), so
             // complete it once on appear. AuthSession no-ops it when already signing in.
@@ -223,6 +230,7 @@ struct ArrivalRootView: View {
         }
         // A link arriving while the app runs.
         .onChange(of: pendingInvite.code) { honorPendingInvite() }
+        .onChange(of: pendingPlay.puzzleId) { honorPendingPlay() }
         .onChange(of: pendingMagicLink.link) { completePendingMagicLink() }
         .onChange(of: model.isSignedIn) { _, signedIn in
             if signedIn {
@@ -235,6 +243,7 @@ struct ArrivalRootView: View {
                 // Sign-in completed: honor an invite that was held while signed out
                 // (the held-invite promise, EXPERIENCE.md §3).
                 honorPendingInvite()
+                honorPendingPlay()
             } else {
                 // Sign-out, deletion, or a terminal refresh refusal: the identity is
                 // no longer standing, so analytics forgets it too.
@@ -359,6 +368,22 @@ struct ArrivalRootView: View {
         }
     }
 
+    /// Honor a crossy://play/<id> deep link from the Safari extension's "Play in Crossy".
+    /// The extension already imported the puzzle (POST /puzzles); this just lands the solver
+    /// in the library where it appears, and they start a game manually from there. Puzzle
+    /// import NEVER auto-starts a game: the web app enforces the manual start (nav.ts, the
+    /// `?play=` preselect intent), and forking that on iOS would be wrong. Held through
+    /// sign-in when signed out (runs again on that edge), cleared on consumption so it fires
+    /// exactly once. Preselecting the specific card, the web's `?play=`, is a follow-up.
+    private func honorPendingPlay() {
+        guard model.isSignedIn, let puzzleId = pendingPlay.puzzleId else { return }
+        pendingPlay.puzzleId = nil
+        showJoin = false
+        puzzlesPath.removeAll()
+        puzzlesPlayIntent = puzzleId
+        tab = .puzzles
+    }
+
     /// Complete a magic link a Universal Link delivered (roadmap I3b): hand its
     /// token_hash and type to the session, which drives the same signed-in outcome the
     /// email OTP and the primary buttons do (the shell swaps in through the phase alone).
@@ -461,7 +486,8 @@ struct ArrivalRootView: View {
                         },
                         onOpenRoom: { gameId in
                             puzzlesPath.append(roomRoute(for: gameId))
-                        })
+                        },
+                        playIntent: puzzlesPlayIntent)
                     // The list draws its own big "Puzzles" title, so the system
                     // navigation bar stays hidden (the RoomsScreen pattern); the room
                     // hides its own bar in the destination.
@@ -574,6 +600,12 @@ struct ArrivalRootView: View {
                 // card keys on. On success the model adopts the canonical name into
                 // selfProfile too, so the identity stays consistent across the tab.
                 onSaveDisplayName: { name in await model.setDisplayName(name) },
+                // The Reactions section (Wave 8.5; D25): the model's ONE shared store,
+                // the same instance every room's fan reads, so an edit here reaches an
+                // open room live. The save is PATCH /me digested to the typed outcome;
+                // the model mirrors a saved canonical set into the store itself.
+                reactionSets: model.reactionSets,
+                onSaveReactionSet: { set in await model.setReactionSet(set) },
                 onOpenLegal: { settingsLegal = legalItem(for: $0) })
                 .sheet(item: $settingsLegal) { item in
                     SafariSheet(url: item.url)
@@ -619,17 +651,20 @@ struct ArrivalRootView: View {
                         // payload from it before the REST fetch.
                         seed: roomSeeds[gameId],
                         navigationPrefs: { typingPrefs.navigationPrefs }),
+                    // The model's shared personal-set store (D25): the fan is born
+                    // wearing the synced five and follows a Settings edit live.
+                    reactionSets: model.reactionSets,
                     onBack: pop,
                     onExit: pop
                 )
                 .modifier(RoomNavBarChrome())
             } else {
                 // Unreachable: roomRoute(for:) only builds .room with live facts.
-                DemoRoomView(onBack: pop)
+                DemoRoomView(reactionSets: model.reactionSets, onBack: pop)
                     .modifier(RoomNavBarChrome())
             }
         case .fixtureRoom:
-            DemoRoomView(onBack: pop)
+            DemoRoomView(reactionSets: model.reactionSets, onBack: pop)
                 .modifier(RoomNavBarChrome())
         }
     }

@@ -4,9 +4,8 @@
 //
 // Two states share one dashed-underlined bar. A full account is one tap from solving, so it reads
 // as an invitation to upgrade. A guest can never hold solver or host (DESIGN.md section 8, server
-// FULL_ACCOUNT_REQUIRED), so the bar states the honest deal instead: watching is free, solving
-// needs an account, and a tap starts that sign-in with either provider. Copy never surfaces an
-// error code.
+// FULL_ACCOUNT_REQUIRED), so the bar states the honest deal instead: solving needs an account, and
+// a tap starts that sign-in with either provider. Copy never surfaces an error code.
 export function SpectateBanner({
   guest,
   onUpgrade,
@@ -27,7 +26,7 @@ export function SpectateBanner({
     return (
       <div className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gold-3 border-b border-dashed border-border-dashed text-2">
         <span className="text-text-muted">
-          {signingIn ? "Taking you there..." : "Watching is free."}
+          {signingIn ? "Taking you there..." : "Sign in to solve with"}
         </span>
         {!signingIn && (
           <>
@@ -37,7 +36,7 @@ export function SpectateBanner({
               disabled={signingIn}
               className="font-medium text-text underline decoration-dashed underline-offset-4 disabled:opacity-70"
             >
-              Continue with Discord to solve
+              Discord
             </button>
             <span className="text-text-muted">or</span>
             <button

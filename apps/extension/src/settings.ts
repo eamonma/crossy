@@ -23,6 +23,39 @@ export function playIntentUrl(puzzleId: string): string {
   return `${WEB_ORIGIN}/puzzles?play=${encodeURIComponent(puzzleId)}`;
 }
 
+/**
+ * The Crossy app's custom-scheme play intent, used where the app is present: iOS Safari,
+ * where this extension ships inside the app, so the app is guaranteed installed. A tab the
+ * worker opens programmatically never triggers a Universal Link, so the extension
+ * deep-links the app directly; CrossyApp.onOpenURL routes `crossy://play/<id>` to the same
+ * startGame the library uses. Chrome, Firefox, and desktop have no app and keep the web
+ * intent above.
+ */
+export function appPlayUrl(puzzleId: string): string {
+  return `crossy://play/${encodeURIComponent(puzzleId)}`;
+}
+
+/**
+ * The "Play in Crossy" URL builder for this runtime, the one place the app-vs-web choice
+ * lives. On Apple platforms (iOS/iPadOS) the extension ships inside the Crossy app, so both
+ * play surfaces (the on-page pill and the popup) deep-link the app; every other browser has
+ * no app and opens the web intent. Taking the userAgent as data keeps it testable and keeps
+ * the two call sites (background worker, popup) from drifting apart.
+ */
+export function selectPlayUrl(userAgent: string): (puzzleId: string) => string {
+  return /iP(hone|ad|od)/.test(userAgent) ? appPlayUrl : playIntentUrl;
+}
+
+/**
+ * Safari sign-in redirect target. Safari has no identity.getRedirectURL and refuses to
+ * redirect an OAuth provider to a custom-scheme (extension) URL, so redirect_to must be a
+ * real hosted https page. This inert page's content script hands the ?code= back to the
+ * worker (auth/callback.ts); the page must not run supabase-js, or the SPA would consume
+ * the single-use code first. Pinned to the web origin; must be in the Supabase auth
+ * redirect allowlist. Chrome and Firefox never use it (they capture via identity).
+ */
+export const AUTH_CALLBACK_URL = `${WEB_ORIGIN}/auth/ext/callback`;
+
 /** Public by design: the same publishable key the web client ships in /config.json. */
 export const DEFAULT_PUBLISHABLE_KEY =
   "sb_publishable_Ms9_XHXO1KwRAbtxM0JrSA_drJ0r7Pd";
@@ -119,4 +152,43 @@ export function requestOriginPermissions(
 ): Promise<boolean> {
   const origins = baseUrls.map(originPattern);
   return chrome.permissions.request({ origins });
+}
+
+/**
+ * The crossword publisher sites this extension reads, as host-permission match patterns
+ * (origin level, path wildcarded). The single source of truth for "the crossword sites"
+ * the popup offers to enable in one tap; keep it in lockstep with public/manifest.json
+ * content_scripts (add a site's content script, add its origin here). The Guardian ships
+ * both the apex and www hosts, so both are listed; AmuseLabs runs under many subdomains,
+ * so its pattern is wildcarded.
+ *
+ * Safari is why this exists: it withholds host access until the user grants it per site,
+ * and content scripts stay dormant until then (a real puzzle page reads as "unsupported"
+ * because the extractor never injected). Safari reliably prompts for a named-host list
+ * from a gesture, where an all-urls request is flaky on iOS, so we ask for exactly these.
+ */
+export const PUZZLE_SITE_ORIGINS: readonly string[] = [
+  "https://www.nytimes.com/*",
+  "https://www.theguardian.com/*",
+  "https://theguardian.com/*",
+  "https://*.amuselabs.com/*",
+];
+
+/**
+ * Request host access to every crossword site in one prompt (PUZZLE_SITE_ORIGINS). Like
+ * requestOriginPermissions, this reaches permissions.request as its only browser call so
+ * the Firefox gesture survives; the popup calls it straight from the click. Resolves true
+ * without prompting when access is already held.
+ */
+export function requestPuzzleSitePermissions(): Promise<boolean> {
+  return chrome.permissions.request({ origins: [...PUZZLE_SITE_ORIGINS] });
+}
+
+/**
+ * Whether host access to every crossword site is already granted. A broad all-urls grant
+ * ("Allow on Every Website") covers them, so this reads true for that user too and the
+ * offer stays hidden. Called at render time, never inside a gesture, so its await is fine.
+ */
+export function hasPuzzleSitePermissions(): Promise<boolean> {
+  return chrome.permissions.contains({ origins: [...PUZZLE_SITE_ORIGINS] });
 }

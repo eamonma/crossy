@@ -38,6 +38,20 @@ export interface MoveCursorMessage {
   readonly direction: Direction;
 }
 
+/**
+ * React with an ephemeral emoji at a cell (PROTOCOL.md §5, §9). Role any, spectators included by
+ * design. Ephemeral like moveCursor: no commandId, no seq. `emoji` is an exact grapheme from the
+ * server's published reaction set and `cell` a grid index; the server drops any violation (an
+ * unpublished emoji, a bad cell, over-rate) silently (§9). The wire carries the grapheme itself,
+ * never a symbolic token, so the set MAY widen without a version bump; the codec checks shape only
+ * (non-empty, at most 32 UTF-8 bytes), never set membership, which is session-service policy (§9).
+ */
+export interface ReactMessage {
+  readonly type: "react";
+  readonly emoji: string;
+  readonly cell: number;
+}
+
 /** Request a whole-grid check (PROTOCOL.md §5). The server replies with a unicast checkResult. */
 export interface CheckRequestMessage {
   readonly type: "checkRequest";
@@ -60,6 +74,7 @@ export type ClientMessage =
   | PlaceLetterMessage
   | ClearCellMessage
   | MoveCursorMessage
+  | ReactMessage
   | CheckRequestMessage
   | HeartbeatMessage
   | RequestSyncMessage;
@@ -146,6 +161,20 @@ export interface CursorMessage {
   readonly direction: Direction;
 }
 
+/**
+ * Another participant reacted (PROTOCOL.md §6, §9). Relayed to the other connections on a valid
+ * `react`, never echoed to the sender, the same fan-out as `cursor`. Even lighter than a cursor:
+ * ephemeral, never sequenced, and never recorded, so it never appears in a welcome/sync snapshot
+ * (there is no `board.reactions`). `emoji` is any well-formed grapheme; a receiver renders or
+ * ignores it and MUST NOT reject one outside its own send set (receive-any, send-gated, §9).
+ */
+export interface ReactionNotice {
+  readonly type: "reaction";
+  readonly userId: string;
+  readonly emoji: string;
+  readonly cell: number;
+}
+
 /** Unicast reply to checkRequest (PROTOCOL.md §6). Lists filled cells that fail the comparator. */
 export interface CheckResultMessage {
   readonly type: "checkResult";
@@ -175,6 +204,7 @@ export type EphemeralNotice =
   | PlayerConnectedMessage
   | PlayerDisconnectedMessage
   | CursorMessage
+  | ReactionNotice
   | CheckResultMessage
   | KickedMessage
   | ErrorMessage;

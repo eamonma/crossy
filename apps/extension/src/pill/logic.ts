@@ -78,5 +78,5 @@ export function pillViewForReply(reply: PlayReply): PillView {
     return { kind: "retry", label: "Could not reach Crossy. Try again." };
   }
   // signed_out and no_permission: only the popup's click gesture can fix either.
-  return { kind: "defer", label: "Finish in the Crossy toolbar button" };
+  return { kind: "defer", label: "Open Crossy to finish" };
 }

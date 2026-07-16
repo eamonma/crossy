@@ -29,6 +29,12 @@ public enum SolveHaptic: Equatable, Sendable {
     case doubleTick
     /// The gameCompleted pattern (fired off the INV-3 gate, not this fold).
     case completion
+    /// Your own reaction left (Wave 7.5): a light confirmation under the fan's fire.
+    case reactionSent
+    /// A teammate's sticker landed on or beside your active word (Wave 7.5; gated by
+    /// ReactionProximity and the ReactionSettings toggle, never fired for a sticker
+    /// across the board).
+    case reactionLanded
 }
 
 /// Starting values for the I2e device tuning pass (DESIGN.md §7: tuned on
@@ -40,6 +46,10 @@ public enum SolveHapticTuning {
     /// The double tick's gap: wide enough to read as two, tight enough to be
     /// one gesture.
     public static let doubleTickGapMilliseconds: Int = 90
+    /// The reaction pair (Wave 7.5): your send confirms lightly; a received sticker
+    /// near your word taps softer still (it is a wave, not a knock).
+    public static let reactionSentIntensity: Double = 0.7
+    public static let reactionLandedIntensity: Double = 0.5
 }
 
 /// The exactly-when derivation. Feed every observed (filled, selection) pair;
@@ -167,6 +177,12 @@ public final class SolveHaptics {
                 // §7's "distinct completion pattern": the system's success
                 // two-beat, unmistakably not a tick or a thud.
                 pattern.notificationOccurred(.success)
+            case .reactionSent:
+                tick.impactOccurred(intensity: SolveHapticTuning.reactionSentIntensity)
+                tick.prepare()
+            case .reactionLanded:
+                thud.impactOccurred(intensity: SolveHapticTuning.reactionLandedIntensity)
+                thud.prepare()
             }
         }
     #else

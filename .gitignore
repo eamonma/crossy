@@ -37,3 +37,6 @@ apps/android/local.properties
 
 # Scratch design-review screenshots (verification artifacts, never committed).
 design-shots/
+
+# Xcode CLI builds without a -derivedDataPath land here; build output, never committed.
+apps/ios/Crossy/build/

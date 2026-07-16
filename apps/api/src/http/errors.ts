@@ -41,6 +41,13 @@ import type { ContentfulStatusCode } from "hono/utils/http-status";
  * user can read and fix (empty, too long, or a disallowed character). INV-1 casing does NOT apply
  * to names (it is cell-values only); a name is display content, so the block-list rejects only what
  * breaks rendering or spoofs order.
+ *
+ * The reaction-set write (`PATCH /me`, PROTOCOL.md §9, §12, DESIGN.md D25) adds the three
+ * REACTION_SET_* codes, all 422, on the same line as the NAME_* codes: a well-formed body (a wrong
+ * type is 400 VALIDATION) whose set violates a domain rule the user can read and fix. The set must be
+ * exactly five entries (REACTION_SET_LENGTH), each one RGI emoji grapheme within 32 UTF-8 bytes
+ * (REACTION_SET_INVALID), all distinct on the exact grapheme string (REACTION_SET_DUPLICATE). null
+ * resets to the defaults and is not an error. The set carries no solution content (INV-6).
  */
 export type ApiErrorCode =
   | "UNAUTHORIZED" // 401: bad or missing bearer token
@@ -63,6 +70,9 @@ export type ApiErrorCode =
   | "NAME_REQUIRED" // 422: a display name that is empty after canonicalization (PATCH /me)
   | "NAME_TOO_LONG" // 422: a display name over 40 graphemes after canonicalization (PATCH /me)
   | "NAME_INVALID" // 422: a display name with a control, lone zero-width, or bidi-override char (PATCH /me)
+  | "REACTION_SET_LENGTH" // 422: reactionSet is not exactly five entries (PATCH /me, §9)
+  | "REACTION_SET_INVALID" // 422: a reactionSet entry is not one RGI emoji within 32 UTF-8 bytes (PATCH /me, §9)
+  | "REACTION_SET_DUPLICATE" // 422: reactionSet has a repeated entry, exact-string distinctness (PATCH /me, §12)
   | "RATE_LIMITED"; // 429: the caller spent their rate-limit window on a code path (http/rate-limit.ts)
 
 const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
@@ -86,6 +96,9 @@ const STATUS: Record<ApiErrorCode, ContentfulStatusCode> = {
   NAME_REQUIRED: 422,
   NAME_TOO_LONG: 422,
   NAME_INVALID: 422,
+  REACTION_SET_LENGTH: 422,
+  REACTION_SET_INVALID: 422,
+  REACTION_SET_DUPLICATE: 422,
   RATE_LIMITED: 429,
 };
 
