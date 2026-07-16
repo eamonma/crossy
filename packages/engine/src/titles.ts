@@ -27,8 +27,22 @@ import type { Solution } from "./types";
 // The pinned constants (TITLES.md; vectors cite these by name, never inlined).
 // BURST_WINDOW_MS is shared with momentum and re-exported from ./analysis via the index.
 
-/** Share of the (at, seq)-ordered trace that is the opening stretch (and the closing). */
+/**
+ * Share of the (at, seq)-ordered trace that is the opening stretch (and the closing).
+ * A rational fifth: the window is `ceil(T / 5)`, computed as `ceil(T * num / den)` with
+ * exact integers (below), never a float multiply. `0.2` is the design's readable name for
+ * the same fifth (TITLES.md; vectors cite it), and stays the exported constant.
+ */
 export const OPENING_SHARE = 0.2;
+/**
+ * The opening/closing share as an exact rational, so the window is integer arithmetic:
+ * `Math.ceil((T * OPENING_SHARE_NUMERATOR) / OPENING_SHARE_DENOMINATOR)`. This keeps the
+ * stretch pinned to `ceil(T / 5)` regardless of any platform where `0.2 * T` could round a
+ * boundary T up by one (an IEEE float edge); on V8 the two agree for every T, so this is a
+ * behavior-preserving hardening, not a change.
+ */
+const OPENING_SHARE_NUMERATOR = 1;
+const OPENING_SHARE_DENOMINATOR = 5;
 /** The ice-breaker never awards on a stall shorter than this many whole seconds. */
 export const STALL_FLOOR_SECONDS = 120;
 /** The saboteur never awards under this many overwrites. */
@@ -375,7 +389,9 @@ export function titleStats(
 
   // Opening/closing stretches: ordinal slices of the (at, seq)-ordered trace, dual
   // counting when they overlap (the pinned T = 1 corner counts one entry in both).
-  const stretch = Math.ceil(OPENING_SHARE * traceByAt.length);
+  const stretch = Math.ceil(
+    (traceByAt.length * OPENING_SHARE_NUMERATOR) / OPENING_SHARE_DENOMINATOR,
+  );
   for (const entry of traceByAt.slice(0, stretch)) {
     const acc = accs.get(entry.userId);
     if (acc) acc.openingFills++;
