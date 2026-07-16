@@ -30,17 +30,23 @@ public struct RoomAnalysis: Equatable, Sendable {
     /// (design/post-game/TITLES.md): at most one per solver, empty for a solo solve
     /// (the solo rule) or an older API that predates titles.
     public let titles: [RoomTitle]
+    /// The sittings partition (design/post-game/SITTINGS.md, D29), or nil from an
+    /// older cached bundle, which renders exactly as today: no context suffix, no
+    /// seam ticks.
+    public let sittings: RoomSittings?
 
     public init(
         owners: [Int: String],
         momentum: RoomMomentum,
         turningPoint: RoomTurningPoint?,
-        titles: [RoomTitle]
+        titles: [RoomTitle],
+        sittings: RoomSittings? = nil
     ) {
         self.owners = owners
         self.momentum = momentum
         self.turningPoint = turningPoint
         self.titles = titles
+        self.sittings = sittings
     }
 
     /// Distinct solvers who own at least one square (the stat trio's "Solvers").
@@ -51,8 +57,54 @@ public struct RoomAnalysis: Equatable, Sendable {
 
     /// The solve span as `M:SS` (the stat trio's "Time"): the momentum duration,
     /// the reach from the first fill to the last (design/post-game/ANALYSIS.md),
-    /// which is what the web panel labels Time.
+    /// which is what the web panel labels Time. Active seconds once the server
+    /// re-bases the bundle (D29); the label logic does not change.
     public var durationLabel: String { CrossyUI.formatMSS(momentum.durationSeconds) }
+
+    /// The sitting-count context beside the headline Time ("24:13 · 2 sittings",
+    /// owner ruling, D29): context, never a second stat, so it renders only at two
+    /// or more sittings. A single-sitting game, an older bundle, and a degenerate
+    /// count all read exactly as today: nil, no suffix.
+    public var sittingCountSuffix: String? {
+        guard let count = sittings?.count, count >= 2 else { return nil }
+        return "\(count) sittings"
+    }
+}
+
+/// The sittings partition, render-ready (design/post-game/SITTINGS.md, D29): the
+/// count for the headline's context suffix, the spans for the ribbon's seam ticks,
+/// and the wall span for flavor copy. All seconds ride the bundle's active axis,
+/// the same axis as `RoomMomentum.durationSeconds`, so a seam places by lookup.
+public struct RoomSittings: Equatable, Sendable {
+    /// One sitting's reach on the active axis, contiguous with its neighbors.
+    public struct Span: Equatable, Sendable {
+        public let startSeconds: Double
+        public let endSeconds: Double
+
+        public init(startSeconds: Double, endSeconds: Double) {
+            self.startSeconds = startSeconds
+            self.endSeconds = endSeconds
+        }
+    }
+
+    public let count: Int
+    public let spans: [Span]
+    /// The wall-clock trace span (the pre-D29 duration), flavor only, never a
+    /// competing stat (owner ruling, D29).
+    public let wallSeconds: Double
+
+    public init(count: Int, spans: [Span], wallSeconds: Double) {
+        self.count = count
+        self.spans = spans
+        self.wallSeconds = wallSeconds
+    }
+
+    /// The interior sitting boundaries on the active axis: `spans[k].endSeconds`
+    /// for every k but the last, where the ribbon draws its seam ticks. Empty for
+    /// a single sitting, so the ribbon renders exactly as today.
+    public var interiorBoundarySeconds: [Double] {
+        spans.dropLast().map(\.endSeconds)
+    }
 }
 
 /// A seconds count as `M:SS`, or `H:MM:SS` past an hour, matching the web's

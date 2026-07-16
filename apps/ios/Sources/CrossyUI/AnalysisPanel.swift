@@ -88,7 +88,8 @@ struct AnalysisPanel: View {
         MomentumRibbon(
             momentum: analysis.momentum,
             turningPoint: analysis.turningPoint,
-            ground: ground)
+            ground: ground,
+            sittings: analysis.sittings)
         Text(verbatim: momentumCaption(analysis))
             .font(.system(size: 11))
             .lineSpacing(1.5)
@@ -195,12 +196,19 @@ struct AnalysisPanel: View {
     // MARK: The stat trio
 
     private func statTrio(_ analysis: RoomAnalysis) -> some View {
-        let cells: [(label: String, value: String)] = [
-            ("Time", analysis.durationLabel),
-            ("Solvers", String(analysis.solverCount)),
-            ("Squares", String(analysis.entryCount)),
+        // The Time cell's quiet context (owner ruling, D29): active time is THE
+        // time and the sitting count is context, never a second stat — so it rides
+        // inside the Time cell as a small caption ("2 sittings", the "24:13 · 2
+        // sittings" grammar stacked for the cell's third-width), only at two or
+        // more. A single sitting and an older bundle read exactly as today.
+        let cells: [(label: String, value: String, context: String?)] = [
+            ("Time", analysis.durationLabel, analysis.sittingCountSuffix),
+            ("Solvers", String(analysis.solverCount), nil),
+            ("Squares", String(analysis.entryCount), nil),
         ]
-        return HStack(spacing: 0) {
+        // Top-aligned so the caps labels stay on one line when the Time cell
+        // grows its context caption; without a caption nothing moves.
+        return HStack(alignment: .top, spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 if index > 0 {
                     Rectangle()
@@ -213,6 +221,13 @@ struct AnalysisPanel: View {
                         .font(.system(size: 21, weight: .regular, design: .monospaced))
                         .foregroundStyle(Color(rgb: ground.tokens.ink))
                         .monospacedDigit()
+                    if let context = cell.context {
+                        Text(verbatim: context)
+                            .font(.system(size: 11))
+                            .foregroundStyle(
+                                Color(rgb: ground.tokens.number).opacity(0.85))
+                            .monospacedDigit()
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)

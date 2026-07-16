@@ -529,7 +529,9 @@ public struct SolveScreen: View {
                 ground: ground,
                 content: factsContent,
                 operations: factsPanelOperations,
-                solveTimeSeconds: store.stats?.solveTimeSeconds,
+                // The headline Time is active time (owner ruling, D29): the stats
+                // twin's preference rule, wall-clock fallback for frozen pre-D29 rows.
+                solveTimeSeconds: store.stats?.headlineSolveSeconds,
                 firstFillAt: store.firstFillAt,
                 completedAt: store.completedAt ?? store.abandonedAt,
                 // The confirm-time race resolves in layers (design R2): fullness
@@ -815,7 +817,10 @@ public struct SolveScreen: View {
             totalEvents: store.stats?.totalEvents,
             participantCount: store.stats?.participantCount,
             // The mid-solve check record (R10): "Checked once" among the facts.
-            checkCount: store.checkCount)
+            checkCount: store.checkCount,
+            // The sitting count as completed-facts context (D29): "· 2 sittings",
+            // rendered only at two or more; nil (a pre-D29 row) reads as today.
+            sittingCount: store.stats?.sittingCount)
     }
 
     /// The facts card's operations (FactsOperations pins the rule): the room

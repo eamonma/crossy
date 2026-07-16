@@ -67,6 +67,11 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(sync.board.completedAt, "2026-07-07T19:40:03Z")
         // §4/§10: a completed board froze its permanent count into stats.checkCount (D27).
         XCTAssertEqual(sync.board.checkCount, sync.board.stats?.checkCount)
+        // §4, D29: this fixture predates activeSolveSeconds/sittingCount (a frozen
+        // pre-D29 stats row); the lossless round trip above doubles as the absence
+        // pin — nil decoded, keys kept absent on re-encode, never backfilled.
+        XCTAssertNil(sync.board.stats?.activeSolveSeconds)
+        XCTAssertNil(sync.board.stats?.sittingCount)
     }
 
     func test_boardWithoutCheckFieldsDecodesWithDefaults_PROTOCOL14() throws {
@@ -153,9 +158,14 @@ final class WireSnapshotTests: XCTestCase {
     func test_gameCompletedRoundTripsTheSection6Example() throws {
         let event = try pinServerFrame(GameCompletedMessage.self, "gameCompleted")
         XCTAssertEqual(event.seq, 900)
+        // §6 example, D29: the session fills activeSolveSeconds and sittingCount at
+        // completion beside the wall-clock solveTimeSeconds; the example's solve was
+        // one sitting, so the active seconds equal the wall seconds.
         XCTAssertEqual(
             event.stats,
-            Stats(solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4, checkCount: 2))
+            Stats(
+                solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4, checkCount: 2,
+                activeSolveSeconds: 2272, sittingCount: 1))
     }
 
     func test_puzzleCheckedRoundTripsTheSection6Example() throws {

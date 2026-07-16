@@ -347,6 +347,22 @@ final class RESTSnapshotTests: XCTestCase {
                 AnalysisView.Title(userId: "mate", title: "one-hit-wonder", evidence: nil),
                 AnalysisView.Title(userId: "host", title: "quick-starter", evidence: 1),
             ])
+        // The sittings partition (§12, D29): count, contiguous spans on the ACTIVE
+        // axis (first start 0, last end == momentum.durationSeconds, so a seam tick
+        // places by lookup), and the wall-clock span kept for flavor only.
+        let sittings = try XCTUnwrap(view.sittings)
+        XCTAssertEqual(sittings.count, 2)
+        XCTAssertEqual(
+            sittings.spans,
+            [
+                AnalysisView.Sittings.Span(startSeconds: 0, endSeconds: 45),
+                AnalysisView.Sittings.Span(startSeconds: 45, endSeconds: 60),
+            ])
+        XCTAssertEqual(sittings.spans.first?.startSeconds, 0, "§12: the first span starts at 0")
+        XCTAssertEqual(
+            sittings.spans.last?.endSeconds, view.momentum.durationSeconds,
+            "§12: the last span ends at momentum.durationSeconds, the shared active axis")
+        XCTAssertEqual(sittings.wallSeconds, 1860)
         // A no-evidence rung's null is present, not absent: re-encoding emits the key
         // with an explicit null (the Moments posture), which the lossless round trip
         // above already held against the fixture's own bytes.
@@ -356,6 +372,22 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertTrue(
             titles[0]["evidence"] is NSNull,
             "a null evidence re-encodes as an explicit null, not an absent key")
+    }
+
+    func test_analysisViewToleratesAbsentSittingsFromAnOlderBundle_D29() throws {
+        // §12, D29: a client MUST tolerate the `sittings` field's absence (an older
+        // cached bundle) and degrade to today's rendering. Inline JSON, not a fixture:
+        // the fixtures pin the CURRENT contract, which always writes the key.
+        let older = Data(
+            #"""
+            {
+              "owners": { "0": "host" },
+              "momentum": { "durationSeconds": 8, "samples": [] },
+              "moments": { "firstToFall": null, "lastSquare": null, "turningPoint": null }
+            }
+            """#.utf8)
+        let view = try JSONDecoder().decode(AnalysisView.self, from: older)
+        XCTAssertNil(view.sittings, "an absent sittings field reads as none, not a crash")
     }
 
     func test_analysisViewToleratesAbsentTitlesFromAnOlderAPI() throws {
@@ -410,10 +442,12 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertNil(view.moments.firstToFall)
         XCTAssertNil(view.moments.lastSquare)
         XCTAssertNil(view.moments.turningPoint)
-        // This fixture predates titles and omits the key; the synthesized optional
-        // reads that as none AND re-encodes it absent, so the lossless round trip
-        // above doubles as the older-API tolerance pin (§14 additive evolution).
+        // This fixture predates titles and sittings and omits both keys; the
+        // synthesized optionals read that as none AND re-encode them absent, so the
+        // lossless round trip above doubles as the older-API tolerance pin (§14
+        // additive evolution; D29's absence rule for sittings).
         XCTAssertNil(view.titles)
+        XCTAssertNil(view.sittings)
         // The nulls are present, not absent: re-encoding emits the keys with null values.
         let reencoded = try XCTUnwrap(
             try jsonObject(JSONEncoder().encode(view)) as? [String: Any])
