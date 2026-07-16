@@ -111,18 +111,31 @@ public struct ClueBook: Sendable, Equatable {
     }
 
     /// The entry ids the `current` clue cross-references ("With 2-Down", "17, 20, and
-    /// 49 across"), filtered to entries that actually exist in this book and with the
-    /// current clue itself excluded (mirror of the web's LiveApp memo, ~L915). The
-    /// parser reads intent only; here we keep just the references that land on a real
+    /// 49 across") and, when its prose is a revealer, every clue wearing the star (D26),
+    /// filtered to entries that actually exist in this book and with the current clue
+    /// itself excluded (mirror of the web's `referencedKeys` in apps/web/src/ui/clueRefs.ts,
+    /// same guards and same shape on the `18A` key scheme). This is the chokepoint: both
+    /// kinds of reference resolve here and union into one set, which feeds the browser rows
+    /// and the board tint alike, so the two can never disagree. The parser and the
+    /// predicates read intent only; here we keep just the references that land on a real
     /// row, so a self-reference or a reference to a clue this grid lacks never lights
     /// anything. Empty for a nil current or a clue that names no entry.
     public func referencedIds(for current: ClueEntry?) -> Set<String> {
         guard let current else { return [] }
         let existing = Set(across.map(\.id)).union(down.map(\.id))
         var ids: Set<String> = []
-        for ref in parseClueRefs(current.text) {
-            let id = "\(ref.number)\(ref.isAcross ? "A" : "D")"
+        // The single gate: the entry exists in this book, and it is not the current clue
+        // naming itself.
+        func mark(_ id: String) {
             if id != current.id, existing.contains(id) { ids.insert(id) }
+        }
+        for ref in parseClueRefs(current.text) {
+            mark("\(ref.number)\(ref.isAcross ? "A" : "D")")
+        }
+        // A revealer names the theme set collectively, so it resolves to every clue wearing
+        // the star. One-way by ruling, so a starred clue lights nothing on its own.
+        if referencesStarredClues(current.text) {
+            for entry in across + down where isStarredClue(entry) { mark(entry.id) }
         }
         return ids
     }
