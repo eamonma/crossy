@@ -96,7 +96,13 @@ private sealed interface Screen {
 @Composable
 fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAuthRedirects) {
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
-    var screen by remember { mutableStateOf<Screen>(Screen.SignIn) }
+    // A cold start with a restored session (MainActivity called session.restore()) skips SignIn and
+    // opens at the Arrival gate, which loads /me and routes on to Rooms; a signed-out start begins at
+    // SignIn as before. Read once at composition, the initial route only: sign-out flips back to
+    // SignIn by setting the screen explicitly.
+    var screen by remember {
+        mutableStateOf<Screen>(if (session.isSignedIn) Screen.Arrival else Screen.SignIn)
+    }
     val scope = rememberCoroutineScope()
     // The caller's personal reaction set (Wave 8.5; D25), held at the shell root so it survives across
     // screens: seeded from GET /me at arrival (null = the default five), updated when Settings saves,

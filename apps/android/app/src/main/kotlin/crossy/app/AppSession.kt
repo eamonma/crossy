@@ -1,8 +1,11 @@
 // The composition root's session and API wiring (ARCHITECTURE.md: ":app wires everything"). It
 // builds the Supabase auth leg and the REST client from BuildConfig, and it holds the one bearer
 // provider every auth path feeds: the AuthSession (OAuth over the browser leg and email OTP;
-// there are no passwords in production). Token storage is in-memory tonight; the Keystore-backed
-// TokenStore is a later track (AAD-3 / AD-4), wired here and nowhere else when it lands.
+// there are no passwords in production). Token storage arrives as a TokenStore (AAD-2 / AD-4): the
+// activity injects the Keystore-backed KeystoreTokenStore, and [restore] rehydrates a persisted
+// (or refreshable) session at cold start so it lands in Rooms with no sign-in, the twin of iOS
+// restoring from the Keychain at ArrivalModel init. The default in-memory store keeps unit tests
+// pure.
 
 package crossy.app
 
@@ -15,6 +18,7 @@ import crossy.api.InMemoryTokenStore
 import crossy.api.SignedOutError
 import crossy.api.SupabaseAuthClient
 import crossy.api.SupabaseConfig
+import crossy.api.TokenStore
 import crossy.api.TurnstileMintPolicy
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -68,9 +72,10 @@ class AppSession(
     // (the plain pre-captcha send). Built in the composition root over a WebView-backed minter; the
     // policy owns the timeout/retry/error mapping and is tested against a fake (TurnstileMintPolicyTests).
     private val turnstile: TurnstileMintPolicy? = null,
+    // Secure storage arrives via the port (AAD-2): the activity injects KeystoreTokenStore; the
+    // default in-memory store keeps existing unit tests pure and network-free.
+    private val tokenStore: TokenStore = InMemoryTokenStore(),
 ) {
-    // In-memory for tonight; Keystore-backed EncryptedSharedPreferences is a later track (AD-4).
-    private val tokenStore = InMemoryTokenStore()
     private val authClient = SupabaseAuthClient(supabaseConfig, http)
     val auth = AuthSession(authClient, tokenStore)
     private val bearer = SwitchableTokenProvider()
@@ -88,6 +93,19 @@ class AppSession(
         private set
 
     val isSignedIn: Boolean get() = bearer.delegate != null
+
+    /** Cold-start restore, called by the activity before the first frame (the twin of iOS restoring
+     *  from the Keychain at ArrivalModel init). Reads the persisted session; on success it seeds the
+     *  bearer delegate and the self id exactly as [completeOAuth] does, so a valid session routes
+     *  straight to Rooms with no sign-in. An expired-but-refreshable session restores too: restore
+     *  gates nothing on expiry, and the refresh leg lands lazily on the first token use. No network,
+     *  so it is safe on the main thread. */
+    fun restore() {
+        auth.restore()
+        if (auth.phase != AuthPhase.SIGNED_IN) return
+        bearer.delegate = auth
+        selfUserId = auth.userId
+    }
 
     /** OAuth step one (Discord / Apple / Hisbaan, the split browser flow): mint the attempt and
      *  hand back the authorize URL for the activity to open in a Custom Tab. Effect-free (fresh
@@ -133,7 +151,11 @@ class AppSession(
         return true
     }
 
-    /** Drop the bearer and the local identity. The vendor logout is best-effort and never awaited. */
+    /** Drop the bearer and the local identity. The persisted store is wiped by the paired
+     *  [AuthSession.signOut] (or purgeForAccountDeletion) that the sign-out path also runs: its
+     *  purge nulls the in-memory session and clears every store slot in one step, so the persisted
+     *  tokens and the in-memory session fall together and no in-flight refresh can re-persist a
+     *  just-cleared session. The vendor logout is best-effort and never awaited. */
     fun clearSession() {
         bearer.delegate = null
         selfUserId = null
