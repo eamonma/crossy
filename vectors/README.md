@@ -302,9 +302,20 @@ convention: `then.events` `[]`, unchanged `then.state`, and `then.error`
   "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
   "then": {
     "events": [
-      { "type": "puzzleChecked", "seq": 7, "wrongCells": [0], "checkCount": 1, "commandId": "c1" }
+      {
+        "type": "puzzleChecked",
+        "seq": 7,
+        "wrongCells": [0],
+        "checkCount": 1,
+        "commandId": "c1"
+      }
     ],
-    "state": { "status": "ongoing", "seq": 7, "checkedWrong": [0], "checkCount": 1 }
+    "state": {
+      "status": "ongoing",
+      "seq": 7,
+      "checkedWrong": [0],
+      "checkCount": 1
+    }
   }
 }
 ```

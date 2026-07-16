@@ -330,9 +330,7 @@ describe("single writer per table via least-privilege roles (INV-7; DESIGN.md §
     ).rejects.toThrow(/permission denied/i);
     // The API holds no grant at all: a future scoring read would be its own SELECT-only expand.
     await expect(
-      asRole("crossy_api", (c) =>
-        c.query("select count(*) from check_events"),
-      ),
+      asRole("crossy_api", (c) => c.query("select count(*) from check_events")),
     ).rejects.toThrow(/permission denied/i);
     await expect(
       asRole("crossy_api", (c) =>

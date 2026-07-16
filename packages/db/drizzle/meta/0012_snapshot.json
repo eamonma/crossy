@@ -52,12 +52,8 @@
           "name": "cell_events_game_id_games_game_id_fk",
           "tableFrom": "cell_events",
           "tableTo": "games",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["game_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -65,12 +61,8 @@
           "name": "cell_events_user_id_users_user_id_fk",
           "tableFrom": "cell_events",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -78,10 +70,7 @@
       "compositePrimaryKeys": {
         "cell_events_game_id_seq_pk": {
           "name": "cell_events_game_id_seq_pk",
-          "columns": [
-            "game_id",
-            "seq"
-          ]
+          "columns": ["game_id", "seq"]
         }
       },
       "uniqueConstraints": {},
@@ -138,12 +127,8 @@
           "name": "check_events_game_id_games_game_id_fk",
           "tableFrom": "check_events",
           "tableTo": "games",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["game_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -151,12 +136,8 @@
           "name": "check_events_user_id_users_user_id_fk",
           "tableFrom": "check_events",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -164,10 +145,7 @@
       "compositePrimaryKeys": {
         "check_events_game_id_seq_pk": {
           "name": "check_events_game_id_seq_pk",
-          "columns": [
-            "game_id",
-            "seq"
-          ]
+          "columns": ["game_id", "seq"]
         }
       },
       "uniqueConstraints": {},
@@ -210,12 +188,8 @@
           "name": "game_denylist_game_id_games_game_id_fk",
           "tableFrom": "game_denylist",
           "tableTo": "games",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["game_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -223,12 +197,8 @@
           "name": "game_denylist_user_id_users_user_id_fk",
           "tableFrom": "game_denylist",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -236,10 +206,7 @@
       "compositePrimaryKeys": {
         "game_denylist_game_id_user_id_pk": {
           "name": "game_denylist_game_id_user_id_pk",
-          "columns": [
-            "game_id",
-            "user_id"
-          ]
+          "columns": ["game_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -318,12 +285,8 @@
           "name": "game_state_game_id_games_game_id_fk",
           "tableFrom": "game_state",
           "tableTo": "games",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["game_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -389,12 +352,8 @@
           "name": "games_puzzle_id_puzzles_puzzle_id_fk",
           "tableFrom": "games",
           "tableTo": "puzzles",
-          "columnsFrom": [
-            "puzzle_id"
-          ],
-          "columnsTo": [
-            "puzzle_id"
-          ],
+          "columnsFrom": ["puzzle_id"],
+          "columnsTo": ["puzzle_id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -402,12 +361,8 @@
           "name": "games_created_by_users_user_id_fk",
           "tableFrom": "games",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -417,9 +372,7 @@
         "games_invite_code_key": {
           "name": "games_invite_code_key",
           "nullsNotDistinct": false,
-          "columns": [
-            "invite_code"
-          ]
+          "columns": ["invite_code"]
         }
       },
       "policies": {},
@@ -489,12 +442,8 @@
           "name": "live_activity_tokens_user_id_users_user_id_fk",
           "tableFrom": "live_activity_tokens",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -502,12 +451,8 @@
           "name": "live_activity_tokens_game_id_games_game_id_fk",
           "tableFrom": "live_activity_tokens",
           "tableTo": "games",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["game_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -576,12 +521,8 @@
           "name": "memberships_game_id_games_game_id_fk",
           "tableFrom": "memberships",
           "tableTo": "games",
-          "columnsFrom": [
-            "game_id"
-          ],
-          "columnsTo": [
-            "game_id"
-          ],
+          "columnsFrom": ["game_id"],
+          "columnsTo": ["game_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -589,12 +530,8 @@
           "name": "memberships_user_id_users_user_id_fk",
           "tableFrom": "memberships",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -602,10 +539,7 @@
       "compositePrimaryKeys": {
         "memberships_game_id_user_id_pk": {
           "name": "memberships_game_id_user_id_pk",
-          "columns": [
-            "game_id",
-            "user_id"
-          ]
+          "columns": ["game_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -725,12 +659,8 @@
           "name": "puzzles_created_by_users_user_id_fk",
           "tableFrom": "puzzles",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["user_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -797,20 +727,12 @@
     "public.game_status": {
       "name": "game_status",
       "schema": "public",
-      "values": [
-        "ongoing",
-        "completed",
-        "abandoned"
-      ]
+      "values": ["ongoing", "completed", "abandoned"]
     },
     "public.membership_role": {
       "name": "membership_role",
       "schema": "public",
-      "values": [
-        "host",
-        "solver",
-        "spectator"
-      ]
+      "values": ["host", "solver", "spectator"]
     }
   },
   "schemas": {},

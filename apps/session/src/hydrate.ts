@@ -148,8 +148,7 @@ export function hydrateGame(
   // means, so every served snapshot carries the full PROTOCOL.md §4 stats shape.
   const rawStats =
     (state?.stats as
-      | (Omit<Stats, "checkCount"> & { checkCount?: number })
-      | null) ?? null;
+      (Omit<Stats, "checkCount"> & { checkCount?: number }) | null) ?? null;
   const stats: Stats | null =
     rawStats === null
       ? null
