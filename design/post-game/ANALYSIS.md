@@ -18,6 +18,12 @@ One law governs all of it: **moments may be judged, people are never scored agai
 other.** No leaderboard, no rating, no fastest-solver. A name appears only as the incidental
 author of a moment. Momentum is the room's tempo, not one player's rate against another's.
 
+Amended 2026-07-16 (owner ruling) for solver titles, the per-person superlatives that
+replace the person moment cards: titles count, they never interpret (an argmax over a
+countable fact, never an inferred causal story); one title per solver, at most; a title may
+cite its own evidence number, but the shared axis stays forbidden (no table or ordering
+rendering two people's numbers against each other). `TITLES.md` is the plan of record.
+
 ## What it stands on: the solve trace
 
 All three projections read one thing. The **solve trace** is, for each cell, the
@@ -59,11 +65,12 @@ Three, all derived from **timing alone**, no geometry:
 - **turningPoint**: the stall and the break. The longest pause between consecutive
   first-correct fills, and the burst that followed it.
 
-The fourth moment, **the unlock** (the fill that structurally opened the grid, the square
-after which the puzzle fell open), is a **fast-follow, not v1**. Unlike the three above it is
-a causal, structural claim, so it needs word and crossing geometry the engine does not model
-yet. v1 ships the timing-only three; the unlock lands right after with the word-structure
-work.
+The fourth moment, **the unlock** (the fill that structurally opened the grid), was planned
+as a fast-follow and is now **killed** (owner ruling 2026-07-16). It is a causal claim: B was
+stuck, A's letter freed them. The log records gaps and adjacency, never "stuck" or "freed",
+so any detector narrates coincidences with confidence, and one false card poisons trust in
+the surface. The general form of the ruling is the titles law (`TITLES.md`): count, don't
+interpret. The energy it was meant to carry lands as titles instead.
 
 ## Pinned semantics (vectors freeze these)
 
@@ -182,5 +189,5 @@ invalidation path.
   board paints into the mosaic under Analysis, momentum and moments render from `/analysis`.
   The transition from clue rail to tabbed panel is the thing to get smooth; the Clues tab does
   not change.
-- **Fast-follow** the unlock moment: teach the engine word and crossing structure, add the
-  fourth moment.
+- **Fast-follow** ~~the unlock moment~~ killed 2026-07-16; solver titles supersede it
+  (`TITLES.md`, its own build sequence).
