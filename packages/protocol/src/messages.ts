@@ -52,9 +52,14 @@ export interface ReactMessage {
   readonly cell: number;
 }
 
-/** Request a whole-grid check (PROTOCOL.md §5). The server replies with a unicast checkResult. */
-export interface CheckRequestMessage {
-  readonly type: "checkRequest";
+/**
+ * The room-wide check (PROTOCOL.md §5, §10; D27). Legal for host or solver while the game is
+ * ongoing and the grid is full; otherwise GAME_NOT_ONGOING or GRID_NOT_FULL (§11). The command is
+ * the confirmed intent (a client interposes its own confirmation, §10); an accepted check
+ * broadcasts one sequenced `puzzleChecked` to the whole room.
+ */
+export interface CheckPuzzleMessage {
+  readonly type: "checkPuzzle";
   readonly commandId: string;
 }
 
@@ -75,7 +80,7 @@ export type ClientMessage =
   | ClearCellMessage
   | MoveCursorMessage
   | ReactMessage
-  | CheckRequestMessage
+  | CheckPuzzleMessage
   | HeartbeatMessage
   | RequestSyncMessage;
 
@@ -116,9 +121,29 @@ export interface GameAbandonedMessage {
   readonly by: string;
 }
 
+/**
+ * Emitted for every accepted `checkPuzzle` and broadcast to the whole room (PROTOCOL.md §6, §10).
+ * `wrongCells` lists, ascending, every playable cell failing the comparator: indices only, never
+ * values or answers (INV-6), and never empty (the §10 full-grid gate). `checkCount` is the game's
+ * total accepted checks including this one, permanent and never reset. Deliberately no `by`:
+ * neutrality is structural (D27); the sender recognizes its own `commandId` echo. `at` is stamped
+ * by the session adapter from the server clock, like `gameCompleted`'s.
+ */
+export interface PuzzleCheckedEvent {
+  readonly type: "puzzleChecked";
+  readonly seq: number;
+  readonly wrongCells: readonly number[];
+  readonly checkCount: number;
+  readonly commandId: string;
+  readonly at: string;
+}
+
 /** Events that mutate durable state and carry a per-game `seq` (PROTOCOL.md §6). */
 export type SequencedEvent =
-  CellSetMessage | GameCompletedMessage | GameAbandonedMessage;
+  | CellSetMessage
+  | GameCompletedMessage
+  | GameAbandonedMessage
+  | PuzzleCheckedEvent;
 
 // --- Server to client: ephemeral notices (PROTOCOL.md §6) ---
 
@@ -175,13 +200,6 @@ export interface ReactionNotice {
   readonly cell: number;
 }
 
-/** Unicast reply to checkRequest (PROTOCOL.md §6). Lists filled cells that fail the comparator. */
-export interface CheckResultMessage {
-  readonly type: "checkResult";
-  readonly commandId: string;
-  readonly wrongCells: readonly number[];
-}
-
 /** The caller was removed (PROTOCOL.md §6). Followed by a 1008 close. */
 export interface KickedMessage {
   readonly type: "kicked";
@@ -205,7 +223,6 @@ export type EphemeralNotice =
   | PlayerDisconnectedMessage
   | CursorMessage
   | ReactionNotice
-  | CheckResultMessage
   | KickedMessage
   | ErrorMessage;
 

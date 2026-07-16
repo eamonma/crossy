@@ -4,24 +4,33 @@
 // the clue strip closes the block). The title truncates before anything else is dropped and
 // the timer keeps tabular numerals so it never reflows.
 //
-// Host room-admin controls (the web port of iOS's RoomFactsCard + RosterMenu, PROTOCOL.md §12):
-// the Share popover gains a "Copy invite code" row for any member and, host only, a destructive
-// "End game" row behind a confirm dialog (POST /games/{id}/abandon). The avatar stack gains a
-// host-only roster popover with a per-member "Remove from room" action, also behind a confirm
-// dialog (DELETE /games/{id}/members/{userId}). Both reuse the existing REST endpoints the API
-// already serves; no new wire field. Gating is `isHost` from roomAdmin.ts; the server enforces
-// host-only and self-target regardless, so a non-host simply never sees these rows.
+// The room's three action surfaces live here (docs/design/room-actions-control.md §2): Share
+// (the room's reach: invite link, code, QR, system share, party mode), the roster popover on
+// the avatar stack (the people: host kick behind a confirm dialog, DELETE
+// /games/{id}/members/{userId}), and the room-actions popover (the game everyone shares:
+// check puzzle over the wire, PROTOCOL.md §5/§10, and the host's End game, POST
+// /games/{id}/abandon, migrated out of Share). Gating is `isHost` from roomAdmin.ts plus the
+// pure derivations in roomActions.ts; the server enforces every role gate regardless, so a
+// non-host simply never sees those rows.
 import { useEffect, useMemo, useState } from "react";
 import {
+  CheckCircledIcon,
   CheckIcon,
   ChevronLeftIcon,
   CopyIcon,
+  DesktopIcon,
   Share1Icon,
 } from "@radix-ui/react-icons";
 import { renderSVG } from "uqr";
+import type { GameStatus } from "@crossy/protocol";
 import { AvatarStack, CapsLabel } from "./primitives";
 import type { StackMember } from "./primitives";
 import { abandonGame, isHost, kickMember, partitionRoster } from "./roomAdmin";
+import {
+  checkedCountLabel,
+  emptyCellsHint,
+  showRoomActions,
+} from "./roomActions";
 import type { Bearer } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +61,25 @@ export interface RoomAdmin {
   bearer: Bearer;
   /** Called after a successful end-game or kick so the caller can refresh state; optional. */
   onChanged?: () => void;
+}
+
+/** Room-actions wiring (docs/design/room-actions-control.md §5), threaded from LiveApp only —
+ * the RoomAdmin pattern — so the demo and other storeless surfaces never grow a check control
+ * (R8). Everything here is already derived; the popover renders, it does not decide. */
+export interface RoomActions {
+  /** The live game status (R4: the popover renders only while `ongoing`; the toolbar's `done`
+   * boolean would misread an abandoned room as check-able). */
+  status: GameStatus;
+  /** Spectators see neither row, so the whole trigger hides for them (design doc §5). */
+  spectator: boolean;
+  /** Empty playable cells by SEQUENCED state only (R9); 0 enables the check row. */
+  emptyCount: number;
+  /** The game's accepted checks so far, for the quiet "Checked N times" line (R10). */
+  checkCount: number;
+  /** The confirmed check: re-derives fullness from sequenced state at the confirm tap and
+   * sends only while still full (R2). Returns whether it sent; the dialog closes quietly
+   * either way, because when stale the row is already disabled again with its hint. */
+  onCheckPuzzle: () => boolean;
 }
 
 function CopyRow({
@@ -236,16 +264,209 @@ function EndGameRow({ admin }: { admin: RoomAdmin }) {
   );
 }
 
-function SharePopover({
-  shareUrl,
-  inviteCode,
+/**
+ * The room-actions popover body (design doc §5), exported for the node render tests. Check
+ * puzzle for hosts and solvers (the spectator gate already hid the whole popover), then,
+ * host-only under the register's dashed hairline, End game — its new home, moved out of
+ * Share (§2: Share grows the room, room actions act on the game everyone shares).
+ */
+export function RoomActionsPanel({
+  actions,
   admin,
   hostHere,
 }: {
-  shareUrl: string | null;
-  inviteCode: string | null;
+  actions: RoomActions;
   admin: RoomAdmin | null;
   hostHere: boolean;
+}) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const full = actions.emptyCount === 0;
+  const countLabel = checkedCountLabel(actions.checkCount);
+  return (
+    <>
+      <PopoverHeader>
+        <PopoverTitle>Room actions</PopoverTitle>
+        <PopoverDescription className="text-1">
+          These act on the puzzle for everyone.
+        </PopoverDescription>
+      </PopoverHeader>
+      <div className="flex flex-col gap-1.5">
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full justify-center"
+          disabled={!full}
+          onClick={() => setConfirmOpen(true)}
+        >
+          Check puzzle
+        </Button>
+        {/* Below a full grid the row teaches the gate instead of erroring into it (§5);
+            once checks exist, the neutral record rides the same quiet register (R10). */}
+        {!full && (
+          <p className="m-0 text-center text-1 text-text-subtle">
+            {emptyCellsHint(actions.emptyCount)}
+          </p>
+        )}
+        {countLabel !== null && (
+          <p className="m-0 text-center text-1 text-text-subtle">
+            {countLabel}
+          </p>
+        )}
+      </div>
+      {hostHere && admin !== null && (
+        <>
+          <div className="border-t border-dashed border-border-dashed" />
+          <EndGameRow admin={admin} />
+        </>
+      )}
+      {/* The check confirmation: the end-game Dialog register exactly, non-destructive
+          styling (PROTOCOL.md §10: the command is the confirmed intent, so this dialog is
+          the whole soft gate; D27). Confirm re-derives fullness from sequenced state (R2)
+          and the dialog closes quietly either way — when stale, the disabled row and its
+          remaining-cells hint are the explanation, never a toast. */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Check the puzzle for everyone?</DialogTitle>
+            <DialogDescription>
+              Wrong letters get marked for the whole room. This is recorded.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setConfirmOpen(false)}
+            >
+              Keep solving
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => {
+                actions.onCheckPuzzle();
+                setConfirmOpen(false);
+              }}
+            >
+              Check puzzle
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** The room-actions popover: the Share/roster register (same components, same visual
+ * weight), trigger sited immediately left of Share (R11). A quiet check-circle icon —
+ * check puzzle is the surface's everyday occupant; end-game rides behind the hairline. */
+function RoomActionsPopover({
+  actions,
+  admin,
+  hostHere,
+}: {
+  actions: RoomActions;
+  admin: RoomAdmin | null;
+  hostHere: boolean;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        {/* 44px-tall hit box on the 24px control (hit-target-y, styles.css). */}
+        <Button
+          variant="secondary"
+          size="icon-sm"
+          className="hit-target-y"
+          aria-label="Room actions"
+        >
+          <CheckCircledIcon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[17rem] gap-3">
+        <RoomActionsPanel actions={actions} admin={admin} hostHere={hostHere} />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The Share popover body, exported for the node render tests. Invite concerns plus Party
+ * mode only: End game moved to the room-actions popover (design doc R3, §2 — Share is the
+ * room's reach, and putting the room on a TV is exactly that). The party row deliberately
+ * takes no game status: it rides every status, so the completed-mosaic projector stays
+ * reachable from a finished room.
+ */
+export function SharePanel({
+  shareUrl,
+  inviteCode,
+  onEnterParty,
+}: {
+  shareUrl: string | null;
+  inviteCode: string | null;
+  onEnterParty?: (() => void) | undefined;
+}) {
+  return (
+    <>
+      <PopoverHeader>
+        <PopoverTitle>Share this game</PopoverTitle>
+        <PopoverDescription className="text-1">
+          Anyone with the link can join or invite others.
+        </PopoverDescription>
+      </PopoverHeader>
+      {/* The hierarchy, decided with the iOS share card
+          (docs/design/share-surface.md): copy-link primary (the group-chat
+          paste, one click, inline feedback), the QR secondary (the
+          in-person scan; the popover being open is the act), the system
+          share tertiary (everything else, where the platform offers it).
+          The bare code rides beside the link as the spoken channel. */}
+      {shareUrl === null ? (
+        <p className="m-0 text-1 text-text-subtle">
+          Open this game from an invite link to get one you can share.
+        </p>
+      ) : (
+        <CopyRow label="Invite link" value={shareUrl} ariaLabel="Invite link" />
+      )}
+      {inviteCode !== null && (
+        <CopyRow
+          label="Invite code"
+          value={inviteCode}
+          ariaLabel="Invite code"
+        />
+      )}
+      {shareUrl !== null && (
+        <>
+          <ShareQR shareUrl={shareUrl} />
+          <NativeShareRow shareUrl={shareUrl} />
+        </>
+      )}
+      {onEnterParty !== undefined && (
+        <>
+          <div className="border-t border-dashed border-border-dashed" />
+          {/* The projector on a TV across the room: the room's reach in person, so it
+              lives with the QR it complements rather than in an account menu (R3). */}
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-center"
+            onClick={onEnterParty}
+          >
+            <DesktopIcon />
+            Party mode
+          </Button>
+        </>
+      )}
+    </>
+  );
+}
+
+function SharePopover({
+  shareUrl,
+  inviteCode,
+  onEnterParty,
+}: {
+  shareUrl: string | null;
+  inviteCode: string | null;
+  onEnterParty?: (() => void) | undefined;
 }) {
   return (
     <Popover>
@@ -257,48 +478,11 @@ function SharePopover({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[19rem] gap-3">
-        <PopoverHeader>
-          <PopoverTitle>Share this game</PopoverTitle>
-          <PopoverDescription className="text-1">
-            Anyone with the link can join or invite others.
-          </PopoverDescription>
-        </PopoverHeader>
-        {/* The hierarchy, decided with the iOS share card
-            (docs/design/share-surface.md): copy-link primary (the group-chat
-            paste, one click, inline feedback), the QR secondary (the
-            in-person scan; the popover being open is the act), the system
-            share tertiary (everything else, where the platform offers it).
-            The bare code rides beside the link as the spoken channel. */}
-        {shareUrl === null ? (
-          <p className="m-0 text-1 text-text-subtle">
-            Open this game from an invite link to get one you can share.
-          </p>
-        ) : (
-          <CopyRow
-            label="Invite link"
-            value={shareUrl}
-            ariaLabel="Invite link"
-          />
-        )}
-        {inviteCode !== null && (
-          <CopyRow
-            label="Invite code"
-            value={inviteCode}
-            ariaLabel="Invite code"
-          />
-        )}
-        {shareUrl !== null && (
-          <>
-            <ShareQR shareUrl={shareUrl} />
-            <NativeShareRow shareUrl={shareUrl} />
-          </>
-        )}
-        {hostHere && admin !== null && (
-          <>
-            <div className="border-t border-dashed border-border-dashed" />
-            <EndGameRow admin={admin} />
-          </>
-        )}
+        <SharePanel
+          shareUrl={shareUrl}
+          inviteCode={inviteCode}
+          onEnterParty={onEnterParty}
+        />
       </PopoverContent>
     </Popover>
   );
@@ -492,6 +676,8 @@ export function GameToolbar({
   shareUrl,
   inviteCode = null,
   admin = null,
+  roomActions = null,
+  onEnterParty,
   onBack,
   leading,
 }: {
@@ -507,6 +693,12 @@ export function GameToolbar({
   /** REST wiring for the host controls (end game, kick). Absent on surfaces with no live
    * mutation path (the demo, the party projector), which then render no host rows at all. */
   admin?: RoomAdmin | null;
+  /** The room-actions popover's wiring (check puzzle, end game). Threaded from LiveApp only,
+   * so surfaces with no live transport never mount the surface at all (R8). */
+  roomActions?: RoomActions | null;
+  /** Enters party mode (the `?party=1` projector), the Share popover's party row (R3).
+   * Absent where there is no game route to toggle (the row simply does not render). */
+  onEnterParty?: (() => void) | undefined;
   onBack: () => void;
   /** Replaces the back chevron; inside the shell this is the sidebar trigger on desktop
    * (a rail plus a back button would double the chrome) with the chevron kept on phones. */
@@ -560,11 +752,21 @@ export function GameToolbar({
           )}
         </div>
         <ThemeToggle />
+        {/* The two room popovers sit adjacent, the personal theme toggle outside them (R11).
+            Room actions renders only while ongoing and never for spectators (R4, §5). */}
+        {roomActions !== null &&
+          roomActions !== undefined &&
+          showRoomActions(roomActions.status, roomActions.spectator) && (
+            <RoomActionsPopover
+              actions={roomActions}
+              admin={admin}
+              hostHere={hostHere}
+            />
+          )}
         <SharePopover
           shareUrl={shareUrl}
           inviteCode={inviteCode}
-          admin={admin}
-          hostHere={hostHere}
+          onEnterParty={onEnterParty}
         />
       </div>
     </header>

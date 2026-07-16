@@ -237,6 +237,10 @@ function expandBoard(
     completedAt: null,
     abandonedAt: null,
     cells,
+    // The room-check facts ride every §4 board; the client-store vectors predate them and
+    // assert nothing about check state, so the no-checks defaults complete the wire shape.
+    checkedWrongCells: board.checkedWrongCells ?? [],
+    checkCount: board.checkCount ?? 0,
     participants: [],
     cursors: [],
     recentCommandIds: board.recentCommandIds ?? [],

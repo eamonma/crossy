@@ -21,6 +21,10 @@ public struct GridFrame: Equatable, Sendable {
     /// .referencedCells), faintly tinted relative to the selection. Empty by default,
     /// so a frame built without cross-reference facts tints nothing.
     public let crossReference: Set<Int>
+    /// The standing room-check marks to paint (PROTOCOL.md §10, D27), already put
+    /// through the overlay-suppression rule (`visibleCheckMarks`). Empty by default,
+    /// so a frame built without check facts marks nothing.
+    public let checkedWrong: Set<Int>
     /// The tint for the local cursor and active word: the local player's roster
     /// color, or ink when ID-1 mutes color in motion (the cursor is color in motion,
     /// apps/ios/DESIGN.md §9; the presence pucks stay colored, they are the
@@ -36,12 +40,14 @@ public struct GridFrame: Equatable, Sendable {
         selfUserId: String?,
         ground: GridGround,
         crossReference: Set<Int> = [],
+        checkedWrong: Set<Int> = [],
         colorInMotionEnabled: Bool = AttributionSwitches.colorInMotionEnabled
     ) {
         self.puzzle = puzzle
         self.values = values
         self.selection = selection
         self.crossReference = crossReference
+        self.checkedWrong = checkedWrong
         self.presence = GridPresence.marks(
             cursors: cursors,
             participants: participants,
@@ -60,10 +66,20 @@ public struct GridFrame: Equatable, Sendable {
         CellFill.resolve(
             isBlock: puzzle.blocks.contains(cell),
             isCurrent: cell == selection?.cell,
-            isChecked: false,  // check styling is M6 scope (GridFill note)
+            isChecked: checkedWrong.contains(cell),
             isCrossReferenced: crossReference.contains(cell),
             inActiveWord: activeWord.contains(cell),
             hasTeammate: presence[cell] != nil)
+    }
+
+    /// The overlay-suppression rule, quoted (PROTOCOL.md §10; design R6): a cell
+    /// with a pending optimistic overlay entry renders the overlay, not the mark.
+    /// Suppression is display only — the store's marks stand untouched, so the mark
+    /// repaints if the entry is rejected and the sequenced value still stands.
+    public static func visibleCheckMarks(
+        _ marks: Set<Int>, overlayCells: Set<Int>
+    ) -> Set<Int> {
+        marks.subtracting(overlayCells)
     }
 
     /// The local player's roster identity: wire color when the roster carries us

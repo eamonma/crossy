@@ -1,0 +1,103 @@
+[
+  {
+    "name": "§10: a full-but-wrong board checks; wrongCells lists every comparator failure ascending, marks stand, count increments",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 9,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "B", "by": "u2" },
+        "2": { "v": "Z", "by": "u1" }
+      }
+    },
+    "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
+    "then": {
+      "events": [
+        {
+          "type": "puzzleChecked",
+          "seq": 10,
+          "wrongCells": [0, 2],
+          "checkCount": 1,
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 10,
+        "filledCount": 3,
+        "checkedWrong": [0, 2],
+        "checkCount": 1
+      }
+    }
+  },
+  {
+    "name": "§10/D12: first-char rebus acceptance is not a failure; only true comparator failures are listed",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 4,
+      "solution": { "0": "AB", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      }
+    },
+    "when": [{ "type": "checkPuzzle", "commandId": "c2" }],
+    "then": {
+      "events": [
+        {
+          "type": "puzzleChecked",
+          "seq": 5,
+          "wrongCells": [1],
+          "checkCount": 1,
+          "commandId": "c2"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 5,
+        "checkedWrong": [1],
+        "checkCount": 1
+      }
+    }
+  },
+  {
+    "name": "§10: blocks are not playable; a full grid around a block checks and never lists the block",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [1],
+      "status": "ongoing",
+      "seq": 3,
+      "solution": { "0": "A", "2": "C" },
+      "cells": {
+        "0": { "v": "B", "by": "u1" },
+        "2": { "v": "C", "by": "u2" }
+      }
+    },
+    "when": [{ "type": "checkPuzzle", "commandId": "c3" }],
+    "then": {
+      "events": [
+        {
+          "type": "puzzleChecked",
+          "seq": 4,
+          "wrongCells": [0],
+          "checkCount": 1,
+          "commandId": "c3"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 4,
+        "checkedWrong": [0],
+        "checkCount": 1
+      }
+    }
+  }
+]

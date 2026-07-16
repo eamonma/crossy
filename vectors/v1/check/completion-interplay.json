@@ -1,0 +1,99 @@
+[
+  {
+    "name": "§10: correcting the last marked cell completes the game with zero standing marks; the count survives into the terminal state",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 15,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkedWrong": [1],
+      "checkCount": 1,
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:01:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 16,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c1"
+        },
+        { "type": "gameCompleted", "seq": 17 }
+      ],
+      "state": {
+        "status": "completed",
+        "seq": 17,
+        "filledCount": 2,
+        "checkedWrong": [],
+        "checkCount": 1
+      }
+    }
+  },
+  {
+    "name": "§10/INV-4: the check that raced a completion is rejected; a full and correct board is never checkable",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 15,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkedWrong": [1],
+      "checkCount": 1,
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:01:00Z"
+      },
+      { "type": "checkPuzzle", "commandId": "c2" }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 16,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c1"
+        },
+        { "type": "gameCompleted", "seq": 17 }
+      ],
+      "state": {
+        "status": "completed",
+        "seq": 17,
+        "checkedWrong": [],
+        "checkCount": 1
+      },
+      "error": "GAME_NOT_ONGOING"
+    }
+  }
+]

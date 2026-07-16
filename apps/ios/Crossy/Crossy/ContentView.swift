@@ -311,6 +311,11 @@ struct RealRoomView: View {
                     // the settle beat.
                     opening: !ready,
                     barSettled: pushSettled,
+                    // The live socket carries checkPuzzle (PROTOCOL.md §5), so the
+                    // facts sheet grows its check row here — and only here (design
+                    // R8: the demo's loopback drops the command and keeps the
+                    // default false, so the demo never offers a dead act).
+                    supportsRoomCheck: true,
                     onBack: onBack,
                     onExit: onExit,
                     // The pasteboard write is the composition root's (CrossyUI

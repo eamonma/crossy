@@ -16,6 +16,7 @@ public enum ErrorCode: String, Codable, Sendable, Equatable, CaseIterable {
     case gameNotOngoing = "GAME_NOT_ONGOING"
     case invalidCell = "INVALID_CELL"
     case invalidValue = "INVALID_VALUE"
+    case gridNotFull = "GRID_NOT_FULL"
     case roleForbidden = "ROLE_FORBIDDEN"
     case rateLimited = "RATE_LIMITED"
     case unknownType = "UNKNOWN_TYPE"
@@ -39,8 +40,8 @@ extension ErrorCode {
         case .unauthorized, .notParticipant, .denied, .gameNotFound,
             .protocolVersionUnsupported:
             return .always
-        case .gameNotOngoing, .invalidCell, .invalidValue, .roleForbidden, .rateLimited,
-            .unknownType:
+        case .gameNotOngoing, .invalidCell, .invalidValue, .gridNotFull, .roleForbidden,
+            .rateLimited, .unknownType:
             return .never
         case .internalError:
             return .varies

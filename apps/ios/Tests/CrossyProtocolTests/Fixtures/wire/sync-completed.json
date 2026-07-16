@@ -11,6 +11,8 @@
       { "v": null, "by": null },
       { "v": "B", "by": "u2" }
     ],
+    "checkedWrongCells": [],
+    "checkCount": 2,
     "participants": [
       {
         "userId": "u1",
@@ -25,7 +27,8 @@
     "stats": {
       "solveTimeSeconds": 2272,
       "totalEvents": 899,
-      "participantCount": 4
+      "participantCount": 4,
+      "checkCount": 2
     }
   }
 }

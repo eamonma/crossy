@@ -47,7 +47,8 @@ export function reduce(state: BoardState, command: Command): ReduceResult {
 
   const seq = state.seq + 1;
   const previous = state.cells.get(command.cell);
-  const wasFilled = previous !== undefined && previous.v !== null;
+  const previousValue = previous?.v ?? null;
+  const wasFilled = previousValue !== null;
   const nowFilled = value !== null;
 
   const cells = new Map(state.cells);
@@ -64,6 +65,16 @@ export function reduce(state: BoardState, command: Command): ReduceResult {
       ? command.at
       : state.firstFillAt;
 
+  // A marked cell's check mark clears exactly when its value changes (PROTOCOL §10,
+  // D27): a different letter or a clear removes it; a same-value write keeps it, the
+  // mark is still true.
+  let checkedWrong = state.checkedWrong;
+  if (checkedWrong.has(command.cell) && value !== previousValue) {
+    const cleared = new Set(checkedWrong);
+    cleared.delete(command.cell);
+    checkedWrong = cleared;
+  }
+
   const event: CellSet = {
     type: "cellSet",
     seq,
@@ -76,6 +87,6 @@ export function reduce(state: BoardState, command: Command): ReduceResult {
 
   return {
     events: [event],
-    state: { ...state, cells, seq, filledCount, firstFillAt },
+    state: { ...state, cells, seq, filledCount, firstFillAt, checkedWrong },
   };
 }

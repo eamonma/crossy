@@ -50,6 +50,8 @@ export interface Stats {
   readonly solveTimeSeconds: number;
   readonly totalEvents: number;
   readonly participantCount: number;
+  /** The game's total accepted checks, frozen at completion (PROTOCOL.md §4, §10; D27). */
+  readonly checkCount: number;
 }
 
 /**
@@ -64,6 +66,14 @@ export interface Board {
   readonly completedAt: string | null;
   readonly abandonedAt: string | null;
   readonly cells: readonly Cell[];
+  /**
+   * The standing room-check marks (PROTOCOL.md §4, §10): the playable cells whose value
+   * failed the comparator at the most recent checkPuzzle and has not changed since,
+   * ascending, `[]` when none stand. Indices only, never values or answers (INV-6).
+   */
+  readonly checkedWrongCells: readonly number[];
+  /** The game's total accepted checks, `0` before the first; permanent, never reset (§10). */
+  readonly checkCount: number;
   readonly participants: readonly Participant[];
   readonly cursors: readonly Cursor[];
   readonly recentCommandIds: readonly string[];

@@ -7,7 +7,12 @@ import { celebrationPalette, completionCells } from "./completionStats";
 describe("completionCells", () => {
   it("renders the wire stats verbatim: time, solvers, entries (PROTOCOL §4)", () => {
     const cells = completionCells(
-      { solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4 },
+      {
+        solveTimeSeconds: 2272,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 0,
+      },
       0,
     );
     expect(cells.map((c) => c.key)).toEqual(["time", "solvers", "entries"]);
@@ -18,7 +23,12 @@ describe("completionCells", () => {
 
   it("prefers the server's solveTimeSeconds over the derived fallback", () => {
     const cells = completionCells(
-      { solveTimeSeconds: 61, totalEvents: 1, participantCount: 1 },
+      {
+        solveTimeSeconds: 61,
+        totalEvents: 1,
+        participantCount: 1,
+        checkCount: 0,
+      },
       999,
     );
     expect(cells[0]!.value).toBe("1:01");
@@ -35,7 +45,12 @@ describe("completionCells", () => {
     expect(completionCells(null, 0)).toHaveLength(3);
     expect(
       completionCells(
-        { solveTimeSeconds: 1, totalEvents: 1, participantCount: 1 },
+        {
+          solveTimeSeconds: 1,
+          totalEvents: 1,
+          participantCount: 1,
+          checkCount: 0,
+        },
         0,
       ),
     ).toHaveLength(3);

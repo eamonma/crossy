@@ -27,8 +27,6 @@
 // broadcasts the disconnect; any received frame (heartbeat included) resets the timer. The
 // liveness timer lives on the socket, not the actor, so it cannot leak across actor passivation:
 // a close always clears it, and a passivated actor has no sockets.
-//
-// Out of this slice (reported as deferrals): checkRequest is Phase 3.
 
 import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
@@ -566,8 +564,13 @@ function handleConnection(
     }
     const message = decoded.value;
     switch (message.type) {
+      // The room check (checkPuzzle) rides the same mutation path as the cell commands
+      // (PROTOCOL.md §5, §10; D27): the actor's mailbox serializes it, its role gate
+      // rejects spectators (ROLE_FORBIDDEN), and the engine's check gate maps a bad
+      // moment to GAME_NOT_ONGOING or GRID_NOT_FULL.
       case "placeLetter":
       case "clearCell":
+      case "checkPuzzle":
         if (actor !== null && connection !== null) {
           void actor.submit(connection, message);
         }
@@ -631,8 +634,6 @@ function handleConnection(
         // Liveness already reset for every inbound frame (above); heartbeat carries no other
         // action. It is no longer ignored: it is precisely what keeps an idle client alive (§9).
         return;
-      case "checkRequest":
-        return; // deferred: check is Phase 3 (see the report)
       case "hello":
         return; // a second hello after handshake is unexpected; ignore
     }

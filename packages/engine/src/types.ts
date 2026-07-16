@@ -24,7 +24,8 @@ export interface Cell {
 /**
  * The mutable board state the reducer threads. `cells` holds only written cells; an
  * absent index is an empty, never-written cell. `filledCount` is maintained so the
- * completion gate stays cheap (DESIGN §3).
+ * completion gate stays cheap (DESIGN §3). `checkedWrong` is the standing room-check
+ * marks and `checkCount` the permanent count of accepted checks (PROTOCOL §10, D27).
  */
 export interface BoardState {
   readonly grid: Grid;
@@ -33,6 +34,8 @@ export interface BoardState {
   readonly firstFillAt: string | null;
   readonly cells: ReadonlyMap<number, Cell>;
   readonly filledCount: number;
+  readonly checkedWrong: ReadonlySet<number>;
+  readonly checkCount: number;
 }
 
 /** Sparse map of cell index to the cell's full solution string (completion only). */
@@ -57,6 +60,16 @@ export interface ClearCell {
 
 export type Command = PlaceLetter | ClearCell;
 
+/**
+ * The room-check command (PROTOCOL §5, §10; D27). No `by` and no `at`: the wire event
+ * is neutral by construction, and the adapter stamps `at`; the actor keeps the sender
+ * in `check_events`, never on the wire.
+ */
+export interface CheckPuzzle {
+  readonly type: "checkPuzzle";
+  readonly commandId: string;
+}
+
 /** Emitted for every accepted mutation, including overwrites and no-ops (PROTOCOL §6). */
 export interface CellSet {
   readonly type: "cellSet";
@@ -74,11 +87,24 @@ export interface GameCompleted {
   readonly seq: number;
 }
 
-export type Event = CellSet | GameCompleted;
+/**
+ * Emitted for every accepted checkPuzzle (PROTOCOL §6, §10). `wrongCells` is every
+ * comparator failure, ascending; the marks replace any standing set wholesale.
+ * Cell indices and a count only, never values or answers (INV-6).
+ */
+export interface PuzzleChecked {
+  readonly type: "puzzleChecked";
+  readonly seq: number;
+  readonly wrongCells: readonly number[];
+  readonly checkCount: number;
+  readonly commandId: string;
+}
 
-/** The PROTOCOL §11 rejection codes the reducer can produce. */
+export type Event = CellSet | GameCompleted | PuzzleChecked;
+
+/** The PROTOCOL §11 rejection codes the reducer and check gate can produce. */
 export type RejectionCode =
-  "GAME_NOT_ONGOING" | "INVALID_CELL" | "INVALID_VALUE";
+  "GAME_NOT_ONGOING" | "INVALID_CELL" | "INVALID_VALUE" | "GRID_NOT_FULL";
 
 /**
  * A single-command reduce outcome. A rejection carries `error`, an empty `events`, and
@@ -91,8 +117,13 @@ export interface ReduceResult {
   readonly error?: RejectionCode;
 }
 
-/** The completion driver's outcome: the sequenced stream and the next state. */
+/**
+ * The completion driver's outcome: the sequenced stream and the next state. A
+ * rejection carries `error`, an empty `events`, and the unchanged `state`, matching
+ * the ReduceResult convention (INV-2).
+ */
 export interface CompletionResult {
   readonly events: readonly Event[];
   readonly state: BoardState;
+  readonly error?: RejectionCode;
 }

@@ -7,9 +7,10 @@
 public enum CellFill: Equatable, Sendable, CaseIterable {
     case block
     case current
-    /// Check styling is M6 scope (the store ignores checkResult today, root ROADMAP
-    /// Phase 5); the level is declared now so checks slot into the pinned order later
-    /// without reordering anything.
+    /// Room-check styling lands with the consolidated check control (the store applies
+    /// puzzleChecked's seq today and renders nothing, PROTOCOL §10, D27); the level is
+    /// declared now so the marks slot into the pinned order later without reordering
+    /// anything.
     case check
     /// The clue under the cursor names this cell's word ("With 27-Down"): a faint
     /// tint relative to the selection. Below check, above the active word, so a

@@ -161,6 +161,9 @@ func shapeProblems(for file: DiscoveredFile) -> [String] {
         case .completion:
             return try decoder.decode([CompletionCase].self, from: file.data)
                 .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
+        case .check:
+            return try decoder.decode([CheckCase].self, from: file.data)
+                .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }
         case .clientStore:
             return try decoder.decode([ClientStoreCase].self, from: file.data)
                 .flatMap { c in c.shapeProblems().map { "\(c.label): \($0)" } }

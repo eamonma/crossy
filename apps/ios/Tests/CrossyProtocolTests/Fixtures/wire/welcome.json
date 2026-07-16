@@ -13,6 +13,8 @@
       { "v": null, "by": null },
       { "v": null, "by": "u2" }
     ],
+    "checkedWrongCells": [],
+    "checkCount": 0,
     "participants": [
       {
         "userId": "u1",

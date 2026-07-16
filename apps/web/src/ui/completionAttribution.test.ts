@@ -30,10 +30,17 @@ function completedBoard(
     completedAt: "2026-07-07T00:06:12Z",
     abandonedAt: null,
     cells: [...cells],
+    checkedWrongCells: [],
+    checkCount: 0,
     participants: [],
     cursors: [],
     recentCommandIds: [],
-    stats: { solveTimeSeconds: 372, totalEvents: 4, participantCount: 2 },
+    stats: {
+      solveTimeSeconds: 372,
+      totalEvents: 4,
+      participantCount: 2,
+      checkCount: 0,
+    },
   };
 }
 

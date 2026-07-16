@@ -11,6 +11,7 @@ import type {
   Command,
   PlaceLetter,
   ClearCell,
+  PuzzleChecked,
 } from "@crossy/engine";
 import type {
   Board,
@@ -20,6 +21,7 @@ import type {
   Cursor,
   Participant,
   PlaceLetterMessage,
+  PuzzleCheckedEvent,
   Stats,
 } from "@crossy/protocol";
 import type { CellSet } from "@crossy/engine";
@@ -76,6 +78,33 @@ export function cellSetToWire(
   return firstFillAt === undefined ? frame : { ...frame, firstFillAt };
 }
 
+/**
+ * An engine `puzzleChecked` event to the wire frame (PROTOCOL.md §6, §10). The adapter stamps
+ * `at` from the server clock, like `gameCompleted`'s. Deliberately no `by`: the wire event is
+ * neutral by construction (D27); the actor keeps the sender server-side in check_events only.
+ */
+export function puzzleCheckedToWire(
+  event: PuzzleChecked,
+  at: string,
+): PuzzleCheckedEvent {
+  return {
+    type: "puzzleChecked",
+    seq: event.seq,
+    wrongCells: [...event.wrongCells],
+    checkCount: event.checkCount,
+    commandId: event.commandId,
+    at,
+  };
+}
+
+/**
+ * The standing room-check marks, ascending (PROTOCOL.md §4, §6): the engine's set ordered for
+ * the wire board and the persisted snapshot, so both carry one normative shape.
+ */
+export function checkedWrongAscending(state: BoardState): number[] {
+  return [...state.checkedWrong].sort((a, b) => a - b);
+}
+
 /** Inputs the board payload needs beyond the engine board state. */
 export interface BoardExtras {
   readonly participants: readonly Participant[];
@@ -116,6 +145,10 @@ export function boardCells(state: BoardState): Cell[] {
 export function buildBoard(state: BoardState, extras: BoardExtras): Board {
   return {
     cells: boardCells(state),
+    // The standing marks and the permanent count ride every snapshot, so reconnect and
+    // resync heal the check state with no delta replay (PROTOCOL.md §4, §10).
+    checkedWrongCells: checkedWrongAscending(state),
+    checkCount: state.checkCount,
     seq: state.seq,
     status: state.status,
     firstFillAt: state.firstFillAt,

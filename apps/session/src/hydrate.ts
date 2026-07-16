@@ -27,10 +27,25 @@ export interface PuzzleSnapshot {
   readonly solution: readonly (string | null)[];
 }
 
+/**
+ * The stored board jsonb, in either of its two generations: the current object shape
+ * (writer.ts BoardSnapshot: cells plus the room-check marks and count, D27) or the
+ * pre-check bare cell array a legacy row still holds. The reader accepts both
+ * (expand/contract, DESIGN.md §9): a legacy board hydrates with no standing marks and
+ * a zero count, which is exactly the state it was flushed in.
+ */
+export type StoredBoard =
+  | readonly RawCell[]
+  | {
+      readonly cells: readonly RawCell[];
+      readonly checkedWrongCells?: readonly number[];
+      readonly checkCount?: number;
+    };
+
 /** The `game_state` row (DESIGN.md §9). Absent for a game no one has played yet. */
 export interface GameStateRow {
   readonly status: "ongoing" | "completed" | "abandoned";
-  readonly board: readonly RawCell[];
+  readonly board: StoredBoard;
   readonly lastSeq: number;
   readonly firstFillAt: string | null;
   readonly completedAt: string | null;
@@ -59,6 +74,11 @@ export interface HydratedGame {
    * must survive passivation like every other snapshot fact.
    */
   readonly stats: Stats | null;
+}
+
+/** Narrow a stored board to its legacy bare-array generation (pre-check rows, D27). */
+function isLegacyBoard(board: StoredBoard): board is readonly RawCell[] {
+  return Array.isArray(board);
 }
 
 /** Parse the puzzle snapshot into the engine grid and the comparator's solution map. */
@@ -92,15 +112,21 @@ export function hydrateGame(
 ): HydratedGame {
   const { grid, solution } = readPuzzle(snapshot);
 
+  // Split the stored board into its facts, tolerating the legacy bare-array shape
+  // (StoredBoard): a legacy row carries no check state, which reads as none standing.
+  const stored: StoredBoard = state?.board ?? [];
+  const legacy = isLegacyBoard(stored);
+  const storedCells = legacy ? stored : stored.cells;
+  const storedChecked = legacy ? [] : (stored.checkedWrongCells ?? []);
+  const storedCheckCount = legacy ? 0 : (stored.checkCount ?? 0);
+
   const cells = new Map<number, Cell>();
   let filledCount = 0;
-  if (state !== null) {
-    state.board.forEach((raw, cell) => {
-      if (raw.by === null) return; // black square or never-written
-      cells.set(cell, { v: raw.v, by: raw.by });
-      if (raw.v !== null) filledCount += 1;
-    });
-  }
+  storedCells.forEach((raw, cell) => {
+    if (raw.by === null) return; // black square or never-written
+    cells.set(cell, { v: raw.v, by: raw.by });
+    if (raw.v !== null) filledCount += 1;
+  });
 
   const boardState: BoardState = {
     grid,
@@ -109,7 +135,24 @@ export function hydrateGame(
     firstFillAt: state?.firstFillAt ?? null,
     cells,
     filledCount,
+    // The standing marks and the permanent count survive passivation with the board
+    // they describe (PROTOCOL.md §4, §10; D27).
+    checkedWrong: new Set(storedChecked),
+    checkCount: storedCheckCount,
   };
+
+  // The single writer serialized this from a Stats at the terminal flush (INV-7), so the
+  // cast mirrors the one on the write side (actor snapshotForFlush). The repo maps an
+  // empty `{}` (an ongoing game's row) to null before it reaches here. A row flushed
+  // before the room check landed (D27) predates stats.checkCount; backfill the zero it
+  // means, so every served snapshot carries the full PROTOCOL.md §4 stats shape.
+  const rawStats =
+    (state?.stats as
+      (Omit<Stats, "checkCount"> & { checkCount?: number }) | null) ?? null;
+  const stats: Stats | null =
+    rawStats === null
+      ? null
+      : { ...rawStats, checkCount: rawStats.checkCount ?? 0 };
 
   return {
     boardState,
@@ -118,9 +161,6 @@ export function hydrateGame(
     abandonedAt: state?.abandonedAt ?? null,
     recentCommandIds: state?.recentCommandIds ?? [],
     roomName,
-    // The single writer serialized this from a Stats at the terminal flush (INV-7), so
-    // the cast mirrors the one on the write side (actor snapshotForFlush). The repo maps
-    // an empty `{}` (an ongoing game's row) to null before it reaches here.
-    stats: (state?.stats as Stats | null) ?? null,
+    stats,
   };
 }

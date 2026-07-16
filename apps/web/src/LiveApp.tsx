@@ -65,6 +65,7 @@ import {
 import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
 import { useBearer } from "./ui/useResource";
 import { useNavPrefs } from "./ui/useNavPrefs";
+import { emptyPlayableCount, visibleCheckMarks } from "./ui/roomActions";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
 import { referencedCells, referencedKeys } from "./ui/clueRefs";
@@ -867,6 +868,47 @@ function LiveGame({
 
   const filled = useMemo(() => new Set(fills.keys()), [fills]);
 
+  // The standing room-check marks, overlay-suppressed (PROTOCOL.md §10, R6): a cell with a
+  // pending optimistic entry renders the overlay, not the mark. Suppression is display only;
+  // the store's set is untouched and heals back if the pending command dies.
+  const checkMarks = useMemo(() => {
+    void version;
+    return visibleCheckMarks(store.checkedWrongCells, store.overlay);
+  }, [store, version]);
+  // Only the grid takes the marked puzzle: every other consumer keys memos off `puzzle`, whose
+  // identity must not churn per store version. At completion zero marks stand (PROTOCOL.md
+  // §10), so the mosaic and analysis surfaces stay untouched by construction.
+  const markedPuzzle = useMemo(
+    () => ({ ...puzzle, wrong: checkMarks }),
+    [puzzle, checkMarks],
+  );
+
+  // The check row's gate, derived from SEQUENCED state only (R9), matching the server's own
+  // grid-full gate: a just-typed optimistic letter leaves the row disabled for a beat.
+  const emptyCount = useMemo(() => {
+    void version;
+    return emptyPlayableCount(
+      puzzle.cols * puzzle.rows,
+      puzzle.blocks,
+      (cell) => store.sequencedValue(cell),
+    );
+  }, [store, version, puzzle]);
+
+  // The confirmed check (R2): re-derive fullness from the store at the confirm tap — not from
+  // the render-time prop — so a teammate emptying a cell between render and confirm falls back
+  // quietly (the dialog closes, the row is already disabled again). If the server still
+  // rejects, the store's rejection path is a silent no-op by design.
+  const requestCheck = useCallback((): boolean => {
+    const empty = emptyPlayableCount(
+      puzzle.cols * puzzle.rows,
+      puzzle.blocks,
+      (cell) => store.sequencedValue(cell),
+    );
+    if (empty > 0) return false;
+    store.checkPuzzle();
+    return true;
+  }, [store, puzzle]);
+
   const presence = useMemo(() => {
     void version;
     const byCell = new Map<number, PresenceEntry[]>();
@@ -1252,6 +1294,14 @@ function LiveGame({
               refresh: () => identity.refreshAccessToken(),
             },
           }}
+          roomActions={{
+            status: store.status,
+            spectator: isSpectator,
+            emptyCount,
+            checkCount: store.checkCount,
+            onCheckPuzzle: requestCheck,
+          }}
+          onEnterParty={() => navigate(togglePartyHref(gameId, params, true))}
           onBack={goHome}
           leading={leading}
         />
@@ -1376,7 +1426,7 @@ function LiveGame({
                   aria-busy={awaitingFirstSync}
                 >
                   <CrosswordGrid
-                    puzzle={puzzle}
+                    puzzle={markedPuzzle}
                     fills={fills}
                     selection={selection}
                     presence={presence}

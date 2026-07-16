@@ -16,6 +16,8 @@ function board(overrides: Partial<Board> = {}): Board {
     completedAt: null,
     abandonedAt: null,
     cells: Array.from({ length: 20 }, () => ({ v: null, by: null })),
+    checkedWrongCells: [],
+    checkCount: 0,
     participants: [],
     cursors: [],
     recentCommandIds: [],
@@ -129,7 +131,12 @@ describe("terminal states freeze mutation locally (ROADMAP Wave 2.1d; INV-4 scop
       type: "gameCompleted",
       seq: 6,
       at: "2026-07-07T01:00:00Z",
-      stats: { solveTimeSeconds: 60, totalEvents: 5, participantCount: 2 },
+      stats: {
+        solveTimeSeconds: 60,
+        totalEvents: 5,
+        participantCount: 2,
+        checkCount: 0,
+      },
     });
     expect(store.status).toBe("completed");
     expect(store.seq).toBe(6);
@@ -266,5 +273,85 @@ describe("moveCursor relay (PROTOCOL.md sections 5, 9)", () => {
     const before = store.getVersion();
     store.moveCursor(7, "down");
     expect(store.getVersion()).toBe(before);
+  });
+});
+
+// The outbound room check (PROTOCOL.md sections 5 and 10; D27) and its rejection posture
+// (design doc room-actions-control.md R2): the command mints a commandId like any mutation
+// but owns no cell, so it never enters the overlay, and a rejection has nothing to clear.
+describe("checkPuzzle send intent (PROTOCOL.md sections 5, 10; D27)", () => {
+  it("sends checkPuzzle with a minted commandId and no overlay entry (a check owns no cell)", () => {
+    const sent: ClientMessage[] = [];
+    const store = new GameStore({
+      transport: { send: (message) => sent.push(message) },
+      newCommandId: () => "cmd-check",
+    });
+    store.receive({
+      type: "welcome",
+      protocolVersion: 1,
+      self: { userId: "me", role: "solver" },
+      board: board(),
+    });
+    store.checkPuzzle();
+    expect(sent).toEqual([{ type: "checkPuzzle", commandId: "cmd-check" }]);
+    expect(store.overlay).toEqual([]);
+  });
+
+  it("refuses before the first welcome (connecting): no authoritative board to check yet", () => {
+    const sent: ClientMessage[] = [];
+    const store = new GameStore({
+      transport: { send: (message) => sent.push(message) },
+    });
+    store.checkPuzzle();
+    expect(sent).toEqual([]);
+  });
+
+  it("refuses in a terminal state: GAME_NOT_ONGOING never reaches the wire (INV-4 scope)", () => {
+    const { store, sent } = makeStore(board({ status: "completed" }));
+    const sends = sent.length;
+    store.checkPuzzle();
+    expect(sent.length).toBe(sends);
+  });
+
+  it("a non-fatal GRID_NOT_FULL rejection for a checkPuzzle commandId is a silent no-op (R2; PROTOCOL.md section 11)", () => {
+    const { store } = makeStore(board());
+    // An unrelated letter is pending: the rejection must not clear it, because the
+    // checkPuzzle commandId has no overlay entry to match (INV-10 stays intact).
+    store.placeLetter(2, "A", "cmd-letter");
+    const version = store.getVersion();
+    store.receive({
+      type: "error",
+      code: "GRID_NOT_FULL",
+      message: "grid is not full",
+      fatal: false,
+      commandId: "cmd-check",
+    });
+    expect(store.overlay).toEqual([
+      { commandId: "cmd-letter", cell: 2, value: "A" },
+    ]);
+    expect(store.sync).toBe("live");
+    // Nothing changed, so views did not re-render: the design posture is silence (the
+    // room's own state shows why the check was refused).
+    expect(store.getVersion()).toBe(version);
+  });
+});
+
+// The grid-full gate's read surface (design doc R9): fullness derives from SEQUENCED state
+// only, mirroring the server's own gate, so a just-typed optimistic letter does not count.
+describe("sequencedValue reads sequenced state only (R9; PROTOCOL.md section 10 gate parity)", () => {
+  it("ignores a pending optimistic overlay entry that renderValue would paint", () => {
+    const { store } = makeStore(board());
+    store.placeLetter(5, "Q");
+    expect(store.renderValue(5)).toBe("Q");
+    expect(store.sequencedValue(5)).toBeNull();
+  });
+
+  it("reads the confirmed value once the echo lands", () => {
+    const { store } = makeStore(board());
+    store.placeLetter(5, "Q", "cmd-q");
+    store.receive(
+      cellSet({ seq: 1, cell: 5, value: "Q", by: "me", commandId: "cmd-q" }),
+    );
+    expect(store.sequencedValue(5)).toBe("Q");
   });
 });
