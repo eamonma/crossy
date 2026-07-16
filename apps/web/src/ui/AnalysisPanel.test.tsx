@@ -102,3 +102,57 @@ describe("the legend's isolation rows (owner ruling: tap a solver to spotlight t
     expect(html).not.toContain("aria-pressed");
   });
 });
+
+describe("the Time stat's sittings context (D29: count is context at 2+, never a second stat)", () => {
+  it("renders the quiet 'N sittings' context under the time when the room sat down twice", () => {
+    const html = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={{
+          ...bundle,
+          sittings: {
+            count: 2,
+            spans: [
+              { startSeconds: 0, endSeconds: 45 },
+              { startSeconds: 45, endSeconds: 90 },
+            ],
+            wallSeconds: 29160,
+          },
+        }}
+        members={members}
+        selfId={null}
+        idBase="t"
+      />,
+    );
+    expect(html).toContain("2 sittings");
+    // Wall clock is flavor only, never a competing stat: the old 8:06:00 span appears nowhere.
+    expect(html).not.toContain("8:06:00");
+  });
+
+  it("renders no suffix for a single sitting: markup identical to a bundle without the field", () => {
+    const single = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={{
+          ...bundle,
+          sittings: {
+            count: 1,
+            spans: [{ startSeconds: 0, endSeconds: 90 }],
+            wallSeconds: 90,
+          },
+        }}
+        members={members}
+        selfId={null}
+        idBase="t"
+      />,
+    );
+    const absent = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={bundle}
+        members={members}
+        selfId={null}
+        idBase="t"
+      />,
+    );
+    expect(single).toBe(absent);
+    expect(single).not.toContain("sittings");
+  });
+});

@@ -206,6 +206,17 @@ function decodeStats(x: unknown, what: string): Stats {
     totalEvents: asInt(o.totalEvents, `${what}.totalEvents`),
     participantCount: asInt(o.participantCount, `${what}.participantCount`),
     checkCount: asInt(o.checkCount, `${what}.checkCount`),
+    // Additive (PROTOCOL.md §4, D29): stats frozen before sittings shipped lack these and are
+    // never backfilled, so absence decodes clean and the key is simply omitted.
+    ...(o.activeSolveSeconds !== undefined && {
+      activeSolveSeconds: asInt(
+        o.activeSolveSeconds,
+        `${what}.activeSolveSeconds`,
+      ),
+    }),
+    ...(o.sittingCount !== undefined && {
+      sittingCount: asInt(o.sittingCount, `${what}.sittingCount`),
+    }),
   };
 }
 

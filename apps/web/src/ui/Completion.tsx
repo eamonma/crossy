@@ -222,6 +222,11 @@ export function CompletionOverlay({
               <dd className="m-0 font-mono text-5 text-text tabular-nums">
                 {cell.value}
               </dd>
+              {/* The sitting count, quiet context under the headline time, never a
+                  second stat (D29): present only when the room sat down more than once. */}
+              {cell.context !== null && (
+                <div className="text-1 text-text-subtle">{cell.context}</div>
+              )}
             </div>
           ))}
         </dl>

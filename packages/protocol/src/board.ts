@@ -52,6 +52,14 @@ export interface Stats {
   readonly participantCount: number;
   /** The game's total accepted checks, frozen at completion (PROTOCOL.md §4, §10; D27). */
   readonly checkCount: number;
+  /** Solve time with idle collapsed (the sittings partition, PROTOCOL.md §4; D29). Additive:
+   * absent on stats frozen before sittings shipped, never backfilled; a client falls back to
+   * `solveTimeSeconds`, which keeps its wall-clock semantics forever. */
+  readonly activeSolveSeconds?: number;
+  /** The number of sittings in the partition (PROTOCOL.md §4; D29). Additive, like
+   * `activeSolveSeconds`. Where stats render it is context beside the headline time
+   * ("24:13 · 2 sittings"), never a second stat. */
+  readonly sittingCount?: number;
 }
 
 /**
