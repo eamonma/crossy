@@ -17,23 +17,52 @@ final class RoomFactsSheetLayoutTests: XCTestCase {
     // their exact heights.
     func test_height_isSlotArithmetic() {
         XCTAssertEqual(
-            RoomFactsSheetLayout.height(hasDetail: false, operationRows: 0), 152)
+            RoomFactsSheetLayout.height(
+                hasDetail: false, hasCheckedLine: false, operationRows: 0),
+            152)
         XCTAssertEqual(
-            RoomFactsSheetLayout.height(hasDetail: true, operationRows: 0), 180)
+            RoomFactsSheetLayout.height(
+                hasDetail: true, hasCheckedLine: false, operationRows: 0),
+            180)
     }
 
     // Mid-solve the sheet carries the §12 operations under a one-point hairline:
     // each row adds its fixed height, and the hairline block appears exactly
-    // once, only when rows exist.
+    // once, only when rows exist. Two rows is the full mid-solve set now (check
+    // above end-game), so the arithmetic is exercised where the sheet lives (R7).
     func test_height_operationRowsAddExactly_section12() {
-        let bare = RoomFactsSheetLayout.height(hasDetail: true, operationRows: 0)
-        let one = RoomFactsSheetLayout.height(hasDetail: true, operationRows: 1)
-        let two = RoomFactsSheetLayout.height(hasDetail: true, operationRows: 2)
+        let bare = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 0)
+        let one = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 1)
+        let two = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 2)
         let block =
             RoomFactsSheetLayout.operationsAirAbove + RoomFactsSheetLayout.dividerHeight
             + RoomFactsSheetLayout.operationsAirBelow
         XCTAssertEqual(one, bare + block + RoomFactsSheetLayout.operationRowHeight)
         XCTAssertEqual(two, one + RoomFactsSheetLayout.operationRowHeight)
+    }
+
+    // The checked-count facts line is its own honest slot (R7: undercounting a
+    // conditional clips the sheet): gap plus height, added exactly once, and
+    // independent of the operations block.
+    func test_height_checkedLineAddsItsOwnSlot_R7() {
+        let without = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 2)
+        let with = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: true, operationRows: 2)
+        XCTAssertEqual(
+            with,
+            without + RoomFactsSheetLayout.checkedLineGap
+                + RoomFactsSheetLayout.checkedLineHeight)
+        // Bare of every other conditional the slot still counts once.
+        let bareWith = RoomFactsSheetLayout.height(
+            hasDetail: false, hasCheckedLine: true, operationRows: 0)
+        XCTAssertEqual(
+            bareWith,
+            152 + RoomFactsSheetLayout.checkedLineGap
+                + RoomFactsSheetLayout.checkedLineHeight)
     }
 }
 
@@ -152,6 +181,34 @@ final class RoomFactsContentTests: XCTestCase {
         XCTAssertEqual(content.detail, "3 solvers")
     }
 
+    // The check record among the facts (PROTOCOL.md §10, D27; design R10):
+    // quiet, neutral, natural casing — "Checked once", then counted — and
+    // absent entirely before the first accepted check (no zeros).
+    func test_midSolve_checkedLineWording_D27() {
+        XCTAssertNil(RoomFactsContent.checkedLine(count: 0))
+        XCTAssertEqual(RoomFactsContent.checkedLine(count: 1), "Checked once")
+        XCTAssertEqual(RoomFactsContent.checkedLine(count: 2), "Checked 2 times")
+        XCTAssertEqual(RoomFactsContent.checkedLine(count: 7), "Checked 7 times")
+    }
+
+    func test_midSolve_carriesTheCheckedLine_R10() {
+        let content = RoomFactsContent.make(
+            roomName: "Tuesday evening", puzzleTitle: nil, puzzleAuthor: nil,
+            puzzleDate: nil, completed: false, totalEvents: nil,
+            participantCount: nil, checkCount: 3)
+        XCTAssertEqual(content.checkedLine, "Checked 3 times")
+    }
+
+    // After completion the count's home is stats.checkCount on the analysis
+    // surface (R10, deferred deliberately); the completed derivation carries
+    // no checked line.
+    func test_completed_carriesNoCheckedLine_R10() {
+        let content = RoomFactsContent.make(
+            roomName: "trio", puzzleTitle: nil, puzzleAuthor: nil, puzzleDate: nil,
+            completed: true, totalEvents: 10, participantCount: 2, checkCount: 3)
+        XCTAssertNil(content.checkedLine)
+    }
+
     // A completed room with no stats shows no zeros: the detail vanishes and
     // the headline falls back to the frozen clock (RoomFactsClockTests).
     func test_completed_noStatsMeansNoDetail() {
@@ -163,20 +220,21 @@ final class RoomFactsContentTests: XCTestCase {
     }
 }
 
-// The sheet's operations (owner ruling 2026-07-10). Copy invite code retired
-// 2026-07-11 (the share surface, now a native menu, owns invite copying: its
-// Section header carries the code, Copy link the URL). So the only operation
-// left is the host's end-game (host abandon, a FORBIDDEN for a non-host,
-// PROTOCOL.md §12). Kick is not here; it lives on the roster menu. The
-// derivation is pure, so the view renders no policy, and rowCount feeds the
-// sheet-height arithmetic.
+// The sheet's operations (owner ruling 2026-07-10; the room-actions design,
+// D27). Two rows can stand mid-solve: the room check (any host or solver,
+// PROTOCOL.md §5, §10) above the host's end-game (host abandon, a FORBIDDEN
+// for a non-host, PROTOCOL.md §12). Kick is not here; it lives on the roster
+// menu. The derivation is pure, so the view renders no policy, and rowCount
+// feeds the sheet-height arithmetic.
 
 final class FactsOperationsTests: XCTestCase {
-    func test_host_seesEndGame() {
-        let ops = FactsOperations.make(isHost: true)
+    func test_host_seesCheckAboveEndGame_D27() {
+        let ops = FactsOperations.make(
+            isHost: true, isSpectator: false, supportsCheck: true, emptyCells: 0)
         XCTAssertTrue(ops.canEndGame)
+        XCTAssertNotNil(ops.check)
         XCTAssertTrue(ops.hasAny)
-        XCTAssertEqual(ops.rowCount, 1)
+        XCTAssertEqual(ops.rowCount, 2)
     }
 
     // The empty set renders no hairline, no rows, and adds nothing to the
@@ -185,16 +243,58 @@ final class FactsOperationsTests: XCTestCase {
         XCTAssertEqual(FactsOperations.none.rowCount, 0)
         XCTAssertFalse(FactsOperations.none.hasAny)
         XCTAssertFalse(FactsOperations.none.canEndGame)
+        XCTAssertNil(FactsOperations.none.check)
     }
 
-    // A non-host is never offered the destructive end-game; the server refuses
-    // a non-host abandon, and the sheet simply does not show it. With copy-code
-    // retired, a non-host mid-solve has no operations at all: the sheet shows
-    // facts alone, which the ruling accepts.
-    func test_nonHost_hasNoOperations() {
-        let ops = FactsOperations.make(isHost: false)
+    // A non-host solver checks but never ends: end-game stays host-only
+    // (PROTOCOL.md §12) while the check is any host or solver (§5).
+    func test_solver_seesCheckOnly_PROTOCOL5() {
+        let ops = FactsOperations.make(
+            isHost: false, isSpectator: false, supportsCheck: true, emptyCells: 3)
         XCTAssertFalse(ops.canEndGame)
+        XCTAssertNotNil(ops.check)
+        XCTAssertEqual(ops.rowCount, 1)
+    }
+
+    // Spectators never see the check row (PROTOCOL.md §5: checkPuzzle is
+    // host|solver; the server enforces the role gate regardless).
+    func test_spectator_neverSeesCheck_PROTOCOL5() {
+        let ops = FactsOperations.make(
+            isHost: false, isSpectator: true, supportsCheck: true, emptyCells: 0)
+        XCTAssertNil(ops.check)
         XCTAssertFalse(ops.hasAny)
-        XCTAssertEqual(ops.rowCount, 0)
+    }
+
+    // Without a check-capable transport the row does not exist at all (design
+    // R8): the demo's loopback drops checkPuzzle, so the demo sheet must not
+    // grow a row that confirms into a void.
+    func test_noLiveTransport_excludesTheCheckRowEntirely_R8() {
+        let ops = FactsOperations.make(
+            isHost: true, isSpectator: false, supportsCheck: false, emptyCells: 0)
+        XCTAssertNil(ops.check)
+        XCTAssertEqual(ops.rowCount, 1, "end-game alone; no dead check act")
+    }
+
+    // The grid-full gate (PROTOCOL.md §5, §10): enabled at zero empty cells,
+    // disabled below full with the quiet remaining-cells hint teaching the gate.
+    // Natural casing, no exclamation points; singular at one.
+    func test_check_enablesOnlyOnAFullGridAndHintsBelowIt_PROTOCOL10() {
+        let full = FactsOperations.Check(emptyCells: 0)
+        XCTAssertTrue(full.isEnabled)
+        XCTAssertNil(full.hint, "no hint at full: the row simply enables")
+        let three = FactsOperations.Check(emptyCells: 3)
+        XCTAssertFalse(three.isEnabled)
+        XCTAssertEqual(three.hint, "3 empty")
+        let one = FactsOperations.Check(emptyCells: 1)
+        XCTAssertFalse(one.isEnabled)
+        XCTAssertEqual(one.hint, "1 empty")
+    }
+
+    // A negative input (a stand-in puzzle racing state) clamps to zero rather
+    // than rendering a nonsense hint; R9's derivation is sequenced state only.
+    func test_check_clampsNegativeEmptyCounts_R9() {
+        let check = FactsOperations.Check(emptyCells: -2)
+        XCTAssertEqual(check.emptyCells, 0)
+        XCTAssertTrue(check.isEnabled)
     }
 }

@@ -118,6 +118,13 @@ public final class GameStore {
     public private(set) var completedAt: String?
     public private(set) var abandonedAt: String?
     public private(set) var stats: Stats?
+    /// The standing room-check marks (PROTOCOL.md §4, §10; D27): indices only,
+    /// never values or answers (INV-6). Replaced wholesale by every accepted
+    /// `puzzleChecked` and by every snapshot; a mark clears only when the cell's
+    /// value changes (`applyCellSet`). Mirrors the web store's `checkedWrongCells`.
+    public private(set) var checkedWrong: Set<Int> = []
+    /// The game's total accepted checks; permanent, never reset (PROTOCOL.md §10).
+    public private(set) var checkCount: Int = 0
     public private(set) var selfUserId: String?
     /// The last non-fatal rejection, surfaced for the UI (PROTOCOL.md §8: a non-fatal
     /// error clears the matching overlay entry and surfaces the rejection).
@@ -141,6 +148,14 @@ public final class GameStore {
     /// surfaces the notice to the root, the one place that owns the exit, exactly as
     /// `onConflictFlash` surfaces the flash to the view. Set by the composition root.
     @ObservationIgnored public var onKicked: (@MainActor (KickedMessage) -> Void)?
+
+    /// A live `puzzleChecked` landed (PROTOCOL.md §6, §10): the onConflictFlash
+    /// pattern for the one moment the room checked itself. Fired only under the §7
+    /// seq gate — snapshot healing (welcome/sync carrying standing marks) is history
+    /// arriving, not a moment, and stays silent. The marks and count themselves are
+    /// state (`checkedWrong`/`checkCount`); this only surfaces the beat for the
+    /// view's haptic. Set by the composition root.
+    @ObservationIgnored public var onPuzzleChecked: (@MainActor (PuzzleCheckedMessage) -> Void)?
 
     /// Inbound reactions hand off to the view layer through this, the onConflictFlash
     /// pattern: the store holds NOTHING for a reaction (never stored, never sequenced,
@@ -297,6 +312,22 @@ public final class GameStore {
         emit(.heartbeat(HeartbeatMessage()))
     }
 
+    /// Request the room-wide check (PROTOCOL.md §5, §10; D27): one command marks
+    /// every wrong cell for everyone. Minted like every mutation intent, but no
+    /// overlay entry — a check is not a cell write, so there is nothing to paint
+    /// optimistically and nothing for §8's reconciliation to re-send. Gated like
+    /// sendMutation: refused before the first welcome and after a terminal status
+    /// (the server would answer GAME_NOT_ONGOING). The grid-full gate is the UI's
+    /// confirm step plus the server's own check; a `GRID_NOT_FULL` rejection is
+    /// non-fatal and silent (§11; design R2) — `lastRejection` records it, and the
+    /// error path's overlay clear is a no-op because no entry carries this id.
+    public func checkPuzzle(commandId: String? = nil) {
+        if sync == .connecting { return }
+        if status != .ongoing { return }
+        let id = commandId ?? newCommandId()
+        emit(.checkPuzzle(CheckPuzzleMessage(commandId: id)))
+    }
+
     private func sendMutation(cell: Int, value: String?, commandId: String?) {
         // Before the first welcome there is no authoritative board yet: refuse local
         // mutations so a keystroke cannot mint an overlay entry against an empty grid
@@ -408,11 +439,16 @@ public final class GameStore {
             onReaction?(notice)
             return
         case .puzzleChecked(let event):
-            // Sequenced (PROTOCOL.md §6, §10; D27): the seq gate must advance exactly
-            // as for cellSet, or the next event would look like a gap and force a
-            // needless resync. The marks and count themselves are render state for the
-            // consolidated check-control wave; until it lands the payload is unused.
-            applySequenced(event.seq) {}
+            // Sequenced (PROTOCOL.md §6, §10; D27): applied under the §7 seq gate
+            // exactly as cellSet. The event replaces any standing marks wholesale
+            // and the count is permanent (§10); the beat is surfaced for the view's
+            // haptic only when the event truly applied (never on a stale or gapped
+            // frame, never on snapshot healing).
+            applySequenced(event.seq) {
+                checkedWrong = Set(event.wrongCells)
+                checkCount = event.checkCount
+                onPuzzleChecked?(event)
+            }
         case .kicked(let notice):
             // Followed by close 1008; the transport surfaces the closure. Nothing to
             // reconcile in sequenced state (the notice carries no seq), so the store
@@ -441,6 +477,14 @@ public final class GameStore {
 
     private func applyCellSet(_ event: CellSetMessage) {
         let renderedBefore = renderValue(event.cell)
+        // Mark clearing on VALUE CHANGE only (PROTOCOL.md §10, the reducer's rule,
+        // mirrored from the web store): a different letter or a clear removes a
+        // standing check mark; a same-value no-op keeps it, because the mark is
+        // still true. Both sides of the comparison are server-normalized wire
+        // values, so == is byte-wise (INV-1) exactly as the engine's.
+        if event.value != cells[event.cell]?.v {
+            checkedWrong.remove(event.cell)
+        }
         cells[event.cell] = Cell(v: event.value, by: event.by)
         // The first fill's cellSet carries firstFillAt, so the shared timer starts on
         // the delta instead of waiting for the next snapshot (PROTOCOL.md §6; D15).
@@ -480,6 +524,10 @@ public final class GameStore {
         completedAt = board.completedAt
         abandonedAt = board.abandonedAt
         stats = board.stats
+        // The marks and count ride every snapshot (PROTOCOL.md §4), so reconnect
+        // and resync heal the check state with no delta replay.
+        checkedWrong = Set(board.checkedWrongCells)
+        checkCount = board.checkCount
         participants = board.participants
         cursors = Dictionary(
             board.cursors.map { ($0.userId, $0) },

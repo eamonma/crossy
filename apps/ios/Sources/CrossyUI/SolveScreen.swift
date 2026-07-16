@@ -59,6 +59,12 @@ public struct SolveScreen: View {
     /// Hand the link to the system share surface (UIActivityViewController
     /// lives in the app target, AD-2; the card only reports the intent).
     private let onShareInvite: () -> Void
+    /// Whether this composition's transport carries `checkPuzzle` to a real
+    /// server (design R8): the live room passes true; the demo's loopback DROPS
+    /// the command, so it — and every lab and preview — keeps the default and
+    /// the facts sheet never grows the check row. Gates the row's existence
+    /// entirely, not just the send.
+    private let supportsRoomCheck: Bool
     /// End the game, host abandon (`POST /games/{id}/abandon`, PROTOCOL.md §12).
     /// Confirmed in the facts card, then reported here.
     private let onEndGame: () -> Void
@@ -152,6 +158,7 @@ public struct SolveScreen: View {
         avatarCache: AvatarImageCache? = nil,
         opening: Bool = false,
         barSettled: Bool = true,
+        supportsRoomCheck: Bool = false,
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
@@ -174,6 +181,7 @@ public struct SolveScreen: View {
         self.shareUrl = shareUrl
         self.opening = opening
         self.barSettled = barSettled
+        self.supportsRoomCheck = supportsRoomCheck
         self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
@@ -518,6 +526,18 @@ public struct SolveScreen: View {
                 solveTimeSeconds: store.stats?.solveTimeSeconds,
                 firstFillAt: store.firstFillAt,
                 completedAt: store.completedAt ?? store.abandonedAt,
+                // The confirm-time race resolves in layers (design R2): fullness
+                // re-derives from SEQUENCED state at the confirm tap — a teammate
+                // emptying a cell between render and confirm quietly falls back
+                // to the row, already disabled again — and a server GRID_NOT_FULL
+                // stays silent (§11 non-fatal; the newly empty cell and the row's
+                // hint are the explanation). The send is the store's intent (R1);
+                // the sheet closes so the marks land in view.
+                onCheckPuzzle: {
+                    guard store.filledCount == puzzle.playableCellCount else { return }
+                    store.checkPuzzle()
+                    factsPresented = false
+                },
                 // The abandon's terminal transition dismisses the sheet through
                 // observeRoomState anyway; closing here too keeps it prompt.
                 onEndGame: {
@@ -593,6 +613,11 @@ public struct SolveScreen: View {
             observeHaptics()
             SolveHaptics.shared.prepare()
             wireReactionSink()
+            // The room's check landing (PROTOCOL.md §6, §10; D27): one soft thud
+            // when the marks paint for everyone. The store fires this only for
+            // the live sequenced event — snapshot healing is history arriving
+            // and stays silent (the SolveHapticFold grammar).
+            store.onPuzzleChecked = { _ in SolveHaptics.shared.play(.checkLanded) }
         }
         // The sink closes over the grid it validates against, so the live room's
         // retarget from the 1x1 stand-in must re-wire it (the stand-in would drop
@@ -766,21 +791,30 @@ public struct SolveScreen: View {
             puzzleDate: puzzleDate,
             completed: roomStatus == .completed,
             totalEvents: store.stats?.totalEvents,
-            participantCount: store.stats?.participantCount)
+            participantCount: store.stats?.participantCount,
+            // The mid-solve check record (R10): "Checked once" among the facts.
+            checkCount: store.checkCount)
     }
 
-    /// The facts card's operations (FactsOperations pins the rule): only the
-    /// host's end-game now (copying the invite code moved to the share menu,
-    /// owner ruling 2026-07-11), and only while the room runs. The destructive
-    /// end-game renders only for the host (the server enforces host-only
-    /// anyway; the client simply does not offer it to a non-host). A terminal
-    /// card carries none: it is the record, not a control surface (ending an
-    /// already-ended game is a no-op, INV-4).
+    /// The facts card's operations (FactsOperations pins the rule): the room
+    /// check above the host's end-game, only while the room runs. The check row
+    /// stands for hosts and solvers on a check-capable transport (R8: the demo
+    /// never grows it) and enables only on a full SEQUENCED grid (R9: the store's
+    /// filledCount excludes overlays, mirroring the server's own gate); the
+    /// destructive end-game renders only for the host (the server enforces both
+    /// gates regardless; the client simply does not offer what it will refuse).
+    /// A terminal card carries none: it is the record, not a control surface
+    /// (ending an already-ended game is a no-op, INV-4).
     private var factsPanelOperations: FactsOperations {
         guard roomStatus == .ongoing else { return .none }
+        let members = rosterMembers
         let selfIsHost =
-            rosterMembers.first { $0.userId == store.selfUserId }?.isHost ?? false
-        return FactsOperations.make(isHost: selfIsHost)
+            members.first { $0.userId == store.selfUserId }?.isHost ?? false
+        return FactsOperations.make(
+            isHost: selfIsHost,
+            isSpectator: RosterList.selfIsSpectator(members, selfUserId: store.selfUserId),
+            supportsCheck: supportsRoomCheck,
+            emptyCells: puzzle.playableCellCount - store.filledCount)
     }
 
     /// The invite in hand, or nil when there is nothing to share yet: the

@@ -125,6 +125,56 @@ final class GridFrameTests: XCTestCase {
         }
     }
 
+    // The standing room-check marks paint the check fill through the frame
+    // (PROTOCOL.md §10, D27): fed from the store's live puzzleChecked, they
+    // resolve at the pinned check level for every member.
+    func test_checkedCellsPaintTheCheckFill_PROTOCOL10() {
+        let store = liveStore()
+        store.receive(
+            .puzzleChecked(
+                PuzzleCheckedMessage(
+                    seq: 4, wrongCells: [0, 6], checkCount: 1,
+                    commandId: "c-check", at: "2026-07-16T00:00:00Z")))
+        let frame = GridFrame(store: store, puzzle: mini, selection: nil, ground: .studio)
+        XCTAssertEqual(frame.fill(0), .check)
+        XCTAssertEqual(frame.fill(6), .check)
+        XCTAssertEqual(frame.fill(2), .base)
+    }
+
+    // The overlay-suppression rule, quoted (PROTOCOL.md §10): a cell with a
+    // pending optimistic overlay entry renders the overlay, not the mark. The
+    // suppression is display-only, so a rejected entry lets the mark repaint —
+    // the store's marks were never cleared.
+    func test_pendingOverlaySuppressesTheMarkAndRejectionRepaintsIt_PROTOCOL10() {
+        let store = liveStore()
+        store.receive(
+            .puzzleChecked(
+                PuzzleCheckedMessage(
+                    seq: 4, wrongCells: [0], checkCount: 1,
+                    commandId: "c-check", at: "2026-07-16T00:00:00Z")))
+        store.placeLetter(cell: 0, value: "Z", commandId: "c-pending")
+        let masked = GridFrame(store: store, puzzle: mini, selection: nil, ground: .studio)
+        XCTAssertNotEqual(masked.fill(0), .check, "the overlay renders, not the mark")
+        XCTAssertEqual(masked.values[0], "Z", "the pending value is what paints")
+        // The server rejects the pending write: the entry clears, the mark stands.
+        store.receive(
+            .error(
+                ErrorMessage(
+                    code: .rateLimited, message: "slow down", fatal: false,
+                    commandId: "c-pending")))
+        let repainted = GridFrame(store: store, puzzle: mini, selection: nil, ground: .studio)
+        XCTAssertEqual(repainted.fill(0), .check)
+    }
+
+    // The pure seam the projection uses: marks minus overlay-claimed cells,
+    // nothing else (PROTOCOL.md §10; design R6).
+    func test_visibleCheckMarksSubtractsOverlayCells_PROTOCOL10() {
+        XCTAssertEqual(
+            GridFrame.visibleCheckMarks([1, 2, 3], overlayCells: [2, 9]), [1, 3])
+        XCTAssertEqual(GridFrame.visibleCheckMarks([], overlayCells: [2]), [])
+        XCTAssertEqual(GridFrame.visibleCheckMarks([4], overlayCells: []), [4])
+    }
+
     // The local cursor and active word render in the local player's color, slotted
     // from the wire color string (the server's string is authoritative).
     func test_cursorTintIsTheLocalPlayersRosterColor() {

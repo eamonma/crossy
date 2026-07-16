@@ -44,10 +44,17 @@ public enum RoomFactsClock {
 public struct RoomFactsContent: Equatable, Sendable {
     public let label: String
     public let detail: String?
+    /// The room's check record while it runs ("Checked once" / "Checked N times",
+    /// PROTOCOL.md §10, D27; design R10): a quiet, neutral line among the facts —
+    /// no attribution, matching the wire event's missing `by`. Nil until the first
+    /// accepted check. Mid-solve only: after completion the count freezes into
+    /// `stats.checkCount`, whose display home is a future analysis-surface row.
+    public let checkedLine: String?
 
-    public init(label: String, detail: String?) {
+    public init(label: String, detail: String?, checkedLine: String? = nil) {
         self.label = label
         self.detail = detail
+        self.checkedLine = checkedLine
     }
 
     public static func make(
@@ -57,7 +64,8 @@ public struct RoomFactsContent: Equatable, Sendable {
         puzzleDate: String?,
         completed: Bool,
         totalEvents: Int?,
-        participantCount: Int?
+        participantCount: Int?,
+        checkCount: Int = 0
     ) -> RoomFactsContent {
         if completed {
             var parts: [String] = []
@@ -77,36 +85,83 @@ public struct RoomFactsContent: Equatable, Sendable {
             .filter { !$0.isEmpty }
         return RoomFactsContent(
             label: roomName,
-            detail: facts.isEmpty ? nil : facts.joined(separator: " · "))
+            detail: facts.isEmpty ? nil : facts.joined(separator: " · "),
+            checkedLine: Self.checkedLine(count: checkCount))
+    }
+
+    /// The R10 wording, natural casing, no zeros: nil before the first check.
+    static func checkedLine(count: Int) -> String? {
+        switch count {
+        case ..<1: return nil
+        case 1: return "Checked once"
+        default: return "Checked \(count) times"
+        }
     }
 }
 
 /// The sheet's operations, derived once so the view renders no policy (the
-/// RoomFactsContent pattern). The only operation is the host's end-game
-/// (`POST /games/{id}/abandon`, host only, a `FORBIDDEN` for a non-host,
-/// PROTOCOL.md §12), a destructive action that takes a confirm step in the view.
-/// A non-host sees facts alone, which is fine.
+/// RoomFactsContent pattern). Two rows can stand: the room check (any host or
+/// solver, PROTOCOL.md §5, §10; D27) above the host's end-game (`POST
+/// /games/{id}/abandon`, host only, PROTOCOL.md §12). Both take a confirm step
+/// in the view; a participant offered neither sees facts alone, which is fine.
 public struct FactsOperations: Equatable, Sendable {
+    /// The check row's render facts (design R7): present means the row stands;
+    /// enabled only when the grid is full, with the quiet remaining-cells hint
+    /// teaching the gate below full.
+    public struct Check: Equatable, Sendable {
+        /// Playable cells still empty in SEQUENCED state (R9: overlays excluded,
+        /// the server's own filledCount gate mirrored).
+        public let emptyCells: Int
+
+        public init(emptyCells: Int) {
+            self.emptyCells = max(0, emptyCells)
+        }
+
+        /// The grid-full gate (PROTOCOL.md §5: checkPuzzle requires a full grid).
+        public var isEnabled: Bool { emptyCells == 0 }
+
+        /// The quiet trailing hint while the grid is short; nil at full. Inside
+        /// the row's standard height, no extra slot (R7).
+        public var hint: String? {
+            switch emptyCells {
+            case 0: return nil
+            case 1: return "1 empty"
+            default: return "\(emptyCells) empty"
+            }
+        }
+    }
+
+    /// The check row, hosts and solvers only, and only where the transport
+    /// carries `checkPuzzle` (R8: the demo's loopback drops it, so the demo
+    /// never grows the row). Nil renders nothing.
+    public let check: Check?
     /// The host's destructive end-game, offered only to the host (the server
     /// refuses a non-host abandon anyway; the client simply does not show it).
     public let canEndGame: Bool
 
-    public init(canEndGame: Bool) {
+    public init(check: Check? = nil, canEndGame: Bool) {
+        self.check = check
         self.canEndGame = canEndGame
     }
 
     /// The operations for the local participant. `isHost` gates the destructive
-    /// end-game.
-    public static func make(isHost: Bool) -> FactsOperations {
-        FactsOperations(canEndGame: isHost)
+    /// end-game; the check row needs a live check-capable transport (R8), a
+    /// playing seat (spectators never see it, PROTOCOL.md §5's host|solver), and
+    /// carries the sequenced empty-cell count for its own enable gate (R9).
+    public static func make(
+        isHost: Bool, isSpectator: Bool, supportsCheck: Bool, emptyCells: Int
+    ) -> FactsOperations {
+        FactsOperations(
+            check: supportsCheck && !isSpectator ? Check(emptyCells: emptyCells) : nil,
+            canEndGame: isHost)
     }
 
-    /// The empty set (a non-host, or any state that offers no operations).
-    public static let none = FactsOperations(canEndGame: false)
+    /// The empty set (a spectator non-host, or any state that offers no operations).
+    public static let none = FactsOperations(check: nil, canEndGame: false)
 
     /// How many operation rows render, the sheet-height arithmetic's input.
     public var rowCount: Int {
-        canEndGame ? 1 : 0
+        (check != nil ? 1 : 0) + (canEndGame ? 1 : 0)
     }
 
     /// Whether the sheet renders a hairline and any operation rows at all.
@@ -126,15 +181,24 @@ enum RoomFactsSheetLayout {
     static let timeHeight: CGFloat = 60
     static let detailGap: CGFloat = 10
     static let detailHeight: CGFloat = 18
-    /// The end-game block (host only): air, a hairline, air, one row.
+    /// The checked-count facts line (R10), its own slot (R7: the formula counts
+    /// every conditional honestly or the sheet clips).
+    static let checkedLineGap: CGFloat = 10
+    static let checkedLineHeight: CGFloat = 18
+    /// The operations block: air, a hairline, air, then the rows (check above
+    /// end-game). The check row's remaining-cells hint renders INSIDE the standard
+    /// row height at the trailing edge — no extra slot (R7).
     static let operationsAirAbove: CGFloat = 22
     static let dividerHeight: CGFloat = 1
     static let operationsAirBelow: CGFloat = 14
     static let operationRowHeight: CGFloat = 44
 
-    static func height(hasDetail: Bool, operationRows: Int) -> CGFloat {
+    static func height(
+        hasDetail: Bool, hasCheckedLine: Bool, operationRows: Int
+    ) -> CGFloat {
         verticalPadding * 2 + labelHeight + labelGap + timeHeight
             + (hasDetail ? detailGap + detailHeight : 0)
+            + (hasCheckedLine ? checkedLineGap + checkedLineHeight : 0)
             + (operationRows > 0
                 ? operationsAirAbove + dividerHeight + operationsAirBelow
                     + operationRowHeight * CGFloat(operationRows)
@@ -152,15 +216,20 @@ enum RoomFactsSheetLayout {
 struct RoomFactsSheet: View {
     let ground: GridGround
     let content: RoomFactsContent
-    /// Already gated by the caller: the host's end-game mid-solve, `.none`
-    /// otherwise.
+    /// Already gated by the caller: the check row and the host's end-game
+    /// mid-solve, `.none` otherwise.
     let operations: FactsOperations
     let solveTimeSeconds: Int?
     let firstFillAt: String?
     let completedAt: String?
+    /// Check the puzzle for the room (PROTOCOL.md §5, §10; D27). Confirmed here
+    /// first, then reported; the caller re-derives the grid-full gate at the
+    /// confirm tap (design R2) and owns the send.
+    let onCheckPuzzle: () -> Void
     /// End the game (host abandon). Confirmed here first, then reported.
     let onEndGame: () -> Void
 
+    @State private var confirmingCheck = false
     @State private var confirmingEnd = false
 
     private var ink: Color { Color(rgb: ground.tokens.ink) }
@@ -173,6 +242,7 @@ struct RoomFactsSheet: View {
                     .height(
                         RoomFactsSheetLayout.height(
                             hasDetail: content.detail != nil,
+                            hasCheckedLine: content.checkedLine != nil,
                             operationRows: operations.rowCount))
                 ])
                 .presentationDragIndicator(.visible)
@@ -245,6 +315,19 @@ struct RoomFactsSheet: View {
                     .frame(
                         height: RoomFactsSheetLayout.detailHeight, alignment: .leading)
             }
+            if let checkedLine = content.checkedLine {
+                // The check record (R10): quiet and neutral, no attribution
+                // (the wire event carries no `by`, D27).
+                Color.clear.frame(height: RoomFactsSheetLayout.checkedLineGap)
+                Text(verbatim: checkedLine)
+                    .font(.system(size: 15, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(quiet)
+                    .lineLimit(1)
+                    .frame(
+                        height: RoomFactsSheetLayout.checkedLineHeight,
+                        alignment: .leading)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .ignore)
@@ -264,11 +347,55 @@ struct RoomFactsSheet: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: RoomFactsSheetLayout.dividerHeight)
             Color.clear.frame(height: RoomFactsSheetLayout.operationsAirBelow)
+            if let check = operations.check {
+                checkRow(check)
+            }
             if operations.canEndGame {
                 operationRow(
                     "End game", systemImage: "xmark.circle",
                     action: { confirmingEnd = true })
             }
+        }
+    }
+
+    /// The check row (PROTOCOL.md §5, §10; D27), above end-game: enabled only on
+    /// a full grid, teaching the gate below full with the quiet remaining-cells
+    /// hint at the trailing edge, inside the standard row height (R7). The
+    /// confirm is the end-game register exactly but non-destructive (D27: the
+    /// client interposes the one confirmation; the command is the confirmed
+    /// intent) — plain tint, no red.
+    private func checkRow(_ check: FactsOperations.Check) -> some View {
+        Button(action: { confirmingCheck = true }) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 16))
+                    .frame(width: 24)
+                Text(verbatim: "Check puzzle")
+                    .font(.system(size: 16, weight: .medium))
+                Spacer(minLength: 0)
+                if let hint = check.hint {
+                    Text(verbatim: hint)
+                        .font(.system(size: 13, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(quiet)
+                }
+            }
+            .foregroundStyle(check.isEnabled ? ink : quiet)
+            .frame(maxWidth: .infinity)
+            .frame(height: RoomFactsSheetLayout.operationRowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!check.isEnabled)
+        .confirmationDialog(
+            "Check the puzzle for everyone?",
+            isPresented: $confirmingCheck,
+            titleVisibility: .visible
+        ) {
+            Button("Check puzzle", action: onCheckPuzzle)
+            Button("Keep solving", role: .cancel) {}
+        } message: {
+            Text(verbatim: "Wrong letters get marked for the whole room.")
         }
     }
 
@@ -298,6 +425,9 @@ struct RoomFactsSheet: View {
         var line = "\(content.label), \(time)"
         if let detail = content.detail {
             line += ", \(detail.replacingOccurrences(of: " · ", with: ", "))"
+        }
+        if let checkedLine = content.checkedLine {
+            line += ", \(checkedLine)"
         }
         return line
     }

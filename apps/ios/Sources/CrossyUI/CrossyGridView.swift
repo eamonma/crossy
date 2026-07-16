@@ -452,6 +452,12 @@ extension CrossyGridView {
                 let base = fill == .block ? tokens.block : tokens.cell
                 context.fill(Path(rect), with: .color(Color(rgb: base)))
                 switch fill {
+                case .check:
+                    // The room's shared mark (PROTOCOL.md §10, D27): the check
+                    // coat replaces the paper outright, a token per ground, never
+                    // a personal color — the marks are room state, identical for
+                    // every member.
+                    context.fill(Path(rect), with: .color(Color(rgb: tokens.check)))
                 case .current:
                     context.fill(
                         Path(rect),
@@ -471,7 +477,7 @@ extension CrossyGridView {
                             Path(rect),
                             with: .color(Color(rgb: mark.color).opacity(Paint.teammateAlpha)))
                     }
-                case .block, .check, .base:
+                case .block, .base:
                     break
                 }
             }
@@ -725,7 +731,11 @@ extension GridFrame {
             },
             selfUserId: store.selfUserId,
             ground: ground,
-            crossReference: crossReference)
+            crossReference: crossReference,
+            // The standing marks through the §10 overlay-suppression rule: a cell
+            // with a pending optimistic entry renders the overlay, not the mark.
+            checkedWrong: GridFrame.visibleCheckMarks(
+                store.checkedWrong, overlayCells: Set(store.overlay.map(\.cell))))
     }
 }
 
