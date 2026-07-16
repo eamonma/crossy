@@ -11,6 +11,14 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -20,10 +28,18 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +53,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,9 +84,11 @@ import crossy.ui.JoinScanState
 import crossy.ui.KickedExit
 import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
+import crossy.ui.PuzzlesScreen
 import crossy.ui.RoomScreen
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
+import crossy.ui.orderedByActivity
 import crossy.ui.ShareInvite
 import crossy.ui.ShareSheet
 import crossy.ui.SignInProvider
@@ -80,19 +101,22 @@ import kotlinx.coroutines.launch
 
 private sealed interface Screen {
     data object SignIn : Screen
-    // The signed-in gate: load GET /me, then route to onboarding (needsName) or Rooms. Onboarding
+    // The signed-in gate: load GET /me, then route to onboarding (needsName) or the shell. Onboarding
     // fires here, before any game exists (docs/design/name-onboarding §7), so the client holds no
     // naming policy: the server-computed needsName decides.
     data object Arrival : Screen
     data class Onboarding(val prefill: String) : Screen
-    data object Rooms : Screen
-    data object Settings : Screen
+    // The signed-in home: the three-tab shell (Rooms / Puzzles / Settings). The selected tab lives in
+    // CrossyApp so it survives a room round trip; this is the marker that renders the shell.
+    data object Shell : Screen
     // prefill carries an invite deep link's code (empty for a hand-tapped Join): the field opens
     // with it so the join is one tap away (iOS honorPendingInvite's deepLinkPrefill).
     data class Join(val prefill: String = "") : Screen
     data object Create : Screen
     // wsUrl null = no live socket (the demo room): the room runs on the scripted transport.
-    // inviteCode null = nothing to share (the demo room carries no code).
+    // inviteCode null = nothing to share (the demo room carries no code). The room presents
+    // full-screen OVER the tab shell (iOS pushes it into the tab's stack and hides the tab bar; the
+    // shell is a distinct screen here, so the tabs are simply not composed while a room is live).
     data class Room(
         val puzzle: ClientPuzzle,
         val name: String?,
@@ -104,8 +128,19 @@ private sealed interface Screen {
         // the socket's welcome lands. Empty for the demo room (no REST view) and for a code-join with
         // no view yet; the welcome remains the authority and overwrites it (GameStore.seedRoster).
         val roster: List<Participant> = emptyList(),
+        // The tapped card's terminal facts (the seeded-birth rule, DESIGN.md §4, §12; mirrors iOS
+        // RoomArrivalSeed): a solved card carries completedAt, a host-ended card carries abandonedAt,
+        // both mutually exclusive. The store seeds the terminal status from them at birth so a done
+        // room retires its key deck from the first frame. Null for a code-join, a freshly started
+        // game, and the demo room (no card); the welcome remains the authority.
+        val completedAt: String? = null,
+        val abandonedAt: String? = null,
     ) : Screen
 }
+
+/** The signed-in shell's three places (iOS ShellTab), named by their tabs. Held in CrossyApp so a
+ *  room round trip returns to the tab it was opened from. */
+private enum class ShellTab { ROOMS, PUZZLES, SETTINGS }
 
 /** The REST game view's membership as a seed roster (mirrors iOS RoomMapping.roster): each member is
  *  the roster, not presence, so it seeds not-yet-heard-from (`connected = false`) with no display name
@@ -138,6 +173,11 @@ fun CrossyApp(
     var screen by remember {
         mutableStateOf<Screen>(if (session.isSignedIn) Screen.Arrival else Screen.SignIn)
     }
+    // The selected shell tab, held here (not inside the shell) so a room round trip returns to the
+    // tab it was opened from: opening a room sets screen = Room (the shell leaves composition), and
+    // the exit sets screen = Shell with this tab still standing (iOS's per-tab return). Reset to
+    // Rooms on sign-out, so the next sign-in lands home.
+    var tab by remember { mutableStateOf(ShellTab.ROOMS) }
     val scope = rememberCoroutineScope()
     // The caller's personal reaction set (Wave 8.5; D25), held at the shell root so it survives across
     // screens: seeded from GET /me at arrival (null = the default five), updated when Settings saves,
@@ -165,13 +205,13 @@ fun CrossyApp(
         }
     }
 
-    // The invite (iOS honorPendingInvite): held until signed-in AND arrived (Rooms is the arrived
-    // home here), then it opens the Join flow prefilled so the code is one tap from joining. Gating
-    // on Rooms keeps it from disrupting an active room, a create flow, or the sign-in/onboarding
-    // gates; it simply waits there and honors the moment Rooms is reached (the held-invite promise).
+    // The invite (iOS honorPendingInvite): held until signed-in AND arrived (the Shell is the
+    // arrived home), then it opens the Join flow prefilled so the code is one tap from joining.
+    // Gating on the Shell keeps it from disrupting an active room, a create flow, or the
+    // sign-in/onboarding gates; it waits and honors the moment home is reached.
     LaunchedEffect(pendingLinks) {
-        snapshotFlow { pendingLinks.invite to (screen == Screen.Rooms) }.collect { (invite, atRooms) ->
-            if (invite != null && atRooms) {
+        snapshotFlow { pendingLinks.invite to (screen == Screen.Shell) }.collect { (invite, atHome) ->
+            if (invite != null && atHome) {
                 pendingLinks.consumeInvite(invite)
                 screen = Screen.Join(prefill = invite.code)
             }
@@ -179,86 +219,233 @@ fun CrossyApp(
     }
 
     // The play hand-off (crossy://play/<puzzleId>): the seam is deliberately unwired. MainActivity
-    // holds it in pendingLinks.play; the Puzzles tab a sibling is building this wave consumes it
-    // (pendingLinks.play / consumePlay) and scrolls to that card. Wiring navigation into a Puzzles
-    // screen that does not exist yet would be a guess, so it waits here, named and held.
+    // holds it in pendingLinks.play; the Puzzles tab consumes it (pendingLinks.play / consumePlay)
+    // and scrolls to that card; the wiring rides the Puzzles-tab polish pass.
+
+    // Build a Room screen from a REST game view plus the tapped card's terminal facts (null for a
+    // code-join, a freshly started game, or the demo room): the one place the room-open payload is
+    // assembled, so every path (a room card, a join, a puzzle start) births the store the same way.
+    fun openRoom(view: GameView, completedAt: String?, abandonedAt: String?) {
+        screen = Screen.Room(
+            puzzle = view.puzzle,
+            name = view.name,
+            demo = false,
+            wsUrl = view.session.ws,
+            inviteCode = view.inviteCode,
+            roster = view.seedRoster(),
+            completedAt = completedAt,
+            abandonedAt = abandonedAt,
+        )
+    }
 
     CrossyShell(ground) {
-        when (val s = screen) {
-            Screen.SignIn -> SignInHost(session, redirects, onSignedIn = { screen = Screen.Arrival })
+        // Restrained screen transitions (iOS's zoom spirit without faking it): a short fade paired
+        // with a slight scale, so a room grows in over the shell and pours back on exit. Gates and
+        // tab switches ride the same easing.
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = {
+                (fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.96f)) togetherWith
+                    (fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.98f))
+            },
+            label = "screen",
+        ) { s ->
+            when (s) {
+                Screen.SignIn -> SignInHost(session, redirects, onSignedIn = { screen = Screen.Arrival })
 
-            // The needsName gate between sign-in and Rooms: the server decides, the client routes. The
-            // /me read also seeds the personal reaction set (null = the defaults) so the fan wears it.
-            Screen.Arrival -> ArrivalHost(
-                session = session,
-                onNeedsName = { me ->
-                    reactionSet = me.reactionSet
-                    screen = Screen.Onboarding(prefill = me.displayName.orEmpty())
-                },
-                onReady = { me ->
-                    reactionSet = me.reactionSet
-                    screen = Screen.Rooms
-                },
-            )
+                // The needsName gate between sign-in and the shell: the server decides, the client
+                // routes. The /me read also seeds the personal reaction set (null = the defaults).
+                Screen.Arrival -> ArrivalHost(
+                    session = session,
+                    onNeedsName = { me ->
+                        reactionSet = me.reactionSet
+                        screen = Screen.Onboarding(prefill = me.displayName.orEmpty())
+                    },
+                    onReady = { me ->
+                        reactionSet = me.reactionSet
+                        screen = Screen.Shell
+                    },
+                )
 
-            is Screen.Onboarding -> OnboardingHost(
-                session = session,
-                prefill = s.prefill,
-                // Required, but never a dead end: once a name lands, enter Rooms.
-                onDone = { screen = Screen.Rooms },
-            )
+                is Screen.Onboarding -> OnboardingHost(
+                    session = session,
+                    prefill = s.prefill,
+                    // Required, but never a dead end: once a name lands, enter the shell.
+                    onDone = { screen = Screen.Shell },
+                )
 
-            Screen.Rooms -> RoomsHost(
-                session = session,
-                ground = ground,
-                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
-                onJoin = { screen = Screen.Join() },
-                onCreate = { screen = Screen.Create },
-                onOpenDemo = { screen = Screen.Room(RoomScripts.demoPuzzle, "Demo room", demo = true) },
-                onOpenSettings = { screen = Screen.Settings },
-            )
+                Screen.Shell -> SignedInShell(
+                    session = session,
+                    ground = ground,
+                    tab = tab,
+                    onTabChange = { tab = it },
+                    onOpenGame = ::openRoom,
+                    onJoin = { screen = Screen.Join() },
+                    onCreate = { screen = Screen.Create },
+                    onOpenDemo = { screen = Screen.Room(RoomScripts.demoPuzzle, "Demo room", demo = true) },
+                    onSignOut = {
+                        scope.launch { runCatching { session.auth.signOut() } }
+                        session.clearSession()
+                        tab = ShellTab.ROOMS
+                        screen = Screen.SignIn
+                    },
+                    // A saved reaction set (null = the defaults) updates the shell root, so the next
+                    // room entry's fan wears it (live mid-room propagation is not required).
+                    onReactionSetChanged = { reactionSet = it },
+                )
 
-            Screen.Settings -> SettingsHost(
-                session = session,
-                onBack = { screen = Screen.Rooms },
-                onSignOut = {
-                    scope.launch { runCatching { session.auth.signOut() } }
-                    session.clearSession()
-                    screen = Screen.SignIn
-                },
-                // A saved reaction set (null = the defaults) updates the shell root, so the next room
-                // entry's fan wears it (live mid-room propagation is not required).
-                onReactionSetChanged = { reactionSet = it },
-            )
+                is Screen.Join -> JoinHost(
+                    session = session,
+                    prefill = s.prefill,
+                    onBack = { screen = Screen.Shell },
+                    // A code-join has no card, so no terminal seed (iOS passes nil).
+                    onJoined = { view -> openRoom(view, completedAt = null, abandonedAt = null) },
+                )
 
-            is Screen.Join -> JoinHost(
-                session = session,
-                prefill = s.prefill,
-                onBack = { screen = Screen.Rooms },
-                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
-            )
+                Screen.Create -> CreateHost(
+                    session = session,
+                    onBack = { screen = Screen.Shell },
+                    // A freshly created game is ongoing, so no terminal seed.
+                    onCreated = { view -> openRoom(view, completedAt = null, abandonedAt = null) },
+                )
 
-            Screen.Create -> CreateHost(
-                session = session,
-                onBack = { screen = Screen.Rooms },
-                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
-            )
+                is Screen.Room -> RoomHost(
+                    session = session,
+                    factory = factory,
+                    puzzle = s.puzzle,
+                    roomName = s.name,
+                    selfUserId = session.selfUserId ?: "you",
+                    demo = s.demo,
+                    wsUrl = s.wsUrl,
+                    inviteCode = s.inviteCode,
+                    // The seeded-birth roster from the REST view (empty for the demo room).
+                    roster = s.roster,
+                    // The tapped card's terminal facts, seeded into the store at birth (null for a
+                    // join / start / demo).
+                    completedAt = s.completedAt,
+                    abandonedAt = s.abandonedAt,
+                    // The personal five (null -> the protocol defaults): read at room entry.
+                    reactionEmojis = reactionSet ?: ReactionPolicy.defaultSet,
+                    onExit = { screen = Screen.Shell },
+                )
+            }
+        }
+    }
+}
 
-            is Screen.Room -> RoomHost(
-                session = session,
-                factory = factory,
-                puzzle = s.puzzle,
-                roomName = s.name,
-                selfUserId = session.selfUserId ?: "you",
-                demo = s.demo,
-                wsUrl = s.wsUrl,
-                inviteCode = s.inviteCode,
-                // The seeded-birth roster from the REST view (empty for the demo room).
-                roster = s.roster,
-                // The personal five (null -> the protocol defaults): read at room entry.
-                reactionEmojis = reactionSet ?: ReactionPolicy.defaultSet,
-                onExit = { screen = Screen.Rooms },
-            )
+/** The signed-in shell (iOS ArrivalRootView.signedInShell): the three stable places carried by a
+ *  Material3 NavigationBar (Android's TabView idiom), each a full screen swapped under a subtle fade.
+ *  A room is NOT one of these places: it presents full-screen over the shell (the caller sets
+ *  screen = Room), so the tab bar is simply not composed while a room is live (the full-bleed ruling,
+ *  matched in spirit). Rooms and Puzzles each open a room and return here with the tab still standing;
+ *  Settings is a single page. */
+@Composable
+private fun SignedInShell(
+    session: AppSession,
+    ground: GridGround,
+    tab: ShellTab,
+    onTabChange: (ShellTab) -> Unit,
+    onOpenGame: (GameView, String?, String?) -> Unit,
+    onJoin: () -> Unit,
+    onCreate: () -> Unit,
+    onOpenDemo: () -> Unit,
+    onSignOut: () -> Unit,
+    onReactionSetChanged: (List<String>?) -> Unit,
+) {
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                ShellTabItem(tab, ShellTab.ROOMS, "Rooms", onTabChange) {
+                    Icon(Icons.Filled.Home, contentDescription = null)
+                }
+                ShellTabItem(tab, ShellTab.PUZZLES, "Puzzles", onTabChange) {
+                    PuzzlesTabGlyph()
+                }
+                ShellTabItem(tab, ShellTab.SETTINGS, "Settings", onTabChange) {
+                    Icon(Icons.Filled.Settings, contentDescription = null)
+                }
+            }
+        },
+    ) { inner ->
+        // A quiet crossfade between tabs (chrome, not choreography): the tab bar holds still while the
+        // page under it swaps, so switching tabs never reads as a full-screen shove.
+        AnimatedContent(
+            targetState = tab,
+            transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(120)) },
+            modifier = Modifier.padding(inner),
+            label = "tab",
+        ) { selected ->
+            when (selected) {
+                ShellTab.ROOMS -> RoomsHost(
+                    session = session,
+                    ground = ground,
+                    onOpenGame = onOpenGame,
+                    onJoin = onJoin,
+                    onCreate = onCreate,
+                    onOpenDemo = onOpenDemo,
+                )
+                ShellTab.PUZZLES -> PuzzlesHost(
+                    session = session,
+                    ground = ground,
+                    // A puzzle start creates an ongoing game, so no terminal seed.
+                    onStarted = { view -> onOpenGame(view, null, null) },
+                    onCreate = onCreate,
+                )
+                ShellTab.SETTINGS -> SettingsHost(
+                    session = session,
+                    // In a tab, "back" is a return to the home tab rather than a pop (SettingsScreen
+                    // keeps its back affordance; the shell relocates where it lands).
+                    onBack = { onTabChange(ShellTab.ROOMS) },
+                    onSignOut = onSignOut,
+                    onReactionSetChanged = onReactionSetChanged,
+                )
+            }
+        }
+    }
+}
+
+/** One NavigationBar destination, achromatic (people and the destructive tone are the only color,
+ *  DESIGN.md §1): the selected tab wears ink, the rest the quiet variant ink, the pill a subtle
+ *  surface tint rather than the system's primary wash. */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.ShellTabItem(
+    current: ShellTab,
+    value: ShellTab,
+    label: String,
+    onSelect: (ShellTab) -> Unit,
+    icon: @Composable () -> Unit,
+) {
+    NavigationBarItem(
+        selected = current == value,
+        onClick = { onSelect(value) },
+        icon = icon,
+        label = { Text(label) },
+        colors = NavigationBarItemDefaults.colors(
+            selectedIconColor = MaterialTheme.colorScheme.onSurface,
+            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+            indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        ),
+    )
+}
+
+/** The Puzzles tab glyph: a 3x3 crossword lattice (iOS "squareshape.split.3x3"). The icon set carries
+ *  no grid, so the app draws its own motif rather than borrow an unrelated glyph; tinted by the item's
+ *  content color so it darkens with selection exactly as the Material icons beside it do. */
+@Composable
+private fun PuzzlesTabGlyph() {
+    val tint = androidx.compose.material3.LocalContentColor.current
+    Canvas(Modifier.size(24.dp)) {
+        val inset = size.minDimension * 0.16f
+        val side = size.minDimension - inset * 2
+        val step = side / 3f
+        val stroke = Stroke(width = size.minDimension * 0.08f)
+        // The outer square, then the two interior lines each way: a clean 3x3.
+        drawRect(color = tint, topLeft = Offset(inset, inset), size = Size(side, side), style = stroke)
+        for (i in 1..2) {
+            drawLine(tint, Offset(inset + step * i, inset), Offset(inset + step * i, inset + side), strokeWidth = stroke.width)
+            drawLine(tint, Offset(inset, inset + step * i), Offset(inset + side, inset + step * i), strokeWidth = stroke.width)
         }
     }
 }
@@ -402,23 +589,38 @@ private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedI
 private fun RoomsHost(
     session: AppSession,
     ground: GridGround,
-    onOpenGame: (GameView) -> Unit,
+    onOpenGame: (GameView, String?, String?) -> Unit,
     onJoin: () -> Unit,
     onCreate: () -> Unit,
     onOpenDemo: () -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
     var games by remember { mutableStateOf<List<GameSummary>>(emptyList()) }
+    // The cursor for the next page ([ApiPage.nextBefore]); null once exhausted. `exhausted` also flips
+    // on an empty page (the §12 end of iteration).
+    var nextBefore by remember { mutableStateOf<String?>(null) }
+    var exhausted by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(true) }
+    var refreshing by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        loading = true
+    // The first page (or a refresh): replace the list. Order WITHIN the page by activity (the server
+    // sends this order; the client sort is belt-and-suspenders, iOS reload), never across pages.
+    suspend fun reload() {
         error = null
         runCatching { session.api.listGames() }
-            .onSuccess { games = it.rows }
+            .onSuccess { page ->
+                games = orderedByActivity(page.rows)
+                nextBefore = page.nextBefore
+                exhausted = page.nextBefore == null
+            }
             .onFailure { error = it.message ?: it::class.simpleName }
+    }
+
+    LaunchedEffect(Unit) {
+        loading = true
+        reload()
         loading = false
     }
 
@@ -426,18 +628,129 @@ private fun RoomsHost(
         games = games,
         ground = ground,
         isLoading = loading,
+        isRefreshing = refreshing,
         error = error,
         onOpen = { summary ->
             scope.launch {
                 runCatching { session.api.game(summary.gameId) }
-                    .onSuccess { onOpenGame(it) }
+                    // The tapped card carries the room's terminal facts (§12): thread them into the
+                    // store's birth so a done room retires its deck from the first frame (iOS seed).
+                    .onSuccess { onOpenGame(it, summary.completedAt, summary.abandonedAt) }
                     .onFailure { error = it.message ?: it::class.simpleName }
+            }
+        },
+        onRefresh = { scope.launch { refreshing = true; reload(); refreshing = false } },
+        onLoadMore = {
+            val cursor = nextBefore
+            if (!exhausted && !loadingMore && cursor != null) {
+                scope.launch {
+                    loadingMore = true
+                    runCatching { session.api.listGames(before = cursor) }
+                        .onSuccess { page ->
+                            // Order the incoming page within itself, then append after the pages
+                            // already shown (never a global re-sort, §12 pagination stability).
+                            games = games + orderedByActivity(page.rows)
+                            nextBefore = page.nextBefore
+                            exhausted = page.rows.isEmpty() || page.nextBefore == null
+                        }
+                        // A failed load-more never blanks what is on screen; pull to refresh recovers.
+                        .onFailure { exhausted = false }
+                    loadingMore = false
+                }
             }
         },
         onJoinByCode = onJoin,
         onCreate = onCreate,
         onOpenDemo = onOpenDemo,
-        onOpenSettings = onOpenSettings,
+    )
+}
+
+/** The Puzzles library tab host (iOS PuzzlesScreen's composition root): load GET /puzzles (refresh +
+ *  paginate), and on a card's Start create a fresh game (POST /games, unnamed) and hand the created
+ *  room's view up to be pushed the same way an opened room card is. One start at a time; a failure
+ *  reads inline on the card, keyed by puzzleId. The named-create + id-paste screen stays reachable
+ *  through [onCreate] (Android's deliberate extra). */
+@Composable
+private fun PuzzlesHost(
+    session: AppSession,
+    ground: GridGround,
+    onStarted: (GameView) -> Unit,
+    onCreate: () -> Unit,
+) {
+    var puzzles by remember { mutableStateOf<List<PuzzleSummary>>(emptyList()) }
+    var nextBefore by remember { mutableStateOf<String?>(null) }
+    var exhausted by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
+    var refreshing by remember { mutableStateOf(false) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    // The puzzleId whose POST /games is out (one start at a time), and the per-card inline failures.
+    var startingId by remember { mutableStateOf<String?>(null) }
+    var startFailures by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun reload() {
+        error = null
+        runCatching { session.api.listPuzzles() }
+            .onSuccess { page ->
+                puzzles = page.rows
+                nextBefore = page.nextBefore
+                exhausted = page.nextBefore == null
+            }
+            .onFailure { error = it.message ?: it::class.simpleName }
+    }
+
+    LaunchedEffect(Unit) {
+        loading = true
+        reload()
+        loading = false
+    }
+
+    PuzzlesScreen(
+        puzzles = puzzles,
+        ground = ground,
+        isLoading = loading,
+        isRefreshing = refreshing,
+        error = error,
+        startingId = startingId,
+        startFailures = startFailures,
+        onStart = { puzzle ->
+            // A second tap while one start is out is a no-op (the button is disabled; this guards the
+            // closure too, iOS PuzzlesScreen.start).
+            if (startingId == null) {
+                scope.launch {
+                    startingId = puzzle.puzzleId
+                    startFailures = startFailures - puzzle.puzzleId
+                    runCatching {
+                        val created = session.api.createGame(CreateGameRequest(puzzle.puzzleId, null))
+                        session.api.game(created.gameId)
+                    }
+                        .onSuccess { onStarted(it) }
+                        .onFailure {
+                            startFailures = startFailures + (puzzle.puzzleId to (it.message ?: it::class.simpleName ?: "Couldn't start the game."))
+                        }
+                    startingId = null
+                }
+            }
+        },
+        onRefresh = { scope.launch { refreshing = true; reload(); refreshing = false } },
+        onLoadMore = {
+            val cursor = nextBefore
+            if (!exhausted && !loadingMore && cursor != null) {
+                scope.launch {
+                    loadingMore = true
+                    runCatching { session.api.listPuzzles(before = cursor) }
+                        .onSuccess { page ->
+                            puzzles = puzzles + page.rows
+                            nextBefore = page.nextBefore
+                            exhausted = page.rows.isEmpty() || page.nextBefore == null
+                        }
+                        .onFailure { exhausted = false }
+                    loadingMore = false
+                }
+            }
+        },
+        onCreate = onCreate,
     )
 }
 
@@ -706,15 +1019,24 @@ private fun RoomHost(
     wsUrl: String?,
     inviteCode: String?,
     roster: List<Participant>,
+    completedAt: String?,
+    abandonedAt: String?,
     reactionEmojis: List<String>,
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    // The store is born, then seeded with the REST view's roster BEFORE the socket dials, so the
-    // players pill stands at its true width from the first frame (the seeded-birth rule, DESIGN.md
-    // §4, §12; mirrors RealRoom.init). seedRoster gates itself to `connecting`, so the welcome always
-    // wins; an empty roster (the demo room) is a no-op.
-    val store = remember(puzzle) { GameStore().apply { if (roster.isNotEmpty()) seedRoster(roster) } }
+    // The store is born, then seeded with the tapped card's facts BEFORE the socket dials, so the
+    // players pill stands at its true width and a done room retires its deck from the first frame
+    // (the seeded-birth rule, DESIGN.md §4, §12; mirrors RealRoom.init). Each seed gates itself to
+    // `connecting`, so the welcome always wins; an empty roster and null terminal facts (the demo
+    // room, a join, a fresh start) are no-ops. Solved seeds completed, host-ended seeds abandoned;
+    // the two are mutually exclusive, so the branches never both fire.
+    val store = remember(puzzle) {
+        GameStore().apply {
+            if (roster.isNotEmpty()) seedRoster(roster)
+            if (completedAt != null) seedCompleted(completedAt) else if (abandonedAt != null) seedAbandoned(abandonedAt)
+        }
+    }
     // The kicked terminal (PROTOCOL.md §6): the store hands the notice off here and the composition
     // root raises the exit (mirrors RealRoom's chrome.kicked flag). The driver stops redialing the
     // instant a kick lands (wired in the effect below), so no silent reconnect loop runs behind the

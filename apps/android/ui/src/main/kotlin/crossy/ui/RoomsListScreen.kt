@@ -1,7 +1,10 @@
-// The rooms list (iOS RoomsScreen, Wave A4 functional bar): the caller's games as PuzzleCards,
-// with entry points to join by code, create a game, and open the scripted demo room. A pure
-// function of the loaded list plus loading/error state; the composition root owns the data fetch
-// and every intent. Recents refetch-on-route-change and the rich empty state are later tracks.
+// The rooms list (iOS RoomsScreen): the caller's games, most-recently-active first. The few most
+// recent live rooms lead as a featured wall (a 2x2 grid of large FeaturedRoomCard silhouettes, iOS
+// featuredCount = 4), the rest fall to compact PuzzleCards, then a quiet "Solved" section and an
+// "Ended" section gather the terminal rooms. Pull to refresh, and cursor pagination loads the next
+// page when the last raw card scrolls into view. A pure function of the loaded list plus its
+// loading/refreshing/error state; the composition root owns the fetch, the activity re-sort, and
+// every intent (paging included).
 
 package crossy.ui
 
@@ -11,15 +14,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,76 +37,121 @@ import androidx.compose.ui.unit.sp
 import crossy.protocol.GameSummary
 import java.util.Locale
 
+/** The featured wall: the few most-recently-active live rooms as large silhouette cards. Four fills
+ *  a clean 2x2 on a phone (each face ~half width, still legible for a 15x15), so the compact list
+ *  appears only at five or more live rooms (iOS RoomsScreen.featuredCount). */
+private const val FeaturedCount = 4
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RoomsListScreen(
     games: List<GameSummary>,
     ground: GridGround,
     isLoading: Boolean,
+    isRefreshing: Boolean,
     error: String?,
     onOpen: (GameSummary) -> Unit,
+    onRefresh: () -> Unit,
+    onLoadMore: () -> Unit,
     onJoinByCode: () -> Unit,
     onCreate: () -> Unit,
     onOpenDemo: () -> Unit,
-    // The account/Settings entry point (the nickname editor and sign-out live there now, mirroring
-    // iOS which puts both in Settings).
-    onOpenSettings: () -> Unit,
 ) {
+    // The shelf grammar (Home.tsx GamesList): live rooms lead, then solved, then host-ended, each
+    // gathered off the ONE activity-ordered list by the pure helper. The featured slice leads the
+    // live rooms; the rest and the terminal shelves stay compact. Partitioned at render time, never a
+    // second paging list, so appended pages stay stable (§12).
+    val shelves = partitionRooms(games)
+    val featured = shelves.live.take(FeaturedCount)
+    val restLive = shelves.live.drop(FeaturedCount)
+    // The load-more trigger keys off the LAST raw appended card (not the visually last, which the
+    // featured slice and the terminal sections reorder), so paging fires once per page (iOS roomTap).
+    val lastId = games.lastOrNull()?.gameId
+
     Scaffold { inner ->
-        Column(modifier = Modifier.fillMaxSize().padding(inner).padding(horizontal = 16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.fillMaxSize().padding(inner),
+        ) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Rooms", fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                TextButton(onClick = onOpenSettings) { Text("Settings") }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = onCreate, modifier = Modifier.weight(1f)) { Text("Create") }
-                OutlinedButton(onClick = onJoinByCode, modifier = Modifier.weight(1f)) { Text("Join by code") }
-            }
-            OutlinedButton(onClick = onOpenDemo, modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                Text("Open demo room (scripted)")
-            }
-
-            if (error != null) {
-                Text("Could not load games: $error", color = androidx.compose.material3.MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp))
-            }
-
-            when {
-                isLoading -> Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    androidx.compose.foundation.layout.Spacer(Modifier.padding(24.dp))
-                    CircularProgressIndicator()
+                fullSpan("header") {
+                    Column {
+                        Text(
+                            "Rooms",
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Button(onClick = onCreate, modifier = Modifier.weight(1f)) { Text("Create") }
+                            OutlinedButton(onClick = onJoinByCode, modifier = Modifier.weight(1f)) { Text("Join by code") }
+                        }
+                        OutlinedButton(
+                            onClick = onOpenDemo,
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) { Text("Open demo room (scripted)") }
+                        if (error != null) {
+                            Text(
+                                "Could not load games: $error",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
                 }
-                games.isEmpty() -> Text(
-                    "No games yet. Create one, join by code, or open the demo room.",
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(vertical = 16.dp),
-                )
-                else -> {
-                    // The web's shelf grammar (Home.tsx GamesList, main 760e6e4): live rooms lead,
-                    // then a quiet "Solved" section, then an "Ended" section for host-ended rooms,
-                    // each gathering its terminal rooms off the one loaded list by the pure helper.
-                    // An empty group draws no header. The featured wall (large silhouette cards up
-                    // top) is a later track, so live rooms stay the compact list here.
-                    val shelves = partitionRooms(games)
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(shelves.live, key = { it.gameId }) { game ->
+
+                when {
+                    // The initial load spinner: only before the first page lands. A refresh over a
+                    // standing list rides the pull-to-refresh indicator instead, never this.
+                    isLoading && games.isEmpty() -> fullSpan("loading") {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) { CircularProgressIndicator() }
+                    }
+                    games.isEmpty() -> fullSpan("empty") {
+                        Text(
+                            "No games yet. Create one, join by code, or open the demo room.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(vertical = 16.dp),
+                        )
+                    }
+                    else -> {
+                        // The featured wall keeps its grid-cell face no matter the count: a single
+                        // live room sits in the first cell at the same size as a full 2x2, never
+                        // ballooning to a lone full-width hero.
+                        items(featured, key = { it.gameId }) { game ->
+                            FeaturedRoomCard(game, ground, onOpen = { onOpen(game) })
+                            LoadMoreOnLast(game.gameId, lastId, onLoadMore)
+                        }
+                        fullSpanItems(restLive) { game ->
                             PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                            LoadMoreOnLast(game.gameId, lastId, onLoadMore)
                         }
                         if (shelves.solved.isNotEmpty()) {
-                            item(key = "section-solved") { SectionHeader("Solved") }
-                            items(shelves.solved, key = { it.gameId }) { game ->
+                            fullSpan("section-solved") { SectionHeader("Solved") }
+                            fullSpanItems(shelves.solved) { game ->
                                 PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                                LoadMoreOnLast(game.gameId, lastId, onLoadMore)
                             }
                         }
                         if (shelves.ended.isNotEmpty()) {
-                            item(key = "section-ended") { SectionHeader("Ended") }
-                            items(shelves.ended, key = { it.gameId }) { game ->
+                            fullSpan("section-ended") { SectionHeader("Ended") }
+                            fullSpanItems(shelves.ended) { game ->
                                 PuzzleCard(game, ground, onOpen = { onOpen(game) })
+                                LoadMoreOnLast(game.gameId, lastId, onLoadMore)
                             }
                         }
                     }
@@ -107,10 +161,21 @@ fun RoomsListScreen(
     }
 }
 
-/** A quiet caps label over a trailing shelf (the web's CapsLabel, Home.tsx): the section copy in
- *  the theme's subtle ink (onSurfaceVariant maps to the :design `number` token) and rendered
- *  uppercase (ROOT locale: ASCII-only, INV-1-clean), so a "Solved" or "Ended" section reads as a
- *  divider, never a loud header. Drawn only when its group is non-empty. */
+/** Fire the next page's fetch when the LAST raw appended card enters composition (the lazy grid
+ *  composes on scroll, so this is the Compose twin of iOS's `onAppear` on `rooms.last`). Keyed on the
+ *  last id, so it re-arms once per appended page and never fires for an interior card. The composition
+ *  root owns the guard (no cursor, already loading): a spurious call is a cheap no-op there. */
+@Composable
+private fun LoadMoreOnLast(gameId: String, lastId: String?, onLoadMore: () -> Unit) {
+    if (gameId == lastId) {
+        LaunchedEffect(lastId) { onLoadMore() }
+    }
+}
+
+/** A quiet caps label over a trailing shelf (the web's CapsLabel, Home.tsx): the section copy in the
+ *  theme's subtle ink (onSurfaceVariant maps to the :design `number` token) and rendered uppercase
+ *  (ROOT locale: ASCII-only, INV-1-clean), so a "Solved" or "Ended" section reads as a divider, never
+ *  a loud header. Drawn only when its group is non-empty. */
 @Composable
 private fun SectionHeader(text: String) {
     Text(
@@ -118,7 +183,21 @@ private fun SectionHeader(text: String) {
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
         letterSpacing = 0.8.sp,
-        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
     )
 }
+
+/** One full-width row inside the 2-column grid (the title, the action buttons, a section header, a
+ *  compact card): spans both columns via `maxLineSpan`, so the grid mixes the featured wall's cells
+ *  with full-width content in one scroll container. */
+private fun LazyGridScope.fullSpan(
+    key: String,
+    content: @Composable () -> Unit,
+) = item(key = key, span = { GridItemSpan(maxLineSpan) }) { content() }
+
+/** The list form of [fullSpan]: each row of [rows] spans both columns, keyed by gameId. */
+private fun LazyGridScope.fullSpanItems(
+    rows: List<GameSummary>,
+    content: @Composable (GameSummary) -> Unit,
+) = items(rows, key = { it.gameId }, span = { GridItemSpan(maxLineSpan) }) { content(it) }

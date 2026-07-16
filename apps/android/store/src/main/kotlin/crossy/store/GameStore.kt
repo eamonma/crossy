@@ -346,6 +346,22 @@ class GameStore(
         publish()
     }
 
+    /** Seed a known-abandoned status before the socket answers, the terminal twin of [seedCompleted]
+     * (the seeded-birth rule, DESIGN.md §4, §12): the tapped card carries the room's abandonment fact
+     * (`GET /games` `abandonedAt`, the Ended shelf's gathering key), so a host-ended room retires its
+     * key deck from the push's first frame instead of flashing the deck for the connect beat and
+     * dropping it when the welcome lands abandoned. Gated to `connecting` exactly like [seedCompleted]:
+     * a pre-handshake courtesy the welcome always overrides (`applySnapshot` sets status and
+     * abandonedAt from the board). Abandonment is terminal (INV-4), so a seeded `abandoned` can never
+     * contradict the snapshot that confirms it, and the mutation freeze already keys on
+     * `status != ONGOING`. Mirrors iOS `GameStore.seedAbandoned`. */
+    fun seedAbandoned(at: String?) {
+        if (sync != SyncState.CONNECTING) return
+        status = GameStatus.ABANDONED
+        abandonedAt = at
+        publish()
+    }
+
     // MARK: connection state machine (PROTOCOL.md §7; AD-6)
 
     /** The transport lost the socket: back off and reconnect (PROTOCOL.md §7). The overlay is

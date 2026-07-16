@@ -52,3 +52,26 @@ fun partitionRooms(games: List<GameSummary>): RoomShelves {
     }
     return RoomShelves(live, solved, ended)
 }
+
+/**
+ * Order rooms by when they were last touched, most recent first, matching the server's within-page
+ * order (PROTOCOL.md §12). Twin of iOS `RoomCardModel.orderedByActivity`. The sort key is
+ * `lastActivityAt ?? createdAt` (COALESCE): creating a room is its first activity, so a freshly
+ * created unplayed room sorts by its `createdAt`, right where a room played at that instant would
+ * sit, not below every played room. Ties on the coalesced key fall back to `createdAt`, then
+ * `gameId`, so the order is total and stable. The server already sends the page in this order;
+ * sorting again is belt-and-suspenders and never fights the server since the rule is identical.
+ * Timestamps are ISO 8601 UTC in the one server format, so a lexicographic compare is chronological
+ * (no date parsing in the view layer). Applied WITHIN a page and never across pages: pages are
+ * createdAt-bounded and appended in order, so a global re-sort would break the documented "first
+ * page fully activity-ordered, deeper pages stable" (§12). Pure and non-mutating.
+ */
+fun orderedByActivity(games: List<GameSummary>): List<GameSummary> =
+    games.sortedWith(
+        // COALESCE(lastActivityAt, createdAt): a never-played room keys on its creation time. All
+        // three keys descend (more recent first), so a single reversed comparator over the triple
+        // is the total, stable order.
+        compareByDescending<GameSummary> { it.lastActivityAt ?: it.createdAt }
+            .thenByDescending { it.createdAt }
+            .thenByDescending { it.gameId },
+    )
