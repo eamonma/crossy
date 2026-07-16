@@ -49,12 +49,15 @@ import crossy.ui.DisplayNameOutcome
 import crossy.ui.EmailOtpStep
 import crossy.ui.GridGround
 import crossy.ui.JoinCodeScreen
+import crossy.ui.ReactionSetEditorModel
+import crossy.ui.ReactionSetOutcome
 import crossy.ui.RoomScreen
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
 import crossy.ui.ShareInvite
 import crossy.ui.SignInScreen
 import crossy.ui.displayNameErrorCopy
+import crossy.ui.ReactionPolicy
 import kotlinx.coroutines.launch
 
 private sealed interface Screen {
@@ -84,16 +87,28 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
     var screen by remember { mutableStateOf<Screen>(Screen.SignIn) }
     val scope = rememberCoroutineScope()
+    // The caller's personal reaction set (Wave 8.5; D25), held at the shell root so it survives across
+    // screens: seeded from GET /me at arrival (null = the default five), updated when Settings saves,
+    // and threaded to the room's send fan. Held here rather than in the room so a Settings edit is
+    // reflected the NEXT time a room is entered (live mid-room propagation is not required).
+    var reactionSet by remember { mutableStateOf<List<String>?>(null) }
 
     CrossyTheme(ground) {
         when (val s = screen) {
             Screen.SignIn -> SignInHost(session, onSignedIn = { screen = Screen.Arrival })
 
-            // The needsName gate between sign-in and Rooms: the server decides, the client routes.
+            // The needsName gate between sign-in and Rooms: the server decides, the client routes. The
+            // /me read also seeds the personal reaction set (null = the defaults) so the fan wears it.
             Screen.Arrival -> ArrivalHost(
                 session = session,
-                onNeedsName = { me -> screen = Screen.Onboarding(prefill = me.displayName.orEmpty()) },
-                onReady = { screen = Screen.Rooms },
+                onNeedsName = { me ->
+                    reactionSet = me.reactionSet
+                    screen = Screen.Onboarding(prefill = me.displayName.orEmpty())
+                },
+                onReady = { me ->
+                    reactionSet = me.reactionSet
+                    screen = Screen.Rooms
+                },
             )
 
             is Screen.Onboarding -> OnboardingHost(
@@ -121,6 +136,9 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
                     session.clearSession()
                     screen = Screen.SignIn
                 },
+                // A saved reaction set (null = the defaults) updates the shell root, so the next room
+                // entry's fan wears it (live mid-room propagation is not required).
+                onReactionSetChanged = { reactionSet = it },
             )
 
             Screen.Join -> JoinHost(
@@ -144,6 +162,8 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
                 demo = s.demo,
                 wsUrl = s.wsUrl,
                 inviteCode = s.inviteCode,
+                // The personal five (null -> the protocol defaults): read at room entry.
+                reactionEmojis = reactionSet ?: ReactionPolicy.defaultSet,
                 onExit = { screen = Screen.Rooms },
             )
         }
@@ -335,7 +355,12 @@ private fun OnboardingHost(session: AppSession, prefill: String, onDone: () -> U
  *  loaded identity. The editor reuses the same DisplayNameOnboardingModel as onboarding (one write
  *  path), so a nickname edit is the same resilient submit. */
 @Composable
-private fun SettingsHost(session: AppSession, onBack: () -> Unit, onSignOut: () -> Unit) {
+private fun SettingsHost(
+    session: AppSession,
+    onBack: () -> Unit,
+    onSignOut: () -> Unit,
+    onReactionSetChanged: (List<String>?) -> Unit,
+) {
     var me by remember { mutableStateOf<MeResponse?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
@@ -363,11 +388,17 @@ private fun SettingsHost(session: AppSession, onBack: () -> Unit, onSignOut: () 
         }
         return
     }
-    SettingsContent(session, loaded, onBack, onSignOut)
+    SettingsContent(session, loaded, onBack, onSignOut, onReactionSetChanged)
 }
 
 @Composable
-private fun SettingsContent(session: AppSession, me: MeResponse, onBack: () -> Unit, onSignOut: () -> Unit) {
+private fun SettingsContent(
+    session: AppSession,
+    me: MeResponse,
+    onBack: () -> Unit,
+    onSignOut: () -> Unit,
+    onReactionSetChanged: (List<String>?) -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var shownName by remember { mutableStateOf(me.displayName) }
     var saved by remember { mutableStateOf(false) }
@@ -379,6 +410,15 @@ private fun SettingsContent(session: AppSession, me: MeResponse, onBack: () -> U
                 shownName = canonical
                 saved = true
             },
+        )
+    }
+    // The reaction set editor: seeded from /me's reactionSet (null = the defaults), one write path
+    // behind updateReactionSet, and a saved canonical set reported up so the room's fan follows.
+    val reactions = remember {
+        ReactionSetEditorModel(
+            initialPersonal = me.reactionSet,
+            save = { set -> submitReactionSet(session, set) },
+            onSaved = onReactionSetChanged,
         )
     }
     SettingsScreen(
@@ -397,8 +437,26 @@ private fun SettingsContent(session: AppSession, me: MeResponse, onBack: () -> U
         onSave = { scope.launch { model.submitDraft() } },
         onSignOut = onSignOut,
         onBack = onBack,
+        reactions = reactions,
     )
 }
+
+/** Map one `PATCH /me {reactionSet}` round trip into the ReactionSetOutcome the editor model acts on
+ *  (the submitDisplayName twin). A REACTION_SET_* rejection keeps the draft for a correction; a 429
+ *  carries its Retry-After; every other failure (transport, 5xx, even a post-refresh 401) is retryable
+ *  within the model's bound and never signs the person out (INV-11). The server's canonical set is what
+ *  the client adopts (a null reactionSet in the response = the defaults). */
+private suspend fun submitReactionSet(session: AppSession, set: List<String>?): ReactionSetOutcome =
+    try {
+        val me = session.api.updateReactionSet(set)
+        ReactionSetOutcome.Saved(me.reactionSet)
+    } catch (e: CrossyApiError.RateLimited) {
+        ReactionSetOutcome.RateLimited(e.retryAfterSeconds)
+    } catch (e: CrossyApiError) {
+        val code = e.apiCodeString
+        if (code != null && code.startsWith("REACTION_SET_")) ReactionSetOutcome.Rejected(code)
+        else ReactionSetOutcome.Retryable(code)
+    }
 
 /** Map one `PATCH /me` round trip into the DisplayNameOutcome the onboarding model acts on. A
  *  NAME_* rejection keeps the field for a correction; a 429 carries its Retry-After; every other
@@ -485,6 +543,7 @@ private fun RoomHost(
     demo: Boolean,
     wsUrl: String?,
     inviteCode: String?,
+    reactionEmojis: List<String>,
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -525,5 +584,12 @@ private fun RoomHost(
         }
         onDispose { job.cancel() }
     }
-    RoomScreen(store = store, puzzle = puzzle, roomName = roomName, onExit = onExit, onShare = onShare)
+    RoomScreen(
+        store = store,
+        puzzle = puzzle,
+        roomName = roomName,
+        onExit = onExit,
+        onShare = onShare,
+        reactionEmojis = reactionEmojis,
+    )
 }

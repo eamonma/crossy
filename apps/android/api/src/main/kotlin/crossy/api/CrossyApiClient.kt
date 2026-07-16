@@ -36,6 +36,7 @@ import crossy.protocol.PuzzlesListResponse
 import crossy.protocol.Role
 import crossy.protocol.RoleChangeRequest
 import crossy.protocol.UpdateDisplayNameRequest
+import crossy.protocol.UpdateReactionSetRequest
 import kotlinx.serialization.DeserializationStrategy
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -207,6 +208,24 @@ public class CrossyApiClient(
                 "PATCH",
                 listOf("me"),
                 body = encode(UpdateDisplayNameRequest.serializer(), UpdateDisplayNameRequest(name)),
+            ),
+            MeResponse.serializer(),
+        )
+
+    /** `PATCH /me`: set the caller's own personal reaction set (§9, §12; D25). `set` is five emoji
+     *  graphemes in slot order, or null to RESET to the default five; the request encodes the
+     *  `reactionSet` key ALWAYS (explicit null included), so null is the reset command and never an
+     *  omission. The set is sent byte-exact; the server validates (the REACTION_SET_* 422s) and
+     *  returns the canonical stored value the client adopts (a null `reactionSet` in the response =
+     *  the defaults). A well-formed set that violates a rule throws [CrossyApiError.Api] with a
+     *  `REACTION_SET_*` code (422); a spent write window throws [CrossyApiError.RateLimited] (429).
+     *  Twin of iOS `updateReactionSet(_:)`. */
+    public suspend fun updateReactionSet(set: List<String>?): MeResponse =
+        send(
+            Endpoint(
+                "PATCH",
+                listOf("me"),
+                body = encode(UpdateReactionSetRequest.serializer(), UpdateReactionSetRequest(set)),
             ),
             MeResponse.serializer(),
         )

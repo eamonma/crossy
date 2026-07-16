@@ -65,6 +65,15 @@ public enum class APIErrorCode(public val httpStatus: Int) {
     NAME_TOO_LONG(422),
     NAME_INVALID(422),
 
+    // Named personal-reaction-set rejections (§9, §12; DESIGN.md D25). All 422: the body is
+    // well-formed JSON but the `reactionSet` violates a domain rule the person can read and fix
+    // (the NAME_* posture). The send-gate spec (ReactionSetSpec) names these same rules at the edge,
+    // but the server stays the authority the UI surfaces (its RGI list is the truth the heuristic
+    // only approximates). INV-1 casing does NOT apply (the set is byte-exact, never normalized).
+    REACTION_SET_LENGTH(422),
+    REACTION_SET_INVALID(422),
+    REACTION_SET_DUPLICATE(422),
+
     // The write window is spent (PATCH /me is rate-limited per user); carries a Retry-After header.
     RATE_LIMITED(429),
     ;
@@ -503,14 +512,45 @@ public data class MeResponse(
     val isAnonymous: Boolean,
     val avatarUrl: String?,
     val needsName: Boolean,
+    /**
+     * The caller's personal reaction set: five emoji graphemes in slot order, or null for the
+     * default five (PROTOCOL.md §9, §12; D25). A current server always writes the key (an explicit
+     * JSON null until an account chooses its own five), so this carries the same nullable-and-present
+     * posture as `completedAt`: @EncodeDefault(ALWAYS) writes the explicit null on encode. The null
+     * default ALSO tolerates an older server that omits the key (§14), which reads the same as null:
+     * the defaults. Twin of iOS `MeResponse.reactionSet`.
+     */
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val reactionSet: List<String>? = null,
 )
 
 /**
  * The `PATCH /me` request body: the caller sets their own display name. A single `displayName`
  * field, sent verbatim; the server owns canonicalization and validation (§5), so mirroring that in
  * the type would only shadow the contract. Twin of iOS `UpdateDisplayNameRequest`.
+ *
+ * The two /me writers are separate, single-field request bodies (this and [UpdateReactionSetRequest])
+ * rather than one `{displayName?, reactionSet?}` struct: PROTOCOL.md §12's partial-update shape is
+ * realized compositionally, one write per field, so each field's presence on the wire is decided by
+ * WHICH request is sent. A display-name write omits `reactionSet` entirely (the server leaves it
+ * untouched); a reaction-set write omits `displayName`. Twin of the iOS split (UpdateDisplayNameRequest
+ * / UpdateReactionSetRequest).
  */
 @Serializable
 public data class UpdateDisplayNameRequest(
     val displayName: String,
+)
+
+/**
+ * The `PATCH /me` request body for the personal reaction set (§9, §12; D25): five graphemes in slot
+ * order, or null to reset to the defaults. `reactionSet` carries NO default, so the key is ALWAYS
+ * written (explicitNulls keeps a null as an explicit null): null is a VALUE here, the reset command,
+ * never an omission. This is the absent-vs-null distinction PROTOCOL.md §12 pins — an omitted key
+ * would read as "nothing to update" (400 VALIDATION on an otherwise empty patch), while an explicit
+ * `reactionSet: null` resets the column to the default five. The set is sent byte-exact; the server
+ * owns validation (the REACTION_SET_* 422s), though ReactionSetSpec.validate lets an editor name the
+ * same rule at the edge. Twin of iOS `UpdateReactionSetRequest`.
+ */
+@Serializable
+public data class UpdateReactionSetRequest(
+    val reactionSet: List<String>?,
 )
