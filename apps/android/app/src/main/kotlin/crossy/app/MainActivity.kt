@@ -12,6 +12,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import crossy.api.TurnstileMintPolicy
 import okhttp3.OkHttpClient
 
@@ -21,6 +22,10 @@ class MainActivity : ComponentActivity() {
     private val redirects = OAuthRedirects()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The launch window wears the ground and shows the mark until Compose paints. Installed before
+        // super.onCreate per the SplashScreen API; postSplashScreenTheme hands the window back to
+        // Theme.Crossy, whose windowBackground is the same ground, so the swap never flashes.
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         // Edge-to-edge with contrast-aware system bar icons (dark-on-light, light-on-dark); the
         // safe-area shell in CrossyApp keeps content out from under the bars.

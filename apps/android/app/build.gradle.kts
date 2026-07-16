@@ -102,6 +102,9 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    // The launch window: androidx core-splashscreen installs the ground-colored splash and hands off
+    // to Compose (MainActivity.installSplashScreen). Backports the API below 31, so minSdk 29 is fine.
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.kotlinx.coroutines.core)
     // The Keystore-backed TokenStore (KeystoreTokenStore) serializes the session and pending-OAuth
     // twins through ProtocolJson before encrypting them; :api/:protocol keep the serialization

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Night ground: the same window shell on the dark Material parent, its background swapped to the
+         Observatory ground by @color/crossy_ground (values-night) so the pre-Compose launch window
+         matches dark mode (apps/ios/DESIGN.md §5, ID-3). Theme.Crossy.Splash is not redefined here: it
+         references @color/crossy_ground and @mipmap/ic_launcher, both resolved per configuration, and
+         postSplashScreenTheme hands off to this night Theme.Crossy. -->
+    <style name="Theme.Crossy" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/crossy_ground</item>
+    </style>
+</resources>
