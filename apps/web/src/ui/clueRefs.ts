@@ -8,6 +8,12 @@
 // number-then-connector that close on a direction word, then read every number out of the
 // run and pair each with that word. A direction word ends its run, so "17-Across and 3-Down"
 // splits into two runs and yields one entry per axis.
+//
+// The starred-clue convention is the second kind of reference (D26). A theme clue opens with a
+// literal `*` and a revealer names the whole set collectively ("...the starred clues"), so the
+// pair below is a predicate on the clue and a predicate on the prose, not a parse: a starred ref
+// carries no number and no direction to read out. The call site resolves both kinds into one key
+// set, so they union and paint the same tier.
 import type { Direction } from "@crossy/engine";
 import type { Clue } from "../domain/types";
 
@@ -54,11 +60,86 @@ export function parseClueRefs(text: string | undefined): ClueRef[] {
   return refs;
 }
 
+// A revealer naming the starred set. The noun is required: "starred" alone is ordinary prose
+// ("Starred in a movie"), and only the adjacent noun separates the convention from the verb. The
+// asymmetry is why this is biased hard toward precision: a missed revealer degrades to no
+// highlight, while a false one paints roughly a quarter of the grid. [\s-]+ is the same connector
+// idiom RUN uses, so a hyphenated "starred-clue" reads like "17-Across" does. Case-insensitive:
+// the revealer opens a sentence as often as not.
+const STARRED =
+  /\b(?:starred|asterisked)[\s-]+(?:clues?|answers?|entries|entry|squares?)\b/i;
+
+// The convention's mark: a literal `*` opening the clue, leading whitespace tolerated. PROTOCOL
+// section 12 law 11 carries the star through ingestion verbatim, so plain `text` is the whole
+// story here. Read `text`, never `runs`: the runs concatenate to `text` (law 1), so a star split
+// into its own styled run still shows up at the front of `text`.
+const STARRED_MARK = /^\s*\*/;
+
 /**
- * The cells a set of referenced clues covers, unioned across both axes. `keys` is the call site's
- * already existence-filtered set of `${direction}-${number}` marks, so a key naming a clue this
- * puzzle lacks simply matches nothing and contributes no cells. Same key scheme the presence map
- * and clue rail use, so a clue looks itself up in O(1).
+ * Whether a clue wears the starred-clue convention, meaning its prose opens with a literal `*`.
+ * A clue with no text is not starred.
+ */
+export function isStarredClue(clue: Clue): boolean {
+  return clue.text !== undefined && STARRED_MARK.test(clue.text);
+}
+
+/**
+ * Whether a clue's text is a revealer, meaning it names the starred clues collectively. The link
+ * is one-way by ruling (D26): this answers "does this prose name the starred set?", and a starred
+ * clue's own prose names nothing, so a starred clue is never a revealer by virtue of its star.
+ * Returns false for empty or absent text.
+ */
+export function referencesStarredClues(text: string | undefined): boolean {
+  return text !== undefined && STARRED.test(text);
+}
+
+/**
+ * The keys of every clue the active clue references, keyed `${direction}-${number}` like the
+ * presence map so a row looks itself up in O(1). This is the chokepoint: both kinds of reference
+ * resolve here and union into one set (D26), the numbers the prose names and, when the prose is a
+ * revealer, every starred clue. `mark` is the single gate, so a reference to an entry this grid
+ * lacks, or the active clue naming itself, never lights a row. The parsers above read intent only;
+ * existence is decided here, against the puzzle's real clue lists.
+ *
+ * Empty when there is no active clue, or when the clue names no entry that exists.
+ *
+ * The Swift twin is `ClueBook.referencedIds(for:)`: same guards, same shape, different key scheme
+ * (`18A` there, `across-18` here).
+ */
+export function referencedKeys(
+  activeClue: Clue | undefined,
+  acrossClues: readonly Clue[],
+  downClues: readonly Clue[],
+): Set<string> {
+  const marks = new Set<string>();
+  if (activeClue === undefined) return marks;
+
+  const exists = new Set<string>();
+  for (const c of acrossClues) exists.add(`across-${c.number}`);
+  for (const c of downClues) exists.add(`down-${c.number}`);
+  const self = `${activeClue.direction}-${activeClue.number}`;
+  const mark = (key: string): void => {
+    if (exists.has(key) && key !== self) marks.add(key);
+  };
+
+  for (const ref of parseClueRefs(activeClue.text)) {
+    mark(`${ref.direction}-${ref.number}`);
+  }
+  // A revealer names the theme set collectively, so it resolves to every clue wearing the star.
+  // One-way by ruling, so a starred clue lights nothing on its own.
+  if (referencesStarredClues(activeClue.text)) {
+    for (const c of [...acrossClues, ...downClues]) {
+      if (isStarredClue(c)) mark(`${c.direction}-${c.number}`);
+    }
+  }
+  return marks;
+}
+
+/**
+ * The cells a set of referenced clues covers, unioned across both axes. `keys` is `referencedKeys`
+ * output, already existence-filtered, so a key naming a clue this puzzle lacks simply matches
+ * nothing and contributes no cells. Same key scheme the presence map and clue rail use, so a clue
+ * looks itself up in O(1).
  */
 export function referencedCells(
   keys: ReadonlySet<string>,
