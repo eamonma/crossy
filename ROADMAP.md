@@ -1098,12 +1098,14 @@ contract to land against.**
 ### Wave 10.2 — vectors (blocked on 10.1)
 
 `vectors/analysis/titles.json`: stat-sheet cases (each stat exercised, the
-overwrite-vs-wrongWrite boundary, marquee slots via starred and via the length-tier
-fallback) and award cases (gate refusals, the already-titled fall-through, both
-tie-breaks, the solo rule, the coverage theorem: every specialty gate failing still
-titles six solvers off the ordinal floor, a seventh is the documented remainder).
-**Exit: the runner shape-validates the family; every case cites the TITLES.md rule it
-defends.**
+overwrite-vs-wrongWrite boundary, the rebus comparator boundary, the self-overwrite
+exclusion, clock skew where `at` and `seq` order disagree, the burst-window endpoint,
+the odd-grid quadrant boundary, whole-second flooring, marquee slots via starred and
+via the length-tier fallback) and award cases (gate refusals, the already-titled
+fall-through, both tie-breaks, the zero-fill saboteur, the event-membership solo rule,
+the coverage theorem: every specialty gate failing still titles six fillers off the
+ordinal floor, a seventh is the documented remainder). **Exit: the runner
+shape-validates the family; every case cites the TITLES.md rule it defends.**
 
 ### Wave 10.3 — engine (blocked on 10.2)
 
@@ -1115,8 +1117,9 @@ Wave 10.2 vectors. **Exit: the vectors pass; the reducers are pure and determini
 
 The Archive module lifts the slot list and starred flags from `games.puzzle_snapshot`,
 runs the two reducers beside the existing three, and appends `titles` to the analysis
-bundle. Gate, cache, and INV-4 reasoning unchanged. **Exit: a completed multi-solver
-game's bundle carries its titles; a solo game's is empty; no letter rides out (INV-6).**
+bundle. Gate, cache, and INV-4 reasoning unchanged. **Exit: a completed game with two
+or more writers carries its titles; fewer than two writers is empty; no letter rides
+out (INV-6).**
 
 ### Wave 10.5 — web (blocked on 10.4)
 
