@@ -3,5 +3,6 @@
   "displayName": null,
   "isAnonymous": false,
   "avatarUrl": null,
-  "needsName": true
+  "needsName": true,
+  "reactionSet": null
 }

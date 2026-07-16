@@ -57,6 +57,11 @@ class RestSnapshotTests {
             "NAME_REQUIRED" to 422,
             "NAME_TOO_LONG" to 422,
             "NAME_INVALID" to 422,
+            // Personal-reaction-set rejections (§9, §12; D25): the three REACTION_SET_* codes are 422
+            // (a well-formed body whose value violates a set rule the person can read and fix).
+            "REACTION_SET_LENGTH" to 422,
+            "REACTION_SET_INVALID" to 422,
+            "REACTION_SET_DUPLICATE" to 422,
             "RATE_LIMITED" to 429,
         )
         assertEquals(table.keys, APIErrorCode.entries.map { it.name }.toSet())
