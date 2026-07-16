@@ -1387,14 +1387,15 @@ function LiveGame({
                     isolatedId={isolatedSolver}
                     source={{ apiBase, gameId, bearer }}
                   />
-                  {/* The selection and aim layer: pointer targets and the selection ring over the
-                      mosaic art, so a reaction anchors anywhere on the finished board (PROTOCOL.md
-                      §9). Above the mosaic (its clicks land) and below the stickers (which are
-                      pointer-transparent, so order never steals a click). It never repaints the
-                      mosaic, so the bloom is untouched. */}
+                  {/* The selection and aim layer: pointer targets and the liquid-glass word loupe
+                      over the mosaic art, so direction is visible and a reaction anchors anywhere
+                      on the finished board (PROTOCOL.md §9). Above the mosaic (its clicks land) and
+                      below the stickers (which are pointer-transparent, so order never steals a
+                      click). It never repaints the mosaic, so the bloom is untouched. */}
                   <MosaicSelectLayer
                     grid={grid}
                     selectedCell={selection.cell}
+                    direction={selection.direction}
                     onSelect={onMosaicCellClick}
                   />
                   {/* Reactions stay legal in any game status (PROTOCOL.md §9): the completed

@@ -14,7 +14,8 @@
 /** Push a new location (path plus optional query), e.g. `/game/abc?code=X`. */
 export type Navigate = (to: string) => void;
 
-/** The parsed surface. `demo` is the dev-only fake-session board behind `?demo=1`. `party` on the
+/** The parsed surface. `demo` is the dev-only fake-session board behind `?demo=1`; `loupe-lab`
+ * is the web word-lens material study behind `?loupe=1`. `party` on the
  * game route is the read-only projector screen (`/game/<id>?party=1`), opened on a TV; it is a
  * presentation flag on the same game, not a separate surface, so the game still loads normally.
  * `play` on the puzzles route is the extension's post-ingest play intent (D22): the library
@@ -26,6 +27,7 @@ export type Route =
   | { readonly kind: "settings" }
   | { readonly kind: "game"; readonly gameId: string; readonly party?: boolean }
   | { readonly kind: "auth-confirm" }
+  | { readonly kind: "loupe-lab" }
   | { readonly kind: "demo" };
 
 /** The dogfood/dev override params carried across every in-app link. */
@@ -124,6 +126,7 @@ function puzzlesRoute(params: URLSearchParams): Route {
  * address bar; an unknown path falls back to home rather than a dead end.
  */
 export function parseRoute(pathname: string, params: URLSearchParams): Route {
+  if (params.get("loupe") !== null) return { kind: "loupe-lab" };
   if (params.get("demo") !== null) return { kind: "demo" };
   const legacyGame = params.get("game");
   if (legacyGame !== null && legacyGame !== "") {
@@ -152,13 +155,14 @@ export function parseRoute(pathname: string, params: URLSearchParams): Route {
  * The canonical path form for a legacy query-routed location, or null when the location is
  * already canonical. `?game=<id>&code=...` maps to `/game/<id>?code=...` (the code is the
  * join capability and must survive; a legacy `?name=` rides along for pre-API-name links).
- * `?demo=1` is a dev surface and deliberately keeps its query form.
+ * `?demo=1` and `?loupe=1` are dev surfaces and deliberately keep their query forms.
  */
 export function canonicalHref(
   pathname: string,
   params: URLSearchParams,
 ): string | null {
   void pathname;
+  if (params.get("loupe") !== null) return null;
   if (params.get("demo") !== null) return null;
   const game = params.get("game");
   if (game !== null && game !== "") {
