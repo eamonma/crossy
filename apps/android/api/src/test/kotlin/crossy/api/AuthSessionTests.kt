@@ -54,28 +54,11 @@ class AuthSessionTests : MockServerTest() {
         SupabaseSession(access, "stored-refresh", expiresAt, "user-1")
 
     @Test
-    fun signInWithPassword_persistsTheSessionAndSignsIn() = runBlocking {
-        server.enqueue(jsonResponse(200, grantBody("granted", "granted-refresh", 4_102_444_800.0)))
-        val (session, store) = makeSession()
-
-        session.signInWithPassword("ada@example.test", "hunter2")
-
-        assertEquals(AuthPhase.SIGNED_IN, session.phase)
-        assertEquals("11111111-2222-3333-4444-555555555555", session.userId)
-        assertEquals("granted-refresh", store.read()?.refreshToken, "the store holds the session")
-
-        // And the token provider serves it without any further network.
-        val token = session.currentToken()
-        assertTrue(token.isNotEmpty())
-        assertEquals(1, server.requestCount, "a fresh token needs no refresh")
-    }
-
-    @Test
     fun aRefusedSignInLandsInFailedAndWritesNothing() = runBlocking {
         server.enqueue(jsonResponse(400, """{"error":"invalid_grant"}"""))
         val (session, store) = makeSession()
 
-        session.signInWithPassword("ada@example.test", "wrong")
+        runCatching { session.verifyEmailOTP("ada@example.test", "00000000") }
 
         assertEquals(AuthPhase.FAILED, session.phase)
         assertNull(store.read(), "a failed sign-in persists nothing")

@@ -1,5 +1,5 @@
-// The Supabase (GoTrue) auth REST leg (AAD-3). Twin of apps/ios SupabaseAuth.swift: the password
-// grant, the refresh grant, email OTP / magic link, best-effort sign-out, and the OAuth web leg
+// The Supabase (GoTrue) auth REST leg (AAD-3). Twin of apps/ios SupabaseAuth.swift: the refresh
+// grant, email OTP / magic link, best-effort sign-out, and the OAuth web leg
 // (authorize URL + PKCE code exchange) for Discord, Apple, and hisbaan. No id_token grant: Android
 // has no native Apple SDK, so Apple rides the same web leg as the others.
 //
@@ -177,21 +177,6 @@ public class SupabaseAuthClient(
     public val config: SupabaseConfig,
     private val httpClient: OkHttpClient = OkHttpClient(),
 ) {
-    /** `POST {auth}/token?grant_type=password`: email/password sign-in (AAD-3). */
-    public suspend fun signInWithPassword(
-        email: String,
-        password: String,
-        nowSeconds: Double,
-    ): SupabaseSession =
-        grant(
-            grantType = "password",
-            body = buildJsonObject {
-                put("email", email)
-                put("password", password)
-            },
-            nowSeconds = nowSeconds,
-        )
-
     // MARK: - The OAuth web leg (authorize URL + PKCE exchange)
 
     /** `GET {auth}/authorize?provider=<provider>&...`: where the browser leg navigates. The
@@ -292,7 +277,7 @@ public class SupabaseAuthClient(
 
     /** `POST {auth}/verify`: exchange the emailed code for a session (step two of the OTP flow).
      *  Same decode, issuer pin, and error taxonomy as the token grants, so a verified OTP session
-     *  is indistinguishable from a password one downstream. */
+     *  is indistinguishable from any other grant downstream. */
     public suspend fun verifyEmailOTP(
         email: String,
         token: String,

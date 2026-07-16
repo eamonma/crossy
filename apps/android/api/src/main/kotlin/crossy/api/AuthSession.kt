@@ -1,6 +1,6 @@
 // The auth session: the one object that walks AuthStateMachine and owns the effects around it.
-// Twin of apps/ios AuthSession.swift (AAD-3). Sign-in is a Supabase password grant, an email OTP
-// verify, or the split OAuth flow (beginOAuth hands the browser leg its URL, completeOAuth digests
+// Twin of apps/ios AuthSession.swift (AAD-3). Sign-in is an email OTP verify or the split OAuth
+// flow (beginOAuth hands the browser leg its URL, completeOAuth digests
 // the deep-link callback); persistence is the TokenStore seam, and currentToken() is the
 // silent-refresh path every REST call rides (BearerTokenProvider, so CrossyApiClient consumes this
 // directly). The injected dev-token path (InjectedTokenProvider) is the interchangeable other side
@@ -70,20 +70,6 @@ public class AuthSession(
         stored = session
         provider = store.readProvider()
         machine.apply(AuthEvent.SESSION_RESTORED)
-    }
-
-    /** The email/password sign-in leg (AAD-3): the password grant, then persist. Every exit is a
-     *  machine event, so UI routing follows the phase alone. There is no cancel path here (no
-     *  sheet to dismiss); failure lands in FAILED with a plain retry. */
-    public suspend fun signInWithPassword(email: String, password: String) {
-        if (!machine.apply(AuthEvent.SIGN_IN_STARTED)) return
-        try {
-            val session = client.signInWithPassword(email, password, nowSeconds())
-            persist(session)
-            machine.apply(AuthEvent.SIGN_IN_COMPLETED)
-        } catch (e: Throwable) {
-            machine.apply(AuthEvent.SIGN_IN_FAILED)
-        }
     }
 
     // MARK: - OAuth over the browser leg (Discord / Apple / hisbaan)

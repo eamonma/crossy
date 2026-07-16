@@ -48,26 +48,6 @@ class SupabaseAuthTests : MockServerTest() {
     }
 
     @Test
-    fun signInWithPassword_postsThePasswordGrantAndDecodesTheSession() = runBlocking {
-        server.enqueue(jsonResponse(200, grantBody()))
-
-        val session = authClient().signInWithPassword("ada@example.test", "hunter2", nowSeconds = 1_000_000.0)
-
-        val request = server.takeRequest()
-        assertEquals("POST", request.method)
-        assertEquals("/auth/v1/token", request.requestUrl?.encodedPath)
-        assertEquals("password", request.requestUrl?.queryParameter("grant_type"))
-        assertEquals("sb_publishable_test", request.getHeader("apikey"))
-        val body = ProtocolJson.parseToJsonElement(request.body.readUtf8()).jsonObject
-        assertEquals("ada@example.test", body["email"]?.jsonPrimitive?.contentOrNull)
-        assertEquals("hunter2", body["password"]?.jsonPrimitive?.contentOrNull)
-
-        assertEquals("granted-refresh", session.refreshToken)
-        assertEquals(4102444800.0, session.expiresAt, "expires_at wins when the server sends it")
-        assertEquals("11111111-2222-3333-4444-555555555555", session.userId)
-    }
-
-    @Test
     fun refresh_postsTheRefreshGrantAndDerivesExpiryFromExpiresInWhenAbsolute_isAbsent() = runBlocking {
         // Older GoTrue omits expires_at; the client derives it from expires_in against the
         // injected clock (no ambient time).
@@ -128,7 +108,7 @@ class SupabaseAuthTests : MockServerTest() {
         server.enqueue(jsonResponse(200, grantBody(issuer = "https://api.crossy.party/auth/v1")))
 
         val error = runCatching {
-            authClient(issuer = REF_ISSUER).signInWithPassword("a@b.c", "pw", 0.0)
+            authClient(issuer = REF_ISSUER).verifyEmailOTP("a@b.c", "12345678", 0.0)
         }.exceptionOrNull()
 
         assertTrue(error is SupabaseAuthError.IssuerMismatch)
@@ -160,7 +140,7 @@ class SupabaseAuthTests : MockServerTest() {
         // against the configured issuer, not anything derived from authBaseUrl (the outage's shape).
         server.enqueue(jsonResponse(200, grantBody(issuer = REF_ISSUER)))
 
-        val session = authClient(issuer = REF_ISSUER).signInWithPassword("a@b.c", "pw", 0.0)
+        val session = authClient(issuer = REF_ISSUER).verifyEmailOTP("a@b.c", "12345678", 0.0)
 
         assertTrue(session.accessToken.isNotEmpty())
         val dialed = server.takeRequest().requestUrl!!
