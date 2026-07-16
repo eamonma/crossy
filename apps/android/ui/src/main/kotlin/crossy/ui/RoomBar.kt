@@ -19,6 +19,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +37,7 @@ import crossy.protocol.GameStatus
 import crossy.protocol.Participant
 import crossy.protocol.Role
 import crossy.store.SyncState
+import kotlinx.coroutines.delay
 
 @Composable
 fun RoomBar(
@@ -43,6 +49,9 @@ fun RoomBar(
     modifier: Modifier = Modifier,
     onExit: () -> Unit = {},
     onShare: (() -> Unit)? = null,
+    // The instant (epoch millis) the driver's next reconnect dial is due, or null when none is
+    // scheduled. The SyncChip counts it down while reconnecting; ignored in every other state.
+    reconnectRetryAt: Long? = null,
 ) {
     val tokens = ground.tokens
     Surface(modifier = modifier.fillMaxWidth(), color = tokens.canvas.toColor(), contentColor = tokens.ink.toColor()) {
@@ -77,7 +86,7 @@ fun RoomBar(
                 }
             }
             if (onShare != null) ShareChip(ground, onShare)
-            SyncChip(sync, status, ground)
+            SyncChip(sync, status, ground, reconnectRetryAt)
         }
     }
 }
@@ -98,14 +107,25 @@ private fun ShareChip(ground: GridGround, onShare: () -> Unit) {
 }
 
 @Composable
-private fun SyncChip(sync: SyncState, status: GameStatus, ground: GridGround) {
+private fun SyncChip(sync: SyncState, status: GameStatus, ground: GridGround, reconnectRetryAt: Long?) {
+    // Tick a 1 Hz clock only while reconnecting, so the countdown line ("Back in Ns") ages down once
+    // a second and every other state pays no timer (DESIGN.md §8; RoomWeather.reconnectLine). A
+    // stale deadline left after the socket returns live never shows: the label below gates on sync.
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(sync, reconnectRetryAt) {
+        if (sync != SyncState.RECONNECTING) return@LaunchedEffect
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
     val label = when {
         status == GameStatus.COMPLETED -> "Solved"
         status == GameStatus.ABANDONED -> "Ended"
         sync == SyncState.LIVE -> "Live"
         sync == SyncState.CONNECTING -> "Connecting"
         sync == SyncState.RESYNCING -> "Syncing"
-        sync == SyncState.RECONNECTING -> "Reconnecting"
+        sync == SyncState.RECONNECTING -> RoomWeather.reconnectLine(reconnectRetryAt, nowMillis)
         else -> sync.wire
     }
     val tokens = ground.tokens

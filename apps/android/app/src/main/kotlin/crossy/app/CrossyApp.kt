@@ -45,6 +45,7 @@ import crossy.protocol.CreateGameRequest
 import crossy.protocol.GameSummary
 import crossy.protocol.GameView
 import crossy.protocol.MeResponse
+import crossy.protocol.Participant
 import crossy.protocol.PuzzleSummary
 import crossy.session.SessionDriver
 import crossy.session.WebSocketTransport
@@ -57,6 +58,7 @@ import crossy.ui.DisplayNameOutcome
 import crossy.ui.EmailOtpStep
 import crossy.ui.GridGround
 import crossy.ui.JoinCodeScreen
+import crossy.ui.KickedExit
 import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
 import crossy.ui.RoomScreen
@@ -90,8 +92,29 @@ private sealed interface Screen {
         val demo: Boolean,
         val wsUrl: String? = null,
         val inviteCode: String? = null,
+        // The REST game view's roster (the seeded-birth rule, DESIGN.md §4, §12): the room's members
+        // recorded at open time so the store seeds the players pill true from the first frame, before
+        // the socket's welcome lands. Empty for the demo room (no REST view) and for a code-join with
+        // no view yet; the welcome remains the authority and overwrites it (GameStore.seedRoster).
+        val roster: List<Participant> = emptyList(),
     ) : Screen
 }
+
+/** The REST game view's membership as a seed roster (mirrors iOS RoomMapping.roster): each member is
+ *  the roster, not presence, so it seeds not-yet-heard-from (`connected = false`) with no display name
+ *  or wire color (the view carries neither); the players pill falls back to the identity-hash color,
+ *  the same fallback RoomBar already uses. The welcome overwrites all of it when it lands. */
+private fun GameView.seedRoster(): List<Participant> =
+    members.map {
+        Participant(
+            userId = it.userId,
+            displayName = "",
+            color = "",
+            role = it.role,
+            connected = false,
+            avatarUrl = it.avatarUrl,
+        )
+    }
 
 @Composable
 fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAuthRedirects) {
@@ -138,7 +161,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
             Screen.Rooms -> RoomsHost(
                 session = session,
                 ground = ground,
-                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode) },
+                onOpenGame = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
                 onJoin = { screen = Screen.Join },
                 onCreate = { screen = Screen.Create },
                 onOpenDemo = { screen = Screen.Room(RoomScripts.demoPuzzle, "Demo room", demo = true) },
@@ -161,13 +184,13 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
             Screen.Join -> JoinHost(
                 session = session,
                 onBack = { screen = Screen.Rooms },
-                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode) },
+                onJoined = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
             )
 
             Screen.Create -> CreateHost(
                 session = session,
                 onBack = { screen = Screen.Rooms },
-                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode) },
+                onCreated = { view -> screen = Screen.Room(view.puzzle, view.name, demo = false, wsUrl = view.session.ws, inviteCode = view.inviteCode, roster = view.seedRoster()) },
             )
 
             is Screen.Room -> RoomHost(
@@ -179,6 +202,8 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAu
                 demo = s.demo,
                 wsUrl = s.wsUrl,
                 inviteCode = s.inviteCode,
+                // The seeded-birth roster from the REST view (empty for the demo room).
+                roster = s.roster,
                 // The personal five (null -> the protocol defaults): read at room entry.
                 reactionEmojis = reactionSet ?: ReactionPolicy.defaultSet,
                 onExit = { screen = Screen.Rooms },
@@ -620,11 +645,26 @@ private fun RoomHost(
     demo: Boolean,
     wsUrl: String?,
     inviteCode: String?,
+    roster: List<Participant>,
     reactionEmojis: List<String>,
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val store = remember(puzzle) { GameStore() }
+    val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
+    // The store is born, then seeded with the REST view's roster BEFORE the socket dials, so the
+    // players pill stands at its true width from the first frame (the seeded-birth rule, DESIGN.md
+    // §4, §12; mirrors RealRoom.init). seedRoster gates itself to `connecting`, so the welcome always
+    // wins; an empty roster (the demo room) is a no-op.
+    val store = remember(puzzle) { GameStore().apply { if (roster.isNotEmpty()) seedRoster(roster) } }
+    // The kicked terminal (PROTOCOL.md §6): the store hands the notice off here and the composition
+    // root raises the exit (mirrors RealRoom's chrome.kicked flag). The driver stops redialing the
+    // instant a kick lands (wired in the effect below), so no silent reconnect loop runs behind the
+    // KickedExit notice.
+    var kicked by remember(puzzle) { mutableStateOf(false) }
+    // The instant the driver's next reconnect dial is due (SessionDriver.onReconnectScheduled). The
+    // room bar counts it down while reconnecting; a stale value after the socket returns live is never
+    // rendered (the chip gates on sync), so no clear step is needed (DESIGN.md §8).
+    var reconnectRetryAt by remember(puzzle) { mutableStateOf<Long?>(null) }
     // The share intent: the pure ShareInvite builds the canonical short link from the configured
     // host (AppConfig.INVITE_HOST), and the app target fires the system share sheet (mirroring iOS,
     // where CrossyUI is pure over the link and the app target presents the sheet). Null when the
@@ -645,6 +685,9 @@ private fun RoomHost(
             if (wsUrl != null) {
                 SessionDriver(
                     store = store,
+                    // The driver owns the clock and hands the root the instant the next dial is due
+                    // (DESIGN.md §8): the room bar shows it as the quiet countdown while reconnecting.
+                    onReconnectScheduled = { deadline -> reconnectRetryAt = deadline },
                     makeTransport = {
                         WebSocketTransport(
                             url = wsUrl,
@@ -659,14 +702,33 @@ private fun RoomHost(
                 store.run(transport)
             }
         }
-        onDispose { job.cancel() }
+        // A kick raises the calm terminal AND stops the redial loop at once: the server denylisted us
+        // (PROTOCOL.md §12), so there is nothing to reconnect to. iOS lets the KickedExit replace the
+        // room and the room's task unwind; cancelling the job here is that unwind, so the store's
+        // post-close `reconnecting` never redials silently behind the notice.
+        store.onKicked = {
+            kicked = true
+            job.cancel()
+        }
+        onDispose {
+            store.onKicked = null
+            job.cancel()
+        }
     }
-    RoomScreen(
-        store = store,
-        puzzle = puzzle,
-        roomName = roomName,
-        onExit = onExit,
-        onShare = onShare,
-        reactionEmojis = reactionEmojis,
-    )
+    // A kicked player gets the calm terminal treatment (EXPERIENCE.md §5): the room is replaced by the
+    // one honest sentence and the way back to Rooms, no board left to browse (mirrors iOS SolveScreen's
+    // kicked branch). Every other state renders the room.
+    if (kicked) {
+        KickedExit(ground = ground, onExit = onExit)
+    } else {
+        RoomScreen(
+            store = store,
+            puzzle = puzzle,
+            roomName = roomName,
+            onExit = onExit,
+            onShare = onShare,
+            reactionEmojis = reactionEmojis,
+            reconnectRetryAt = reconnectRetryAt,
+        )
+    }
 }

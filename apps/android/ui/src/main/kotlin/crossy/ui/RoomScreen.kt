@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import crossy.design.AttributionSwitches
+import crossy.design.IdentityRoster
 import crossy.protocol.ClientPuzzle
 import crossy.protocol.Clue
 import crossy.protocol.GameStatus
@@ -55,6 +57,11 @@ fun RoomScreen(
     // composition, so a Settings edit reaches the fan the next time a room is entered (live mid-room
     // propagation is not required). Defaults to the protocol five for the demo room and previews.
     reactionEmojis: List<String> = ReactionPolicy.defaultSet,
+    // The wall-clock instant (epoch millis) the driver's next reconnect dial is due, or null when
+    // none is scheduled (SessionDriver.onReconnectScheduled, threaded by the composition root). The
+    // room bar counts it down while the weather is reconnecting; a stale value left after the socket
+    // returns live is never rendered (the chip gates on sync), so no clear step is needed.
+    reconnectRetryAt: Long? = null,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -102,6 +109,32 @@ fun RoomScreen(
     val reduceMotion = rememberReduceMotion()
     var stickers by remember(puzzle) { mutableStateOf(emptyList<ReactionSticker>()) }
     var reactionSentAt by remember(puzzle) { mutableStateOf(emptyList<Double>()) }
+
+    // The conflict flash (PROTOCOL.md §8, D02): the store detects the trigger, the grid animates the
+    // ~300 ms wash in the writer's color. The book is held HERE beside the render model (the iOS
+    // CrossyGridView wireFlashSink placement), never inside the store. The sink resolves the writer's
+    // roster color the way RoomBar resolves a dot (wire color, else the identity hash) and reads the
+    // latest participants off the store so the closure captures nothing stale. Recording is ID-1
+    // gated inside FlashBook.record, so muting color-in-motion silences the flash at the source.
+    var flashes by remember(puzzle) { mutableStateOf(FlashBook()) }
+    DisposableEffect(store, ground) {
+        store.onConflictFlash = { flash ->
+            val writer = store.render.value.participants.firstOrNull { it.userId == flash.by }
+            val identity = writer?.let { IdentityRoster.colorForWireColor(it.color) ?: IdentityRoster.color(it.userId) }
+                ?: IdentityRoster.color(flash.by)
+            flashes = flashes.record(flash.cell, ground.rosterColor(identity), reactionNow())
+        }
+        onDispose { store.onConflictFlash = null }
+    }
+    // The sweep (the FlashBook pattern): re-armed on every trigger, it sleeps to the soonest envelope
+    // end, then retires everything past it. Under Reduce Motion the grid holds the wash static and
+    // this sweep is the only thing that clears it, so the step reads for the envelope then leaves.
+    LaunchedEffect(flashes) {
+        val next = flashes.nextExpiry() ?: return@LaunchedEffect
+        val waitMs = ((next - reactionNow()) * 1000).toLong()
+        if (waitMs > 0) delay(waitMs + 20)
+        flashes = flashes.sweep(reactionNow())
+    }
 
     LaunchedEffect(store) {
         store.reactions.collect { event ->
@@ -194,7 +227,7 @@ fun RoomScreen(
     }
 
     Column(modifier = modifier.fillMaxSize().background(ground.tokens.canvas.toColor())) {
-        RoomBar(roomName, render.participants, render.sync, render.status, ground, onExit = onExit, onShare = onShare)
+        RoomBar(roomName, render.participants, render.sync, render.status, ground, onExit = onExit, onShare = onShare, reconnectRetryAt = reconnectRetryAt)
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center,
@@ -208,6 +241,8 @@ fun RoomScreen(
                 ground = ground,
                 cursorTint = cursorTint,
                 crossReference = crossReference,
+                flashes = flashes,
+                reduceMotion = reduceMotion,
                 modifier = Modifier.fillMaxWidth(),
                 onCellTap = { cell ->
                     InputActions.tap(env(), cell)?.let {
@@ -237,6 +272,17 @@ fun RoomScreen(
                 enabled = render.sync != SyncState.CONNECTING,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp),
             )
+            // Reconnecting (and the pre-welcome connecting state) dims the board (DESIGN.md §8;
+            // RoomWeather.boardDimmed): a paper wash at 0.45, never a modal or a spinner. It carries
+            // no pointer input, so taps still reach the grid and the fan beneath it; input stays live
+            // and the store holds it gracefully (PROTOCOL.md §8).
+            if (RoomWeather.boardDimmed(render.sync)) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .background(ground.tokens.canvas.toColor().copy(alpha = RoomWeather.boardDimOpacity.toFloat())),
+                )
+            }
         }
         ClueBar(
             clue = activeClue,

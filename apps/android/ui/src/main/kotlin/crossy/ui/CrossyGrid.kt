@@ -11,8 +11,11 @@
 //     arrow top-right, an avatar puck (initial, never image) bottom-right, a count badge in the
 //     same bottom-right slot when several teammates share a cell.
 //
-// Motion is deliberately minimal here (Wave A4 bar): no flash animation, no camera. Those are a
-// later track.
+// The conflict flash (PROTOCOL.md §8, D02) paints above every pass: the writer's color over the
+// cell, decaying on the FlashEnvelope, leaving the new letter (twin of the iOS drawFlashes). Its
+// per-frame time is sampled through withFrameNanos while flashes are live, the same cadence
+// ReactionStickerLayer runs; Reduce Motion holds the step and runs no frame loop. The camera is
+// still a later track.
 
 package crossy.ui
 
@@ -20,6 +23,12 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,6 +64,12 @@ fun CrossyGrid(
     // The cells of the clues the active clue cross-references (ClueRefs.referencedCells), tinted
     // faintly relative to the selection. Empty on read-only surfaces that carry no active clue.
     crossReference: Set<Int> = emptySet(),
+    // Conflict flashes in flight (GameStore.onConflictFlash routed through RoomScreen). Empty on the
+    // happy path; a non-empty book drives a per-frame redraw until it sweeps.
+    flashes: FlashBook = FlashBook(),
+    // Reduce Motion holds the flash as a step and skips the frame loop (RoomScreen's
+    // rememberReduceMotion), the same accessibility signal the sticker layer honors.
+    reduceMotion: Boolean = false,
     onCellTap: (Int) -> Unit = {},
 ) {
     val tokens = ground.tokens
@@ -62,6 +77,18 @@ fun CrossyGrid(
     val cols = geometry.cols
     val rows = geometry.rows
     val tint = cursorTint.toColor()
+
+    // The per-frame sample of the monotonic seconds clock (the same origin the flash book stamped
+    // startedAt from), read inside withFrameNanos so the sample rides the compositor's cadence
+    // without re-rendering anything but the flash rects. Only armed while a flash is live and motion
+    // is allowed; Reduce Motion leaves the wash static and lets the sweep clear it (no animation).
+    var now by remember { mutableStateOf(reactionNow()) }
+    LaunchedEffect(flashes, reduceMotion) {
+        if (flashes.isEmpty) return@LaunchedEffect
+        now = reactionNow()
+        if (reduceMotion) return@LaunchedEffect
+        while (true) withFrameNanos { now = reactionNow() }
+    }
 
     Canvas(
         modifier = modifier
@@ -161,6 +188,16 @@ fun CrossyGrid(
             } else {
                 drawCountBadge(Offset(x, y), unitScale, marks.first().color.toColor(), marks.size, measurer)
             }
+        }
+
+        // Pass 7: conflict flashes paint above everything (PROTOCOL.md §8, D02): the writer's color
+        // over the cell at the envelope's opacity, decaying to leave the new letter. `now` recomposes
+        // this pass each frame while a flash is live; a swept cell drops out on the next book change.
+        for ((c, flash) in flashes.flashes) {
+            if (c in geometry.blocks) continue
+            val opacity = flashes.opacity(c, now, reduceMotion) ?: continue
+            val origin = Offset((c % cols) * cell, (c / cols) * cell)
+            drawRect(flash.color.toColor().copy(alpha = opacity.toFloat()), origin, Size(cell, cell))
         }
     }
 }
