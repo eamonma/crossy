@@ -339,6 +339,66 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertEqual(
             view.moments.turningPoint,
             AnalysisView.TurningPoint(stallSeconds: 100, breakSeconds: 110, burst: 2))
+        // The solver superlatives (§12; design/post-game/TITLES.md), in ladder-rank
+        // order: keys and counts only, evidence a number or an explicit null.
+        XCTAssertEqual(
+            view.titles,
+            [
+                AnalysisView.Title(userId: "mate", title: "one-hit-wonder", evidence: nil),
+                AnalysisView.Title(userId: "host", title: "quick-starter", evidence: 1),
+            ])
+        // A no-evidence rung's null is present, not absent: re-encoding emits the key
+        // with an explicit null (the Moments posture), which the lossless round trip
+        // above already held against the fixture's own bytes.
+        let reencoded = try XCTUnwrap(
+            try jsonObject(JSONEncoder().encode(view)) as? [String: Any])
+        let titles = try XCTUnwrap(reencoded["titles"] as? [[String: Any]])
+        XCTAssertTrue(
+            titles[0]["evidence"] is NSNull,
+            "a null evidence re-encodes as an explicit null, not an absent key")
+    }
+
+    func test_analysisViewToleratesAbsentTitlesFromAnOlderAPI() throws {
+        // §14 additive evolution: `titles` is an additive field, so an older API omits
+        // it entirely. The twin reads that as no titles at all (nil, mapped to empty by
+        // the render layer), never a decode failure. Inline JSON, not a fixture: the
+        // fixtures pin the CURRENT contract, which always writes the key.
+        let older = Data(
+            #"""
+            {
+              "owners": { "0": "host" },
+              "momentum": { "durationSeconds": 8, "samples": [] },
+              "moments": { "firstToFall": null, "lastSquare": null, "turningPoint": null }
+            }
+            """#.utf8)
+        let view = try JSONDecoder().decode(AnalysisView.self, from: older)
+        XCTAssertNil(view.titles, "an absent titles field reads as none, not a crash")
+    }
+
+    func test_analysisViewCarriesAnUnknownTitleKeyVerbatim_forwardCompatibility() throws {
+        // §12: a client MUST ignore an unknown title key (how the ladder grows without
+        // client lockstep). Ignoring is the render layer's job; the twin's job is to
+        // decode the award without failing and carry the key verbatim.
+        let newer = Data(
+            #"""
+            {
+              "owners": { "0": "host" },
+              "momentum": { "durationSeconds": 8, "samples": [] },
+              "moments": { "firstToFall": null, "lastSquare": null, "turningPoint": null },
+              "titles": [
+                { "userId": "host", "title": "marathoner", "evidence": 5 },
+                { "userId": "mate", "title": "workhorse", "evidence": 12 }
+              ]
+            }
+            """#.utf8)
+        let view = try JSONDecoder().decode(AnalysisView.self, from: newer)
+        XCTAssertEqual(
+            view.titles,
+            [
+                AnalysisView.Title(userId: "host", title: "marathoner", evidence: 5),
+                AnalysisView.Title(userId: "mate", title: "workhorse", evidence: 12),
+            ],
+            "an unknown key decodes and rides; the display table decides what it knows")
     }
 
     func test_analysisViewKeepsExplicitNullMomentsAcrossTheRoundTrip() throws {
@@ -350,6 +410,10 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertNil(view.moments.firstToFall)
         XCTAssertNil(view.moments.lastSquare)
         XCTAssertNil(view.moments.turningPoint)
+        // This fixture predates titles and omits the key; the synthesized optional
+        // reads that as none AND re-encodes it absent, so the lossless round trip
+        // above doubles as the older-API tolerance pin (§14 additive evolution).
+        XCTAssertNil(view.titles)
         // The nulls are present, not absent: re-encoding emits the keys with null values.
         let reencoded = try XCTUnwrap(
             try jsonObject(JSONEncoder().encode(view)) as? [String: Any])

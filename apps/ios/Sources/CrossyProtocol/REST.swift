@@ -726,7 +726,8 @@ public struct GameView: Sendable, Equatable, Codable {
 /// The `GET /games/{id}/analysis` post-game bundle (§12): the completed surface in one
 /// fetch. `owners` is the mosaic's owner map (cell index to owning userId), `momentum`
 /// is the room's tempo (a fixed-length peak-normalized curve plus the solve's duration),
-/// and `moments` are the three named beats. Twin of `AnalysisView`
+/// `moments` are the three named beats, and `titles` are the solver superlatives
+/// (design/post-game/TITLES.md). Twin of `AnalysisView`
 /// (apps/api/src/archive/analysis.ts).
 ///
 /// Every field carries userIds, cells, and numbers only, so it is INV-6-safe by
@@ -816,6 +817,49 @@ public struct AnalysisView: Sendable, Equatable, Codable {
         }
     }
 
+    /// One solver superlative (§12; design/post-game/TITLES.md): a userId, a
+    /// lowercase-kebab title key from the pinned ladder, and the title's own count (or
+    /// null for a rung that cites none). Keys and numbers only, never a letter, so INV-6
+    /// holds. `title` is deliberately NOT an enum: a client MUST ignore an unknown key
+    /// (§12, how the ladder grows without client lockstep), so the twin carries the
+    /// string verbatim and the render layer decides what it knows. The Codable
+    /// conformance is hand-written for the Moments reason: the server always writes the
+    /// `evidence` key (an explicit JSON null when the rung cites nothing), so decode
+    /// reads null as nil and encode emits the explicit null, keeping the round trip
+    /// wire-honest.
+    public struct Title: Sendable, Equatable, Codable {
+        public let userId: String
+        public let title: String
+        public let evidence: Int?
+
+        public init(userId: String, title: String, evidence: Int?) {
+            self.userId = userId
+            self.title = title
+            self.evidence = evidence
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case userId
+            case title
+            case evidence
+        }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            userId = try container.decode(String.self, forKey: .userId)
+            title = try container.decode(String.self, forKey: .title)
+            evidence = try container.decodeIfPresent(Int.self, forKey: .evidence)
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(userId, forKey: .userId)
+            try container.encode(title, forKey: .title)
+            // Explicit null when nil: the server always writes the key.
+            try container.encode(evidence, forKey: .evidence)
+        }
+    }
+
     /// The mosaic owner map (§12): the first-correct owner per solved cell. The wire is a
     /// JSON object whose keys are the cell indices as strings (JSON object keys are always
     /// strings), values the owning userId. Kept as `[String: String]` so the round trip is
@@ -823,11 +867,23 @@ public struct AnalysisView: Sendable, Equatable, Codable {
     public let owners: [String: String]
     public let momentum: Momentum
     public let moments: Moments
+    /// The solver superlatives (§12), ordered by ladder rank: at most one per solver,
+    /// at most one per key, empty when fewer than two solvers wrote (the solo rule).
+    /// Optional for the `MeResponse.reactionSet` reason: a current server always writes
+    /// the key, and the synthesized optional also tolerates an older server that omits
+    /// it (§14 additive evolution), which reads the same as no titles at all.
+    public let titles: [Title]?
 
-    public init(owners: [String: String], momentum: Momentum, moments: Moments) {
+    public init(
+        owners: [String: String],
+        momentum: Momentum,
+        moments: Moments,
+        titles: [Title]? = nil
+    ) {
         self.owners = owners
         self.momentum = momentum
         self.moments = moments
+        self.titles = titles
     }
 
     /// The owner map with its keys parsed back to cell indices. Non-integer keys are
