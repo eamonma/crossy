@@ -113,16 +113,11 @@ public enum TitleLadder {
         "\(n) \(noun)\(n == 1 ? "" : "s")"
     }
 
-    /// Whole seconds as the web's formatMSS (apps/web analysisReadout.ts): "M:SS",
-    /// hours split out past sixty minutes ("1:01:40"), seconds floored, negatives
-    /// clamped. NOT RoomAnalysis.formatMSS, which never rolls minutes into hours; the
-    /// titles copy must match the web byte for byte, so it mirrors the web's formatter.
+    /// Whole seconds as the shared CrossyUI moment formatter (formatMSS in
+    /// RoomAnalysis.swift): "M:SS", hours split out past sixty minutes ("1:01:40"),
+    /// matching the web's formatMSS (apps/web analysisReadout.ts) byte for byte, the
+    /// same formatter the Analysis header renders so both surfaces agree.
     private static func formatMSS(_ totalSeconds: Int) -> String {
-        let s = max(0, totalSeconds)
-        let h = s / 3600
-        let m = (s % 3600) / 60
-        let sec = s % 60
-        let pad = { (n: Int) in String(format: "%02d", n) }
-        return h > 0 ? "\(h):\(pad(m)):\(pad(sec))" : "\(m):\(pad(sec))"
+        CrossyUI.formatMSS(Double(totalSeconds))
     }
 }
