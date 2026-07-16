@@ -4159,7 +4159,7 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
     });
   });
 
-  it("D29: titles keep their wall-clock basis — the overnight stall still crowns the ice breaker (deferred re-base, owner ruling)", async () => {
+  it("D29 fast-follow: the titles re-base — the overnight wall stall no longer crowns the ice breaker, and a missed sitting refuses the marathoner (TITLES.md two-bases rule)", async () => {
     const hostId = randomUUID();
     const mateId = randomUUID();
     const host = await auth.mintUpgraded({ sub: hostId });
@@ -4168,12 +4168,12 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
     const { gameId, inviteCode } = await createGame(host, puzzleId);
     await join(gameId, mate, inviteCode);
 
-    // Host fills the evening; mate returns after the 8h night and breaks the stall. On the
-    // ACTIVE axis the largest stall is 10s (nowhere near the 120s floor), so an accidental
-    // re-base of the titles would award no ice breaker at all. On the raw wall clock the
-    // stall is 28800s and mate broke it: the ice breaker stands, evidence citing the raw
-    // stall — the pin that titleStats still receives the UNREMAPPED events (D29 defers the
-    // titles re-base to the named fast-follow).
+    // Host fills the evening; mate returns after the 8h night. Pre-revisit this room
+    // crowned mate the ice breaker with the 28800s wall stall; the re-base
+    // (moments(solveTrace(collapseIdle(events)))) reads the largest WITHIN-SITTING gap,
+    // 10s, far under the 120s floor, so nobody is the ice breaker however long the
+    // night was. And with each solver present in only one of the two sittings, the new
+    // marathoner rung refuses too: the fillers land on the floor tier instead.
     await seedAttributionEvent(
       gameId,
       hostId,
@@ -4211,11 +4211,13 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
     const res = await get(`/games/${gameId}/analysis`, host);
     expect(res.status).toBe(200);
     const body = (await res.json()) as AnalysisBody;
-    expect(body.titles).toContainEqual({
-      userId: mateId,
-      title: "ice-breaker",
-      evidence: 28800,
-    });
+    const keys = body.titles.map((t) => t.title);
+    expect(keys).not.toContain("ice-breaker");
+    expect(keys).not.toContain("marathoner");
+    // The floor's coverage theorem still titles both fillers (TITLES.md).
+    expect(new Set(body.titles.map((t) => t.userId))).toEqual(
+      new Set([hostId, mateId]),
+    );
   });
 
   it("gate: an ongoing game is GAME_NOT_FOUND and computes no bundle (completed-only)", async () => {

@@ -1233,23 +1233,28 @@ reads as 1 and absent `sittingsPresent` as 0, so the marathoner gate refuses and
 legacy clusters pass byte-identical. **Exit: all four clusters green; the composed
 revisit case closes the events-to-awards pipeline.**
 
-### Wave 12.3 — server test-flip (blocked on 12.2)
+### Wave 12.3 — server test-flip (ABSORBED into 12.2)
 
-No bundle-shape change: the Archive module already ships whatever the reducers produce.
-The server tests covering `titles` pin the within-sitting stall and a marathoner room,
-and PROTOCOL §12's sentence deferring the titles re-base ("`titles` alone keep their
-wall-clock basis for now") retires. **Exit: a multi-sitting completed game ships
-within-sitting ice-breaker evidence and, where earned, a marathoner; single-sitting
-bundles are byte-identical.**
+Planned as its own wave, absorbed in practice: the engine re-base flips the server's
+behavior in the same CI run (apps/api tests run against the workspace engine), so the
+api test pinning the deferred basis, the Archive module's deferral comment, and
+PROTOCOL §12's deferring sentence ("`titles` alone keep their wall-clock basis for
+now") all had to retire in the 12.2 PR to keep main green. **Exit (carried by 12.2): a
+multi-sitting completed game ships within-sitting ice-breaker evidence and, where
+earned, a marathoner; single-sitting bundles are byte-identical.**
 
-### Wave 12.4 — web (blocked on 12.3)
+### Wave 12.4 — web (ABSORBED into 12.2)
 
-Copy only: the `marathoner` card in the Titles section ("showed up for all 3 sittings"
-register, evidence the sitting count); ice-breaker copy unchanged, its number simply
-stops lying. **Exit: a multi-sitting room shows its marathoner; unknown keys are still
+Copy only, same absorption: `TITLE_COPY` is keyed by the engine's `TitleKey` as a
+deliberate compile tripwire, so extending the union forced the marathoner card into the
+12.2 PR ("Showed up for both sittings" at two, "all n sittings" above; evidence the
+sitting count); ice-breaker copy unchanged, its number simply stops lying. **Exit
+(carried by 12.2): a multi-sitting room shows its marathoner; unknown keys are still
 ignored.**
 
-### Wave 12.5 — iOS (blocked on 12.3)
+### Wave 12.5 — iOS (independent; lands in any order)
 
-The same copy in the analysis sheet, matching web. **Exit: the same room shows the same
-titles on both platforms.**
+The same copy in the analysis sheet, matching web string for string (iOS owns no
+`TitleKey` union, so nothing forces it into 12.2; unknown keys were already ignored, so
+it can merge before or after). **Exit: the same room shows the same titles on both
+platforms.**
