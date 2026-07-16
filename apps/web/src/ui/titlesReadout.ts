@@ -46,15 +46,23 @@ function withCount(format: (n: number) => string) {
  * sprinter's copy can never drift from the number the stat was counted over. */
 const BURST_WINDOW_SECONDS = Math.floor(BURST_WINDOW_MS / 1000);
 
+/** The engine's TitleKey plus the D29 fast-follow's rung (TITLES.md rank 8). The copy
+ * ships ahead of the engine walk (Wave 12.2): a server that cannot award marathoner
+ * never sends the key, so the entry is inert until the rung lands, and a server that
+ * can gets a first-class card instead of the unknown-key drop. Collapse this alias back
+ * to plain TitleKey once the engine union gains "marathoner". */
+type CopyKey = TitleKey | "marathoner";
+
 /**
  * The web's copy for the pinned v1 ladder (TITLES.md sets the register; the words are
  * the client's). Keyed by the engine's TitleKey so a ladder edit that adds a key is a
  * compile error here until the copy exists. Evidence semantics per rung follow the
- * ladder table: counts render as counts, the two whole-seconds rungs (ice-breaker's
- * stall, long-hauler's span) render M:SS through the same formatMSS the header and the
- * ribbon gloss use, and the two no-evidence rungs carry a fixed line.
+ * ladder table: counts render as counts (the marathoner's sitting count included), the
+ * two whole-seconds rungs (ice-breaker's stall, long-hauler's span) render M:SS through
+ * the same formatMSS the header and the ribbon gloss use, and the two no-evidence rungs
+ * carry a fixed line.
  */
-export const TITLE_COPY: Record<TitleKey, TitleCopy> = {
+export const TITLE_COPY: Record<CopyKey, TitleCopy> = {
   saboteur: {
     label: "The saboteur",
     detail: withCount((n) => `Overwrote ${counted(n, "correct square")}`),
@@ -84,6 +92,10 @@ export const TITLE_COPY: Record<TitleKey, TitleCopy> = {
   meddler: {
     label: "The meddler",
     detail: withCount((n) => `Finished ${counted(n, "word")} others started`),
+  },
+  marathoner: {
+    label: "The marathoner",
+    detail: withCount((n) => `Showed up for all ${counted(n, "sitting")}`),
   },
   "quick-starter": {
     label: "The quick starter",
@@ -123,7 +135,7 @@ export const TITLE_COPY: Record<TitleKey, TitleCopy> = {
  * ladder; the caller drops the award, the MUST-ignore rule). Object.hasOwn guards the
  * lookup so a hostile key ("constructor") can never reach the record's prototype. */
 export function titleCopyOf(key: string): TitleCopy | null {
-  return Object.hasOwn(TITLE_COPY, key) ? TITLE_COPY[key as TitleKey] : null;
+  return Object.hasOwn(TITLE_COPY, key) ? TITLE_COPY[key as CopyKey] : null;
 }
 
 /** One Titles card, ready to render: the solver's identity (name resolved self-as-You,

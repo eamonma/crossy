@@ -61,11 +61,11 @@ describe("titleCards (the wire's awards become the section's cards)", () => {
   });
 
   it("skips an unknown title key without crashing (PROTOCOL §12: a client MUST ignore an unknown key)", () => {
-    // A newer server's ladder grew (say, the deferred marathoner): the older client drops the
-    // award and keeps the rest, never a crash and never a placeholder card.
+    // A newer server's ladder grew past this build: the older client drops the award and
+    // keeps the rest, never a crash and never a placeholder card.
     const cards = titleCards(
       [
-        award("u-mara", "marathoner", 5),
+        award("u-mara", "night-owl", 5),
         award("me", "workhorse", 12),
         award("u-jia", "not-a-title", null),
       ],
@@ -74,6 +74,26 @@ describe("titleCards (the wire's awards become the section's cards)", () => {
       roster,
     );
     expect(cards.map((c) => c.userId)).toEqual(["me"]);
+  });
+
+  it("the marathoner (D29 fast-follow, TITLES.md rank 8) renders first-class off the wire string", () => {
+    // The copy ships ahead of the engine walk (Wave 12.2): the wire key resolves to a
+    // card today, so the first awarding server never hits the unknown-key drop.
+    const cards = titleCards(
+      [award("u-jia", "marathoner", 2)],
+      members,
+      "me",
+      roster,
+    );
+    expect(cards).toEqual([
+      {
+        userId: "u-jia",
+        name: "Jia",
+        color: "#teal-resolved",
+        label: "The marathoner",
+        detail: "Showed up for all 2 sittings",
+      },
+    ]);
   });
 
   it("a hostile key can never reach the copy record's prototype (constructor is not a title)", () => {
@@ -119,6 +139,11 @@ describe("evidence formatting per rung semantics (TITLES.md ladder table)", () =
       "Finished 2 words others started",
     );
     expect(TITLE_COPY.collector.detail(17)).toBe("Had a hand in 17 words");
+    // The marathoner's evidence is the sitting count, always >= 2 (the gate refuses a
+    // one-sitting room), but the copy rides the same pluralization idiom regardless.
+    expect(TITLE_COPY.marathoner.detail(3)).toBe(
+      "Showed up for all 3 sittings",
+    );
   });
 
   it("the whole-seconds rungs render M:SS through formatMSS (ice-breaker's stall, long-hauler's span)", () => {
