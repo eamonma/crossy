@@ -27,16 +27,21 @@ import crossy.protocol.KickedMessage
 import crossy.protocol.MoveCursorMessage
 import crossy.protocol.Participant
 import crossy.protocol.PlaceLetterMessage
+import crossy.protocol.ReactMessage
 import crossy.protocol.RequestSyncMessage
 import crossy.protocol.ServerMessage
 import crossy.protocol.Stats
 import crossy.protocol.normalizeValue
 import java.util.UUID
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -82,6 +87,16 @@ data class PendingCommand(
  * flash in the writer's color. Ephemeral, so the vectors exclude it (vectors/README.md).
  */
 data class ConflictFlash(val cell: Int, val by: String)
+
+/**
+ * An inbound reaction to fan out to the sticker layer (PROTOCOL.md §6, §9; D24). The store holds
+ * NOTHING for a reaction: it is never sequenced, never in RenderModel's board state, and never in a
+ * snapshot (there is no `board.reactions`, §9), so this event is pure fan-out and gone. Twin of the
+ * data the iOS `onReaction` callback carries; the reaction stream (`GameStore.reactions`) publishes
+ * it main-confined like `render`, and the UI's sticker book (`:ui` ReactionModel) owns decay,
+ * placement, and coalescing. `userId` lets the sticker layer key own-vs-teammate placement.
+ */
+data class ReactionEvent(val userId: String, val emoji: String, val cell: Int)
 
 /**
  * The published render model (AAD-2): an immutable snapshot views are pure functions of (INV-10).
@@ -179,6 +194,19 @@ class GameStore(
      * collectAsStateWithLifecycle; the vector suite and unit tests read `render.value`. */
     val render: StateFlow<RenderModel> = _render.asStateFlow()
 
+    // The ephemeral reaction stream (PROTOCOL.md §6, §9; D24), the SharedFlow twin of the iOS
+    // `onReaction` callback: a fan-out beside `render`, never part of it. An inbound `reaction`
+    // notice emits here and the sticker layer collects it; the store keeps nothing, so a snapshot or
+    // resync is provably unable to replay one (there is no store state to reconcile). replay = 0
+    // (a reaction is a live event; a late collector missed it), and a bounded buffer with
+    // DROP_OLDEST keeps a `tryEmit` from ever suspending the confined mailbox under a burst.
+    private val _reactions = MutableSharedFlow<ReactionEvent>(
+        replay = 0,
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val reactions: SharedFlow<ReactionEvent> = _reactions.asSharedFlow()
+
     /** Outbound frames awaiting the transport pump, in send order. Transitions append
      * synchronously, so the vector suite reads `then.send` deterministically; `run` drains to the
      * transport in the same order. Not part of the render model: it is outbound, not view state. */
@@ -244,6 +272,18 @@ class GameStore(
     fun moveCursor(cell: Int, direction: Direction) {
         if (sync == SyncState.CONNECTING) return
         emit(ClientMessage.MoveCursor(MoveCursorMessage(cell, direction)))
+    }
+
+    /** Send an emoji reaction at the given cell (PROTOCOL.md §5, §9): moveCursor's presence-family
+     * twin. Stateless by design (D24): no overlay entry, no seq, nothing recorded here, so a
+     * snapshot or resync is provably unable to touch a sticker. Legal in any game status, completed
+     * and abandoned included (§9: reactions on the finished grid are intended), so unlike a mutation
+     * it never checks `status`. Refused before the first snapshot (`connecting`) like every intent;
+     * the 5/s client cap is the caller's job (§9), matching moveCursor's caller-owned throttle. The
+     * server never echoes a react, so the sender's own sticker is a local echo the UI raises. */
+    fun react(emoji: String, cell: Int) {
+        if (sync == SyncState.CONNECTING) return
+        emit(ClientMessage.React(ReactMessage(emoji, cell)))
     }
 
     /** Liveness ping (PROTOCOL.md §5, §9). The adapter owns the 15 s timer
@@ -395,6 +435,14 @@ class GameStore(
             is ServerMessage.Cursor -> {
                 val notice = message.message
                 cursors = cursors + (notice.userId to Cursor(notice.userId, notice.cell, notice.direction))
+            }
+            is ServerMessage.Reaction -> {
+                // Pure fan-out (PROTOCOL.md §9, D24): unlike a cursor, the store keeps NO current
+                // value for a reaction, so nothing a snapshot reconciles can ever carry one. Publish
+                // to the sticker layer and return without mutating or republishing render state.
+                val notice = message.message
+                _reactions.tryEmit(ReactionEvent(notice.userId, notice.emoji, notice.cell))
+                return
             }
             is ServerMessage.CheckResult ->
                 // Check styling is M6 scope (root ROADMAP Phase 5); ignored here exactly as the
