@@ -152,7 +152,14 @@ the events:
   **Pinned byte-identical to the shipped `moments()` projection** (its ordering, its
   tie-breaks), so the ribbon's marker and the ice-breaker card can never name different
   people. The room header carries `stallSeconds` (whole seconds) from the same
-  projection.
+  projection; when `turningPoint` is null (fewer than two trace entries),
+  `stallSeconds` is 0 and nobody `brokeStall`.
+
+Pinned corner conventions (vectors cite these): a zero-fill solver's row is all zeros
+(`focus` 0, never NaN; `span` 0; `spread` 0) with `firstFill`/`lastFill` null. A wrong
+write that destroys another solver's correct cell counts as BOTH a wrongWrite and an
+overwrite; the two definitions read independently. `geometry` is `{rows, cols}` passed
+as data (spread and quadrants need it; slots do not carry it).
 
 **Marquee slots** (the theme tier, two signals, best first):
 
@@ -243,8 +250,8 @@ members, so a four-member room where one person did everything is also empty).
 **Engine** (`packages/engine`, imports nothing, INV-9; vectors-first):
 
 ```
-titleStats(events, solution, slots) -> { solvers: per-solver stat sheet, room: { stallSeconds } }
-awardTitles(titleStats result)      -> [{ userId, title, evidence }]
+titleStats(events, solution, slots, geometry) -> { solvers: per-solver stat sheet, room: { stallSeconds } }
+awardTitles(titleStats result)                -> [{ userId, title, evidence }]
 ```
 
 The ladder is a fixed engine constant, not a parameter: two clients or two services must
