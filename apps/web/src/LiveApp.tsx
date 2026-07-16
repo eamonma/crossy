@@ -55,11 +55,10 @@ import type { StackMember } from "./ui/primitives";
 import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import {
-  ClueBar,
+  ActiveClueHeader,
   ClueDock,
   ClueRail,
   ClueSheet,
-  ClueStrip,
   clueOn,
 } from "./ui/Clues";
 import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
@@ -1338,22 +1337,10 @@ function LiveGame({
           />
         )}
 
-        {/* The desktop clue strip stays only while solving; the completed rail carries the tab
-            header instead, so a duplicate strip would double the panel's header. */}
-        {!boardCompleted && <ClueStrip clue={activeClue} />}
-        {/* Completed: the strip is gone, so the header loses its dashed underline. Restore the same
-            rule (desktop only; mobile's ClueBar carries its own) so the toolbar stays capped. */}
-        {boardCompleted && (
-          <div
-            aria-hidden
-            className="hidden md:block border-b border-dashed border-border-dashed"
-          />
-        )}
-        <ClueBar
+        <ActiveClueHeader
           clue={activeClue}
           completed={boardCompleted}
           onOpen={() => openSheetTo("clues")}
-          onOpenAnalysis={() => openSheetTo("analysis")}
           onPrev={() => stepClue("backward")}
           onNext={() => stepClue("forward")}
         />
