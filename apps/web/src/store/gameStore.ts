@@ -94,6 +94,12 @@ export class GameStore {
   private abandonedAtValue: string | null = null;
   private statsValue: Stats | null = null;
   private selfUserIdValue: string | null = null;
+  // Room-check state (PROTOCOL.md §4, §10; D27): the standing marks and the permanent
+  // count, reconciled like any sequenced state. Rendering them (the check style, the
+  // confirm-and-send control) lands in the consolidated gameplay-control wave; the store
+  // tracks them now so a `puzzleChecked` is an ordinary event, never a forced resync.
+  private checkedWrongValue = new Set<number>();
+  private checkCountValue = 0;
 
   private version = 0;
   private readonly listeners = new Set<() => void>();
@@ -147,6 +153,14 @@ export class GameStore {
   }
   get selfUserId(): string | null {
     return this.selfUserIdValue;
+  }
+  /** The standing room-check marks (PROTOCOL.md §4, §10). Indices only (INV-6). */
+  get checkedWrongCells(): ReadonlySet<number> {
+    return this.checkedWrongValue;
+  }
+  /** The game's total accepted checks; permanent, never reset (PROTOCOL.md §10). */
+  get checkCount(): number {
+    return this.checkCountValue;
   }
 
   /**
@@ -352,8 +366,15 @@ export class GameStore {
         // nothing. No bump, since no reconciled state changed; a sticker is not board state.
         for (const listener of this.reactionListeners) listener(message);
         return;
-      case "checkResult":
-        // Check styling is M6 scope (ROADMAP Phase 5); the skeleton ignores it.
+      case "puzzleChecked":
+        // An ordinary sequenced event (PROTOCOL.md §6, §7): applied under the seq gate so
+        // the stream never forces a resync. The marks replace any standing set wholesale
+        // and the count is permanent (§10). UI (mark styling, the confirm-and-send
+        // control) lands in the consolidated gameplay-control wave.
+        this.applySequenced(message.seq, () => {
+          this.checkedWrongValue = new Set(message.wrongCells);
+          this.checkCountValue = message.checkCount;
+        });
         return;
       case "kicked":
         // Followed by close 1008; the transport surfaces the closure. Nothing to
@@ -391,6 +412,16 @@ export class GameStore {
     firstFillAt?: string;
   }): void {
     const renderedBefore = this.renderValue(message.cell);
+    // Mark clearing on value change ONLY (PROTOCOL.md §10, the reducer's rule): a
+    // different letter or a clear removes a standing check mark; a same-value no-op
+    // keeps it, because the mark is still true.
+    const sequencedBefore = this.cellsValue.get(message.cell)?.v ?? null;
+    if (
+      message.value !== sequencedBefore &&
+      this.checkedWrongValue.has(message.cell)
+    ) {
+      this.checkedWrongValue.delete(message.cell);
+    }
     this.cellsValue.set(message.cell, { v: message.value, by: message.by });
     // The first fill's cellSet carries firstFillAt, so the shared timer (gameTime.ts)
     // starts on the delta instead of waiting for the next snapshot (PROTOCOL.md section 6).
@@ -441,6 +472,10 @@ export class GameStore {
     this.completedAtValue = board.completedAt;
     this.abandonedAtValue = board.abandonedAt;
     this.statsValue = board.stats;
+    // The marks and count ride every snapshot (PROTOCOL.md §4), so reconnect and resync
+    // heal the check state with no delta replay.
+    this.checkedWrongValue = new Set(board.checkedWrongCells);
+    this.checkCountValue = board.checkCount;
     this.participantsValue = [...board.participants];
     this.cursorsValue = new Map(
       board.cursors.map((cursor) => [cursor.userId, cursor]),

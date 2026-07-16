@@ -20,6 +20,8 @@ const BOARD_FIXTURE = {
     { v: "A", by: "u1" },
     { v: null, by: null },
   ],
+  checkedWrongCells: [3, 17],
+  checkCount: 1,
   participants: [
     {
       userId: "u1",
@@ -53,7 +55,12 @@ describe("board payload (PROTOCOL.md §4)", () => {
       ...BOARD_FIXTURE,
       status: "completed",
       completedAt: "2026-07-07T19:40:03Z",
-      stats: { solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4 },
+      stats: {
+        solveTimeSeconds: 2272,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 2,
+      },
     };
     const result = decodeBoard(completed);
     assertOk(result);
@@ -129,7 +136,7 @@ describe("client to server messages (PROTOCOL.md §5)", () => {
       name: "react",
       frame: { type: "react", emoji: "🎉", cell: 17 },
     },
-    { name: "checkRequest", frame: { type: "checkRequest", commandId: "c3" } },
+    { name: "checkPuzzle", frame: { type: "checkPuzzle", commandId: "c3" } },
     { name: "heartbeat", frame: { type: "heartbeat" } },
     { name: "requestSync", frame: { type: "requestSync" } },
   ];
@@ -230,11 +237,55 @@ describe("sequenced events (PROTOCOL.md §6)", () => {
       type: "gameCompleted",
       seq: 900,
       at: "2026-07-07T19:40:03Z",
-      stats: { solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4 },
+      stats: {
+        solveTimeSeconds: 2272,
+        totalEvents: 899,
+        participantCount: 4,
+        checkCount: 2,
+      },
     };
     const result = decodeServerMessage(completed);
     assertOk(result);
     if (result.ok) expect(result.value).toEqual(completed);
+  });
+
+  it("decodes the §6 puzzleChecked example: sequenced, neutral (no by), wrongCells indices only (§10, INV-6)", () => {
+    const checked = {
+      type: "puzzleChecked",
+      seq: 742,
+      wrongCells: [3, 17, 44],
+      checkCount: 2,
+      commandId: "c-check",
+      at: "2026-07-07T19:31:40Z",
+    };
+    const result = decodeServerMessage(checked);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(checked);
+  });
+
+  it("rejects a puzzleChecked with a negative wrongCells index as malformed (§3 cell indexing)", () => {
+    const result = decodeServerMessage({
+      type: "puzzleChecked",
+      seq: 742,
+      wrongCells: [3, -1],
+      checkCount: 2,
+      commandId: "c-check",
+      at: "2026-07-07T19:31:40Z",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("rejects a puzzleChecked missing seq as malformed (it is a sequenced event, §6)", () => {
+    const result = decodeServerMessage({
+      type: "puzzleChecked",
+      wrongCells: [3],
+      checkCount: 1,
+      commandId: "c-check",
+      at: "2026-07-07T19:31:40Z",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
   });
 
   it("decodes the §6 gameAbandoned example", () => {
@@ -276,10 +327,6 @@ describe("ephemeral notices (PROTOCOL.md §6)", () => {
       name: "reaction",
       frame: { type: "reaction", userId: "u2", emoji: "🎉", cell: 5 },
     },
-    {
-      name: "checkResult",
-      frame: { type: "checkResult", commandId: "c4", wrongCells: [3, 7, 12] },
-    },
     { name: "kicked", frame: { type: "kicked", reason: "removed by host" } },
   ];
 
@@ -295,6 +342,23 @@ describe("ephemeral notices (PROTOCOL.md §6)", () => {
     const result = decodeServerMessage({ type: "sparkle", glitter: true });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("unknown_type");
+  });
+
+  it("no longer knows the removed per-user checkRequest/checkResult pair (§14 amendment; D27)", () => {
+    // The room check is the only check: the old pair was removed, not kept alongside.
+    const request = decodeClientMessage({
+      type: "checkRequest",
+      commandId: "c3",
+    });
+    expect(request.ok).toBe(false);
+    if (!request.ok) expect(request.error.kind).toBe("unknown_type");
+    const reply = decodeServerMessage({
+      type: "checkResult",
+      commandId: "c4",
+      wrongCells: [3],
+    });
+    expect(reply.ok).toBe(false);
+    if (!reply.ok) expect(reply.error.kind).toBe("unknown_type");
   });
 });
 

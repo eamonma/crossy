@@ -21,6 +21,8 @@ export {
   boardCells,
   buildBoard,
   cellSetToWire,
+  checkedWrongAscending,
+  puzzleCheckedToWire,
   toEngineCommand,
 } from "./adapt";
 export { colorForUser } from "./color";
@@ -30,4 +32,9 @@ export {
   flushTerminalToPostgres,
   countDistinctWriters,
 } from "./writer";
-export type { GamePersistence, StateSnapshot } from "./writer";
+export type {
+  BoardSnapshot,
+  CheckEventRow,
+  GamePersistence,
+  StateSnapshot,
+} from "./writer";

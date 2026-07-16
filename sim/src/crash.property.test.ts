@@ -286,7 +286,13 @@ describe("INV-5 bounded-loss consistency (Testcontainers Postgres)", () => {
           }));
           // Contiguous from 1: the flushed log has no gaps (INV-2 at rest).
           expect(events.map((e) => e.seq)).toEqual(events.map((_, i) => i + 1));
-          assertSnapshotEqualsLogReplay(state.board, events);
+          // The stored board is the writer's object shape (cells plus check state, D27);
+          // the cell/log consistency claim is about the cells.
+          const storedBoard = state.board;
+          assertSnapshotEqualsLogReplay(
+            "cells" in storedBoard ? storedBoard.cells : storedBoard,
+            events,
+          );
 
           // Rehydrate a fresh actor from the DB and roll clients forward from there.
           const hydrated = hydrateGame(puzzleSnap!, state);

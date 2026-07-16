@@ -24,8 +24,7 @@ import { ERROR_CODES } from "./errors";
 import type { ErrorCode } from "./errors";
 import type {
   CellSetMessage,
-  CheckRequestMessage,
-  CheckResultMessage,
+  CheckPuzzleMessage,
   ClearCellMessage,
   ClientMessage,
   CursorMessage,
@@ -38,6 +37,7 @@ import type {
   PlaceLetterMessage,
   PlayerConnectedMessage,
   PlayerDisconnectedMessage,
+  PuzzleCheckedEvent,
   ReactionNotice,
   ReactMessage,
   ServerMessage,
@@ -100,6 +100,16 @@ function asStringArray(x: unknown, what: string): string[] {
 function asIntArray(x: unknown, what: string): number[] {
   if (!Array.isArray(x)) fail(`${what}: array required`);
   return x.map((el, i) => asInt(el, `${what}[${i}]`));
+}
+
+// Cell-index arrays (checkedWrongCells, wrongCells) are non-negative by construction
+// (PROTOCOL.md §3 cell indexing); ascending order is a producer rule, not re-checked here,
+// matching the posture that geometry-dependent semantics belong to the server.
+function asNonNegativeIntArray(x: unknown, what: string): number[] {
+  return asIntArray(x, what).map((el, i) => {
+    if (el < 0) fail(`${what}[${i}]: non-negative integer required`);
+    return el;
+  });
 }
 
 function asDirection(x: unknown, what: string): Direction {
@@ -195,6 +205,7 @@ function decodeStats(x: unknown, what: string): Stats {
     solveTimeSeconds: asInt(o.solveTimeSeconds, `${what}.solveTimeSeconds`),
     totalEvents: asInt(o.totalEvents, `${what}.totalEvents`),
     participantCount: asInt(o.participantCount, `${what}.participantCount`),
+    checkCount: asInt(o.checkCount, `${what}.checkCount`),
   };
 }
 
@@ -224,6 +235,11 @@ function decodeBoardOrThrow(x: unknown, what: string): Board {
     completedAt: asNullableString(o.completedAt, `${what}.completedAt`),
     abandonedAt: asNullableString(o.abandonedAt, `${what}.abandonedAt`),
     cells: o.cells.map((c, i) => decodeCell(c, `${what}.cells[${i}]`)),
+    checkedWrongCells: asNonNegativeIntArray(
+      o.checkedWrongCells,
+      `${what}.checkedWrongCells`,
+    ),
+    checkCount: asInt(o.checkCount, `${what}.checkCount`),
     participants: o.participants.map((p, i) =>
       decodeParticipant(p, `${what}.participants[${i}]`),
     ),
@@ -282,9 +298,9 @@ function decodeReact(o: Record<string, unknown>): ReactMessage {
   };
 }
 
-function decodeCheckRequest(o: Record<string, unknown>): CheckRequestMessage {
+function decodeCheckPuzzle(o: Record<string, unknown>): CheckPuzzleMessage {
   return {
-    type: "checkRequest",
+    type: "checkPuzzle",
     commandId: asString(o.commandId, "commandId"),
   };
 }
@@ -309,8 +325,8 @@ export function decodeClientMessage(raw: unknown): Decoded<ClientMessage> {
         return { ok: true, value: decodeMoveCursor(o) };
       case "react":
         return { ok: true, value: decodeReact(o) };
-      case "checkRequest":
-        return { ok: true, value: decodeCheckRequest(o) };
+      case "checkPuzzle":
+        return { ok: true, value: decodeCheckPuzzle(o) };
       case "heartbeat":
         return { ok: true, value: { type: "heartbeat" } };
       case "requestSync":
@@ -427,11 +443,14 @@ function decodeReaction(o: Record<string, unknown>): ReactionNotice {
   };
 }
 
-function decodeCheckResult(o: Record<string, unknown>): CheckResultMessage {
+function decodePuzzleChecked(o: Record<string, unknown>): PuzzleCheckedEvent {
   return {
-    type: "checkResult",
+    type: "puzzleChecked",
+    seq: asInt(o.seq, "seq"),
+    wrongCells: asNonNegativeIntArray(o.wrongCells, "wrongCells"),
+    checkCount: asInt(o.checkCount, "checkCount"),
     commandId: asString(o.commandId, "commandId"),
-    wrongCells: asIntArray(o.wrongCells, "wrongCells"),
+    at: asString(o.at, "at"),
   };
 }
 
@@ -471,6 +490,8 @@ export function decodeServerMessage(raw: unknown): Decoded<ServerMessage> {
         return { ok: true, value: decodeGameCompleted(o) };
       case "gameAbandoned":
         return { ok: true, value: decodeGameAbandoned(o) };
+      case "puzzleChecked":
+        return { ok: true, value: decodePuzzleChecked(o) };
       case "playerConnected":
         return { ok: true, value: decodePlayerConnected(o) };
       case "playerDisconnected":
@@ -479,8 +500,6 @@ export function decodeServerMessage(raw: unknown): Decoded<ServerMessage> {
         return { ok: true, value: decodeCursorMessage(o) };
       case "reaction":
         return { ok: true, value: decodeReaction(o) };
-      case "checkResult":
-        return { ok: true, value: decodeCheckResult(o) };
       case "kicked":
         return { ok: true, value: decodeKicked(o) };
       case "error":

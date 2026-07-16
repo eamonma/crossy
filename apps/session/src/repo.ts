@@ -10,7 +10,7 @@
 
 import type { Pool } from "pg";
 import type { Role } from "@crossy/protocol";
-import type { GameStateRow, PuzzleSnapshot } from "./hydrate";
+import type { GameStateRow, PuzzleSnapshot, StoredBoard } from "./hydrate";
 
 /** A member of a game, for the participant payload (PROTOCOL.md §4). */
 export interface MemberRow {
@@ -81,7 +81,9 @@ export async function loadGameState(
   if (row === undefined) return null;
   return {
     status: row.status,
-    board: Array.isArray(row.board) ? row.board : [],
+    // Either board generation passes through as stored (hydrate.ts StoredBoard): the
+    // current {cells, checkedWrongCells, checkCount} object or a legacy bare cell array.
+    board: (row.board ?? []) as StoredBoard,
     lastSeq: toNumber(row.last_seq),
     firstFillAt: toIso(row.first_fill_at),
     completedAt: toIso(row.completed_at),

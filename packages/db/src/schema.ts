@@ -356,6 +356,42 @@ export const cellEvents = pgTable(
 );
 
 /**
+ * `check_events` (writer: session). The append-only room-check log (DESIGN.md §9, D27):
+ * one row per accepted `checkPuzzle`, exactly the shape §9 names,
+ * `(game_id, seq, user_id, at, UNIQUE(game_id, seq))`. The twin of `cell_events` for a
+ * sequenced event that sets no cell: a `puzzleChecked` consumes a `seq`, so it lands in
+ * its own log rather than widening `cell_events` with a cell-less row shape; together the
+ * two logs plus the two terminal facts account for every consumed `seq` (INV-1 replay).
+ *
+ * `user_id` lives ONLY here, never on the wire: the `puzzleChecked` event is neutral by
+ * construction (PROTOCOL.md §6; D27), and this row is what future scoring reads when it
+ * taxes checks. Like `cell_events`, the composite primary key `(game_id, seq)` subsumes
+ * the UNIQUE, `user_id` is ON DELETE NO ACTION (tombstoned, never cascaded, §8), the
+ * session role holds INSERT + SELECT only (append-only at the grant layer, see the
+ * migration), and a check never makes its sender a `participantCount` participant.
+ */
+export const checkEvents = pgTable(
+  "check_events",
+  {
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.gameId, { onDelete: "cascade" }),
+    // Per-game sequence, assigned only by the actor, shared with cell_events (INV-2).
+    seq: bigint("seq", { mode: "number" }).notNull(),
+    // The acting member, server-side only; never on the wire (PROTOCOL.md §6, D27).
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "no action" }),
+    // Server-timestamped fact (§2); the actor supplies it as data (INV-9).
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.gameId, t.seq] }),
+    check("check_events_seq_positive", sql`${t.seq} >= 1`),
+  ],
+);
+
+/**
  * `live_activity_tokens` (writer: API). The ActivityKit per-activity update tokens the emitter
  * pushes ContentState to (PROTOCOL.md "Live Activity push"). API-owned: the iOS client registers
  * and unregisters tokens through bearer-authed REST, so the single writer is `crossy_api` (INV-7).

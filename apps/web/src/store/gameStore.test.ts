@@ -16,6 +16,8 @@ function board(overrides: Partial<Board> = {}): Board {
     completedAt: null,
     abandonedAt: null,
     cells: Array.from({ length: 20 }, () => ({ v: null, by: null })),
+    checkedWrongCells: [],
+    checkCount: 0,
     participants: [],
     cursors: [],
     recentCommandIds: [],
@@ -129,7 +131,12 @@ describe("terminal states freeze mutation locally (ROADMAP Wave 2.1d; INV-4 scop
       type: "gameCompleted",
       seq: 6,
       at: "2026-07-07T01:00:00Z",
-      stats: { solveTimeSeconds: 60, totalEvents: 5, participantCount: 2 },
+      stats: {
+        solveTimeSeconds: 60,
+        totalEvents: 5,
+        participantCount: 2,
+        checkCount: 0,
+      },
     });
     expect(store.status).toBe("completed");
     expect(store.seq).toBe(6);

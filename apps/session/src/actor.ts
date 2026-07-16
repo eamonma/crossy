@@ -16,13 +16,13 @@
 
 import {
   applyWithCompletion,
-  reduce,
   type BoardState,
   type CellSet,
-  type Command,
+  type PuzzleChecked,
   type RejectionCode,
 } from "@crossy/engine";
 import type {
+  CheckPuzzleMessage,
   ClearCellMessage,
   Cursor,
   Direction,
@@ -35,6 +35,8 @@ import {
   boardCells,
   buildBoard,
   cellSetToWire,
+  checkedWrongAscending,
+  puzzleCheckedToWire,
   toEngineCommand,
 } from "./adapt";
 import { createNoopAnalytics } from "./analytics/analytics";
@@ -44,7 +46,7 @@ import type { EngineSolution, HydratedGame } from "./hydrate";
 import { Mailbox } from "./mailbox";
 import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
 import { createInertEmitter } from "./push/emitter";
-import type { GamePersistence, StateSnapshot } from "./writer";
+import type { CheckEventRow, GamePersistence, StateSnapshot } from "./writer";
 
 /** The last K applied commandIds kept for idempotency and the board payload (DESIGN.md §6). */
 const RECENT_COMMAND_LIMIT = 64;
@@ -56,11 +58,12 @@ const RECENT_COMMAND_LIMIT = 64;
 export const FLUSH_EVENT_THRESHOLD = 25;
 export const FLUSH_INTERVAL_MS = 5_000;
 
-/** Human-readable text for each reducer rejection (PROTOCOL.md §11). */
+/** Human-readable text for each engine rejection (PROTOCOL.md §11). */
 const REJECTION_MESSAGE: Record<RejectionCode, string> = {
   GAME_NOT_ONGOING: "the game is no longer ongoing",
   INVALID_CELL: "cell is out of range or a black square",
   INVALID_VALUE: "value must match ^[A-Z0-9]{1,10}$ after normalization",
+  GRID_NOT_FULL: "the grid must be full before a check",
 };
 
 /** A live socket the actor can address. The concrete socket wrapper lives in server.ts. */
@@ -105,6 +108,13 @@ export class GameActor {
 
   /** Accepted-but-unflushed cellSets, appended to cell_events on the next flush (§6). */
   private pending: CellSet[] = [];
+  /**
+   * Accepted-but-unflushed room checks, appended to check_events on the next flush in the
+   * same transaction as the snapshot carrying their marks (DESIGN.md §6, §9; D27). Each row
+   * retains the acting user the way pending cellSets carry `by` — server-side only, since
+   * the wire event is neutral by construction (PROTOCOL.md §6).
+   */
+  private pendingChecks: CheckEventRow[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly flushEventThreshold: number;
   private readonly flushIntervalMs: number;
@@ -340,18 +350,19 @@ export class GameActor {
 
   /** How many events are buffered but not yet flushed (drain and tests read this). */
   get pendingFlushCount(): number {
-    return this.pending.length;
+    return this.pending.length + this.pendingChecks.length;
   }
 
   /**
    * Enqueue a mutation on the mailbox. Every mutation for this game runs through this one
    * queue, so however many sockets send concurrently, the commands take one total order
    * and seq stays contiguous (INV-2). The returned promise settles when the command has
-   * been applied, flushed if the completion path fired, and broadcast.
+   * been applied, flushed if the completion path fired, and broadcast. `checkPuzzle` rides
+   * the same queue: a room check is a sequenced mutation of check state (PROTOCOL.md §10).
    */
   submit(
     connection: Connection,
-    message: PlaceLetterMessage | ClearCellMessage,
+    message: PlaceLetterMessage | ClearCellMessage | CheckPuzzleMessage,
   ): Promise<void> {
     return this.mailbox.post(() => this.handleMutation(connection, message));
   }
@@ -364,9 +375,10 @@ export class GameActor {
    */
   private async handleMutation(
     connection: Connection,
-    message: PlaceLetterMessage | ClearCellMessage,
+    message: PlaceLetterMessage | ClearCellMessage | CheckPuzzleMessage,
   ): Promise<void> {
-    // Role gate (DESIGN.md §3 step 2): spectators send nothing that mutates the board.
+    // Role gate (DESIGN.md §3 step 2): spectators send nothing that mutates the board,
+    // the room check included (PROTOCOL.md §5: checkPuzzle is host or solver).
     if (connection.role === "spectator") {
       connection.send(
         errorFrame("ROLE_FORBIDDEN", "spectators cannot mutate the board", {
@@ -381,14 +393,22 @@ export class GameActor {
     if (this.recentCommandIds.includes(message.commandId)) return;
 
     const at = this.now().toISOString();
+
+    if (message.type === "checkPuzzle") {
+      await this.handleCheck(connection, message, at);
+      return;
+    }
+
     const command = toEngineCommand(message, connection.userId, at);
 
     const result = applyWithCompletion(this.state, command, this.solution);
 
-    // An accepted command always emits at least one cellSet, even a no-op (PROTOCOL.md
-    // §6). Empty events therefore means a rejection; recover its code from the reducer.
-    if (result.events.length === 0) {
-      this.rejectCommand(connection, command, message.commandId);
+    if (result.error !== undefined) {
+      connection.send(
+        errorFrame(result.error, REJECTION_MESSAGE[result.error], {
+          commandId: message.commandId,
+        }),
+      );
       return;
     }
 
@@ -432,6 +452,48 @@ export class GameActor {
   }
 
   /**
+   * The room check (PROTOCOL.md §5, §6, §10; D27). Runs inside the mailbox via `submit`,
+   * behind the same role gate and commandId dedup as the cell mutations. The engine's check
+   * gate decides (GAME_NOT_ONGOING / GRID_NOT_FULL reject through the standard §11 path,
+   * consuming no seq); an acceptance broadcasts one sequenced `puzzleChecked` with the
+   * adapter-stamped `at` and NO `by` (neutral by construction), while the acting user is
+   * retained server-side in the pending check_events row for the next flush (DESIGN.md §9).
+   */
+  private async handleCheck(
+    connection: Connection,
+    message: CheckPuzzleMessage,
+    at: string,
+  ): Promise<void> {
+    const result = applyWithCompletion(
+      this.state,
+      { type: "checkPuzzle", commandId: message.commandId },
+      this.solution,
+    );
+
+    if (result.error !== undefined) {
+      connection.send(
+        errorFrame(result.error, REJECTION_MESSAGE[result.error], {
+          commandId: message.commandId,
+        }),
+      );
+      return;
+    }
+
+    // An accepted check emits exactly one puzzleChecked (PROTOCOL.md §10); it sets no
+    // cell, so it can never trigger completion.
+    const event = result.events[0] as PuzzleChecked;
+    this.state = result.state;
+    this.recordCommandId(message.commandId);
+    this.pendingChecks.push({
+      seq: event.seq,
+      userId: connection.userId,
+      at,
+    });
+    this.broadcast(puzzleCheckedToWire(event, at));
+    await this.afterMutationFlush();
+  }
+
+  /**
    * Terminal completion (INV-3): flush the buffered events plus the completed snapshot
    * SYNCHRONOUSLY, deriving the authoritative participantCount (DISTINCT user_id over
    * cell_events) inside that same transaction, then broadcast `gameCompleted`. Persisted
@@ -444,9 +506,11 @@ export class GameActor {
   ): Promise<void> {
     this.completedAt = at;
     const events = this.pending;
+    const checks = this.pendingChecks;
     const stats = await this.persistence.flushTerminal(
       this.gameId,
       events,
+      checks,
       (participantCount) => {
         const s = this.computeStats(terminalSeq, at, participantCount);
         return { snap: this.snapshotForFlush(s), stats: s };
@@ -454,6 +518,7 @@ export class GameActor {
     );
     this.stats = stats;
     this.pending = [];
+    this.pendingChecks = [];
     this.cancelFlushTimer();
     this.broadcast({
       type: "gameCompleted",
@@ -494,8 +559,14 @@ export class GameActor {
     this.state = { ...this.state, status: "abandoned", seq };
     this.abandonedAt = at;
     const events = this.pending;
-    await this.persistence.flush(this.gameId, events, this.snapshotForFlush());
+    await this.persistence.flush(
+      this.gameId,
+      events,
+      this.pendingChecks,
+      this.snapshotForFlush(),
+    );
     this.pending = [];
+    this.pendingChecks = [];
     this.cancelFlushTimer();
     this.broadcast({ type: "gameAbandoned", seq, at, by });
     // Terminal moment (PROTOCOL.md "Live Activity push"): end the island with the frozen partial
@@ -524,11 +595,11 @@ export class GameActor {
    * transaction and the persisted snapshot always matches the appended events (INV-5).
    */
   private async afterMutationFlush(): Promise<void> {
-    if (this.pending.length >= this.flushEventThreshold) {
+    if (this.pendingFlushCount >= this.flushEventThreshold) {
       await this.doFlush();
       return;
     }
-    if (this.pending.length > 0 && this.flushTimer === null) {
+    if (this.pendingFlushCount > 0 && this.flushTimer === null) {
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
         // Post through the mailbox so the timed flush is serialized with mutations too.
@@ -553,10 +624,17 @@ export class GameActor {
    */
   private async doFlush(): Promise<void> {
     this.cancelFlushTimer();
-    if (this.pending.length === 0) return;
+    if (this.pendingFlushCount === 0) return;
     const events = this.pending;
-    await this.persistence.flush(this.gameId, events, this.snapshotForFlush());
+    const checks = this.pendingChecks;
+    await this.persistence.flush(
+      this.gameId,
+      events,
+      checks,
+      this.snapshotForFlush(),
+    );
     this.pending = [];
+    this.pendingChecks = [];
   }
 
   /**
@@ -572,7 +650,13 @@ export class GameActor {
   private snapshotForFlush(stats: Stats | null = this.stats): StateSnapshot {
     return {
       status: this.state.status,
-      board: boardCells(this.state),
+      // The marks and count persist with the board they describe, in one jsonb, so a
+      // rehydrated actor serves exactly the snapshot it flushed (INV-5; D27).
+      board: {
+        cells: boardCells(this.state),
+        checkedWrongCells: checkedWrongAscending(this.state),
+        checkCount: this.state.checkCount,
+      },
       lastSeq: this.state.seq,
       firstFillAt: this.state.firstFillAt,
       completedAt: this.completedAt,
@@ -601,16 +685,6 @@ export class GameActor {
       stats: this.stats,
       recentCommandIds: this.recentCommandIds,
     });
-  }
-
-  private rejectCommand(
-    connection: Connection,
-    command: Command,
-    commandId: string,
-  ): void {
-    const { error } = reduce(this.state, command);
-    if (error === undefined) return; // unreachable: no events implies a rejection
-    connection.send(errorFrame(error, REJECTION_MESSAGE[error], { commandId }));
   }
 
   private recordCommandId(commandId: string): void {
@@ -646,6 +720,8 @@ export class GameActor {
       solveTimeSeconds,
       totalEvents: terminalSeq - 1,
       participantCount,
+      // The permanent count freezes into the stats at completion (PROTOCOL.md §4, §10).
+      checkCount: this.state.checkCount,
     };
   }
 
