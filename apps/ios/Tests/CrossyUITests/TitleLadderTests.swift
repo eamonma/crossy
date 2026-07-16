@@ -84,7 +84,7 @@ final class TitleLadderTests: XCTestCase {
         XCTAssertEqual(card("saboteur", 1)?.detail, "Overwrote 1 correct square")
         // The marathoner's evidence is the sitting count, floored at 2 by its gate
         // (TITLES.md rank 8), so the plural branch is the only one the wire can reach.
-        XCTAssertEqual(card("marathoner", 2)?.detail, "Showed up for all 2 sittings")
+        XCTAssertEqual(card("marathoner", 2)?.detail, "Showed up for both sittings")
         XCTAssertEqual(card("marathoner", 5)?.detail, "Showed up for all 5 sittings")
     }
 

@@ -88,9 +88,13 @@ public enum TitleLadder {
         case "meddler":
             copy = ("The meddler", e.map { "Finished \(counted($0, "word")) others started" })
         case "marathoner":
-            // Evidence: the room's sitting count (always >= 2; the rung is silent in a
-            // one-sitting room), so the plural branch is the only one that ever renders.
-            copy = ("The marathoner", e.map { "Showed up for all \(counted($0, "sitting"))" })
+            // Evidence: the room's sitting count, floored at 2 by the gate (the rung is
+            // silent in a one-sitting room). "Both" keeps the common two-sitting card
+            // reading like English; web renders the same strings.
+            copy = (
+                "The marathoner",
+                e.map { $0 == 2 ? "Showed up for both sittings" : "Showed up for all \($0) sittings" }
+            )
         case "quick-starter":
             copy = ("The quick starter", e.map { "\(counted($0, "square")) in the opening stretch" })
         case "closer":
