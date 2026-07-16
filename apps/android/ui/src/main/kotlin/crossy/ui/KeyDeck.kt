@@ -1,10 +1,13 @@
 // The on-screen key deck (DESIGN.md §10 "an on-screen keyboard driving store actions directly";
-// iOS KeyDeck / ID-4). A QWERTY letter set plus a direction toggle and backspace, each key a plain
-// intent callback; the room screen routes intents through InputActions so the deck honors the
-// store's navigation without knowing any of it. Geometry and the glass material are a later design
-// track (Wave A4 bar is functional): keys are token-colored surfaces with a minimal press-scale
-// fade, no springs, no haptics wired yet. The deck always sits over solid canvas, never over the
-// grid (ID-4); that stacking is the room screen's job.
+// iOS KeyDeck / ID-4). A QWERTY letter set plus the rebus key, a direction toggle, and backspace,
+// each key a plain intent callback; the room screen routes intents through InputActions so the deck
+// honors the store's navigation without knowing any of it. The rebus key opens (and commits) the
+// inline multi-glyph field (EXPERIENCE.md baseline rebus); its glyph turns to a checkmark while the
+// buffer is open, exactly as iOS's DeckKeyView does. The A|B direction toggle is Android's own key
+// (iOS toggles with a swipe), kept alongside the ported rebus key. Geometry and the glass material
+// are a later design track (Wave A4 bar is functional): keys are token-colored surfaces with a
+// minimal press-scale fade, no springs, no haptics wired yet. The deck always sits over solid
+// canvas, never over the grid (ID-4); that stacking is the room screen's job.
 
 package crossy.ui
 
@@ -34,10 +37,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** A key press intent. Letters carry their character (already an ASCII A-Z uppercase); the two
- *  utility keys are the direction toggle and backspace. Rebus is a later track (DESIGN.md §10). */
+/** A key press intent. Letters carry their character (already an ASCII A-Z uppercase); the utility
+ *  keys are the rebus open/commit, the direction toggle, and backspace. Twin of iOS's DeckKey (which
+ *  lacks the direction toggle, an Android-only key). */
 sealed interface DeckKey {
     data class Letter(val character: Char) : DeckKey
+    data object Rebus : DeckKey
     data object DirectionToggle : DeckKey
     data object Backspace : DeckKey
 }
@@ -49,6 +54,9 @@ fun KeyDeck(
     ground: GridGround,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    // True while a rebus buffer is open (RoomScreen owns it): the rebus key wears a checkmark and
+    // the press commits, mirroring iOS's DeckKeyView. Off, it opens the buffer.
+    rebusActive: Boolean = false,
     onKey: (DeckKey) -> Unit,
 ) {
     val tokens = ground.tokens
@@ -62,6 +70,15 @@ fun KeyDeck(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (index == ROWS.size - 1) {
+                    // The rebus key leads the last row, opposite backspace (iOS DeckLayout), with the
+                    // A|B toggle beside it (Android's own key).
+                    DeckButton(ground, enabled, weight = 1.5f, onPress = { onKey(DeckKey.Rebus) }) {
+                        if (rebusActive) {
+                            Text("✓", color = tokens.ink.toColor(), fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                        } else {
+                            Text("REBUS", color = tokens.ink.toColor(), fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
                     DeckButton(ground, enabled, weight = 1.5f, onPress = { onKey(DeckKey.DirectionToggle) }) {
                         Text("A|B", color = tokens.ink.toColor(), fontSize = 13.sp, fontWeight = FontWeight.Medium)
                     }

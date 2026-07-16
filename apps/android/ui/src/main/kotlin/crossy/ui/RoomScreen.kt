@@ -22,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,7 +36,9 @@ import crossy.store.BoardNavigation
 import crossy.store.GameStore
 import crossy.store.RenderModel
 import crossy.store.SyncState
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun RoomScreen(
@@ -59,6 +62,13 @@ fun RoomScreen(
     val geometry = remember(puzzle) { GridGeometry.from(puzzle) }
     val navGeom = remember(geometry) { BoardNavigation.Geometry(geometry.cols, geometry.rows, geometry.blocks) }
     var selection by remember(puzzle) { mutableStateOf(InputActions.initialSelection(navGeom)) }
+    // The person's typing-advance settings (personal-settings slice 1). The Settings UI for prefs is
+    // a later track (iOS's NavigationSettingsStore), so the room threads the pre-slice default for
+    // now: one obvious seam for the store-backed prefs to arrive through.
+    val navigationPrefs = BoardNavigation.NavigationPrefs.DEFAULT
+    // The inline rebus entry in flight; null when rebus mode is off (iOS SelectionModel.rebusBuffer).
+    // Moving the cursor away (a tap or a clue step) discards an open entry, exactly as iOS does.
+    var rebusBuffer by remember(puzzle) { mutableStateOf<String?>(null) }
 
     val values = remember(render) { buildValues(render, geometry) }
     val filled = values.keys
@@ -119,10 +129,31 @@ fun RoomScreen(
         store.react(emoji, selection.cell)
     }
 
-    // The input env is rebuilt per intent so it reads the latest filled set and freeze.
-    fun env() = InputEnv(navGeom, filled, selection, frozen)
+    // The input env is rebuilt per intent so it reads the latest filled set, freeze, and prefs.
+    fun env() = InputEnv(navGeom, filled, selection, frozen, navigationPrefs)
 
-    fun relayCursor(sel: GridSelection) = store.moveCursor(sel.cell, sel.direction)
+    // The cursor relay (iOS SolveScreen.relayCursor): every selection change goes to the room,
+    // throttled to the wire's 10/s cap with a leading send and one coalesced trailing send that
+    // always carries the latest position (PROTOCOL.md §9). The store refuses sends while connecting.
+    val relayScope = rememberCoroutineScope()
+    val relay = remember(puzzle) { CursorRelayThrottle() }
+    var trailingRelay by remember(puzzle) { mutableStateOf<Job?>(null) }
+
+    fun relayCursor(sel: GridSelection) {
+        when (val verdict = relay.selectionChanged(reactionNow())) {
+            is CursorRelayThrottle.Verdict.Send -> store.moveCursor(sel.cell, sel.direction)
+            is CursorRelayThrottle.Verdict.ScheduleTrailing -> {
+                trailingRelay?.cancel() // one pending trailing send at a time (iOS relayTrailing)
+                trailingRelay = relayScope.launch {
+                    delay((verdict.afterSeconds * 1000).toLong())
+                    relay.trailingFired(reactionNow())
+                    // Read the latest selection at fire time; a stale final cursor would lie.
+                    store.moveCursor(selection.cell, selection.direction)
+                }
+            }
+            CursorRelayThrottle.Verdict.Coalesce -> Unit
+        }
+    }
 
     fun apply(effect: InputEffect) {
         for (mutation in effect.mutations) when (mutation) {
@@ -131,6 +162,35 @@ fun RoomScreen(
         }
         selection = effect.selection
         relayCursor(effect.selection)
+    }
+
+    // A deck key while a rebus buffer is open (iOS SelectionModel.pressInRebusMode): letters grow
+    // the buffer, backspace edits and exits, the rebus key commits, and the direction toggle leaves
+    // the buffer like every other move-away. Outside the buffer, the rebus key opens it and the rest
+    // run the vectored input actions.
+    fun onDeckKey(key: DeckKey) {
+        val buffer = rebusBuffer
+        if (buffer != null) {
+            when (key) {
+                is DeckKey.Letter -> rebusBuffer = RebusBuffer.append(buffer, key.character)
+                DeckKey.Backspace -> rebusBuffer = when (val step = RebusBuffer.backspace(buffer)) {
+                    is RebusStep.Editing -> step.buffer
+                    else -> null
+                }
+                DeckKey.Rebus -> when (val step = RebusBuffer.commit(buffer)) {
+                    is RebusStep.Commit -> { rebusBuffer = null; apply(InputActions.rebus(env(), step.value)) }
+                    else -> rebusBuffer = null
+                }
+                DeckKey.DirectionToggle -> { rebusBuffer = null; apply(InputActions.toggleDirection(env())) }
+            }
+            return
+        }
+        when (key) {
+            is DeckKey.Letter -> apply(InputActions.letter(env(), key.character))
+            DeckKey.Backspace -> apply(InputActions.backspace(env()))
+            DeckKey.DirectionToggle -> apply(InputActions.toggleDirection(env()))
+            DeckKey.Rebus -> rebusBuffer = ""
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().background(ground.tokens.canvas.toColor())) {
@@ -151,6 +211,7 @@ fun RoomScreen(
                 modifier = Modifier.fillMaxWidth(),
                 onCellTap = { cell ->
                     InputActions.tap(env(), cell)?.let {
+                        rebusBuffer = null // moving the cursor away discards an open rebus entry
                         selection = it
                         relayCursor(it)
                     }
@@ -180,8 +241,9 @@ fun RoomScreen(
         ClueBar(
             clue = activeClue,
             ground = ground,
-            onPrev = { apply(InputActions.previousWord(env())) },
-            onNext = { apply(InputActions.nextWord(env())) },
+            // A clue step is a move-away, so it discards an open rebus entry (iOS swipe rule).
+            onPrev = { rebusBuffer = null; apply(InputActions.previousWord(env())) },
+            onNext = { rebusBuffer = null; apply(InputActions.nextWord(env())) },
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235
@@ -190,13 +252,16 @@ fun RoomScreen(
             // deck's own glass are a later design track, not the Wave A4 functional bar.
             Spacer(Modifier.height(12.dp))
         } else {
-            KeyDeck(ground = ground) { key ->
-                when (key) {
-                    is DeckKey.Letter -> apply(InputActions.letter(env(), key.character))
-                    DeckKey.Backspace -> apply(InputActions.backspace(env()))
-                    DeckKey.DirectionToggle -> apply(InputActions.toggleDirection(env()))
-                }
+            // The inline rebus field sits over the deck while a buffer is open (iOS SolveScreen):
+            // multi-glyph entry types into it and the rebus key commits it back through the deck.
+            rebusBuffer?.let { buffer ->
+                RebusField(
+                    buffer = buffer,
+                    ground = ground,
+                    modifier = Modifier.padding(horizontal = 10.dp).padding(bottom = 6.dp),
+                )
             }
+            KeyDeck(ground = ground, rebusActive = rebusBuffer != null, onKey = { onDeckKey(it) })
         }
     }
 }
