@@ -352,6 +352,12 @@ public struct SolveScreen: View {
                     analysisPhase: analysis.phase,
                     analysisMembers: members,
                     selfUserId: store.selfUserId,
+                    isolatedSolverId: completion.isolatedSolverId,
+                    // Isolation exists only on the SETTLED wash: nil while the
+                    // bloom plays keeps the legend rows plain labels, and the
+                    // model's own gate holds even if a stale tap lands.
+                    onIsolateSolver: completion.mosaicSettled
+                        ? { completion.toggleIsolation($0) } : nil,
                     onDismissTransients: dismissTransients,
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
@@ -681,6 +687,11 @@ public struct SolveScreen: View {
                 // pauses (the flash-then-disappear fix: the settle returns the
                 // letters to ink, never the board to plain).
                 mosaicSettled: completion.mosaicSettled,
+                // The isolation filter over the settled wash: the analysis
+                // legend's tapped solver holds the full wash, everyone else
+                // recesses toward paper. One truth on CompletionModel, read by
+                // the legend rows and this draw pass alike.
+                mosaicIsolation: completion.isolation,
                 // The BOARD's standing occlusion is constant-built (DESIGN.md §2,
                 // SLICE C): the top inset is the room container's system-bar height
                 // (roomTopInset, read off the room's own container), never the
