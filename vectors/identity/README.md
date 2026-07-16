@@ -3,11 +3,12 @@
 The cross-client player identity palette (DESIGN.md §8).
 
 The server assigns each player a stable wire color, `colorForUser(userId)` in
-`apps/session/src/color.ts`: an FNV-1a hash of the userId rendered as `#RRGGBB`. That raw
-hash is not what a client paints. Every client buckets the wire color to one of twelve
-curated slots, `slot = (value % 12)`, and paints the slot's light- or dark-ground variant.
-So one player reads as the same color everywhere: the web board and its post-game mosaic,
-the push surfaces, and iOS.
+`packages/protocol/src/room-colors.ts`: an FNV-1a hash of the userId rendered as `#RRGGBB`,
+spread room-aware before emission (D28, `room-colors.json` below). That raw value is not
+what a client paints. Every client buckets the wire color to one of twelve curated slots,
+`slot = (value % 12)`, and paints the slot's light- or dark-ground variant. So one player
+reads as the same color everywhere: the web board and its post-game mosaic, the push
+surfaces, and iOS.
 
 `roster.json` freezes that contract:
 
@@ -26,6 +27,23 @@ the push surfaces, and iOS.
 `apps/session/src/push/roster.ts` and iOS `IdentityRoster.swift` carry their own copies today,
 each pinned by a local test to the same values. Pointing those two tests at this vector is a
 clean follow-up that makes all three provably identical from one source.
+
+## room-colors.json
+
+The room-aware color spread (DESIGN.md D28, `design/identity/ROOM-COLORS.md`): the server-side
+slot assignment that keeps two members of one room off the same or perceptually adjacent
+roster slots while the client bucketing above stays frozen. One cluster, `assignRoomColors`.
+Each case gives the room's members (`userId`, `joinedAt`; listed in any order, the assignment
+sorts by joinedAt then userId, ASCII byte order, INV-1) and asserts the assigned `slot` per
+member plus the emitted `wire` string where pinned (the assertion rule: an absent field is
+unasserted). The cases pin: kept preferred slots emitting today's exact hash bytes; a
+two-member collision bumping the second joiner to the farthest free slot; a six-member room;
+the equal-`joinedAt` tie-break by userId; and a thirteen-member wrap where duplicates land on
+the most isolated slot and no earlier member repaints.
+
+Consumer: `packages/protocol/src/room-colors.test.ts` runs every case against
+`assignRoomSlots` / `assignRoomColors` in `packages/protocol/src/room-colors.ts`, the one
+implementation every session color emitter routes through.
 
 ## display-name.json
 

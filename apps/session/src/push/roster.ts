@@ -194,7 +194,7 @@ export function puckFromMember(member: RosterMember): LiveActivityPuck {
 /**
  * The user-id fallback slot: `fnv1a32(userId) & 0xffffff` mod 12, the exact residue
  * `slot(forWireColor:)` takes on the wire string colorForUser would produce for this user. Kept
- * here (not imported from color.ts's string form) so the arithmetic is one hop and matches the
+ * here (not imported from the protocol's string form) so the arithmetic is one hop and matches the
  * Swift `IdentityRoster.color(forWireColor:)` path the fallback feeds. INV-1: FNV over UTF-16 code
  * units, bytewise, no locale.
  */

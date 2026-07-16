@@ -9,9 +9,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import type { LiveActivityContentState } from "@crossy/protocol";
-import { LIVE_ACTIVITY_MAX_PUCKS } from "@crossy/protocol";
-import { colorForUser } from "../color";
+import { LIVE_ACTIVITY_MAX_PUCKS, colorForUser } from "@crossy/protocol";
 import type { MemberRow } from "../repo";
+import { ROSTER_DARK_GROUND } from "./roster";
 import type { ApnsAdapter, ApnsRequest, ApnsResult } from "./apns";
 import {
   BUNDLE_ID,
@@ -53,6 +53,9 @@ function member(over: Partial<MemberRow> & { userId: string }): MemberRow {
     displayName: over.userId,
     avatarUrl: null,
     role: "solver",
+    // One shared instant by default: the D28 join order ties break by userId (ASCII), so a
+    // fixture's member list order never matters.
+    joinedAt: "2026-07-16T00:00:00Z",
     ...over,
   };
 }
@@ -94,6 +97,7 @@ function fakePool(fx: Fixture): {
             display_name: m.displayName,
             avatar: m.avatarUrl,
             role: m.role,
+            joined_at: m.joinedAt,
           })),
         });
       }
@@ -191,6 +195,59 @@ describe("§12a emitter: content-state build (pucks + counts, INV-6)", () => {
     expect(cs.pucks).toHaveLength(1);
     // A stable, non-throwing color; the exact slot round-trip is pinned in roster.test.ts.
     expect(colorForUser(userId)).toMatch(/^#[0-9A-F]{6}$/);
+  });
+
+  it("D28: two members whose hashes collide mod 12 get distinct slots in one room", () => {
+    // u-fox and u-gus both hash to roster slot 0 (violet); the vector's two-member bump case
+    // pins the spread to slot 4 (ochre). The pucks must paint the two distinct dark-ground hexes.
+    const cs = buildContentState(
+      [
+        member({ userId: "u-fox", joinedAt: "2026-07-16T00:00:01Z" }),
+        member({ userId: "u-gus", joinedAt: "2026-07-16T00:00:02Z" }),
+      ],
+      facts(),
+    );
+    const fox = cs.pucks.find((p) => p.userId === "u-fox")!;
+    const gus = cs.pucks.find((p) => p.userId === "u-gus")!;
+    expect([fox.red, fox.green, fox.blue]).toEqual([
+      ROSTER_DARK_GROUND[0]!.red,
+      ROSTER_DARK_GROUND[0]!.green,
+      ROSTER_DARK_GROUND[0]!.blue,
+    ]);
+    expect([gus.red, gus.green, gus.blue]).toEqual([
+      ROSTER_DARK_GROUND[4]!.red,
+      ROSTER_DARK_GROUND[4]!.green,
+      ROSTER_DARK_GROUND[4]!.blue,
+    ]);
+  });
+
+  it("D28: a later joiner never changes an earlier member's emitted color", () => {
+    const first = member({ userId: "u-fox", joinedAt: "2026-07-16T00:00:01Z" });
+    const later = member({ userId: "u-gus", joinedAt: "2026-07-16T00:00:02Z" });
+    const solo = buildContentState([first], facts()).pucks[0]!;
+    const after = buildContentState([first, later], facts()).pucks.find(
+      (p) => p.userId === "u-fox",
+    )!;
+    expect([after.red, after.green, after.blue]).toEqual([
+      solo.red,
+      solo.green,
+      solo.blue,
+    ]);
+    // The joiner, not the incumbent, absorbs the collision: alone u-gus would paint slot 0 too.
+    const gusSolo = buildContentState([later], facts()).pucks[0]!;
+    const gusInRoom = buildContentState([first, later], facts()).pucks.find(
+      (p) => p.userId === "u-gus",
+    )!;
+    expect([gusSolo.red, gusSolo.green, gusSolo.blue]).toEqual([
+      ROSTER_DARK_GROUND[0]!.red,
+      ROSTER_DARK_GROUND[0]!.green,
+      ROSTER_DARK_GROUND[0]!.blue,
+    ]);
+    expect([gusInRoom.red, gusInRoom.green, gusInRoom.blue]).not.toEqual([
+      gusSolo.red,
+      gusSolo.green,
+      gusSolo.blue,
+    ]);
   });
 
   it("carries only counts, never board content (INV-6): fixed key set", () => {

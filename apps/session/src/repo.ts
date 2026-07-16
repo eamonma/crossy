@@ -19,6 +19,9 @@ export interface MemberRow {
   /** The resolved avatar URL, or null (PROTOCOL.md §4). Opaque; never an email (INV-6 spirit). */
   readonly avatarUrl: string | null;
   readonly role: Role;
+  /** ISO-8601 join instant, feeding the room-aware color assignment's join order (D28). The
+   * uniform format keeps ASCII order equal to time order (INV-1). */
+  readonly joinedAt: string;
 }
 
 /** int8 (bigint) columns arrive from pg as strings; make them numbers. */
@@ -131,12 +134,13 @@ export async function loadMembers(
     display_name: string | null;
     avatar: string | null;
     role: Role;
+    joined_at: Date | string;
   }>(
-    `select m.user_id, m.role, u.display_name, u.avatar
+    `select m.user_id, m.role, m.joined_at, u.display_name, u.avatar
        from memberships m
        join users u on u.user_id = m.user_id
       where m.game_id = $1
-      order by m.joined_at`,
+      order by m.joined_at, m.user_id`,
     [gameId],
   );
   return rows.map((r) => ({
@@ -144,5 +148,7 @@ export async function loadMembers(
     displayName: r.display_name,
     avatarUrl: r.avatar,
     role: r.role,
+    // joined_at is NOT NULL (schema default now()); toIso never sees a null here.
+    joinedAt: toIso(r.joined_at) ?? "",
   }));
 }

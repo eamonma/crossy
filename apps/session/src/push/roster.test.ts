@@ -5,7 +5,7 @@
 // (GridPresence.swift). Test names cite the invariant / the canonical file they defend.
 
 import { describe, expect, it } from "vitest";
-import { colorForUser } from "../color";
+import { colorForUser } from "@crossy/protocol";
 import {
   ROSTER_DARK_GROUND,
   clusterPucks,
