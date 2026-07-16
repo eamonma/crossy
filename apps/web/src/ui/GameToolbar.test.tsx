@@ -22,6 +22,7 @@ function actions(overrides: Partial<RoomActions> = {}): RoomActions {
   return {
     status: "ongoing",
     spectator: false,
+    sync: "live",
     emptyCount: 0,
     checkCount: 0,
     onCheckPuzzle: () => true,

@@ -355,3 +355,40 @@ describe("sequencedValue reads sequenced state only (R9; PROTOCOL.md section 10 
     expect(store.sequencedValue(5)).toBe("Q");
   });
 });
+
+describe("mark clearing replaces the set, never mutates it (PROTOCOL.md section 10; memo safety)", () => {
+  it("a clearing cellSet yields a new checkedWrong identity, so identity-memoized consumers repaint", () => {
+    const { store } = makeStore(
+      board({
+        cells: [
+          { v: "Z", by: "u-other" },
+          ...Array.from({ length: 19 }, () => ({ v: null, by: null })),
+        ],
+        checkedWrongCells: [0],
+        checkCount: 1,
+      }),
+    );
+    const before = store.checkedWrongCells;
+    store.receive(cellSet({ seq: 1, cell: 0, value: "Q" }));
+    expect(store.checkedWrongCells.has(0)).toBe(false);
+    expect(store.checkedWrongCells).not.toBe(before);
+    expect(before.has(0)).toBe(true);
+  });
+
+  it("a same-value no-op keeps the mark and the identity (section 10: the mark is still true)", () => {
+    const { store } = makeStore(
+      board({
+        cells: [
+          { v: "Z", by: "u-other" },
+          ...Array.from({ length: 19 }, () => ({ v: null, by: null })),
+        ],
+        checkedWrongCells: [0],
+        checkCount: 1,
+      }),
+    );
+    const before = store.checkedWrongCells;
+    store.receive(cellSet({ seq: 1, cell: 0, value: "Z" }));
+    expect(store.checkedWrongCells.has(0)).toBe(true);
+    expect(store.checkedWrongCells).toBe(before);
+  });
+});

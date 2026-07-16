@@ -5,19 +5,23 @@
 // UI derives from it: whether the popover stands, whether the check row is enabled, which
 // marks actually paint, and the two quiet lines of copy.
 import type { GameStatus } from "@crossy/protocol";
-import type { PendingCommand } from "../store/gameStore";
+import type { PendingCommand, SyncState } from "../store/gameStore";
 
 /**
  * Whether the room-actions popover renders at all. Ongoing only (R4: terminal means
  * terminal — an abandoned room must not offer acts the server answers with
  * GAME_NOT_ONGOING), and never for spectators, who see neither of its rows (check is
  * host/solver, end-game is host; design doc §5), so for them the trigger itself hides.
+ * `connecting` also hides it: that state is exactly "no board yet", and the store's
+ * placeholder `ongoing` status would otherwise flash the trigger on a completed or
+ * abandoned room until the first welcome lands.
  */
 export function showRoomActions(
   status: GameStatus,
   spectator: boolean,
+  sync: SyncState,
 ): boolean {
-  return status === "ongoing" && !spectator;
+  return status === "ongoing" && !spectator && sync !== "connecting";
 }
 
 /**

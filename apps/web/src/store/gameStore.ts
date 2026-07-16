@@ -450,7 +450,12 @@ export class GameStore {
       message.value !== sequencedBefore &&
       this.checkedWrongValue.has(message.cell)
     ) {
-      this.checkedWrongValue.delete(message.cell);
+      // Copy-on-write, never an in-place delete: consumers memoize on Set identity
+      // (LiveApp's markedPuzzle), and a set mutated under the memo would stop
+      // repainting the moment the grid is memoized.
+      const next = new Set(this.checkedWrongValue);
+      next.delete(message.cell);
+      this.checkedWrongValue = next;
     }
     this.cellsValue.set(message.cell, { v: message.value, by: message.by });
     // The first fill's cellSet carries firstFillAt, so the shared timer (gameTime.ts)
