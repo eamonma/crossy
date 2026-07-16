@@ -3,10 +3,11 @@
 // ground. It rides inside the completed clue chrome's Analysis tab (ClueChrome),
 // so this view is content only, no scroll of its own and no chrome: the "Solved
 // together" eyebrow, the Time/Solvers/Squares trio, the roster legend, the
-// momentum ribbon, and the two moment cards.
+// momentum ribbon, and the title cards (design/post-game/TITLES.md; the person
+// moment cards, First square and Last square, retired in their favor).
 //
 // Everything here is first-correct truth from GET /analysis (RoomAnalysis): the
-// legend and the moments read the owners map's userIds, colored through the same
+// legend and the titles read the bundle's userIds, colored through the same
 // roster seam the avatars and the mosaic use (GridPresence.rosterColor). No solve
 // value is in reach (INV-6): the bundle carries userIds, cells, and numbers only.
 
@@ -92,23 +93,25 @@ struct AnalysisPanel: View {
             .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
             .padding(.top, 8)
 
-        // Moments: person only, no times (they degenerate; the first is always 0,
-        // the last always the duration).
-        if analysis.firstToFall != nil || analysis.lastSquare != nil {
-            capsLabel("Moments")
+        // Titles: everyone's superlative (design/post-game/TITLES.md), one card per
+        // titled solver, in the wire's ladder-rank order (reordering client-side would
+        // fork the two platforms' surfaces). An unknown key renders nothing (PROTOCOL
+        // §12: a client MUST ignore an unknown key; that is how the ladder grows), and
+        // a solo solve (or an older API) ships no titles, so the section vanishes
+        // entirely, never an empty-state box.
+        let cards = analysis.titles.compactMap(TitleLadder.card(for:))
+        if !cards.isEmpty {
+            capsLabel("Titles")
                 .padding(.top, 22)
                 .padding(.bottom, 2)
             VStack(alignment: .leading, spacing: 0) {
-                if let first = analysis.firstToFall {
-                    momentRow(label: "First square", userId: first.userId)
-                }
-                if analysis.firstToFall != nil, analysis.lastSquare != nil {
-                    Rectangle()
-                        .fill(Color(rgb: ground.tokens.number).opacity(0.18))
-                        .frame(height: 1)
-                }
-                if let last = analysis.lastSquare {
-                    momentRow(label: "Last square", userId: last.userId)
+                ForEach(Array(cards.enumerated()), id: \.element.userId) { index, card in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color(rgb: ground.tokens.number).opacity(0.18))
+                            .frame(height: 1)
+                    }
+                    titleRow(card)
                 }
             }
         }
@@ -146,18 +149,27 @@ struct AnalysisPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: Moments
+    // MARK: Titles
 
-    private func momentRow(label: String, userId: String) -> some View {
+    /// One title card, the retired moment row's exact grammar plus the evidence line:
+    /// the solver's dot, the title's caps label, the name, and the claim (nothing when
+    /// the rung's number did not arrive; the card degrades to the label alone).
+    private func titleRow(_ card: TitleCard) -> some View {
         HStack(spacing: 11) {
             Circle()
-                .fill(Color(rgb: color(for: userId)))
+                .fill(Color(rgb: color(for: card.userId)))
                 .frame(width: 11, height: 11)
             VStack(alignment: .leading, spacing: 2) {
-                capsLabel(label)
-                Text(verbatim: name(for: userId))
+                capsLabel(card.label)
+                Text(verbatim: name(for: card.userId))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color(rgb: ground.tokens.ink))
+                if let detail = card.detail {
+                    Text(verbatim: detail)
+                        .font(.system(size: 12))
+                        .lineSpacing(1.5)
+                        .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
+                }
             }
             Spacer(minLength: 0)
         }
@@ -191,7 +203,7 @@ struct AnalysisPanel: View {
 
     /// The solvers who own at least one square, self first and named "You" (the
     /// web's legendSolvers). A member who owns nothing is dropped; an owner who is
-    /// no longer in the roster is not invented here (the moments still name them).
+    /// no longer in the roster is not invented here (the titles still name them).
     private func legendRows(_ analysis: RoomAnalysis) -> [LegendRow] {
         let owners = Set(analysis.owners.values)
         var rows: [LegendRow] = []
@@ -232,9 +244,9 @@ struct AnalysisPanel: View {
         return ground.rosterColor(GridPresence.rosterColor(wireColor: wire, userId: userId))
     }
 
-    /// A solver's name for the moments: "You", the roster display name, or a plain
+    /// A solver's name for the title cards: "You", the roster display name, or a plain
     /// fallback for someone who has left (the wire never hands us a nameless live
-    /// member, but an owner can outlive their roster row).
+    /// member, but a titled solver can outlive their roster row).
     private func name(for userId: String) -> String {
         if userId == selfUserId { return "You" }
         return members.first { $0.userId == userId }?.displayName ?? "A solver"

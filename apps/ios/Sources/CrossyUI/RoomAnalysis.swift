@@ -23,27 +23,24 @@ public struct RoomAnalysis: Equatable, Sendable {
     /// legend's roster both read this.
     public let owners: [Int: String]
     public let momentum: RoomMomentum
-    /// The first square to fall, or nil for an empty trace (a completed game with
-    /// no recorded first-correct events, e.g. a seeded fixture).
-    public let firstToFall: RoomBeat?
-    /// The square that finished the board, or nil for an empty trace.
-    public let lastSquare: RoomBeat?
     /// The room's longest pause and the burst that broke it, or nil when the trace
     /// is too short to have a gap (fewer than two fills).
     public let turningPoint: RoomTurningPoint?
+    /// The solver superlatives, in the wire's ladder-rank order
+    /// (design/post-game/TITLES.md): at most one per solver, empty for a solo solve
+    /// (the solo rule) or an older API that predates titles.
+    public let titles: [RoomTitle]
 
     public init(
         owners: [Int: String],
         momentum: RoomMomentum,
-        firstToFall: RoomBeat?,
-        lastSquare: RoomBeat?,
-        turningPoint: RoomTurningPoint?
+        turningPoint: RoomTurningPoint?,
+        titles: [RoomTitle]
     ) {
         self.owners = owners
         self.momentum = momentum
-        self.firstToFall = firstToFall
-        self.lastSquare = lastSquare
         self.turningPoint = turningPoint
+        self.titles = titles
     }
 
     /// Distinct solvers who own at least one square (the stat trio's "Solvers").
@@ -83,18 +80,22 @@ public struct RoomMomentum: Equatable, Sendable {
     public var hasSignal: Bool { samples.contains { $0 > 0 } }
 }
 
-/// One named moment: who, which square, and when (engine `Beat`). The panel shows
-/// the person only; the time degenerates (first is always 0, last always the
-/// duration), so it is carried but not rendered.
-public struct RoomBeat: Equatable, Sendable {
-    public let cell: Int
+/// One solver superlative (design/post-game/TITLES.md): the wire's award, carried
+/// verbatim. `key` is the lowercase-kebab ladder key ("saboteur"); the display table
+/// (TitleLadder) decides what it knows, so an unknown key from a grown ladder is
+/// skipped at render, never dropped here (forward compatibility, PROTOCOL.md §12).
+public struct RoomTitle: Equatable, Sendable {
     public let userId: String
-    public let atSeconds: Double
+    /// The pinned lowercase-kebab title key, verbatim from the wire.
+    public let key: String
+    /// The rung's own count (overwrites, whole seconds, squares), or nil for a rung
+    /// that cites none. Never a letter (INV-6).
+    public let evidence: Int?
 
-    public init(cell: Int, userId: String, atSeconds: Double) {
-        self.cell = cell
+    public init(userId: String, key: String, evidence: Int?) {
         self.userId = userId
-        self.atSeconds = atSeconds
+        self.key = key
+        self.evidence = evidence
     }
 }
 

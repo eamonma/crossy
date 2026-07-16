@@ -11,6 +11,7 @@ import type { StackMember } from "./primitives";
 import type { OwnerMap } from "./mosaicReveal";
 import type { Bearer } from "../net/authedFetch";
 import {
+  fetchAnalysisOnce,
   fetchAttributionOnce,
   fetchAttributionWithRetry,
   lastWriterOwnerMap,
@@ -182,6 +183,48 @@ describe("fetchAttributionOnce (GET /games/:id/analysis, reads owners; INV-6 use
       expect(map).toEqual({ 0: "u-a" });
     });
     expect(calls.map((c) => c.auth)).toEqual(["Bearer stale", "Bearer fresh"]);
+  });
+});
+
+describe("fetchAnalysisOnce (the whole bundle; titles tolerate an older API)", () => {
+  const bearer: Bearer = {
+    getToken: () => Promise.resolve("tok"),
+    refresh: () => Promise.resolve(null),
+  };
+
+  it("passes the wire's titles through untouched (order, keys, evidence; PROTOCOL §12)", async () => {
+    const titles = [
+      { userId: "u-a", title: "saboteur", evidence: 7 },
+      { userId: "u-b", title: "one-hit-wonder", evidence: null },
+    ];
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: {}, titles } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.titles).toEqual(titles);
+      },
+    );
+  });
+
+  it("reads an absent titles field (an API that predates the ladder) as empty, never a crash", async () => {
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: { "0": "u-a" } } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.titles).toEqual([]);
+        expect(bundle?.owners).toEqual({ 0: "u-a" });
+      },
+    );
+  });
+
+  it("reads a malformed titles field as empty (the additive field never poisons the bundle)", async () => {
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: {}, titles: "nope" } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.titles).toEqual([]);
+      },
+    );
   });
 });
 

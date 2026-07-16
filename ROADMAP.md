@@ -1064,3 +1064,71 @@ the five (the system emoji keyboard supplies any emoji, validated against the RG
 before write), and the reaction fan reading the set instead of the bundled five. **Exit: an
 iOS user edits their five, the fan sends them, and the set matches what web shows for the
 same account.**
+
+## Phase 9 — Cross-reference and starred clues (D26)
+
+Recorded for numbering continuity: executed straight off DESIGN.md D26 as Wave 9.1 (web,
+#260) and Wave 9.2 (iOS, #262), the revealer lighting the starred clues through the
+cross-reference chokepoint. No further waves here.
+
+## Phase 10 — Solver titles (post-game superlatives)
+
+Design landed: `design/post-game/TITLES.md` (plan of record: the stat sheet, the award
+ladder, pinned constants), the ANALYSIS.md law amendment (titles count, they never
+interpret; one title per solver; evidence numbers allowed, the shared axis stays
+forbidden; the unlock moment killed, both owner rulings 2026-07-16), and the `titles`
+field on the analysis bundle (PROTOCOL.md section 12). Every solver in a completed
+multi-solver room gets at most one superlative (the saboteur, the ice breaker, the
+workhorse), awarded by a deterministic gate-and-argmax ladder over a per-solver stat
+sheet, both pure engine reducers. The ladder's floor tier is ordinal (its claims exist
+for any solver with a fill), so every solver who filled a square is guaranteed a title
+in rooms of up to six such solvers. The person moment cards (First square, Last square)
+retire in favor of the title cards; the turning point stays on the ribbon.
+
+**Vectors first.** The stat sheet and the ladder are shared normative ground: web and iOS
+must agree on who the saboteur was, so `vectors/analysis/titles.json` lands ahead of the
+engine, citing the TITLES.md constants.
+
+### Wave 10.1 — contract (this PR)
+
+TITLES.md, the ANALYSIS.md amendment, the PROTOCOL section 12 row, this phase. Docs only;
+no app or vector code. **Exit: the four checks are green and the waves below have a
+contract to land against.**
+
+### Wave 10.2 — vectors (blocked on 10.1)
+
+`vectors/analysis/titles.json`: stat-sheet cases (each stat exercised, the
+overwrite-vs-wrongWrite boundary, the rebus comparator boundary, the self-overwrite
+exclusion, clock skew where `at` and `seq` order disagree, the burst-window endpoint,
+the odd-grid quadrant boundary, whole-second flooring, marquee slots via starred and
+via the length-tier fallback) and award cases (gate refusals, the already-titled
+fall-through, both tie-breaks, the zero-fill saboteur, the event-membership solo rule,
+the coverage theorem: every specialty gate failing still titles six fillers off the
+ordinal floor, a seventh is the documented remainder). **Exit: the runner
+shape-validates the family; every case cites the TITLES.md rule it defends.**
+
+### Wave 10.3 — engine (blocked on 10.2)
+
+`titleStats(events, solution, slots)` and `awardTitles(statSheet)` in `packages/engine`,
+the ladder a fixed engine constant, slots arriving as data (INV-9), greened against the
+Wave 10.2 vectors. **Exit: the vectors pass; the reducers are pure and deterministic.**
+
+### Wave 10.4 — api (blocked on 10.3)
+
+The Archive module lifts the slot list and starred flags from `games.puzzle_snapshot`,
+runs the two reducers beside the existing three, and appends `titles` to the analysis
+bundle. Gate, cache, and INV-4 reasoning unchanged. **Exit: a completed game with two
+or more writers carries its titles; fewer than two writers is empty; no letter rides
+out (INV-6).**
+
+### Wave 10.5 — web (blocked on 10.4)
+
+The Analysis tab's Moments section becomes Titles: one card per titled solver (dot, name,
+title copy, evidence), First square and Last square retire, unknown keys are ignored.
+**Exit: a finished room shows everyone their superlative; a solo solve shows no Titles
+section.**
+
+### Wave 10.6 — iOS (blocked on 10.4)
+
+The same swap in the analysis sheet, copy and order matching web. **Exit: the same room
+shows the same titles on both platforms.**

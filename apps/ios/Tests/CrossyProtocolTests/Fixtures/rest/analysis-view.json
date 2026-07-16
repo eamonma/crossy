@@ -13,5 +13,9 @@
     "firstToFall": { "cell": 0, "userId": "host", "atSeconds": 0 },
     "lastSquare": { "cell": 3, "userId": "mate", "atSeconds": 115 },
     "turningPoint": { "stallSeconds": 100, "breakSeconds": 110, "burst": 2 }
-  }
+  },
+  "titles": [
+    { "userId": "mate", "title": "one-hit-wonder", "evidence": null },
+    { "userId": "host", "title": "quick-starter", "evidence": 1 }
+  ]
 }
