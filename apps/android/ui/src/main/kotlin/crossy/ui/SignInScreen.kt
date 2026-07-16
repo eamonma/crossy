@@ -1,10 +1,12 @@
-// Sign in (AAD-3: email/password and email one-time code, plus the dev-token fallback). The
-// password path is the Supabase password grant; the OTP path (mirrors #230) sends a one-time code
-// to an address, then verifies it into the same session the password grant lands. The dev-token
-// field is the twin of iOS FixedTokenProvider and the web `?token=` override, for driving the app
-// against the local stack before native providers land (Google Sign-In is its own owner-gated
-// track). A pure function of the passed state: the composition root runs the network and owns the
-// busy/error and which OTP step is showing; the screen renders it and emits intents back.
+// Sign in, providers first (the iOS WelcomeScreen shape): Apple then Discord as the two primary
+// buttons (Apple leads, per Apple's guideline 4.8; web AuthBar agrees), a quiet "Continue another
+// way" affordance revealing Hisbaan and the email one-time code (mirrors #230), and the dev-token
+// fallback tucked at the bottom (the twin of iOS FixedTokenProvider and the web `?token=`
+// override). There are no passwords in production, so no password form. The screen knows nothing
+// of browsers or intents: a provider tap is an intent the host maps to the Custom Tab leg
+// (AAD-2: browser concerns live in :app). A pure function of the passed state: the composition
+// root runs the network and owns the busy/error and which OTP step is showing; the screen renders
+// it and emits intents back.
 
 package crossy.ui
 
@@ -30,15 +32,35 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 /**
+ * The OAuth providers the screen offers, :ui's own vocabulary (the module imports :store and
+ * :design only, so :api's AuthProvider never reaches here; the host maps this one-to-one). Email
+ * OTP is not an entry: it rides its own [EmailOtpStep] sub-flow, no browser leg.
+ */
+enum class SignInProvider {
+    /** Leads the stack (Apple's guideline 4.8: at least as prominent as any third-party entry). */
+    APPLE,
+    DISCORD,
+
+    /** The custom OIDC provider, behind "Continue another way" with email (the iOS sheet's rows). */
+    HISBAAN,
+}
+
+/** The provider buttons' copy, iOS ArrivalCopy verbatim. Internal so a test can pin it. */
+internal fun signInProviderLabel(provider: SignInProvider): String = when (provider) {
+    SignInProvider.APPLE -> "Continue with Apple"
+    SignInProvider.DISCORD -> "Continue with Discord"
+    SignInProvider.HISBAAN -> "Continue with Hisbaan"
+}
+
+/**
  * The email one-time-code sub-flow's screen state (AAD-3, mirrors #230). The host owns which step
- * shows and the busy/error for each; the screen renders it. `Closed` keeps the OTP path behind a
- * quiet affordance so email/password and the dev token stay primary. `Email` collects the address.
+ * shows and the busy/error for each; the screen renders it. `Closed` keeps the OTP path behind the
+ * "Continue another way" affordance so the providers stay primary. `Email` collects the address.
  * `Code` collects the code for the address it was sent to, carrying that address for the
  * "we sent a code to {email}" line and the resend.
  */
@@ -70,15 +92,18 @@ private const val RESEND_COOLDOWN_SECONDS = 45
 
 @Composable
 fun SignInScreen(
-    isBusy: Boolean,
+    // Which provider's browser trip is out (busy shows on that button alone; all providers
+    // disable). Null when nothing is in flight; the host clears it when the person returns
+    // without completing, so a re-tap is always reachable (begin is effect-free and supersedes).
+    busyProvider: SignInProvider?,
     error: String?,
-    onSignIn: (email: String, password: String) -> Unit,
+    onProvider: (SignInProvider) -> Unit,
     onDevToken: (String) -> Unit,
     otpStep: EmailOtpStep = EmailOtpStep.Closed,
     otpBusy: Boolean = false,
     // Closed -> Email, and Code -> Email ("use a different email"): both land on a fresh address step.
     onEmailStep: () -> Unit = {},
-    // Email -> Closed: back out of the OTP path to email/password.
+    // Email -> Closed: back out of the OTP path to the providers.
     onCancelOtp: () -> Unit = {},
     onSendCode: (email: String) -> Unit = {},
     onResendCode: () -> Unit = {},
@@ -96,10 +121,10 @@ fun SignInScreen(
         )
 
         when (val step = otpStep) {
-            EmailOtpStep.Closed -> PasswordAndDevToken(
-                isBusy = isBusy,
+            EmailOtpStep.Closed -> ProvidersAndDevToken(
+                busyProvider = busyProvider,
                 error = error,
-                onSignIn = onSignIn,
+                onProvider = onProvider,
                 onDevToken = onDevToken,
                 onContinueWithEmail = onEmailStep,
             )
@@ -123,48 +148,51 @@ fun SignInScreen(
     }
 }
 
-/** The primary sign-in: email/password, then the dev-token fallback, with the quiet "continue with
- *  email" affordance under the Sign in button. */
+/** Providers lead: Apple then Discord as the primary buttons, the quiet "Continue another way"
+ *  affordance revealing Hisbaan and the email one-time code, then the dev-token fallback at the
+ *  bottom. The inline error sits above the buttons (the iOS footer's read): calm, one sentence. */
 @Composable
-private fun PasswordAndDevToken(
-    isBusy: Boolean,
+private fun ProvidersAndDevToken(
+    busyProvider: SignInProvider?,
     error: String?,
-    onSignIn: (email: String, password: String) -> Unit,
+    onProvider: (SignInProvider) -> Unit,
     onDevToken: (String) -> Unit,
     onContinueWithEmail: () -> Unit,
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var anotherWay by remember { mutableStateOf(false) }
     var devToken by remember { mutableStateOf("") }
+    val busy = busyProvider != null
 
-    OutlinedTextField(
-        value = email,
-        onValueChange = { email = it },
-        label = { Text("Email") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    OutlinedTextField(
-        value = password,
-        onValueChange = { password = it },
-        label = { Text("Password") },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        modifier = Modifier.fillMaxWidth(),
-    )
     if (error != null) Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
-    Button(
-        onClick = { onSignIn(email, password) },
-        enabled = !isBusy && email.isNotBlank() && password.isNotBlank(),
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text(if (isBusy) "Signing in..." else "Sign in") }
+    ProviderButton(SignInProvider.APPLE, busyProvider, onProvider)
+    ProviderButton(SignInProvider.DISCORD, busyProvider, onProvider)
 
-    // The quiet tertiary path (mirrors #230): a code to your inbox, no password to remember.
-    TextButton(
-        onClick = onContinueWithEmail,
-        enabled = !isBusy,
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text("Continue with email") }
+    // The quiet tertiary affordance (the iOS sheet's stand-in): Hisbaan and the email one-time
+    // code stay one tap behind the two primary buttons, revealed in place.
+    if (!anotherWay) {
+        TextButton(
+            onClick = { anotherWay = true },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Continue another way") }
+    } else {
+        OutlinedButton(
+            onClick = { onProvider(SignInProvider.HISBAAN) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                if (busyProvider == SignInProvider.HISBAAN) "Signing in..."
+                else signInProviderLabel(SignInProvider.HISBAAN),
+            )
+        }
+        // A code to your inbox, no password to remember (mirrors #230).
+        OutlinedButton(
+            onClick = onContinueWithEmail,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Continue with email") }
+    }
 
     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -186,6 +214,22 @@ private fun PasswordAndDevToken(
         enabled = devToken.isNotBlank(),
         modifier = Modifier.fillMaxWidth(),
     ) { Text("Use dev token") }
+}
+
+/** One primary provider button. The busy label shows on the tapped provider alone; every provider
+ *  disables while a browser trip is out (the host clears the busy state when the person returns
+ *  without completing, so the buttons come back). */
+@Composable
+private fun ProviderButton(
+    provider: SignInProvider,
+    busyProvider: SignInProvider?,
+    onProvider: (SignInProvider) -> Unit,
+) {
+    Button(
+        onClick = { onProvider(provider) },
+        enabled = busyProvider == null,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(if (busyProvider == provider) "Signing in..." else signInProviderLabel(provider)) }
 }
 
 /** Step one: the address. The send goes out on the button; the host advances to code entry when it

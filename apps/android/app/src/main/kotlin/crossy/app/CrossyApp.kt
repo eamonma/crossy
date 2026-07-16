@@ -31,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import crossy.api.AuthProvider
 import crossy.api.CrossyApiError
 import crossy.protocol.ClientPuzzle
 import crossy.protocol.CreateGameRequest
@@ -55,6 +57,7 @@ import crossy.ui.RoomScreen
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
 import crossy.ui.ShareInvite
+import crossy.ui.SignInProvider
 import crossy.ui.SignInScreen
 import crossy.ui.displayNameErrorCopy
 import crossy.ui.ReactionPolicy
@@ -83,7 +86,7 @@ private sealed interface Screen {
 }
 
 @Composable
-fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
+fun CrossyApp(session: AppSession, factory: RoomTransportFactory, redirects: OAuthRedirects) {
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
     var screen by remember { mutableStateOf<Screen>(Screen.SignIn) }
     val scope = rememberCoroutineScope()
@@ -95,7 +98,7 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
 
     CrossyTheme(ground) {
         when (val s = screen) {
-            Screen.SignIn -> SignInHost(session, onSignedIn = { screen = Screen.Arrival })
+            Screen.SignIn -> SignInHost(session, redirects, onSignedIn = { screen = Screen.Arrival })
 
             // The needsName gate between sign-in and Rooms: the server decides, the client routes. The
             // /me read also seeds the personal reaction set (null = the defaults) so the fan wears it.
@@ -170,29 +173,62 @@ fun CrossyApp(session: AppSession, factory: RoomTransportFactory) {
     }
 }
 
+/** The provider buttons' :ui vocabulary mapped to :api's wire enum, one-to-one (:ui cannot import
+ *  :api, so the screen speaks SignInProvider and the host translates). */
+private fun SignInProvider.asAuthProvider(): AuthProvider = when (this) {
+    SignInProvider.APPLE -> AuthProvider.APPLE
+    SignInProvider.DISCORD -> AuthProvider.DISCORD
+    SignInProvider.HISBAAN -> AuthProvider.HISBAAN
+}
+
 @Composable
-private fun SignInHost(session: AppSession, onSignedIn: () -> Unit) {
-    var busy by remember { mutableStateOf(false) }
+private fun SignInHost(session: AppSession, redirects: OAuthRedirects, onSignedIn: () -> Unit) {
+    // Which provider's browser trip is out (the tapped button's busy state), and the shared inline
+    // error. The OTP sub-flow's step and its own busy live here too (the host owns the network);
+    // the screen is a pure function of them.
+    var busyProvider by remember { mutableStateOf<SignInProvider?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    // The OTP sub-flow's step and its own busy live here (the host owns the network); the screen is
-    // a pure function of them. Success is observed through the phase the verify drives, exactly as
-    // the password leg is: nothing here reads a verify return to decide sign-in.
     var otpStep by remember { mutableStateOf<EmailOtpStep>(EmailOtpStep.Closed) }
     var otpBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    // The deep-link return, consumed exactly once per intent: complete the exchange, then proceed
+    // exactly as the email verify does. A provider refusal (typed InvalidCallback), network
+    // weather, and a stray callback with no pending begin (false: the process died under the tab,
+    // taking the in-memory verifier) all land the same calm retry sentence, never a crash.
+    val redirect = redirects.latest
+    LaunchedEffect(redirect) {
+        if (redirect == null) return@LaunchedEffect
+        redirects.consume(redirect)
+        error = null
+        val ok = runCatching { session.completeOAuth(redirect.uri) }.getOrDefault(false)
+        busyProvider = null
+        if (ok) onSignedIn() else error = "Sign-in didn't finish. Try again."
+    }
+
+    // Coming back to the foreground with no redirect in hand means the person left the browser
+    // without completing: clear the tapped button's busy state. Begin was effect-free, so the
+    // abandoned attempt needs no undo and a re-tap simply supersedes it. When a redirect DID
+    // arrive, onNewIntent delivered it before this resume fired, so the busy state rides through
+    // the exchange instead of flickering off.
+    LifecycleResumeEffect(Unit) {
+        if (redirects.latest == null) busyProvider = null
+        onPauseOrDispose { }
+    }
+
     SignInScreen(
-        isBusy = busy,
+        busyProvider = busyProvider,
         error = error,
-        onSignIn = { email, password ->
-            scope.launch {
-                busy = true
-                error = null
-                val ok = runCatching { session.signInWithPassword(email, password) }.getOrElse {
-                    error = it.message ?: "Sign-in failed"
-                    false
-                }
-                busy = false
-                if (ok) onSignedIn() else if (error == null) error = "Sign-in failed. Check your email and password."
+        onProvider = { provider ->
+            // Begin is effect-free (fresh verifier, no phase change), so a re-tap after an
+            // abandoned trip is safe and just supersedes the stale attempt.
+            error = null
+            busyProvider = provider
+            val url = session.beginOAuth(provider.asAuthProvider())
+            if (!AuthBrowser.open(context, url)) {
+                busyProvider = null
+                error = "Couldn't open a browser to sign in. Try again."
             }
         },
         onDevToken = { token ->

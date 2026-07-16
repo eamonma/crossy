@@ -1,12 +1,14 @@
 // The composition root's session and API wiring (ARCHITECTURE.md: ":app wires everything"). It
 // builds the Supabase auth leg and the REST client from BuildConfig, and it holds the one bearer
-// provider both auth paths feed: the email/password AuthSession (AAD-3) and the injected dev-token
-// (the twin of iOS FixedTokenProvider). Token storage is in-memory tonight; the Keystore-backed
-// TokenStore is a later track (AAD-3 / AD-4), wired here and nowhere else when it lands.
+// provider both auth paths feed: the AuthSession (OAuth over the browser leg and email OTP; there
+// are no passwords in production) and the injected dev-token (the twin of iOS FixedTokenProvider).
+// Token storage is in-memory tonight; the Keystore-backed TokenStore is a later track
+// (AAD-3 / AD-4), wired here and nowhere else when it lands.
 
 package crossy.app
 
 import crossy.api.AuthPhase
+import crossy.api.AuthProvider
 import crossy.api.AuthSession
 import crossy.api.BearerTokenProvider
 import crossy.api.CrossyApiClient
@@ -89,10 +91,19 @@ class AppSession(
 
     val isSignedIn: Boolean get() = bearer.delegate != null
 
-    /** Email/password sign-in (AAD-3). Returns true when the grant landed and the bearer now speaks
-     *  for the session. */
-    suspend fun signInWithPassword(email: String, password: String): Boolean {
-        auth.signInWithPassword(email, password)
+    /** OAuth step one (Discord / Apple / Hisbaan, the split browser flow): mint the attempt and
+     *  hand back the authorize URL for the activity to open in a Custom Tab. Effect-free (fresh
+     *  PKCE verifier, no phase change, no network), so an abandoned browser trip leaves nothing to
+     *  undo and a re-tap simply supersedes the stale attempt. */
+    fun beginOAuth(provider: AuthProvider): HttpUrl = auth.beginOAuth(provider)
+
+    /** OAuth step two: digest the crossy://auth/callback redirect. The exact twin of
+     *  [verifyEmailOtp] once the exchange lands: the bearer speaks for the session and the self id
+     *  is seeded. AuthSession rethrows a provider refusal (typed InvalidCallback) and network
+     *  weather, and returns false for a stray callback with no pending begin; either way the host
+     *  shows the calm inline reason, never a crash. */
+    suspend fun completeOAuth(callbackUri: String): Boolean {
+        if (!auth.completeOAuth(callbackUri)) return false
         if (auth.phase != AuthPhase.SIGNED_IN) return false
         bearer.delegate = auth
         selfUserId = auth.userId
@@ -113,7 +124,7 @@ class AppSession(
         auth.sendEmailOTP(email, captchaToken)
     }
 
-    /** Email OTP step two (AAD-3): verify the entered code. Same shape as [signInWithPassword] once
+    /** Email OTP step two (AAD-3): verify the entered code. Same shape as [completeOAuth] once
      *  the grant lands: the bearer speaks for the session and the self id is seeded. AuthSession
      *  rethrows a bad code, so a false return means the machine did not reach SIGNED_IN. */
     suspend fun verifyEmailOtp(email: String, code: String): Boolean {
