@@ -8,7 +8,11 @@ exist. Vectors are written before implementations (CLAUDE.md, PROTOCOL.md sectio
 Wave 10.3 engine PR adopts `titles.json` with the same reader. `sittings.json` is the
 second data-only member: it pins the sittings partition and the active-time remap
 (DESIGN.md D29, `design/post-game/SITTINGS.md`; ROADMAP Phase 11) ahead of the Wave 11.2
-engine PR, which adopts it the same way.
+engine PR, which adopts it the same way. The titles revisit (the D29 fast-follow,
+ROADMAP Phase 12) repeats the posture inside `titles.json`: two more clusters,
+`titleStatsRevisit` and `awardTitlesRevisit`, land data-only in Wave 12.1 ahead of the
+Wave 12.2 engine PR; the shipped Wave 10.3 reader binds only the two original clusters
+and ignores the new keys, so the file stays green under both readers.
 
 Precedence when sources disagree: these vectors, then PROTOCOL.md, then any implementation.
 Companion design: `design/post-game/ANALYSIS.md`; for titles, `design/post-game/TITLES.md`.
@@ -210,6 +214,34 @@ function.
   `awardTitles` case (the reference walk) share one sheet byte for byte, so an
   implementer can debug the whole pipeline end to end against a single narrative.
 
+### The revisit clusters (D29 fast-follow, `titleStatsRevisit` / `awardTitlesRevisit`)
+
+Two more clusters in the same keyed file pin the titles revisit (TITLES.md, the
+two-bases rule and the `marathoner` rung; ROADMAP Phase 12). They exercise the same two
+reducers post-revisit and land data-only ahead of Wave 12.2, which adopts them beside
+the legacy clusters; the legacy clusters are untouched and stay byte-identical, since
+every legacy fixture is single-sitting (the D29 identity).
+
+- **The re-base**: `brokeStall` and `then.room.stallSeconds` follow
+  `moments(solveTrace(collapseIdle(events), solution))`, byte-identical to the bundle's
+  shipped projection, so the stall is within-sitting active time; the multi-sitting
+  cases pin both the number and the break's owner against an accidental raw basis.
+- **Raw stays raw**: `span` and `burst` keep wall-clock inputs (TITLES.md two-bases
+  rule); the seam cases pin that a burst window never straddles a collapsed seam and
+  that spans are wall spans.
+- **The new columns**: sheet rows gain `sittingsPresent` (sittings holding at least one
+  of the solver's events, any activity, over the SITTINGS.md partition;
+  `SITTING_GAP_MS` cited by name) and `then.room` gains `sittingCount`. `marathoner`
+  sits at ladder rank 8 (16 rungs; TITLES.md table). An award `given` without
+  `sittingCount`/`sittingsPresent` (every legacy case) reads as `sittingCount` 1 and
+  `sittingsPresent` 0, so the marathoner gate refuses and legacy cases run unmodified.
+- **The composed case**: the last `awardTitlesRevisit` case, named
+  `COMPOSED (D29 fast-follow)`, carries `given.events`/`solution`/`slots`/`rows`/`cols`
+  beside `given.solvers`/`room`, with the pinned equality that the sheet is exactly
+  `titleStats` of those events (the trace-projection files' composed-case idiom); the
+  Wave 12.2 reader asserts the equality and then awards the sheet, closing the
+  events-to-awards pipeline.
+
 ## Why a separate family, not under `v1/`
 
 `vectors/v1/` is a closed registry whose runner throws on an unrecognized family. These pin
@@ -242,12 +274,12 @@ vectors/
     momentum.json      bucketing and peak-normalization of the tempo samples (N = 40)
     moments.json       first / last by at (seq tie-break), and the largest-gap turning point
     sequence.json      the ordered who-fell-when: each cell with atSeconds, sorted by (at, seq)
-    titles.json        the solver-titles stat sheet and award ladder (two clusters, one per reducer)
+    titles.json        the solver-titles stat sheet and award ladder (four clusters: the Wave 10 pair plus the D29-fast-follow revisit pair)
     sittings.json      the sitting partition and active-time remap, plus the wire projection (two clusters)
 ```
 
 One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (matches `v1/`,
-`first-correct/`). `titles.json` and `sittings.json` hold two clusters keyed by reducer (above).
+`first-correct/`). `titles.json` and `sittings.json` hold clusters keyed by reducer (above).
 
 ## Case shape
 

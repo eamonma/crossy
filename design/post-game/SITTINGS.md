@@ -117,6 +117,15 @@ fast-follow (Deferred, below). The one cross-effect that already exists stays as
 TITLES.md pinned it: `openingFills`/`closingFills` are ordinal, so sittings change
 nothing there.
 
+**Follow-up, landed (2026-07-16, ROADMAP Phase 12).** The named fast-follow shipped its
+contract: `brokeStall` and `room.stallSeconds` re-base onto
+`moments(solveTrace(collapseIdle(events), solution))`, so the stall is within-sitting
+active time, and `marathoner` (present in every sitting) joins the ladder at rank 8.
+`span` and `burst` deliberately stay wall-clock: collapsing before the burst scan would
+let a 30-second window straddle a collapsed seam, and the wall span is honest flavor.
+TITLES.md and the `titles.json` revisit clusters are the law; nothing in this document
+changed.
+
 **Rounding keeps both house idioms.** Bundle numbers keep the reducers' exact-division
 idiom: `(ms) / 1000`, unrounded (the engine subtracts and divides, it does not round;
 `sequence.json` pins 27.5). The identity properties force this: a single sitting's span
@@ -225,10 +234,9 @@ momentum ribbon from `spans`; flavor copy from `wallSeconds`. No new fetch.
 
 ## Deferred, explicitly
 
-- **The titles revisit** (named fast-follow, owner ruling): re-base the ice breaker's
-  stall onto within-sitting active time so it stops crowning the morning's first
-  arrival, and add `marathoner` (present in every sitting), which needs this partition
-  to exist. Both are TITLES.md ladder edits plus vectors, nothing here.
+- **The titles revisit**: landed (2026-07-16, ROADMAP Phase 12; the follow-up note
+  above). The ice breaker's stall is within-sitting active time and `marathoner` joined
+  the ladder; both were TITLES.md ladder edits plus vectors, nothing here.
 - **Per-sitting storytelling** (flavor like "the Tuesday sitting", per-sitting stats,
   a sittings list UI): the wire carries spans and a count; anything narrative waits for
   a product pull.
