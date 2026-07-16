@@ -61,11 +61,12 @@ describe("titleCards (the wire's awards become the section's cards)", () => {
   });
 
   it("skips an unknown title key without crashing (PROTOCOL §12: a client MUST ignore an unknown key)", () => {
-    // A newer server's ladder grew (say, the deferred marathoner): the older client drops the
-    // award and keeps the rest, never a crash and never a placeholder card.
+    // A newer server's ladder grew (a hypothetical future rung; the marathoner landed
+    // with the D29 fast-follow, so it no longer works as the example): the older client
+    // drops the award and keeps the rest, never a crash and never a placeholder card.
     const cards = titleCards(
       [
-        award("u-mara", "marathoner", 5),
+        award("u-owl", "night-owl", 5),
         award("me", "workhorse", 12),
         award("u-jia", "not-a-title", null),
       ],
@@ -119,6 +120,13 @@ describe("evidence formatting per rung semantics (TITLES.md ladder table)", () =
       "Finished 2 words others started",
     );
     expect(TITLE_COPY.collector.detail(17)).toBe("Had a hand in 17 words");
+  });
+
+  it("the marathoner's evidence is the room's sittingCount (TITLES.md D29 fast-follow): 'both' at 2, 'all n' above", () => {
+    expect(TITLE_COPY.marathoner.detail(2)).toBe("Showed up for both sittings");
+    expect(TITLE_COPY.marathoner.detail(3)).toBe(
+      "Showed up for all 3 sittings",
+    );
   });
 
   it("the whole-seconds rungs render M:SS through formatMSS (ice-breaker's stall, long-hauler's span)", () => {

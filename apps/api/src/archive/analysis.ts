@@ -187,8 +187,10 @@ export async function gameAnalysis(
   // ladder, and the solo rule (fewer than two writers -> []) lives inside awardTitles, never
   // here. This module only lifted the inputs; it reimplements no counting. The awards carry
   // userIds, title keys, and evidence numbers only (INV-6 by the TitleAward type).
-  // DELIBERATELY the RAW events, not the collapsed ones: titles keep their wall-clock basis
-  // this wave (D29 defers the ice-breaker re-base and marathoner to a named fast-follow).
+  // DELIBERATELY the RAW events, not the collapsed ones: the sheet's two time bases live
+  // inside titleStats itself (TITLES.md, the D29 fast-follow), which collapses for the
+  // turning point and reads the sittings partition internally while span and burst keep
+  // wall clock — collapsing here would silently re-base them all.
   const titles = awardTitles(
     titleStats(events, solution, slots, {
       rows: puzzle.rows,

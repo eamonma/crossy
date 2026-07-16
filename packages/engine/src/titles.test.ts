@@ -1,19 +1,26 @@
 /**
  * Runs the solver-titles reducers against vectors/analysis/titles.json, the golden
  * written before this implementation (CLAUDE.md house rule; design/post-game/TITLES.md;
- * vectors/analysis/README.md). The file is the family's one keyed fixture: two case
- * clusters, `titleStats` and `awardTitles`, each in the house shape, each bound here to
- * its reducer. Every case runs; skipping silently is forbidden, so each cluster's count
- * is asserted too.
+ * vectors/analysis/README.md). The file is the family's one keyed fixture: four case
+ * clusters, the Wave 10 pair (`titleStats`, `awardTitles`) plus the D29-fast-follow
+ * revisit pair (`titleStatsRevisit`, `awardTitlesRevisit`), each in the house shape,
+ * each bound here to its reducer. Every case runs; skipping silently is forbidden, so
+ * each cluster's count is asserted too.
  *
- * Assertion rule (vectors/README.md): a `then.solvers` row constrains exactly the fields
- * it lists; an absent field is unasserted; an asserted absence is an explicit null. The
- * award cluster's `then.titles` is the full ordered array, matched exactly.
+ * Assertion rule (vectors/README.md): a `then.solvers` row (and the room header) constrains
+ * exactly the fields it lists; an absent field is unasserted; an asserted absence is an
+ * explicit null. That rule is the revisit's adoption path: a legacy `then.room` lists only
+ * stallSeconds, so the new sittingCount stays unasserted there, and a legacy award `given`
+ * without sittingCount/sittingsPresent reads as sittingCount 1 / sittingsPresent 0 inside
+ * awardTitles itself (the TITLES.md adoption rule), so all 12 legacy award cases run
+ * unmodified against the 16-rung ladder. The award clusters' `then.titles` is the full
+ * ordered array, matched exactly.
  *
  * Below the fixture sweep: targeted tests naming the TITLES.md rule or invariant they
  * defend (purity and defensive ordering under INV-9, the universal tie-break chain, the
- * floor-tier coverage theorem, the ladder constant's pinned shape, INV-6, and the
- * brokeStall byte-identity to the shipped moments()).
+ * floor-tier coverage theorem, the ladder constant's pinned shape, INV-6, the brokeStall
+ * byte-identity to the shipped moments(), and the one-partition rule shared with
+ * sittings()).
  *
  * Test files are exempt from INV-9 (.dependency-cruiser.cjs), so node:fs / node:path are
  * allowed here; the reducers themselves import only ./analysis, ./comparator, ./types.
@@ -31,6 +38,8 @@ import {
   moments,
   OPENING_SHARE,
   SABOTEUR_MIN,
+  SITTING_GAP_MS,
+  sittings,
   SPRINTER_MIN_BURST,
   STALL_FLOOR_SECONDS,
   TITLE_LADDER,
@@ -59,7 +68,9 @@ interface TitleStatsCase {
   };
   readonly then: {
     readonly solvers: Record<string, Record<string, unknown>>;
-    readonly room?: { readonly stallSeconds: number };
+    // Legacy cases list stallSeconds alone; the revisit cluster adds sittingCount. Both
+    // assert under the field-listing rule, so the shape is an open numeric record.
+    readonly room?: Record<string, number>;
   };
 }
 
@@ -67,17 +78,29 @@ interface AwardTitlesCase {
   readonly name: string;
   readonly given: {
     readonly solvers: Record<string, TitleRow>;
-    readonly room: { readonly stallSeconds: number };
+    readonly room: {
+      readonly stallSeconds: number;
+      readonly sittingCount?: number;
+    };
+    // The revisit's COMPOSED case (vectors/analysis/README.md) carries the raw inputs
+    // beside the sheet, pinned equal to titleStats of them; absent everywhere else.
+    readonly rows?: number;
+    readonly cols?: number;
+    readonly solution?: [number, string][];
+    readonly slots?: TitleSlot[];
+    readonly events?: SolveEvent[];
   };
   readonly then: { readonly titles: TitleAward[] };
 }
 
-// One keyed fixture, two clusters (the family's documented departure from bare arrays).
+// One keyed fixture, four clusters (the family's documented departure from bare arrays).
 const titlesFixture = JSON.parse(
   readFileSync(join(vectorsRoot, "titles.json"), "utf8"),
 ) as {
   readonly titleStats: TitleStatsCase[];
   readonly awardTitles: AwardTitlesCase[];
+  readonly titleStatsRevisit: TitleStatsCase[];
+  readonly awardTitlesRevisit: AwardTitlesCase[];
 };
 
 /** Run one titleStats vector's given through the reducer. */
@@ -97,6 +120,52 @@ function pick(
   return projection;
 }
 
+/**
+ * One titleStats-shaped case, either cluster: rows and the room header both assert
+ * exactly the fields they list (the assertion rule), which is how the legacy cluster
+ * runs unmodified while the actual room now also carries sittingCount.
+ */
+function assertStatsCase(c: TitleStatsCase): void {
+  const result = runStats(c.given);
+  // The pool is event membership: exactly the asserted solvers own rows.
+  expect(Object.keys(result.solvers).sort()).toEqual(
+    Object.keys(c.then.solvers).sort(),
+  );
+  for (const [userId, expectedRow] of Object.entries(c.then.solvers)) {
+    const actualRow = result.solvers[userId];
+    if (actualRow === undefined) throw new Error(`missing row: ${userId}`);
+    expect(
+      pick(actualRow as unknown as Record<string, unknown>, expectedRow),
+    ).toEqual(expectedRow);
+  }
+  if (c.then.room !== undefined) {
+    expect(
+      pick(result.room as unknown as Record<string, unknown>, c.then.room),
+    ).toEqual(c.then.room);
+  }
+}
+
+/**
+ * One awardTitles-shaped case, either cluster. The revisit's COMPOSED case additionally
+ * pins that the given sheet is exactly titleStats of the given raw inputs (the
+ * trace-projection files' composed-case idiom, vectors/analysis/README.md), closing the
+ * events-to-awards pipeline.
+ */
+function assertAwardCase(c: AwardTitlesCase): void {
+  if (c.given.events !== undefined) {
+    expect(
+      titleStats(
+        c.given.events,
+        new Map(c.given.solution ?? []),
+        c.given.slots ?? [],
+        { rows: c.given.rows ?? 0, cols: c.given.cols ?? 0 },
+      ),
+    ).toEqual({ solvers: c.given.solvers, room: c.given.room });
+  }
+  // The full award array, exact: ladder order, one title per solver, evidence pinned.
+  expect(awardTitles(c.given)).toEqual(c.then.titles);
+}
+
 describe("titleStats vectors (vectors/analysis/titles.json, titleStats cluster)", () => {
   it("adopts all 15 cases; a miscount means a case was silently skipped", () => {
     expect(titlesFixture.titleStats).toHaveLength(15);
@@ -104,21 +173,7 @@ describe("titleStats vectors (vectors/analysis/titles.json, titleStats cluster)"
 
   for (const c of titlesFixture.titleStats) {
     it(c.name, () => {
-      const result = runStats(c.given);
-      // The pool is event membership: exactly the asserted solvers own rows.
-      expect(Object.keys(result.solvers).sort()).toEqual(
-        Object.keys(c.then.solvers).sort(),
-      );
-      for (const [userId, expectedRow] of Object.entries(c.then.solvers)) {
-        const actualRow = result.solvers[userId];
-        if (actualRow === undefined) throw new Error(`missing row: ${userId}`);
-        expect(
-          pick(actualRow as unknown as Record<string, unknown>, expectedRow),
-        ).toEqual(expectedRow);
-      }
-      if (c.then.room !== undefined) {
-        expect(result.room).toEqual(c.then.room);
-      }
+      assertStatsCase(c);
     });
   }
 });
@@ -130,8 +185,31 @@ describe("awardTitles vectors (vectors/analysis/titles.json, awardTitles cluster
 
   for (const c of titlesFixture.awardTitles) {
     it(c.name, () => {
-      // The full award array, exact: ladder order, one title per solver, evidence pinned.
-      expect(awardTitles(c.given)).toEqual(c.then.titles);
+      assertAwardCase(c);
+    });
+  }
+});
+
+describe("titleStatsRevisit vectors (vectors/analysis/titles.json, the D29 fast-follow re-base; TITLES.md two-bases rule)", () => {
+  it("adopts all 5 cases; a miscount means a case was silently skipped", () => {
+    expect(titlesFixture.titleStatsRevisit).toHaveLength(5);
+  });
+
+  for (const c of titlesFixture.titleStatsRevisit) {
+    it(c.name, () => {
+      assertStatsCase(c);
+    });
+  }
+});
+
+describe("awardTitlesRevisit vectors (vectors/analysis/titles.json, the marathoner rung and the re-based ice breaker; TITLES.md ladder)", () => {
+  it("adopts all 8 cases; a miscount means a case was silently skipped", () => {
+    expect(titlesFixture.awardTitlesRevisit).toHaveLength(8);
+  });
+
+  for (const c of titlesFixture.awardTitlesRevisit) {
+    it(c.name, () => {
+      assertAwardCase(c);
     });
   }
 });
@@ -159,15 +237,16 @@ function row(partial: Partial<TitleRow> = {}): TitleRow {
     homeQuadrantFills: 0,
     span: 0,
     brokeStall: 0,
+    sittingsPresent: 0,
     ...partial,
   };
 }
 
 const quietRoom = { stallSeconds: 0 };
 
-describe("the ladder constant (TITLES.md v1 ladder, pinned)", () => {
-  it("TITLES.md ladder: 15 rungs in the pinned rank order, keys unique lowercase ASCII kebab-case", () => {
-    expect(TITLE_LADDER).toHaveLength(15);
+describe("the ladder constant (TITLES.md ladder, pinned; 16 rungs since the D29 fast-follow)", () => {
+  it("TITLES.md ladder: 16 rungs in the pinned rank order (marathoner at rank 8), keys unique lowercase ASCII kebab-case", () => {
+    expect(TITLE_LADDER).toHaveLength(16);
     const keys = TITLE_LADDER.map((rung) => rung.key);
     expect(keys).toEqual([
       "saboteur",
@@ -177,6 +256,7 @@ describe("the ladder constant (TITLES.md v1 ladder, pinned)", () => {
       "headliner",
       "sprinter",
       "meddler",
+      "marathoner",
       "quick-starter",
       "closer",
       "specialist",
@@ -186,31 +266,37 @@ describe("the ladder constant (TITLES.md v1 ladder, pinned)", () => {
       "collector",
       "workhorse",
     ]);
-    expect(new Set(keys).size).toBe(15);
+    expect(new Set(keys).size).toBe(16);
     for (const key of keys) {
       expect(key).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
     }
   });
 
-  it("TITLES.md tiers: rungs 1-9 are specialty, 10-15 the floor; every floor gate is fills >= 1 and nothing else", () => {
-    expect(TITLE_LADDER.slice(0, 9).map((rung) => rung.tier)).toEqual(
-      new Array(9).fill("specialty"),
+  it("TITLES.md tiers: rungs 1-10 are specialty, 11-16 the floor; every floor gate is fills >= 1 and nothing else", () => {
+    expect(TITLE_LADDER.slice(0, 10).map((rung) => rung.tier)).toEqual(
+      new Array(10).fill("specialty"),
     );
-    const floor = TITLE_LADDER.slice(9);
+    const floor = TITLE_LADDER.slice(10);
     expect(floor.map((rung) => rung.tier)).toEqual(new Array(6).fill("floor"));
     // A single fill and nothing else passes every floor gate, whatever the room header;
     // a zero-fill row passes none. That arithmetic is the whole coverage theorem.
     const oneFill = row({ fills: 1 });
     const zeroFill = row();
     for (const rung of floor) {
-      expect(rung.gate(oneFill, { stallSeconds: 0, maxFills: 1 })).toBe(true);
-      expect(rung.gate(zeroFill, { stallSeconds: 9999, maxFills: 99 })).toBe(
-        false,
-      );
+      expect(
+        rung.gate(oneFill, { stallSeconds: 0, sittingCount: 1, maxFills: 1 }),
+      ).toBe(true);
+      expect(
+        rung.gate(zeroFill, {
+          stallSeconds: 9999,
+          sittingCount: 99,
+          maxFills: 99,
+        }),
+      ).toBe(false);
     }
   });
 
-  it("TITLES.md pinned constants: the named values the vectors cite, never re-derived", () => {
+  it("TITLES.md pinned constants: the named values the vectors cite, never re-derived (the revisit adds none; SITTING_GAP_MS stays owned by SITTINGS.md and ./analysis)", () => {
     expect(OPENING_SHARE).toBe(0.2);
     expect(BURST_WINDOW_MS).toBe(30_000);
     expect(STALL_FLOOR_SECONDS).toBe(120);
@@ -219,6 +305,7 @@ describe("the ladder constant (TITLES.md v1 ladder, pinned)", () => {
     expect(SPRINTER_MIN_BURST).toBe(4);
     expect(MEDDLER_MIN).toBe(2);
     expect(MARQUEE_MIN_LENGTH).toBe(7);
+    expect(SITTING_GAP_MS).toBe(1_800_000);
   });
 });
 
@@ -417,7 +504,7 @@ describe("the coverage theorem (TITLES.md floor tier)", () => {
     });
   }
 
-  const floorKeys = TITLE_LADDER.slice(9).map((rung) => rung.key);
+  const floorKeys = TITLE_LADDER.slice(10).map((rung) => rung.key);
 
   it("TITLES.md coverage: hand-built rooms of 2..6 fillers with every specialty gate failing title every filler off the floor (no RNG anywhere)", () => {
     for (let size = 2; size <= 6; size++) {
@@ -467,12 +554,15 @@ describe("the coverage theorem (TITLES.md floor tier)", () => {
 });
 
 describe("titleStats corners beyond the vectors", () => {
-  it("pinned corner: no events at all is an empty sheet with a zero stall (null turningPoint convention)", () => {
+  it("pinned corner: no events at all is an empty sheet with a zero stall and a zero sittingCount (null turningPoint; the empty partition, as sittings())", () => {
     const result = titleStats([], new Map([[0, "A"]]), [], {
       rows: 1,
       cols: 1,
     });
-    expect(result).toEqual({ solvers: {}, room: { stallSeconds: 0 } });
+    expect(result).toEqual({
+      solvers: {},
+      room: { stallSeconds: 0, sittingCount: 0 },
+    });
   });
 
   it("INV-6: the stat sheet carries userIds and numbers only, never a solution value (rebus ground)", () => {
@@ -541,6 +631,37 @@ describe("titleStats corners beyond the vectors", () => {
     expect(result.room.stallSeconds).toBe(100);
     expect(result.solvers["u2"]?.brokeStall).toBe(1);
     expect(result.solvers["u3"]?.brokeStall).toBe(0);
+  });
+
+  it("TITLES.md/SITTINGS.md one partition: titleStats' sittingCount and sittingsPresent read the same boundary walk sittings() ships (>= splits at exactly SITTING_GAP_MS; any activity is presence)", () => {
+    const solution: Solution = new Map([
+      [0, "A"],
+      [1, "A"],
+      [2, "A"],
+    ]);
+    // Two boundaries, the first at EXACTLY the threshold (>= splits): three sittings.
+    // u2's only activity is the sitting-2 clear, presence without a fill.
+    const events: SolveEvent[] = [
+      { seq: 1, cell: 0, userId: "u1", value: "A", at: 0 },
+      { seq: 2, cell: 2, userId: "u2", value: null, at: SITTING_GAP_MS },
+      { seq: 3, cell: 1, userId: "u1", value: "A", at: SITTING_GAP_MS + 1000 },
+      {
+        seq: 4,
+        cell: 2,
+        userId: "u1",
+        value: "A",
+        at: 2 * SITTING_GAP_MS + 1000,
+      },
+    ];
+    const slots: TitleSlot[] = [{ cells: [0, 1, 2], starred: false }];
+    const result = titleStats(events, solution, slots, { rows: 1, cols: 3 });
+    // The room's count is the partition's size, identical to the shipped sittings()
+    // reading of the same log: one boundary rule, never a second definition.
+    expect(sittings(events, solution).count).toBe(3);
+    expect(result.room.sittingCount).toBe(3);
+    // Attendance over that partition: u1 sat all three; u2's clear alone is presence.
+    expect(result.solvers["u1"]?.sittingsPresent).toBe(3);
+    expect(result.solvers["u2"]?.sittingsPresent).toBe(1);
   });
 
   it("TITLES.md marquee signal 1: a starred slot of ANY length is the marquee set; the length tier never engages beside stars", () => {

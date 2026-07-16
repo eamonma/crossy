@@ -275,6 +275,40 @@ export interface SittingsResult {
 }
 
 /**
+ * The one sitting-boundary rule (design/post-game/SITTINGS.md): a gap of at least
+ * SITTING_GAP_MS between consecutive events (seq order) ends a sitting; exactly the
+ * threshold splits (`>=`), a negative gap (clock skew) never does. Every partition
+ * consumer (collapseIdle's collapse, sittings()'s seams, sittingIndices' assignment)
+ * reads gaps through this predicate, so the partition can never fork into two
+ * definitions.
+ */
+function endsSitting(prevAt: number, at: number): boolean {
+  return at - prevAt >= SITTING_GAP_MS;
+}
+
+/**
+ * The sittings partition as an assignment (SITTINGS.md; TITLES.md `sittingsPresent`):
+ * each event's zero-based sitting index, parallel to the seq-ordered event log (sorted
+ * defensively, as every walk here is). Any activity is presence, writes, wrong writes,
+ * and clears alike, so the partition covers the whole log and every event belongs to
+ * exactly one sitting. The last index plus one is the partition's sitting count, the
+ * same count sittings() ships. titleStats reads attendance and the room's sittingCount
+ * from this, never from a second boundary walk.
+ */
+export function sittingIndices(events: readonly SolveEvent[]): number[] {
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const indices: number[] = [];
+  let index = 0;
+  let prevAt: number | null = null;
+  for (const event of ordered) {
+    if (prevAt !== null && endsSitting(prevAt, event.at)) index++;
+    prevAt = event.at;
+    indices.push(index);
+  }
+  return indices;
+}
+
+/**
  * Remap the event log onto concatenated active time (design/post-game/SITTINGS.md, D29).
  * Events are walked in ascending seq order (sorted defensively, as solveTrace does); every
  * gap of SITTING_GAP_MS or more between consecutive events collapses to exactly zero, so
@@ -293,7 +327,7 @@ export function collapseIdle(events: readonly SolveEvent[]): SolveEvent[] {
   let shift = 0;
   let prevAt: number | null = null;
   for (const event of ordered) {
-    if (prevAt !== null && event.at - prevAt >= SITTING_GAP_MS) {
+    if (prevAt !== null && endsSitting(prevAt, event.at)) {
       shift += event.at - prevAt;
     }
     prevAt = event.at;
@@ -353,7 +387,7 @@ export function sittings(
     if (prev === undefined || curr === undefined || currActive === undefined) {
       continue;
     }
-    if (curr.at - prev.at >= SITTING_GAP_MS) seamActiveAts.push(currActive.at);
+    if (endsSitting(prev.at, curr.at)) seamActiveAts.push(currActive.at);
   }
 
   // Both traces: spans anchor to the remapped (active) trace, wallSeconds to the raw one.

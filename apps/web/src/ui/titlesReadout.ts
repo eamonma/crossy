@@ -47,9 +47,10 @@ function withCount(format: (n: number) => string) {
 const BURST_WINDOW_SECONDS = Math.floor(BURST_WINDOW_MS / 1000);
 
 /**
- * The web's copy for the pinned v1 ladder (TITLES.md sets the register; the words are
- * the client's). Keyed by the engine's TitleKey so a ladder edit that adds a key is a
- * compile error here until the copy exists. Evidence semantics per rung follow the
+ * The web's copy for the pinned ladder (TITLES.md sets the register; the words are the
+ * client's; 16 rungs since the D29 fast-follow added the marathoner). Keyed by the
+ * engine's TitleKey so a ladder edit that adds a key is a compile error here until the
+ * copy exists. Evidence semantics per rung follow the
  * ladder table: counts render as counts, the two whole-seconds rungs (ice-breaker's
  * stall, long-hauler's span) render M:SS through the same formatMSS the header and the
  * ribbon gloss use, and the two no-evidence rungs carry a fixed line.
@@ -84,6 +85,17 @@ export const TITLE_COPY: Record<TitleKey, TitleCopy> = {
   meddler: {
     label: "The meddler",
     detail: withCount((n) => `Finished ${counted(n, "word")} others started`),
+  },
+  marathoner: {
+    label: "The marathoner",
+    // Evidence is the room's sittingCount, gated >= 2 (TITLES.md ladder), so the copy
+    // only ever names a real multi-sitting room; "both" keeps the two-sitting card
+    // reading like English.
+    detail: withCount((n) =>
+      n === 2
+        ? "Showed up for both sittings"
+        : `Showed up for all ${n} sittings`,
+    ),
   },
   "quick-starter": {
     label: "The quick starter",

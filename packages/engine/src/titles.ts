@@ -10,16 +10,30 @@
 // clients or two services must never disagree on who the saboteur was.
 //
 // Correctness is everywhere the shared `matches` comparator (INV-1 ASCII casing, the
-// rebus first-character rule), never string equality; `brokeStall` and the room's
-// stallSeconds are pinned byte-identical to the shipped `moments()` projection, so the
-// ribbon's marker and the ice-breaker card can never name different people.
+// rebus first-character rule), never string equality.
+//
+// Two time bases (TITLES.md two-bases rule, the D29 fast-follow): `brokeStall` and the
+// room's stallSeconds read the turning point over the idle-collapsed trace,
+// `moments(solveTrace(collapseIdle(events), solution))`, byte-identical to the shipped
+// analysis bundle's projection, so the stall is within-sitting active time and the
+// ribbon's marker and the ice-breaker card can never name different people. Everything
+// else keeps the RAW events deliberately: `span` is honest wall-clock flavor, and a
+// collapsed burst window could straddle a seam (two fills hours apart reading as one
+// sprint). `sittingsPresent` and the room's sittingCount read the SITTINGS.md partition
+// itself (SITTING_GAP_MS lives in ./analysis, cited, never duplicated).
 //
 // INV-9: this file imports nothing outside packages/engine (only ./analysis,
 // ./comparator, ./types); events, ids, timestamps, slots, and geometry arrive as data.
 // INV-6: the sheet and the award array carry userIds, keys, and numbers only, never a
 // solution value.
 
-import { BURST_WINDOW_MS, moments, solveTrace } from "./analysis";
+import {
+  BURST_WINDOW_MS,
+  collapseIdle,
+  moments,
+  sittingIndices,
+  solveTrace,
+} from "./analysis";
 import type { SolveEvent, TraceEntry } from "./analysis";
 import { matches } from "./comparator";
 import type { Solution } from "./types";
@@ -101,6 +115,12 @@ export interface TitleRow {
   readonly homeQuadrantFills: number;
   readonly span: number;
   readonly brokeStall: number;
+  /**
+   * Sittings (the SITTINGS.md partition of the full seq-ordered event log) holding at
+   * least one of the solver's events, write or clear, correctness irrelevant. The one
+   * column a zero-fill row can hold above zero: presence is events, not fills.
+   */
+  readonly sittingsPresent: number;
 }
 
 /** The full per-solver stat-sheet row (TITLES.md layer 1). */
@@ -110,10 +130,17 @@ export interface SolverStats extends TitleRow {
   readonly slotsFinished: number;
 }
 
-/** The stat sheet: one row per event-member solver, plus the room header. */
+/**
+ * The stat sheet: one row per event-member solver, plus the room header (the
+ * within-sitting stall from the collapsed turning point, and the partition's sitting
+ * count beside it).
+ */
 export interface TitleStatsResult {
   readonly solvers: Record<string, SolverStats>;
-  readonly room: { readonly stallSeconds: number };
+  readonly room: {
+    readonly stallSeconds: number;
+    readonly sittingCount: number;
+  };
 }
 
 /** One award: the wire shape (PROTOCOL §12). Keys and counts only, never a letter. */
@@ -123,7 +150,7 @@ export interface TitleAward {
   readonly evidence: number | null;
 }
 
-/** The pinned v1 title keys, lowercase ASCII kebab-case (TITLES.md ladder table). */
+/** The pinned title keys, lowercase ASCII kebab-case (TITLES.md ladder table). */
 export type TitleKey =
   | "saboteur"
   | "one-hit-wonder"
@@ -132,6 +159,7 @@ export type TitleKey =
   | "headliner"
   | "sprinter"
   | "meddler"
+  | "marathoner"
   | "quick-starter"
   | "closer"
   | "specialist"
@@ -144,6 +172,7 @@ export type TitleKey =
 /** Room-level context a gate may read: the header plus the room's max fills. */
 export interface RungContext {
   readonly stallSeconds: number;
+  readonly sittingCount: number;
   readonly maxFills: number;
 }
 
@@ -154,7 +183,7 @@ export type StatColumn = keyof Omit<TitleRow, "firstFill">;
  * One ladder rung: gate (the minimum signal below which it never awards), claim (which
  * column's argmax among the untitled gate-passers wins; the cameo alone claims the
  * latest firstFill), and evidence (which number rides the card; the ice-breaker cites
- * the room's stallSeconds; null is "none").
+ * the room's stallSeconds and the marathoner the room's sittingCount; null is "none").
  */
 export interface TitleRung {
   readonly key: TitleKey;
@@ -167,7 +196,7 @@ export interface TitleRung {
         readonly tieByFills: boolean;
       }
     | { readonly kind: "latest-first-fill" };
-  readonly evidence: StatColumn | "stallSeconds" | null;
+  readonly evidence: StatColumn | "stallSeconds" | "sittingCount" | null;
 }
 
 /** The one-hit-wonder's room-signal: someone must have filled at least this much. */
@@ -177,10 +206,11 @@ const ONE_HIT_WONDER_ROOM_MAX_FILLS = 3;
 const floorGate = (row: TitleRow): boolean => row.fills >= 1;
 
 /**
- * The v1 ladder, pinned (TITLES.md). Order is rank; the walk is top to bottom. Rungs 1-9
- * are the specialty tier (a gated rung may award nobody; that is the gate working);
- * rungs 10-15 are the floor (ordinal over solvers with a fill, so coverage is
- * arithmetic, six rungs deep). A fixed engine constant, never a parameter.
+ * The ladder, pinned (TITLES.md; 16 rungs since the D29 fast-follow inserted
+ * `marathoner` at rank 8). Order is rank; the walk is top to bottom. Rungs 1-10 are the
+ * specialty tier (a gated rung may award nobody; that is the gate working); rungs 11-16
+ * are the floor (ordinal over solvers with a fill, so coverage is arithmetic, six rungs
+ * deep). A fixed engine constant, never a parameter.
  */
 export const TITLE_LADDER: readonly TitleRung[] = [
   {
@@ -235,6 +265,20 @@ export const TITLE_LADDER: readonly TitleRung[] = [
     gate: (row) => row.meddles >= MEDDLER_MIN,
     claim: { kind: "max", column: "meddles", tieByFills: false },
     evidence: "meddles",
+  },
+  {
+    // The attendance rung (TITLES.md, the D29 fast-follow): present in every sitting of
+    // a room that sat more than once, silent in a one-sitting room (where it would be
+    // trivially universal). Presence is events, not fills, so a zero-fill regular can
+    // qualify and still loses the max-fills claim to any filler; the universal tie-break
+    // resolves an all-zero-fill field. An absent sittingsPresent (a pre-revisit sheet)
+    // reads as 0, so the gate refuses on legacy inputs (TITLES.md adoption rule).
+    key: "marathoner",
+    tier: "specialty",
+    gate: (row, ctx) =>
+      ctx.sittingCount >= 2 && (row.sittingsPresent ?? 0) === ctx.sittingCount,
+    claim: { kind: "max", column: "fills", tieByFills: false },
+    evidence: "sittingCount",
   },
   {
     key: "quick-starter",
@@ -360,8 +404,9 @@ function marqueeSlots(slots: readonly TitleSlot[]): TitleSlot[] {
  * Layer 1, the stat sheet: one pass over the events, the trace, and the slot geometry
  * produces a per-solver row of counts plus the room header. No judgment, only numbers.
  * The pool is event membership: any writer (write or clear) owns a row; a zero-fill row
- * is all zeros with null firstFill/lastFill (focus 0, never NaN). Events are sorted
- * defensively by seq (the solveTrace posture); `at` and ids arrive as data (INV-9).
+ * is all zeros with null firstFill/lastFill (focus 0, never NaN), except sittingsPresent,
+ * which counts events, not fills (the pinned corner). Events are sorted defensively by
+ * seq (the solveTrace posture); `at` and ids arrive as data (INV-9).
  */
 export function titleStats(
   events: readonly SolveEvent[],
@@ -482,18 +527,23 @@ export function titleStats(
     }
   }
 
-  // The turning point, byte-identical to the shipped moments() (its seq-order gap scan,
-  // its first-wins tie-break): reuse the projection, then recover the break entry from
-  // its own numbers. The break is the first consecutive pair, in the same trace order
+  // The turning point, re-based onto the idle-collapsed trace (TITLES.md two-bases
+  // rule, the D29 fast-follow): moments(solveTrace(collapseIdle(events), solution)),
+  // byte-identical to the shipped analysis bundle's projection (its seq-order gap scan,
+  // its first-wins tie-break), so every cross-sitting gap is zero and the stall is
+  // within-sitting active time; an overnight arrival can never be crowned again. Reuse
+  // the projection, then recover the break entry from its own numbers, on the same
+  // collapsed trace: the break is the first consecutive pair, in the same trace order
   // moments() walks, whose gap reproduces the projection's stallSeconds; comparing the
   // /1000 quotients replays moments()'s own arithmetic exactly.
-  const turningPoint = moments(trace).turningPoint;
+  const collapsedTrace = solveTrace(collapseIdle(ordered), solution);
+  const turningPoint = moments(collapsedTrace).turningPoint;
   const stallSeconds =
     turningPoint === null ? 0 : Math.floor(turningPoint.stallSeconds);
   let breakOwner: string | null = null;
   if (turningPoint !== null) {
     let prev: TraceEntry | null = null;
-    for (const entry of trace) {
+    for (const entry of collapsedTrace) {
       if (
         prev !== null &&
         (entry.at - prev.at) / 1000 === turningPoint.stallSeconds
@@ -504,6 +554,25 @@ export function titleStats(
       prev = entry;
     }
   }
+
+  // Attendance over the sittings partition (TITLES.md sittingsPresent; the SITTINGS.md
+  // any-activity rule): every event belongs to exactly one sitting, and presence is any
+  // event, write or clear, correctness irrelevant. sittingIndices shares the partition's
+  // one boundary rule (SITTING_GAP_MS, >= splits) with sittings() and collapseIdle,
+  // never a second definition; ordered is already seq-sorted, so indices[i] is
+  // ordered[i]'s sitting.
+  const indices = sittingIndices(ordered);
+  const lastIndex = indices[indices.length - 1];
+  const sittingCount = lastIndex === undefined ? 0 : lastIndex + 1;
+  const present = new Map<string, Set<number>>();
+  ordered.forEach((event, i) => {
+    let set = present.get(event.userId);
+    if (set === undefined) {
+      set = new Set<number>();
+      present.set(event.userId, set);
+    }
+    set.add(indices[i] ?? 0);
+  });
 
   // Quadrants split the grid at ceil(rows/2) / ceil(cols/2), 0-indexed (TITLES.md).
   const rowSplit = Math.ceil(geometry.rows / 2);
@@ -581,10 +650,11 @@ export function titleStats(
       span:
         first === null || last === null ? 0 : wholeSeconds(last.at - first.at),
       brokeStall: userId === breakOwner ? 1 : 0,
+      sittingsPresent: present.get(userId)?.size ?? 0,
     };
   }
 
-  return { solvers, room: { stallSeconds } };
+  return { solvers, room: { stallSeconds, sittingCount } };
 }
 
 /** One award candidate: the id and its row, bound for the walk. */
@@ -641,10 +711,17 @@ function rungCompare(rung: TitleRung, a: Candidate, b: Candidate): number {
  * already titled falls to the next eligible solver (the claim runs over the untitled, so
  * the winner's own number rides the card). The solo rule: fewer than two event-member
  * solvers award nothing, whatever the sheet says. Output is ordered by ladder rank.
+ *
+ * Adoption rule (TITLES.md): a pre-revisit sheet carries no sittingCount or
+ * sittingsPresent; an absent sittingCount reads as 1 and an absent sittingsPresent as 0,
+ * so the marathoner gate refuses and every legacy sheet awards byte-identically.
  */
 export function awardTitles(stats: {
   readonly solvers: Readonly<Record<string, TitleRow>>;
-  readonly room: { readonly stallSeconds: number };
+  readonly room: {
+    readonly stallSeconds: number;
+    readonly sittingCount?: number;
+  };
 }): TitleAward[] {
   const pool: Candidate[] = Object.entries(stats.solvers).map(
     ([userId, row]) => ({ userId, row }),
@@ -654,6 +731,7 @@ export function awardTitles(stats: {
 
   const ctx: RungContext = {
     stallSeconds: stats.room.stallSeconds,
+    sittingCount: stats.room.sittingCount ?? 1,
     maxFills: pool.reduce((max, c) => Math.max(max, c.row.fills), 0),
   };
 
@@ -678,7 +756,9 @@ export function awardTitles(stats: {
           ? null
           : rung.evidence === "stallSeconds"
             ? ctx.stallSeconds
-            : winner.row[rung.evidence],
+            : rung.evidence === "sittingCount"
+              ? ctx.sittingCount
+              : winner.row[rung.evidence],
     });
   }
   return awards;
