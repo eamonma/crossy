@@ -248,6 +248,13 @@ fun RoomScreen(
                         relayCursor(it)
                     }
                 },
+                // A grid swipe drives the same navigation the deck and clue chevrons do (iOS
+                // SelectionModel.swipe): along the solving axis is next/prev word, across it toggles.
+                // A move-away, so it discards an open rebus entry.
+                onSwipe = { intent ->
+                    rebusBuffer = null
+                    apply(InputActions.swipe(env(), intent))
+                },
             )
             // The sticker overlay ABOVE the grid, sized to it (same fillMaxWidth + aspectRatio, so
             // one module edge governs both): reactions render at their cell as native emoji. It
