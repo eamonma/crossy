@@ -74,6 +74,13 @@ android {
         compose = true
         buildConfig = true
     }
+
+    // Local JVM unit tests (testProdDebugUnitTest): the composition-root logic that is pure Kotlin
+    // (AppSession restore wiring) runs headlessly on JUnit5, no device. The Keystore store itself is
+    // framework-backed and exercised on-device, not here.
+    testOptions {
+        unitTests.all { it.useJUnitPlatform() }
+    }
 }
 
 // Toolchain, not compileOptions: resolved via foojay so the build never depends on
@@ -96,6 +103,11 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
+    // The Keystore-backed TokenStore (KeystoreTokenStore) serializes the session and pending-OAuth
+    // twins through ProtocolJson before encrypting them; :api/:protocol keep the serialization
+    // runtime internal, so the composition root declares it. No serialization compiler plugin here:
+    // the store reuses the generated serializers from :api/:protocol, it defines no new @Serializable.
+    implementation(libs.kotlinx.serialization.json)
     // The OAuth browser leg (Custom Tabs) and the resume-without-redirect busy clear live in the
     // composition root: browsers, intents, and lifecycles are :app concerns, never :ui's (AAD-2).
     implementation(libs.browser)
@@ -103,4 +115,6 @@ dependencies {
     // The composition root builds the REST client and the Supabase auth leg, whose constructors
     // take okhttp types (HttpUrl, OkHttpClient); :api keeps okhttp internal, so the root declares it.
     implementation(libs.okhttp)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }

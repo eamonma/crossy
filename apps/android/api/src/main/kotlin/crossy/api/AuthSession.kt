@@ -14,12 +14,20 @@ package crossy.api
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
 import okhttp3.HttpUrl
 
 /** Thrown by the token path when there is no session to speak for, and by a mid-flight refresh
  *  whose session was purged under it. Surfaces as [CrossyApiError.TokenUnavailable] at the REST
  *  client. Twin of iOS `SignedOutError`. */
 public class SignedOutError : Exception("no signed-in session")
+
+/** One in-flight OAuth attempt: the provider the browser was sent to and the PKCE verifier its
+ *  challenge was derived from. Held in memory for the warm return and `@Serializable` so the store
+ *  can persist it across process death (the cold-return recovery; no iOS twin, whose in-process web
+ *  sheet never leaves the app). */
+@Serializable
+public data class PendingOAuth(val provider: AuthProvider, val verifier: String)
 
 public class AuthSession(
     private val client: SupabaseAuthClient,
@@ -34,10 +42,10 @@ public class AuthSession(
      *  is the token itself, DESIGN.md §8). */
     public val userId: String? get() = stored?.userId
 
-    /** Which provider minted the standing session, remembered from the leg that ran (display
-     *  only). In-memory tonight: the persisted marker rides the Keystore token-store track
-     *  (PARITY.md), so a relaunch names no provider rather than misreporting one. Twin of iOS
-     *  `provider`, minus the Keychain marker. */
+    /** Which provider minted the standing session, remembered from the leg that ran (display only)
+     *  and persisted through the store's provider marker, so a relaunch's [restore] can still name
+     *  it (or leaves it null rather than misreporting one when no marker survived). Twin of iOS
+     *  `provider` and its Keychain marker. */
     public var provider: AuthProvider? = null
         private set
 
@@ -46,11 +54,10 @@ public class AuthSession(
 
     /** The one in-flight OAuth attempt: the provider the browser was sent to and the verifier
      *  its challenge was derived from. A second begin supersedes it (the stale verifier can
-     *  never match a newer challenge anyway); any completion attempt spends it. */
+     *  never match a newer challenge anyway); any completion attempt spends it. Also persisted
+     *  through the store, so a cold return (the browser tab outlived the app) can recover it. */
     @Volatile
     private var pendingOAuth: PendingOAuth? = null
-
-    private data class PendingOAuth(val provider: AuthProvider, val verifier: String)
 
     private val refreshMutex = Mutex()
 
@@ -61,6 +68,7 @@ public class AuthSession(
     public fun restore() {
         val session = store.read() ?: return
         stored = session
+        provider = store.readProvider()
         machine.apply(AuthEvent.SESSION_RESTORED)
     }
 
@@ -93,7 +101,11 @@ public class AuthSession(
      *  leg, Apple included (no native Apple SDK on Android). */
     public fun beginOAuth(provider: AuthProvider): HttpUrl {
         val verifier = Pkce.verifier()
-        pendingOAuth = PendingOAuth(provider, verifier)
+        val pending = PendingOAuth(provider, verifier)
+        pendingOAuth = pending
+        // Persist so a cold return (process death under the browser tab) can still complete; the
+        // in-memory field stays the warm-return path and a second begin supersedes both.
+        store.writePendingOAuth(pending)
         return client.authorizeUrl(provider, Pkce.challenge(verifier))
     }
 
@@ -106,9 +118,12 @@ public class AuthSession(
      *  begin (or one racing an in-flight sign-in). Either way the pending attempt is spent:
      *  retry means a new begin, a new verifier. */
     public suspend fun completeOAuth(callbackUri: String): Boolean {
-        val pending = pendingOAuth ?: return false
+        // The in-memory attempt is the warm return; the persisted one is the cold-return fallback
+        // (the browser tab outlived the app and took the in-memory verifier to process death).
+        val pending = pendingOAuth ?: store.readPendingOAuth() ?: return false
         if (!machine.apply(AuthEvent.SIGN_IN_STARTED)) return false
         pendingOAuth = null
+        store.clearPendingOAuth()
         try {
             val callback = OAuthCallback.parse(callbackUri)
             val code = callback.code ?: throw SupabaseAuthError.InvalidCallback(
@@ -117,7 +132,7 @@ public class AuthSession(
             )
             val session = client.exchangeCode(code, pending.verifier, nowSeconds())
             persist(session)
-            provider = pending.provider
+            recordProvider(pending.provider)
             machine.apply(AuthEvent.SIGN_IN_COMPLETED)
             return true
         } catch (e: Throwable) {
@@ -148,7 +163,7 @@ public class AuthSession(
         try {
             val session = client.verifyEmailOTP(email, code, nowSeconds())
             persist(session)
-            provider = AuthProvider.EMAIL_OTP
+            recordProvider(AuthProvider.EMAIL_OTP)
             machine.apply(AuthEvent.SIGN_IN_COMPLETED)
         } catch (e: Throwable) {
             machine.apply(AuthEvent.SIGN_IN_FAILED)
@@ -164,7 +179,7 @@ public class AuthSession(
         try {
             val session = client.verifyEmailLink(tokenHash, type, nowSeconds())
             persist(session)
-            provider = AuthProvider.EMAIL_OTP
+            recordProvider(AuthProvider.EMAIL_OTP)
             machine.apply(AuthEvent.SIGN_IN_COMPLETED)
         } catch (e: Throwable) {
             machine.apply(AuthEvent.SIGN_IN_FAILED)
@@ -264,13 +279,24 @@ public class AuthSession(
         store.write(session)
     }
 
-    /** Drop the in-memory session, provider, and pending OAuth attempt, and clear the store.
-     *  Shared by sign-out and account deletion; never waits on the network. */
+    /** Remember the provider that minted the standing session, in memory and in the store marker so
+     *  a relaunch can still name it (twin of iOS `recordProvider`). Best-effort at the store: a
+     *  failed marker write only costs the provider name after a relaunch, never the sign-in. */
+    private fun recordProvider(provider: AuthProvider) {
+        this.provider = provider
+        store.writeProvider(provider)
+    }
+
+    /** Drop the in-memory session, provider, and pending OAuth attempt, and wipe every persisted
+     *  slot (session, provider marker, pending verifier). Shared by sign-out and account deletion;
+     *  never waits on the network. */
     private fun purgeLocal() {
         stored = null
         provider = null
         pendingOAuth = null
         store.clear()
+        store.clearProvider()
+        store.clearPendingOAuth()
     }
 
     /** The stale token from a transient refresh failure, so the two callers can differ:

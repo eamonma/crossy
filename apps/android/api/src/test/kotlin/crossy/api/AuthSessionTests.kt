@@ -15,6 +15,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -419,5 +420,90 @@ class AuthSessionTests : MockServerTest() {
         assertEquals(AuthPhase.SIGNED_OUT, session.phase)
         assertNull(store.read())
         assertEquals(0, server.requestCount, "no vendor call rides the purge")
+    }
+
+    // MARK: - Persistent restore + the pending-verifier survival (the Keystore token-store track)
+
+    @Test
+    fun restore_rehydratesTheProviderMarker() = runBlocking {
+        // iOS restores the provider from its Keychain marker; the persisted store carries the same,
+        // so a relaunch names the provider instead of degrading to none.
+        val store = InMemoryTokenStore().apply {
+            write(storedSession(expiresAt = now + 3600))
+            writeProvider(AuthProvider.DISCORD)
+        }
+        val (session, _) = makeSession(store)
+
+        session.restore()
+
+        assertEquals(AuthPhase.SIGNED_IN, session.phase)
+        assertEquals(AuthProvider.DISCORD, session.provider, "the marker rides the restore")
+    }
+
+    @Test
+    fun restore_anExpiredSessionStillRestoresAndRefreshesOnFirstUse() = runBlocking {
+        // The refresh leg owns expiry, not restore: a token already past exp restores to SIGNED_IN
+        // and the first currentToken silently refreshes it (the returning-user-with-a-stale-token
+        // path; iOS restores the same way and refreshes on first use).
+        val store = InMemoryTokenStore().apply { write(storedSession(expiresAt = now - 10)) }
+        val (session, _) = makeSession(store)
+
+        session.restore()
+        assertEquals(AuthPhase.SIGNED_IN, session.phase, "restore gates nothing on expiry")
+
+        server.enqueue(jsonResponse(200, grantBody("refreshed", "next-refresh", now + 3600)))
+        val token = session.currentToken()
+
+        assertEquals(1, server.requestCount, "the stale token refreshed on first use")
+        assertTrue(token != "stored-access", "the fresh token came back, not the expired one")
+        assertEquals("next-refresh", store.read()?.refreshToken, "the rotated session persisted")
+    }
+
+    @Test
+    fun signOut_wipesEverySlot_theSessionTheMarkerAndAnyPendingVerifier() = runBlocking {
+        // The full purge, not just the session blob: the provider marker and any outstanding
+        // verifier go too, so a relaunch after sign-out restores nothing and a stray callback finds
+        // no attempt to spend (iOS purgeLocal removes both keychain accounts; Android adds the
+        // pending slot).
+        server.enqueue(jsonResponse(200, grantBody("granted", "r", 4_102_444_800.0)))
+        val (session, store) = makeSession()
+        session.beginOAuth(AuthProvider.DISCORD)
+        session.completeOAuth("crossy://auth/callback?code=cb-code")
+        assertNotNull(store.read(), "signed in: the session persisted")
+        assertEquals(AuthProvider.DISCORD, store.readProvider(), "and the marker")
+
+        server.enqueue(jsonResponse(204, ""))
+        session.signOut()
+
+        assertNull(store.read(), "the session is wiped")
+        assertNull(store.readProvider(), "the provider marker is wiped")
+        assertNull(store.readPendingOAuth(), "no pending verifier survives the purge")
+    }
+
+    @Test
+    fun completeOAuth_recoversThePersistedVerifierAfterProcessDeath() = runBlocking {
+        // The cold return (no iOS twin): the browser tab outlived the app, so the in-memory attempt
+        // died with the process. A fresh AuthSession over the same store recovers the persisted
+        // verifier and completes the exchange instead of landing the calm retry.
+        val store = InMemoryTokenStore()
+        val (begin, _) = makeSession(store)
+        begin.beginOAuth(AuthProvider.DISCORD)
+        val persistedVerifier = store.readPendingOAuth()?.verifier
+        assertNotNull(persistedVerifier, "beginOAuth persisted the attempt")
+
+        // A new process: a fresh session with an empty in-memory pending, the same store.
+        server.enqueue(jsonResponse(200, grantBody("granted", "cold-refresh", 4_102_444_800.0)))
+        val (cold, _) = makeSession(store)
+        val landed = cold.completeOAuth("crossy://auth/callback?code=cb-code")
+
+        assertTrue(landed, "the cold return completes")
+        assertEquals(AuthPhase.SIGNED_IN, cold.phase)
+        assertEquals(AuthProvider.DISCORD, cold.provider, "the persisted provider rode along")
+        val exchange = server.takeRequest()
+        assertTrue(
+            exchange.body.readUtf8().contains(persistedVerifier!!),
+            "the exchange spent the persisted verifier, not a fresh one",
+        )
+        assertNull(store.readPendingOAuth(), "the attempt is spent once completed: no replay")
     }
 }

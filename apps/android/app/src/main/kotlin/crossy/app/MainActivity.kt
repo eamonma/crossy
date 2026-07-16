@@ -34,7 +34,14 @@ class MainActivity : ComponentActivity() {
         val siteKey = AppConfig.turnstileSiteKey()
         val turnstile =
             if (siteKey.isNotEmpty()) TurnstileMintPolicy(WebViewTurnstileMinter(this, siteKey)) else null
-        val session = AppSession(AppConfig.urls(), AppConfig.supabase(), http, turnstile)
+        // The Keystore-backed store is built here (platform storage is a :app concern, AAD-2) and
+        // injected, so :api stays free of Android storage types. restore() then rehydrates any
+        // persisted (or refreshable) session before the first frame, so a returning user lands in
+        // Rooms with no sign-in; it is synchronous and network-free, the twin of iOS restoring from
+        // the Keychain at ArrivalModel init.
+        val session =
+            AppSession(AppConfig.urls(), AppConfig.supabase(), http, turnstile, KeystoreTokenStore(this))
+        session.restore()
         val factory = ScriptedRoomTransportFactory()
         // The cold-start half of the OAuth return: the redirect arrived as this launch's intent.
         // Guarded on a fresh instance state so a recreation (rotation) never re-digests the same
