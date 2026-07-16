@@ -19,16 +19,19 @@ class RoomShelvesTests {
         gameId: String = "g1",
         completedAt: String? = null,
         abandonedAt: String? = null,
+        createdAt: String = "2026-07-01T00:00:00.000Z",
+        lastActivityAt: String? = null,
     ): GameSummary = GameSummary(
         gameId = gameId,
         name = null,
         role = Role.SOLVER,
-        createdAt = "2026-07-01T00:00:00.000Z",
+        createdAt = createdAt,
         createdBy = "u1",
         memberCount = 1,
         puzzle = GameSummary.PuzzleRef(puzzleId = "p1", rows = 15, cols = 15, title = null),
         completedAt = completedAt,
         abandonedAt = abandonedAt,
+        lastActivityAt = lastActivityAt,
     )
 
     @Test
@@ -125,6 +128,49 @@ class RoomShelvesTests {
         assertTrue(shelves.live.isEmpty())
         assertEquals(listOf("a"), shelves.solved.map { it.gameId })
         assertEquals(listOf("b"), shelves.ended.map { it.gameId })
+    }
+
+    // The client activity re-sort (PROTOCOL.md §12). Twin of iOS RoomCardModel.orderedByActivity:
+    // most recently touched first, keying on lastActivityAt ?? createdAt.
+    @Test
+    fun orderedByActivitySortsMostRecentlyTouchedFirst_PROTOCOL12() {
+        val a = game(gameId = "a", lastActivityAt = "2026-07-05T00:00:00.000Z")
+        val b = game(gameId = "b", lastActivityAt = "2026-07-09T00:00:00.000Z")
+        val c = game(gameId = "c", lastActivityAt = "2026-07-07T00:00:00.000Z")
+        assertEquals(listOf("b", "c", "a"), orderedByActivity(listOf(a, b, c)).map { it.gameId })
+    }
+
+    @Test
+    fun orderedByActivityCoalescesNullActivityToCreatedAt_PROTOCOL12() {
+        // A never-played room keys on its createdAt (COALESCE), so a fresh unplayed room is not
+        // banished below every played room: it sorts where a room played at its creation would sit.
+        val played = game(gameId = "played", createdAt = "2026-07-01T00:00:00.000Z", lastActivityAt = "2026-07-06T00:00:00.000Z")
+        val freshUnplayed = game(gameId = "fresh", createdAt = "2026-07-08T00:00:00.000Z", lastActivityAt = null)
+        val staleUnplayed = game(gameId = "stale", createdAt = "2026-07-02T00:00:00.000Z", lastActivityAt = null)
+        assertEquals(
+            listOf("fresh", "played", "stale"),
+            orderedByActivity(listOf(played, freshUnplayed, staleUnplayed)).map { it.gameId },
+        )
+    }
+
+    @Test
+    fun orderedByActivityIsTotalAndStableOnTies_PROTOCOL12() {
+        // Equal coalesced keys break on createdAt then gameId, so the order is total and stable.
+        val a = game(gameId = "a", createdAt = "2026-07-01T00:00:00.000Z", lastActivityAt = "2026-07-05T00:00:00.000Z")
+        val b = game(gameId = "b", createdAt = "2026-07-01T00:00:00.000Z", lastActivityAt = "2026-07-05T00:00:00.000Z")
+        // Descending gameId tiebreak: "b" precedes "a".
+        assertEquals(listOf("b", "a"), orderedByActivity(listOf(a, b)).map { it.gameId })
+    }
+
+    @Test
+    fun orderedByActivityDoesNotMutateItsInput_PROTOCOL12() {
+        val input = listOf(
+            game(gameId = "a", lastActivityAt = "2026-07-05T00:00:00.000Z"),
+            game(gameId = "b", lastActivityAt = "2026-07-09T00:00:00.000Z"),
+        )
+        val before = input.map { it.gameId }
+        orderedByActivity(input)
+        assertEquals(before, input.map { it.gameId })
     }
 
     @Test

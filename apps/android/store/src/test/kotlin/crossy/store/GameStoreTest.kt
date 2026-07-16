@@ -422,6 +422,45 @@ class GameStoreTest {
         assertNull(store.render.value.completedAt)
     }
 
+    // A host-ended card seeds the store abandoned before the socket answers, the terminal twin of
+    // seedCompleted (the seeded-birth rule, DESIGN.md §4, §12). INV-4: abandonment is terminal, so
+    // the seed can only agree with the welcome that confirms it.
+    @Test
+    fun seedAbandonedRetiresTheDeckBeforeTheWelcome_INV4() {
+        val store = GameStore()
+        assertEquals(SyncState.CONNECTING, store.render.value.sync)
+        assertEquals(
+            GameStatus.ONGOING,
+            store.render.value.status,
+            "a fresh store is ongoing until seeded or told otherwise",
+        )
+        store.seedAbandoned("2026-07-07T18:52:00.000Z")
+        assertEquals(GameStatus.ABANDONED, store.render.value.status, "a host-ended card retires the deck pre-welcome")
+        assertEquals("2026-07-07T18:52:00.000Z", store.render.value.abandonedAt, "the frozen clock reads the seed")
+    }
+
+    @Test
+    fun welcomeConfirmsTheSeededAbandonment_PROTOCOL7() {
+        val store = GameStore()
+        store.seedAbandoned("2026-07-07T18:52:00.000Z")
+        store.receive(welcome(board(status = GameStatus.ABANDONED)))
+        assertEquals(GameStatus.ABANDONED, store.render.value.status, "the welcome confirms the seed")
+        assertEquals(SyncState.LIVE, store.render.value.sync)
+    }
+
+    @Test
+    fun seedAbandonedIsRefusedAfterTheWelcome_PROTOCOL7() {
+        val (store, _) = makeLiveStore() // welcome lands ongoing
+        assertEquals(GameStatus.ONGOING, store.render.value.status)
+        store.seedAbandoned("2026-07-07T18:52:00.000Z")
+        assertEquals(
+            GameStatus.ONGOING,
+            store.render.value.status,
+            "a seed after the welcome cannot freeze a live room",
+        )
+        assertNull(store.render.value.abandonedAt)
+    }
+
     @Test
     fun cursorNoticeUpdatesRenderOnlyPresence_PROTOCOL9() {
         val (store, _) = makeLiveStore()
