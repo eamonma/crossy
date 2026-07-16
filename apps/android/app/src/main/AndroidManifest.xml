@@ -3,6 +3,13 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The camera-first invite scan (JoinCameraScan): a back camera reads the host's QR. Both the
+         camera and autofocus are required=false, so a device without either still installs and joins
+         by typed code (the scan viewport resolves to DENIED, never a dead end). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
     <!-- Cleartext is dev-only: the dev stack serves http on the emulator's host loopback
          (10.0.2.2:8790-8792). A release variant pins https and drops this (a later track). -->
     <application

@@ -7,6 +7,9 @@
 
 package crossy.app
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -58,6 +61,7 @@ import crossy.ui.DisplayNameOutcome
 import crossy.ui.EmailOtpStep
 import crossy.ui.GridGround
 import crossy.ui.JoinCodeScreen
+import crossy.ui.JoinScanState
 import crossy.ui.KickedExit
 import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
@@ -65,6 +69,7 @@ import crossy.ui.RoomScreen
 import crossy.ui.RoomsListScreen
 import crossy.ui.SettingsScreen
 import crossy.ui.ShareInvite
+import crossy.ui.ShareSheet
 import crossy.ui.SignInProvider
 import crossy.ui.SignInScreen
 import crossy.ui.displayNameErrorCopy
@@ -581,6 +586,11 @@ private fun JoinHost(session: AppSession, onBack: () -> Unit, onJoined: (GameVie
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    // Camera-first (iOS JoinCodeScreen): the app target resolves the scan verdict and fills the
+    // scanner slot with the CameraX preview (JoinCameraScan, AAD-2 — camera plumbing is not :ui's).
+    // The screen renders the viewport and keeps the typed field standing beneath it; a scanned QR
+    // takes the very same onJoin path as a typed code.
+    val scanState = rememberJoinScanState()
     JoinCodeScreen(
         isBusy = busy,
         error = error,
@@ -596,6 +606,8 @@ private fun JoinHost(session: AppSession, onBack: () -> Unit, onJoined: (GameVie
             }
         },
         onBack = onBack,
+        scanState = scanState,
+        scanner = { ingest -> CameraScanView(onScan = ingest, modifier = Modifier.fillMaxSize()) },
     )
 }
 
@@ -650,7 +662,6 @@ private fun RoomHost(
     onExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
     // The store is born, then seeded with the REST view's roster BEFORE the socket dials, so the
     // players pill stands at its true width from the first frame (the seeded-birth rule, DESIGN.md
     // §4, §12; mirrors RealRoom.init). seedRoster gates itself to `connecting`, so the welcome always
@@ -665,21 +676,17 @@ private fun RoomHost(
     // room bar counts it down while reconnecting; a stale value after the socket returns live is never
     // rendered (the chip gates on sync), so no clear step is needed (DESIGN.md §8).
     var reconnectRetryAt by remember(puzzle) { mutableStateOf<Long?>(null) }
-    // The share intent: the pure ShareInvite builds the canonical short link from the configured
-    // host (AppConfig.INVITE_HOST), and the app target fires the system share sheet (mirroring iOS,
-    // where CrossyUI is pure over the link and the app target presents the sheet). Null when the
-    // room has no code (the demo room), so RoomBar shows no share affordance.
+    // The share surface: the pure ShareInvite builds the canonical short link from the configured
+    // host (AppConfig.INVITE_HOST); tapping the chip opens the share sheet (iOS ShareMenu shape:
+    // copy-link, system-share, show-QR over that link). The sheet and its QR are pure :ui
+    // (ShareSheet), but the composition root presents them and owns the two platform acts the rows
+    // report — the system share sheet and the clipboard (AD-2, the iOS split). A null shareLink means
+    // no code (the demo room), so RoomBar shows no share affordance and the sheet never opens.
     val context = LocalContext.current
+    val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
     val shareLink = remember(inviteCode) { ShareInvite.url(AppConfig.inviteHost(), inviteCode) }
-    val onShare: (() -> Unit)? = shareLink?.let { link ->
-        {
-            val send = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, link)
-            }
-            context.startActivity(Intent.createChooser(send, null))
-        }
-    }
+    var shareOpen by remember(puzzle) { mutableStateOf(false) }
+    val onShare: (() -> Unit)? = shareLink?.let { { shareOpen = true } }
     DisposableEffect(puzzle) {
         val job = scope.launch {
             if (wsUrl != null) {
@@ -729,6 +736,30 @@ private fun RoomHost(
             onShare = onShare,
             reactionEmojis = reactionEmojis,
             reconnectRetryAt = reconnectRetryAt,
+        )
+    }
+    // The share sheet the chip opens: pure :ui over the link (ShareSheet), presented here so it can
+    // close over the two platform acts its rows report — the system share sheet and the clipboard
+    // (the app target owns both, AD-2). Guarded on the link and the code, so it exists only when
+    // there is something to share.
+    val link = shareLink
+    if (shareOpen && link != null && inviteCode != null) {
+        ShareSheet(
+            ground = ground,
+            code = inviteCode,
+            url = link,
+            onSystemShare = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, link)
+                }
+                context.startActivity(Intent.createChooser(send, null))
+            },
+            onCopyLink = {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("Crossy invite", link))
+            },
+            onDismiss = { shareOpen = false },
         )
     }
 }
