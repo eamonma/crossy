@@ -1,7 +1,9 @@
 # Solver titles
 
 Status: plan of record. Date: 2026-07-16 (amended same day after adversarial review;
-owner rulings inline).
+owner rulings inline). Revisited 2026-07-16: the D29 fast-follow (`SITTINGS.md` deferred
+it by ruling) lands here as the two-bases amendment and the `marathoner` rung; those
+rulings are final too.
 Companion: `ANALYSIS.md` owns the post-game surface this extends; `FIRST-CORRECT.md` owns
 the attribution projection everything stands on. This document owns the titles: the
 per-solver superlatives that replace the person moment cards, their projection system, the
@@ -89,8 +91,9 @@ theorem instead of a hope:
 system if they appear in the solve events at all (any write or clear), not only if they
 own a first-correct cell. The racer who typed all game but always lost the fill by a
 beat is real and logged; they are eligible for any rung whose gate they pass. In
-practice a zero-fill solver can only ever be `saboteur` (every other gate consumes
-fills, trace entries, or slots), which is exactly right. The floor guarantee covers
+practice a zero-fill solver can only ever be `saboteur` or `marathoner` (every other
+gate consumes fills, trace entries, or slots; sabotage consumes events and attendance
+consumes events too), which is exactly right. The floor guarantee covers
 solvers with `fills >= 1`; a zero-fill solver who passes no specialty gate gets nothing.
 The promise, stated exactly: **everyone who landed a square gets a superlative; everyone
 who typed at all is in the pool.**
@@ -114,6 +117,21 @@ flag; geometry as data, INV-9). **Correctness is everywhere the engine comparato
 acceptance must not fork the stats). Let `T` be the trace length and the trace be
 ordered by `(at, seq)`. All "whole seconds" are `floor()`. Per solver `u` appearing in
 the events:
+
+**Two time bases (D29 fast-follow, owner ruling 2026-07-16).** The sheet reads the RAW
+solve events everywhere except the turning point. `brokeStall` and the room's
+`stallSeconds` re-base onto the idle-collapsed trace,
+`moments(solveTrace(collapseIdle(events), solution))`, byte-identical to the shipped
+analysis bundle's own projection, restoring the pin D29's bundle re-base had silently
+forked. Every cross-sitting gap is zero on that axis, so the stall is within-sitting
+active time by construction; an overnight gap can never award the ice breaker again.
+Everything else keeps wall-clock inputs, deliberately: `span` (long-hauler) and `burst`
+(sprinter) are computed from the raw events, because collapsing before the burst scan
+would let a 30-second window straddle a collapsed seam (two fills hours apart reading as
+one sprint), and long-hauler's wall span is honest flavor. `openingFills`/`closingFills`
+are ordinal and were never affected. `sittingsPresent` and the room's `sittingCount`
+read the sittings partition itself (`SITTINGS.md`; `SITTING_GAP_MS` lives there and in
+the engine, cited here, never duplicated).
 
 - **fills**: trace entries owned by `u`.
 - **firstFill / lastFill**: the `(at, seq)` of `u`'s earliest and latest trace entries;
@@ -150,15 +168,26 @@ the events:
   `(at, seq)`); `focus` is `homeQuadrantFills / fills`.
 - **span**: whole seconds between `firstFill.at` and `lastFill.at` (0 for a single
   fill).
-- **brokeStall**: 1 if `u` owns the break entry of `moments().turningPoint`, else 0.
-  **Pinned byte-identical to the shipped `moments()` projection** (its ordering, its
-  tie-breaks), so the ribbon's marker and the ice-breaker card can never name different
-  people. The room header carries `stallSeconds` (whole seconds) from the same
-  projection; when `turningPoint` is null (fewer than two trace entries),
-  `stallSeconds` is 0 and nobody `brokeStall`.
+- **brokeStall**: 1 if `u` owns the break entry of the turning point over the
+  idle-collapsed trace, `moments(solveTrace(collapseIdle(events), solution))`, else 0.
+  **Pinned byte-identical to the shipped `moments()` projection as the analysis bundle
+  ships it** (its collapsed input, its ordering, its tie-breaks), so the ribbon's marker
+  and the ice-breaker card can never name different people. The room header carries
+  `stallSeconds` (whole seconds) from the same projection; cross-sitting gaps are zero
+  there, so the stall is within-sitting. When `turningPoint` is null (fewer than two
+  trace entries), `stallSeconds` is 0 and nobody `brokeStall`.
+- **sittingsPresent**: the number of sittings (the `SITTINGS.md` partition of the full
+  seq-ordered event log) containing at least one of `u`'s events, write or clear,
+  correctness irrelevant: the same any-activity rule that defines sittings. The
+  partition covers the whole log, so every event belongs to exactly one sitting;
+  presence is attendance over that partition, and a zero-fill solver's
+  `sittingsPresent` can equal the room's count (presence is events, not fills). The
+  room header carries `sittingCount`, the partition's size.
 
 Pinned corner conventions (vectors cite these): a zero-fill solver's row is all zeros
-(`focus` 0, never NaN; `span` 0; `spread` 0) with `firstFill`/`lastFill` null. A wrong
+(`focus` 0, never NaN; `span` 0; `spread` 0) with `firstFill`/`lastFill` null;
+`sittingsPresent` alone counts events, not fills, so it is the one column a zero-fill
+row can hold above zero. A wrong
 write that destroys another solver's correct cell counts as BOTH a wrongWrite and an
 overwrite; the two definitions read independently. `geometry` is `{rows, cols}` passed
 as data (spread and quadrants need it; slots do not carry it).
@@ -179,12 +208,16 @@ as data (spread and quadrants need it; slots do not carry it).
 Constants, cited by vectors, never inlined: `OPENING_SHARE = 0.2` (also the closing
 share), `BURST_WINDOW_MS = 30_000` (shared with momentum), `STALL_FLOOR_SECONDS = 120`,
 `SABOTEUR_MIN = 3`, `BULLSEYE_MIN_FILLS = 5`, `SPRINTER_MIN_BURST = 4`, `MEDDLER_MIN = 2`,
-`MARQUEE_MIN_LENGTH = 7`.
+`MARQUEE_MIN_LENGTH = 7`. The revisit adds no constant: the partition boundary is
+`SITTING_GAP_MS = 1_800_000`, owned by `SITTINGS.md` and the engine, cited by the
+revisit vectors under that name.
 
-## The v1 ladder (pinned)
+## The ladder (pinned)
 
 Order is rank; the walk is top to bottom. Display copy belongs to the clients; the wire
-carries the key and the evidence.
+carries the key and the evidence. The D29 fast-follow inserted `marathoner` at rank 8,
+immediately after `meddler`; `quick-starter` through `workhorse` each shifted down one,
+so the ladder is 16 rungs.
 
 | #   | key              | gate                                                      | claim                           | evidence                    |
 | --- | ---------------- | --------------------------------------------------------- | ------------------------------- | --------------------------- |
@@ -195,42 +228,51 @@ carries the key and the evidence.
 | 5   | `headliner`      | marqueeLeads >= 1                                         | max marqueeLeads                | marqueeLeads                |
 | 6   | `sprinter`       | burst >= `SPRINTER_MIN_BURST`                             | max burst                       | burst                       |
 | 7   | `meddler`        | meddles >= `MEDDLER_MIN`                                  | max meddles                     | meddles                     |
-| 8   | `quick-starter`  | openingFills >= 1                                         | max openingFills                | openingFills                |
-| 9   | `closer`         | closingFills >= 1                                         | max closingFills                | closingFills                |
-| 10  | `specialist`     | fills >= 1 (floor)                                        | max focus, tie by fills         | homeQuadrantFills           |
-| 11  | `long-hauler`    | fills >= 1 (floor)                                        | max span, tie by fills          | span, whole seconds         |
-| 12  | `wanderer`       | fills >= 1 (floor)                                        | max spread, tie by fills        | none                        |
-| 13  | `scribbler`      | fills >= 1 (floor)                                        | max writes                      | writes                      |
-| 14  | `collector`      | fills >= 1 (floor)                                        | max slotsTouched, tie by fills  | slotsTouched                |
-| 15  | `workhorse`      | fills >= 1 (floor)                                        | max fills                       | fills                       |
+| 8   | `marathoner`     | sittingCount >= 2 and sittingsPresent == sittingCount     | max fills                       | sittingCount                |
+| 9   | `quick-starter`  | openingFills >= 1                                         | max openingFills                | openingFills                |
+| 10  | `closer`         | closingFills >= 1                                         | max closingFills                | closingFills                |
+| 11  | `specialist`     | fills >= 1 (floor)                                        | max focus, tie by fills         | homeQuadrantFills           |
+| 12  | `long-hauler`    | fills >= 1 (floor)                                        | max span, tie by fills          | span, whole seconds         |
+| 13  | `wanderer`       | fills >= 1 (floor)                                        | max spread, tie by fills        | none                        |
+| 14  | `scribbler`      | fills >= 1 (floor)                                        | max writes                      | writes                      |
+| 15  | `collector`      | fills >= 1 (floor)                                        | max slotsTouched, tie by fills  | slotsTouched                |
+| 16  | `workhorse`      | fills >= 1 (floor)                                        | max fills                       | fills                       |
 
-Reading the order: rungs 1 through 9 are the specialty tier. The roast (`saboteur`) and
+Reading the order: rungs 1 through 10 are the specialty tier. The roast (`saboteur`) and
 the cameo (`one-hit-wonder`) are the most memorable and claim first; each specialty rung
-tells a story a volume count cannot, and each may award nobody. The two temporal ranks
-(`quick-starter`, `closer`) sit at the tier's bottom with gates that keep their copy
-honest: they can only ever name someone who actually filled in the opening or closing
-stretch. Rungs 10 through 15 are the floor: every claim is ordinal over solvers with a
-fill, so each awards unconditionally while an untitled filler remains, six guaranteed
-rungs deep, and every floor title states a personal fact (a territory, a span, a count)
-that stays true on fall-through. The tie-breaks make even an all-equal room resolve.
+tells a story a volume count cannot, and each may award nobody. `marathoner` is the
+attendance rung: present in every sitting of a room that sat more than once, silent in a
+one-sitting room (where it would be trivially universal); its claim is max fills among
+the ever-present, then the universal tie-break, so a zero-fill regular can qualify
+(presence is events, not fills) and still loses the card to any filler. The two temporal
+ranks (`quick-starter`, `closer`) sit at the tier's bottom with gates that keep their
+copy honest: they can only ever name someone who actually filled in the opening or
+closing stretch. Rungs 11 through 16 are the floor: every claim is ordinal over solvers
+with a fill, so each awards unconditionally while an untitled filler remains, six
+guaranteed rungs deep, and every floor title states a personal fact (a territory, a
+span, a count) that stays true on fall-through. The tie-breaks make even an all-equal
+room resolve.
 
 Suggested copy, to set the register (clients own the final words): the saboteur
 "overwrote 7 correct squares", the ice breaker "ended the room's 4-minute silence", the
 one hit wonder "one square, flawlessly chosen", the headliner "led 3 of the long ones",
-the specialist "kept to their corner, 11 squares", the long-hauler "on the case for 26
-minutes", the scribbler "busiest pencil, 61 letters down", the collector "had a hand in
-17 words", the workhorse "42 squares".
+the marathoner "showed up for all 3 sittings", the specialist "kept to their corner, 11
+squares", the long-hauler "on the case for 26 minutes", the scribbler "busiest pencil,
+61 letters down", the collector "had a hand in 17 words", the workhorse "42 squares".
 
-**Known wrinkle, accepted for v1**: in a multi-sitting room the longest gap is usually
-overnight, so the ice breaker is often "whoever opened the app the next morning". The
-count is honest (amendment 1 holds); the copy will read odd until the sittings
-projection lands, at which point the stall should be measured within sittings and this
-rung revisited alongside `marathoner`.
+**The wrinkle, retired (D29 fast-follow).** v1 accepted that in a multi-sitting room the
+ice breaker was often "whoever opened the app the next morning", because the stall was a
+wall-clock gap. The revisit re-based `brokeStall` and `stallSeconds` onto the collapsed
+trace (the two-bases rule above), so the stall is within-sitting and the overnight
+arrival can never be crowned again; the gate and the evidence are unchanged.
 
-**Deferred rungs.** `marathoner` (present in every sitting) waits on the sittings
-projection and joins the specialty tier when it lands. The ladder grows by a vector diff
-plus a rung entry here; clients ignore unknown keys, so the server may grow the ladder
-(or deepen the floor for bigger rooms) without client lockstep.
+**Growing the ladder.** `marathoner` landed exactly as this paragraph always promised: a
+vector diff plus a rung entry here, no wire change, because clients ignore unknown title
+keys (PROTOCOL.md section 12 pins that rule; cite it, do not restate it). The same path
+remains open for deepening the floor for bigger rooms. For the award walk's inputs, a
+pre-revisit sheet (the legacy vector givens) carries no `sittingCount` or
+`sittingsPresent`; an absent `sittingCount` reads as 1 and an absent `sittingsPresent`
+as 0, so the marathoner gate refuses and every legacy fixture stays byte-identical.
 
 ## The wire
 
@@ -252,9 +294,14 @@ members, so a four-member room where one person did everything is also empty).
 **Engine** (`packages/engine`, imports nothing, INV-9; vectors-first):
 
 ```
-titleStats(events, solution, slots, geometry) -> { solvers: per-solver stat sheet, room: { stallSeconds } }
+titleStats(events, solution, slots, geometry) -> { solvers: per-solver stat sheet, room: { stallSeconds, sittingCount } }
 awardTitles(titleStats result)                -> [{ userId, title, evidence }]
 ```
+
+The signatures are unchanged by the revisit: `titleStats` computes the partition, the
+collapsed turning point, and `sittingsPresent` internally from the same events, reusing
+`collapseIdle` and `SITTING_GAP_MS` from the analysis module (an intra-engine import,
+INV-9 intact).
 
 The ladder is a fixed engine constant, not a parameter: two clients or two services must
 never disagree on who the saboteur was. `slots` arrive as data (ordered cell indices plus
@@ -294,3 +341,8 @@ Titles section at all; deliberate, the cards were silly.)
 - **PR4** the API: slot lift, bundle field.
 - **PR5** web: the Titles section replaces the person moment cards.
 - **PR6** iOS: the same swap in the analysis sheet.
+
+**Revisit build sequence (D29 fast-follow, ROADMAP Phase 12).** 12.1 the contract (this
+amendment, the SITTINGS.md and DESIGN.md follow-up notes, the revisit clusters in
+`vectors/analysis/titles.json`); 12.2 the engine re-base plus `marathoner`, greened
+against them; 12.3 the server test-flip; 12.4 web copy; 12.5 iOS copy.

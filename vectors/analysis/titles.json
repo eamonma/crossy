@@ -3070,5 +3070,801 @@
         ]
       }
     }
+  ],
+  "titleStatsRevisit": [
+    {
+      "name": "THE RE-BASE (D29 fast-follow): the stall is the within-sitting gap; the morning's first arrival no longer breaks it",
+      "intent": "TITLES.md two-bases rule: brokeStall and room.stallSeconds read moments(solveTrace(collapseIdle(events), solution)), byte-identical to the bundle's shipped projection. The 28,800,000 ms overnight gap (>= SITTING_GAP_MS = 1,800,000) collapses to zero, so the largest active gap is the evening's 150 s stall and its breaker is u2 (>= STALL_FLOOR_SECONDS, so the award layer can cite it); a raw-basis engine names u3 (the morning's first arrival) with stallSeconds 28800 and fails loudly here. span and burst stay RAW: u1's span is the wall 28970 s, never the collapsed 170 s. sittingsPresent is attendance over the partition (u1 sat twice); room.sittingCount is 2.",
+      "given": {
+        "rows": 1,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 150000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 160000 },
+          { "seq": 4, "cell": 3, "userId": "u3", "value": "A", "at": 28960000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 28970000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 3,
+            "span": 28970,
+            "burst": 1,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 1,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          },
+          "u3": {
+            "fills": 1,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 150,
+          "sittingCount": 2
+        }
+      }
+    },
+    {
+      "name": "the anti-raw pin: every within-sitting gap is under the floor, so the re-based stall is 100 however long the night was",
+      "intent": "The failure mode the re-base kills, sub-case (b). The largest within-sitting gap is the 100 s broken by u2; the overnight gap of exactly 28,800,000 ms splits (the >= SITTING_GAP_MS boundary, pinned here in the titles context) and contributes nothing. room.stallSeconds is 100 < STALL_FLOOR_SECONDS = 120, so the ice breaker will refuse at award time; an accidental raw basis reads 28800 with u1 (the morning arrival) as breaker and would award, failing loudly on both the number and the owner. span stays wall: u1's is 28910.",
+      "given": {
+        "rows": 1,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 100000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 110000 },
+          { "seq": 4, "cell": 3, "userId": "u1", "value": "A", "at": 28910000 },
+          { "seq": 5, "cell": 4, "userId": "u2", "value": "A", "at": 28940000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "span": 28910,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 100,
+          "sittingCount": 2
+        }
+      }
+    },
+    {
+      "name": "presence is any event: a mere clear keeps u2 in sitting 1, so sittingsPresent is 2 while the fillers who sat once count 1",
+      "intent": "TITLES.md sittingsPresent: the number of sittings holding at least one of u's events, write or clear, correctness irrelevant (the SITTINGS.md any-activity rule; the partition covers the whole log, so every event belongs to exactly one sitting). u2's only sitting-1 activity is a clear of an empty cell (a write in the sheet, no wrongWrite since a clear writes no value, no overwrite since the board held nothing), and it still counts: sittingsPresent 2. u1 and u3 each sat once. The re-based turning point is the 20 s gap broken by u1.",
+      "given": {
+        "rows": 1,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 4, "userId": "u2", "value": null, "at": 10000 },
+          { "seq": 3, "cell": 1, "userId": "u1", "value": "A", "at": 20000 },
+          { "seq": 4, "cell": 2, "userId": "u2", "value": "A", "at": 28820000 },
+          { "seq": 5, "cell": 3, "userId": "u3", "value": "A", "at": 28830000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 2,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          },
+          "u2": {
+            "fills": 1,
+            "writes": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "sittingsPresent": 2
+          },
+          "u3": {
+            "fills": 1,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 20,
+          "sittingCount": 2
+        }
+      }
+    },
+    {
+      "name": "three sittings: the re-based stall is the middle sitting's 140 s gap, sittingCount is 3, and spans keep the wall basis",
+      "intent": "Cumulative collapse in the titles context (two boundaries: one of exactly SITTING_GAP_MS, one of 2,000,000 ms). On the active axis the largest gap is the 140 s stall inside sitting 2, broken by u2; a raw scan reports the 2,000 s pre-sitting-3 gap broken by u1 instead. Both solvers attended all three sittings (sittingsPresent 3, the marathoner's ground; the suggested copy's \"all 3 sittings\"). span keeps the wall basis (u1 3970, u2 3950) and burst stays raw (no two raw fills share a BURST_WINDOW_MS window: 1 each).",
+      "given": {
+        "rows": 1,
+        "cols": 6,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4, 5], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 30000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 1830000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 1970000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 3970000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "A", "at": 3980000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "span": 3970,
+            "burst": 1,
+            "brokeStall": 0,
+            "sittingsPresent": 3
+          },
+          "u2": {
+            "span": 3950,
+            "burst": 1,
+            "brokeStall": 1,
+            "sittingsPresent": 3
+          }
+        },
+        "room": {
+          "stallSeconds": 140,
+          "sittingCount": 3
+        }
+      }
+    },
+    {
+      "name": "burst and span stay RAW: a fill just across the collapsed seam never joins a burst window, and span is the wall span",
+      "intent": "TITLES.md two-bases rule, the anti-over-re-base pin. u1's fills sit at wall 0, 10000, and 1,820,000; the last lands one seam away (the 1,800,000 ms gap collapses, active instant 20000). A burst scan over collapsed times would count 3 fills in one closed BURST_WINDOW_MS = 30000 window; the pinned burst is the raw 2 (two fills hours apart must never read as one sprint). span is the wall 1820 s, never the active 20 s. The re-based turning point is the 10 s gap broken by u1 (the first of the two tied 10 s gaps, moments()'s first-wins tie-break).",
+      "given": {
+        "rows": 1,
+        "cols": 4,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 10000 },
+          { "seq": 3, "cell": 2, "userId": "u2", "value": "A", "at": 20000 },
+          { "seq": 4, "cell": 3, "userId": "u1", "value": "A", "at": 1820000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 3,
+            "burst": 2,
+            "span": 1820,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 1,
+            "burst": 1,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 10,
+          "sittingCount": 2
+        }
+      }
+    }
+  ],
+  "awardTitlesRevisit": [
+    {
+      "name": "ice-breaker on the re-based sheet: the true breaker takes the rung with the ACTIVE stall as evidence",
+      "intent": "The award consequence of the re-base, sub-case (a): the sheet arrives with room.stallSeconds 150 (the within-sitting stall) and u2 as its breaker; 150 >= STALL_FLOOR_SECONDS = 120, so u2 is the ice breaker, evidence 150. On the retired raw basis this room read 28800 with u3 (the morning arrival) as breaker. u1 takes bullseye (clean, fills 6 >= BULLSEYE_MIN_FILLS). marathoner then lapses: the only ever-present solver (u1, sittingsPresent 2 == sittingCount) is already titled and u3 sat once, so the rung awards nobody; u3 is caught by the floor (specialist).",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 6,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 1,
+            "closingFills": 1,
+            "writes": 7,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 28970,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": { "at": 150000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          },
+          "u3": {
+            "fills": 2,
+            "firstFill": { "at": 28960000, "seq": 4 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 30,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 150,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u2", "title": "ice-breaker", "evidence": 150 },
+          { "userId": "u1", "title": "bullseye", "evidence": 6 },
+          { "userId": "u3", "title": "specialist", "evidence": 1 }
+        ]
+      }
+    },
+    {
+      "name": "ice-breaker refuses on a re-based 100 s stall however long the night was; marathoner takes max fills among the ever-present",
+      "intent": "Sub-case (b) at the award layer: brokeStall is set (u2) but room.stallSeconds is the within-sitting 100 < STALL_FLOOR_SECONDS = 120, so NOBODY is the ice breaker, though the room's wall gap was hours (the retired raw basis carried 28800 and would have awarded). marathoner: sittingCount 2 and both solvers have sittingsPresent 2, so both qualify; the claim is max fills, u1 (6 over 4), and the evidence is the sitting count, 2. u2 falls to the floor.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 6,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 8,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 28910,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": { "at": 100000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 28840,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 100,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "marathoner", "evidence": 2 },
+          { "userId": "u2", "title": "specialist", "evidence": 2 }
+        ]
+      }
+    },
+    {
+      "name": "marathoner presence is events, not fills: a zero-fill regular qualifies and loses to a filler; the biggest filler missed a sitting and cannot qualify",
+      "intent": "TITLES.md marathoner gate: sittingCount >= 2 and sittingsPresent == sittingCount. ua has the most fills (5) but sat only once: not eligible, whatever the count. uz attended both sittings on clears alone (fills 0, presence is events): eligible, and loses the max-fills claim to um (4). um is the marathoner, evidence the sitting count 2; ua is caught by the floor; uz passes no other gate (a zero-fill solver can only ever be saboteur or marathoner) and gets nothing.",
+      "given": {
+        "solvers": {
+          "ua": {
+            "fills": 5,
+            "firstFill": { "at": 1000, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 7,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.6,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "um": {
+            "fills": 4,
+            "firstFill": { "at": 2000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 180,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "uz": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 60,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "um", "title": "marathoner", "evidence": 2 },
+          { "userId": "ua", "title": "specialist", "evidence": 3 }
+        ]
+      }
+    },
+    {
+      "name": "all marathoner qualifiers are zero-fill: the universal tie-break resolves by ascending ASCII userId",
+      "intent": "TITLES.md determinism (INV-1) inside the marathoner claim: ua and ub are both ever-present with 0 fills, so max fills ties at 0, both firstFills are null, and the last resort is ascending ASCII userId: ua wins, evidence 2. A zero-fill marathoner is legal by construction (presence is events, not fills; the pool paragraph names saboteur and marathoner as the two zero-fill-reachable rungs). uc, the room's only filler, missed a sitting and takes the floor.",
+      "given": {
+        "solvers": {
+          "ua": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "ub": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 0,
+            "wrongWrites": 2,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "uc": {
+            "fills": 3,
+            "firstFill": { "at": 1000, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 1,
+            "homeQuadrantFills": 3,
+            "span": 60,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 45,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "ua", "title": "marathoner", "evidence": 2 },
+          { "userId": "uc", "title": "specialist", "evidence": 3 }
+        ]
+      }
+    },
+    {
+      "name": "a one-sitting room never has a marathoner, though presence is trivially universal",
+      "intent": "TITLES.md marathoner gate: sittingCount >= 2. Here sittingCount is 1 and both solvers have sittingsPresent 1 == sittingCount, and the rung still refuses: in a one-sitting room the title would be trivially universal, so it is silent. Both solvers title off the floor instead, exactly as a pre-revisit room did (the gapless identity).",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 4,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 1,
+            "homeQuadrantFills": 4,
+            "span": 90,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "u2": {
+            "fills": 2,
+            "firstFill": { "at": 3000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 120,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 30,
+          "sittingCount": 1
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "specialist", "evidence": 4 },
+          { "userId": "u2", "title": "long-hauler", "evidence": 120 }
+        ]
+      }
+    },
+    {
+      "name": "one per solver holds: the ever-present sprinter takes the earlier rung and marathoner falls to the next qualifier",
+      "intent": "TITLES.md ladder walk across the new rung: u1 passes sprinter (burst 5 >= SPRINTER_MIN_BURST = 4, rank 6) and is also ever-present with the room's max fills; sprinter titles u1 first, so the marathoner claim (rank 8) runs over the untitled and falls to u2 (sittingsPresent 2), evidence the sitting count 2, u2's smaller fill count notwithstanding. u3 (fills 1, but a wrongWrite kills the cameo) is caught by the floor. One title per solver, one per key.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 7,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 9,
+            "burst": 5,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 6,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.5,
+            "homeQuadrantFills": 4,
+            "span": 300,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": { "at": 4000, "seq": 3 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 250,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u3": {
+            "fills": 1,
+            "firstFill": { "at": 90000, "seq": 9 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 80,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "sprinter", "evidence": 5 },
+          { "userId": "u2", "title": "marathoner", "evidence": 2 },
+          { "userId": "u3", "title": "specialist", "evidence": 1 }
+        ]
+      }
+    },
+    {
+      "name": "long-hauler's evidence in a multi-sitting room is the WALL span",
+      "intent": "TITLES.md two-bases rule read at the award layer: the sheet's span column is wall-clock by design, so w2's card cites 29000 s (the honest \"over two days\" flavor number), never an active span (~200 s here). w3 is the only ever-present solver: marathoner, evidence 2; its brokeStall is set but the within-sitting 110 s stall is under STALL_FLOOR_SECONDS = 120, so ice-breaker refused first. w1 takes specialist off the floor.",
+      "given": {
+        "solvers": {
+          "w1": {
+            "fills": 5,
+            "firstFill": { "at": 1000, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 1,
+            "homeQuadrantFills": 5,
+            "span": 150,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "w2": {
+            "fills": 4,
+            "firstFill": { "at": 2000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 29000,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "w3": {
+            "fills": 4,
+            "firstFill": { "at": 3000, "seq": 3 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 60,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 110,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "w3", "title": "marathoner", "evidence": 2 },
+          { "userId": "w1", "title": "specialist", "evidence": 5 },
+          { "userId": "w2", "title": "long-hauler", "evidence": 29000 }
+        ]
+      }
+    },
+    {
+      "name": "COMPOSED (D29 fast-follow): raw burst refuses the sprinter across the seam, and the pipeline walks events to awards",
+      "intent": "The revisit's end-to-end case, mirroring the composed D29 idiom of the trace-projection files: given.solvers and given.room are exactly titleStats(given.events, given.solution, given.slots, {rows, cols}); the Wave 12.2 reader asserts that equality, then awards the sheet. The 1,800,000 ms gap (exactly SITTING_GAP_MS) splits two sittings, and u1's fourth fill lands one seam away: a collapsed-basis burst would read 4 and award sprinter (SPRINTER_MIN_BURST = 4), while the pinned RAW burst is 3 and sprinter refuses, so a mis-re-based engine fails loudly on the award array itself. Both solvers are ever-present, so marathoner takes max fills (u1, evidence 2) and u2 falls to closer (closingFills 1; the size-2 stretch is ceil(6/5) ordinally, seam notwithstanding). The sheet also pins the re-based turning point (the within-sitting 10 s gap, first-wins, u1) and the wall spans (1825, 1805).",
+      "given": {
+        "rows": 1,
+        "cols": 6,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4, 5], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 10000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 20000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 25000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 1825000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "A", "at": 1830000 }
+        ],
+        "solvers": {
+          "u1": {
+            "fills": 4,
+            "firstFill": { "at": 0, "seq": 1 },
+            "lastFill": { "at": 1825000, "seq": 5 },
+            "openingFills": 2,
+            "closingFills": 1,
+            "writes": 4,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 1,
+            "slotsFinished": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 1825,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 2,
+            "firstFill": { "at": 25000, "seq": 4 },
+            "lastFill": { "at": 1830000, "seq": 6 },
+            "openingFills": 0,
+            "closingFills": 1,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 0,
+            "slotsFinished": 1,
+            "meddles": 1,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 1,
+            "homeQuadrantFills": 2,
+            "span": 1805,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 10,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "marathoner", "evidence": 2 },
+          { "userId": "u2", "title": "closer", "evidence": 1 }
+        ]
+      }
+    }
   ]
 }

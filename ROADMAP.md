@@ -1196,3 +1196,60 @@ before.**
 The same swap in the completion stats and the analysis sheet, copy and placement
 matching web. **Exit: the same room reads the same time, count, and seams on both
 platforms.**
+
+## Phase 12 — Titles revisit (the D29 fast-follow)
+
+Contract landed: the TITLES.md two-bases amendment (`brokeStall` and the room's
+`stallSeconds` re-base onto `moments(solveTrace(collapseIdle(events), solution))`,
+byte-identical to the bundle's shipped projection, so the ribbon marker and the
+ice-breaker card can never fork; `span` and `burst` deliberately stay wall-clock, since
+a burst window must never straddle a collapsed seam and the wall span is honest flavor),
+the `marathoner` rung at rank 8 (present in every sitting of a 2-plus-sitting room,
+claim max fills, evidence the sitting count; the sheet gains `sittingsPresent`, the room
+header `sittingCount`; the ladder is 16 rungs), and the SITTINGS.md / DESIGN.md D29
+follow-up notes. No wire change: `marathoner` is one more key under PROTOCOL §12's
+ignore-unknown-keys rule.
+
+**Vectors first.** The re-base and the new rung are shared normative ground: the
+`titleStatsRevisit` and `awardTitlesRevisit` clusters in `vectors/analysis/titles.json`
+land with the contract, data-only ahead of the engine (the Wave 10.2 posture). The
+shipped Wave 10.3 reader binds only the two legacy clusters and ignores the new keys;
+every legacy fixture is single-sitting, so the re-base leaves all of them byte-identical
+(the D29 identity), and none is touched.
+
+### Wave 12.1 — contract (this PR)
+
+The TITLES.md, SITTINGS.md, and DESIGN.md amendments, the two revisit vector clusters,
+the vectors README, this phase. Docs and vectors only; no engine, server, or client
+code. **Exit: the four checks are green and every legacy vector case is untouched.**
+
+### Wave 12.2 — engine (blocked on 12.1)
+
+`titleStats` re-bases its turning point onto the collapsed trace and grows
+`sittingsPresent` and `room.sittingCount` (reusing `collapseIdle` and `SITTING_GAP_MS`,
+intra-engine, INV-9); `TITLE_LADDER` gains `marathoner` at rank 8. The reader adopts the
+revisit clusters beside the legacy ones; a legacy award given's absent `sittingCount`
+reads as 1 and absent `sittingsPresent` as 0, so the marathoner gate refuses and the
+legacy clusters pass byte-identical. **Exit: all four clusters green; the composed
+revisit case closes the events-to-awards pipeline.**
+
+### Wave 12.3 — server test-flip (blocked on 12.2)
+
+No bundle-shape change: the Archive module already ships whatever the reducers produce.
+The server tests covering `titles` pin the within-sitting stall and a marathoner room,
+and PROTOCOL §12's sentence deferring the titles re-base ("`titles` alone keep their
+wall-clock basis for now") retires. **Exit: a multi-sitting completed game ships
+within-sitting ice-breaker evidence and, where earned, a marathoner; single-sitting
+bundles are byte-identical.**
+
+### Wave 12.4 — web (blocked on 12.3)
+
+Copy only: the `marathoner` card in the Titles section ("showed up for all 3 sittings"
+register, evidence the sitting count); ice-breaker copy unchanged, its number simply
+stops lying. **Exit: a multi-sitting room shows its marathoner; unknown keys are still
+ignored.**
+
+### Wave 12.5 — iOS (blocked on 12.3)
+
+The same copy in the analysis sheet, matching web. **Exit: the same room shows the same
+titles on both platforms.**
