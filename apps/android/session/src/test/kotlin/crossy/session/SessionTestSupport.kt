@@ -376,6 +376,8 @@ fun board(seq: Int = 0): Board =
         participants = emptyList(),
         cursors = emptyList(),
         recentCommandIds = emptyList(),
+        checkedWrongCells = emptyList(),
+        checkCount = 0,
         stats = null,
     )
 
