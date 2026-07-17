@@ -264,7 +264,13 @@ fun RoomScreen(
         }
     }
     var gate by remember(puzzle) { mutableStateOf(CelebrationGate()) }
-    var mosaicStartedAt by remember(puzzle) { mutableStateOf<Double?>(null) }
+    // The mosaic's presentation lifecycle (MosaicMoment), folded forward beside the gate: the bloom's
+    // trigger, the settled flag (the wash STANDS, never nilled back to ink, the flash-then-disappear
+    // fix), and the legend's isolation filter. Split from the gate on purpose: the gate is the
+    // exactly-once celebration arbiter (INV-3), this is the wash's own record. A stand (the
+    // reconnect-into-completed path) never runs through the gate, so it wears the record without ever
+    // celebrating (INV-3 by construction).
+    var moment by remember(puzzle) { mutableStateOf(MosaicMoment()) }
     var confettiStartedAt by remember(puzzle) { mutableStateOf<Double?>(null) }
     var celebrationFired by remember(puzzle) { mutableStateOf(false) }
     // The solved notice shows where the retired deck stood, AFTER the moment settles on a live finish,
@@ -280,7 +286,9 @@ fun RoomScreen(
         // The §7 completion haptic rides the gate's one firing (INV-3), never the fold: the distinct
         // pattern the player renders as the board's celebration, played exactly once per completed room.
         haptics.play(SolveHaptic.COMPLETION)
-        if (AttributionSwitches.completionMosaicEnabled) mosaicStartedAt = now
+        // The bloom rides the gate's one firing: arm and set the trigger (ID-1 gated inside bloom, so a
+        // muted switch arms but derives no wash). The settle lands on the STANDING wash below.
+        moment = moment.bloom(now, AttributionSwitches.completionMosaicEnabled)
         // The confetti is skipped whole under Reduce Motion (a static confetto is just litter); it
         // rides the same instant as the mosaic otherwise (owner ask 2026-07-11).
         if (AttributionSwitches.completionConfettiEnabled && !reduceMotion) confettiStartedAt = now
@@ -293,12 +301,30 @@ fun RoomScreen(
         if (roomStatus != RoomStatus.ONGOING) return@LaunchedEffect
         hapticFold.observe(filled, selection, geometry)?.let { haptics.play(it) }
     }
-    // The mosaic retires when its envelope settles: the room nils the wash so the grid drops the pass
-    // and the finished board settles back to ink (iOS CompletionModel nils mosaicStartedAt on settle).
-    LaunchedEffect(mosaicStartedAt) {
-        val start = mosaicStartedAt ?: return@LaunchedEffect
+    // The settle's landing: once the envelope lands the mosaic STANDS (the flash-then-disappear fix,
+    // iOS settleMosaic). The wash is never nilled, so the completed board keeps the room's fingerprint,
+    // the letters settled back to ink over it (web parity: the reveal arc ends at WASH, not plain ink);
+    // `settled` also pauses the grid's frame loop, a constant wash costing no frames. Runs only for a
+    // live bloom; a stand is born settled, so this returns at once.
+    LaunchedEffect(moment.startedAt, moment.settled) {
+        val start = moment.startedAt
+        if (start == null || moment.settled) return@LaunchedEffect
         delay((MosaicEnvelope.DURATION_SECONDS * 1000).toLong())
-        if (mosaicStartedAt == start) mosaicStartedAt = null
+        if (moment.startedAt == start && !moment.settled) moment = moment.settle()
+    }
+    // The reconnect-into-completed path (iOS standMosaic, driven off analysis.phase's no-celebration
+    // branch): a welcome snapshot of an already-solved room never fired the gate, so nothing blooms,
+    // but the terminal board WEARS the settled wash the moment the first-correct bundle lands (the
+    // flash-then-disappear fix's revisit half, INV-3: standing is not celebrating). An absent bundle
+    // stands nothing: the wash is first-correct truth, and without the bundle there is none. The one
+    // arming inside stand() makes a stand-after-bloom (or bloom-after-stand) a no-op.
+    LaunchedEffect(roomStatus, celebrationFired, analysisModel.phase) {
+        if (!celebrationFired &&
+            roomStatus == RoomStatus.COMPLETED &&
+            analysisModel.phase is AnalysisModel.Phase.Ready
+        ) {
+            moment = moment.stand(reactionNow(), AttributionSwitches.completionMosaicEnabled)
+        }
     }
     // The confetti unmounts when its drift ends (iOS nils confettiStartedAt on the same clock).
     LaunchedEffect(confettiStartedAt) {
@@ -326,10 +352,16 @@ fun RoomScreen(
     // writer (the absent fallback), and once GET /analysis resolves it repaints in first-correct owner
     // color. Both are a cell->userId map, so the GridMosaic seam takes either with no reshaping; the
     // bundle joins the key so the bloom repaints the frame it arrives on.
-    val mosaic = remember(render.cells, render.participants, ground, mosaicStartedAt, analysisModel.bundle) {
-        mosaicStartedAt?.let {
+    val mosaic = remember(render.cells, render.participants, ground, moment, analysisModel.bundle) {
+        moment.startedAt?.let { startedAt ->
             val writers = analysisModel.bundle?.owners ?: sequencedWriters(render.cells)
-            MosaicWash(GridMosaic.colors(writers, render.participants, ground), it)
+            MosaicWash(
+                colors = GridMosaic.colors(writers, render.participants, ground),
+                startedAt = startedAt,
+                writers = writers,
+                settled = moment.settled,
+                isolation = moment.isolation,
+            )
         }
     }
     // The confetti field: the room's writers in their roster colors (the people are the only color,
@@ -563,6 +595,14 @@ fun RoomScreen(
             analysisMembers = members,
             selfUserId = render.selfUserId,
             onOpenAnalysis = { analysisRequested = true },
+            // The legend isolation filter (iOS AnalysisPanel legend chips over the settled wash) folds
+            // MosaicMoment.toggleIsolation and feeds the grid's MosaicWash above. AnalysisPanel accepts
+            // `isolatedSolverId` / `onIsolateSolver` (gated on moment.settled: a bloom in flight ignores
+            // taps, INV-3), but it renders INSIDE ClueBar, whose track owns the forwarding seam: once
+            // ClueBar threads these two through to the panel, the tap reaches this handler:
+            //   isolatedSolverId = moment.isolatedSolverId,
+            //   onIsolateSolver = moment.settled.takeIf { it }?.let {
+            //       { id: String -> moment = moment.toggleIsolation(id, reactionNow()) } },
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235

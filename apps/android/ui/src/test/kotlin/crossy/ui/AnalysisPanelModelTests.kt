@@ -96,6 +96,46 @@ class AnalysisPanelModelTests {
         assertEquals("A solver", AnalysisPanelModel.nameFor("ghost", members, selfUserId = "grace"))
     }
 
+    private fun legendRow(userId: String, name: String, isSelf: Boolean) = AnalysisLegendRow(
+        userId = userId,
+        name = name,
+        color = AnalysisPanelModel.colorFor(userId, emptyList(), ground),
+        isSelf = isSelf,
+    )
+
+    @Test
+    fun `the legend caption is the plain sentence until the chips can isolate`() {
+        val rows = listOf(legendRow("grace", "You", isSelf = true), legendRow("ada", "Ada", isSelf = false))
+        // Not tappable (the bloom still plays, or an ongoing wash): the plain who-solved-it sentence.
+        assertEquals(
+            "Each square shows who solved it first.",
+            AnalysisPanelModel.legendCaption(rows, isolatedSolverId = null, tappable = false),
+        )
+    }
+
+    @Test
+    fun `the legend caption names the tap affordance once tappable, none isolated`() {
+        val rows = listOf(legendRow("grace", "You", isSelf = true), legendRow("ada", "Ada", isSelf = false))
+        assertEquals(
+            "Each square shows who solved it first. Tap a solver to see just theirs.",
+            AnalysisPanelModel.legendCaption(rows, isolatedSolverId = null, tappable = true),
+        )
+    }
+
+    @Test
+    fun `the legend caption names the isolated solver, self or other`() {
+        val rows = listOf(legendRow("grace", "You", isSelf = true), legendRow("ada", "Ada", isSelf = false))
+        assertEquals(
+            "Showing only your squares. Tap again for everyone.",
+            AnalysisPanelModel.legendCaption(rows, isolatedSolverId = "grace", tappable = true),
+        )
+        // The other-solver form interpolates the display name with a curly apostrophe (U+2019).
+        assertEquals(
+            "Showing only Ada’s squares. Tap again for everyone.",
+            AnalysisPanelModel.legendCaption(rows, isolatedSolverId = "ada", tappable = true),
+        )
+    }
+
     @Test
     fun `a color takes the wire when the member has one, the id hash otherwise`() {
         val wired = member("ada", "Ada", wire = "#3D6BD6")

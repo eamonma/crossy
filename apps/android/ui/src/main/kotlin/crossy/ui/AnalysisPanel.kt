@@ -14,6 +14,7 @@ package crossy.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,7 +32,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -51,6 +55,23 @@ object AnalysisCopy {
     const val loading: String = "Loading…"
     const val absent: String = "Analysis isn’t available for this game."
     const val legendCaption: String = "Each square shows who solved it first."
+
+    /** The legend caption once the chips can isolate a solver, none isolated: the tappability
+     *  affordance in words (twin of the iOS legendCaption's tappable branch). */
+    const val legendCaptionTappable: String =
+        "Each square shows who solved it first. Tap a solver to see just theirs."
+
+    /** The caption while the self's own squares are isolated. */
+    const val legendCaptionIsolatedSelf: String = "Showing only your squares. Tap again for everyone."
+
+    /** The caption while another solver's squares are isolated (their name interpolated). */
+    fun legendCaptionIsolatedOther(name: String): String =
+        "Showing only ${name}’s squares. Tap again for everyone."
+
+    /** A legend chip's accessibility hint (iOS accessibilityHint): what a tap does, per selected state. */
+    const val isolateHintClear: String = "Shows everyone’s squares again."
+    const val isolateHintSelf: String = "Shows only your squares on the board."
+    const val isolateHintOther: String = "Shows only their squares on the board."
     const val momentumLabel: String = "Momentum"
     const val momentsLabel: String = "Moments"
     const val timeLabel: String = "Time"
@@ -106,6 +127,24 @@ object AnalysisPanelModel {
         return rows
     }
 
+    /** The legend's one caption: what the squares mean; then, once the chips can isolate (tappable),
+     *  what a tap does; then who is isolated. Matches the web/iOS legend caption grammar. `tappable` is
+     *  false until the mosaic wash settles (a bloom in flight leaves the chips plain labels). Pure and
+     *  Compose-free, so the copy pins headlessly. Twin of the iOS legendCaption. */
+    fun legendCaption(
+        rows: List<AnalysisLegendRow>,
+        isolatedSolverId: String?,
+        tappable: Boolean,
+    ): String {
+        if (!tappable) return AnalysisCopy.legendCaption
+        val isolated = rows.firstOrNull { it.userId == isolatedSolverId }
+        return when {
+            isolated == null -> AnalysisCopy.legendCaptionTappable
+            isolated.isSelf -> AnalysisCopy.legendCaptionIsolatedSelf
+            else -> AnalysisCopy.legendCaptionIsolatedOther(isolated.name)
+        }
+    }
+
     /** The stat trio as (label, value) pairs: Time (M:SS), Solvers, Squares. Twin of the iOS statTrio. */
     fun statTrio(analysis: RoomAnalysis): List<Pair<String, String>> = listOf(
         AnalysisCopy.timeLabel to analysis.durationLabel,
@@ -149,6 +188,14 @@ fun AnalysisPanel(
     selfUserId: String?,
     ground: GridGround,
     modifier: Modifier = Modifier,
+    // The isolated solver on the settled wash (the legend chips' selected state), or null at the full
+    // multi-color record. Twin of the iOS isolatedSolverId.
+    isolatedSolverId: String? = null,
+    // Isolate a solver from their legend chip: same-tap clears, another switches (MosaicMoment
+    // .toggleIsolation up in RoomScreen). Null while isolation is unavailable (the bloom still playing,
+    // or no completed wash), where the chips stay the plain labels they always were. Twin of the iOS
+    // onIsolateSolver.
+    onIsolateSolver: ((String) -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -160,7 +207,8 @@ fun AnalysisPanel(
         when (phase) {
             AnalysisModel.Phase.Idle, AnalysisModel.Phase.Loading -> Placeholder(AnalysisCopy.loading, ground)
             AnalysisModel.Phase.Absent -> Placeholder(AnalysisCopy.absent, ground)
-            is AnalysisModel.Phase.Ready -> Content(phase.bundle, members, selfUserId, ground)
+            is AnalysisModel.Phase.Ready ->
+                Content(phase.bundle, members, selfUserId, ground, isolatedSolverId, onIsolateSolver)
         }
     }
 }
@@ -180,6 +228,8 @@ private fun Content(
     members: List<RosterMember>,
     selfUserId: String?,
     ground: GridGround,
+    isolatedSolverId: String? = null,
+    onIsolateSolver: ((String) -> Unit)? = null,
 ) {
     val tokens = ground.tokens
     Eyebrow(ground)
@@ -187,33 +237,24 @@ private fun Content(
 
     val legend = AnalysisPanelModel.legendRows(analysis, members, selfUserId, ground)
     if (legend.isNotEmpty()) {
+        // Tighter chip spacing once the rows wear the tappable capsule (its own padding carries the
+        // air); the plain labels keep theirs (iOS FlowLayout spacing 8 vs 14).
         FlowRow(
             modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (onIsolateSolver == null) 14.dp else 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             for (row in legend) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Box(
-                        Modifier
-                            .size(10.dp)
-                            .clip(RoundedCornerShape(3.dp))
-                            .background(row.color.toColor()),
-                    )
-                    Text(
-                        row.name,
-                        color = (if (row.isSelf) tokens.ink else tokens.number).toColor(),
-                        fontSize = 12.5.sp,
-                        fontWeight = if (row.isSelf) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                }
+                LegendChip(
+                    row = row,
+                    isIsolated = row.userId == isolatedSolverId,
+                    ground = ground,
+                    onIsolate = onIsolateSolver,
+                )
             }
         }
         Text(
-            AnalysisCopy.legendCaption,
+            AnalysisPanelModel.legendCaption(legend, isolatedSolverId, tappable = onIsolateSolver != null),
             color = tokens.number.toColor().copy(alpha = 0.85f),
             fontSize = 11.sp,
             modifier = Modifier.padding(top = 6.dp),
@@ -248,6 +289,63 @@ private fun Content(
             }
         }
     }
+}
+
+/** One legend row. Once the wash settles (`onIsolate` non-null) the row is a button that isolates its
+ *  solver on the board: a quiet hairline capsule marks it tappable (the stat trio's border vocabulary),
+ *  and the selected chip wears its solver's color, the dot always colored but the chrome otherwise
+ *  achromatic (DESIGN.md §3). TalkBack reads a button with a meaningful hint (onClickLabel) and the
+ *  selected trait. While the bloom still plays (`onIsolate` null) the row is the plain label it always
+ *  was, keeping the file's existing legend idiom. Twin of the iOS legendChip. */
+@Composable
+private fun LegendChip(
+    row: AnalysisLegendRow,
+    isIsolated: Boolean,
+    ground: GridGround,
+    onIsolate: ((String) -> Unit)?,
+) {
+    val tokens = ground.tokens
+    val emphasized = row.isSelf || isIsolated
+    val label: @Composable () -> Unit = {
+        Box(
+            Modifier
+                .size(10.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(row.color.toColor()),
+        )
+        Text(
+            row.name,
+            color = (if (emphasized) tokens.ink else tokens.number).toColor(),
+            fontSize = 12.5.sp,
+            fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
+    if (onIsolate == null) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) { label() }
+        return
+    }
+    val hint = when {
+        isIsolated -> AnalysisCopy.isolateHintClear
+        row.isSelf -> AnalysisCopy.isolateHintSelf
+        else -> AnalysisCopy.isolateHintOther
+    }
+    val capsule = RoundedCornerShape(percent = 50)
+    val borderColor =
+        if (isIsolated) row.color.toColor().copy(alpha = 0.55f) else tokens.number.toColor().copy(alpha = 0.22f)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .clip(capsule)
+            .background(if (isIsolated) row.color.toColor().copy(alpha = 0.16f) else Color.Transparent)
+            .border(1.dp, borderColor, capsule)
+            .semantics { selected = isIsolated }
+            .clickable(role = Role.Button, onClickLabel = hint) { onIsolate(row.userId) }
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+    ) { label() }
 }
 
 @Composable
