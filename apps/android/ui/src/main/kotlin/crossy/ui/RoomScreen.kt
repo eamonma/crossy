@@ -384,6 +384,10 @@ fun RoomScreen(
             )
         }
     }
+    // The directional word loupe's gate (WordLoupe.showsWordLoupe; iOS analysisResting && mosaicSettled):
+    // the settled completed board wears the clear glass over the active word. The grid drops its plain
+    // selection tint under the same flag (the glass IS the selection made visible on the settled board).
+    val showLoupe = showsWordLoupe(roomStatus, moment.settled)
     // The confetti field: the room's writers in their roster colors (the people are the only color,
     // §1), spectators lending none, deterministically seeded so the drift is stable across renders.
     val confettiField = remember(render.participants, ground) {
@@ -561,6 +565,7 @@ fun RoomScreen(
                 checkedWrong = visibleCheckMarks,
                 flashes = flashes,
                 mosaic = mosaic,
+                showsWordLoupe = showLoupe,
                 reduceMotion = reduceMotion,
                 gridContentDescription = gridA11yLabel,
                 activeCellDescription = activeCellA11y,
@@ -581,6 +586,21 @@ fun RoomScreen(
                     apply(InputActions.swipe(env(), intent))
                 },
             )
+            // The directional word loupe over the settled completed board (WordLoupeLayer): iOS mounts it
+            // as an overlay ABOVE the Canvas and BELOW the reaction stickers, so it sits here between the
+            // grid and the sticker layer. It rides the same reported camera the stickers do, is sized to
+            // the grid identically (one module edge governs all three), and never hit-tests, so grid taps
+            // pass through. Mounted only when the gate holds, so nothing draws mid-solve or during the bloom.
+            if (showLoupe) {
+                WordLoupeLayer(
+                    geometry = geometry,
+                    selection = selection,
+                    ground = ground,
+                    camera = gridCamera,
+                    reduceMotion = reduceMotion,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
+                )
+            }
             // The sticker overlay ABOVE the grid, sized to it (same fillMaxWidth + aspectRatio, so
             // one module edge governs both): reactions render at their cell as native emoji. It
             // never hit-tests, so grid taps pass through untouched.
