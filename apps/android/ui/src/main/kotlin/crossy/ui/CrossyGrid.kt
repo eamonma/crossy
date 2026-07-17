@@ -104,6 +104,12 @@ fun CrossyGrid(
     // WASH). A settled wash is a constant, so the frame loop pauses and the draw skips the clock. The
     // `mosaic.isolation` filter recesses every non-isolated hand toward paper. Drawn OVER the ink pass.
     mosaic: MosaicWash? = null,
+    // The completed Analysis board's directional loupe (WordLoupeLayer, mounted by the room above this
+    // Canvas and below the sticker layer). This grid draws NO glass; the flag only tells the draw pass to
+    // drop the plain selection tint, because on the settled board the loupe IS the selection made visible
+    // (iOS CrossyGridView passes `selection: showsWordLoupe ? nil : selection` to its frame). Default
+    // false, so previews, the demo, and every mid-solve grid keep the established fill precedence.
+    showsWordLoupe: Boolean = false,
     // Reduce Motion holds the flash as a step and skips the frame loop, and snaps the camera follow
     // instead of gliding it (RoomScreen's rememberReduceMotion; iOS gates the follow on the same
     // accessibilityReduceMotion signal).
@@ -361,14 +367,17 @@ fun CrossyGrid(
                 }
                 drawRect(tokens.cell.toColor(), origin, cellSize)
                 when {
-                    c == selection?.cell -> drawRect(tint.copy(alpha = GridModule.CURRENT_ALPHA), origin, cellSize)
+                    // The settled Analysis loupe drops the plain selection tint (current cell + active
+                    // word): the glass is the selection now (iOS nils the frame's selection). The check,
+                    // cross-reference, and teammate washes still stand, exactly as the iOS frame keeps them.
+                    !showsWordLoupe && c == selection?.cell -> drawRect(tint.copy(alpha = GridModule.CURRENT_ALPHA), origin, cellSize)
                     // The room check coat (PROTOCOL.md §10, D27): a flat opaque token fill replacing the
                     // paper outright, above the cross-reference wash and below the current-cell fill,
                     // identical for every member (CellFill.CHECK). The caller already suppressed any
                     // cell under a pending overlay.
                     c in checkedWrong -> drawRect(tokens.check.toColor(), origin, cellSize)
                     c in crossReference -> drawRect(tint.copy(alpha = GridModule.CROSS_REFERENCE_ALPHA), origin, cellSize)
-                    c in activeWord -> drawRect(tint.copy(alpha = GridModule.ACTIVE_WORD_ALPHA), origin, cellSize)
+                    !showsWordLoupe && c in activeWord -> drawRect(tint.copy(alpha = GridModule.ACTIVE_WORD_ALPHA), origin, cellSize)
                     presence.containsKey(c) ->
                         drawRect(presence.getValue(c).first().color.toColor().copy(alpha = GridModule.TEAMMATE_ALPHA), origin, cellSize)
                 }
