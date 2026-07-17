@@ -171,6 +171,16 @@ interface GameView {
    */
   readonly inviteCode: string;
   readonly puzzle: ClientPuzzle;
+  /**
+   * The puzzle's display title and author, read from the `puzzles` row joined on
+   * `puzzle_id` (never from the solution-bearing snapshot), null when the document
+   * carried none. Additive expand (PROTOCOL.md §12, §14): display metadata for the
+   * post-game surfaces (the share card's masthead), not solution content (INV-6
+   * untouched), never normalized or compared (INV-1 does not apply). Top-level rather
+   * than inside `puzzle`, which stays exactly `ClientPuzzle`.
+   */
+  readonly puzzleTitle: string | null;
+  readonly puzzleAuthor: string | null;
   readonly members: readonly {
     readonly userId: string;
     readonly role: Role;
@@ -673,6 +683,10 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       return fail(c, "GAME_NOT_FOUND", "no such game");
     }
 
+    // The puzzles join reads two named display columns (title, author) for the view's
+    // additive puzzleTitle/puzzleAuthor, exactly as the GET /games list reads title:
+    // never the solution-bearing `data` (INV-6). The join is on games.puzzle_id, which
+    // is NOT NULL and ON DELETE RESTRICT, so an inner join drops no game row.
     const found = await deps.db
       .select({
         gameId: schema.games.gameId,
@@ -681,8 +695,14 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
         inviteCode: schema.games.inviteCode,
         createdBy: schema.games.createdBy,
         createdAt: schema.games.createdAt,
+        puzzleTitle: schema.puzzles.title,
+        puzzleAuthor: schema.puzzles.author,
       })
       .from(schema.games)
+      .innerJoin(
+        schema.puzzles,
+        eq(schema.puzzles.puzzleId, schema.games.puzzleId),
+      )
       .where(eq(schema.games.gameId, gameId))
       .limit(1);
     if (found.length === 0) {
@@ -729,6 +749,8 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
       name: game.name,
       inviteCode: game.inviteCode,
       puzzle,
+      puzzleTitle: game.puzzleTitle,
+      puzzleAuthor: game.puzzleAuthor,
       members: members.map((m) => ({
         userId: m.userId,
         role: m.role,

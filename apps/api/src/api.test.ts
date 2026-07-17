@@ -1909,6 +1909,53 @@ describe("GET /games/{id} (PROTOCOL.md §12; INV-6)", () => {
     expect(body.puzzle).toHaveProperty("clues");
   });
 
+  it("carries the puzzle's display title and author on the view (additive expand, PROTOCOL.md §12, §14)", async () => {
+    const host = await auth.mintUpgraded();
+    // A titled document: the XWord Info metadata fields ride ingestion into the
+    // puzzles row (readMetadata), and the view reads them back from that row only.
+    fixtureSeq += 1;
+    const doc = {
+      ...FIXTURE,
+      title: "Saturday Stumper",
+      author: "E. Longo",
+      clues: {
+        ...FIXTURE.clues,
+        across: [`1. friendly opener ${fixtureSeq}`, "3. keyboard basics"],
+      },
+    };
+    const posted = await postJson("/puzzles", host, doc);
+    expect(posted.status).toBe(201);
+    const { puzzleId } = (await posted.json()) as { puzzleId: string };
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      puzzleTitle: string | null;
+      puzzleAuthor: string | null;
+      puzzle: Record<string, unknown>;
+    };
+    expect(body.puzzleTitle).toBe("Saturday Stumper");
+    expect(body.puzzleAuthor).toBe("E. Longo");
+    // The fields sit beside `puzzle`, which stays exactly ClientPuzzle (INV-6:
+    // structural, so no new field creeps into the solve payload).
+    expect(body.puzzle).not.toHaveProperty("author");
+  });
+
+  it("reads puzzleTitle and puzzleAuthor as null when the document carried none (first-class null)", async () => {
+    const host = await auth.mintUpgraded();
+    const puzzleId = await ingestFixture(host); // the bare fixture has no metadata
+    const { gameId } = await createGame(host, puzzleId);
+
+    const res = await get(`/games/${gameId}`, host);
+    const body = (await res.json()) as {
+      puzzleTitle: string | null;
+      puzzleAuthor: string | null;
+    };
+    expect(body.puzzleTitle).toBeNull();
+    expect(body.puzzleAuthor).toBeNull();
+  });
+
   it("forbids a non-member authenticated user as NOT_PARTICIPANT", async () => {
     const host = await auth.mintUpgraded();
     const puzzleId = await ingestFixture(host);
