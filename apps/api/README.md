@@ -1,14 +1,37 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # @crossy/api
 
 The core API (DESIGN.md section 7): a stateless modular monolith over REST. Modules:
-identity and membership, puzzle catalog, games, archive. This package holds the Wave 2.1b
-walking-skeleton slice.
+identity and membership, puzzle catalog, games, and archive (post-game analysis). It is
+the single writer on `users`, `memberships`, `game_denylist`, and the puzzle and game
+catalog tables.
 
-## Endpoints in this slice
+## Endpoints
+
+The core routes below are the membership and gameplay surface. Alongside them the app
+serves several routes documented near their code rather than here:
+
+- `GET /games/{id}/analysis`: the post-game analysis bundle (`games/routes.ts`,
+  design/post-game/ANALYSIS.md), assembled from the archived event log by
+  `archive/analysis`.
+- `POST /games/{id}/live-activity-tokens` and
+  `DELETE /games/{id}/live-activity-tokens/{token}`: register and unregister an
+  ActivityKit per-activity update token so the session can push Live Activity frames
+  (`games/routes.ts`, PROTOCOL.md section 12a).
+- `GET /me` and `PATCH /me`: the caller's own display name and reaction set
+  (`identity/me.ts`); the `reactionSet` field is validated by `identity/reaction-set.ts`.
+- The invite host (`invite-host/routes.ts`): a host-scoped middleware that redirects the
+  short-link domain to the web origin. A no-op pass-through unless the request hostname
+  matches the configured `INVITE_HOST`.
+- Puzzle source adapters (`puzzles/`): `dispatch.ts` routes an ingest by source to the
+  AmuseLabs (`amuselabs.ts`), Guardian (`guardian.ts`), and NYT (`nyt.ts`) adapters, each
+  translating a vendor format into the internal `ServerPuzzle` at the boundary.
+- Starter puzzles (`starter/`): a small seeded catalog so a fresh account has something to
+  open.
 
 - `POST /puzzles`: full account. Ingest XWord Info JSON through the anti-corruption layer
   (`puzzles/ingest.ts`): translate it into the internal `ServerPuzzle`, apply the named
@@ -65,7 +88,9 @@ this notifier in the composition root, both optional so the local dev stack runs
 - **`INTERNAL_BEARER_TOKEN`**: the static internal bearer, shared with the session service
   (which verifies it). Injected via config, never hardcoded.
 - **`SESSION_INTERNAL_BASE`**: the session service base URL on the provider's private network
-  (for example `http://session.railway.internal:8081`).
+  (for example `http://session.railway.internal:8082`). This is the session's private
+  `INTERNAL_PORT`, not its public WS port (8081); the internal endpoints bind the private port
+  only (`deploy/README.md`).
 
 When either is unset the notifier is a no-op: the membership and denylist writes stay
 authoritative, so a kicked user is still refused at reconnect via the denylist, and the live
@@ -163,8 +188,12 @@ in-memory fake, which mints real ES256 tokens; the Supabase adapter is construct
 `SESSION_WS_BASE` (required), plus the optional `CORS_ORIGIN`, `SESSION_INTERNAL_BASE`,
 `INTERNAL_BEARER_TOKEN`, `APPLE_APP_ID` (the iOS `<TeamID>.<bundleID>` for the AASA
 route; owner-set in Railway once the Apple app record exists, see `deploy/README.md`),
-`POSTHOG_TOKEN` (product analytics; unset selects a noop and posthog-node is never
-constructed), and `POSTHOG_HOST` (defaults to `https://us.i.posthog.com`).
+`INVITE_HOST` (the short-link hostname that activates the invite-host redirect),
+`WEB_ORIGIN` (the redirect target, falling back to `CORS_ORIGIN` since the SPA and web
+origins coincide), `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the admin credentials
+for vendor identity deletion; both unset disables it), `POSTHOG_TOKEN` (product analytics;
+unset selects a noop and posthog-node is never constructed), and `POSTHOG_HOST` (defaults
+to `https://us.i.posthog.com`).
 It constructs the live ports and listens. Deployment provisions a login role carrying
 `crossy_api`'s privileges (see the migration note), so no `SET ROLE` is needed in
 production.

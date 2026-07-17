@@ -1,11 +1,13 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # @crossy/engine
 
 Pure domain logic for Crossy: the reducer, comparator, and navigation (DESIGN.md
-sections 4 and 5). Every function here is deterministic and side effect free. The
+sections 4 and 5), plus post-game analysis and the titles ladder
+(design/post-game/*.md). Every function here is deterministic and side effect free. The
 package imports nothing (INV-9): no workspace packages, no npm dependencies, no node
 builtins. Timestamps and user ids arrive as plain data on commands.
 
@@ -65,6 +67,18 @@ already works: a second, independent type set held true by the same fixtures.
   character (D12).
 - `getNextCell`, `wordBounds`, `tabTarget`, `typingAdvance`, `backspaceTarget`: the
   navigation operations pinned by the `when.op` table in `vectors/README.md`.
+- `firstCorrect(...)`: attributes each cell's first correct fill to a solver from the
+  event log, the ownership basis the analysis and titles both read (`first-correct.ts`).
+- Post-game analysis (`analysis.ts`, design/post-game/ANALYSIS.md): `moments`,
+  `momentum`, `sittings`, `solveSequence`, `solveTrace`, and `collapseIdle`, with the
+  constants they use (`BURST_WINDOW_MS`, `MOMENTUM_SAMPLES`, `SITTING_GAP_MS`). Pure
+  functions over the event log that derive the beats, momentum curve, sittings, and
+  solve trace of a finished game.
+- The titles ladder (`titles.ts`, design/post-game/TITLES.md): `awardTitles`,
+  `titleStats`, and the `TITLE_LADDER` definition, plus the tuning constants
+  (`BULLSEYE_MIN_FILLS`, `MARQUEE_MIN_LENGTH`, `MEDDLER_MIN`, `OPENING_SHARE`,
+  `SABOTEUR_MIN`, `SPRINTER_MIN_BURST`, `STALL_FLOOR_SECONDS`). Ranks solvers into the
+  per-game titles from their stats.
 
 ## ASCII only casing (INV-1)
 

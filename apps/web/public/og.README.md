@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Social preview (Open Graph) image
@@ -10,7 +11,10 @@ grid as the app icon, six open cells spelling CROSSY with the gold `Y`, on the
 bone `#F2F1EC` ground) on the left, and the serif "Crossy" wordmark over the
 tagline "Solve the crossword together, live." on the right.
 
-`index.html` points `og:image` and `twitter:image` at `/og.png` (1200x630).
+`index.html` points `og:image` and `twitter:image` at the absolute
+`https://crossy.party/og.png` (1200x630). The absolute URL is deliberate: link
+unfurlers do not resolve relative paths against the page origin, so the card needs a
+fully qualified image URL.
 
 ## Reproduce from source
 

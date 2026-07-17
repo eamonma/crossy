@@ -1,17 +1,21 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # apps/web
 
-The Vite + React SPA. As of **Wave 2.1d** this is the web client skeleton: the real
-game store (sequenced state plus optimistic overlay, INV-10), the WebSocket codec
-and transport, and grid input driven entirely by `@crossy/engine`'s navigation ops,
-built per the desktop interaction spec (ROADMAP "Wave 2.1d desktop interaction
-spec"). The demo boards still run on fake, local data: a tiny in-memory session
-(`src/demo/fakeSession.ts`) stands in for `apps/session` behind the store's
-transport port, so every interaction exercises the same code paths a live socket
-will drive in Wave 2.2.
+The Vite + React SPA, deployed through the live pipeline. Live mode (`LiveApp.tsx`,
+`/game/<id>`) runs the real `GameStore` over a real WebSocket to `apps/session`
+(`src/net/wsTransport.ts`, `connect.ts`), with grid input driven entirely by
+`@crossy/engine`'s navigation ops per the desktop interaction spec. Around the board
+sit the account and gameplay surfaces: identity and auth (`src/identity/`, Supabase and
+mock adapters), the display-name and profile flows (`src/profile/`) over `authedFetch`,
+live reactions (`src/reactions/`), and product analytics (`src/analytics/`, PostHog
+behind a noop-by-default port). The same `GameStore`, grid, and engine navigation also
+back a demo mode: a tiny in-memory session (`src/demo/fakeSession.ts`) stands in for
+`apps/session` behind the store's transport port, so the demo boards and the taste-pass
+strip exercise the exact code paths a live socket drives, with no server.
 
 ## Run it
 
@@ -69,10 +73,11 @@ repo's, never anything else on those ports.
   `vectors/v1/client-store/`; `client-store.vectors.test.ts` discovers and executes
   every case against the real store, decoding server stimuli through
   `@crossy/protocol`'s codec.
-- `src/net/` - the thin WebSocket transport: hello, heartbeat, codec decode, and the
-  PROTOCOL section 7 reconnect backoff (0, 1, 2, 4, 8, 16, 30 s capped, full jitter,
-  reset after a 30 s survival), unit-tested in `backoff.test.ts`. `connectToGame` is
-  the dev-mode connect path; no test requires it.
+- `src/net/` - the WebSocket transport (`wsTransport.ts`): hello, heartbeat, codec
+  decode, and the PROTOCOL section 7 reconnect backoff (0, 1, 2, 4, 8, 16, 30 s capped,
+  full jitter, reset after a 30 s survival), unit-tested in `backoff.test.ts` and
+  `wsTransport.test.ts`. `connect.ts` wires it into live mode; `authedFetch.ts` is the
+  bearer-authenticated REST client the account surfaces call.
 - `src/input/` - the spec's keyboard map and pointer paths as pure transforms, every
   cursor move through the engine ops (`getNextCell`, `wordBounds`, `tabTarget`,
   `typingAdvance`, `backspaceTarget`).
@@ -117,14 +122,20 @@ repo's, never anything else on those ports.
    two share a cell) per DESIGN section 10's bottom-right rule. The Theme toggle
    flips light/dark; both honor the SP6 color roles.
 
-## What is real and what is fake
+## Live mode and demo mode
 
-Real: the store and its reconciliation (pinned by the client-store vectors), the
-input model (pinned by the navigation vectors through `@crossy/engine`), the wire
-codec, the backoff schedule. Fake: the session behind the transport port (the demo
-strip's buttons script it), participants, and the boards themselves. Wave 2.2
-replaces the fake session with `src/net`'s WebSocket transport against
-`apps/session` and deletes nothing but the wiring.
+Live mode (`LiveApp.tsx`) is the real product: the `GameStore` speaks the wire codec
+over `src/net`'s WebSocket transport against a real `apps/session`, authenticated
+identities join real games, and the board only ever renders from the WS store (INV-6).
+Everything the store and input model do is pinned by vectors: the store and its
+reconciliation by the client-store vectors, the input model by the navigation vectors
+through `@crossy/engine`, plus the wire codec and the backoff schedule.
+
+Demo mode reuses that same store, grid, and input against `src/demo/fakeSession.ts`, an
+in-memory session behind the transport port. The demo strip's buttons script it, so the
+demo boards and participants are local fixtures, not a server. It exists to exercise and
+show off the interaction model with no backend, and to drive the taste pass; the live
+path shares its every code seam.
 
 The Wave 1.1h playground's throwaway navigation module and its two A/B toggles are
 gone: both decisions (symmetric Shift+Tab, backspace-across-blocks) are settled,
