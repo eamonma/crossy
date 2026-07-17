@@ -4,28 +4,41 @@
 // thing: each cell is painted by its owner, read from an abstract map the component never
 // questions.
 //
-// Three states of the one board, the ratified reveal arc (plate-study.html):
-//   INK    the solved board as it normally looks: letters in --letter, no color.
-//   FIELD  the peak: each cell its owner's full saturated color, letters HIDDEN, a pure textless
-//          color field. This is the crescendo and the spoiler-safe share image (no letters = no
-//          answers). Exposed as a static `plate` for a share/projector rendering.
-//   WASH   the rest: letters back in ink, the owner color dropped to a quiet ~0.34 tint under
-//          the glyph, never a slab. The settled on-screen record.
+// States of the one board, the ratified reveal arc (plate-study.html; settle re-ratified by
+// wash-blur-study 2026-07-17):
+//   INK      the solved board as it normally looks: letters in --letter, no color.
+//   FIELD    the peak: each cell its owner's full saturated color, letters HIDDEN, a pure textless
+//            color field. This is the crescendo and the spoiler-safe share image (no letters = no
+//            answers). Exposed as a static `plate` for a share/projector rendering.
+//   WASH     the crisp per-cell tint at WASH_ALPHA under ink letters. The time-gated replay paints
+//            revealed squares this way, and small static thumbnails keep it.
+//   SETTLED  the on-screen record: the owner tints, gaussian-blurred and composited at
+//            SETTLED_WASH_ALPHA under the crisp ink letters, blocks redrawn crisp on top so the
+//            color flows behind the grid. Isolating a solver swaps back to crisp cells (a blurred
+//            single hue has no shape to read).
 //
-// The reveal blooms INK -> FIELD along a diagonal sweep, holds the peak, then settles to WASH.
-// prefers-reduced-motion crosses straight to WASH with no sweep. Letters come only from board
-// state passed in (never a solution lookup), so this adds no data path (INV-6).
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+// The reveal blooms INK -> FIELD along a diagonal sweep, holds the peak, then melts to SETTLED:
+// the crisp cells fade out on the settle diagonal while the blurred field breathes in.
+// prefers-reduced-motion crosses straight to the settled frame with no sweep. Letters come only
+// from board state passed in (never a solution lookup), so this adds no data path (INV-6).
+import { useEffect, useId, useLayoutEffect, useMemo, useRef } from "react";
 import type { Puzzle } from "../domain/types";
 import {
   BLOOM_SPREAD_MS,
   bloomDelay,
+  blurOverscan,
+  blurRadius,
   INK,
   JITTER_MS,
+  MELT_DELAY_MS,
+  MELT_EASE,
+  MELT_FADE_MS,
   mosaicCells,
+  overscanTintRect,
   type OwnerMap,
   PEAK_HOLD_MS,
   type Roster,
+  SETTLED_WASH_ALPHA,
   settleDelay,
   WASH_ALPHA,
 } from "./mosaicReveal";
@@ -42,10 +55,11 @@ const ONSCREEN_INK = "var(--letter)";
 /** A stable empty reveal map, so a non-replay render never hands the replay effect a fresh identity. */
 const EMPTY_REVEALED: ReadonlyMap<number, number> = new Map();
 
-/** The three frames the reveal moves through, plus `plate` (a static FIELD at fuller saturation
- * for a share/projector still). `plate` keeps the letters hidden like FIELD; it is the peak held
- * still, not a glyph-on-color variant. */
-export type MosaicState = "ink" | "field" | "wash" | "plate";
+/** The frames the mosaic renders: the reveal's INK/FIELD plus `settled` (the blurred record the
+ * arc lands on), `wash` (the crisp per-cell tint replay and thumbnails keep), and `plate` (a
+ * static FIELD at fuller saturation for a share/projector still). `plate` keeps the letters
+ * hidden like FIELD; it is the peak held still, not a glyph-on-color variant. */
+export type MosaicState = "ink" | "field" | "wash" | "settled" | "plate";
 
 /**
  * How the mosaic behaves:
@@ -88,13 +102,21 @@ export interface ContributionMosaicProps {
    * The isolated solver (the Analysis legend's spotlight), or null/absent for the full wash.
    * Isolation rides the color rect's `fill-opacity` — a plain React-rendered attribute — while
    * the reveal arc and the replay animate the independent `opacity` channel imperatively. The
-   * two multiply, so toggling isolation repaints tints in place (over the settled wash, the
-   * bloom's field, or whatever cells the replay has revealed at time T) and can never re-arm
-   * the sweep: it never enters the reveal effect's dependency key (the #204 discipline).
+   * two multiply, so toggling isolation repaints tints in place (over the bloom's field, or
+   * whatever cells the replay has revealed at time T) and can never re-arm the sweep: it never
+   * enters the reveal effect's dependency key (the #204 discipline).
+   *
+   * On the SETTLED record isolation also swaps blur for crisp: the blurred layer hides (its
+   * isolation gate is a React-rendered group opacity, the same never-re-arms channel) and the
+   * crisp cells return at SETTLED_WASH_ALPHA, the fill-opacity dim multiplying as everywhere
+   * else. The crisp return is a dedicated effect keyed on `isolatedId` only; it writes opacities
+   * in place and never touches the reveal effect's trigger.
    */
   readonly isolatedId?: string | null | undefined;
-  /** Fires as the arc crosses each beat (0 solved, 1 bloom, 2 settled), for a beat indicator. */
-  readonly onBeat?: (beat: 0 | 1 | 2) => void;
+  /** Fires as the arc crosses each beat (0 solved, 1 bloom, 2 settled), for a beat indicator or
+   * a settled gate. `| undefined` explicit under exactOptionalPropertyTypes: CompletedMosaicBoard
+   * threads its own optional through. */
+  readonly onBeat?: ((beat: 0 | 1 | 2) => void) | undefined;
   /** An accessible label for the SVG; defaults to a geometry description. */
   readonly ariaLabel?: string;
 }
@@ -127,8 +149,12 @@ function frameStyle(state: MosaicState): CellStyle {
       // The share/projector still: the field held, fuller, letters still hidden.
       return { rectOpacity: 1, letterOpacity: 0, letterFill: INK };
     case "wash":
-      // The settled record: quiet tint under ink letters.
+      // The crisp per-cell tint under ink letters (replay's look, and the static thumbnails).
       return { rectOpacity: WASH_ALPHA, letterOpacity: 1, letterFill: INK };
+    case "settled":
+      // The settled record: the blurred layer carries the color, so the crisp tints rest at 0.
+      // The isolation handoff raises them to SETTLED_WASH_ALPHA when a solver is isolated.
+      return { rectOpacity: 0, letterOpacity: 1, letterFill: INK };
   }
 }
 
@@ -166,6 +192,16 @@ export function ContributionMosaic({
   const rectRefs = useRef(new Map<number, SVGRectElement>());
   const letterRefs = useRef(new Map<number, SVGTextElement>());
 
+  // The blurred settled layer (the clip group). Its `opacity` is the arc/settled channel, written
+  // imperatively like the rects' (React renders it once at 0 and never rewrites it); the inner
+  // filter group's React-rendered opacity is the isolation gate, and the two multiply.
+  const blurLayerRef = useRef<SVGGElement | null>(null);
+  // Per-instance ids for the blur filter and the board clip (several mosaics share a page).
+  // useId's delimiters are stripped so the ids stay plain url(#...) fragments.
+  const uid = useId().replace(/[^a-zA-Z0-9-]/g, "");
+  const clipId = `mosaic-clip-${uid}`;
+  const filterId = `mosaic-blur-${uid}`;
+
   // For a static behavior, the frame is React-driven and needs no imperative pass.
   const staticState = behavior.kind === "static" ? behavior.state : null;
 
@@ -179,6 +215,20 @@ export function ContributionMosaic({
   cellsRef.current = cells;
   const onBeatRef = useRef(onBeat);
   onBeatRef.current = onBeat;
+  // The arc reads isolation the same way: at the settle it decides whether the crisp cells rest
+  // at 0 (blur showing) or at SETTLED_WASH_ALPHA (a solver is isolated), without isolation ever
+  // entering its dependency key.
+  const isolatedRef = useRef(isolatedId);
+  isolatedRef.current = isolatedId;
+  // Whether the reveal arc has reached its settled beat, so the isolation handoff below knows the
+  // settled record is what is on screen. Owned by the arc (and cleared on replay entry).
+  const settledBeatRef = useRef(false);
+  // Whether the first paint has happened: the handoff snaps its very first application (a static
+  // settled mount must not animate in) and crossfades every later one.
+  const paintedRef = useRef(false);
+  useEffect(() => {
+    paintedRef.current = true;
+  }, []);
 
   // The set of cells shown on the previous replay frame, so a crossing only re-transitions the cells
   // whose state actually changed (a forward crossing fades in; unchanged cells never restart their
@@ -219,6 +269,16 @@ export function ContributionMosaic({
     // or blank depending on history. After entry, only the cells whose shown-state flips get the calm
     // ~250ms fade; the rest are already correct, so they are left untouched.
     const initializing = !replayInitRef.current;
+    if (initializing) {
+      // Replay never shows the blurred record: snap the layer off with the baseline frame and
+      // mark the settled record off screen, so the isolation handoff below stays out of replay.
+      settledBeatRef.current = false;
+      const blur = blurLayerRef.current;
+      if (blur) {
+        blur.style.transition = "none";
+        blur.style.opacity = "0";
+      }
+    }
     for (const cell of cells) {
       const t = at.get(cell.index);
       const shown = t !== undefined && t <= replayTime;
@@ -245,7 +305,8 @@ export function ContributionMosaic({
   }, [behavior.kind, replayTime]);
 
   // The reveal: apply INK, then bloom each cell to FIELD on its diagonal delay, hold the peak,
-  // then settle each cell to WASH. Reduced motion crosses straight to WASH.
+  // then melt: the crisp cells fade out on the settle diagonal while the blurred field breathes
+  // in. Reduced motion crosses straight to the settled frame.
   const replayKey =
     behavior.kind === "reveal" ? (behavior.replayKey ?? 0) : null;
   useEffect(() => {
@@ -255,12 +316,25 @@ export function ContributionMosaic({
     // window.setTimeout returns a number in the DOM lib (Completion.tsx's convention); keep the
     // handles as numbers so the cleanup clears them without a NodeJS.Timeout mismatch.
     const timers: number[] = [];
+    // The settled frame the arc lands on. Normally the crisp cells rest at 0 (the blur carries
+    // the color); with a solver isolated mid-arc they settle straight to the crisp
+    // SETTLED_WASH_ALPHA instead, since the blurred layer's isolation gate is holding it hidden.
+    const settledFrame = (): CellStyle => ({
+      rectOpacity: isolatedRef.current !== null ? SETTLED_WASH_ALPHA : 0,
+      letterOpacity: 1,
+      letterFill: INK,
+    });
+    const setBlur = (opacity: number, transition: string): void => {
+      const blur = blurLayerRef.current;
+      if (blur === null) return;
+      blur.style.transition = transition;
+      blur.style.opacity = String(opacity);
+    };
     const applyAll = (
-      state: MosaicState,
+      f: CellStyle,
       delayOf: (col: number, row: number) => number,
       animate: boolean,
     ): void => {
-      const f = frameStyle(state);
       for (const cell of cells) {
         const rect = rectRefs.current.get(cell.index);
         const text = letterRefs.current.get(cell.index);
@@ -282,8 +356,11 @@ export function ContributionMosaic({
     };
 
     onBeat?.(0);
+    settledBeatRef.current = false;
     if (prefersReducedMotion()) {
-      applyAll("wash", () => 0, false);
+      applyAll(settledFrame(), () => 0, false);
+      setBlur(SETTLED_WASH_ALPHA, "none");
+      settledBeatRef.current = true;
       onBeat?.(2);
       return;
     }
@@ -292,11 +369,12 @@ export function ContributionMosaic({
     const jitter = new Map<number, number>();
     for (const cell of cells) jitter.set(cell.index, Math.random());
 
-    applyAll("ink", () => 0, false);
+    applyAll(frameStyle("ink"), () => 0, false);
+    setBlur(0, "none");
     // A frame later, arm the bloom so the ink->field transition actually animates.
     const bloom = window.setTimeout(() => {
       applyAll(
-        "field",
+        frameStyle("field"),
         (col, row) =>
           bloomDelay(col, row, cols, rows, jitter.get(row * cols + col) ?? 0),
         true,
@@ -304,7 +382,18 @@ export function ContributionMosaic({
       onBeat?.(1);
       const bloomEnd = BLOOM_SPREAD_MS + JITTER_MS + 480; // spread + jitter + the rect fade
       const settle = window.setTimeout(() => {
-        applyAll("wash", (col, row) => settleDelay(col, row, cols, rows), true);
+        // The melt: the crisp cells let go on the settle diagonal (same delays as before) while
+        // the blurred field breathes in over MELT_FADE_MS after a short MELT_DELAY_MS.
+        applyAll(
+          settledFrame(),
+          (col, row) => settleDelay(col, row, cols, rows),
+          true,
+        );
+        setBlur(
+          SETTLED_WASH_ALPHA,
+          `opacity ${MELT_FADE_MS}ms ${MELT_EASE} ${MELT_DELAY_MS}ms`,
+        );
+        settledBeatRef.current = true;
         onBeat?.(2);
       }, bloomEnd + PEAK_HOLD_MS);
       timers.push(settle);
@@ -317,6 +406,50 @@ export function ContributionMosaic({
     // Only the trigger re-arms the arc: the first mount and each replayKey bump. cells/onBeat are
     // read through refs (above), so a mid-bloom owner-map swap or version bump never restarts it.
   }, [behavior.kind, replayKey, cols, rows]);
+
+  // The settled record's crisp/blur handoff. While the settled record is on screen (the arc past
+  // its settle beat, or a static "settled" frame), isolating a solver returns the crisp cells at
+  // SETTLED_WASH_ALPHA (the React fill-opacity dim multiplies on top: the isolated owner reads at
+  // 0.5, everyone else at 0.5 x ISOLATION_DIM) and clearing melts them back to 0 under the blur.
+  // The blurred layer's own hide rides the inner group's React-rendered opacity below; this effect
+  // only moves the crisp cells and keeps the layer's group weight correct. Keyed on isolation and
+  // the frame ONLY, reading cells through the ref: a post-settle owner-map swap repaints fills in
+  // a plain re-render and must not re-run this (it would overwrite the melt's per-cell diagonal
+  // and the blur's 900ms breathe-in with a flat 250ms). It writes opacities imperatively like the
+  // arc does and can never re-arm the sweep (the #204 discipline: the reveal effect above still
+  // keys only on its trigger).
+  const settledStatic = staticState === "settled";
+  useLayoutEffect(() => {
+    const blur = blurLayerRef.current;
+    const settledOnScreen =
+      settledStatic || (behavior.kind === "reveal" && settledBeatRef.current);
+    if (!settledOnScreen) {
+      // A static non-settled frame never shows the blur; the arc and the replay own it otherwise.
+      if (behavior.kind === "static" && blur !== null) {
+        blur.style.transition = "none";
+        blur.style.opacity = "0";
+      }
+      return;
+    }
+    // The first application (a static settled mount, pre-paint) snaps; later ones crossfade. The
+    // rects' inline transition carries fill-opacity too, so the dim and the return move together.
+    const animate = paintedRef.current && !prefersReducedMotion();
+    const crisp = isolatedId !== null;
+    const transition = animate
+      ? "opacity 250ms ease-out, fill-opacity 250ms ease-out"
+      : "none";
+    for (const cell of cellsRef.current) {
+      const rect = rectRefs.current.get(cell.index);
+      if (rect === undefined) continue;
+      rect.style.transition = transition;
+      rect.style.transitionDelay = "0ms";
+      rect.style.opacity = String(crisp ? SETTLED_WASH_ALPHA : 0);
+    }
+    if (blur !== null) {
+      blur.style.transition = animate ? "opacity 250ms ease-out" : "none";
+      blur.style.opacity = String(SETTLED_WASH_ALPHA);
+    }
+  }, [isolatedId, settledStatic, behavior.kind]);
 
   const staticFrame = staticState === null ? null : frameStyle(staticState);
   // In reveal mode the board starts at INK (color hidden, letters shown) so nothing flashes before
@@ -340,6 +473,18 @@ export function ContributionMosaic({
       role="img"
       aria-label={ariaLabel ?? `${cols} by ${rows} contribution mosaic`}
     >
+      <defs>
+        {/* The blurred layer clips to the board rect, so the overscanned edge tints feed the blur
+            without ever painting past the frame. The generous filter region keeps the gaussian
+            from clipping its own falloff inside the layer. */}
+        <clipPath id={clipId}>
+          <rect x={0} y={0} width={cols * CELL} height={rows * CELL} />
+        </clipPath>
+        <filter id={filterId} x="-15%" y="-15%" width="130%" height="130%">
+          <feGaussianBlur stdDeviation={blurRadius(CELL)} />
+        </filter>
+      </defs>
+
       {(() => {
         const nodes = [];
         for (let index = 0; index < cols * rows; index += 1) {
@@ -362,30 +507,91 @@ export function ContributionMosaic({
         return nodes;
       })()}
 
+      {/* The crisp tint layer: fill-opacity is the isolation channel, React-rendered, multiplying
+          whatever `opacity` the arc, the replay, or the settled handoff painted imperatively.
+          Ink letters never dim. */}
+      {cells.map((cell) =>
+        cell.color === null ? null : (
+          <rect
+            key={`tint-${cell.index}`}
+            ref={(el) => {
+              if (el) rectRefs.current.set(cell.index, el);
+              else rectRefs.current.delete(cell.index);
+            }}
+            className="mosaic-color"
+            x={cell.col * CELL}
+            y={cell.row * CELL}
+            width={CELL}
+            height={CELL}
+            fill={cell.color}
+            fillOpacity={isolationAlpha(ownerMap[cell.index], isolatedId)}
+            style={initialRectStyle}
+          />
+        ),
+      )}
+
+      {/* The blurred settled layer: the same owner tints at full saturation, board-edge cells
+          overscanned outward, gaussian-blurred and clipped to the board. The outer group's
+          `opacity` is the arc/settled channel (imperative, carries SETTLED_WASH_ALPHA); the inner
+          group's React-rendered opacity is the isolation gate, so hiding the blur on isolation
+          rides a plain re-render and can never re-arm the sweep. */}
+      <g ref={blurLayerRef} clipPath={`url(#${clipId})`} style={{ opacity: 0 }}>
+        <g
+          className="mosaic-blur-iso"
+          filter={`url(#${filterId})`}
+          opacity={isolatedId === null ? 1 : 0}
+        >
+          {cells.map((cell) => {
+            if (cell.color === null) return null;
+            const r = overscanTintRect(
+              cell.col,
+              cell.row,
+              cols,
+              rows,
+              CELL,
+              blurOverscan(CELL),
+            );
+            return (
+              <rect
+                key={`blur-${cell.index}`}
+                x={r.x}
+                y={r.y}
+                width={r.width}
+                height={r.height}
+                fill={cell.color}
+              />
+            );
+          })}
+        </g>
+      </g>
+
+      {/* Blocks redrawn crisp above the blur, so the color field reads as flowing behind the
+          block grid instead of smearing over it. */}
+      {(() => {
+        const nodes = [];
+        for (const index of puzzle.blocks) {
+          nodes.push(
+            <rect
+              key={`block-${index}`}
+              x={(index % cols) * CELL}
+              y={Math.floor(index / cols) * CELL}
+              width={CELL}
+              height={CELL}
+              fill="var(--cell-block)"
+              stroke="var(--stroke)"
+              strokeWidth={0.6}
+            />,
+          );
+        }
+        return nodes;
+      })()}
+
       {cells.map((cell) => {
         const x = cell.col * CELL;
         const y = cell.row * CELL;
         const number = puzzle.numbers.get(cell.index);
         return (
           <g key={cell.index}>
-            {cell.color !== null && (
-              // fill-opacity is the isolation channel: React-rendered, multiplying whatever
-              // `opacity` the arc or the replay painted imperatively. Ink letters never dim.
-              <rect
-                ref={(el) => {
-                  if (el) rectRefs.current.set(cell.index, el);
-                  else rectRefs.current.delete(cell.index);
-                }}
-                className="mosaic-color"
-                x={x}
-                y={y}
-                width={CELL}
-                height={CELL}
-                fill={cell.color}
-                fillOpacity={isolationAlpha(ownerMap[cell.index], isolatedId)}
-                style={initialRectStyle}
-              />
-            )}
             {number !== undefined && (
               // The clue number rides in ink; the field never hides it enough to matter and the
               // wash keeps the solved board legible. It carries no attribution, so it never animates.

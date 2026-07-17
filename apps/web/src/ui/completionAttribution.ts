@@ -52,6 +52,58 @@ export function shouldBloomOnCompletion(completedAtMount: boolean): boolean {
   return completedAtMount === false;
 }
 
+/**
+ * When a resolved first-correct map may repaint the board, given the reveal arc's phase. The
+ * bloom starts from the instant last-writer map, and the analysis fetch typically resolves
+ * mid-bloom or at the held FIELD peak; applying it there pops any cell where first-correct
+ * disagrees with last-writer, at full saturation and with no transition (a rect can even
+ * unmount, a hole in the field). So:
+ *   - no reveal in flight (a revisit's settled frame, replay): apply on arrival, as always;
+ *   - reveal in flight, not yet settled: HOLD, and apply at the settle beat, where the
+ *     correction rides the settle repaint (under the blurred settled record it disappears);
+ *   - reveal settled: apply on arrival, the standing record's crossfade covers it.
+ * The arc is never delayed waiting on the network: last-writer paints the bloom, first-correct
+ * corrects at or after the settle.
+ */
+export function shouldApplyAttribution(
+  revealing: boolean,
+  settled: boolean,
+): boolean {
+  return !revealing || settled;
+}
+
+/** The swap phasing's control flow, kept out of the hook so node tests drive it: resolve() applies
+ * the map now or holds it, setPhase() applies a held map the moment holding ends. Applies at most
+ * once per resolve; a later resolve (there is one fetch per mount, but the contract is safe)
+ * simply replaces a held map. */
+export interface AttributionSwap {
+  setPhase(revealing: boolean, settled: boolean): void;
+  resolve(map: OwnerMap): void;
+}
+
+export function createAttributionSwap(
+  apply: (map: OwnerMap) => void,
+  initialRevealing = false,
+  initialSettled = false,
+): AttributionSwap {
+  let canApply = shouldApplyAttribution(initialRevealing, initialSettled);
+  let pending: OwnerMap | null = null;
+  return {
+    setPhase(revealing: boolean, settled: boolean): void {
+      canApply = shouldApplyAttribution(revealing, settled);
+      if (canApply && pending !== null) {
+        const map = pending;
+        pending = null;
+        apply(map);
+      }
+    },
+    resolve(map: OwnerMap): void {
+      if (canApply) apply(map);
+      else pending = map;
+    },
+  };
+}
+
 export function lastWriterOwnerMap(
   store: WriterSource,
   cellCount: number,

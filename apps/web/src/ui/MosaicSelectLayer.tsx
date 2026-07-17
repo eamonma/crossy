@@ -16,6 +16,7 @@ export function MosaicSelectLayer({
   selectedCell,
   direction,
   onSelect,
+  showsLoupe = true,
 }: {
   grid: Grid;
   /** The current selection cell (LiveApp/DemoApp's shared `selection.cell`). */
@@ -25,10 +26,16 @@ export function MosaicSelectLayer({
   /** Move the selection to a clicked cell; the caller relays moveCursor off the resulting selection
    * change, exactly as the live grid does (PROTOCOL.md §9). */
   onSelect: (cell: number) => void;
+  /** Whether the loupe visual renders (showsWordLoupe: settled record only, never over the reveal
+   * arc or a running replay, the iOS/Android parity). The pointer targets stay live either way,
+   * so reactions keep an anchor in any game status (PROTOCOL.md §9). Default true. */
+  showsLoupe?: boolean | undefined;
 }) {
   const lensRef = useRef<HTMLDivElement>(null);
   const targets = mosaicTargets(grid);
-  const loupe = wordLoupeForSelection(grid, direction, selectedCell);
+  const loupe = showsLoupe
+    ? wordLoupeForSelection(grid, direction, selectedCell)
+    : null;
 
   const moveLight = (event: React.PointerEvent<HTMLDivElement>): void => {
     if (loupe === null) return;

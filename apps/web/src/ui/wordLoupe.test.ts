@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { wordLoupeForSelection, wordLoupeGeometry } from "./wordLoupe";
+import {
+  showsWordLoupe,
+  wordLoupeForSelection,
+  wordLoupeGeometry,
+} from "./wordLoupe";
 
 describe("wordLoupeGeometry (INV-4 frozen-board review; PROTOCOL.md section 3)", () => {
   it("projects an Across word and its selected cell", () => {
@@ -44,5 +48,26 @@ describe("wordLoupeGeometry (INV-4 frozen-board review; PROTOCOL.md section 3)",
     expect(() => wordLoupeGeometry({ cells: [] }, 0, 15, 15)).toThrow(
       "word loupe needs a non-empty grid and clue",
     );
+  });
+});
+
+describe("showsWordLoupe (the loupe belongs only to the settled completed board, iOS/Android parity)", () => {
+  it("shows over the settled record when nothing is playing back", () => {
+    expect(showsWordLoupe(true, false)).toBe(true);
+  });
+
+  it("hides over the reveal arc: the bloom and the held peak play uncovered", () => {
+    expect(showsWordLoupe(false, false)).toBe(false);
+  });
+
+  it("hides while a replay scrubs, and returns when the replay ends on the settled record", () => {
+    expect(showsWordLoupe(true, true)).toBe(false);
+    expect(showsWordLoupe(true, false)).toBe(true);
+  });
+
+  it("a static mount (revisit, tab switch back) is already settled, so the loupe shows immediately", () => {
+    // The caller derives `settled = !revealing || settleBeat` (CompletedMosaic): with no arc in
+    // flight the signal is true from the first report.
+    expect(showsWordLoupe(true, false)).toBe(true);
   });
 });

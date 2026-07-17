@@ -73,6 +73,7 @@ import { SpectateBanner } from "./ui/SpectateBanner";
 import { PartyView } from "./ui/PartyView";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
+import { showsWordLoupe } from "./ui/wordLoupe";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
 import type { IsolationControl } from "./ui/AnalysisPanel";
 import { nextIsolation } from "./ui/mosaicIsolation";
@@ -1206,6 +1207,13 @@ function LiveGame({
   // composes with the replay (dimming whatever cells are revealed at time T) and never re-arms
   // the bloom (it stays out of the reveal effect's dependency key, the #204 discipline).
   const [isolatedSolver, setIsolatedSolver] = useState<string | null>(null);
+
+  // Whether the completed board rests on the settled record (CompletedMosaic reports the arc's
+  // phase through plain React state, so this can never re-arm the bloom). Gates the word loupe:
+  // web joins iOS/Android in showing the glass only over the settled board, never over the
+  // reveal arc or a running replay (showsWordLoupe). The pointer targets stay live throughout.
+  const [mosaicSettled, setMosaicSettled] = useState(false);
+
   const isolation: IsolationControl = useMemo(
     () => ({
       isolatedId: isolatedSolver,
@@ -1386,17 +1394,24 @@ function LiveGame({
                     sequence={sequence}
                     isolatedId={isolatedSolver}
                     source={{ apiBase, gameId, bearer }}
+                    onSettledChange={setMosaicSettled}
                   />
                   {/* The selection and aim layer: pointer targets and the liquid-glass word loupe
                       over the mosaic art, so direction is visible and a reaction anchors anywhere
                       on the finished board (PROTOCOL.md §9). Above the mosaic (its clicks land) and
                       below the stickers (which are pointer-transparent, so order never steals a
-                      click). It never repaints the mosaic, so the bloom is untouched. */}
+                      click). It never repaints the mosaic, so the bloom is untouched. The loupe
+                      visual waits for the settled record and hides during a replay (showsWordLoupe,
+                      the iOS/Android parity); the targets stay live so reactions keep an anchor. */}
                   <MosaicSelectLayer
                     grid={grid}
                     selectedCell={selection.cell}
                     direction={selection.direction}
                     onSelect={onMosaicCellClick}
+                    showsLoupe={showsWordLoupe(
+                      mosaicSettled,
+                      replay.time !== null,
+                    )}
                   />
                   {/* Reactions stay legal in any game status (PROTOCOL.md §9): the completed
                       board celebrates, so stickers paint over the mosaic exactly as they paint

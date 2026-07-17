@@ -39,6 +39,7 @@ import { ReactionStickers } from "./reactions/ReactionStickers";
 import { CompletionOverlay } from "./ui/Completion";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
+import { showsWordLoupe } from "./ui/wordLoupe";
 import type { StackMember } from "./ui/primitives";
 import { SettingsStrip } from "./ui/SettingsStrip";
 import { AuthBar } from "./ui/AuthBar";
@@ -343,6 +344,10 @@ function DemoApp({
   // reload straight onto a completed demo would land on the settled wash, matching the live rule.
   const bloomOnCompletion = useCompletionBloomEdge(boardCompleted);
 
+  // The settled signal off the mosaic, gating the word loupe exactly as LiveApp does
+  // (showsWordLoupe): the glass belongs to the settled record, never the reveal arc.
+  const [mosaicSettled, setMosaicSettled] = useState(false);
+
   // "Reset board" re-arms the completion overlay, so the demo can replay it.
   useEffect(() => {
     if (store.status === "ongoing") setDismissedCompletion(false);
@@ -617,17 +622,21 @@ function DemoApp({
             letters={fills}
             members={mosaicMembers}
             bloom={bloomOnCompletion}
+            onSettledChange={setMosaicSettled}
           />
           {/* The same selection and aim layer LiveApp mounts, so `?demo=1` proves the completed
               board is selectable without a live room: click a cell, the word loupe and fixed focus
               move, and the tray and `/` HUD anchor there (§9). The demo's onCellClick focuses this
               wrapper (gridRef), so keyboard aim survives a click; the grid and mosaic never mount
-              at once here (the ternary), so they share the one ref safely. */}
+              at once here (the ternary), so they share the one ref safely. The loupe visual waits
+              for the settled record (showsWordLoupe, the iOS/Android parity); the demo has no
+              replay, so the second argument is simply false. */}
           <MosaicSelectLayer
             grid={grid}
             selectedCell={selection.cell}
             direction={selection.direction}
             onSelect={onCellClick}
+            showsLoupe={showsWordLoupe(mosaicSettled, false)}
           />
           {/* Reactions stay legal in any game status (§9): stickers paint over the mosaic
               exactly as over the live grid, the same treatment LiveApp mounts. */}
