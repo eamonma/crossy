@@ -1289,12 +1289,16 @@ PNG, and shares via `navigator.share` files where the platform allows, else down
 **Exit: the four checks are green; a completed multi-writer room exports the portrait
 card on either ground, and a solo solve exports the fill-order ramp card.**
 
-### Wave 13.2 — share link + server OG render (blocked on 13.1)
+### Wave 13.2 — share link + server OG render (done)
 
-A share URL for a completed game and the unfurl: the API renders the og variant
-server-side from the cached analysis bundle through the same `@crossy/share-card`,
-stamps the OpenGraph tags, and the client Share action grows "copy share link". Exit:
-pasting a share link into Discord unfurls the mosaic card.
+A share URL for a completed game and the unfurl: `POST /games/{id}/share` mints an
+idempotent `share_tokens` row (one active token per game, migration 0013), and the
+public `GET /s/{token}` + `GET /s/{token}/card.png` serve the OpenGraph shell and the
+og card, rasterized server-side from the cached analysis bundle through the same
+`@crossy/share-card` (resvg with vendored OFL fonts), INV-6 letter-free by construction.
+The client Analysis header grows a "Copy share link" action (a generalized `CopyButton`).
+Exit met: pasting a share link into Discord unfurls the mosaic card. See
+`design/post-game/SHARE.md` (S2 decisions: token/cache/font rules).
 
 ### Wave 13.3 — replay loop on the share page (blocked on 13.2)
 

@@ -26,6 +26,7 @@ import { connectToGame } from "./net/connect";
 import type { GameConnection } from "./net/connect";
 import { authedFetch } from "./net/authedFetch";
 import type { Bearer } from "./net/authedFetch";
+import { mintShareLink } from "./net/shareLink";
 import { computeLayout } from "./domain/layout";
 import {
   buildAppLink,
@@ -1256,6 +1257,14 @@ function LiveGame({
     [analysis, members, puzzle, ready, name, gameId],
   );
 
+  // The "Copy share link" action's resolver: mint (or return) the game's public share link over REST
+  // and hand back its URL to copy (SHARE.md wave S2). Built here where the api base, bearer, and
+  // gameId are in scope; the panel only renders it once completed, and the server gates it too.
+  const onCopyShareLink = useCallback(
+    () => mintShareLink(apiBase, bearer, gameId),
+    [apiBase, bearer, gameId],
+  );
+
   // The Analysis panel body. Two forms of the same panel: the rail and the dock keep the board and
   // the ribbon co-visible, so they carry the replay transport; the phone bottom sheet covers the
   // board (a playhead there would drive a board you cannot see, REPLAY.md), so its copy omits the
@@ -1268,6 +1277,7 @@ function LiveGame({
         selfId={ready.selfId}
         idBase="panel"
         share={shareCard}
+        onCopyShareLink={onCopyShareLink}
         replay={{
           time: replay.time,
           playing: replay.playing,
@@ -1288,6 +1298,7 @@ function LiveGame({
         selfId={ready.selfId}
         idBase="sheet"
         share={shareCard}
+        onCopyShareLink={onCopyShareLink}
         isolation={isolation}
       />
     ) : (

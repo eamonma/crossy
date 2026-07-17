@@ -226,6 +226,7 @@ The coupling was one-directional at first: the API held no read grant on the ses
 | `games`         | API     | session identity: `puzzle_id`, `puzzle_snapshot` (jsonb), `invite_code`, `created_by`, `created_at` |
 | `memberships`   | API     | `(game_id, user_id, role, joined_at)`, `UNIQUE(game_id, user_id)`; join and role change are upserts                                                               |
 | `game_denylist` | API     | `(game_id, user_id)`: kicked users                                                                  |
+| `share_tokens`  | API     | public completion share links: `token` (PK, unguessable 256-bit URL-safe secret), `game_id`, `created_by`, `created_at`, `revoked_at`; one active token per game (partial unique index), no session grant (migration 0013, `design/post-game/SHARE.md`) |
 | `game_state`    | session | `status`, `board` (jsonb), `last_seq`, `first_fill_at`, `completed_at`, `abandoned_at`, `stats`, `recent_command_ids` (bounded ring of the last K applied `commandId`s) |
 | `cell_events`   | session | append-only event log                                                                               |
 | `check_events`  | session | append-only room-check log: `(game_id, seq, user_id, at)` per accepted `checkPuzzle` (D27)          |

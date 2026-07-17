@@ -162,6 +162,7 @@ export function CompletionOverlay({
   selfId,
   shareUrl,
   share,
+  onCopyShareLink,
   onDismiss,
   onHome,
 }: {
@@ -177,6 +178,10 @@ export function CompletionOverlay({
   /** The mosaic share card's input, present only once the analysis bundle is ready
    * (useGameAnalysis "ready"); absent hides the Share card action entirely. */
   share?: ShareCardInput | undefined;
+  /** Mint (or return) the public share link and resolve to its URL to copy (POST
+   * /games/{id}/share). Absent hides the "Copy share link" action; the caller wires it where the
+   * REST bearer and gameId are in scope (SHARE.md wave S2). */
+  onCopyShareLink?: (() => Promise<string>) | undefined;
   /** Tap the scrim to hide the summary and admire the finished board. */
   onDismiss: () => void;
   /** Leave the game for home. */
@@ -241,7 +246,12 @@ export function CompletionOverlay({
 
         <div className="flex items-center justify-end gap-2 px-5 py-4">
           {share !== undefined && <ShareCardButton input={share} size="lg" />}
-          {shareUrl !== null && <CopyLink shareUrl={shareUrl} />}
+          {onCopyShareLink !== undefined && (
+            <CopyButton resolve={onCopyShareLink} label="Copy share link" />
+          )}
+          {shareUrl !== null && (
+            <CopyButton resolve={() => shareUrl} label="Copy link" />
+          )}
           <Button variant="default" size="lg" onClick={onHome}>
             Back to home
           </Button>
@@ -251,8 +261,29 @@ export function CompletionOverlay({
   );
 }
 
-function CopyLink({ shareUrl }: { shareUrl: string }) {
+/**
+ * A copy-to-clipboard button with the app's quiet confirmed state: the label swaps to a check and
+ * "Copied" for a beat, then reverts. Generalized from the invite-link copy so the analysis header's
+ * "Copy share link" (which first mints the link over REST) reuses the exact same affordance rather
+ * than duplicating it. `resolve` returns the text to copy; it may be async (the share-link mint is a
+ * POST), and a rejection leaves the button un-confirmed. Concurrent taps are ignored while one is in
+ * flight, so a slow mint cannot double-fire.
+ */
+export function CopyButton({
+  resolve,
+  label,
+  copiedLabel = "Copied",
+  variant = "secondary",
+  size = "lg",
+}: {
+  resolve: () => Promise<string> | string;
+  label: string;
+  copiedLabel?: string;
+  variant?: "secondary" | "default";
+  size?: "sm" | "lg";
+}) {
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!copied) return;
@@ -261,18 +292,27 @@ function CopyLink({ shareUrl }: { shareUrl: string }) {
   }, [copied]);
 
   async function copy(): Promise<void> {
+    if (busy) return;
+    setBusy(true);
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(await resolve());
       setCopied(true);
     } catch {
       setCopied(false);
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <Button variant="secondary" size="lg" onClick={() => void copy()}>
+    <Button
+      variant={variant}
+      size={size}
+      disabled={busy}
+      onClick={() => void copy()}
+    >
       {copied ? <CheckIcon /> : <Link2Icon />}
-      {copied ? "Copied" : "Copy link"}
+      {copied ? copiedLabel : label}
     </Button>
   );
 }

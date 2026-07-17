@@ -35,6 +35,7 @@ import { useTheme } from "./useTheme";
 import { Button } from "@/components/ui/button";
 import { ShareCardButton } from "../share/ShareCardButton";
 import type { ShareCardInput } from "../share/shareCardData";
+import { CopyButton } from "./Completion";
 
 /** The replay transport wired into the panel: the shared clock's current head, whether it is
  * running, and the two controls. Optional and inert when absent, so the phone sheet (which cannot
@@ -112,6 +113,7 @@ export function AnalysisPanel({
   replay,
   isolation,
   share,
+  onCopyShareLink,
 }: {
   bundle: AnalysisResponse;
   members: readonly StackMember[];
@@ -128,6 +130,10 @@ export function AnalysisPanel({
   /** The mosaic share card's input. The panel only ever renders with a ready bundle, so a caller
    * that wants the header's Share card action passes this alongside; absent hides it. */
   share?: ShareCardInput | undefined;
+  /** Mint (or return) the public share link and resolve to its URL to copy (POST /games/{id}/share).
+   * Absent hides the "Copy share link" action; the caller wires it where the REST bearer and gameId
+   * are in scope (SHARE.md wave S2). */
+  onCopyShareLink?: (() => Promise<string>) | undefined;
 }) {
   // The ground the identity palette resolves against: the mosaic, the legend, and the moment dots all
   // read the same theme so they paint one player one color (and match iOS). Rebuilds on a theme flip.
@@ -190,7 +196,16 @@ export function AnalysisPanel({
           so the button never renders against a half-loaded analysis. */}
       <div className="flex items-center justify-between gap-2">
         <CapsLabel className="text-gold-11">Solved together</CapsLabel>
-        {share !== undefined && <ShareCardButton input={share} size="sm" />}
+        <div className="flex items-center gap-2">
+          {share !== undefined && <ShareCardButton input={share} size="sm" />}
+          {onCopyShareLink !== undefined && (
+            <CopyButton
+              resolve={onCopyShareLink}
+              label="Copy share link"
+              size="sm"
+            />
+          )}
+        </div>
       </div>
 
       {/* The stat block: three cells split by the app's dashed rule, big tabular numerals. This is the

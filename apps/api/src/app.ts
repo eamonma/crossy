@@ -13,6 +13,7 @@ import { identityRoutes } from "./identity/routes";
 import { meRoutes } from "./identity/me";
 import { wellKnownRoutes } from "./well-known/routes";
 import { unfurlRoutes } from "./games/unfurl";
+import { shareRoutes } from "./share/routes";
 import { inviteHostMiddleware } from "./invite-host/routes";
 
 /** Compose the API from its injected dependencies. */
@@ -58,6 +59,9 @@ export function buildApp(deps: AppDeps): Hono<ApiEnv> {
   app.route("/.well-known", wellKnownRoutes(deps));
   // Public, unauthenticated: link unfurlers fetch invite links anonymously (PROTOCOL.md §12).
   app.route("/g", unfurlRoutes(deps));
+  // Public, unauthenticated: the completion share page and its OpenGraph card (SHARE.md wave S2).
+  // Unfurlers and browsers fetch these anonymously; the token is the only capability.
+  app.route("/s", shareRoutes(deps));
   app.route("/puzzles", puzzleRoutes(deps));
   app.route("/games", gameRoutes(deps));
   app.route("/account", identityRoutes(deps));
