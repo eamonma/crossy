@@ -125,6 +125,12 @@ private fun expandBoard(board: JsonObject, cols: Int, rows: Int): JsonObject = b
             }
         }
     }
+    // The room-check marks and count ride every snapshot (PROTOCOL.md §4, §10; D27), required on
+    // decode; a client-store vector may pin them, else they default empty/zero (pre-first-check).
+    putJsonArray("checkedWrongCells") {
+        board["checkedWrongCells"]?.jsonArray?.forEach { add(it) }
+    }
+    put("checkCount", board["checkCount"]?.jsonPrimitive?.int ?: 0)
     putJsonArray("participants") {}
     putJsonArray("cursors") {}
     putJsonArray("recentCommandIds") {
