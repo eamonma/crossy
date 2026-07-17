@@ -26,7 +26,7 @@ private fun cellCount(state: BoardState): Int = state.grid.cols * state.grid.row
 private fun isPlayable(state: BoardState, cell: Int): Boolean =
     cell >= 0 && cell < cellCount(state) && cell !in state.grid.blocks
 
-fun reduce(state: BoardState, command: Command): ReduceResult {
+fun reduce(state: BoardState, command: MutationCommand): ReduceResult {
     // Validation order follows PROTOCOL §5: terminal state, then cell, then value.
     if (state.status != Status.ONGOING) {
         return ReduceResult(events = emptyList(), state = state, error = RejectionCode.GAME_NOT_ONGOING)
@@ -53,6 +53,16 @@ fun reduce(state: BoardState, command: Command): ReduceResult {
 
     val filledCount = state.filledCount + (if (nowFilled) 1 else 0) - (if (wasFilled) 1 else 0)
 
+    // A standing check mark survives until the cell's VALUE changes (PROTOCOL §10, D27): a
+    // different letter or a clear removes the mark, a same-value rewrite keeps it (stored values
+    // are already normalized, so == is byte-wise; INV-1).
+    val checkedWrong =
+        if (previous?.v != value && command.cell in state.checkedWrong) {
+            state.checkedWrong - command.cell
+        } else {
+            state.checkedWrong
+        }
+
     // firstFillAt is set once, on the first placeLetter (PROTOCOL §4, §6). A clearCell never
     // sets it, and a later fill never moves it.
     val firstFillAt =
@@ -69,6 +79,12 @@ fun reduce(state: BoardState, command: Command): ReduceResult {
 
     return ReduceResult(
         events = listOf(event),
-        state = state.copy(cells = cells, seq = seq, filledCount = filledCount, firstFillAt = firstFillAt),
+        state = state.copy(
+            cells = cells,
+            seq = seq,
+            filledCount = filledCount,
+            firstFillAt = firstFillAt,
+            checkedWrong = checkedWrong,
+        ),
     )
 }
