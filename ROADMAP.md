@@ -1262,3 +1262,43 @@ The same copy in the analysis sheet, matching web string for string (iOS owns no
 `TitleKey` union, so nothing forces it into 12.2; unknown keys were already ignored, so
 it can merge before or after). **Exit: the same room shows the same titles on both
 platforms.**
+
+## Phase 13 — Completion share (the mosaic card)
+
+A finished room becomes a shareable artifact: the grid as a mosaic of WHO solved each
+square, in the room's identity roster, with the real lockup, the puzzle's title and
+byline, the headline stats, and the titles as film credits. Spoiler-free by
+construction: the card is built from the analysis bundle plus display metadata, so no
+letter can enter (INV-6 in spirit), which is also what lets a server render it later.
+`design/post-game/SHARE.md` pins the concept, the layout contract, and these waves.
+
+**The builder is standalone.** `packages/share-card` is a pure SVG function of data —
+no npm deps, no workspace deps, no node builtins (`share-card-is-standalone`, the
+engine posture) — so the browser card today and the S2 server unfurl are the same
+bytes, not a port.
+
+### Wave 13.1 — client card (done, this PR)
+
+SHARE.md; `packages/share-card` (portrait/og/solo variants, both grounds, the lockup
+as embedded paths, grapheme-budget truncation, tests citing the no-letters guarantee);
+the additive `puzzleTitle`/`puzzleAuthor` on `GET /games/{id}` (PROTOCOL §12, additive
+expand §14, api tests); the web Share button in the completion overlay's action row and
+the Analysis header, gated on the analysis bundle being ready: a lazy module (fonts as
+inlined data URIs, off the main bundle) assembles the data, renders the SVG at 2x to a
+PNG, and shares via `navigator.share` files where the platform allows, else downloads.
+**Exit: the four checks are green; a completed multi-writer room exports the portrait
+card on either ground, and a solo solve exports the fill-order ramp card.**
+
+### Wave 13.2 — share link + server OG render (blocked on 13.1)
+
+A share URL for a completed game and the unfurl: the API renders the og variant
+server-side from the cached analysis bundle through the same `@crossy/share-card`,
+stamps the OpenGraph tags, and the client Share action grows "copy share link". Exit:
+pasting a share link into Discord unfurls the mosaic card.
+
+### Wave 13.3 — replay loop on the share page (blocked on 13.2)
+
+The share page plays the solve back: the bundle's `sequence` drives the same
+time-gated mosaic reveal the Analysis tab ships, so the card a friend taps is the solve
+happening, still letter-free. Exit: a share link opens to the replay on web without
+membership.
