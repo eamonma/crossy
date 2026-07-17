@@ -1,7 +1,8 @@
 // The completion moment and the terminal facts (roadmap I2d), the pure Kotlin twin of apps/ios
 // Sources/CrossyUI/CompletionMoment.swift. The celebration is the mosaic (apps/ios/DESIGN.md §8): on
 // the store's transition into completed, every filled letter tints to its writer's roster color,
-// holds for a breath, then settles back to ink. It fires on the status TRANSITION, exactly once
+// holds for a breath, then melts into the settled record: a blurred color field under the returning
+// ink (the wash-blur ratification, 2026-07-17). It fires on the status TRANSITION, exactly once
 // (INV-3): never on render, never again on a reconnect into an already-completed room (a welcome
 // snapshot of a completed game shows the terminal state without replaying the celebration).
 //
@@ -96,8 +97,19 @@ object MosaicEnvelope {
     /** The settle: back to ink, a slow exhale, longer than the rise. */
     const val SETTLE_SECONDS: Double = 0.9
 
-    /** The whole envelope, the window the mosaic retires against. */
-    const val DURATION_SECONDS: Double = RISE_SECONDS + HOLD_SECONDS + SETTLE_SECONDS
+    /** The blurred field's fade-in delay after the settle begins: the crisp cells start letting go
+     *  first, then the field breathes in behind them (web: transition-delay 120ms on the melt). */
+    const val BLUR_DELAY_SECONDS: Double = 0.12
+
+    /** The blurred field's fade-in window, 0 to full over 900ms with an ease-out (web: 900ms
+     *  cubic-bezier(0.22, 0.61, 0.36, 1); the pure cubic ease-out here matches its feel). */
+    const val BLUR_FADE_SECONDS: Double = 0.9
+
+    /** The whole envelope, the window the mosaic retires against: the crisp settle (SETTLE_SECONDS)
+     *  and the delayed blur fade-in both land inside it; the blur lands last, so the envelope ends
+     *  when the settled record is fully worn. */
+    const val DURATION_SECONDS: Double =
+        RISE_SECONDS + HOLD_SECONDS + BLUR_DELAY_SECONDS + BLUR_FADE_SECONDS
 
     /**
      * Tint intensity `elapsed` seconds after the trigger, in [0, 1]: an ease-out rise, a flat hold,
@@ -125,19 +137,23 @@ object MosaicEnvelope {
     }
 
     /**
-     * The paper WASH's intensity `elapsed` seconds after the trigger: the same ease-out rise as the
-     * glyph tint (one clock, one bloom), then 1 forever. The settle returns the LETTERS to ink
-     * ([intensity] falls to zero) while the wash STANDS as the completed board's record, the web
-     * reveal arc's settled WASH (INK -> FIELD -> WASH), never back to plain ink. An envelope that fell
-     * to zero was the flash-then-disappear bug: the room's fingerprint erased itself ~3s after it
-     * appeared. Under Reduce Motion the eased rise is a single step (full wash held), the [intensity]
-     * reduced-motion doctrine; the wash stands either way. Twin of the Swift MosaicEnvelope.washIntensity.
+     * The settled record's BLURRED field intensity `elapsed` seconds after the trigger: dark through
+     * the rise and the hold (the bloom's crisp field is the celebration, unchanged), then an ease-out
+     * fade from 0 to 1 across [BLUR_FADE_SECONDS], entering [BLUR_DELAY_SECONDS] after the settle
+     * begins, then 1 forever. This is the melt (the wash-blur ratification): the crisp field and the
+     * tinted glyphs let go on [intensity]'s settle while the blurred field breathes in beneath the
+     * returning ink, and the record STANDS as the blur, never back to plain ink (the
+     * flash-then-disappear fix's shape, worn by the field instead of a crisp wash). Under Reduce
+     * Motion the fade is a single step at the envelope's end (the crisp record held through the
+     * envelope, then the settled blur, no animated motion), the [intensity] reduced-motion doctrine.
      */
-    fun washIntensity(elapsed: Double, reduceMotion: Boolean = false): Double {
-        if (elapsed <= 0.0) return 0.0
-        if (reduceMotion) return 1.0
-        if (elapsed >= RISE_SECONDS) return 1.0
-        val t = elapsed / RISE_SECONDS
+    fun settledWashIntensity(elapsed: Double, reduceMotion: Boolean = false): Double {
+        if (reduceMotion) return if (elapsed >= DURATION_SECONDS) 1.0 else 0.0
+        val start = RISE_SECONDS + HOLD_SECONDS + BLUR_DELAY_SECONDS
+        if (elapsed <= start) return 0.0
+        val t = (elapsed - start) / BLUR_FADE_SECONDS
+        if (t >= 1.0) return 1.0
+        // Ease-out: the field breathes in fast and lands softly (the web melt's bezier feel).
         return 1.0 - (1.0 - t).pow(3)
     }
 }
@@ -166,14 +182,31 @@ data class MosaicIsolation(
  * draw pass can leak a tint. Twin of the iOS GridMosaic.
  */
 object GridMosaic {
-    /** The paper wash under the tinted glyph, scaled by the envelope's intensity. Louder than the
-     *  teammate wash (0.10): the mosaic is the celebration. */
+    /** The crisp field's weight during the BLOOM, under the tinted glyph, scaled by the envelope's
+     *  intensity. Louder than the teammate wash (0.10): the mosaic is the celebration. The settled
+     *  record no longer wears this weight: it melts into the blurred field at [SETTLED_WASH_ALPHA]
+     *  (the wash-blur ratification); a time-gated replay's per-cell wash keeps this crisp 0.30. */
     const val WASH_ALPHA: Float = 0.30f
 
-    /** The isolation dim's floor: the fraction of the standing wash a non-isolated cell keeps. The
-     *  wash composites as alpha OVER the paper, so a lower alpha IS a step toward the ground color on
+    /** The settled record's weight: the blurred color field's alpha over the ground when no solver
+     *  is isolated, and the isolated solver's crisp tint when one is. Ratified at 0.5 on all three
+     *  platforms (the wash-blur study, 2026-07-17). */
+    const val SETTLED_WASH_ALPHA: Float = 0.50f
+
+    /** The blurred field's gaussian radius as a fraction of the cell module: 20/36 of a cell
+     *  (~0.56 x cell), the ONE shared token, so the field scales with the camera and reads at the
+     *  same softness on all three platforms. Radius in px is this fraction times the cell edge. */
+    const val BLUR_RADIUS_CELL_FRACTION: Float = 20f / 36f
+
+    /** Edge saturation, in blur radii: a frame-edge cell's tint rect extends this far outward past
+     *  the frame before blurring, and the blurred layer clips back to the board bounds, so the field
+     *  stays saturated at the frame instead of fading into the transparent surround. */
+    const val BLUR_OVERSCAN_RADII: Float = 1.5f
+
+    /** The isolation dim's floor: the fraction of the settled weight a non-isolated cell keeps. The
+     *  tint composites as alpha OVER the paper, so a lower alpha IS a step toward the ground color on
      *  both grounds by construction; the dimmed hands recess into paper while the isolated one holds
-     *  the full wash. Dimmed, never erased: the record stays traceable. Twin of the iOS isolationDim. */
+     *  the settled weight. Dimmed, never erased: the record stays traceable. Twin of the iOS isolationDim. */
     const val ISOLATION_DIM: Double = 0.18
 
     /** The isolation crossfade: fast and quiet (a filter, not a celebration), and already the §7
@@ -181,16 +214,57 @@ object GridMosaic {
     const val ISOLATION_FADE_SECONDS: Double = 0.25
 
     /**
-     * The per-cell wash multiplier under an isolation, `elapsed` seconds after the toggle: an
-     * ease-in-out crossfade from the previous value's dim to the current one's. Null isolation is the
-     * full wash. Pure math, so the filter pins headlessly and any frame past the fade (a paused frame
-     * loop's frozen clock included) draws the exact target. Keys per cell on the OWNER, not the color
-     * (two solvers can share a roster slot's color). Twin of the iOS isolationMultiplier.
+     * The per-cell CRISP tint multiplier over the settled record, `elapsed` seconds after an
+     * isolation toggle: an ease-in-out crossfade from the previous value's target to the current
+     * one's. With no isolation the crisp layer is dark (0): the blurred field owns the record.
+     * With a solver isolated the crisp tints return, the isolated solver's own hand at the full
+     * settled weight and every other hand at the dim floor (a blurred single color has no shape to
+     * read, so the spotlight snaps back to cells). Pure math, so the filter pins headlessly and any
+     * frame past the fade (a paused frame loop's frozen clock included) draws the exact target.
+     * Keys per cell on the OWNER, not the color (two solvers can share a roster slot's color).
      */
-    fun isolationMultiplier(owner: String, isolation: MosaicIsolation?, elapsed: Double): Double {
+    fun settledCrispMultiplier(owner: String, isolation: MosaicIsolation?, elapsed: Double): Double {
+        if (isolation == null) return 0.0
+        return crossfade(
+            from = crispTarget(owner, isolation.previousSolverId),
+            to = crispTarget(owner, isolation.solverId),
+            elapsed = elapsed,
+        )
+    }
+
+    /**
+     * The BLURRED field's multiplier over the settled record, `elapsed` seconds after an isolation
+     * toggle: full with no solver isolated, gone with one (the crisp tints own the spotlight),
+     * crossfading on the same clock and ease as [settledCrispMultiplier], so the field and the
+     * cells trade places as one move. Null isolation (never toggled) is the full field.
+     */
+    fun blurFieldMultiplier(isolation: MosaicIsolation?, elapsed: Double): Double {
         if (isolation == null) return 1.0
-        val from = isolationTarget(owner, isolation.previousSolverId)
-        val to = isolationTarget(owner, isolation.solverId)
+        return crossfade(
+            from = if (isolation.previousSolverId == null) 1.0 else 0.0,
+            to = if (isolation.solverId == null) 1.0 else 0.0,
+            elapsed = elapsed,
+        )
+    }
+
+    /** The board edges a cell's blurred tint rect extends past (the [BLUR_OVERSCAN_RADII] overscan):
+     *  only the outer frame's sides, so interior geometry never bleeds. Pure, so the geometry pins
+     *  headlessly beside the envelope math. */
+    data class BlurOverscan(val left: Boolean, val top: Boolean, val right: Boolean, val bottom: Boolean)
+
+    fun blurOverscan(cell: Int, rows: Int, cols: Int): BlurOverscan {
+        val col = cell % cols
+        val row = cell / cols
+        return BlurOverscan(
+            left = col == 0,
+            top = row == 0,
+            right = col == cols - 1,
+            bottom = row == rows - 1,
+        )
+    }
+
+    /** The shared crossfade: ease-in-out over [ISOLATION_FADE_SECONDS], exact at both ends. */
+    private fun crossfade(from: Double, to: Double, elapsed: Double): Double {
         if (from == to) return to
         if (elapsed <= 0.0) return from
         val t = elapsed / ISOLATION_FADE_SECONDS
@@ -200,10 +274,10 @@ object GridMosaic {
         return from + (to - from) * eased
     }
 
-    /** One side's resting multiplier: the full wash for no isolation or the isolated solver's own
-     *  hand, the dim floor for everyone else's. */
-    private fun isolationTarget(owner: String, solverId: String?): Double {
-        if (solverId == null) return 1.0
+    /** One side's resting crisp target: dark under no isolation (the blurred field is the record),
+     *  the settled weight for the isolated solver's own hand, the dim floor for everyone else's. */
+    private fun crispTarget(owner: String, solverId: String?): Double {
+        if (solverId == null) return 0.0
         return if (owner == solverId) 1.0 else ISOLATION_DIM
     }
 
@@ -232,11 +306,11 @@ object GridMosaic {
 }
 
 /**
- * One mosaic in flight, or a standing wash at rest: the palette and the trigger instant, snapshotted
+ * One mosaic in flight, or a standing record at rest: the palette and the trigger instant, snapshotted
  * by the room and consumed by the grid's per-frame draw pass against the render clock (reactionNow).
- * `settled` splits the two clocks the grid keys on (wash stands at 1, glyph falls to ink); `writers`
- * carries the per-cell owner the isolation filter keys on (not the color); `isolation` is the legend's
- * tapped solver over the settled wash. Twin of the iOS MosaicWash.
+ * `settled` splits the two clocks the grid keys on (the blurred field stands at 1, the crisp field and
+ * glyph fall to ink); `writers` carries the per-cell owner the isolation filter keys on (not the
+ * color); `isolation` is the legend's tapped solver over the settled record. Twin of the iOS MosaicWash.
  */
 data class MosaicWash(
     val colors: Map<Int, RGBColor>,
@@ -246,8 +320,9 @@ data class MosaicWash(
      *  keys per cell on the OWNER, not the color, so two solvers sharing a slot's color still split. */
     val writers: Map<Int, String> = emptyMap(),
     /** True once the envelope has landed (or immediately, for a stand with no bloom, the
-     *  reconnect-into-completed path): the draw pass paints the standing wash (wash 1, glyph 0) with no
-     *  clock, and the grid's frame loop pauses. A settled mosaic costs no frames. */
+     *  reconnect-into-completed path): the draw pass paints the standing record (blurred field 1,
+     *  crisp 0, glyph 0) with no clock, and the grid's frame loop pauses. A settled mosaic costs no
+     *  frames. */
     val settled: Boolean = false,
     /** The isolation filter over the settled wash, or null at the full multi-color record. */
     val isolation: MosaicIsolation? = null,

@@ -177,101 +177,170 @@ class CompletionMomentTests {
     }
 
     @Test
-    fun `the wash rises with the tint then stands at 1 forever`() {
-        // The flash-then-disappear fix: the wash rides the SAME rise as the glyph tint (one clock, one
-        // bloom), then stands at 1 through the hold, the settle, and forever (web parity: the reveal arc
-        // ends at WASH, never back to plain ink). A wash that fell to zero erased the fingerprint ~3s in.
-        assertEquals(0.0, MosaicEnvelope.washIntensity(0.0))
-        for (step in 0..10) {
-            val elapsed = MosaicEnvelope.RISE_SECONDS * step / 10
-            assertEquals(
-                MosaicEnvelope.intensity(elapsed), MosaicEnvelope.washIntensity(elapsed), 1e-9,
-            ) { "wash and glyph bloom on one clock, rise t=$elapsed" }
+    fun `the blurred field waits out the settle delay then eases in and stands forever`() {
+        // The melt (the wash-blur ratification): the blurred field is dark through the whole bloom
+        // (rise and hold; the crisp field is the celebration), enters BLUR_DELAY_SECONDS into the
+        // settle, eases 0 -> 1 over BLUR_FADE_SECONDS, and stands at 1 forever. The record never
+        // erases itself (the flash-then-disappear fix's shape, worn by the field).
+        val settleStart = MosaicEnvelope.RISE_SECONDS + MosaicEnvelope.HOLD_SECONDS
+        assertEquals(0.0, MosaicEnvelope.settledWashIntensity(0.0))
+        assertEquals(0.0, MosaicEnvelope.settledWashIntensity(MosaicEnvelope.RISE_SECONDS))
+        assertEquals(0.0, MosaicEnvelope.settledWashIntensity(settleStart))
+        assertEquals(0.0, MosaicEnvelope.settledWashIntensity(settleStart + MosaicEnvelope.BLUR_DELAY_SECONDS))
+        var previous = 0.0
+        for (step in 0..20) {
+            val elapsed = settleStart + MosaicEnvelope.BLUR_DELAY_SECONDS +
+                MosaicEnvelope.BLUR_FADE_SECONDS * step / 20
+            val value = MosaicEnvelope.settledWashIntensity(elapsed)
+            assertTrue(value >= previous) { "the fade must not rebound, t=$elapsed" }
+            previous = value
         }
-        // The hold, the settle, and everything past: the wash stands while the glyph has returned to ink.
-        assertEquals(1.0, MosaicEnvelope.washIntensity(MosaicEnvelope.RISE_SECONDS))
-        assertEquals(1.0, MosaicEnvelope.washIntensity(MosaicEnvelope.DURATION_SECONDS))
-        assertEquals(1.0, MosaicEnvelope.washIntensity(MosaicEnvelope.DURATION_SECONDS + 3600.0))
-        assertEquals(0.0, MosaicEnvelope.intensity(MosaicEnvelope.DURATION_SECONDS)) { "the glyph settles to ink" }
+        assertEquals(1.0, MosaicEnvelope.settledWashIntensity(MosaicEnvelope.DURATION_SECONDS), 1e-9)
+        assertEquals(1.0, MosaicEnvelope.settledWashIntensity(MosaicEnvelope.DURATION_SECONDS + 3600.0))
     }
 
     @Test
-    fun `Reduce Motion stands the wash without an eased rise`() {
-        // The wash is dark before the trigger, then stands at 1 with no eased rise (the FlashEnvelope
-        // reduced-motion doctrine: the color shows, it just does not move).
-        assertEquals(0.0, MosaicEnvelope.washIntensity(0.0, reduceMotion = true))
-        assertEquals(1.0, MosaicEnvelope.washIntensity(0.001, reduceMotion = true))
-        assertEquals(1.0, MosaicEnvelope.washIntensity(MosaicEnvelope.RISE_SECONDS * 0.25, reduceMotion = true))
-        assertEquals(1.0, MosaicEnvelope.washIntensity(MosaicEnvelope.DURATION_SECONDS, reduceMotion = true))
+    fun `the melt trades the crisp field for the blurred one across the settle`() {
+        // Mid-settle both layers are live: the crisp field (riding intensity, one clock with the
+        // glyph) is on its way out while the blurred field is on its way in; by the envelope's end
+        // the crisp layer is dark and the field stands.
+        val mid = MosaicEnvelope.RISE_SECONDS + MosaicEnvelope.HOLD_SECONDS +
+            MosaicEnvelope.BLUR_DELAY_SECONDS + MosaicEnvelope.BLUR_FADE_SECONDS / 2
+        val crisp = MosaicEnvelope.intensity(mid)
+        val blur = MosaicEnvelope.settledWashIntensity(mid)
+        assertTrue(crisp in 0.0..1.0 && crisp < 1.0) { "the crisp field is letting go" }
+        assertTrue(blur > 0.0 && blur < 1.0) { "the blurred field is breathing in" }
+        assertEquals(0.0, MosaicEnvelope.intensity(MosaicEnvelope.DURATION_SECONDS)) { "the glyph settles to ink" }
+        assertEquals(1.0, MosaicEnvelope.settledWashIntensity(MosaicEnvelope.DURATION_SECONDS), 1e-9)
+        // The envelope ends when the blur lands: the delayed fade is inside the duration, never past it.
+        assertEquals(
+            MosaicEnvelope.RISE_SECONDS + MosaicEnvelope.HOLD_SECONDS +
+                MosaicEnvelope.BLUR_DELAY_SECONDS + MosaicEnvelope.BLUR_FADE_SECONDS,
+            MosaicEnvelope.DURATION_SECONDS,
+            1e-12,
+        )
+    }
+
+    @Test
+    fun `Reduce Motion steps the blurred field in at the envelope's end`() {
+        // The bloom is a held step (intensity's reduced-motion form: the crisp record through the
+        // envelope), then the settled record appears in one step, no animated motion.
+        assertEquals(0.0, MosaicEnvelope.settledWashIntensity(0.0, reduceMotion = true))
+        assertEquals(0.0, MosaicEnvelope.settledWashIntensity(MosaicEnvelope.RISE_SECONDS, reduceMotion = true))
+        assertEquals(
+            0.0,
+            MosaicEnvelope.settledWashIntensity(MosaicEnvelope.DURATION_SECONDS - 1e-6, reduceMotion = true),
+        )
+        assertEquals(1.0, MosaicEnvelope.settledWashIntensity(MosaicEnvelope.DURATION_SECONDS, reduceMotion = true))
+        assertEquals(
+            1.0,
+            MosaicEnvelope.settledWashIntensity(MosaicEnvelope.DURATION_SECONDS + 1.0, reduceMotion = true),
+        )
+    }
+
+    @Test
+    fun `the settled record's tokens are the ratified contract values`() {
+        // The wash-blur ratification (2026-07-17), shared across web, iOS, and Android: blur radius
+        // 20/36 of the cell module, settled alpha 0.5, edge overscan at least 1.5 radii. The bloom's
+        // crisp field keeps its own 0.30 (and a time-gated replay wash stays crisp 0.30); the settled
+        // weight is a NEW token, never a bump of the old one.
+        assertEquals(20f / 36f, GridMosaic.BLUR_RADIUS_CELL_FRACTION)
+        assertEquals(0.50f, GridMosaic.SETTLED_WASH_ALPHA)
+        assertEquals(0.30f, GridMosaic.WASH_ALPHA)
+        assertTrue(GridMosaic.BLUR_OVERSCAN_RADII >= 1.5f) { "edge overscan must cover the blur's reach" }
+    }
+
+    @Test
+    fun `only frame-edge cells overscan, on exactly their outer sides`() {
+        // 3x4 board (rows=3, cols=4): the overscan extends a tint rect outward past the frame before
+        // blurring, so the field never fades at the frame; interior cells never extend.
+        assertEquals(GridMosaic.BlurOverscan(left = true, top = true, right = false, bottom = false), GridMosaic.blurOverscan(0, 3, 4))
+        assertEquals(GridMosaic.BlurOverscan(left = false, top = true, right = true, bottom = false), GridMosaic.blurOverscan(3, 3, 4))
+        assertEquals(GridMosaic.BlurOverscan(left = true, top = false, right = false, bottom = true), GridMosaic.blurOverscan(8, 3, 4))
+        assertEquals(GridMosaic.BlurOverscan(left = false, top = false, right = true, bottom = true), GridMosaic.blurOverscan(11, 3, 4))
+        assertEquals(GridMosaic.BlurOverscan(left = false, top = true, right = false, bottom = false), GridMosaic.blurOverscan(1, 3, 4))
+        assertEquals(GridMosaic.BlurOverscan(left = false, top = false, right = false, bottom = false), GridMosaic.blurOverscan(5, 3, 4))
     }
 
     // MARK: the isolation filter (§8: isolation on the settled wash)
 
     @Test
-    fun `the isolation multiplier is the full wash when nothing is isolated`() {
-        // The filter is pure presentation, absent by default, so a room that never taps a legend row
-        // draws exactly as before.
-        assertEquals(1.0, GridMosaic.isolationMultiplier("you", isolation = null, elapsed = 99.0))
+    fun `a settled record with no isolation is all field, no crisp tints`() {
+        // The filter is pure presentation, absent by default: a room that never taps a legend row
+        // wears the full blurred field and draws no crisp cell at all.
+        assertEquals(0.0, GridMosaic.settledCrispMultiplier("you", isolation = null, elapsed = 99.0))
+        assertEquals(1.0, GridMosaic.blurFieldMultiplier(isolation = null, elapsed = 99.0))
     }
 
     @Test
-    fun `an isolated solver keeps the tint while every other hand dims toward paper`() {
-        // Past the fade, the isolated solver's cells hold the full wash and every other hand rests at the
-        // dim floor: recessed toward paper (a lower alpha over the ground IS the step toward it), never
+    fun `an isolated solver snaps back to crisp while the field hides`() {
+        // Past the fade: the blurred field is gone (a blurred single color has no shape to read), the
+        // isolated solver's cells hold the full settled weight, and every other hand rests at the dim
+        // floor: recessed toward paper (a lower alpha over the ground IS the step toward it), never
         // erased.
         val isolation = MosaicIsolation(solverId = "you", previousSolverId = null, changedAt = 0.0)
-        assertEquals(1.0, GridMosaic.isolationMultiplier("you", isolation, elapsed = 1.0))
-        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.isolationMultiplier("bee", isolation, elapsed = 1.0))
+        assertEquals(0.0, GridMosaic.blurFieldMultiplier(isolation, elapsed = 1.0))
+        assertEquals(1.0, GridMosaic.settledCrispMultiplier("you", isolation, elapsed = 1.0))
+        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.settledCrispMultiplier("bee", isolation, elapsed = 1.0))
         assertTrue(GridMosaic.ISOLATION_DIM > 0.0) { "dimmed, never erased: the record stays traceable" }
         assertTrue(GridMosaic.ISOLATION_DIM < 1.0)
     }
 
     @Test
-    fun `the isolation crossfade is monotone from the previous dim to the next`() {
-        // The from-side at the toggle, the to-side by the fade's end, monotone between: fast and quiet, a
-        // filter, not a celebration (and already the reduced-motion form, a pure opacity crossfade).
+    fun `the isolation crossfade trades the field for the cells monotonically`() {
+        // The from-side at the toggle, the to-side by the fade's end, monotone between, both layers on
+        // one clock and ease: fast and quiet, a filter, not a celebration (and already the
+        // reduced-motion form, a pure opacity crossfade).
         val isolation = MosaicIsolation(solverId = "you", previousSolverId = null, changedAt = 0.0)
-        assertEquals(1.0, GridMosaic.isolationMultiplier("bee", isolation, elapsed = 0.0))
-        var previous = 1.001
+        val fade = GridMosaic.ISOLATION_FADE_SECONDS
+        assertEquals(1.0, GridMosaic.blurFieldMultiplier(isolation, elapsed = 0.0))
+        assertEquals(0.0, GridMosaic.settledCrispMultiplier("you", isolation, elapsed = 0.0))
+        var previousBlur = 1.001
+        var previousCrisp = -0.001
         for (step in 0..20) {
-            val elapsed = GridMosaic.ISOLATION_FADE_SECONDS * step / 20
-            val value = GridMosaic.isolationMultiplier("bee", isolation, elapsed)
-            assertTrue(value <= previous) { "the fade must not rebound, t=$elapsed" }
-            previous = value
+            val elapsed = fade * step / 20
+            val blur = GridMosaic.blurFieldMultiplier(isolation, elapsed)
+            val crisp = GridMosaic.settledCrispMultiplier("you", isolation, elapsed)
+            assertTrue(blur <= previousBlur) { "the field must not rebound, t=$elapsed" }
+            assertTrue(crisp >= previousCrisp) { "the spotlight must not rebound, t=$elapsed" }
+            previousBlur = blur
+            previousCrisp = crisp
         }
-        assertEquals(
-            GridMosaic.ISOLATION_DIM,
-            GridMosaic.isolationMultiplier("bee", isolation, GridMosaic.ISOLATION_FADE_SECONDS),
-        )
+        assertEquals(0.0, GridMosaic.blurFieldMultiplier(isolation, fade))
+        assertEquals(1.0, GridMosaic.settledCrispMultiplier("you", isolation, fade))
     }
 
     @Test
-    fun `a switch crossfades both hands while a third holds the floor`() {
-        // you -> bee: your hand fades down as bee's fades up, and a third hand holds the dim floor with no
-        // pulse through the crossfade.
+    fun `a switch crossfades both hands while a third holds the floor and the field stays hidden`() {
+        // you -> bee: your hand fades down as bee's fades up, a third hand holds the dim floor with no
+        // pulse, and the blurred field never returns mid-switch.
         val isolation = MosaicIsolation(solverId = "bee", previousSolverId = "you", changedAt = 0.0)
         val fade = GridMosaic.ISOLATION_FADE_SECONDS
-        assertEquals(1.0, GridMosaic.isolationMultiplier("you", isolation, elapsed = 0.0))
-        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.isolationMultiplier("you", isolation, fade))
-        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.isolationMultiplier("bee", isolation, elapsed = 0.0))
-        assertEquals(1.0, GridMosaic.isolationMultiplier("bee", isolation, fade))
+        assertEquals(1.0, GridMosaic.settledCrispMultiplier("you", isolation, elapsed = 0.0))
+        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.settledCrispMultiplier("you", isolation, fade))
+        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.settledCrispMultiplier("bee", isolation, elapsed = 0.0))
+        assertEquals(1.0, GridMosaic.settledCrispMultiplier("bee", isolation, fade))
         for (step in 0..10) {
             val elapsed = fade * step / 10
             assertEquals(
-                GridMosaic.ISOLATION_DIM, GridMosaic.isolationMultiplier("cee", isolation, elapsed),
+                GridMosaic.ISOLATION_DIM, GridMosaic.settledCrispMultiplier("cee", isolation, elapsed),
             ) { "a third hand never pulses, t=$elapsed" }
+            assertEquals(0.0, GridMosaic.blurFieldMultiplier(isolation, elapsed)) { "the field stays hidden, t=$elapsed" }
         }
     }
 
     @Test
-    fun `a clear fades every hand back to the full wash`() {
-        // A clear (null current) fades every hand back to the full wash; the previously isolated hand was
-        // already there and stays put.
+    fun `a clear melts every crisp tint back into the blurred field`() {
+        // A clear (null current) fades the crisp tints out and the field back in on the same clock;
+        // clearing isolation returns the blurred record.
         val isolation = MosaicIsolation(solverId = null, previousSolverId = "you", changedAt = 0.0)
         val fade = GridMosaic.ISOLATION_FADE_SECONDS
-        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.isolationMultiplier("bee", isolation, elapsed = 0.0))
-        assertEquals(1.0, GridMosaic.isolationMultiplier("bee", isolation, fade))
-        assertEquals(1.0, GridMosaic.isolationMultiplier("you", isolation, fade / 2))
+        assertEquals(GridMosaic.ISOLATION_DIM, GridMosaic.settledCrispMultiplier("bee", isolation, elapsed = 0.0))
+        assertEquals(1.0, GridMosaic.settledCrispMultiplier("you", isolation, elapsed = 0.0))
+        assertEquals(0.0, GridMosaic.blurFieldMultiplier(isolation, elapsed = 0.0))
+        assertEquals(0.0, GridMosaic.settledCrispMultiplier("bee", isolation, fade))
+        assertEquals(0.0, GridMosaic.settledCrispMultiplier("you", isolation, fade))
+        assertEquals(1.0, GridMosaic.blurFieldMultiplier(isolation, fade))
     }
 
     // MARK: the mosaic lifecycle (MosaicMoment): the standing wash and the stand path

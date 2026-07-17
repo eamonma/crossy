@@ -22,6 +22,7 @@
 
 package crossy.ui
 
+import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -41,10 +42,15 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
@@ -98,11 +104,13 @@ fun CrossyGrid(
     // The completion mosaic (apps/ios/DESIGN.md §8; CompletionMoment): the palette and trigger
     // instant the room hands down on gated completion (INV-3). Null on the happy path; a non-null
     // wash blooms every filled cell to its writer's color and drives the per-frame redraw the way a
-    // live flash does. On the settle the GLYPH returns to ink (`intensity` -> 0) while the WASH STANDS
-    // (`washIntensity` holds 1, `mosaic.settled`): the completed board keeps the room's fingerprint,
-    // never reverting to plain ink (the flash-then-disappear fix; web parity: the reveal arc ends at
-    // WASH). A settled wash is a constant, so the frame loop pauses and the draw skips the clock. The
-    // `mosaic.isolation` filter recesses every non-isolated hand toward paper. Drawn OVER the ink pass.
+    // live flash does. On the settle the GLYPH and the crisp field return to ink (`intensity` -> 0)
+    // while the BLURRED color field breathes in beneath the letters (`settledWashIntensity` -> 1,
+    // `mosaic.settled`; the wash-blur ratification): the completed board keeps the room's fingerprint
+    // as a soft field flowing behind the crisp board, never reverting to plain ink (the
+    // flash-then-disappear fix). A settled record is a constant, so the frame loop pauses and the
+    // draw skips the clock. The `mosaic.isolation` filter hides the field and returns crisp per-cell
+    // tints, the isolated hand at the settled weight and every other recessed toward paper.
     mosaic: MosaicWash? = null,
     // The completed Analysis board's directional loupe (WordLoupeLayer, mounted by the room above this
     // Canvas and below the sticker layer). This grid draws NO glass; the flag only tells the draw pass to
@@ -136,6 +144,10 @@ fun CrossyGrid(
 ) {
     val tokens = ground.tokens
     val measurer = rememberTextMeasurer()
+    // The settled record's blurred color layer (pass 1b): one offscreen GraphicsLayer, re-recorded on
+    // each draw that shows the field. RenderEffect-blurred on API 31+; below 31 it composites crisp
+    // (the deliberate degrade, documented at the pass).
+    val mosaicBlurLayer = rememberGraphicsLayer()
     val cols = geometry.cols
     val rows = geometry.rows
     val tint = cursorTint.toColor()
@@ -384,6 +396,89 @@ fun CrossyGrid(
             }
         }
 
+        // Pass 1b: the settled record's blurred color field (the wash-blur ratification, 2026-07-17).
+        // The owner tints render at FULL saturation into an offscreen layer, gaussian-blurred at
+        // BLUR_RADIUS_CELL_FRACTION of the cell module, and composite over the ground at
+        // SETTLED_WASH_ALPHA, UNDER the grid rule, the clue numbers, and the ink glyphs (passes 2-5):
+        // the record reads as color flowing behind the crisp board. Frame-edge cells overscan outward
+        // (>= 1.5 radii) and the layer clips back to the board bounds, so the field stays saturated at
+        // the frame. Blocks re-stamp crisp above the field, so it flows behind the block grid, never
+        // over it. While the bloom plays this layer fades in on the settle's melt
+        // (MosaicEnvelope.settledWashIntensity); settled it is a constant 1, hidden only under an
+        // isolation (GridMosaic.blurFieldMultiplier crossfades it against the crisp tints of pass 6b).
+        val blurField = when {
+            mosaic == null -> 0.0
+            mosaic.settled -> GridMosaic.blurFieldMultiplier(
+                mosaic.isolation,
+                mosaic.isolation?.let { now - it.changedAt } ?: 0.0,
+            )
+            else -> MosaicEnvelope.settledWashIntensity(now - mosaic.startedAt, reduceMotion)
+        }
+        if (mosaic != null && blurField > 0.0) {
+            val radiusPx = GridMosaic.BLUR_RADIUS_CELL_FRACTION * cellPx
+            val overscanPx = GridMosaic.BLUR_OVERSCAN_RADII * radiusPx
+            // The layer spans the viewport plus one overscan margin per side, its coordinates the
+            // canvas's shifted by +overscan, so an edge cell's outward extension survives the record
+            // (a layer clips to its own bounds) and the blur never samples a hard cut at the frame.
+            val viewW = size.width
+            val viewH = size.height
+            val layerW = (viewW + 2f * overscanPx).toInt() + 1
+            val layerH = (viewH + 2f * overscanPx).toInt() + 1
+            mosaicBlurLayer.record(
+                density = this,
+                layoutDirection = layoutDirection,
+                size = IntSize(layerW, layerH),
+            ) {
+                for ((c, color) in mosaic.colors) {
+                    if (c in geometry.blocks) continue
+                    val col = c % cols
+                    val row = c / cols
+                    var x0 = offX + col * cellPx
+                    var y0 = offY + row * cellPx
+                    var x1 = x0 + cellPx
+                    var y1 = y0 + cellPx
+                    val over = GridMosaic.blurOverscan(c, rows, cols)
+                    if (over.left) x0 -= overscanPx
+                    if (over.top) y0 -= overscanPx
+                    if (over.right) x1 += overscanPx
+                    if (over.bottom) y1 += overscanPx
+                    // Cull to the layer: a rect wholly outside cannot influence the visible field
+                    // (anything within one overscan of the viewport still records, feeding the blur).
+                    val lx0 = x0 + overscanPx
+                    val ly0 = y0 + overscanPx
+                    if (lx0 > layerW || ly0 > layerH || lx0 + (x1 - x0) < 0f || ly0 + (y1 - y0) < 0f) continue
+                    drawRect(color.toColor(), Offset(lx0, ly0), Size(x1 - x0, y1 - y0))
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                // API 31+: the real gaussian field, hardware-composited.
+                mosaicBlurLayer.renderEffect = BlurEffect(radiusPx, radiusPx)
+            } else {
+                // API 29-30 (minSdk 29): RenderEffect blur does not exist, and Compose's own
+                // Modifier.blur is a silent no-op there, which degrades to exactly this branch: the
+                // settled record renders as CRISP per-cell tints at the settled weight
+                // (full-saturation rects composited at SETTLED_WASH_ALPHA). Deliberately no software
+                // blur; the crisp record at 0.5 is the ratified fallback.
+                mosaicBlurLayer.renderEffect = null
+            }
+            mosaicBlurLayer.alpha = GridMosaic.SETTLED_WASH_ALPHA * blurField.toFloat()
+            // Clip to the board bounds: the overscan feeds the blur, never the paint.
+            clipRect(offX, offY, offX + cols * cellPx, offY + rows * cellPx) {
+                translate(-overscanPx, -overscanPx) {
+                    drawLayer(mosaicBlurLayer)
+                }
+            }
+            // Blocks re-stamp crisp above the field: color flows BEHIND the block grid.
+            for (c in geometry.blocks) {
+                if (!onScreen(c)) continue
+                drawRect(
+                    tokens.block.toColor(),
+                    Offset(offX + (c % cols) * cellPx, offY + (c / cols) * cellPx),
+                    Size(cellPx, cellPx),
+                )
+            }
+        }
+
         // Pass 2: the grid rule. Interior hairlines plus the closing outer frame (§10 / GridModule),
         // drawn across the whole board through the transform (a few dozen lines, clipped to the view).
         val hairline = maxOf(GridModule.HAIRLINE * s, 1f)
@@ -440,46 +535,49 @@ fun CrossyGrid(
             }
         }
 
-        // Pass 6b: the completion mosaic (apps/ios/DESIGN.md §8), painted OVER the ink pass and under
-        // the flashes exactly as iOS orders it (drawMosaic before drawFlashes). Two clocks share one
-        // rise: the paper WASH rides `washIntensity` and STANDS at 1 once settled (the completed board's
-        // record, never plain ink again, the flash-then-disappear fix), while the glyph rides
-        // `intensity` and settles back to ink. A settled mosaic reads wash 1 / glyph 0 with no clock, so
-        // the paused frame loop's frozen `now` cannot misdraw it. The isolation filter recesses every
-        // non-isolated hand toward paper by a per-cell wash multiplier (keyed on the OWNER, crossfading
-        // ease-in-out over 0.25s). A cell without a mosaic color (empty, or cleared) never tints. Under
-        // Reduce Motion the rise and settle are held steps; the isolation crossfade is a pure fade.
-        if (mosaic != null) {
+        // Pass 6b: the CRISP mosaic layer (apps/ios/DESIGN.md §8), painted OVER the ink pass and under
+        // the flashes exactly as iOS orders it (drawMosaic before drawFlashes). The BLOOM is unchanged:
+        // the crisp field and the glyph tint ride `intensity` on one clock (WASH_ALPHA field under
+        // tinted glyphs), and at the settle both let go together while the blurred field (pass 1b)
+        // breathes in, the melt: the settled record is the BLUR, not a standing crisp wash. Once
+        // settled, crisp tints return only under an isolation (a legend-row tap): the isolated solver's
+        // cells at the settled weight, every other hand at the dim floor (recessed toward paper: a
+        // lower alpha over the ground IS the recessive step, on both grounds by construction), keyed
+        // per cell on the OWNER and crossfading with the blurred field over 0.25s both ways. A settled,
+        // un-isolated mosaic draws NOTHING here (blur 1 / crisp 0 / glyph 0 with no clock), so the
+        // paused frame loop's frozen `now` cannot misdraw it. A cell without a mosaic color (empty, or
+        // cleared) never tints. Under Reduce Motion the bloom is a held step; the isolation crossfade
+        // is a pure fade.
+        if (mosaic != null && (!mosaic.settled || mosaic.isolation != null)) {
             val elapsed = now - mosaic.startedAt
-            val wash = if (mosaic.settled) 1.0 else MosaicEnvelope.washIntensity(elapsed, reduceMotion)
             val glyph = if (mosaic.settled) 0.0 else MosaicEnvelope.intensity(elapsed, reduceMotion)
-            if (wash > 0.0) {
-                val glyphWeightMosaic = FontWeight(ground.glyphWeight)
-                for ((c, color) in mosaic.colors) {
-                    if (c in geometry.blocks || !onScreen(c)) continue
-                    val origin = Offset(offX + (c % cols) * cellPx, offY + (c / cols) * cellPx)
-                    val tinted = color.toColor()
-                    // The isolation filter (a legend-row tap over the settled wash): the isolated
-                    // solver's cells hold the full wash, every other hand recesses toward paper (a lower
-                    // alpha over the ground IS the recessive step, on both grounds by construction).
-                    var alpha = GridMosaic.WASH_ALPHA * wash.toFloat()
-                    val owner = mosaic.writers[c]
-                    if (mosaic.isolation != null && owner != null) {
-                        val mult = GridMosaic.isolationMultiplier(owner, mosaic.isolation, now - mosaic.isolation.changedAt)
-                        alpha *= mult.toFloat()
-                    }
-                    drawRect(tinted.copy(alpha = alpha), origin, Size(cellPx, cellPx))
-                    if (glyph <= 0.0) continue
-                    val value = values[c]
-                    if (value.isNullOrEmpty()) continue
-                    val fontUnits = glyphUnits(value.length)
-                    val layout = measurer.measure(
-                        value,
-                        TextStyle(color = tinted.copy(alpha = glyph.toFloat()), fontSize = (fontUnits * s).toSp(), fontWeight = glyphWeightMosaic),
-                    )
-                    val center = cellCenter(c, cols, cellPx, offX, offY)
-                    drawText(layout, topLeft = Offset(center.x - layout.size.width / 2f, center.y - layout.size.height / 2f))
+            val isoElapsed = mosaic.isolation?.let { now - it.changedAt } ?: 0.0
+            val glyphWeightMosaic = FontWeight(ground.glyphWeight)
+            for ((c, color) in mosaic.colors) {
+                if (c in geometry.blocks || !onScreen(c)) continue
+                val origin = Offset(offX + (c % cols) * cellPx, offY + (c / cols) * cellPx)
+                val tinted = color.toColor()
+                val alpha = if (mosaic.settled) {
+                    // The isolation spotlight over the settled record: crisp cells at the settled
+                    // weight (a blurred single color has no shape to read).
+                    val owner = mosaic.writers[c] ?: ""
+                    GridMosaic.SETTLED_WASH_ALPHA *
+                        GridMosaic.settledCrispMultiplier(owner, mosaic.isolation, isoElapsed).toFloat()
+                } else {
+                    // The bloom's crisp field, one clock with the glyph (the melt's letting-go side).
+                    GridMosaic.WASH_ALPHA * glyph.toFloat()
                 }
+                if (alpha > 0f) drawRect(tinted.copy(alpha = alpha), origin, Size(cellPx, cellPx))
+                if (glyph <= 0.0) continue
+                val value = values[c]
+                if (value.isNullOrEmpty()) continue
+                val fontUnits = glyphUnits(value.length)
+                val layout = measurer.measure(
+                    value,
+                    TextStyle(color = tinted.copy(alpha = glyph.toFloat()), fontSize = (fontUnits * s).toSp(), fontWeight = glyphWeightMosaic),
+                )
+                val center = cellCenter(c, cols, cellPx, offX, offY)
+                drawText(layout, topLeft = Offset(center.x - layout.size.width / 2f, center.y - layout.size.height / 2f))
             }
         }
 
