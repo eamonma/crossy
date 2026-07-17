@@ -2,7 +2,14 @@
 // no-letters guarantee (INV-6 in spirit: the card spoils nothing), ground pairing, the
 // solo ramp, and byte stability of a fixed fixture.
 import { describe, expect, it } from "vitest";
-import { completionCardSvg, soloRampColor, BUDGETS } from "./card";
+import {
+  completionBoardSvg,
+  completionCardSvg,
+  soloRampColor,
+  BUDGETS,
+  DARK_BOARD,
+  OWNER_TINT,
+} from "./card";
 import { BRAND } from "./brand";
 import { mixHex, parseHex } from "./color";
 import type { ShareCardData } from "./types";
@@ -300,6 +307,74 @@ describe("the solo ramp (fill order, gold only where the brand allows it)", () =
   });
 });
 
+describe("the board-only render (the share page's replay hero, SHARE.md S3)", () => {
+  it("emits a standalone padded viewBox with the full row-major mask and zero text nodes (INV-6: no letter-shaped field exists, and the board draws no text at all)", () => {
+    const d = fixture();
+    const board = completionBoardSvg(d, { ground: "light" });
+    // 5 cols x 40px cell plus the frame padding on both sides.
+    expect(board.svg).toMatch(
+      /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 [\d.]+ [\d.]+">/,
+    );
+    expect(board.width).toBeGreaterThan(5 * 40);
+    expect(board.height).toBe(board.width); // 5x5 stays square
+    expect(board.svg.match(/data-cell="/g)?.length).toBe(25);
+    expect(board.svg).not.toContain("<text");
+    expect(cellRect(board.svg, 4).fill).toBe(BRAND.ink);
+  });
+
+  it("agrees with the card's mosaic: the identical OWNER_TINT wash per cell, per ground", () => {
+    const d = fixture();
+    const light = completionBoardSvg(d, { ground: "light" }).svg;
+    expect(cellRect(light, 0).fill).toBe(
+      mixHex(BRAND.studio, "#6F66D4", OWNER_TINT),
+    );
+    const card = completionCardSvg(d, {
+      ground: "light",
+      variant: "portrait",
+    }).svg;
+    expect(cellRect(light, 7).fill).toBe(cellRect(card, 7).fill);
+    const dark = completionBoardSvg(d, { ground: "dark" }).svg;
+    expect(cellRect(dark, 0).fill).toBe(
+      mixHex(BRAND.observatory, "#9D95FF", OWNER_TINT),
+    );
+    // Dark board chrome: blocks sink to the DARK_BOARD tone, not ink.
+    expect(cellRect(dark, 4).fill).toBe(DARK_BOARD.block);
+  });
+
+  it("stamps the caller's class on open cells only; a block is chrome and never carries one", () => {
+    const d = fixture();
+    const { svg } = completionBoardSvg(d, {
+      ground: "light",
+      cellClassOf: (cell) => (cell === 4 || cell === 0 ? "rv k0" : undefined),
+    });
+    // Cell 0 (open) wears the class, after the fill so geometry parsing is untouched.
+    expect(svg).toMatch(/<rect data-cell="0" [^>]*class="rv k0"\/>/);
+    // Cell 4 is a block: even though the caller offered a class, none is stamped.
+    expect(svg).not.toMatch(/<rect data-cell="4" [^>]*class=/);
+    // An open cell the caller skipped stays classless.
+    expect(svg).not.toMatch(/<rect data-cell="1" [^>]*class=/);
+  });
+
+  it("fillOrder painting is the solo gold ramp: pale first, brand gold last, no roster hex", () => {
+    const base = fixture();
+    const fillOrderByCell: Record<number, number> = {};
+    let k = 0;
+    for (let cell = 0; cell < 25; cell += 1) {
+      if (base.blocks.includes(cell)) continue;
+      fillOrderByCell[cell] = k / 22;
+      k += 1;
+    }
+    const d: ShareCardData = { ...base, fillOrderByCell };
+    const { svg } = completionBoardSvg(d, {
+      ground: "light",
+      painting: "fillOrder",
+    });
+    expect(cellRect(svg, 0).fill).toBe(soloRampColor(0, "light"));
+    expect(cellRect(svg, 24).fill).toBe(soloRampColor(1, "light"));
+    expect(svg).not.toContain(mixHex(BRAND.studio, "#6F66D4", OWNER_TINT));
+  });
+});
+
 describe("snapshot stability (a fixed fixture renders the same bytes forever)", () => {
   it("is a pure function: same data, same SVG, byte for byte", () => {
     const d = fixture();
@@ -316,6 +391,15 @@ describe("snapshot stability (a fixed fixture renders the same bytes forever)", 
           `${variant}-${ground}`,
         );
       }
+    }
+  });
+
+  it("matches the committed snapshot for the board-only render (both grounds)", () => {
+    const d = fixture();
+    for (const ground of ["light", "dark"] as const) {
+      expect(completionBoardSvg(d, { ground }).svg).toMatchSnapshot(
+        `board-only-${ground}`,
+      );
     }
   });
 });

@@ -14,10 +14,22 @@ export interface BoardStyle {
   readonly frame: string;
 }
 
+/** The stroke widths the board draws at a given cell size: gridlines at the og.svg
+ * ratio (~4.5% of a cell, floored at 1.5), the frame a touch heavier. Exported so a
+ * caller sizing a standalone board (completionBoardSvg) can pad for the frame without
+ * re-deriving the ratio. */
+export function boardStrokes(cell: number): { line: number; frame: number } {
+  const line = Math.max(1.5, round2(cell * 0.045));
+  return { line, frame: round2(line * 1.6) };
+}
+
 /**
  * Render the board group at (x, y): `cell` px squares, `cols` x `rows`, blocks from the
  * mask, every other cell filled by `fillOf(cell)`. Gridline width scales with the cell
- * (the og.svg ratio, ~4.5% of a cell).
+ * (the og.svg ratio, ~4.5% of a cell). `classOf`, when given, stamps a class on OPEN
+ * cell rects only (a block is chrome, never addressable), so a consumer's stylesheet
+ * can animate the mosaic without touching the board's geometry; without it the emitted
+ * bytes are unchanged.
  */
 export function boardSvg(
   x: number,
@@ -28,21 +40,25 @@ export function boardSvg(
   blocks: ReadonlySet<number>,
   fillOf: (cellIndex: number) => string,
   style: BoardStyle,
+  classOf?: (cellIndex: number) => string | undefined,
 ): string {
   const w = cols * cell;
   const h = rows * cell;
-  const line = Math.max(1.5, round2(cell * 0.045));
-  const frame = round2(line * 1.6);
+  const { line, frame } = boardStrokes(cell);
 
   const rects: string[] = [];
   for (let r = 0; r < rows; r += 1) {
     for (let c = 0; c < cols; c += 1) {
       const idx = r * cols + c;
-      const fill = blocks.has(idx) ? style.block : fillOf(idx);
+      const block = blocks.has(idx);
+      const fill = block ? style.block : fillOf(idx);
+      const cls = block ? undefined : classOf?.(idx);
+      const classAttr =
+        cls !== undefined && cls !== "" ? ` class="${cls}"` : "";
       // data-cell keys each square so a test can assert the mask's geometry without
       // re-deriving the layout arithmetic it is trying to check.
       rects.push(
-        `<rect data-cell="${idx}" x="${c * cell}" y="${r * cell}" width="${cell}" height="${cell}" fill="${fill}"/>`,
+        `<rect data-cell="${idx}" x="${c * cell}" y="${r * cell}" width="${cell}" height="${cell}" fill="${fill}"${classAttr}/>`,
       );
     }
   }

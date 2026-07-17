@@ -23,7 +23,7 @@ import type {
   ShareCardSolver,
 } from "./types";
 import { BRAND, lockupSvg } from "./brand";
-import { boardSvg } from "./board";
+import { boardStrokes, boardSvg } from "./board";
 import { mixHex } from "./color";
 import { escapeXml, formatClock, truncate } from "./text";
 
@@ -589,4 +589,68 @@ export function completionCardSvg(
   return options.variant === "og"
     ? ogCard(data, options)
     : portraitCard(data, options);
+}
+
+/** The board-only render's cell size. Nominal: the SVG carries a viewBox and no
+ * width/height attributes, so a page scales it freely; 40 keeps the gridline
+ * arithmetic (boardStrokes) in the card variants' range. */
+export const BOARD_ONLY_CELL = 40;
+
+export interface BoardOnlyOptions {
+  /** Which ground the board sits on: Studio (light) or Observatory (dark). */
+  readonly ground: "light" | "dark";
+  /** owners (default) paints who first solved each square; fillOrder paints the solo
+   * gold ramp from `fillOrderByCell` (SHARE.md solo rule). */
+  readonly painting?: "owners" | "fillOrder";
+  /** Optional class token(s) stamped on each OPEN cell rect (blocks are chrome, never
+   * classed), so a consumer's stylesheet can animate the mosaic (the 13.3 replay).
+   * Tokens come from caller code, never display text; they are emitted verbatim. */
+  readonly cellClassOf?: (cell: number) => string | undefined;
+}
+
+/**
+ * The bare finished mosaic as a standalone SVG: the same board idiom, chrome, and cell
+ * fills as the card variants (square cells, ink or DARK_BOARD gridlines, OWNER_TINT
+ * wash or the solo ramp), with nothing else on the canvas. viewBox pads by half the
+ * frame stroke so the frame never clips; there are no width/height attributes, so the
+ * consumer sizes it (the share page's replay hero). Same purity contract as the card:
+ * same data, same bytes. INV-6 holds as everywhere here: the input carries owners,
+ * order, and colors; no letter-shaped field exists, and the board emits no text at all.
+ */
+export function completionBoardSvg(
+  data: ShareCardData,
+  options: BoardOnlyOptions,
+): RenderedCard {
+  const p = paletteOf(options.ground);
+  const cell = BOARD_ONLY_CELL;
+  const pad = boardStrokes(cell).frame / 2;
+  const w = round2(data.cols * cell + 2 * pad);
+  const h = round2(data.rows * cell + 2 * pad);
+  const fillOf =
+    options.painting === "fillOrder"
+      ? soloFill(data, options.ground, p)
+      : ownersFill(data, options.ground, p);
+  const board = boardSvg(
+    pad,
+    pad,
+    data.cols,
+    data.rows,
+    cell,
+    new Set(data.blocks),
+    fillOf,
+    p.board,
+    options.cellClassOf,
+  );
+  return {
+    svg:
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">` +
+      board +
+      `</svg>`,
+    width: w,
+    height: h,
+  };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
