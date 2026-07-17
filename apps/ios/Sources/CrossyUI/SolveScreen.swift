@@ -589,7 +589,7 @@ public struct SolveScreen: View {
         // arms the panel summon; an absent bundle falls back to the last-writer bloom
         // with no summon. A reconnect into a completed room never blooms or summons
         // (the celebration is a live-edge moment, INV-3) — but the terminal board
-        // WEARS the settled wash once the bundle lands (standMosaic): the record
+        // WEARS the settled field once the bundle lands (standMosaic): the record
         // stands on every visit, it does not exist only inside the one bloom (the
         // flash-then-disappear fix's revisit half). An absent bundle stands nothing:
         // the wash is first-correct truth, and without the bundle there is none.
@@ -689,7 +689,7 @@ public struct SolveScreen: View {
                 // pauses (the flash-then-disappear fix: the settle returns the
                 // letters to ink, never the board to plain).
                 mosaicSettled: completion.mosaicSettled,
-                // The isolation filter over the settled wash: the analysis
+                // The isolation filter over the settled record: the analysis
                 // legend's tapped solver holds the full wash, everyone else
                 // recesses toward paper. One truth on CompletionModel, read by
                 // the legend rows and this draw pass alike.

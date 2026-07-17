@@ -40,7 +40,7 @@ struct ClueChrome: View {
     /// roster colors). Same list the roster menu reads.
     let analysisMembers: [RosterMember]
     let selfUserId: String?
-    /// The isolated solver on the settled wash, or nil at the full record: the
+    /// The isolated solver on the settled record, or nil at the full record: the
     /// Analysis legend rows' selected state (CompletionModel.isolation).
     let isolatedSolverId: String?
     /// Isolate a solver from their legend row, or nil while isolation is

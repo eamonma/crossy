@@ -21,7 +21,7 @@ struct AnalysisPanel: View {
     let members: [RosterMember]
     let selfUserId: String?
     let ground: GridGround
-    /// The isolated solver on the settled wash (the legend chips' selected
+    /// The isolated solver on the settled record (the legend chips' selected
     /// state), or nil at the full multi-color record.
     let isolatedSolverId: String?
     /// Isolate a solver from their legend chip: same-tap clears, another
