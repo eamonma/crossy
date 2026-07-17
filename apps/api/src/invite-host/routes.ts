@@ -129,6 +129,11 @@ export function inviteHostMiddleware(deps: AppDeps): MiddlewareHandler<ApiEnv> {
     const path = c.req.path;
     if (path === AASA_PATH) return serveAasa(c, deps.appleAppId);
 
+    // The completion share surface (SHARE.md wave S2) lives at `/s/{token}` on this same public host,
+    // so its links read `https://{invite-host}/s/{token}`. It is not an invite code (two segments),
+    // so it falls through to the core `/s` routes rather than the single-segment expander below.
+    if (path === "/s" || path.startsWith("/s/")) return next();
+
     // Exactly one path segment is the code. The root, or any deeper path, carries no code: bounce
     // to the web home.
     const segment = path.replace(/^\/+/, "").replace(/\/+$/, "");

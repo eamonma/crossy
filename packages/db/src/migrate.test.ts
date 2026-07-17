@@ -508,6 +508,101 @@ describe("live_activity_tokens registry: API single writer, session reader (0007
   });
 });
 
+describe("share_tokens: API single writer, no session grant (0013; INV-7; DESIGN.md §9)", () => {
+  it("gives the table its SHARE.md S2 key columns", async () => {
+    const { rows } = await pool.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_schema='public' and table_name='share_tokens'",
+    );
+    expect(rows.map((r) => r.column_name).sort()).toEqual(
+      ["created_at", "created_by", "game_id", "revoked_at", "token"].sort(),
+    );
+  });
+
+  it("cascades on game delete but never on user delete, so a tombstoned minter's row still keyed the id (INV-7, §8)", async () => {
+    const fkDeleteType = async (column: string): Promise<string> => {
+      const { rows } = await pool.query<{ confdeltype: string }>(
+        `select c.confdeltype
+           from pg_constraint c
+           join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+          where c.contype = 'f' and c.conrelid = 'share_tokens'::regclass and a.attname = $1`,
+        [column],
+      );
+      return rows[0]?.confdeltype ?? "";
+    };
+    // 'c' cascade on game_id (the token belongs to the game aggregate), 'a' no action on created_by
+    // (users are tombstoned, never hard-deleted, §8).
+    expect(await fkDeleteType("game_id")).toBe("c");
+    expect(await fkDeleteType("created_by")).toBe("a");
+  });
+
+  it("pins ONE active token per game via the partial unique index, so the mint is idempotent (SHARE.md S2)", async () => {
+    // Two active (non-revoked) tokens for one game collide; a revoked one coexists with a fresh one.
+    await asRole("crossy_api", (c) =>
+      c.query(
+        "insert into share_tokens (token, game_id, created_by) values ('s-active-1', $1, $2)",
+        [seed.gameId, seed.userId],
+      ),
+    );
+    await expect(
+      asRole("crossy_api", (c) =>
+        c.query(
+          "insert into share_tokens (token, game_id, created_by) values ('s-active-2', $1, $2)",
+          [seed.gameId, seed.userId],
+        ),
+      ),
+    ).rejects.toThrow(/share_tokens_active_game_key/);
+    // Revoking the first frees the slot: a second active token is then allowed.
+    await asRole("crossy_api", async (c) => {
+      await c.query(
+        "update share_tokens set revoked_at = now() where token = 's-active-1'",
+      );
+      await c.query(
+        "insert into share_tokens (token, game_id, created_by) values ('s-active-2', $1, $2)",
+        [seed.gameId, seed.userId],
+      );
+    });
+  });
+
+  it("lets the api role write share_tokens (single writer) and grants the session role nothing (INV-7)", async () => {
+    // API is the single writer: full DML under the api role. Insert already-revoked so it never
+    // collides with an active token an earlier test left on the shared seed game (the partial index
+    // constrains only non-revoked rows); the grant, not activeness, is what this proves.
+    await asRole("crossy_api", (c) =>
+      c.query(
+        "insert into share_tokens (token, game_id, created_by, revoked_at) values ('s-api', $1, $2, now()) on conflict (token) do nothing",
+        [seed.gameId, seed.userId],
+      ),
+    );
+    // The session holds no grant at all: it neither reads nor writes share links.
+    await expect(
+      asRole("crossy_session", (c) =>
+        c.query("select count(*) from share_tokens"),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_session", (c) =>
+        c.query(
+          "insert into share_tokens (token, game_id, created_by) values ('s-sess', $1, $2)",
+          [seed.gameId, seed.userId],
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+  });
+
+  it("carries the deny-all RLS tripwire despite the authenticated SELECT grant (§7)", async () => {
+    const { rows } = await pool.query<{ relrowsecurity: boolean }>(
+      "select relrowsecurity from pg_class where relname = 'share_tokens' and relnamespace = 'public'::regnamespace",
+    );
+    expect(rows[0]?.relrowsecurity).toBe(true);
+    // The `authenticated` role holds a SELECT grant, yet deny-all RLS returns nothing: RLS is the
+    // guard, not a missing privilege (the future PostgREST path the tripwire protects against).
+    const seen = await asRole("authenticated", (c) =>
+      c.query<{ n: string }>("select count(*)::text as n from share_tokens"),
+    );
+    expect(Number(seen.rows[0]?.n)).toBe(0);
+  });
+});
+
 describe("deny-all RLS tripwire (DESIGN.md §7)", () => {
   it("enables row-level security with zero policies on every table (§7)", async () => {
     const { rows } = await pool.query<{

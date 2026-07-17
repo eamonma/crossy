@@ -121,6 +121,16 @@ export const ALLOWLIST = new Map([
       "expand-only 2026-07-11.",
   ],
   [
+    "0013_share_tokens.sql",
+    "Expand-only, but the guard's `UPDATE` rule matches the token `UPDATE` in the API's full-DML " +
+      "grant (`GRANT SELECT, INSERT, UPDATE, DELETE ON share_tokens TO crossy_api`), which it " +
+      "cannot tell apart from a bulk DML UPDATE. This is the same known conservative false positive " +
+      "0007 carries on a GRANT privilege. The file adds a table, two FKs, one partial unique index, " +
+      "and the API write grant; it drops, renames, retypes, and backfills nothing, so it is a " +
+      "genuine expand migration. The API needs the UPDATE privilege to revoke a share link " +
+      "(set revoked_at). Reviewed as expand-only 2026-07-17 (SHARE.md wave S2).",
+  ],
+  [
     "0009_starter_features_backfill.sql",
     "Data-only backfill, deliberately riding the pipeline. The signup starter seed inserted " +
       "the starter puzzle without `features`, landing rows on the column default '{}'::jsonb, " +

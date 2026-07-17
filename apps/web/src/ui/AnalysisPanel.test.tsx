@@ -198,4 +198,31 @@ describe("the header's Share card action (SHARE.md wave S1: only against a ready
     );
     expect(html).not.toContain("Share card");
   });
+
+  it("renders Copy share link in the header when the caller wires the mint (SHARE.md wave S2)", () => {
+    const html = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={bundle}
+        members={members}
+        selfId={null}
+        idBase="t"
+        share={share}
+        onCopyShareLink={() => Promise.resolve("https://crossy.ing/s/abc")}
+      />,
+    );
+    expect(html).toContain("Copy share link");
+  });
+
+  it("omits Copy share link when the mint is not wired", () => {
+    const html = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={bundle}
+        members={members}
+        selfId={null}
+        idBase="t"
+        share={share}
+      />,
+    );
+    expect(html).not.toContain("Copy share link");
+  });
 });

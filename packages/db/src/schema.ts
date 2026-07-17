@@ -441,3 +441,58 @@ export const liveActivityTokens = pgTable(
     index("live_activity_tokens_game_id_idx").on(t.gameId),
   ],
 );
+
+/**
+ * `share_tokens` (writer: API). The public completion share link (design/post-game/SHARE.md wave
+ * S2, PROTOCOL.md §12). A completed game mints an unguessable token that fronts the public share
+ * page (`/s/{token}`) and its server-rendered OpenGraph card. API-owned: only a member can mint one
+ * through bearer-authed REST, so the single writer is `crossy_api` (INV-7). No service reads it but
+ * the API: the public routes resolve the token to a `game_id` under the API's own grant, then reuse
+ * the same completed-game reads (`game_state.completed_at`, the analysis bundle) the analysis
+ * endpoint already holds. The session never touches it, so no read-coupling grant is added.
+ *
+ * The `token` is the natural key: a 256-bit URL-safe secret (apps/api share/token.ts), so it cannot
+ * be guessed and never needs a surrogate id. `game_id` is ON DELETE CASCADE (the link belongs to the
+ * game aggregate, matching `live_activity_tokens`); `created_by` is ON DELETE NO ACTION for the same
+ * tombstone reason as every other `user_id` FK (§8). `revoked_at` is a nullable soft-delete: a
+ * revoked link resolves to a soft 404 without a row rewrite, so the mint path can tell "active" from
+ * "dead". The partial unique index pins ONE active (non-revoked) token per game, which is what makes
+ * the mint idempotent: mint-or-return-existing collapses a re-POST to the same row (SHARE.md S2).
+ *
+ * INV-6: the token carries no solution content, and nothing letter-shaped is stored here; the card
+ * the token fronts is built from the letter-free analysis bundle (SHARE.md "No letters, ever").
+ * This is additive: a new table, its two foreign keys, one partial unique index, the API write
+ * grant, and the deny-all RLS tripwire, matching the shape 0007 built for `live_activity_tokens`.
+ * No column is dropped, retyped, or renamed, so the expand-only guard passes.
+ */
+export const shareTokens = pgTable(
+  "share_tokens",
+  {
+    // The unguessable, URL-safe share secret (256-bit base64url, apps/api share/token.ts). Natural
+    // key: one row per minted link, so an idempotent re-mint returns the existing row's token.
+    token: text("token").primaryKey(),
+    // The completed game this link shares. ON DELETE CASCADE: the token belongs to the game
+    // aggregate, so it dies with the game (matching live_activity_tokens / cell_events game_id).
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.gameId, { onDelete: "cascade" }),
+    // The member who minted the link. ON DELETE NO ACTION for the same tombstone reason as every
+    // other user_id FK (§8): users are tombstoned, never hard-deleted.
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.userId, { onDelete: "no action" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    // Soft revoke: a non-null timestamp retires the link (resolves to a soft 404) without deleting
+    // the row. Nullable, no default: an active link has never been revoked.
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    // One ACTIVE token per game (SHARE.md S2 idempotent mint): the partial unique index constrains
+    // only non-revoked rows, so a revoked link can coexist with the fresh one that replaced it.
+    uniqueIndex("share_tokens_active_game_key")
+      .on(t.gameId)
+      .where(sql`revoked_at IS NULL`),
+  ],
+);

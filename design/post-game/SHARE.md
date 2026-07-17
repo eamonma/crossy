@@ -99,10 +99,54 @@ The rules that make it Crossy:
   rasterizes the SVG at 2x to PNG, and hands it to `navigator.share` when the platform
   can share files, else downloads it. No clipboard image writes. Exit: a finished room
   exports a correct card on both grounds; a solo solve exports the ramp card.
-- **S2, the share link (blocked on S1).** A share URL whose OG image is the og variant,
-  rendered server-side from the analysis bundle by the same package (the standalone
-  rule is what makes this a lift, not a port). Exit: pasting a share link into Discord
-  unfurls the card.
+- **S2, the share link (done, Wave 13.2).** A completed game mints a public share URL
+  whose OG image is the og variant, rendered server-side from the analysis bundle by the
+  same package (the standalone rule is what makes this a lift, not a port). Exit met:
+  pasting a share link into Discord unfurls the card, spoiler-free by construction. What
+  shipped and the decisions taken:
+  - **The table.** `share_tokens` (API-owned, single writer, migration 0013): `token`
+    (PK), `game_id`, `created_by`, `created_at`, `revoked_at`. **Token rule:** one
+    ACTIVE (non-revoked) token per game, a partial unique index on `game_id WHERE
+revoked_at IS NULL`, so the mint is idempotent (mint-or-return-existing). A revoked
+    link frees the slot for a fresh mint. The token is a 256-bit URL-safe secret
+    (base64url, `^[A-Za-z0-9_-]{43}$`), far past the 128-bit floor; it carries no
+    `gameId` and is the sole capability.
+  - **The routes.** `POST /games/{id}/share` (member + completed-game gate, the analysis
+    endpoint's gate verbatim: non-member `NOT_PARTICIPANT`, not-completed
+    `GAME_NOT_FOUND`) returns `{shareUrl, token}`. Public `GET /s/{token}` is the
+    OpenGraph shell (modeled on `apps/api/src/games/unfurl.ts`), and public
+    `GET /s/{token}/card.png` is the rasterized card. An unknown, revoked, or malformed
+    token all resolve to the SAME soft 404 (no oracle); both public routes are per-IP
+    rate-limited exactly as the invite unfurl.
+  - **The origin.** `shareUrl` is `{share-origin}/s/{token}`, where `share-origin`
+    follows how invite links build theirs: the config-driven public host `{invite-host}`
+    (crossy.ing) when set, else the request origin. The invite-host middleware forwards
+    `/s/*` to the core `/s` routes, so both share and invite links live on one host.
+  - **The render.** The card is assembled server-side from the SAME analysis bundle the
+    API already computes (`gameAnalysis`, not forked), the puzzle title/author off the
+    `puzzles` row (named columns, never `data`), member display names off the `users`
+    mirror, and each member's wire color (`assignRoomColors`) bucketed through the
+    identity roster (`apps/api/src/share/identityRoster.ts`, pinned to
+    `vectors/identity/roster.json`, the same vector the web copy pins to). It renders the
+    og variant (1200x630, light ground) through `@resvg/resvg-js`. INV-6 holds by
+    construction: the only puzzle facts that enter are the block silhouette and grid dims
+    (projected out of the snapshot in SQL like the game view), so nothing letter-shaped
+    can render.
+  - **Fonts.** resvg cannot read woff2, so the faces (Newsreader 500 normal + italic,
+    Schibsted Grotesk 400/500/600, Geist Mono 500) are vendored as committed TTFs in
+    `apps/api/src/share/fonts` (OFL, license text alongside), derived from the same
+    fontsource static instances the web card uses and normalized so resvg selects them by
+    the CSS families the SVG names. They load via resvg's `fontFiles` with
+    `loadSystemFonts` off, so the render is hermetic; a test proves the faces are used,
+    not silently fallen back to.
+  - **Cache.** A completed game's card never changes (INV-4), so `card.png` is
+    `public, max-age=31536000, immutable`; the shell (which gains a replay loop in S3) is
+    `public, max-age=3600`.
+  - **Title copy.** The server card renders solver names and color chips but NOT the
+    client-owned superlative copy (`TITLE_COPY`): that prose is not shared normative
+    ground, so forking it server-side would break "never fork a string" and promoting it
+    to a vector is wider than this wave. The bundle's titles are still read for the solo
+    rule.
 - **S3, the replay loop (blocked on S2).** The share page plays the solve back: the
   bundle's `sequence` driving the same mosaic reveal the Analysis tab owns, a living
   card for whoever taps through. Exit: a share link opens to the replay, still

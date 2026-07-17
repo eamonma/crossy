@@ -7,7 +7,7 @@
 // live board is still not part of any view here: it arrives on the WebSocket `welcome`
 // (PROTOCOL.md §2), and this module never selects the board column.
 import { Hono } from "hono";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
 import { deriveMask, toClientPuzzle } from "@crossy/protocol";
 import type { ClientPuzzle, Mask, ServerPuzzle } from "@crossy/protocol";
@@ -25,6 +25,7 @@ import {
   notifyMembership,
 } from "../identity/notify";
 import { gameAnalysis } from "../archive/analysis";
+import { mintShareToken } from "../share/token";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -828,6 +829,85 @@ export function gameRoutes(deps: AppDeps): Hono<ApiEnv> {
     // type that has no field for a solution value or a raw event, so no solution content can ride
     // this payload.
     return c.json(view);
+  });
+
+  // POST /games/{id}/share: mint (or return) the public share link for a completed game
+  // (design/post-game/SHARE.md wave S2; PROTOCOL.md §12). The link's token fronts the public share
+  // page and its OpenGraph card (`GET /s/{token}`), both built from the letter-free analysis bundle
+  // (INV-6). Gated exactly like GET /games/{id}/analysis: a non-member is NOT_PARTICIPANT, and a game
+  // that is not completed is GAME_NOT_FOUND, so a share link exists only once the game is done and its
+  // input can no longer change (INV-4). The API is the single writer of share_tokens (INV-7).
+  //
+  // Idempotent (SHARE.md S2): one ACTIVE token per game (the partial unique index). A re-POST returns
+  // the existing token rather than minting a second live link; a concurrent double-mint collapses to
+  // the same row via ON CONFLICT DO NOTHING, and the re-read returns whichever token won. The token
+  // is a 256-bit URL-safe secret (share/token.ts); it carries no solution content.
+  app.post("/:id/share", async (c) => {
+    const identity = c.get("identity");
+    const gameId = c.req.param("id");
+    if (!UUID.test(gameId)) {
+      return fail(c, "GAME_NOT_FOUND", "no such game");
+    }
+
+    // Membership gate, byte-identical to the analysis endpoint: a non-member never learns whether the
+    // gameId is real (NOT_PARTICIPANT), reserving GAME_NOT_FOUND for the completed gate below.
+    const members = await deps.db
+      .select({ userId: schema.memberships.userId })
+      .from(schema.memberships)
+      .where(eq(schema.memberships.gameId, gameId));
+    if (!members.some((m) => m.userId === identity.userId)) {
+      return fail(c, "NOT_PARTICIPANT", "not a member of this game");
+    }
+
+    // Completed gate: read the session-owned game_state.completed_at under the API's SELECT grant
+    // (migration 0005), the same read the analysis endpoint uses. Not completed -> GAME_NOT_FOUND,
+    // and no token is minted. A bare timestamp, never a cell value (INV-6).
+    const state = await deps.db
+      .select({ completedAt: schema.gameState.completedAt })
+      .from(schema.gameState)
+      .where(eq(schema.gameState.gameId, gameId))
+      .limit(1);
+    if (state.length === 0 || state[0]!.completedAt === null) {
+      return fail(c, "GAME_NOT_FOUND", "no such completed game");
+    }
+
+    // Mint-or-return: an INSERT that no-ops if the game already has an active token (the partial
+    // unique index), then re-read the one active token for the game. This is idempotent and
+    // race-safe: whether this request or a concurrent one inserted, exactly one active row exists
+    // and its token is what we return.
+    await deps.db
+      .insert(schema.shareTokens)
+      .values({
+        token: mintShareToken(),
+        gameId,
+        createdBy: identity.userId,
+      })
+      .onConflictDoNothing();
+    const active = await deps.db
+      .select({ token: schema.shareTokens.token })
+      .from(schema.shareTokens)
+      .where(
+        and(
+          eq(schema.shareTokens.gameId, gameId),
+          isNull(schema.shareTokens.revokedAt),
+        ),
+      )
+      .limit(1);
+    // Defensive: the insert-or-existing guarantees a row, so this is an internal inconsistency.
+    if (active.length === 0) {
+      return fail(c, "INTERNAL", "could not mint a share link");
+    }
+    const token = active[0]!.token;
+
+    // The public origin: the configured short-link host (crossy.ing) when set, matching how invite
+    // links build theirs (config-driven origin), else the request origin, which also serves `/s`.
+    // The path is `/s/{token}`. The token alphabet is URL-safe, so no encoding is needed.
+    const origin =
+      deps.inviteHost !== undefined && deps.inviteHost !== ""
+        ? `https://${deps.inviteHost}`
+        : new URL(c.req.url).origin;
+    const shareUrl = `${origin}/s/${token}`;
+    return c.json({ shareUrl, token });
   });
 
   // POST /games/{id}/role: self-upgrade spectator to solver (PROTOCOL.md §12, DESIGN.md §8).
