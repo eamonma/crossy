@@ -92,9 +92,10 @@ import crossy.ui.ReactionSetEditorModel
 import crossy.ui.ReactionSetOutcome
 import crossy.ui.PuzzlesScreen
 import crossy.ui.RoomAnalysis
-import crossy.ui.RoomBeat
 import crossy.ui.RoomMomentum
 import crossy.ui.RoomScreen
+import crossy.ui.RoomSittings
+import crossy.ui.RoomTitle
 import crossy.ui.RoomTurningPoint
 import crossy.ui.RosterAvatars
 import crossy.ui.rememberSolveHapticPlayer
@@ -178,9 +179,12 @@ private fun GameView.seedRoster(): List<Participant> =
 
 /** Map the post-game analysis view to the room's render shape (owner ruling 2026-07-13; mirrors iOS
  *  RoomMapping.analysis). The wire `owners` map is string-keyed (JSON object keys); `ownersByCell`
- *  parses them to cell indices. INV-6 rides through untouched: AnalysisView carries userIds, cells, and
- *  numbers only, and RoomAnalysis holds nothing solution-shaped either. The composition root owns this
- *  wire->render translation (AAD-2), keeping :ui out of the REST ring. */
+ *  parses them to cell indices. Titles ride verbatim, keys included (the display table decides what it
+ *  knows, PROTOCOL.md §12 forward compatibility), and the sittings partition too; an older API that
+ *  omits either reads as none (empty titles, null sittings). INV-6 rides through untouched: AnalysisView
+ *  carries userIds, cells, keys, and numbers only, and RoomAnalysis holds nothing solution-shaped
+ *  either. The composition root owns this wire->render translation (AAD-2), keeping :ui out of the REST
+ *  ring. */
 internal fun analysisFromView(view: AnalysisView): RoomAnalysis =
     RoomAnalysis(
         owners = view.ownersByCell,
@@ -188,10 +192,23 @@ internal fun analysisFromView(view: AnalysisView): RoomAnalysis =
             durationSeconds = view.momentum.durationSeconds,
             samples = view.momentum.samples,
         ),
-        firstToFall = view.moments.firstToFall?.let { RoomBeat(it.cell, it.userId, it.atSeconds) },
-        lastSquare = view.moments.lastSquare?.let { RoomBeat(it.cell, it.userId, it.atSeconds) },
         turningPoint = view.moments.turningPoint?.let {
             RoomTurningPoint(it.stallSeconds, it.breakSeconds, it.burst)
+        },
+        // Titles ride verbatim, keys included (the display table decides what it knows, PROTOCOL.md §12
+        // forward compatibility); an older API that omits the field reads as none.
+        titles = (view.titles ?: emptyList()).map {
+            RoomTitle(userId = it.userId, key = it.title, evidence = it.evidence)
+        },
+        // The sittings partition rides verbatim (D29); an older cached bundle omits it and the surface
+        // degrades to today's rendering (no context suffix, no seam ticks), per PROTOCOL.md §12's
+        // absence rule.
+        sittings = view.sittings?.let { sittings ->
+            RoomSittings(
+                count = sittings.count,
+                spans = sittings.spans.map { RoomSittings.Span(it.startSeconds, it.endSeconds) },
+                wallSeconds = sittings.wallSeconds,
+            )
         },
     )
 
