@@ -1,11 +1,14 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Display name onboarding and the Settings nickname editor
 
-Status: design, revised after adversarial review, ready to build. Branch
-`feat/name-onboarding` (on main after #230).
+Status: SHIPPED via PR #236 (commit 5a8c7ff; API cec72cf, web 78b5c6c, iOS 30e3af6).
+The R1 JIT upsert shipped verbatim (`apps/api/src/auth/jit-upsert.ts:57-61`); the module
+landed in `apps/api/src/identity/` per R8's redirect, not the `apps/api/src/profile/` the
+sections below name.
 Author: DESIGN. Precedence: `vectors/` > `PROTOCOL.md` > this doc > any implementation.
 
 ## 0. Post-review revisions (authoritative; overrides the sections below where they conflict)
@@ -138,9 +141,9 @@ The web client hides the gap a second way: `displayNameOf` in
 `apps/web/src/identity/supabaseAdapter.ts` synthesizes a name client-side from token
 metadata and, failing that, substitutes the literal `"Player"`. So the web session never
 reports "nameless," and it reads a name the server does not know. This is a second source
-of truth for display identity, and it is wrong. iOS has the mirror-image gap:
-`AccountIdentity.displayName` is `String?` and `AuthSession` exposes no name at all
-(`apps/ios/Sources/CrossyUI/SettingsScreen.swift` KNOWN GAP comment, lines 29-31).
+of truth for display identity, and it is wrong. iOS had the mirror-image gap:
+`AccountIdentity.displayName` was `String?` and `AuthSession` exposed no name at all
+(the `SettingsScreen.swift` KNOWN GAP comment this feature filled).
 
 This feature closes both gaps. It gives every nameless arrival a fast, beautiful
 onboarding step that lands a real name in the app DB, and it adds a nickname editor in

@@ -1,12 +1,13 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # The room actions control (check puzzle, end game, party)
 
-Status: design, revised after adversarial review, ready to build. Branch
-`feat/room-check` (service leg landed, draft PR #264; this doc governs the UI waves
-that follow on it).
+Status: SHIPPED. The service leg merged 2026-07-16 (PR #264, c9515b3); both UI waves
+followed (web d776c00, iOS 3351cbf), with post-merge fixes in PR #266 (00f3d23) and the
+Android marks in 8a6d7d0.
 Author: DESIGN. Precedence: `vectors/` > `PROTOCOL.md` > `DESIGN.md` > this doc > any
 implementation.
 

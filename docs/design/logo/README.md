@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Crossy logo
@@ -7,15 +8,15 @@ status: descriptive
 The canonical identity: one mark, one wordmark, two lockups, light and dark.
 Every SVG here is emitted by `generate.py`. Edit the generator, never the SVGs.
 
-| file                                       | what                                                   |
-| ------------------------------------------ | ------------------------------------------------------ |
-| `mark-light.svg` / `mark-dark.svg`         | the mark alone                                         |
-| `wordmark-light.svg` / `wordmark-dark.svg` | Crossy, Harfang Pro outlines                           |
-| `lockup-horizontal-*.svg`                  | mark, gap, wordmark                                    |
-| `lockup-stacked-*.svg`                     | mark above wordmark                                    |
-| `wordmark_data.py`                         | committed Harfang outlines (see below)                 |
-| `app-icon/`                                | the app icon (wordless mark, crop-medium): SVGs + PNGs |
-| `preview/`                                 | rendered lockups for review                            |
+| file                                       | what                                                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `mark-light.svg` / `mark-dark.svg`         | the mark alone                                                                                                |
+| `wordmark-light.svg` / `wordmark-dark.svg` | Crossy, Harfang Pro outlines                                                                                  |
+| `lockup-horizontal-*.svg`                  | mark, gap, wordmark                                                                                           |
+| `lockup-stacked-*.svg`                     | mark above wordmark                                                                                           |
+| `wordmark_data.py`                         | committed Harfang outlines (see below)                                                                        |
+| `app-icon/`                                | the app icon (wordless mark, crop-medium): SVGs + scripts; PNGs render into `apps/ios/.../AppIcon.appiconset` |
+| `preview/`                                 | rendered lockups for review                                                                                   |
 
 ## The mark
 
