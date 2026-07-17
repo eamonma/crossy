@@ -88,6 +88,12 @@ rides the same PR as the watermark stamps.
 
 ## Output conventions
 
+- Cut, don't append (owner ruling 2026-07-17). Reconciliation prefers deleting
+  stale prose to layering corrections; a dream that only grows the docs has done
+  half its job. A superseded ruling shrinks to a one-line tombstone citing the PR;
+  git holds the history. Resolved open questions and shipped "later" sections are
+  deleted, not annotated. Net line count is a review signal: dream #1 ran +415 and
+  should have run negative.
 - Branches: `dream/<yyyy-mm-dd>-<area>`. Doc-fix PRs stay small, one area each,
   through the normal PR gate (main is golden).
 - Watermark stamps for a doc ride the same PR as that doc's fixes.
