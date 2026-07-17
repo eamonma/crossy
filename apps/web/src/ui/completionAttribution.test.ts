@@ -11,12 +11,14 @@ import type { StackMember } from "./primitives";
 import type { OwnerMap } from "./mosaicReveal";
 import type { Bearer } from "../net/authedFetch";
 import {
+  createAttributionSwap,
   fetchAnalysisOnce,
   fetchAttributionOnce,
   fetchAttributionWithRetry,
   lastWriterOwnerMap,
   readSittings,
   rosterOf,
+  shouldApplyAttribution,
   shouldBloomOnCompletion,
 } from "./completionAttribution";
 import { identityColor } from "./identityRoster";
@@ -356,6 +358,75 @@ describe("fetchAttributionWithRetry (completion-race backoff, swap on resolve)",
     );
     expect(owners).toBeNull();
     expect(call).toBe(0); // aborted before any fetch
+  });
+
+  it("a mid-flight abort (unmount between attempts) drops the loop before the next dial", async () => {
+    const signal = { aborted: false };
+    let call = 0;
+    const owners = await fetchAttributionWithRetry(
+      () => {
+        call++;
+        signal.aborted = true; // the surface unmounts while the 404 backoff waits
+        return Promise.resolve<OwnerMap | null>(null);
+      },
+      { tries: 3, sleep: () => Promise.resolve(), signal },
+    );
+    expect(owners).toBeNull();
+    expect(call).toBe(1); // no further attempts after the abort
+  });
+});
+
+describe("shouldApplyAttribution (the swap phased with the reveal arc)", () => {
+  it("applies on arrival when no reveal is in flight (revisit's settled record, replay)", () => {
+    expect(shouldApplyAttribution(false, false)).toBe(true);
+    expect(shouldApplyAttribution(false, true)).toBe(true);
+  });
+
+  it("HOLDS while the arc is mid-flight (the bloom or the held peak), so the recolor never pops at full saturation", () => {
+    expect(shouldApplyAttribution(true, false)).toBe(false);
+  });
+
+  it("applies once the arc has settled: the correction rides the settle repaint or the standing crossfade", () => {
+    expect(shouldApplyAttribution(true, true)).toBe(true);
+  });
+});
+
+describe("createAttributionSwap (hold mid-bloom, apply at the settle)", () => {
+  it("a map resolved mid-bloom is held, then applied exactly once at the settle beat", () => {
+    const applied: OwnerMap[] = [];
+    const swap = createAttributionSwap((m) => applied.push(m), true, false);
+    swap.resolve({ 0: "u-first" });
+    expect(applied).toEqual([]); // held: the peak stays untouched
+    swap.setPhase(true, true); // the settle beat fires
+    expect(applied).toEqual([{ 0: "u-first" }]);
+    swap.setPhase(true, true); // a later idempotent phase report never re-applies
+    expect(applied).toHaveLength(1);
+  });
+
+  it("a map resolved after the settle applies immediately", () => {
+    const applied: OwnerMap[] = [];
+    const swap = createAttributionSwap((m) => applied.push(m), true, false);
+    swap.setPhase(true, true);
+    swap.resolve({ 1: "u-late" });
+    expect(applied).toEqual([{ 1: "u-late" }]);
+  });
+
+  it("a non-reveal mount applies on arrival, exactly as before the phasing", () => {
+    const applied: OwnerMap[] = [];
+    const swap = createAttributionSwap((m) => applied.push(m)); // defaults: not revealing
+    swap.resolve({ 2: "u-now" });
+    expect(applied).toEqual([{ 2: "u-now" }]);
+  });
+
+  it("re-reporting the same mid-bloom phase never flushes the held map early (a re-render is not a settle)", () => {
+    const applied: OwnerMap[] = [];
+    const swap = createAttributionSwap((m) => applied.push(m), true, false);
+    swap.resolve({ 0: "u-first" });
+    swap.setPhase(true, false); // unrelated re-renders re-report the same phase
+    swap.setPhase(true, false);
+    expect(applied).toEqual([]);
+    swap.setPhase(true, true);
+    expect(applied).toEqual([{ 0: "u-first" }]);
   });
 });
 

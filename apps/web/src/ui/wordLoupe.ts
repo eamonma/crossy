@@ -19,6 +19,20 @@ export interface WordLoupeGeometry {
 const LOUPE_OVERHANG_CELLS = 0.1;
 
 /**
+ * Whether the completed board shows the word loupe at all: only over the SETTLED record, never
+ * over the reveal arc (ink -> field -> settle) and never over a running replay. This is the
+ * cross-platform contract web was missing: iOS gates on `analysisResting &&
+ * completion.mosaicSettled` (SolveScreen) and Android on `showsWordLoupe(roomStatus,
+ * moment.settled)` (RoomScreen). `settled` is the mosaic's settled signal (true on a non-bloom
+ * mount, true again at the arc's settle beat); `replaying` is a non-null replay playhead. Only
+ * the loupe visual is gated; the selection targets stay live throughout (reactions are legal in
+ * any game status, PROTOCOL.md section 9). Pure: same input, same output.
+ */
+export function showsWordLoupe(settled: boolean, replaying: boolean): boolean {
+  return settled && !replaying;
+}
+
+/**
  * Project one clue into the board coordinate spaces the liquid-glass loupe needs. Its small
  * overhang is deliberately not clamped, so an edge answer can float beyond the paper. The focus
  * stays in board coordinates so an Across/Down morph never stretches the selected-cell marker.
