@@ -27,6 +27,8 @@ class KeyDeckRetirementTests {
         completedAt = null,
         abandonedAt = null,
         cells = List(20) { Cell(null, null) },
+        checkedWrongCells = emptyList(),
+        checkCount = 0,
         participants = emptyList(),
         cursors = emptyList(),
         recentCommandIds = emptyList(),

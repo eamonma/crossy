@@ -1262,6 +1262,10 @@ private fun RoomHost(
             haptics = haptics,
             receiveReactionHaptics = reactionSettings.receiveHapticsEnabled,
             avatars = avatars,
+            // The room check reaches a real server only over the live socket (design R8; PROTOCOL.md
+            // §5, §10): the demo room runs the scripted transport, which DROPS checkPuzzle, so it must
+            // not grow the row. `wsUrl != null` is the live-transport gate the driver keys on above.
+            supportsRoomCheck = wsUrl != null,
             // The host's end-game (POST /games/{id}/abandon, PROTOCOL.md §12; mirrors RealRoom.endGame):
             // the server settles the terminal state and the `gameAbandoned` event reaches the store over
             // the live socket, so the room freezes through the same path a peer's abandon would.
