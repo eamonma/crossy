@@ -377,6 +377,101 @@ class RestSnapshotTests {
             AnalysisView.TurningPoint(stallSeconds = 100.0, breakSeconds = 110.0, burst = 2),
             view.moments.turningPoint,
         )
+        // The solver superlatives (§12; design/post-game/TITLES.md), in ladder-rank order: keys and
+        // counts only, evidence a number or an explicit null.
+        assertEquals(
+            listOf(
+                AnalysisView.Title(userId = "mate", title = "one-hit-wonder", evidence = null),
+                AnalysisView.Title(userId = "host", title = "quick-starter", evidence = 1),
+            ),
+            view.titles,
+        )
+        // The sittings partition (§12, D29): count, contiguous spans on the ACTIVE axis (first start
+        // 0, last end == momentum.durationSeconds, so a seam tick places by lookup), and the
+        // wall-clock span kept for flavor only.
+        val sittings = view.sittings!!
+        assertEquals(2, sittings.count)
+        assertEquals(
+            listOf(
+                AnalysisView.Sittings.Span(startSeconds = 0.0, endSeconds = 45.0),
+                AnalysisView.Sittings.Span(startSeconds = 45.0, endSeconds = 60.0),
+            ),
+            sittings.spans,
+        )
+        assertEquals(0.0, sittings.spans.first().startSeconds, "§12: the first span starts at 0")
+        assertEquals(
+            view.momentum.durationSeconds, sittings.spans.last().endSeconds,
+            "§12: the last span ends at momentum.durationSeconds, the shared active axis",
+        )
+        assertEquals(1860.0, sittings.wallSeconds)
+        // A no-evidence rung's null is present, not absent: re-encoding emits the key with an
+        // explicit null (the Moments posture), which the lossless round trip above already held
+        // against the fixture's own bytes.
+        val reencoded = ProtocolJson.parseToJsonElement(ProtocolJson.encodeToString(AnalysisView.serializer(), view)).jsonObject
+        val encodedTitles = reencoded.getValue("titles").let { it as kotlinx.serialization.json.JsonArray }
+        assertEquals(
+            JsonNull, encodedTitles[0].jsonObject["evidence"],
+            "a null evidence re-encodes as an explicit null, not an absent key",
+        )
+    }
+
+    @Test
+    fun analysisViewToleratesAbsentSittingsFromAnOlderBundle_D29() {
+        // §12, D29: a client MUST tolerate the `sittings` field's absence (an older cached bundle)
+        // and degrade to today's rendering. Inline JSON, not a fixture: the fixtures pin the CURRENT
+        // contract, which always writes the key.
+        val older = """
+            {
+              "owners": { "0": "host" },
+              "momentum": { "durationSeconds": 8, "samples": [] },
+              "moments": { "firstToFall": null, "lastSquare": null, "turningPoint": null }
+            }
+        """.trimIndent()
+        val view = ProtocolJson.decodeFromString(AnalysisView.serializer(), older)
+        assertNull(view.sittings, "an absent sittings field reads as none, not a crash")
+    }
+
+    @Test
+    fun analysisViewToleratesAbsentTitlesFromAnOlderAPI_PROTOCOL14() {
+        // §14 additive evolution: `titles` is an additive field, so an older API omits it entirely.
+        // The twin reads that as no titles at all (null, mapped to empty by the render layer), never
+        // a decode failure.
+        val older = """
+            {
+              "owners": { "0": "host" },
+              "momentum": { "durationSeconds": 8, "samples": [] },
+              "moments": { "firstToFall": null, "lastSquare": null, "turningPoint": null }
+            }
+        """.trimIndent()
+        val view = ProtocolJson.decodeFromString(AnalysisView.serializer(), older)
+        assertNull(view.titles, "an absent titles field reads as none, not a crash")
+    }
+
+    @Test
+    fun analysisViewCarriesAnUnknownTitleKeyVerbatim_forwardCompatibility() {
+        // §12: a client MUST ignore an unknown title key (how the ladder grows without client
+        // lockstep). Ignoring is the render layer's job; the twin's job is to decode the award
+        // without failing and carry the key verbatim.
+        val newer = """
+            {
+              "owners": { "0": "host" },
+              "momentum": { "durationSeconds": 8, "samples": [] },
+              "moments": { "firstToFall": null, "lastSquare": null, "turningPoint": null },
+              "titles": [
+                { "userId": "host", "title": "marathoner", "evidence": 5 },
+                { "userId": "mate", "title": "workhorse", "evidence": 12 }
+              ]
+            }
+        """.trimIndent()
+        val view = ProtocolJson.decodeFromString(AnalysisView.serializer(), newer)
+        assertEquals(
+            listOf(
+                AnalysisView.Title(userId = "host", title = "marathoner", evidence = 5),
+                AnalysisView.Title(userId = "mate", title = "workhorse", evidence = 12),
+            ),
+            view.titles,
+            "an unknown key decodes and rides; the display table decides what it knows",
+        )
     }
 
     @Test
@@ -388,6 +483,11 @@ class RestSnapshotTests {
         assertNull(view.moments.firstToFall)
         assertNull(view.moments.lastSquare)
         assertNull(view.moments.turningPoint)
+        // This fixture predates titles and sittings and omits both keys; the null defaults read that
+        // as none AND re-encode them absent, so the lossless round trip above doubles as the older-API
+        // tolerance pin (§14 additive evolution; D29's absence rule for sittings).
+        assertNull(view.titles)
+        assertNull(view.sittings)
         val moments = ProtocolJson.parseToJsonElement(ProtocolJson.encodeToString(AnalysisView.serializer(), view))
             .jsonObject.getValue("moments").jsonObject
         for (key in listOf("firstToFall", "lastSquare", "turningPoint")) {

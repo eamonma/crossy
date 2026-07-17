@@ -415,8 +415,9 @@ public data class GameView(
 /**
  * The `GET /games/{id}/analysis` post-game bundle (§12): the completed surface in one fetch.
  * `owners` is the mosaic's owner map (cell index to owning userId), `momentum` is the room's tempo
- * (a fixed-length peak-normalized curve plus the solve's duration), and `moments` are the three
- * named beats. Twin of `AnalysisView`.
+ * (a fixed-length peak-normalized curve plus the solve's duration), `moments` are the three named
+ * beats, and `titles` are the solver superlatives (design/post-game/TITLES.md). Twin of
+ * `AnalysisView`.
  *
  * Every field carries userIds, cells, and numbers only, so it is INV-6-safe by construction: the
  * type has nowhere to hold a solution value or a raw event, so a leak is a compile error here,
@@ -430,6 +431,21 @@ public data class AnalysisView(
     val owners: Map<String, String>,
     val momentum: Momentum,
     val moments: Moments,
+    /**
+     * The solver superlatives (§12), ordered by ladder rank: at most one per solver, at most one per
+     * key, empty when fewer than two solvers wrote (the solo rule). Additive-optional (§14): a
+     * current server always writes the key, and the null default also tolerates an older server that
+     * omits it, which reads the same as no titles at all (null re-encodes absent). Twin of iOS
+     * `AnalysisView.titles`.
+     */
+    val titles: List<Title>? = null,
+    /**
+     * The sittings partition (§12; DESIGN.md D29). Additive-optional: a client MUST tolerate the
+     * field's absence (an older cached bundle) and degrade to rendering without seams, so an omitted
+     * key decodes to null (never a decode failure) and a null re-encodes absent. Twin of iOS
+     * `AnalysisView.sittings`.
+     */
+    val sittings: Sittings? = null,
 ) {
     /** The room's tempo (§12). `samples` is a fixed-length 40-bucket curve, each peak-normalized
      * into [0, 1]; `durationSeconds` is the solve's wall span. Numbers only, so INV-6 holds. */
@@ -467,6 +483,43 @@ public data class AnalysisView(
         @EncodeDefault(EncodeDefault.Mode.ALWAYS) val lastSquare: Beat? = null,
         @EncodeDefault(EncodeDefault.Mode.ALWAYS) val turningPoint: TurningPoint? = null,
     )
+
+    /**
+     * One solver superlative (§12; design/post-game/TITLES.md): a userId, a lowercase-kebab title
+     * key from the pinned ladder, and the title's own count (or null for a rung that cites none).
+     * Keys and numbers only, never a letter, so INV-6 holds. `title` is deliberately a plain String,
+     * NOT an enum: a client MUST ignore an unknown key (§12, how the ladder grows without client
+     * lockstep), so the twin carries the string verbatim and the render layer decides what it knows.
+     * `evidence` is nullable-and-present: the server always writes the key (an explicit JSON null
+     * when the rung cites nothing), so it carries @EncodeDefault(ALWAYS) to re-emit the explicit
+     * null, the Moments posture. Twin of iOS `AnalysisView.Title`. */
+    @Serializable
+    public data class Title(
+        val userId: String,
+        val title: String,
+        @EncodeDefault(EncodeDefault.Mode.ALWAYS) val evidence: Int? = null,
+    )
+
+    /**
+     * The sittings partition (§12; DESIGN.md D29): `count` sittings, one `spans` entry per sitting on
+     * the ACTIVE axis (the same axis as `momentum.durationSeconds`, so a client places ribbon seam
+     * ticks by lookup; contiguous, first start 0, last end the duration), and `wallSeconds`, the
+     * wall-clock trace span the pre-D29 `durationSeconds` reported, kept for flavor copy only. Numbers
+     * only, so INV-6 holds. Twin of iOS `AnalysisView.Sittings`. */
+    @Serializable
+    public data class Sittings(
+        val count: Int,
+        val spans: List<Span>,
+        val wallSeconds: Double,
+    ) {
+        /** One sitting's reach on the active axis. A sitting holding no trace entry clamps to a
+         * zero-width span at the axis edge (§12), which draws nothing. Twin of iOS `Sittings.Span`. */
+        @Serializable
+        public data class Span(
+            val startSeconds: Double,
+            val endSeconds: Double,
+        )
+    }
 
     /** The owner map with its keys parsed back to cell indices. A non-integer key is dropped
      * defensively (a current server sends only integer keys), so this never throws on a bad key. */
