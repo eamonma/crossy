@@ -596,13 +596,12 @@ fun RoomScreen(
             selfUserId = render.selfUserId,
             onOpenAnalysis = { analysisRequested = true },
             // The legend isolation filter (iOS AnalysisPanel legend chips over the settled wash) folds
-            // MosaicMoment.toggleIsolation and feeds the grid's MosaicWash above. AnalysisPanel accepts
-            // `isolatedSolverId` / `onIsolateSolver` (gated on moment.settled: a bloom in flight ignores
-            // taps, INV-3), but it renders INSIDE ClueBar, whose track owns the forwarding seam: once
-            // ClueBar threads these two through to the panel, the tap reaches this handler:
-            //   isolatedSolverId = moment.isolatedSolverId,
-            //   onIsolateSolver = moment.settled.takeIf { it }?.let {
-            //       { id: String -> moment = moment.toggleIsolation(id, reactionNow()) } },
+            // MosaicMoment.toggleIsolation and feeds the grid's MosaicWash above. Gated on
+            // moment.settled: a bloom in flight keeps the legend rows plain and ignores taps (INV-3).
+            isolatedSolverId = moment.isolatedSolverId,
+            onIsolateSolver = if (moment.settled) {
+                { id: String -> moment = moment.toggleIsolation(id, reactionNow()) }
+            } else null,
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235

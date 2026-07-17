@@ -86,6 +86,11 @@ fun ClueBar(
     // Fired when the completed room's analysis surface is opened, so the room can kick the idempotent
     // fetch on a tab-open as well as on the completion edge.
     onOpenAnalysis: () -> Unit = {},
+    // The legend's solver isolation (iOS 877b504): the isolated solver (null = everyone) and the tap
+    // intent, forwarded to the panel; the room owns the state on its MosaicMoment. Null intent keeps
+    // the legend rows plain (the bloom in flight, previews).
+    isolatedSolverId: String? = null,
+    onIsolateSolver: ((String) -> Unit)? = null,
 ) {
     val tokens = ground.tokens
     val hasBrowser = acrossRows.isNotEmpty() || downRows.isNotEmpty()
@@ -158,6 +163,8 @@ fun ClueBar(
             analysisMembers = analysisMembers,
             selfUserId = selfUserId,
             onOpenAnalysis = onOpenAnalysis,
+            isolatedSolverId = isolatedSolverId,
+            onIsolateSolver = onIsolateSolver,
         )
     }
 }
@@ -210,6 +217,8 @@ private fun ClueBrowserSheet(
     analysisMembers: List<RosterMember> = emptyList(),
     selfUserId: String? = null,
     onOpenAnalysis: () -> Unit = {},
+    isolatedSolverId: String? = null,
+    onIsolateSolver: ((String) -> Unit)? = null,
 ) {
     val tokens = ground.tokens
     val sheetState = rememberModalBottomSheetState()
@@ -255,6 +264,8 @@ private fun ClueBrowserSheet(
                     members = analysisMembers,
                     selfUserId = selfUserId,
                     ground = ground,
+                    isolatedSolverId = isolatedSolverId,
+                    onIsolateSolver = onIsolateSolver,
                 )
             } else {
                 ClueBrowserSection("Across", acrossRows, ground, onJump)
