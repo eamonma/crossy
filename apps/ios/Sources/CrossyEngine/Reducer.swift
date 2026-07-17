@@ -28,50 +28,76 @@ private func isPlayable(_ state: BoardState, _ cell: Int) -> Bool {
 }
 
 public func reduce(_ state: BoardState, _ command: Command) -> ReduceResult {
+    switch command {
+    case .placeLetter(let commandId, let cell, let raw, let by, let at):
+        return applyMutation(
+            state, commandId: commandId, cell: cell, rawValue: raw, by: by, at: at)
+    case .clearCell(let commandId, let cell, let by, let at):
+        return applyMutation(
+            state, commandId: commandId, cell: cell, rawValue: nil, by: by, at: at)
+    case .checkPuzzle:
+        // Not a cell mutation: the completion driver owns the check's gates and its
+        // puzzleChecked event (PROTOCOL §10; Completion.swift). Reducing it directly
+        // is a caller error; nothing changes and no seq is consumed (INV-2).
+        return ReduceResult(events: [], state: state, error: nil)
+    }
+}
+
+/// The shared placeLetter/clearCell body. `rawValue` nil is a clear (PROTOCOL §5).
+private func applyMutation(
+    _ state: BoardState, commandId: String, cell: Int, rawValue: String?, by: String,
+    at: String
+) -> ReduceResult {
     // Validation order follows PROTOCOL §5: terminal state, then cell, then value.
     if state.status != .ongoing {
         return ReduceResult(events: [], state: state, error: .gameNotOngoing)
     }
 
-    if !isPlayable(state, command.cell) {
+    if !isPlayable(state, cell) {
         return ReduceResult(events: [], state: state, error: .invalidCell)
     }
 
     let value: String?
-    switch command {
-    case .placeLetter(_, _, let raw, _, _):
+    if let raw = rawValue {
         guard let normalized = normalizeValue(raw) else {
             return ReduceResult(events: [], state: state, error: .invalidValue)
         }
         value = normalized
-    case .clearCell:
+    } else {
         value = nil  // clearCell always sets nil (PROTOCOL §5)
     }
 
     let seq = state.seq + 1
-    let previous = state.cells[command.cell]
+    let previous = state.cells[cell]
     let wasFilled = previous?.value != nil
     let nowFilled = value != nil
 
     var cells = state.cells
-    cells[command.cell] = Cell(value: value, by: command.by)
+    cells[cell] = Cell(value: value, by: by)
 
     let filledCount = state.filledCount + (nowFilled ? 1 : 0) - (wasFilled ? 1 : 0)
 
+    // A standing check mark survives until the cell's VALUE changes (PROTOCOL §10, D27):
+    // a different letter or a clear removes the mark, a same-value rewrite keeps it
+    // (stored values are already normalized, so == is byte-wise; INV-1).
+    var checkedWrong = state.checkedWrong
+    if previous?.value != value {
+        checkedWrong.remove(cell)
+    }
+
     // firstFillAt is set once, on the first placeLetter (PROTOCOL §4, §6). A clearCell never
     // sets it, and a later fill never moves it.
-    let isPlace: Bool
-    if case .placeLetter = command { isPlace = true } else { isPlace = false }
+    let isPlace = rawValue != nil
     let firstFillAt =
-        (state.firstFillAt == nil && isPlace) ? command.at : state.firstFillAt
+        (state.firstFillAt == nil && isPlace) ? at : state.firstFillAt
 
     let event = CellSet(
         seq: seq,
-        cell: command.cell,
+        cell: cell,
         value: value,
-        by: command.by,
-        commandId: command.commandId,
-        at: command.at)
+        by: by,
+        commandId: commandId,
+        at: at)
 
     let next = BoardState(
         grid: state.grid,
@@ -79,7 +105,9 @@ public func reduce(_ state: BoardState, _ command: Command) -> ReduceResult {
         seq: seq,
         firstFillAt: firstFillAt,
         cells: cells,
-        filledCount: filledCount)
+        filledCount: filledCount,
+        checkedWrong: checkedWrong,
+        checkCount: state.checkCount)
 
     return ReduceResult(events: [event], state: next, error: nil)
 }

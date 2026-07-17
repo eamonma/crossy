@@ -27,8 +27,6 @@
 // broadcasts the disconnect; any received frame (heartbeat included) resets the timer. The
 // liveness timer lives on the socket, not the actor, so it cannot leak across actor passivation:
 // a close always clears it, and a passivated actor has no sockets.
-//
-// Out of this slice (reported as deferrals): checkRequest is Phase 3.
 
 import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
@@ -38,6 +36,8 @@ import type { Duplex } from "node:stream";
 import type { AuthPort } from "@crossy/auth";
 import {
   PROTOCOL_VERSION,
+  assignRoomColors,
+  colorForUser,
   decodeClientMessage,
   encode,
 } from "@crossy/protocol";
@@ -55,7 +55,6 @@ import { WebSocketServer } from "ws";
 import type { RawData, WebSocket } from "ws";
 import type { ActorOptions, Connection, GameActor } from "./actor";
 import type { Analytics } from "./analytics/analytics";
-import { colorForUser } from "./color";
 import { errorFrame } from "./frames";
 import { performHandshake } from "./handshake";
 import { applyMembershipChange, parseMembershipChangedBody } from "./internal";
@@ -566,8 +565,13 @@ function handleConnection(
     }
     const message = decoded.value;
     switch (message.type) {
+      // The room check (checkPuzzle) rides the same mutation path as the cell commands
+      // (PROTOCOL.md §5, §10; D27): the actor's mailbox serializes it, its role gate
+      // rejects spectators (ROLE_FORBIDDEN), and the engine's check gate maps a bad
+      // moment to GAME_NOT_ONGOING or GRID_NOT_FULL.
       case "placeLetter":
       case "clearCell":
+      case "checkPuzzle":
         if (actor !== null && connection !== null) {
           void actor.submit(connection, message);
         }
@@ -631,8 +635,6 @@ function handleConnection(
         // Liveness already reset for every inbound frame (above); heartbeat carries no other
         // action. It is no longer ignored: it is precisely what keeps an idle client alive (§9).
         return;
-      case "checkRequest":
-        return; // deferred: check is Phase 3 (see the report)
       case "hello":
         return; // a second hello after handshake is unexpected; ignore
     }
@@ -647,12 +649,16 @@ async function buildBoardPayload(
 ): Promise<Board> {
   const members = await loadMembers(pool, gameId);
   const connected = actor.connectedUserIds();
+  // Room-aware colors (D28): assigned over the full member list, deterministically, so every
+  // snapshot of this room agrees. The fallback is unreachable (the map is built from `members`)
+  // but keeps the expression total.
+  const colors = assignRoomColors(members);
   const participants: Participant[] = members.map((member) => ({
     userId: member.userId,
     displayName: member.displayName ?? FORMER_PARTICIPANT,
     // Opaque, nullable, resolved API-side (PROTOCOL.md §4); the session only relays it.
     avatarUrl: member.avatarUrl,
-    color: colorForUser(member.userId),
+    color: colors.get(member.userId) ?? colorForUser(member.userId),
     role: member.role,
     connected: connected.has(member.userId),
   }));
@@ -660,12 +666,13 @@ async function buildBoardPayload(
 }
 
 /**
- * Build a `playerConnected` notice (PROTOCOL.md §6). Reuses the same `loadMembers`/`colorForUser`
- * machinery as `buildBoardPayload`, so the display name and avatar (the read grant is display_name
- * and avatar), color, and role match the participant list. The "former participant" fallback
- * applies to a tombstoned user's null display name (DESIGN.md §8). If the member row is somehow
- * absent, fall back to the connection's handshake-verified role and a null avatar so the notice is
- * still well-formed.
+ * Build a `playerConnected` notice (PROTOCOL.md §6). Reuses the same `loadMembers` machinery as
+ * `buildBoardPayload`, so the display name and avatar (the read grant is display_name and avatar),
+ * color, and role match the participant list; the color is assigned over the same full member
+ * list (D28), so the notice and the §4 payload agree for one room. The "former participant"
+ * fallback applies to a tombstoned user's null display name (DESIGN.md §8). If the member row is
+ * somehow absent, fall back to the connection's handshake-verified role, a null avatar, and the
+ * bare hash color so the notice is still well-formed.
  */
 async function buildPlayerConnected(
   pool: Pool,
@@ -681,7 +688,8 @@ async function buildPlayerConnected(
     // Same opaque nullable field the participant carries (PROTOCOL.md §4, §6); null when the member
     // row is absent, which matches the initial-avatar fallback clients already render.
     avatarUrl: member?.avatarUrl ?? null,
-    color: colorForUser(conn.userId),
+    color:
+      assignRoomColors(members).get(conn.userId) ?? colorForUser(conn.userId),
     role: member?.role ?? conn.role,
   };
 }

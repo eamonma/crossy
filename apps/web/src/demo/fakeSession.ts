@@ -122,6 +122,9 @@ export function createFakeSession(board: Board): FakeSession {
         { length: cellCount },
         (_, index) => cells.get(index) ?? { v: null, by: null },
       ),
+      // The demo never checks: no standing marks, a zero count (PROTOCOL.md §4).
+      checkedWrongCells: [],
+      checkCount: 0,
       participants,
       cursors,
       recentCommandIds: [...recentCommandIds],
@@ -187,7 +190,7 @@ export function createFakeSession(board: Board): FakeSession {
             });
             return;
           default:
-            return; // hello, heartbeat, moveCursor, checkRequest: nothing to fake
+            return; // hello, heartbeat, moveCursor, checkPuzzle: nothing to fake
         }
       },
     },
@@ -261,6 +264,7 @@ export function createFakeSession(board: Board): FakeSession {
           solveTimeSeconds: 372,
           totalEvents: seq - 1,
           participantCount: participants.length,
+          checkCount: 0,
         },
       });
     },

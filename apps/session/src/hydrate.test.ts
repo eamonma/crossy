@@ -20,6 +20,7 @@ const stats: Stats = {
   solveTimeSeconds: 62,
   totalEvents: 3,
   participantCount: 2,
+  checkCount: 1,
 };
 
 const completedRow: GameStateRow = {
@@ -56,5 +57,60 @@ describe("hydrateGame stats round-trip (PROTOCOL.md §4; INV-5)", () => {
   it("hydrates null stats for a game with no game_state row", () => {
     const hydrated = hydrateGame(snapshot, null);
     expect(hydrated.stats).toBeNull();
+  });
+
+  it("backfills checkCount: 0 into stats persisted before the room check landed (PROTOCOL.md §4; D27)", () => {
+    const legacyStats = {
+      solveTimeSeconds: 62,
+      totalEvents: 3,
+      participantCount: 2,
+    };
+    const hydrated = hydrateGame(snapshot, {
+      ...completedRow,
+      stats: legacyStats,
+    });
+    expect(hydrated.stats).toEqual({ ...legacyStats, checkCount: 0 });
+  });
+});
+
+describe("hydrateGame room-check state round-trip (PROTOCOL.md §4, §10; D27; INV-5)", () => {
+  it("restores the standing marks and the permanent count from the board snapshot object", () => {
+    const hydrated = hydrateGame(snapshot, {
+      ...completedRow,
+      status: "ongoing",
+      completedAt: null,
+      stats: null,
+      board: {
+        cells: [
+          { v: "X", by: "u1" },
+          { v: "B", by: "u1" },
+          { v: "C", by: "u2" },
+        ],
+        checkedWrongCells: [0],
+        checkCount: 2,
+      },
+    });
+    expect(hydrated.boardState.checkedWrong).toEqual(new Set([0]));
+    expect(hydrated.boardState.checkCount).toBe(2);
+    expect(hydrated.boardState.filledCount).toBe(3);
+    expect(hydrated.boardState.cells.get(0)).toEqual({ v: "X", by: "u1" });
+  });
+
+  it("reads a legacy bare-array board as no standing marks and a zero count (expand/contract, DESIGN.md §9)", () => {
+    const hydrated = hydrateGame(snapshot, {
+      ...completedRow,
+      status: "ongoing",
+      completedAt: null,
+      stats: null,
+    });
+    expect(hydrated.boardState.checkedWrong.size).toBe(0);
+    expect(hydrated.boardState.checkCount).toBe(0);
+    expect(hydrated.boardState.filledCount).toBe(3);
+  });
+
+  it("starts a never-played game with no marks and a zero count", () => {
+    const hydrated = hydrateGame(snapshot, null);
+    expect(hydrated.boardState.checkedWrong.size).toBe(0);
+    expect(hydrated.boardState.checkCount).toBe(0);
   });
 });

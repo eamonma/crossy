@@ -35,6 +35,12 @@ public enum SolveHaptic: Equatable, Sendable {
     /// ReactionProximity and the ReactionSettings toggle, never fired for a sticker
     /// across the board).
     case reactionLanded
+    /// The room's check landed (PROTOCOL.md §6, §10; D27): the marks just painted
+    /// for everyone. One soft thud in the room-event register (the reactionLanded
+    /// family, weighted up: a deliberate act, not a passing wave) — never a
+    /// celebration pattern. Fired off the store's live-event beat only
+    /// (GameStore.onPuzzleChecked); snapshot healing stays silent.
+    case checkLanded
 }
 
 /// Starting values for the I2e device tuning pass (DESIGN.md §7: tuned on
@@ -50,6 +56,9 @@ public enum SolveHapticTuning {
     /// near your word taps softer still (it is a wave, not a knock).
     public static let reactionSentIntensity: Double = 0.7
     public static let reactionLandedIntensity: Double = 0.5
+    /// The room check's landing thud: heavier than a sticker's wave, lighter
+    /// than the local word thud.
+    public static let checkLandedIntensity: Double = 0.8
 }
 
 /// The exactly-when derivation. Feed every observed (filled, selection) pair;
@@ -182,6 +191,9 @@ public final class SolveHaptics {
                 tick.prepare()
             case .reactionLanded:
                 thud.impactOccurred(intensity: SolveHapticTuning.reactionLandedIntensity)
+                thud.prepare()
+            case .checkLanded:
+                thud.impactOccurred(intensity: SolveHapticTuning.checkLandedIntensity)
                 thud.prepare()
             }
         }

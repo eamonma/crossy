@@ -35,6 +35,21 @@ public struct CrossyGridView: View {
     /// back to the event log's last writer (sequencedWriters): the fallback when the
     /// fetch is absent, and every non-completion caller.
     private let mosaicOwners: [Int: String]?
+    /// True once the mosaic's envelope has landed (CompletionModel.mosaicSettled):
+    /// the wash is a constant now (wash standing, letters back in ink), so the
+    /// draw pass skips the clock and the timeline pauses. The settled wash is the
+    /// completed board's record — it never reverts to plain ink (the
+    /// flash-then-disappear fix; web parity: the reveal arc ends at WASH).
+    private let mosaicSettled: Bool
+    /// The isolation filter over the settled wash (CompletionModel.isolation):
+    /// a tapped legend row keeps that solver's cells at the full wash and
+    /// recesses everyone else's toward paper. Presentation only — it exists
+    /// only once the wash has settled (the model gates the toggle), and nil is
+    /// the full multi-color record.
+    private let mosaicIsolation: MosaicIsolation?
+    /// The completed Analysis tab's directional loupe. It is a clear glass view above the Canvas,
+    /// never a grid fill; the caller gates it to the settled post-game mosaic.
+    private let showsWordLoupe: Bool
     /// The reaction sticker book (PROTOCOL.md §9), rendered by the view overlay
     /// above the draw pass (ReactionStickerLayer; the entry-shake fix keeps
     /// stickers out of the per-frame Canvas). Nil for callers without reactions
@@ -66,6 +81,12 @@ public struct CrossyGridView: View {
     /// pinch is live; set by whichever of magnify/drag fires first.
     @State private var pinchStartCentroid: CGPoint?
     @State private var flashes = FlashBook()
+    /// True while an isolation toggle's crossfade runs: the settled timeline
+    /// unpauses for just the fade's window, then rests again (a settled mosaic
+    /// must keep costing no frames). Flipped by the toggle's onChange; the task
+    /// is the flash sweep's retire pattern.
+    @State private var isolationFading = false
+    @State private var isolationFadeTask: Task<Void, Never>?
     /// The camera-follow animator (I2c): Canvas draws through context transforms,
     /// which SwiftUI cannot animate, so the follow pan interpolates by hand.
     @State private var followTask: Task<Void, Never>?
@@ -91,6 +112,9 @@ public struct CrossyGridView: View {
         simulatesReduceMotion: Bool = false,
         mosaicStartedAt: TimeInterval? = nil,
         mosaicOwners: [Int: String]? = nil,
+        mosaicSettled: Bool = false,
+        mosaicIsolation: MosaicIsolation? = nil,
+        showsWordLoupe: Bool = false,
         occlusion: GridOcclusion = .none,
         keepClear: GridOcclusion? = nil,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
@@ -105,6 +129,9 @@ public struct CrossyGridView: View {
         self.simulatesReduceMotion = simulatesReduceMotion
         self.mosaicStartedAt = mosaicStartedAt
         self.mosaicOwners = mosaicOwners
+        self.mosaicSettled = mosaicSettled
+        self.mosaicIsolation = mosaicIsolation
+        self.showsWordLoupe = showsWordLoupe
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
         self.onSwipe = onSwipe
@@ -123,7 +150,10 @@ public struct CrossyGridView: View {
                     viewport: viewport, rows: puzzle.rows, cols: puzzle.cols,
                     occlusion: occlusion)
             let frame = GridFrame(
-                store: store, puzzle: puzzle, selection: selection, ground: ground,
+                store: store, puzzle: puzzle,
+                // Completed Analysis replaces the paper tint with the glass loupe and its etched
+                // focus square. Every other grid keeps the established fill precedence.
+                selection: showsWordLoupe ? nil : selection, ground: ground,
                 crossReference: crossReference)
             // The mosaic snapshot (DESIGN.md §8): palette from the first-correct
             // owners when GET /analysis has landed (owner ruling 2026-07-13),
@@ -131,27 +161,36 @@ public struct CrossyGridView: View {
             // gated inside GridMosaic. Snapshotted in body like GridFrame so
             // @Observable registers the reads.
             let mosaic: MosaicWash? = mosaicStartedAt.map { startedAt in
-                MosaicWash(
+                let writers =
+                    mosaicOwners ?? Self.sequencedWriters(store: store, puzzle: puzzle)
+                return MosaicWash(
                     colors: GridMosaic.colors(
-                        writers: mosaicOwners
-                            ?? Self.sequencedWriters(store: store, puzzle: puzzle),
+                        writers: writers,
                         participants: store.participants.map {
                             GridPresence.ParticipantInput(
                                 userId: $0.userId, displayName: $0.displayName,
                                 color: $0.color, isSpectator: $0.role == .spectator)
                         },
                         ground: ground),
-                    startedAt: startedAt)
+                    writers: writers,
+                    startedAt: startedAt,
+                    settled: mosaicSettled,
+                    isolation: mosaicIsolation)
             }
-            // The timeline drives redraws only while a flash decays or the mosaic
-            // plays; at rest the Canvas redraws only when the snapshot inputs change.
+            // The timeline drives redraws only while a flash decays, the mosaic
+            // BLOOMS, or an isolation toggle crossfades; a settled mosaic is a
+            // constant wash, so it pauses like rest
+            // (the Canvas redraws only when the snapshot inputs change).
             // Reaction stickers deliberately do NOT ride this Canvas: per-frame
             // Canvas redraws re-rasterize the emoji at every intermediate scale,
             // which read as entry shake on device (owner finding 2026-07-14). They
             // live in the view overlay below, where Core Animation transforms each
             // glyph's one rasterized layer (ReactionStickerLayer).
             TimelineView(
-                .animation(minimumInterval: nil, paused: flashes.isEmpty && mosaic == nil)
+                .animation(
+                    minimumInterval: nil,
+                    paused: flashes.isEmpty && (mosaic?.settled ?? true)
+                        && !isolationFading)
             ) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
                 Canvas { context, size in
@@ -162,6 +201,16 @@ public struct CrossyGridView: View {
                 }
             }
             .background(Color(rgb: ground.tokens.canvas))
+            // The word loupe is glass ABOVE paper, not a new Canvas role. It tracks the same camera
+            // projection as the draw pass, including pan and zoom, and deliberately mounts before
+            // reactions so celebration stickers remain the topmost board paint.
+            .overlay {
+                if showsWordLoupe, let selection {
+                    WordLoupeOverlay(
+                        puzzle: puzzle, selection: selection,
+                        camera: camera, ground: ground)
+                }
+            }
             // The sticker layer, a view overlay above the whole draw pass (mosaic
             // included, so completed-grid reactions paint over the bloom exactly as
             // the web overlay paints above its SVG). Its own view, so sticker
@@ -295,7 +344,26 @@ public struct CrossyGridView: View {
                 followCamera(from: camera, to: target)
             }
             .onAppear { wireFlashSink() }
-            .onDisappear { followTask?.cancel() }
+            // An isolation toggle (a legend-row tap over the settled wash): run
+            // the timeline just long enough for the quiet crossfade, then let it
+            // pause again. A rapid retoggle cancels and re-arms the retire, so a
+            // fade in flight is never cut short; the small margin past the
+            // envelope makes the pause frame draw the exact resting target.
+            .onChange(of: mosaicIsolation) { _, next in
+                guard next != nil else { return }
+                isolationFading = true
+                isolationFadeTask?.cancel()
+                isolationFadeTask = Task { @MainActor in
+                    try? await Task.sleep(
+                        for: .seconds(GridMosaic.isolationFadeDuration + 0.05))
+                    guard !Task.isCancelled else { return }
+                    isolationFading = false
+                }
+            }
+            .onDisappear {
+                followTask?.cancel()
+                isolationFadeTask?.cancel()
+            }
             // The edge-pop gutter (owner report 2026-07-12): the camera drag
             // claims any touch that moves one point, so a back swipe from the
             // leading edge never reached the system's interactive pop — the
@@ -452,6 +520,12 @@ extension CrossyGridView {
                 let base = fill == .block ? tokens.block : tokens.cell
                 context.fill(Path(rect), with: .color(Color(rgb: base)))
                 switch fill {
+                case .check:
+                    // The room's shared mark (PROTOCOL.md §10, D27): the check
+                    // coat replaces the paper outright, a token per ground, never
+                    // a personal color — the marks are room state, identical for
+                    // every member.
+                    context.fill(Path(rect), with: .color(Color(rgb: tokens.check)))
                 case .current:
                     context.fill(
                         Path(rect),
@@ -471,7 +545,7 @@ extension CrossyGridView {
                             Path(rect),
                             with: .color(Color(rgb: mark.color).opacity(Paint.teammateAlpha)))
                     }
-                case .block, .check, .base:
+                case .block, .base:
                     break
                 }
             }
@@ -603,8 +677,12 @@ extension CrossyGridView {
     }
 
     /// The mosaic (apps/ios/DESIGN.md §8): every letter tints to its writer's
-    /// color while the paper beneath it washes in the same color, scaled by the
-    /// envelope's intensity, so tint, hold, and settle all fall out of one clock.
+    /// color while the paper beneath it washes in the same color, one clock for
+    /// both. On the settle the GLYPH returns to ink (`intensity` falls to zero)
+    /// while the WASH stands (`washIntensity` holds 1): the completed board keeps
+    /// the room's fingerprint, the web reveal arc's settled WASH, never reverting
+    /// to plain ink (the flash-then-disappear fix). A settled mosaic skips the
+    /// clock entirely, so the paused timeline's frozen date cannot misdraw it.
     /// Painted over the ink pass: the tinted glyph crossfades in over the ink one
     /// and back out on the settle, and a cell without a mosaic color (empty, or
     /// cleared with no letter) never tints.
@@ -613,18 +691,30 @@ extension CrossyGridView {
         _ mosaic: MosaicWash, _ now: TimeInterval, _ ground: GridGround,
         _ context: inout GraphicsContext
     ) {
-        let intensity = MosaicEnvelope.intensity(elapsed: now - mosaic.startedAt)
-        guard intensity > 0 else { return }
+        let elapsed = now - mosaic.startedAt
+        let wash = mosaic.settled ? 1 : MosaicEnvelope.washIntensity(elapsed: elapsed)
+        let intensity = mosaic.settled ? 0 : MosaicEnvelope.intensity(elapsed: elapsed)
+        guard wash > 0 else { return }
         let puzzle = frame.puzzle
         for row in visible.rows {
             for col in visible.cols {
                 let cell = row * puzzle.cols + col
                 guard let color = mosaic.colors[cell] else { continue }
+                // The isolation filter (a legend-row tap over the settled wash):
+                // the isolated solver's cells hold the full wash, every other
+                // hand recesses toward paper — a lower alpha over the ground IS
+                // the recessive step, on both grounds by construction. Pure
+                // presentation: the wash's own clock and colors are untouched.
+                var alpha = GridMosaic.washAlpha * wash
+                if let isolation = mosaic.isolation, let owner = mosaic.writers[cell] {
+                    alpha *= GridMosaic.isolationMultiplier(
+                        owner: owner, isolation: isolation,
+                        elapsed: now - isolation.changedAt)
+                }
                 context.fill(
                     Path(GridModule.cellRect(cell, cols: puzzle.cols)),
-                    with: .color(
-                        Color(rgb: color).opacity(GridMosaic.washAlpha * intensity)))
-                guard let value = frame.values[cell] else { continue }
+                    with: .color(Color(rgb: color).opacity(alpha)))
+                guard intensity > 0, let value = frame.values[cell] else { continue }
                 let origin = GridModule.cellOrigin(cell, cols: puzzle.cols)
                 let size = GridModule.glyphSize(forLength: value.count)
                 let hasMarks = !(frame.presence[cell] ?? []).isEmpty
@@ -725,7 +815,11 @@ extension GridFrame {
             },
             selfUserId: store.selfUserId,
             ground: ground,
-            crossReference: crossReference)
+            crossReference: crossReference,
+            // The standing marks through the §10 overlay-suppression rule: a cell
+            // with a pending optimistic entry renders the overlay, not the mark.
+            checkedWrong: GridFrame.visibleCheckMarks(
+                store.checkedWrong, overlayCells: Set(store.overlay.map(\.cell))))
     }
 }
 

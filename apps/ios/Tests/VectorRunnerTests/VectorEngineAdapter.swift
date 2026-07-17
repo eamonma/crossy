@@ -89,13 +89,18 @@ func buildBoardState(_ given: [String: Any]) -> BoardState {
         }
     }
     let firstFillAt = given["firstFillAt"] as? String  // nil for null or absent
+    // Standing check marks and the permanent count (check family; PROTOCOL §10, D27).
+    // Optional in `given`: absent means no marks and no accepted checks yet.
+    let checkedWrong = (given["checkedWrong"] as? [Any] ?? []).compactMap(intValue)
     return BoardState(
         grid: buildGrid(given),
         status: parseStatus(given["status"] as? String),
         seq: intValue(given["seq"]) ?? 0,
         firstFillAt: firstFillAt,
         cells: cells,
-        filledCount: filledCount)
+        filledCount: filledCount,
+        checkedWrong: Set(checkedWrong),
+        checkCount: intValue(given["checkCount"]) ?? 0)
 }
 
 /// The set of filled cell indices from a navigation case's `given.fills`.
@@ -116,8 +121,12 @@ func buildSolution(_ given: [String: Any]) -> Solution {
 }
 
 /// A `when` entry (wire command plus server meta) as the engine command, plain data (INV-9).
+/// `checkPuzzle` carries only its commandId (vectors/README.md "Check cases"; PROTOCOL §10).
 func asCommand(_ w: [String: Any]) -> CrossyEngine.Command {
     let commandId = w["commandId"] as? String ?? ""
+    if w["type"] as? String == "checkPuzzle" {
+        return .checkPuzzle(commandId: commandId)
+    }
     let cell = intValue(w["cell"]) ?? -1
     let by = w["by"] as? String ?? ""
     let at = w["at"] as? String ?? ""
@@ -148,6 +157,9 @@ func serializeState(_ state: BoardState) -> [String: Any] {
         "filledCount": state.filledCount,
         "firstFillAt": jsonScalar(state.firstFillAt),
         "cells": cells,
+        // The wire and the vectors list the standing marks ascending (PROTOCOL §10).
+        "checkedWrong": state.checkedWrong.sorted(),
+        "checkCount": state.checkCount,
     ]
 }
 
@@ -167,6 +179,14 @@ func serializeEvent(_ event: CrossyEngine.Event) -> [String: Any] {
     switch event {
     case .cellSet(let cellSet): return serializeCellSet(cellSet)
     case .gameCompleted(let completed): return ["type": "gameCompleted", "seq": completed.seq]
+    case .puzzleChecked(let checked):
+        return [
+            "type": "puzzleChecked",
+            "seq": checked.seq,
+            "wrongCells": checked.wrongCells,
+            "checkCount": checked.checkCount,
+            "commandId": checked.commandId,
+        ]
     }
 }
 

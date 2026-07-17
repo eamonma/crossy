@@ -26,12 +26,15 @@ struct MomentumRibbon: View {
     let momentum: RoomMomentum
     let turningPoint: RoomTurningPoint?
     let ground: GridGround
+    /// The sittings partition (D29), or nil (an older bundle, or a single sitting
+    /// via `interiorBoundarySeconds` being empty): no seam ticks either way.
+    var sittings: RoomSittings? = nil
 
     var body: some View {
         Canvas { context, size in
             Self.draw(
-                momentum: momentum, turningPoint: turningPoint, ground: ground,
-                context: &context, size: size)
+                momentum: momentum, turningPoint: turningPoint, sittings: sittings,
+                ground: ground, context: &context, size: size)
         }
         // The web draws in a 340x104 viewBox scaled to full width; the same ratio
         // holds the shape here while the point-pad insets stay constant, so the
@@ -81,6 +84,17 @@ extension MomentumRibbon {
         /// The dashed break line's pattern (web strokeDasharray "2 3").
         static let breakDash: [CGFloat] = [2, 3]
 
+        /// The sitting seam tick (D29): a short hairline notch crossing the
+        /// baseline at each interior sitting boundary. Deliberately quieter than
+        /// the turning-point marker (achromatic where the break is gold, a notch
+        /// where the riser runs full height): the seam is axis furniture, not a
+        /// moment. `number` at low alpha holds recessive on both grounds, where
+        /// the gridLine token would vanish entirely at this length.
+        static let seamTickWidth: CGFloat = 1
+        static let seamTickRise: CGFloat = 5
+        static let seamTickDrop: CGFloat = 4
+        static let seamTickAlpha: Double = 0.55
+
         /// Right-align the label when the break sits within this of the right edge, so
         /// "picked up" never overflows past the box (web clampLabelX).
         static let labelEdgeGuard: CGFloat = 60
@@ -98,8 +112,8 @@ extension MomentumRibbon {
     /// the Canvas's own point space: x left-to-right over the solve, y flipped so a
     /// taller sample draws higher (SwiftUI's origin is top-left).
     private static func draw(
-        momentum: RoomMomentum, turningPoint: RoomTurningPoint?, ground: GridGround,
-        context: inout GraphicsContext, size: CGSize
+        momentum: RoomMomentum, turningPoint: RoomTurningPoint?, sittings: RoomSittings?,
+        ground: GridGround, context: inout GraphicsContext, size: CGSize
     ) {
         let gold = AnalysisPalette.gold(ground)
         let baselineY = self.baselineY(size)
@@ -141,6 +155,23 @@ extension MomentumRibbon {
             baseline,
             with: .color(Color(rgb: ground.tokens.gridLine)),
             lineWidth: Layout.baselineWidth)
+
+        // The sitting seams (D29): a quiet notch across the baseline at each interior
+        // boundary, drawn with the axis so everything with a voice (the area, the
+        // curve, the break marker) reads over it. No sittings or a single sitting
+        // draws nothing, so an older bundle renders exactly as before.
+        for tickX in seamTickXs(
+            sittings: sittings, duration: momentum.durationSeconds,
+            count: momentum.samples.count, size: size)
+        {
+            var tick = Path()
+            tick.move(to: CGPoint(x: tickX, y: baselineY - Layout.seamTickRise))
+            tick.addLine(to: CGPoint(x: tickX, y: baselineY + Layout.seamTickDrop))
+            context.stroke(
+                tick,
+                with: .color(Color(rgb: ground.tokens.number).opacity(Layout.seamTickAlpha)),
+                lineWidth: Layout.seamTickWidth)
+        }
 
         guard momentum.hasSignal else {
             // Degenerate: no shape to draw. A flat, quiet gold line along the baseline
@@ -273,6 +304,28 @@ extension MomentumRibbon {
         return x(forSampleIndex: CGFloat(index), count: count, size: size)
     }
 
+    /// The seam ticks' x positions (D29): each interior sitting boundary
+    /// (`spans[k].endSeconds`, k < count-1, the active axis) through the SAME
+    /// inverse bucketing the break marker maps by, so a seam lands on the bin its
+    /// sittings butt against. Boundaries at the axis edges draw nothing — a
+    /// zero-width span clamps to an edge by contract (PROTOCOL.md §12), and an
+    /// edge tick would read as a border, not a seam — and two boundaries bucketed
+    /// into one bin collapse to one tick. Internal (not private) so the tick
+    /// positions pin headlessly.
+    static func seamTickXs(
+        sittings: RoomSittings?, duration: Double, count: Int, size: CGSize
+    ) -> [CGFloat] {
+        guard let sittings, duration > 0, count >= 3 else { return [] }
+        var indices: [Int] = []
+        for boundary in sittings.interiorBoundarySeconds {
+            guard boundary > 0, boundary < duration else { continue }
+            let index = Int((boundary / duration * Double(count - 1)).rounded())
+            guard (1...(count - 2)).contains(index) else { continue }
+            if indices.last != index { indices.append(index) }
+        }
+        return indices.map { x(forSampleIndex: CGFloat($0), count: count, size: size) }
+    }
+
     /// The samples as scaled points in the Canvas's space: x over the span, y the
     /// (already peak-normalized) value flipped. Matches web ribbonPoints then scaleX/
     /// scaleY, folded into one pass.
@@ -350,6 +403,20 @@ private struct MomentumRibbonPreviewFixtures {
     static func flat() -> RoomMomentum {
         RoomMomentum(durationSeconds: 6, samples: [Double](repeating: 0, count: 40))
     }
+
+    /// The lively solve as a three-sitting room (D29): two interior seams, one in
+    /// the first hump's tail and one in the trough, so the ticks read against both
+    /// a filled area and open baseline.
+    static func sittings() -> RoomSittings {
+        RoomSittings(
+            count: 3,
+            spans: [
+                RoomSittings.Span(startSeconds: 0, endSeconds: 160),
+                RoomSittings.Span(startSeconds: 160, endSeconds: 260),
+                RoomSittings.Span(startSeconds: 260, endSeconds: 512),
+            ],
+            wallSeconds: 29160)
+    }
 }
 
 @available(iOS 17.0, macOS 14.0, *)
@@ -358,6 +425,7 @@ private struct MomentumRibbonPreviewCard: View {
     let ground: GridGround
     let momentum: RoomMomentum
     let turningPoint: RoomTurningPoint?
+    var sittings: RoomSittings? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -365,7 +433,8 @@ private struct MomentumRibbonPreviewCard: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color(rgb: ground.tokens.number))
             MomentumRibbon(
-                momentum: momentum, turningPoint: turningPoint, ground: ground)
+                momentum: momentum, turningPoint: turningPoint, ground: ground,
+                sittings: sittings)
         }
         .padding(16)
         // Over the ground's own paper so the gold accent reads as it will in the panel.
@@ -384,6 +453,14 @@ private struct MomentumRibbonPreviewCard: View {
         MomentumRibbonPreviewCard(
             title: "Observatory, a stall broken", ground: .observatory,
             momentum: lively.momentum, turningPoint: lively.turning)
+        MomentumRibbonPreviewCard(
+            title: "Studio, three sittings", ground: .studio,
+            momentum: lively.momentum, turningPoint: lively.turning,
+            sittings: MomentumRibbonPreviewFixtures.sittings())
+        MomentumRibbonPreviewCard(
+            title: "Observatory, three sittings", ground: .observatory,
+            momentum: lively.momentum, turningPoint: lively.turning,
+            sittings: MomentumRibbonPreviewFixtures.sittings())
         MomentumRibbonPreviewCard(
             title: "Studio, a short flat solve", ground: .studio,
             momentum: flat, turningPoint: nil)

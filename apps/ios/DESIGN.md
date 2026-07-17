@@ -41,6 +41,20 @@ cross-reference highlights, conflict flashes, the completion mosaic. Grids up to
 25x25 ingestion cap must render legibly; past comfortable glyph size the grid pans
 and zooms under the standing chrome.
 
+**The completed Analysis word loupe is glass above paper, not a grid treatment**
+(owner ruling 2026-07-16). Once the completion mosaic settles, the Analysis tab
+replaces the paper's active-word tint with one clear capsule spanning the current
+answer. It overhangs by one tenth of a cell on all sides and is not clamped to the
+board, so an edge answer can float past the paper. The selected square is a separate
+etched view in board coordinates: an Across/Down glass morph can never stretch it.
+The paper pixels underneath are not duplicated, transformed, or blurred. A device
+pass rejected the system clear-glass shader here: over the dense mosaic it lensed
+the letters across the capsule's whole content plane. The loupe therefore draws a
+transparent, achromatic liquid surface from two hairline rims and a faint specular
+field tied to a fixed screen-space light; moving the loupe moves light across the
+material without sampling the paper. The Clues tab and every live grid keep the
+established solid-paper treatment.
+
 **The board is full-bleed** (owner ruling 2026-07-10). The canvas fills the solve
 screen from the screen's top edge to the key deck's top edge; the room bar and the
 clue bar float over it as glass. The deck is the one hard boundary: the board never
@@ -134,6 +148,7 @@ The standing pieces:
 | sheets       | frosted  | clue browser; a custom overlay panel (SP-i1), a morph target below. The roster and the share pill ride system menus instead; the facts card rides the system metaball on 26+ |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
+| word loupe   | clear    | settled completion, Analysis tab only; directional glass above paper |
 | island       | system   | the room condensed; shares capsule geometry with the room bar    |
 
 **The room bar is a cluster** (owner ruling 2026-07-10). Three small standing
@@ -676,12 +691,25 @@ reduced-motion equivalent that crossfades instead of moving.
 
 - **The mosaic.** On `gameCompleted`, every letter tints to its writer's color: the
   solve's fingerprint, who carried the theme, who cleaned the corners. It holds for
-  a breath, then settles back to ink. Derived entirely from the event log. This is
+  a breath, then the letters settle back to ink while the wash beneath them stands:
+  the completed board keeps the fingerprint as its record (web parity — the reveal
+  arc ends at the settled wash, never back at plain ink), and a reconnect into a
+  completed room wears the settled wash without replaying the celebration.
+  Derived entirely from the event log. This is
   the celebration's centerpiece. A restrained confetti drift rides the same instant
   (owner ask 2026-07-11, amending this section's original no-confetti rule):
   roster-colored flecks between paper and glass, deliberately quieter than the
   web's, skipped whole under Reduce Motion, muteable by one constant (the ID-1
   pattern, `AttributionSwitches.completionConfettiEnabled`).
+- **The isolation filter.** Once the wash has settled, tapping a solver's legend
+  row in the analysis panel isolates their hand on the board: their cells hold the
+  full wash while everyone else's recess toward paper (the wash composites as alpha
+  over the ground, so a lower alpha is the recessive step on both grounds by
+  construction — `GridMosaic.isolationDim`). The same row again clears; another
+  row switches. A fast, quiet crossfade — a filter, not a celebration: it exists
+  only on the standing record, one truth on `CompletionModel`, and can never
+  re-arm or replay the bloom (INV-3). Web parity: the AnalysisPanel legend rows
+  toggle the same dim on the web mosaic.
 - **The clarity beat.** During the mosaic, all standing glass momentarily clears,
   then refrosts as the stats arrive.
 - **Honest weather.** Three connection states, three registers (PROTOCOL.md

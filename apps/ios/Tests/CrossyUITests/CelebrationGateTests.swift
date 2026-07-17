@@ -145,4 +145,116 @@ final class CompletionModelTests: XCTestCase {
         XCTAssertFalse(model.isClarityBeat)
         XCTAssertNil(model.celebrationFiredAt)
     }
+
+    // The flash-then-disappear fix: the settle lands on the STANDING wash, never
+    // back on plain ink. mosaicStartedAt survives the envelope (the wash keeps
+    // drawing), mosaicSettled pauses the grid's timeline, and the summon still
+    // rides the settle's landing.
+    func test_settleLandsOnTheStandingWash_neverBackToInk() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
+        model.startMosaic(summonOnSettle: true, now: 200)
+        XCTAssertFalse(model.mosaicSettled, "the bloom runs on the clock first")
+        model.settleMosaic(summonOnSettle: true)
+        XCTAssertEqual(
+            model.mosaicStartedAt, 200,
+            "the settled mosaic stands; the trigger is never nilled")
+        XCTAssertTrue(model.mosaicSettled)
+        XCTAssertEqual(model.summonToken, 1, "the settle's landing is still the summon's cue")
+    }
+
+    // A reconnect into a completed room wears the settled wash once first-correct
+    // owners land — terminal-state rendering, not a celebration (INV-3): no bloom,
+    // no clarity beat, no summon.
+    func test_standMosaic_reconnectWearsTheSettledWash_withoutCelebrating_INV3() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: false, now: 100)  // connecting
+        model.observe(status: .completed, live: true, now: 200)  // welcome, terminal
+        XCTAssertNil(model.celebrationFiredAt)
+        model.standMosaic(now: 500)
+        XCTAssertNotNil(model.mosaicStartedAt, "the record stands")
+        XCTAssertTrue(model.mosaicSettled, "born settled: no bloom plays")
+        XCTAssertFalse(model.isClarityBeat)
+        XCTAssertEqual(model.summonToken, 0, "a stand never summons the panel")
+    }
+
+    // The stand and the bloom share one arming, so neither can follow the other:
+    // a stood wash is never re-bloomed, a bloomed mosaic is never re-stood.
+    func test_standAndBloomShareOneArming() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
+        model.startMosaic(summonOnSettle: true, now: 200)
+        model.standMosaic(now: 300)
+        XCTAssertEqual(model.mosaicStartedAt, 200, "the bloom stands; the stand is a no-op")
+        XCTAssertFalse(model.mosaicSettled, "the envelope still owns the settle")
+    }
+
+    // ID-1: a muted mosaic stands nothing on the reconnect path either.
+    func test_standMosaic_mutedSwitchDerivesNothing_ID1() {
+        let model = CompletionModel()
+        model.standMosaic(mosaicEnabled: false, now: 500)
+        XCTAssertNil(model.mosaicStartedAt)
+        XCTAssertFalse(model.mosaicSettled)
+    }
+
+    // MARK: - Isolation (§8: isolation exists only on the settled wash)
+
+    // No isolation before the settle: an unsettled room has no standing record
+    // to filter, and a bloom in flight ignores the tap outright.
+    func test_isolation_gatedOnTheSettledWash() {
+        let model = CompletionModel()
+        model.toggleIsolation("you", now: 100)
+        XCTAssertNil(model.isolation, "no isolation before the room even completes")
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
+        model.startMosaic(summonOnSettle: false, now: 200)
+        model.toggleIsolation("you", now: 201)
+        XCTAssertNil(model.isolation, "the bloom still plays; isolation waits for the settle")
+        model.settleMosaic(summonOnSettle: false)
+        model.toggleIsolation("you", now: 210)
+        XCTAssertEqual(model.isolatedSolverId, "you")
+    }
+
+    // Same-tap clears, other-tap switches: one truth, a value change over the
+    // standing wash, never a re-render of the wash arc. The previous value
+    // rides along as the crossfade's from-side.
+    func test_isolation_sameTapClears_otherTapSwitches() {
+        let model = CompletionModel()
+        model.standMosaic(now: 100)
+        model.toggleIsolation("you", now: 110)
+        XCTAssertEqual(model.isolatedSolverId, "you")
+        model.toggleIsolation("bee", now: 120)
+        XCTAssertEqual(model.isolatedSolverId, "bee")
+        XCTAssertEqual(model.isolation?.previousSolverId, "you", "the crossfade's from-side")
+        model.toggleIsolation("bee", now: 130)
+        XCTAssertNil(model.isolatedSolverId, "the same row again clears to the full wash")
+        XCTAssertEqual(model.isolation?.previousSolverId, "bee")
+        XCTAssertEqual(model.isolation?.changedAt, 130)
+    }
+
+    // Isolation is a presentation filter only: toggling moves none of the
+    // celebration's state — the trigger, the settle, the summon, or the one
+    // arming (INV-3). The bloom can never re-arm or replay off a legend tap.
+    func test_isolation_neverTouchesTheCelebration_INV3() {
+        let model = CompletionModel()
+        model.observe(status: .ongoing, live: true, now: 100)
+        model.observe(status: .completed, live: true, now: 200)
+        model.startMosaic(summonOnSettle: true, now: 200)
+        model.settleMosaic(summonOnSettle: true)
+        let started = model.mosaicStartedAt
+        let fired = model.celebrationFiredAt
+        let token = model.summonToken
+        model.toggleIsolation("you", now: 300)
+        model.toggleIsolation("bee", now: 310)
+        model.toggleIsolation("bee", now: 320)
+        XCTAssertEqual(model.mosaicStartedAt, started, "the wash's clock never moves")
+        XCTAssertTrue(model.mosaicSettled)
+        XCTAssertEqual(model.celebrationFiredAt, fired)
+        XCTAssertEqual(model.summonToken, token, "no re-summon, no replay")
+        // The one arming stays spent: a stand after isolation is still a no-op.
+        model.standMosaic(now: 400)
+        XCTAssertEqual(model.mosaicStartedAt, started)
+    }
 }

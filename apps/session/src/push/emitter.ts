@@ -16,7 +16,7 @@
 
 import type { Pool } from "pg";
 import type { LiveActivityContentState } from "@crossy/protocol";
-import { colorForUser } from "../color";
+import { assignRoomColors, colorForUser } from "@crossy/protocol";
 import { loadMembers } from "../repo";
 import type { MemberRow } from "../repo";
 import { ApnsAdapter, createHttp2Transport } from "./apns";
@@ -450,18 +450,19 @@ function contentStateJson(
 /**
  * Build the content-state from the members read and the board facts. The pucks are the iOS cluster
  * (solvers and host, presence order, capped at 4; roster.ts). The wire color is the session's own
- * derivation (colorForUser), so a puck slots exactly as the client would from the §4 participant
- * `color`. `connected` comes from the live-socket set. INV-6: filled/total are the facts' counts,
- * nothing else.
+ * room-aware derivation (assignRoomColors, D28), the same assignment the §4 participant `color`
+ * carries, so a puck slots exactly as the client would. `connected` comes from the live-socket
+ * set. INV-6: filled/total are the facts' counts, nothing else.
  */
 export function buildContentState(
   members: readonly MemberRow[],
   facts: BoardFacts,
 ): LiveActivityContentState {
+  const colors = assignRoomColors(members);
   const rosterMembers: RosterMember[] = members.map((m) => ({
     userId: m.userId,
     displayName: m.displayName ?? "",
-    wireColor: colorForUser(m.userId),
+    wireColor: colors.get(m.userId) ?? colorForUser(m.userId),
     isSpectator: m.role === "spectator",
     connected: facts.connectedUserIds.has(m.userId),
   }));

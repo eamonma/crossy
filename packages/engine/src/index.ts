@@ -6,6 +6,7 @@ export type {
   BoardState,
   Cell,
   CellSet,
+  CheckPuzzle,
   ClearCell,
   Command,
   CompletionResult,
@@ -14,6 +15,7 @@ export type {
   GameCompleted,
   Grid,
   PlaceLetter,
+  PuzzleChecked,
   ReduceResult,
   RejectionCode,
   Solution,
@@ -26,19 +28,49 @@ export { firstCorrect } from "./first-correct";
 export type { OwnerMap, WriteEvent } from "./first-correct";
 export {
   BURST_WINDOW_MS,
+  collapseIdle,
   MOMENTUM_SAMPLES,
   moments,
   momentum,
+  SITTING_GAP_MS,
+  sittings,
   solveSequence,
   solveTrace,
 } from "./analysis";
 export type {
   Beat,
   SequenceStep,
+  SittingSpan,
+  SittingsResult,
   SolveEvent,
   TraceEntry,
   TurningPoint,
 } from "./analysis";
+export {
+  awardTitles,
+  BULLSEYE_MIN_FILLS,
+  MARQUEE_MIN_LENGTH,
+  MEDDLER_MIN,
+  OPENING_SHARE,
+  SABOTEUR_MIN,
+  SPRINTER_MIN_BURST,
+  STALL_FLOOR_SECONDS,
+  TITLE_LADDER,
+  titleStats,
+} from "./titles";
+export type {
+  FillMark,
+  Geometry,
+  RungContext,
+  SolverStats,
+  StatColumn,
+  TitleAward,
+  TitleKey,
+  TitleRow,
+  TitleRung,
+  TitleSlot,
+  TitleStatsResult,
+} from "./titles";
 export { reduce } from "./reducer";
 export {
   backspaceTarget,

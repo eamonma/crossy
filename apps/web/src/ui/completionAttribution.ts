@@ -85,13 +85,47 @@ export function rosterOf(
   return roster;
 }
 
+/** One solver superlative off the wire (PROTOCOL §12 titles row): the solver, a lowercase-kebab
+ * title key from the pinned ladder, and the title's own count or null. `title` is a plain string,
+ * NOT the engine's TitleKey: the ladder grows server-first, so a client MUST ignore a key it has
+ * never heard of (the forward-compatibility rule); the type admits the unknown and the readout
+ * (titlesReadout.ts) drops it. */
+export interface WireTitle {
+  readonly userId: string;
+  readonly title: string;
+  readonly evidence: number | null;
+}
+
+/** One sitting's span on the active axis (PROTOCOL §12 sittings.spans[k]): contiguous by
+ * construction (`spans[k+1].startSeconds == spans[k].endSeconds`), the partition covering
+ * `[0, momentum.durationSeconds]` end to end. */
+export interface SittingSpan {
+  readonly startSeconds: number;
+  readonly endSeconds: number;
+}
+
+/** The sittings partition off the wire (PROTOCOL §12, DESIGN.md D29): how many times the room
+ * sat down, the spans on the same active axis the ribbon and the replay already share (so a seam
+ * tick places by lookup), and `wallSeconds`, the old wall-clock span kept for flavor copy only,
+ * never a competing stat. Additive: an older cached bundle lacks it, and every surface degrades
+ * to today's rendering (no sittings suffix, no seam ticks). Counts and seconds only, INV-6 rides
+ * the type. */
+export interface Sittings {
+  readonly count: number;
+  readonly spans: readonly SittingSpan[];
+  readonly wallSeconds: number;
+}
+
 /** The analysis wire payload (apps/api archive/analysis.ts AnalysisView): the whole completed
  * surface in one fetch. `owners` is the mosaic's first-correct map (cell index, a string key since
  * JSON has no numeric keys, -> the owning userId); `momentum` and `moments` are the tab's readings;
- * `sequence` is the replay's ordered fills ({cell, atSeconds}, ascending by (at, seq)). Every field
- * carries userIds, cells, and numbers only, so INV-6 rides the shape, not a runtime strip. This
- * mount is load-bearing on `owners` alone; the momentum/moments/sequence fields are typed here so
- * the shape is complete, but the Analysis tab and the replay (a later PR) are what consume them. */
+ * `sequence` is the replay's ordered fills ({cell, atSeconds}, ascending by (at, seq)); `titles`
+ * is the solver superlatives (TITLES.md, ordered by ladder rank, at most one per solver and one
+ * per key; empty when fewer than two solvers wrote, the solo rule); `sittings` is the presence
+ * partition (D29; every trace-projection time here is active seconds once the server re-bases, one
+ * shared axis). Every field carries userIds, cells, keys, and numbers only, so INV-6 rides the
+ * shape, not a runtime strip. This mount is load-bearing on `owners` alone; the rest is typed here
+ * so the shape is complete, and the Analysis tab and the replay are what consume it. */
 export interface AnalysisResponse {
   readonly owners: Record<number, string>;
   readonly momentum: { durationSeconds: number; samples: number[] };
@@ -105,6 +139,37 @@ export interface AnalysisResponse {
     } | null;
   };
   readonly sequence: { cell: number; atSeconds: number }[];
+  readonly titles: WireTitle[];
+  readonly sittings?: Sittings;
+}
+
+/**
+ * Read the wire's `sittings` field tolerantly (PROTOCOL §12: a client MUST tolerate its absence,
+ * an older cached bundle, and degrade to today's rendering). Undefined unless the whole shape is
+ * sound, so a malformed additive field reads as absence and never poisons the bundle (the same
+ * rule the titles read keeps). Exported for the tests.
+ */
+export function readSittings(x: unknown): Sittings | undefined {
+  if (typeof x !== "object" || x === null) return undefined;
+  const o = x as { count?: unknown; spans?: unknown; wallSeconds?: unknown };
+  if (!isFiniteNumber(o.count) || !isFiniteNumber(o.wallSeconds)) {
+    return undefined;
+  }
+  if (!Array.isArray(o.spans)) return undefined;
+  const spans: SittingSpan[] = [];
+  for (const el of o.spans) {
+    if (typeof el !== "object" || el === null) return undefined;
+    const s = el as { startSeconds?: unknown; endSeconds?: unknown };
+    if (!isFiniteNumber(s.startSeconds) || !isFiniteNumber(s.endSeconds)) {
+      return undefined;
+    }
+    spans.push({ startSeconds: s.startSeconds, endSeconds: s.endSeconds });
+  }
+  return { count: o.count, spans, wallSeconds: o.wallSeconds };
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
 }
 
 /**
@@ -168,6 +233,9 @@ export async function fetchAnalysisOnce(
     for (const [cell, userId] of Object.entries(body.owners ?? {})) {
       owners[Number(cell)] = userId;
     }
+    // Absent on an older cached bundle (additive, PROTOCOL §12, D29): the key is omitted and
+    // every surface degrades to today's rendering, no sittings suffix and no ribbon seams.
+    const sittings = readSittings(body.sittings);
     return {
       owners,
       momentum: body.momentum ?? { durationSeconds: 0, samples: [] },
@@ -177,6 +245,10 @@ export async function fetchAnalysisOnce(
         turningPoint: null,
       },
       sequence: Array.isArray(body.sequence) ? body.sequence : [],
+      // Absent on an older API (the field is additive, PROTOCOL §12): read as empty, never crash,
+      // so the Titles section simply does not render against a server that predates the ladder.
+      titles: Array.isArray(body.titles) ? body.titles : [],
+      ...(sittings !== undefined && { sittings }),
     };
   } catch {
     return null;

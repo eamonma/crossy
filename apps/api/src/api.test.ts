@@ -3825,8 +3825,10 @@ async function seedAttributionEvent(
   );
 }
 
-/** The analysis wire shape: the owner map, the momentum ribbon, the named moments, and the
- * replay sequence (ordered {cell, atSeconds}, ascending by (at, seq); cells and times only). */
+/** The analysis wire shape: the owner map, the momentum ribbon, the named moments, the
+ * replay sequence (ordered {cell, atSeconds}, ascending by (at, seq); cells and times only),
+ * the solver titles (ordered by ladder rank; userIds, kebab keys, and counts only), and the
+ * sittings partition (count, spans on the active axis, the wall-clock span; D29). */
 interface AnalysisBody {
   owners: Record<string, string>;
   momentum: { durationSeconds: number; samples: number[] };
@@ -3840,6 +3842,12 @@ interface AnalysisBody {
     } | null;
   };
   sequence: { cell: number; atSeconds: number }[];
+  titles: { userId: string; title: string; evidence: number | null }[];
+  sittings: {
+    count: number;
+    spans: { startSeconds: number; endSeconds: number }[];
+    wallSeconds: number;
+  };
 }
 
 describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/post-game/ANALYSIS.md; DESIGN.md §7, §9; INV-6)", () => {
@@ -4016,6 +4024,202 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
     });
   });
 
+  it("D29: a single-sitting game is the identity mapping and carries a one-span sittings field", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    // Four fills over one minute, no gap anywhere near SITTING_GAP_MS: the active axis IS the
+    // wall axis (the compat proof the contract states), and the partition is one sitting.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-15T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-15T10:00:20.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-15T10:00:40.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-15T10:01:00.000Z",
+    );
+    await seedGameState(gameId, "2026-06-15T10:01:00.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // Identity: same duration and sequence a pre-D29 bundle reported.
+    expect(body.momentum.durationSeconds).toBe(60);
+    expect(body.sequence).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 20 },
+      { cell: 2, atSeconds: 40 },
+      { cell: 3, atSeconds: 60 },
+    ]);
+    // One sitting, one span [0, durationSeconds], wallSeconds equal to it (PROTOCOL.md §12).
+    expect(body.sittings).toEqual({
+      count: 1,
+      spans: [{ startSeconds: 0, endSeconds: 60 }],
+      wallSeconds: 60,
+    });
+  });
+
+  it("D29: an overnight gap collapses — the bundle measures active time and the sittings field carries the partition", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId } = await createGame(host, puzzleId);
+
+    // Two sittings eight wall-hours apart: cells 0,1 in the evening; cells 2,3 the next
+    // morning, with a real 100s stall INSIDE the second sitting. On the active axis the
+    // overnight gap is exactly zero (the seam at 10s), so the turning point is the 100s
+    // within-sitting stall, never the night (the D29 re-base the vectors pin).
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-16T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-16T10:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      3,
+      2,
+      "O",
+      "2026-06-16T18:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-16T18:01:50.000Z",
+    );
+    await seedGameState(gameId, "2026-06-16T18:01:50.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // Active duration: 10s evening + 100s morning = 110s, not the 28910s wall span.
+    expect(body.momentum.durationSeconds).toBe(110);
+    // The sequence is compact: the seam fills share the active instant 10.
+    expect(body.sequence).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 10 },
+      { cell: 2, atSeconds: 10 },
+      { cell: 3, atSeconds: 110 },
+    ]);
+    // The turning point is the within-sitting stall (100s ending at 110s, burst of 1), not
+    // the collapsed night.
+    expect(body.moments.turningPoint).toEqual({
+      stallSeconds: 100,
+      breakSeconds: 110,
+      burst: 1,
+    });
+    // The partition itself: two contiguous spans on the active axis, wall span for flavor.
+    expect(body.sittings).toEqual({
+      count: 2,
+      spans: [
+        { startSeconds: 0, endSeconds: 10 },
+        { startSeconds: 10, endSeconds: 110 },
+      ],
+      wallSeconds: 28910,
+    });
+  });
+
+  it("D29 fast-follow: the titles re-base — the overnight wall stall no longer crowns the ice breaker, and a missed sitting refuses the marathoner (TITLES.md two-bases rule)", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // Host fills the evening; mate returns after the 8h night. Pre-revisit this room
+    // crowned mate the ice breaker with the 28800s wall stall; the re-base
+    // (moments(solveTrace(collapseIdle(events)))) reads the largest WITHIN-SITTING gap,
+    // 10s, far under the 120s floor, so nobody is the ice breaker however long the
+    // night was. And with each solver present in only one of the two sittings, the new
+    // marathoner rung refuses too: the fillers land on the floor tier instead.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-17T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-17T10:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      3,
+      2,
+      "O",
+      "2026-06-17T18:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      4,
+      3,
+      "N",
+      "2026-06-17T18:00:20.000Z",
+    );
+    await seedGameState(gameId, "2026-06-17T18:00:20.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    const keys = body.titles.map((t) => t.title);
+    expect(keys).not.toContain("ice-breaker");
+    expect(keys).not.toContain("marathoner");
+    // The floor's coverage theorem still titles both fillers (TITLES.md).
+    expect(new Set(body.titles.map((t) => t.userId))).toEqual(
+      new Set([hostId, mateId]),
+    );
+  });
+
   it("gate: an ongoing game is GAME_NOT_FOUND and computes no bundle (completed-only)", async () => {
     const hostId = randomUUID();
     const host = await auth.mintUpgraded({ sub: hostId });
@@ -4152,5 +4356,293 @@ describe("GET /games/{id}/analysis (Archive post-game analysis bundle) (design/p
     });
     expect(res.status).toBe(401);
     await expectError(res, "UNAUTHORIZED");
+  });
+});
+
+// ------------------------------------------------------------------------------------------
+// Titles on the analysis bundle (design/post-game/TITLES.md; PROTOCOL.md §12; ROADMAP Wave
+// 10.4). The Archive module lifts the engine's inputs from the stored snapshot (slots as the
+// union of the across/down clues' cellIndices with the D26 starred flag from the clue text;
+// geometry as {rows, cols}) and appends `titles` to the same bundle. The API only lifts data:
+// every count, the ladder, and the solo rule live in the engine (vectors/analysis/titles.json),
+// so these tests exercise the LIFT (snapshot -> slots/starred/geometry, events -> reducers ->
+// wire), not the counting.
+// ------------------------------------------------------------------------------------------
+
+describe("GET /games/{id}/analysis titles (design/post-game/TITLES.md; PROTOCOL.md §12; Wave 10.4)", () => {
+  it("a completed game with two writers carries titles ordered by ladder rank, and the pre-existing bundle fields are unchanged (additive only)", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // Hand-walkable log on the 2x2 fixture: host fills 0, 1, 3; mate fills only 2. Trace T = 4,
+    // opening/closing stretch ceil(0.2 * 4) = 1. The ladder walk (TITLES.md v1): saboteur..bullseye
+    // refuse (no overwrites, stall 5s < 120, max fills 3 < 5); `one-hit-wonder` gates for mate
+    // (fills == 1, flawless, room max fills 3 >= 3) with no evidence; headliner..meddler refuse
+    // (no marquee on a 2x2, burst 3 < 4, meddles 1 < 2); `quick-starter` then takes host (owns the
+    // 1-entry opening stretch, evidence openingFills = 1). Output rides in ladder-rank order:
+    // one-hit-wonder (rung 2) before quick-starter (rung 8).
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-15T10:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-15T10:00:05.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      3,
+      2,
+      "O",
+      "2026-06-15T10:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-15T10:00:15.000Z",
+    );
+    await seedGameState(gameId, "2026-06-15T10:00:15.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+
+    expect(body.titles).toEqual([
+      { userId: mateId, title: "one-hit-wonder", evidence: null },
+      { userId: hostId, title: "quick-starter", evidence: 1 },
+    ]);
+
+    // Additive change only: the bundle carries exactly the pinned field set (`titles` from
+    // Wave 10.4, `sittings` from D29), and each pre-existing field reads exactly as it did
+    // before each addition.
+    expect(Object.keys(body).sort()).toEqual([
+      "moments",
+      "momentum",
+      "owners",
+      "sequence",
+      "sittings",
+      "titles",
+    ]);
+    expect(body.owners).toEqual({
+      "0": hostId,
+      "1": hostId,
+      "2": mateId,
+      "3": hostId,
+    });
+    expect(body.sequence).toEqual([
+      { cell: 0, atSeconds: 0 },
+      { cell: 1, atSeconds: 5 },
+      { cell: 2, atSeconds: 10 },
+      { cell: 3, atSeconds: 15 },
+    ]);
+    expect(body.momentum.durationSeconds).toBe(15);
+    expect(body.momentum.samples).toHaveLength(40);
+    expect(body.moments.firstToFall).toEqual({
+      cell: 0,
+      userId: hostId,
+      atSeconds: 0,
+    });
+    expect(body.moments.lastSquare).toEqual({
+      cell: 3,
+      userId: hostId,
+      atSeconds: 15,
+    });
+    // Uniform 5s gaps: the turning point is the FIRST longest stall (5s, broken at 5s), and its
+    // burst counts the three fills inside [5s, 35s].
+    expect(body.moments.turningPoint).toEqual({
+      stallSeconds: 5,
+      breakSeconds: 5,
+      burst: 3,
+    });
+  });
+
+  it("solo rule: one writer yields titles: [] even in a multi-member room (TITLES.md solo rule; PROTOCOL §12: writers, not members)", async () => {
+    const hostId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: randomUUID() });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    // The mate is a full member but never writes: the solo rule is about event membership
+    // (writers), never the roster, so this room still titles nobody.
+    await join(gameId, mate, inviteCode);
+
+    await seedAttributionEvent(gameId, hostId, 1, 0, "H");
+    await seedAttributionEvent(gameId, hostId, 2, 1, "I");
+    await seedAttributionEvent(gameId, hostId, 3, 2, "O");
+    await seedAttributionEvent(gameId, hostId, 4, 3, "N");
+    await seedGameState(gameId, "2026-06-15T11:00:00.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    // Empty, present, and an array (the field always rides; a solo room carries []). The rest of
+    // the bundle is untouched by the empty award list.
+    expect(body.titles).toEqual([]);
+    expect(Object.keys(body.owners)).toHaveLength(4);
+  });
+
+  it("D26 starred lift: a clue whose text opens `*` (optional leading whitespace) becomes a starred marquee slot, so the headliner can award on a 2x2", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+
+    // A fixture variant whose across-1 clue wears the D26 starred mark (`^\s*\*`, the
+    // clueRefs.ts predicate; the `\s*` tolerance is the shared regex's, though ingestion itself
+    // trims leading whitespace, so the stored text opens with the literal `*` -- PROTOCOL §12
+    // law 11 carries the star through verbatim). Without this star a 2x2 has NO marquee tier
+    // (the length fallback gates at MARQUEE_MIN_LENGTH = 7), so a headliner award below proves
+    // the starred flag was lifted from the snapshot's clue text into the slot data.
+    const starredDoc = {
+      ...FIXTURE,
+      clues: {
+        ...FIXTURE.clues,
+        across: [
+          `1.  *up high, thematically ${randomUUID()}`,
+          "3. keyboard basics",
+        ],
+      },
+    };
+    const ingest = await postJson("/puzzles", host, starredDoc);
+    expect(ingest.status).toBe(201);
+    const { puzzleId } = (await ingest.json()) as { puzzleId: string };
+
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // Host first-corrects both cells of the starred across-1 (cells 0, 1): host strictly leads
+    // its first-correct cells, marqueeLeads = 1. Mate fills 2 and 3. The walk: rungs 1-4 refuse
+    // (no overwrites, both have 2 fills, stall 5s, fills < 5); `headliner` takes host
+    // (marqueeLeads 1, the starred slot); `meddler` then takes mate, who finished both down
+    // slots the host started (meddles 2 >= MEDDLER_MIN).
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-15T12:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-15T12:00:05.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      3,
+      2,
+      "O",
+      "2026-06-15T12:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      4,
+      3,
+      "N",
+      "2026-06-15T12:00:15.000Z",
+    );
+    await seedGameState(gameId, "2026-06-15T12:00:15.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AnalysisBody;
+    expect(body.titles).toEqual([
+      { userId: hostId, title: "headliner", evidence: 1 },
+      { userId: mateId, title: "meddler", evidence: 2 },
+    ]);
+  });
+
+  it("INV-6: a bundle carrying titles still holds no solution letter, no value, no snapshot anywhere", async () => {
+    const hostId = randomUUID();
+    const mateId = randomUUID();
+    const host = await auth.mintUpgraded({ sub: hostId });
+    const mate = await auth.mintUpgraded({ sub: mateId });
+    const puzzleId = await ingestFixture(host);
+    const { gameId, inviteCode } = await createGame(host, puzzleId);
+    await join(gameId, mate, inviteCode);
+
+    // Two writers so `titles` is non-empty: the new field must be exercised, not vacuously
+    // absent, when the leak scan runs. Every solution letter is planted in the log; the titles
+    // path additionally reads the snapshot's clues and geometry, so if the lift ever leaked the
+    // snapshot (or the awards ever carried a value), a letter would surface in the raw JSON.
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      1,
+      0,
+      "H",
+      "2026-06-15T13:00:00.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      2,
+      1,
+      "I",
+      "2026-06-15T13:00:05.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      mateId,
+      3,
+      2,
+      "O",
+      "2026-06-15T13:00:10.000Z",
+    );
+    await seedAttributionEvent(
+      gameId,
+      hostId,
+      4,
+      3,
+      "N",
+      "2026-06-15T13:00:15.000Z",
+    );
+    await seedGameState(gameId, "2026-06-15T13:00:15.000Z");
+
+    const res = await get(`/games/${gameId}/analysis`, host);
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    const body = JSON.parse(text) as Record<string, unknown>;
+    expect(hasKeyDeep(body, "solution")).toBe(false);
+    expect(hasKeyDeep(body, "value")).toBe(false);
+    expect(hasKeyDeep(body, "events")).toBe(false);
+    expect(hasKeyDeep(body, "puzzleSnapshot")).toBe(false);
+    expect(hasKeyDeep(body, "clues")).toBe(false);
+    for (const letter of ["H", "I", "O", "N"]) {
+      expect(text).not.toContain(`:"${letter}"`);
+    }
+    // And the titles are live in this very payload: userIds, kebab keys, and numbers only.
+    const analysis = body as unknown as AnalysisBody;
+    expect(analysis.titles.length).toBeGreaterThan(0);
+    for (const award of analysis.titles) {
+      expect([hostId, mateId]).toContain(award.userId);
+      expect(award.title).toMatch(/^[a-z]+(-[a-z]+)*$/);
+      expect(
+        award.evidence === null || typeof award.evidence === "number",
+      ).toBe(true);
+    }
   });
 });

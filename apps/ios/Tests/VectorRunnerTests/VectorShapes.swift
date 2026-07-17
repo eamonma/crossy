@@ -168,6 +168,61 @@ struct CompletionOutcome: Decodable {
     let state: JSONObjectMarker
 }
 
+// MARK: - Check
+
+/// The room check shares the completion shape (vectors/README.md "Check cases";
+/// PROTOCOL.md §10, D27): it needs `given.solution` for the comparator. Two additions,
+/// both optional in `given`: `checkedWrong` (ascending int array of standing marks,
+/// default none) and `checkCount` (the permanent count, default 0). Rejections follow
+/// the reducer convention, so `then` carries the outcome's optional `error`.
+struct CheckCase: Decodable {
+    let name: String
+    let given: CheckGiven
+    let when: [Command]
+    let then: CheckOutcome
+
+    var label: String { name }
+
+    func shapeProblems() -> [String] {
+        var problems: [String] = []
+        if when.isEmpty {
+            problems.append("when: non-empty array of commands required")
+        }
+        for key in given.solution.keys where !isDecimalKey(key) {
+            problems.append("given.solution: key \"\(key)\" is not a decimal cell index")
+        }
+        for (key, value) in given.solution where value.isEmpty {
+            problems.append("given.solution: cell \(key) requires a non-empty string")
+        }
+        for key in (given.cells ?? [:]).keys where !isDecimalKey(key) {
+            problems.append("given.cells: key \"\(key)\" is not a decimal cell index")
+        }
+        return problems
+    }
+}
+
+/// The completion given plus the optional standing marks and permanent count.
+struct CheckGiven: Decodable {
+    let cols: Int
+    let rows: Int
+    let blocks: [Int]
+    let status: String
+    let seq: Int
+    let solution: [String: String]
+    let cells: [String: Cell]?
+    let firstFillAt: String?
+    let checkedWrong: [Int]?
+    let checkCount: Int?
+}
+
+/// Events plus state plus the reducer rejection convention (`then.error`, PROTOCOL.md
+/// §11 codes: GRID_NOT_FULL, GAME_NOT_ONGOING). Unasserted when absent.
+struct CheckOutcome: Decodable {
+    let events: [Event]
+    let state: JSONObjectMarker
+    let error: String?
+}
+
 // MARK: - Navigation
 
 /// The navigation operations (vectors/README.md `when.op`). Absent `op` means `advance`,

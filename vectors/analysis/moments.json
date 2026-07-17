@@ -50,5 +50,43 @@
       "lastSquare": { "cell": 2, "userId": "u3", "atSeconds": 10 },
       "turningPoint": { "stallSeconds": 10, "breakSeconds": 10, "burst": 1 }
     }
+  },
+  {
+    "name": "COMPOSED (D29): the overnight gap is not the turning point; the stall is measured within sittings",
+    "intent": "A composed case: given carries events and solution beside the trace, and given.trace IS solveTrace(collapseIdle(events), solution), the pipeline equality the Wave 11.2 reader asserts (today's reader runs the reducer on the trace as usual). On the wall clock the largest gap is the ten-hour night (36,000,000 ms >= SITTING_GAP_MS, e5 to e6); the collapse makes that gap exactly zero, so the stall scan sees the largest WITHIN-sitting gap instead: the 180 s pause broken at active 200 s, burst 2 inside BURST_WINDOW. lastSquare reads active seconds (270, not ~36270).",
+    "given": {
+      "trace": [
+        { "cell": 0, "userId": "u1", "seq": 1, "at": 0 },
+        { "cell": 1, "userId": "u2", "seq": 2, "at": 20000 },
+        { "cell": 2, "userId": "u1", "seq": 3, "at": 200000 },
+        { "cell": 3, "userId": "u2", "seq": 4, "at": 210000 },
+        { "cell": 4, "userId": "u1", "seq": 5, "at": 260000 },
+        { "cell": 5, "userId": "u2", "seq": 6, "at": 260000 },
+        { "cell": 6, "userId": "u1", "seq": 7, "at": 270000 }
+      ],
+      "solution": [
+        [0, "A"],
+        [1, "B"],
+        [2, "C"],
+        [3, "D"],
+        [4, "E"],
+        [5, "F"],
+        [6, "G"]
+      ],
+      "events": [
+        { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+        { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 20000 },
+        { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 200000 },
+        { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 210000 },
+        { "seq": 5, "cell": 4, "userId": "u1", "value": "E", "at": 260000 },
+        { "seq": 6, "cell": 5, "userId": "u2", "value": "F", "at": 36260000 },
+        { "seq": 7, "cell": 6, "userId": "u1", "value": "G", "at": 36270000 }
+      ]
+    },
+    "then": {
+      "firstToFall": { "cell": 0, "userId": "u1", "atSeconds": 0 },
+      "lastSquare": { "cell": 6, "userId": "u1", "atSeconds": 270 },
+      "turningPoint": { "stallSeconds": 180, "breakSeconds": 200, "burst": 2 }
+    }
   }
 ]

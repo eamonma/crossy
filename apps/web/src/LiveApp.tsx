@@ -55,16 +55,16 @@ import type { StackMember } from "./ui/primitives";
 import { CapsLabel, Divider } from "./ui/primitives";
 import { GameToolbar } from "./ui/GameToolbar";
 import {
-  ClueBar,
+  ActiveClueHeader,
   ClueDock,
   ClueRail,
   ClueSheet,
-  ClueStrip,
   clueOn,
 } from "./ui/Clues";
 import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
 import { useBearer } from "./ui/useResource";
 import { useNavPrefs } from "./ui/useNavPrefs";
+import { emptyPlayableCount, visibleCheckMarks } from "./ui/roomActions";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
 import { referencedCells, referencedKeys } from "./ui/clueRefs";
@@ -74,6 +74,8 @@ import { PartyView } from "./ui/PartyView";
 import { CompletedMosaic, useCompletionBloomEdge } from "./ui/CompletedMosaic";
 import { MosaicSelectLayer } from "./ui/MosaicSelectLayer";
 import { AnalysisPanel, AnalysisPanelPlaceholder } from "./ui/AnalysisPanel";
+import type { IsolationControl } from "./ui/AnalysisPanel";
+import { nextIsolation } from "./ui/mosaicIsolation";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
 import { useReplayClock } from "./ui/useReplayClock";
 import type { PanelTab } from "./ui/PanelTabs";
@@ -867,6 +869,47 @@ function LiveGame({
 
   const filled = useMemo(() => new Set(fills.keys()), [fills]);
 
+  // The standing room-check marks, overlay-suppressed (PROTOCOL.md §10, R6): a cell with a
+  // pending optimistic entry renders the overlay, not the mark. Suppression is display only;
+  // the store's set is untouched and heals back if the pending command dies.
+  const checkMarks = useMemo(() => {
+    void version;
+    return visibleCheckMarks(store.checkedWrongCells, store.overlay);
+  }, [store, version]);
+  // Only the grid takes the marked puzzle: every other consumer keys memos off `puzzle`, whose
+  // identity must not churn per store version. At completion zero marks stand (PROTOCOL.md
+  // §10), so the mosaic and analysis surfaces stay untouched by construction.
+  const markedPuzzle = useMemo(
+    () => ({ ...puzzle, wrong: checkMarks }),
+    [puzzle, checkMarks],
+  );
+
+  // The check row's gate, derived from SEQUENCED state only (R9), matching the server's own
+  // grid-full gate: a just-typed optimistic letter leaves the row disabled for a beat.
+  const emptyCount = useMemo(() => {
+    void version;
+    return emptyPlayableCount(
+      puzzle.cols * puzzle.rows,
+      puzzle.blocks,
+      (cell) => store.sequencedValue(cell),
+    );
+  }, [store, version, puzzle]);
+
+  // The confirmed check (R2): re-derive fullness from the store at the confirm tap — not from
+  // the render-time prop — so a teammate emptying a cell between render and confirm falls back
+  // quietly (the dialog closes, the row is already disabled again). If the server still
+  // rejects, the store's rejection path is a silent no-op by design.
+  const requestCheck = useCallback((): boolean => {
+    const empty = emptyPlayableCount(
+      puzzle.cols * puzzle.rows,
+      puzzle.blocks,
+      (cell) => store.sequencedValue(cell),
+    );
+    if (empty > 0) return false;
+    store.checkPuzzle();
+    return true;
+  }, [store, puzzle]);
+
   const presence = useMemo(() => {
     void version;
     const byCell = new Map<number, PresenceEntry[]>();
@@ -1156,6 +1199,22 @@ function LiveGame({
     if (!showMosaic) replay.reset();
   }, [showMosaic, replay]);
 
+  // The legend's solver isolation (owner ruling): tapping a legend row spotlights that solver's
+  // squares on the mosaic; the same row clears, another row switches, your own row is self-
+  // isolation. One piece of state beside the replay clock, so every copy of the panel (rail,
+  // dock, sheet) drives the one mosaic. Inside the mosaic it is a fill-opacity multiplier, so it
+  // composes with the replay (dimming whatever cells are revealed at time T) and never re-arms
+  // the bloom (it stays out of the reveal effect's dependency key, the #204 discipline).
+  const [isolatedSolver, setIsolatedSolver] = useState<string | null>(null);
+  const isolation: IsolationControl = useMemo(
+    () => ({
+      isolatedId: isolatedSolver,
+      onToggle: (userId: string) =>
+        setIsolatedSolver((cur) => nextIsolation(cur, userId)),
+    }),
+    [isolatedSolver],
+  );
+
   // The Analysis panel body. Two forms of the same panel: the rail and the dock keep the board and
   // the ribbon co-visible, so they carry the replay transport; the phone bottom sheet covers the
   // board (a playhead there would drive a board you cannot see, REPLAY.md), so its copy omits the
@@ -1174,6 +1233,7 @@ function LiveGame({
           onToggle: replay.toggle,
           onSeek: replay.seek,
         }}
+        isolation={isolation}
       />
     ) : (
       <AnalysisPanelPlaceholder state={analysis.status} />
@@ -1185,6 +1245,7 @@ function LiveGame({
         members={members}
         selfId={ready.selfId}
         idBase="sheet"
+        isolation={isolation}
       />
     ) : (
       <AnalysisPanelPlaceholder state={analysis.status} />
@@ -1252,6 +1313,15 @@ function LiveGame({
               refresh: () => identity.refreshAccessToken(),
             },
           }}
+          roomActions={{
+            status: store.status,
+            spectator: isSpectator,
+            sync: store.sync,
+            emptyCount,
+            checkCount: store.checkCount,
+            onCheckPuzzle: requestCheck,
+          }}
+          onEnterParty={() => navigate(togglePartyHref(gameId, params, true))}
           onBack={goHome}
           leading={leading}
         />
@@ -1267,22 +1337,10 @@ function LiveGame({
           />
         )}
 
-        {/* The desktop clue strip stays only while solving; the completed rail carries the tab
-            header instead, so a duplicate strip would double the panel's header. */}
-        {!boardCompleted && <ClueStrip clue={activeClue} />}
-        {/* Completed: the strip is gone, so the header loses its dashed underline. Restore the same
-            rule (desktop only; mobile's ClueBar carries its own) so the toolbar stays capped. */}
-        {boardCompleted && (
-          <div
-            aria-hidden
-            className="hidden md:block border-b border-dashed border-border-dashed"
-          />
-        )}
-        <ClueBar
+        <ActiveClueHeader
           clue={activeClue}
           completed={boardCompleted}
           onOpen={() => openSheetTo("clues")}
-          onOpenAnalysis={() => openSheetTo("analysis")}
           onPrev={() => stepClue("backward")}
           onNext={() => stepClue("forward")}
         />
@@ -1326,16 +1384,18 @@ function LiveGame({
                     bloom={bloomOnCompletion}
                     replayTime={replay.time}
                     sequence={sequence}
+                    isolatedId={isolatedSolver}
                     source={{ apiBase, gameId, bearer }}
                   />
-                  {/* The selection and aim layer: pointer targets and the selection ring over the
-                      mosaic art, so a reaction anchors anywhere on the finished board (PROTOCOL.md
-                      §9). Above the mosaic (its clicks land) and below the stickers (which are
-                      pointer-transparent, so order never steals a click). It never repaints the
-                      mosaic, so the bloom is untouched. */}
+                  {/* The selection and aim layer: pointer targets and the liquid-glass word loupe
+                      over the mosaic art, so direction is visible and a reaction anchors anywhere
+                      on the finished board (PROTOCOL.md §9). Above the mosaic (its clicks land) and
+                      below the stickers (which are pointer-transparent, so order never steals a
+                      click). It never repaints the mosaic, so the bloom is untouched. */}
                   <MosaicSelectLayer
                     grid={grid}
                     selectedCell={selection.cell}
+                    direction={selection.direction}
                     onSelect={onMosaicCellClick}
                   />
                   {/* Reactions stay legal in any game status (PROTOCOL.md §9): the completed
@@ -1376,7 +1436,7 @@ function LiveGame({
                   aria-busy={awaitingFirstSync}
                 >
                   <CrosswordGrid
-                    puzzle={puzzle}
+                    puzzle={markedPuzzle}
                     fills={fills}
                     selection={selection}
                     presence={presence}

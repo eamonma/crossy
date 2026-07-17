@@ -20,6 +20,8 @@ final class GameStoreTests: XCTestCase {
         status: GameStatus = .ongoing,
         firstFillAt: String? = nil,
         cells: [Cell]? = nil,
+        checkedWrongCells: [Int] = [],
+        checkCount: Int = 0,
         participants: [Participant] = [],
         cursors: [Cursor] = [],
         recentCommandIds: [String] = []
@@ -31,6 +33,8 @@ final class GameStoreTests: XCTestCase {
             completedAt: nil,
             abandonedAt: nil,
             cells: cells ?? Array(repeating: Cell(v: nil, by: nil), count: 20),
+            checkedWrongCells: checkedWrongCells,
+            checkCount: checkCount,
             participants: participants,
             cursors: cursors,
             recentCommandIds: recentCommandIds,
@@ -507,6 +511,146 @@ final class GameStoreTests: XCTestCase {
         XCTAssertEqual(store.filledCount, 2)
         store.receive(cellSet(seq: 3, cell: 0, value: nil))
         XCTAssertEqual(store.filledCount, 1, "an erase drops the value: no longer filled")
+    }
+
+    // MARK: - Room check (PROTOCOL.md §5, §10; D27), mirrored from the web store
+
+    private func puzzleChecked(
+        seq: Int, wrongCells: [Int], checkCount: Int, commandId: String = "c-check"
+    ) -> ServerMessage {
+        .puzzleChecked(
+            PuzzleCheckedMessage(
+                seq: seq, wrongCells: wrongCells, checkCount: checkCount,
+                commandId: commandId, at: "2026-07-16T00:00:00Z"))
+    }
+
+    func test_puzzleCheckedAppliesMarksAndCountUnderTheSeqGate_PROTOCOL10() {
+        let (store, _) = makeLiveStore(board(seq: 3))
+        store.receive(puzzleChecked(seq: 4, wrongCells: [2, 5, 9], checkCount: 1))
+        XCTAssertEqual(store.checkedWrong, [2, 5, 9])
+        XCTAssertEqual(store.checkCount, 1)
+        XCTAssertEqual(store.seq, 4, "a check consumes a seq exactly as cellSet")
+    }
+
+    func test_puzzleCheckedReplacesStandingMarksWholesale_PROTOCOL10() {
+        let (store, _) = makeLiveStore()
+        store.receive(puzzleChecked(seq: 1, wrongCells: [2, 5], checkCount: 1))
+        store.receive(puzzleChecked(seq: 2, wrongCells: [7], checkCount: 2))
+        XCTAssertEqual(store.checkedWrong, [7], "the event replaces, never unions")
+        XCTAssertEqual(store.checkCount, 2)
+    }
+
+    func test_stalePuzzleCheckedIsDiscarded_PROTOCOL7() {
+        let (store, _) = makeLiveStore(board(seq: 5))
+        store.receive(puzzleChecked(seq: 3, wrongCells: [1], checkCount: 9))
+        XCTAssertTrue(store.checkedWrong.isEmpty)
+        XCTAssertEqual(store.checkCount, 0)
+        XCTAssertEqual(store.seq, 5)
+    }
+
+    /// The marks and count ride every snapshot (PROTOCOL.md §4), so reconnect and
+    /// resync heal the check state with no delta replay — and a snapshot without
+    /// marks clears a stale local set wholesale.
+    func test_snapshotHealsMarksAndCount_PROTOCOL4() {
+        let (store, _) = makeLiveStore(board(checkedWrongCells: [4, 11], checkCount: 2))
+        XCTAssertEqual(store.checkedWrong, [4, 11])
+        XCTAssertEqual(store.checkCount, 2)
+        store.receive(.sync(SyncMessage(board: board(seq: 8, checkedWrongCells: [11], checkCount: 3))))
+        XCTAssertEqual(store.checkedWrong, [11], "the snapshot replaces sequenced state wholesale")
+        XCTAssertEqual(store.checkCount, 3)
+    }
+
+    /// The §10 clearing rule: a cellSet that CHANGES the cell's value removes the
+    /// mark — a different letter or a clear — because the mark's claim is stale.
+    func test_cellSetValueChangeClearsTheMark_PROTOCOL10() {
+        var cells = Array(repeating: Cell(v: nil, by: nil), count: 20)
+        cells[2] = Cell(v: "A", by: "u-other")
+        cells[5] = Cell(v: "B", by: "u-other")
+        let (store, _) = makeLiveStore(board(cells: cells, checkedWrongCells: [2, 5], checkCount: 1))
+        store.receive(cellSet(seq: 1, cell: 2, value: "X"))
+        XCTAssertEqual(store.checkedWrong, [5], "an overwrite with a new letter clears the mark")
+        store.receive(cellSet(seq: 2, cell: 5, value: nil))
+        XCTAssertTrue(store.checkedWrong.isEmpty, "a clear to null clears the mark")
+        XCTAssertEqual(store.checkCount, 1, "the count is permanent; edits never lower it")
+    }
+
+    /// A same-value no-op keeps the mark, because the mark is still true (PROTOCOL.md
+    /// §10; D27 rejected clearing on any write for exactly this case).
+    func test_cellSetSameValueKeepsTheMark_PROTOCOL10() {
+        var cells = Array(repeating: Cell(v: nil, by: nil), count: 20)
+        cells[2] = Cell(v: "A", by: "u-other")
+        let (store, _) = makeLiveStore(board(cells: cells, checkedWrongCells: [2], checkCount: 1))
+        store.receive(cellSet(seq: 1, cell: 2, value: "A"))
+        XCTAssertEqual(store.checkedWrong, [2], "a same-value rewrite is not a value change")
+    }
+
+    /// A teammate retyping the marked letter in lowercase reaches the wire as the
+    /// server-normalized SAME value (INV-1: normalization is byte-wise ASCII on both
+    /// sides), so the mark stands: normalize-same is same-value, never a change.
+    func test_normalizedSameValueEchoKeepsTheMark_INV1() {
+        var cells = Array(repeating: Cell(v: nil, by: nil), count: 20)
+        cells[2] = Cell(v: "A", by: "me")
+        let (store, _) = makeLiveStore(board(cells: cells, checkedWrongCells: [2], checkCount: 1))
+        // The teammate typed "a"; the server's echo carries the normalized "A".
+        store.receive(cellSet(seq: 1, cell: 2, value: "A", by: "u-other", commandId: "c-low"))
+        XCTAssertEqual(store.checkedWrong, [2])
+    }
+
+    // MARK: - The checkPuzzle intent (PROTOCOL.md §5; design R1, R2)
+
+    func test_checkPuzzleSendsOneCommandWithAMintedId_PROTOCOL5() {
+        let store = GameStore(newCommandId: { "c-minted" })
+        store.receive(welcome(board()))
+        store.checkPuzzle()
+        XCTAssertEqual(
+            store.outbox, [.checkPuzzle(CheckPuzzleMessage(commandId: "c-minted"))])
+        XCTAssertTrue(
+            store.overlay.isEmpty, "a check is not a cell write: no optimistic entry")
+    }
+
+    func test_checkPuzzleHonorsACallerSuppliedCommandId_PROTOCOL5() {
+        let (store, _) = makeLiveStore()
+        store.checkPuzzle(commandId: "c-explicit")
+        XCTAssertEqual(
+            store.outbox, [.checkPuzzle(CheckPuzzleMessage(commandId: "c-explicit"))])
+    }
+
+    func test_checkPuzzleRefusedWhileConnectingAndAfterTerminal_INV4() {
+        let connecting = GameStore()
+        connecting.checkPuzzle()
+        XCTAssertTrue(connecting.outbox.isEmpty, "no authoritative board yet")
+        let (completed, _) = makeLiveStore(board(status: .completed))
+        completed.checkPuzzle()
+        XCTAssertTrue(completed.outbox.isEmpty, "the server would answer GAME_NOT_ONGOING")
+    }
+
+    /// GRID_NOT_FULL is non-fatal and silent (PROTOCOL.md §11; design R2): the
+    /// rejection is recorded, no overlay entry exists for the check's commandId to
+    /// clear (the handler must not assume one), and the connection stays live.
+    func test_gridNotFullRejectionIsSilentAndClearsNoOverlay_PROTOCOL11() {
+        let (store, _) = makeLiveStore()
+        store.placeLetter(cell: 0, value: "A", commandId: "c-cell")
+        store.checkPuzzle(commandId: "c-check")
+        let rejection = ErrorMessage(
+            code: .gridNotFull, message: "grid not full", fatal: false, commandId: "c-check")
+        store.receive(.error(rejection))
+        XCTAssertEqual(store.lastRejection, rejection)
+        XCTAssertEqual(store.overlay.map(\.commandId), ["c-cell"], "the cell entry is untouched")
+        XCTAssertEqual(store.sync, .live)
+    }
+
+    /// The live-event beat surfaces for the view's haptic exactly once per applied
+    /// event; snapshot healing is history arriving and stays silent.
+    func test_onPuzzleCheckedFiresForTheLiveEventNotForSnapshots_PROTOCOL7() {
+        var beats: [Int] = []
+        let store = GameStore()
+        store.onPuzzleChecked = { beats.append($0.checkCount) }
+        store.receive(welcome(board(checkedWrongCells: [3], checkCount: 1)))
+        XCTAssertEqual(beats, [], "healing marks from a welcome is not a moment")
+        store.receive(puzzleChecked(seq: 1, wrongCells: [3, 4], checkCount: 2))
+        XCTAssertEqual(beats, [2])
+        store.receive(puzzleChecked(seq: 1, wrongCells: [3, 4], checkCount: 2))
+        XCTAssertEqual(beats, [2], "a stale redelivery never re-fires the beat")
     }
 
     // MARK: - The mailbox (AD-1): one consumption loop, one ordered outbound pump

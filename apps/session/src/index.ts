@@ -21,13 +21,22 @@ export {
   boardCells,
   buildBoard,
   cellSetToWire,
+  checkedWrongAscending,
+  puzzleCheckedToWire,
   toEngineCommand,
 } from "./adapt";
-export { colorForUser } from "./color";
+// The color derivation moved to @crossy/protocol (D28: the room-aware assignment lives where both
+// services can reach it); re-exported so this surface is unchanged.
+export { colorForUser } from "@crossy/protocol";
 export {
   createPgPersistence,
   flushToPostgres,
   flushTerminalToPostgres,
   countDistinctWriters,
 } from "./writer";
-export type { GamePersistence, StateSnapshot } from "./writer";
+export type {
+  BoardSnapshot,
+  CheckEventRow,
+  GamePersistence,
+  StateSnapshot,
+} from "./writer";

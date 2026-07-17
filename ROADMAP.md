@@ -1064,3 +1064,197 @@ the five (the system emoji keyboard supplies any emoji, validated against the RG
 before write), and the reaction fan reading the set instead of the bundled five. **Exit: an
 iOS user edits their five, the fan sends them, and the set matches what web shows for the
 same account.**
+
+## Phase 9 — Cross-reference and starred clues (D26)
+
+Recorded for numbering continuity: executed straight off DESIGN.md D26 as Wave 9.1 (web,
+#260) and Wave 9.2 (iOS, #262), the revealer lighting the starred clues through the
+cross-reference chokepoint. No further waves here.
+
+## Phase 10 — Solver titles (post-game superlatives)
+
+Design landed: `design/post-game/TITLES.md` (plan of record: the stat sheet, the award
+ladder, pinned constants), the ANALYSIS.md law amendment (titles count, they never
+interpret; one title per solver; evidence numbers allowed, the shared axis stays
+forbidden; the unlock moment killed, both owner rulings 2026-07-16), and the `titles`
+field on the analysis bundle (PROTOCOL.md section 12). Every solver in a completed
+multi-solver room gets at most one superlative (the saboteur, the ice breaker, the
+workhorse), awarded by a deterministic gate-and-argmax ladder over a per-solver stat
+sheet, both pure engine reducers. The ladder's floor tier is ordinal (its claims exist
+for any solver with a fill), so every solver who filled a square is guaranteed a title
+in rooms of up to six such solvers. The person moment cards (First square, Last square)
+retire in favor of the title cards; the turning point stays on the ribbon.
+
+**Vectors first.** The stat sheet and the ladder are shared normative ground: web and iOS
+must agree on who the saboteur was, so `vectors/analysis/titles.json` lands ahead of the
+engine, citing the TITLES.md constants.
+
+### Wave 10.1 — contract (this PR)
+
+TITLES.md, the ANALYSIS.md amendment, the PROTOCOL section 12 row, this phase. Docs only;
+no app or vector code. **Exit: the four checks are green and the waves below have a
+contract to land against.**
+
+### Wave 10.2 — vectors (blocked on 10.1)
+
+`vectors/analysis/titles.json`: stat-sheet cases (each stat exercised, the
+overwrite-vs-wrongWrite boundary, the rebus comparator boundary, the self-overwrite
+exclusion, clock skew where `at` and `seq` order disagree, the burst-window endpoint,
+the odd-grid quadrant boundary, whole-second flooring, marquee slots via starred and
+via the length-tier fallback) and award cases (gate refusals, the already-titled
+fall-through, both tie-breaks, the zero-fill saboteur, the event-membership solo rule,
+the coverage theorem: every specialty gate failing still titles six fillers off the
+ordinal floor, a seventh is the documented remainder). **Exit: the runner
+shape-validates the family; every case cites the TITLES.md rule it defends.**
+
+### Wave 10.3 — engine (blocked on 10.2)
+
+`titleStats(events, solution, slots)` and `awardTitles(statSheet)` in `packages/engine`,
+the ladder a fixed engine constant, slots arriving as data (INV-9), greened against the
+Wave 10.2 vectors. **Exit: the vectors pass; the reducers are pure and deterministic.**
+
+### Wave 10.4 — api (blocked on 10.3)
+
+The Archive module lifts the slot list and starred flags from `games.puzzle_snapshot`,
+runs the two reducers beside the existing three, and appends `titles` to the analysis
+bundle. Gate, cache, and INV-4 reasoning unchanged. **Exit: a completed game with two
+or more writers carries its titles; fewer than two writers is empty; no letter rides
+out (INV-6).**
+
+### Wave 10.5 — web (blocked on 10.4)
+
+The Analysis tab's Moments section becomes Titles: one card per titled solver (dot, name,
+title copy, evidence), First square and Last square retire, unknown keys are ignored.
+**Exit: a finished room shows everyone their superlative; a solo solve shows no Titles
+section.**
+
+### Wave 10.6 — iOS (blocked on 10.4)
+
+The same swap in the analysis sheet, copy and order matching web. **Exit: the same room
+shows the same titles on both platforms.**
+
+## Phase 11 — Sittings (active time over the event log)
+
+Design landed: `design/post-game/SITTINGS.md` (plan of record: the partition, the
+active-time mapping, the wire and stats amendments, the presentation rules), DESIGN.md
+D29 plus the §2 timer sentence, the PROTOCOL amendments (§4/§6 stats, §12 bundle), and
+the vectors. A **sitting** is a maximal run of cell events with consecutive gaps under
+`SITTING_GAP_MS` (30 minutes, frozen beside `BURST_WINDOW_MS`); activity is any cell
+event, and the partition is a pure projection over the append-only log — no pause
+command, "there is no pause" stands. The analysis bundle re-bases onto concatenated
+active time (`solveTrace(collapseIdle(events), solution)`; field names and shapes
+unchanged; single-sitting games byte-identical), gains the additive `sittings` field
+(`{count, spans, wallSeconds}`), and `game_state.stats` gains additive
+`activeSolveSeconds` and `sittingCount` (expand/contract; `solveTimeSeconds` keeps wall
+clock). Active time becomes the headline Time stat; the sitting count is context; wall
+clock is flavor only. Titles keep their wall-clock basis this phase (owner ruling: the
+ice-breaker re-base and `marathoner` are a named fast-follow).
+
+**Vectors first.** The partition and the remap are shared normative ground:
+`vectors/analysis/sittings.json` and the composed multi-sitting cases in the three
+trace-projection files land with the contract, ahead of the engine.
+
+### Wave 11.1 — contract (this PR)
+
+SITTINGS.md, the DESIGN.md D29 entry and §2 sentence, the PROTOCOL §4/§6/§12
+amendments, `vectors/analysis/sittings.json`, the composed cases in `momentum.json` /
+`moments.json` / `sequence.json`, the vectors README, this phase. Docs and vectors only;
+no app or engine code. **Exit: the four checks are green, every pre-existing vector case
+is byte-identical, and the waves below have a contract to land against.**
+
+### Wave 11.2 — engine (blocked on 11.1)
+
+`SITTING_GAP_MS`, `collapseIdle(events)`, and `sittings(events, solution)` in
+`packages/engine` beside the shipped reducers (which are not edited), greened against
+the Wave 11.1 vectors: the two `sittings.json` clusters bind with the same narrow
+reader, and the three composed cases assert the
+`f(solveTrace(collapseIdle(events), solution))` pipeline. **Exit: the vectors pass; the
+reducers are pure (INV-9) and the pre-sittings cases still pass byte-identical.**
+
+### Wave 11.3 — server (blocked on 11.2)
+
+Two halves, one wave. The API's Archive module inserts `collapseIdle` ahead of the trace
+and appends `sittings` to the bundle (gate, cache, INV-4 reasoning unchanged; every
+completed game gains the re-base retroactively on read). The session's terminal flush
+computes `activeSolveSeconds` and `sittingCount` from the flushed event log (importing
+the engine reducer, timestamps as data) and freezes them into `stats` beside
+`solveTimeSeconds`; `packages/protocol`'s `Stats` gains the two optional fields. **Exit:
+a multi-sitting completed game ships a compact bundle with seams; new completions carry
+both stats fields; historic frozen rows still decode (fields absent, clients fall
+back).**
+
+### Wave 11.4 — web (blocked on 11.3)
+
+Active time becomes the headline Time stat everywhere stats render; "· n sittings"
+context appears at 2 or more; the momentum ribbon draws seam ticks from `spans`; wall
+clock survives only as flavor copy from `wallSeconds`. **Exit: a two-evening solve reads
+as minutes of presence with two seams, and a single-sitting game renders exactly as
+before.**
+
+### Wave 11.5 — iOS (blocked on 11.3)
+
+The same swap in the completion stats and the analysis sheet, copy and placement
+matching web. **Exit: the same room reads the same time, count, and seams on both
+platforms.**
+
+## Phase 12 — Titles revisit (the D29 fast-follow)
+
+Contract landed: the TITLES.md two-bases amendment (`brokeStall` and the room's
+`stallSeconds` re-base onto `moments(solveTrace(collapseIdle(events), solution))`,
+byte-identical to the bundle's shipped projection, so the ribbon marker and the
+ice-breaker card can never fork; `span` and `burst` deliberately stay wall-clock, since
+a burst window must never straddle a collapsed seam and the wall span is honest flavor),
+the `marathoner` rung at rank 8 (present in every sitting of a 2-plus-sitting room,
+claim max fills, evidence the sitting count; the sheet gains `sittingsPresent`, the room
+header `sittingCount`; the ladder is 16 rungs), and the SITTINGS.md / DESIGN.md D29
+follow-up notes. No wire change: `marathoner` is one more key under PROTOCOL §12's
+ignore-unknown-keys rule.
+
+**Vectors first.** The re-base and the new rung are shared normative ground: the
+`titleStatsRevisit` and `awardTitlesRevisit` clusters in `vectors/analysis/titles.json`
+land with the contract, data-only ahead of the engine (the Wave 10.2 posture). The
+shipped Wave 10.3 reader binds only the two legacy clusters and ignores the new keys;
+every legacy fixture is single-sitting, so the re-base leaves all of them byte-identical
+(the D29 identity), and none is touched.
+
+### Wave 12.1 — contract (this PR)
+
+The TITLES.md, SITTINGS.md, and DESIGN.md amendments, the two revisit vector clusters,
+the vectors README, this phase. Docs and vectors only; no engine, server, or client
+code. **Exit: the four checks are green and every legacy vector case is untouched.**
+
+### Wave 12.2 — engine (blocked on 12.1)
+
+`titleStats` re-bases its turning point onto the collapsed trace and grows
+`sittingsPresent` and `room.sittingCount` (reusing `collapseIdle` and `SITTING_GAP_MS`,
+intra-engine, INV-9); `TITLE_LADDER` gains `marathoner` at rank 8. The reader adopts the
+revisit clusters beside the legacy ones; a legacy award given's absent `sittingCount`
+reads as 1 and absent `sittingsPresent` as 0, so the marathoner gate refuses and the
+legacy clusters pass byte-identical. **Exit: all four clusters green; the composed
+revisit case closes the events-to-awards pipeline.**
+
+### Wave 12.3 — server test-flip (ABSORBED into 12.2)
+
+Planned as its own wave, absorbed in practice: the engine re-base flips the server's
+behavior in the same CI run (apps/api tests run against the workspace engine), so the
+api test pinning the deferred basis, the Archive module's deferral comment, and
+PROTOCOL §12's deferring sentence ("`titles` alone keep their wall-clock basis for
+now") all had to retire in the 12.2 PR to keep main green. **Exit (carried by 12.2): a
+multi-sitting completed game ships within-sitting ice-breaker evidence and, where
+earned, a marathoner; single-sitting bundles are byte-identical.**
+
+### Wave 12.4 — web (ABSORBED into 12.2)
+
+Copy only, same absorption: `TITLE_COPY` is keyed by the engine's `TitleKey` as a
+deliberate compile tripwire, so extending the union forced the marathoner card into the
+12.2 PR ("Showed up for both sittings" at two, "all n sittings" above; evidence the
+sitting count); ice-breaker copy unchanged, its number simply stops lying. **Exit
+(carried by 12.2): a multi-sitting room shows its marathoner; unknown keys are still
+ignored.**
+
+### Wave 12.5 — iOS (independent; lands in any order)
+
+The same copy in the analysis sheet, matching web string for string (iOS owns no
+`TitleKey` union, so nothing forces it into 12.2; unknown keys were already ignored, so
+it can merge before or after). **Exit: the same room shows the same titles on both
+platforms.**

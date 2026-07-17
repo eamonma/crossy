@@ -11,9 +11,11 @@ import type { StackMember } from "./primitives";
 import type { OwnerMap } from "./mosaicReveal";
 import type { Bearer } from "../net/authedFetch";
 import {
+  fetchAnalysisOnce,
   fetchAttributionOnce,
   fetchAttributionWithRetry,
   lastWriterOwnerMap,
+  readSittings,
   rosterOf,
   shouldBloomOnCompletion,
 } from "./completionAttribution";
@@ -30,10 +32,17 @@ function completedBoard(
     completedAt: "2026-07-07T00:06:12Z",
     abandonedAt: null,
     cells: [...cells],
+    checkedWrongCells: [],
+    checkCount: 0,
     participants: [],
     cursors: [],
     recentCommandIds: [],
-    stats: { solveTimeSeconds: 372, totalEvents: 4, participantCount: 2 },
+    stats: {
+      solveTimeSeconds: 372,
+      totalEvents: 4,
+      participantCount: 2,
+      checkCount: 0,
+    },
   };
 }
 
@@ -175,6 +184,121 @@ describe("fetchAttributionOnce (GET /games/:id/analysis, reads owners; INV-6 use
       expect(map).toEqual({ 0: "u-a" });
     });
     expect(calls.map((c) => c.auth)).toEqual(["Bearer stale", "Bearer fresh"]);
+  });
+});
+
+describe("fetchAnalysisOnce (the whole bundle; titles tolerate an older API)", () => {
+  const bearer: Bearer = {
+    getToken: () => Promise.resolve("tok"),
+    refresh: () => Promise.resolve(null),
+  };
+
+  it("passes the wire's titles through untouched (order, keys, evidence; PROTOCOL §12)", async () => {
+    const titles = [
+      { userId: "u-a", title: "saboteur", evidence: 7 },
+      { userId: "u-b", title: "one-hit-wonder", evidence: null },
+    ];
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: {}, titles } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.titles).toEqual(titles);
+      },
+    );
+  });
+
+  it("reads an absent titles field (an API that predates the ladder) as empty, never a crash", async () => {
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: { "0": "u-a" } } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.titles).toEqual([]);
+        expect(bundle?.owners).toEqual({ 0: "u-a" });
+      },
+    );
+  });
+
+  it("reads a malformed titles field as empty (the additive field never poisons the bundle)", async () => {
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: {}, titles: "nope" } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.titles).toEqual([]);
+      },
+    );
+  });
+
+  it("passes the wire's sittings through untouched (count, spans, wallSeconds; PROTOCOL §12, D29)", async () => {
+    const sittings = {
+      count: 2,
+      spans: [
+        { startSeconds: 0, endSeconds: 300 },
+        { startSeconds: 300, endSeconds: 360 },
+      ],
+      wallSeconds: 29160,
+    };
+    await withFetch(
+      stubFetch({ ok: true, json: { owners: {}, sittings } }),
+      async () => {
+        const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+        expect(bundle?.sittings).toEqual(sittings);
+      },
+    );
+  });
+
+  it("omits sittings when the field is absent (an older cached bundle degrades, PROTOCOL §12, D29)", async () => {
+    await withFetch(stubFetch({ ok: true, json: { owners: {} } }), async () => {
+      const bundle = await fetchAnalysisOnce("https://api", "g1", bearer);
+      expect(bundle?.sittings).toBeUndefined();
+    });
+  });
+});
+
+describe("readSittings (the additive field never poisons the bundle, D29)", () => {
+  it("reads a sound shape, spans in order", () => {
+    expect(
+      readSittings({
+        count: 2,
+        spans: [
+          { startSeconds: 0, endSeconds: 300 },
+          { startSeconds: 300, endSeconds: 360 },
+        ],
+        wallSeconds: 29160,
+      }),
+    ).toEqual({
+      count: 2,
+      spans: [
+        { startSeconds: 0, endSeconds: 300 },
+        { startSeconds: 300, endSeconds: 360 },
+      ],
+      wallSeconds: 29160,
+    });
+  });
+
+  it("reads any malformed shape as absence, so the surface degrades instead of crashing", () => {
+    expect(readSittings(undefined)).toBeUndefined();
+    expect(readSittings("nope")).toBeUndefined();
+    expect(readSittings({ count: 2 })).toBeUndefined();
+    expect(
+      readSittings({ count: "2", spans: [], wallSeconds: 1 }),
+    ).toBeUndefined();
+    expect(
+      readSittings({ count: 2, spans: "nope", wallSeconds: 1 }),
+    ).toBeUndefined();
+    expect(
+      readSittings({
+        count: 2,
+        spans: [{ startSeconds: 0 }],
+        wallSeconds: 1,
+      }),
+    ).toBeUndefined();
+    expect(
+      readSittings({
+        count: 2,
+        spans: [{ startSeconds: 0, endSeconds: Number.NaN }],
+        wallSeconds: 1,
+      }),
+    ).toBeUndefined();
   });
 });
 

@@ -27,27 +27,38 @@ enum RoomMapping {
 
     /// Map the post-game analysis view to the room's render shape (owner ruling
     /// 2026-07-13). The wire `owners` map is string-keyed (JSON object keys); its
-    /// `ownersByCell` parses them to cell indices. INV-6 rides through untouched:
-    /// AnalysisView carries userIds, cells, and numbers only, and RoomAnalysis holds
-    /// nothing solution-shaped either.
+    /// `ownersByCell` parses them to cell indices. Titles ride verbatim, keys included
+    /// (the display table decides what it knows, PROTOCOL.md §12 forward
+    /// compatibility); an older API that omits the field reads as none. INV-6 rides
+    /// through untouched: AnalysisView carries userIds, cells, keys, and numbers only,
+    /// and RoomAnalysis holds nothing solution-shaped either.
     static func analysis(_ view: AnalysisView) -> RoomAnalysis {
         RoomAnalysis(
             owners: view.ownersByCell,
             momentum: RoomMomentum(
                 durationSeconds: view.momentum.durationSeconds,
                 samples: view.momentum.samples),
-            firstToFall: view.moments.firstToFall.map(mapBeat),
-            lastSquare: view.moments.lastSquare.map(mapBeat),
             turningPoint: view.moments.turningPoint.map { point in
                 RoomTurningPoint(
                     stallSeconds: point.stallSeconds,
                     breakSeconds: point.breakSeconds,
                     burst: point.burst)
+            },
+            titles: (view.titles ?? []).map {
+                RoomTitle(userId: $0.userId, key: $0.title, evidence: $0.evidence)
+            },
+            // The sittings partition rides verbatim (D29); an older cached bundle
+            // omits it and the surface degrades to today's rendering (no context
+            // suffix, no seam ticks), per PROTOCOL.md §12's absence rule.
+            sittings: view.sittings.map { sittings in
+                RoomSittings(
+                    count: sittings.count,
+                    spans: sittings.spans.map {
+                        RoomSittings.Span(
+                            startSeconds: $0.startSeconds, endSeconds: $0.endSeconds)
+                    },
+                    wallSeconds: sittings.wallSeconds)
             })
-    }
-
-    private static func mapBeat(_ beat: AnalysisView.Beat) -> RoomBeat {
-        RoomBeat(cell: beat.cell, userId: beat.userId, atSeconds: beat.atSeconds)
     }
 
     /// The REST view's membership as the store's roster seed (the app target owns the

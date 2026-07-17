@@ -3,10 +3,11 @@
 // ground. It rides inside the completed clue chrome's Analysis tab (ClueChrome),
 // so this view is content only, no scroll of its own and no chrome: the "Solved
 // together" eyebrow, the Time/Solvers/Squares trio, the roster legend, the
-// momentum ribbon, and the two moment cards.
+// momentum ribbon, and the title cards (design/post-game/TITLES.md; the person
+// moment cards, First square and Last square, retired in their favor).
 //
 // Everything here is first-correct truth from GET /analysis (RoomAnalysis): the
-// legend and the moments read the owners map's userIds, colored through the same
+// legend and the titles read the bundle's userIds, colored through the same
 // roster seam the avatars and the mosaic use (GridPresence.rosterColor). No solve
 // value is in reach (INV-6): the bundle carries userIds, cells, and numbers only.
 
@@ -20,6 +21,14 @@ struct AnalysisPanel: View {
     let members: [RosterMember]
     let selfUserId: String?
     let ground: GridGround
+    /// The isolated solver on the settled wash (the legend chips' selected
+    /// state), or nil at the full multi-color record.
+    let isolatedSolverId: String?
+    /// Isolate a solver from their legend chip: same-tap clears, another
+    /// switches (CompletionModel.toggleIsolation). Nil while isolation is
+    /// unavailable — the bloom still playing — where the chips stay the plain
+    /// labels they always were.
+    let onIsolateSolver: ((String) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -58,21 +67,15 @@ struct AnalysisPanel: View {
 
         let legend = legendRows(analysis)
         if !legend.isEmpty {
-            FlowLayout(spacing: 14, lineSpacing: 8) {
+            // Tighter chip spacing once the rows wear the tappable capsule
+            // (its own padding carries the air); the plain labels keep theirs.
+            FlowLayout(spacing: onIsolateSolver == nil ? 14 : 8, lineSpacing: 8) {
                 ForEach(legend) { row in
-                    HStack(spacing: 6) {
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(Color(rgb: row.color))
-                            .frame(width: 10, height: 10)
-                        Text(verbatim: row.name)
-                            .font(.system(size: 12.5, weight: row.isSelf ? .semibold : .regular))
-                            .foregroundStyle(
-                                Color(rgb: row.isSelf ? ground.tokens.ink : ground.tokens.number))
-                    }
+                    legendChip(row)
                 }
             }
             .padding(.top, 14)
-            Text(verbatim: "Each square shows who solved it first.")
+            Text(verbatim: legendCaption(legend))
                 .font(.system(size: 11))
                 .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
                 .padding(.top, 6)
@@ -85,44 +88,127 @@ struct AnalysisPanel: View {
         MomentumRibbon(
             momentum: analysis.momentum,
             turningPoint: analysis.turningPoint,
-            ground: ground)
+            ground: ground,
+            sittings: analysis.sittings)
         Text(verbatim: momentumCaption(analysis))
             .font(.system(size: 11))
             .lineSpacing(1.5)
             .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
             .padding(.top, 8)
 
-        // Moments: person only, no times (they degenerate; the first is always 0,
-        // the last always the duration).
-        if analysis.firstToFall != nil || analysis.lastSquare != nil {
-            capsLabel("Moments")
+        // Titles: everyone's superlative (design/post-game/TITLES.md), one card per
+        // titled solver, in the wire's ladder-rank order (reordering client-side would
+        // fork the two platforms' surfaces). An unknown key renders nothing (PROTOCOL
+        // §12: a client MUST ignore an unknown key; that is how the ladder grows), and
+        // a solo solve (or an older API) ships no titles, so the section vanishes
+        // entirely, never an empty-state box.
+        let cards = analysis.titles.compactMap(TitleLadder.card(for:))
+        if !cards.isEmpty {
+            capsLabel("Titles")
                 .padding(.top, 22)
                 .padding(.bottom, 2)
             VStack(alignment: .leading, spacing: 0) {
-                if let first = analysis.firstToFall {
-                    momentRow(label: "First square", userId: first.userId)
-                }
-                if analysis.firstToFall != nil, analysis.lastSquare != nil {
-                    Rectangle()
-                        .fill(Color(rgb: ground.tokens.number).opacity(0.18))
-                        .frame(height: 1)
-                }
-                if let last = analysis.lastSquare {
-                    momentRow(label: "Last square", userId: last.userId)
+                ForEach(Array(cards.enumerated()), id: \.element.userId) { index, card in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(Color(rgb: ground.tokens.number).opacity(0.18))
+                            .frame(height: 1)
+                    }
+                    titleRow(card)
                 }
             }
         }
     }
 
+    // MARK: The legend
+
+    /// One legend row. Once the wash settles the row is a button that isolates
+    /// its solver on the board: a quiet capsule marks it tappable (the stat
+    /// trio's hairline vocabulary), and the selected chip wears its solver's
+    /// color — color stays with the person, chrome stays achromatic (DESIGN.md
+    /// §3). While the bloom still plays (`onIsolateSolver` nil) the row is the
+    /// plain label it always was.
+    @ViewBuilder
+    private func legendChip(_ row: LegendRow) -> some View {
+        let isIsolated = row.id == isolatedSolverId
+        let label = HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(Color(rgb: row.color))
+                .frame(width: 10, height: 10)
+            Text(verbatim: row.name)
+                .font(
+                    .system(
+                        size: 12.5, weight: row.isSelf || isIsolated ? .semibold : .regular))
+                .foregroundStyle(
+                    Color(
+                        rgb: row.isSelf || isIsolated
+                            ? ground.tokens.ink : ground.tokens.number))
+        }
+        if let onIsolateSolver {
+            Button {
+                onIsolateSolver(row.id)
+            } label: {
+                label
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color(rgb: row.color).opacity(isIsolated ? 0.16 : 0)))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(
+                                isIsolated
+                                    ? Color(rgb: row.color).opacity(0.55)
+                                    : Color(rgb: ground.tokens.number).opacity(0.22),
+                                lineWidth: 1))
+                    .contentShape(Capsule(style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: row.name))
+            .accessibilityHint(
+                Text(
+                    verbatim: isIsolated
+                        ? "Shows everyone\u{2019}s squares again."
+                        : row.isSelf
+                            ? "Shows only your squares on the board."
+                            : "Shows only their squares on the board."))
+            .accessibilityAddTraits(isIsolated ? .isSelected : [])
+        } else {
+            label
+        }
+    }
+
+    /// The legend's one caption: what the squares mean; then, once the chips
+    /// can isolate, what a tap does; then who is isolated. The caption is the
+    /// tappability affordance in words, matching the web legend's grammar.
+    private func legendCaption(_ legend: [LegendRow]) -> String {
+        guard onIsolateSolver != nil else {
+            return "Each square shows who solved it first."
+        }
+        if let isolated = legend.first(where: { $0.id == isolatedSolverId }) {
+            return isolated.isSelf
+                ? "Showing only your squares. Tap again for everyone."
+                : "Showing only \(isolated.name)\u{2019}s squares. Tap again for everyone."
+        }
+        return "Each square shows who solved it first. Tap a solver to see just theirs."
+    }
+
     // MARK: The stat trio
 
     private func statTrio(_ analysis: RoomAnalysis) -> some View {
-        let cells: [(label: String, value: String)] = [
-            ("Time", analysis.durationLabel),
-            ("Solvers", String(analysis.solverCount)),
-            ("Squares", String(analysis.entryCount)),
+        // The Time cell's quiet context (owner ruling, D29): active time is THE
+        // time and the sitting count is context, never a second stat — so it rides
+        // inside the Time cell as a small caption ("2 sittings", the "24:13 · 2
+        // sittings" grammar stacked for the cell's third-width), only at two or
+        // more. A single sitting and an older bundle read exactly as today.
+        let cells: [(label: String, value: String, context: String?)] = [
+            ("Time", analysis.durationLabel, analysis.sittingCountSuffix),
+            ("Solvers", String(analysis.solverCount), nil),
+            ("Squares", String(analysis.entryCount), nil),
         ]
-        return HStack(spacing: 0) {
+        // Top-aligned so the caps labels stay on one line when the Time cell
+        // grows its context caption; without a caption nothing moves.
+        return HStack(alignment: .top, spacing: 0) {
             ForEach(Array(cells.enumerated()), id: \.offset) { index, cell in
                 if index > 0 {
                     Rectangle()
@@ -135,6 +221,13 @@ struct AnalysisPanel: View {
                         .font(.system(size: 21, weight: .regular, design: .monospaced))
                         .foregroundStyle(Color(rgb: ground.tokens.ink))
                         .monospacedDigit()
+                    if let context = cell.context {
+                        Text(verbatim: context)
+                            .font(.system(size: 11))
+                            .foregroundStyle(
+                                Color(rgb: ground.tokens.number).opacity(0.85))
+                            .monospacedDigit()
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
@@ -146,18 +239,27 @@ struct AnalysisPanel: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: Moments
+    // MARK: Titles
 
-    private func momentRow(label: String, userId: String) -> some View {
+    /// One title card, the retired moment row's exact grammar plus the evidence line:
+    /// the solver's dot, the title's caps label, the name, and the claim (nothing when
+    /// the rung's number did not arrive; the card degrades to the label alone).
+    private func titleRow(_ card: TitleCard) -> some View {
         HStack(spacing: 11) {
             Circle()
-                .fill(Color(rgb: color(for: userId)))
+                .fill(Color(rgb: color(for: card.userId)))
                 .frame(width: 11, height: 11)
             VStack(alignment: .leading, spacing: 2) {
-                capsLabel(label)
-                Text(verbatim: name(for: userId))
+                capsLabel(card.label)
+                Text(verbatim: name(for: card.userId))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color(rgb: ground.tokens.ink))
+                if let detail = card.detail {
+                    Text(verbatim: detail)
+                        .font(.system(size: 12))
+                        .lineSpacing(1.5)
+                        .foregroundStyle(Color(rgb: ground.tokens.number).opacity(0.85))
+                }
             }
             Spacer(minLength: 0)
         }
@@ -191,7 +293,7 @@ struct AnalysisPanel: View {
 
     /// The solvers who own at least one square, self first and named "You" (the
     /// web's legendSolvers). A member who owns nothing is dropped; an owner who is
-    /// no longer in the roster is not invented here (the moments still name them).
+    /// no longer in the roster is not invented here (the titles still name them).
     private func legendRows(_ analysis: RoomAnalysis) -> [LegendRow] {
         let owners = Set(analysis.owners.values)
         var rows: [LegendRow] = []
@@ -232,9 +334,9 @@ struct AnalysisPanel: View {
         return ground.rosterColor(GridPresence.rosterColor(wireColor: wire, userId: userId))
     }
 
-    /// A solver's name for the moments: "You", the roster display name, or a plain
+    /// A solver's name for the title cards: "You", the roster display name, or a plain
     /// fallback for someone who has left (the wire never hands us a nameless live
-    /// member, but an owner can outlive their roster row).
+    /// member, but a titled solver can outlive their roster row).
     private func name(for userId: String) -> String {
         if userId == selfUserId { return "You" }
         return members.first { $0.userId == userId }?.displayName ?? "A solver"

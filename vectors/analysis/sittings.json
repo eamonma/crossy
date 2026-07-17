@@ -1,0 +1,347 @@
+{
+  "collapseIdle": [
+    {
+      "name": "an empty log collapses to an empty log",
+      "intent": "collapseIdle is total: no events, no gaps, no shift. Mirrors the empty-trace parity the sibling projections pin.",
+      "given": { "events": [] },
+      "then": { "events": [] }
+    },
+    {
+      "name": "a single event is untouched",
+      "intent": "One event has no gap to measure; activeAt equals at. The identity mapping in its smallest form.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 }
+        ]
+      }
+    },
+    {
+      "name": "a single sitting is the identity mapping, byte for byte",
+      "intent": "THE COMPAT PROOF (D29): no gap reaches SITTING_GAP_MS, so no gap collapses and every at is unchanged. Every analysis vector case that predates sittings is in this class, which is why the active-time re-base leaves them all byte-identical.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 60000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 300000 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 60000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 300000 }
+        ]
+      }
+    },
+    {
+      "name": "a gap one millisecond under the threshold does not collapse",
+      "intent": "The boundary rule is >= SITTING_GAP_MS (1,800,000 ms). A 1,799,999 ms gap is under it: one sitting, identity mapping. The from-below edge of the threshold.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 1799999 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 1799999 }
+        ]
+      }
+    },
+    {
+      "name": "a gap of exactly SITTING_GAP_MS is a boundary and collapses in full",
+      "intent": "The pinned tie: >= threshold splits. The whole 1,800,000 ms gap is subtracted, so the boundary events share one active instant (the seam), not a threshold-sized remainder.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 1800000 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 0 }
+        ]
+      }
+    },
+    {
+      "name": "an overnight gap collapses to zero and the later sitting slides back whole",
+      "intent": "activeAt = at - (sum of collapsed gaps before it). The 28,800,000 ms (8 h) gap collapses in full: the last event of sitting 1 (at 300000) and the first of sitting 2 land on the same active instant 300000, and within-sitting spacing (60000 ms) is preserved.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 300000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 29100000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 29160000 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 300000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 300000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 360000 }
+        ]
+      }
+    },
+    {
+      "name": "three sittings: each collapsed gap deepens the cumulative shift",
+      "intent": "Two boundaries (gaps of 2,000,000 and 3,600,000 ms). The shift accumulates: sitting 2 slides back by 2,000,000, sitting 3 by 5,600,000, so the three sittings concatenate at 0-120s, 120-180s, 180-240s on the active axis.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 120000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 2120000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 2180000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "E", "at": 5780000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "F", "at": 5840000 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 120000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 120000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 180000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "E", "at": 180000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "F", "at": 240000 }
+        ]
+      }
+    },
+    {
+      "name": "clock skew never splits: a negative gap is below the threshold",
+      "intent": "Gaps are measured between consecutive events in seq order. Skew across writers puts a later-seq event at an earlier at, making the gap negative, which is under SITTING_GAP_MS: one sitting, identity mapping.",
+      "given": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 60000 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 0 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 30000 }
+        ]
+      },
+      "then": {
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 60000 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 0 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 30000 }
+        ]
+      }
+    }
+  ],
+  "sittings": [
+    {
+      "name": "an empty log has no sittings",
+      "intent": "count 0, no spans, wallSeconds 0. Total, though unreachable through the completed-only /analysis gate.",
+      "given": {
+        "solution": [[0, "A"]],
+        "events": []
+      },
+      "then": { "count": 0, "spans": [], "wallSeconds": 0 }
+    },
+    {
+      "name": "a single fill is one sitting with a zero-width span",
+      "intent": "One event, one sitting. The trace is a single instant, so durationSeconds is 0: the span is [0, 0] and wallSeconds 0.",
+      "given": {
+        "solution": [[0, "A"]],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 1000 }
+        ]
+      },
+      "then": {
+        "count": 1,
+        "spans": [{ "startSeconds": 0, "endSeconds": 0 }],
+        "wallSeconds": 0
+      }
+    },
+    {
+      "name": "a single sitting is one span [0, durationSeconds] and wallSeconds equals it",
+      "intent": "The single-sitting wire identity (D29): count 1, exactly one span covering the whole active axis, and wallSeconds == momentum.durationSeconds because nothing collapsed. A single-sitting game reads exactly as today.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"],
+          [2, "C"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 60000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 240000 }
+        ]
+      },
+      "then": {
+        "count": 1,
+        "spans": [{ "startSeconds": 0, "endSeconds": 240 }],
+        "wallSeconds": 240
+      }
+    },
+    {
+      "name": "one millisecond under the threshold stays one sitting, and nothing rounds",
+      "intent": "The from-below edge on the wire: a 1,799,999 ms gap does not split. Pins the exact-division idiom too: the bundle reports 1799.999, unrounded (the engine subtracts and divides, it does not round), so span end and wallSeconds stay byte-equal to durationSeconds.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 1799999 }
+        ]
+      },
+      "then": {
+        "count": 1,
+        "spans": [{ "startSeconds": 0, "endSeconds": 1799.999 }],
+        "wallSeconds": 1799.999
+      }
+    },
+    {
+      "name": "a gap of exactly SITTING_GAP_MS splits: two sittings, degenerate spans, wall kept for flavor",
+      "intent": "The pinned tie on the wire: >= collapses. Both fills land on active instant 0, so durationSeconds is 0 and both spans are [0, 0], while wallSeconds keeps the 1800 s wall span for flavor copy.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 1800000 }
+        ]
+      },
+      "then": {
+        "count": 2,
+        "spans": [
+          { "startSeconds": 0, "endSeconds": 0 },
+          { "startSeconds": 0, "endSeconds": 0 }
+        ],
+        "wallSeconds": 1800
+      }
+    },
+    {
+      "name": "two sittings across a night: contiguous spans, the seam at 300, the wall span at 29160",
+      "intent": "The reference two-sitting solve (same log as collapseIdle's overnight case). Active duration 360 s; the boundary sits at active 300 s, so spans are [0, 300] and [300, 360]: spans[1].startSeconds == spans[0].endSeconds, the seam-tick contract. wallSeconds 29160 carries the eight hours for flavor only.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"],
+          [2, "C"],
+          [3, "D"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 300000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 29100000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 29160000 }
+        ]
+      },
+      "then": {
+        "count": 2,
+        "spans": [
+          { "startSeconds": 0, "endSeconds": 300 },
+          { "startSeconds": 300, "endSeconds": 360 }
+        ],
+        "wallSeconds": 29160
+      }
+    },
+    {
+      "name": "three sittings concatenate: [0,120], [120,180], [180,240]",
+      "intent": "The reference three-sitting solve (same log as collapseIdle's cumulative-shift case). Each sitting starts exactly where the last ended; the last span ends at durationSeconds 240; wallSeconds 5840 is the wall trace span.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"],
+          [2, "C"],
+          [3, "D"],
+          [4, "E"],
+          [5, "F"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "B", "at": 120000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 2120000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "D", "at": 2180000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "E", "at": 5780000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "F", "at": 5840000 }
+        ]
+      },
+      "then": {
+        "count": 3,
+        "spans": [
+          { "startSeconds": 0, "endSeconds": 120 },
+          { "startSeconds": 120, "endSeconds": 180 },
+          { "startSeconds": 180, "endSeconds": 240 }
+        ],
+        "wallSeconds": 5840
+      }
+    },
+    {
+      "name": "ACTIVITY IS ANY EVENT: a wrong write mid-gap keeps the sitting alive",
+      "intent": "THE KEY CASE (D29). The first-correct trace alone has a 50-minute quiet stretch (0 to 3,000,000 ms), which would have split were the partition trace-based. The wrong write at 1,500,000 ms is presence, so the partition over the full event log sees gaps of 25 minutes, under the threshold: one sitting, full-width span, nothing collapsed.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"],
+          [2, "C"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "Z", "at": 1500000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "C", "at": 3000000 }
+        ]
+      },
+      "then": {
+        "count": 1,
+        "spans": [{ "startSeconds": 0, "endSeconds": 3000 }],
+        "wallSeconds": 3000
+      }
+    },
+    {
+      "name": "the same two fills without the bridging event split into two sittings",
+      "intent": "The contrast to the activity case: remove the mid-gap wrong write and the 3,000,000 ms gap is a boundary. Both fills share active instant 0, so the spans degenerate while wallSeconds keeps 3000 s. Presence is what bridges, not fills.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [2, "C"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 2, "userId": "u1", "value": "C", "at": 3000000 }
+        ]
+      },
+      "then": {
+        "count": 2,
+        "spans": [
+          { "startSeconds": 0, "endSeconds": 0 },
+          { "startSeconds": 0, "endSeconds": 0 }
+        ],
+        "wallSeconds": 3000
+      }
+    },
+    {
+      "name": "a fill-less first sitting clamps to a zero-width span at the axis origin",
+      "intent": "Spans live on the trace's active axis (the ribbon's axis). A sitting of only wrong writes two hours before the solve contributes no trace entry; its boundary clamps to [0, durationSeconds], so it renders as a zero-width span at 0 while the count stays honest at 2. wallSeconds is the trace's wall span (60 s), not the log's.",
+      "given": {
+        "solution": [
+          [0, "A"],
+          [1, "B"]
+        ],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "Z", "at": 0 },
+          { "seq": 2, "cell": 0, "userId": "u1", "value": "A", "at": 7200000 },
+          { "seq": 3, "cell": 1, "userId": "u2", "value": "B", "at": 7260000 }
+        ]
+      },
+      "then": {
+        "count": 2,
+        "spans": [
+          { "startSeconds": 0, "endSeconds": 0 },
+          { "startSeconds": 0, "endSeconds": 60 }
+        ],
+        "wallSeconds": 60
+      }
+    }
+  ]
+}

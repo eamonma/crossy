@@ -1,0 +1,3870 @@
+{
+  "titleStats": [
+    {
+      "name": "a zero-fill solver gets a full row of zeros with null firstFill; a single-entry trace has no stall",
+      "intent": "TITLES.md pool ruling: a solver appearing in the events at all (u2's one wrong write) owns a row; fills 0, firstFill/lastFill null, every count zero, focus pinned 0 (not NaN). With T = 1 the single trace entry is both the opening and the closing stretch (ceil(OPENING_SHARE * 1) = 1), span is 0 for a single fill, moments().turningPoint is null so nobody brokeStall and room.stallSeconds is 0.",
+      "given": {
+        "rows": 1,
+        "cols": 2,
+        "solution": [
+          [0, "A"],
+          [1, "B"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "Z",
+            "at": 2000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 1,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "lastFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 1,
+            "closingFills": 1,
+            "writes": 1,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 1,
+            "slotsFinished": 1,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "u2": {
+            "fills": 0,
+            "firstFill": null,
+            "lastFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 1,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "slotsStarted": 0,
+            "slotsFinished": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 0
+        }
+      }
+    },
+    {
+      "name": "a wrong write to an empty cell is a wrongWrite, never an overwrite; destroying another's matching cell is an overwrite",
+      "intent": "TITLES.md overwrite boundary, replayed in seq order with a running board: u2's Z onto empty c1 is wrongWrite only; u2's Z onto matching c0 (trace owner u1) is BOTH a wrongWrite and an overwrite; u2's clear of the then-non-matching c0 is neither (the board did not match); u2's later clear of the re-corrected c0 is an overwrite but not a wrongWrite (a clear writes no value).",
+      "given": {
+        "rows": 1,
+        "cols": 3,
+        "solution": [
+          [0, "A"],
+          [1, "B"],
+          [2, "C"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "Z",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 0,
+            "userId": "u2",
+            "value": "Z",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 0,
+            "userId": "u2",
+            "value": null,
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 0,
+            "userId": "u2",
+            "value": null,
+            "at": 6000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 1,
+            "writes": 2,
+            "wrongWrites": 0,
+            "overwrites": 0
+          },
+          "u2": {
+            "fills": 0,
+            "writes": 4,
+            "wrongWrites": 2,
+            "overwrites": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "rebus: a first-char-correct write is not a wrongWrite; upgrading a correct first char to the full rebus is not an overwrite",
+      "intent": "Correctness is everywhere the engine comparator `matches`, never string equality (TITLES.md, FIRST-CORRECT.md): u1's \"S\" against solution \"STAR\" matches (D12 first-char acceptance), so it is a fill, not a wrongWrite. u1's \"STAR\" over own \"S\" and u1's \"TEN\" over u2's matching \"T\" are correct-to-correct rewrites: the replacement still matches, so neither is an overwrite, whoever owns the cell.",
+      "given": {
+        "rows": 1,
+        "cols": 2,
+        "solution": [
+          [0, "STAR"],
+          [1, "TEN"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "S",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 0,
+            "userId": "u1",
+            "value": "STAR",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 1,
+            "userId": "u2",
+            "value": "T",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 1,
+            "userId": "u1",
+            "value": "TEN",
+            "at": 4000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 1,
+            "writes": 3,
+            "wrongWrites": 0,
+            "overwrites": 0
+          },
+          "u2": {
+            "fills": 1,
+            "writes": 1,
+            "wrongWrites": 0,
+            "overwrites": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "clobbering your OWN first-correct cell is never an overwrite (owner ruling: second-guessing, not sabotage)",
+      "intent": "TITLES.md overwrite definition requires the trace owner to be another solver: u1's Z over own matching c0 counts as a wrongWrite but not an overwrite; u1's clear of own matching c1 counts as neither. u2 doing the same to u1's c2 is the contrast: overwrite and wrongWrite both.",
+      "given": {
+        "rows": 1,
+        "cols": 3,
+        "solution": [
+          [0, "A"],
+          [1, "B"],
+          [2, "C"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "B",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "C",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 0,
+            "userId": "u1",
+            "value": "Z",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 1,
+            "userId": "u1",
+            "value": null,
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 2,
+            "userId": "u2",
+            "value": "Z",
+            "at": 6000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 3,
+            "writes": 5,
+            "wrongWrites": 1,
+            "overwrites": 0
+          },
+          "u2": {
+            "fills": 0,
+            "writes": 1,
+            "wrongWrites": 1,
+            "overwrites": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "slotsStarted, slotsFinished, meddles, and slotsTouched over a full 2x3",
+      "intent": "TITLES.md slot stats: a slot's first/last trace entry among its cells by (at, seq) names its starter/finisher; meddles are slots finished by u but started by someone else; slotsTouched counts distinct slots holding at least one of u's fills (one cell touches both its across and its down slot).",
+      "given": {
+        "rows": 2,
+        "cols": 3,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          },
+          {
+            "cells": [3, 4, 5],
+            "starred": false
+          },
+          {
+            "cells": [0, 3],
+            "starred": false
+          },
+          {
+            "cells": [1, 4],
+            "starred": false
+          },
+          {
+            "cells": [2, 5],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 3,
+            "slotsStarted": 2,
+            "slotsFinished": 3,
+            "meddles": 3,
+            "slotsTouched": 5
+          },
+          "u2": {
+            "fills": 3,
+            "slotsStarted": 3,
+            "slotsFinished": 2,
+            "meddles": 2,
+            "slotsTouched": 5
+          }
+        }
+      }
+    },
+    {
+      "name": "opening and closing stretches at an exact-integer share: T = 10 takes exactly 2 entries, the 3rd-earliest is outside",
+      "intent": "TITLES.md: openingFills/closingFills are the owned entries among the first/last ceil(OPENING_SHARE * T) of the (at, seq)-ordered trace, OPENING_SHARE = 0.2. With T = 10, ceil(2) = 2 exactly: u1 owns the first three entries but only two are opening; u2 owns the last two, its closing pair. Ordinal, not temporal.",
+      "given": {
+        "rows": 1,
+        "cols": 10,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 6,
+            "userId": "u2",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 7,
+            "userId": "u1",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 8,
+            "userId": "u2",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 9,
+            "userId": "u2",
+            "value": "A",
+            "at": 10000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "openingFills": 2,
+            "closingFills": 0
+          },
+          "u2": {
+            "openingFills": 0,
+            "closingFills": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "opening/closing at T=15, the exact-integer boundary: window is ceil(T/5)=3, so the 4th-earliest and 4th-latest entries are OUTSIDE the stretch",
+      "intent": "TITLES.md: openingFills/closingFills slice the first/last ceil(OPENING_SHARE * T) of the (at, seq)-ordered trace, OPENING_SHARE = 0.2 = 1/5. At T = 15 the window is exactly ceil(15/5) = 3; the share is a rational fifth, never a float multiply that could round 0.2*15 up to a 4th entry. u2 owns only the 4th-earliest and 4th-latest entries (1-based), both just outside the size-3 opening and closing stretches, so its openingFills and closingFills are 0; u1 owns the three opening and three closing entries. Ordinal, not temporal (INV-9).",
+      "given": {
+        "rows": 1,
+        "cols": 15,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 6,
+            "userId": "u1",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 7,
+            "userId": "u1",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 8,
+            "userId": "u1",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 9,
+            "userId": "u1",
+            "value": "A",
+            "at": 10000
+          },
+          {
+            "seq": 11,
+            "cell": 10,
+            "userId": "u1",
+            "value": "A",
+            "at": 11000
+          },
+          {
+            "seq": 12,
+            "cell": 11,
+            "userId": "u2",
+            "value": "A",
+            "at": 12000
+          },
+          {
+            "seq": 13,
+            "cell": 12,
+            "userId": "u1",
+            "value": "A",
+            "at": 13000
+          },
+          {
+            "seq": 14,
+            "cell": 13,
+            "userId": "u1",
+            "value": "A",
+            "at": 14000
+          },
+          {
+            "seq": 15,
+            "cell": 14,
+            "userId": "u1",
+            "value": "A",
+            "at": 15000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "openingFills": 3,
+            "closingFills": 3
+          },
+          "u2": {
+            "openingFills": 0,
+            "closingFills": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "clock skew: at-order and seq-order disagree; opening/firstFill follow (at, seq), brokeStall follows the shipped moments() seq-order gap scan",
+      "intent": "THE SKEW CASE. The trace in seq order is c0(at 100000, u2), c1(at 5000, u1), c2(at 110000, u1). openingFills and closingFills order the trace by (at, seq): with T = 3, ceil(0.2 * 3) = 1, so the opening entry is c1 (u1, the earliest at despite seq 2) and the closing entry is c2 (u1). firstFill is the earliest owned entry by (at, seq): u1 gets {5000, 2}. brokeStall is pinned byte-identical to the shipped moments() (packages/engine/src/analysis.ts), whose gap scan walks CONSECUTIVE trace entries in seq order: gaps are -95000 then +105000, so the break is c2 (u1) and stallSeconds is 105. An (at, seq)-ordered scan would instead find a 95s stall broken by c0 (u2); where the two orderings disagree, the moments() behavior wins, so the ribbon's marker and the ice-breaker card can never name different people.",
+      "given": {
+        "rows": 1,
+        "cols": 3,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u2",
+            "value": "A",
+            "at": 100000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 110000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 2,
+            "firstFill": {
+              "at": 5000,
+              "seq": 2
+            },
+            "lastFill": {
+              "at": 110000,
+              "seq": 3
+            },
+            "openingFills": 1,
+            "closingFills": 1,
+            "span": 105,
+            "brokeStall": 1
+          },
+          "u2": {
+            "fills": 1,
+            "firstFill": {
+              "at": 100000,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 105
+        }
+      }
+    },
+    {
+      "name": "a fill at exactly t + BURST_WINDOW_MS is inside the closed window; one millisecond past is outside",
+      "intent": "TITLES.md: burst is the max count of a solver's own fills inside any closed window [t, t + BURST_WINDOW_MS], BURST_WINDOW_MS = 30000, the same inclusivity as momentum's burst. u1's fills at 0, 10000, 30000 all sit in [0, 30000] (the endpoint is IN), burst 3; u2's fills at 30001 and 60002 never share a window (60002 > 30001 + 30000 by one ms), burst 1. The room's largest trace gap is 30001 ms, floored to 30 whole seconds.",
+      "given": {
+        "rows": 1,
+        "cols": 6,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 0
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 10000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u1",
+            "value": "A",
+            "at": 30000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 30001
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u2",
+            "value": "A",
+            "at": 60002
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "burst": 3
+          },
+          "u2": {
+            "burst": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 30
+        }
+      }
+    },
+    {
+      "name": "quadrants on a 5x5: the split is at ceil(5/2) = 3, the center cell is top-left, row/col 3 land bottom/right",
+      "intent": "TITLES.md quadrant rule, 0-indexed: a cell is top when row < ceil(rows/2) and left when col < ceil(cols/2). On a 5x5 the split index is 3, so rows 0-2 are top and the center cell 12 (r2, c2) is TOP-LEFT, while cell 17 (r3, c2) is bottom-left, cell 13 (r2, c3) top-right, cell 18 (r3, c3) bottom-right. u1's busiest quadrant is top-left with 3 of 6 fills (focus 0.5); u2's is bottom-right with 2 of 4 (focus 0.5). spread is distinct rows plus distinct cols over owned entries.",
+      "given": {
+        "rows": 5,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"],
+          [15, "A"],
+          [16, "A"],
+          [17, "A"],
+          [18, "A"],
+          [19, "A"],
+          [20, "A"],
+          [21, "A"],
+          [22, "A"],
+          [23, "A"],
+          [24, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4],
+            "starred": false
+          },
+          {
+            "cells": [5, 6, 7, 8, 9],
+            "starred": false
+          },
+          {
+            "cells": [10, 11, 12, 13, 14],
+            "starred": false
+          },
+          {
+            "cells": [15, 16, 17, 18, 19],
+            "starred": false
+          },
+          {
+            "cells": [20, 21, 22, 23, 24],
+            "starred": false
+          },
+          {
+            "cells": [0, 5, 10, 15, 20],
+            "starred": false
+          },
+          {
+            "cells": [1, 6, 11, 16, 21],
+            "starred": false
+          },
+          {
+            "cells": [2, 7, 12, 17, 22],
+            "starred": false
+          },
+          {
+            "cells": [3, 8, 13, 18, 23],
+            "starred": false
+          },
+          {
+            "cells": [4, 9, 14, 19, 24],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 12,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 6,
+            "userId": "u1",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 13,
+            "userId": "u1",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 17,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 18,
+            "userId": "u1",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 15,
+            "userId": "u2",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 19,
+            "userId": "u2",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 23,
+            "userId": "u2",
+            "value": "A",
+            "at": 10000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "homeQuadrantFills": 3,
+            "focus": 0.5,
+            "spread": 8
+          },
+          "u2": {
+            "homeQuadrantFills": 2,
+            "focus": 0.5,
+            "spread": 6
+          }
+        }
+      }
+    },
+    {
+      "name": "span and stallSeconds are whole seconds, floored: a 90750 ms gap reports 90",
+      "intent": "TITLES.md: all whole seconds are floor(). u1's two fills sit 90750 ms apart: span floor(90.75) = 90, and the same gap is the trace's largest, so room.stallSeconds is 90, never 91 (no rounding). u1 owns the break entry, brokeStall 1.",
+      "given": {
+        "rows": 1,
+        "cols": 2,
+        "solution": [
+          [0, "A"],
+          [1, "B"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "B",
+            "at": 91750
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "span": 90,
+            "brokeStall": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 90
+        }
+      }
+    },
+    {
+      "name": "starred slots ARE the marquee set, even beside an equally long unstarred slot; a tied slot has no leader",
+      "intent": "TITLES.md marquee signal 1: when any slot is starred the marquee set is exactly the starred slots, so the unstarred length-8 A-slot [0..7] is out despite passing MARQUEE_MIN_LENGTH. u1 owns 5 of the starred [8..15]'s first-correct cells against u2's 2 and u3's 1: one lead. The starred [0, 8] splits 1-1 between u2 and u1: strictly-more fails, a tied slot has no leader, so it counts for nobody.",
+      "given": {
+        "rows": 2,
+        "cols": 8,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"],
+          [15, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7],
+            "starred": false
+          },
+          {
+            "cells": [8, 9, 10, 11, 12, 13, 14, 15],
+            "starred": true
+          },
+          {
+            "cells": [0, 8],
+            "starred": true
+          },
+          {
+            "cells": [1, 9],
+            "starred": false
+          },
+          {
+            "cells": [2, 10],
+            "starred": false
+          },
+          {
+            "cells": [3, 11],
+            "starred": false
+          },
+          {
+            "cells": [4, 12],
+            "starred": false
+          },
+          {
+            "cells": [5, 13],
+            "starred": false
+          },
+          {
+            "cells": [6, 14],
+            "starred": false
+          },
+          {
+            "cells": [7, 15],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u2",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u2",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 4,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 5,
+            "userId": "u2",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 6,
+            "userId": "u2",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 7,
+            "userId": "u2",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 8,
+            "userId": "u1",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 9,
+            "userId": "u1",
+            "value": "A",
+            "at": 10000
+          },
+          {
+            "seq": 11,
+            "cell": 10,
+            "userId": "u1",
+            "value": "A",
+            "at": 11000
+          },
+          {
+            "seq": 12,
+            "cell": 11,
+            "userId": "u1",
+            "value": "A",
+            "at": 12000
+          },
+          {
+            "seq": 13,
+            "cell": 12,
+            "userId": "u1",
+            "value": "A",
+            "at": 13000
+          },
+          {
+            "seq": 14,
+            "cell": 13,
+            "userId": "u2",
+            "value": "A",
+            "at": 14000
+          },
+          {
+            "seq": 15,
+            "cell": 14,
+            "userId": "u2",
+            "value": "A",
+            "at": 15000
+          },
+          {
+            "seq": 16,
+            "cell": 15,
+            "userId": "u3",
+            "value": "A",
+            "at": 16000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "marqueeLeads": 1
+          },
+          "u2": {
+            "marqueeLeads": 0
+          },
+          "u3": {
+            "marqueeLeads": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "no stars: the marquee is every slot within the top two distinct lengths (9 and 7), the short filler is out",
+      "intent": "TITLES.md marquee signal 2 (the fallback): with no starred slot, the marquee set is every slot whose length is within the top two distinct lengths, gated to length >= MARQUEE_MIN_LENGTH = 7. Lengths here are {9, 7, 2}: both 9s and the 7 are marquee, the length-2 filler is not, so u2's lead on the filler counts for nothing. u1 leads both length-9 slots (2 first-correct cells to 1); u2 leads the length-7 slot.",
+      "given": {
+        "rows": 3,
+        "cols": 9,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"],
+          [15, "A"],
+          [16, "A"],
+          [17, "A"],
+          [18, "A"],
+          [19, "A"],
+          [20, "A"],
+          [21, "A"],
+          [22, "A"],
+          [23, "A"],
+          [24, "A"],
+          [25, "A"],
+          [26, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+            "starred": false
+          },
+          {
+            "cells": [9, 10, 11, 12, 13, 14, 15],
+            "starred": false
+          },
+          {
+            "cells": [16, 17],
+            "starred": false
+          },
+          {
+            "cells": [18, 19, 20, 21, 22, 23, 24, 25, 26],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 9,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 10,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 13,
+            "userId": "u1",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 7,
+            "cell": 18,
+            "userId": "u1",
+            "value": "A",
+            "at": 7000
+          },
+          {
+            "seq": 8,
+            "cell": 19,
+            "userId": "u1",
+            "value": "A",
+            "at": 8000
+          },
+          {
+            "seq": 9,
+            "cell": 20,
+            "userId": "u2",
+            "value": "A",
+            "at": 9000
+          },
+          {
+            "seq": 10,
+            "cell": 16,
+            "userId": "u2",
+            "value": "A",
+            "at": 10000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "marqueeLeads": 2
+          },
+          "u2": {
+            "marqueeLeads": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "the length tier is gated at MARQUEE_MIN_LENGTH: a length-6 slot in the top two distinct lengths is still out",
+      "intent": "TITLES.md marquee signal 2: the top two distinct lengths here are {8, 6}, but the gate is length >= MARQUEE_MIN_LENGTH = 7, so only the length-8 slot is marquee. u2 owns 3 of 6 first-correct cells of the length-6 slot and leads it, worth nothing; u1 leads the length-8 slot 2 to 1.",
+      "given": {
+        "rows": 2,
+        "cols": 8,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"],
+          [15, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3, 4, 5, 6, 7],
+            "starred": false
+          },
+          {
+            "cells": [8, 9, 10, 11, 12, 13],
+            "starred": false
+          },
+          {
+            "cells": [14, 15],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "u1",
+            "value": "A",
+            "at": 1000
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "u1",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "u2",
+            "value": "A",
+            "at": 3000
+          },
+          {
+            "seq": 4,
+            "cell": 8,
+            "userId": "u2",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 5,
+            "cell": 9,
+            "userId": "u2",
+            "value": "A",
+            "at": 5000
+          },
+          {
+            "seq": 6,
+            "cell": 10,
+            "userId": "u2",
+            "value": "A",
+            "at": 6000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "marqueeLeads": 1
+          },
+          "u2": {
+            "marqueeLeads": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "THE REFERENCE SOLVE: a full 5x5 (blocks at 4 and 20), three solvers, every column of the sheet asserted",
+      "intent": "The debugging fixture: a complete room producing the full stat sheet. \"ub\" opens with a four-fill streak (openingFills 4 of the ceil(0.2 * 23) = 5-entry opening stretch, burst 4) and returns for the last two squares. \"uh\" grinds 12 accurate fills and breaks the room's 90-second stall (brokeStall 1, but 90 < STALL_FLOOR_SECONDS). \"us\" arrives late, guesses wrong at c17 then corrects it, and destroys three of the others' correct squares (overwrites 3: two wrong writes and one clear; wrongWrites 3: c17's guess plus the two overwriting Zs). Repairs by uh and ub change no trace entry (scheme 1). Every slot length is at most 5, below MARQUEE_MIN_LENGTH = 7 and nothing is starred, so a mini has no marquee tier and every marqueeLeads is 0. The awardTitles cluster walks this exact sheet in its reference case.",
+      "given": {
+        "rows": 5,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [5, "A"],
+          [6, "A"],
+          [7, "A"],
+          [8, "A"],
+          [9, "A"],
+          [10, "A"],
+          [11, "A"],
+          [12, "A"],
+          [13, "A"],
+          [14, "A"],
+          [15, "A"],
+          [16, "A"],
+          [17, "A"],
+          [18, "A"],
+          [19, "A"],
+          [21, "A"],
+          [22, "A"],
+          [23, "A"],
+          [24, "A"]
+        ],
+        "slots": [
+          {
+            "cells": [0, 1, 2, 3],
+            "starred": false
+          },
+          {
+            "cells": [5, 6, 7, 8, 9],
+            "starred": false
+          },
+          {
+            "cells": [10, 11, 12, 13, 14],
+            "starred": false
+          },
+          {
+            "cells": [15, 16, 17, 18, 19],
+            "starred": false
+          },
+          {
+            "cells": [21, 22, 23, 24],
+            "starred": false
+          },
+          {
+            "cells": [0, 5, 10, 15],
+            "starred": false
+          },
+          {
+            "cells": [1, 6, 11, 16, 21],
+            "starred": false
+          },
+          {
+            "cells": [2, 7, 12, 17, 22],
+            "starred": false
+          },
+          {
+            "cells": [3, 8, 13, 18, 23],
+            "starred": false
+          },
+          {
+            "cells": [9, 14, 19, 24],
+            "starred": false
+          }
+        ],
+        "events": [
+          {
+            "seq": 1,
+            "cell": 0,
+            "userId": "ub",
+            "value": "A",
+            "at": 0
+          },
+          {
+            "seq": 2,
+            "cell": 1,
+            "userId": "ub",
+            "value": "A",
+            "at": 2000
+          },
+          {
+            "seq": 3,
+            "cell": 2,
+            "userId": "ub",
+            "value": "A",
+            "at": 4000
+          },
+          {
+            "seq": 4,
+            "cell": 3,
+            "userId": "ub",
+            "value": "A",
+            "at": 6000
+          },
+          {
+            "seq": 5,
+            "cell": 5,
+            "userId": "uh",
+            "value": "A",
+            "at": 20000
+          },
+          {
+            "seq": 6,
+            "cell": 6,
+            "userId": "uh",
+            "value": "A",
+            "at": 35000
+          },
+          {
+            "seq": 7,
+            "cell": 7,
+            "userId": "uh",
+            "value": "A",
+            "at": 50000
+          },
+          {
+            "seq": 8,
+            "cell": 8,
+            "userId": "uh",
+            "value": "A",
+            "at": 65000
+          },
+          {
+            "seq": 9,
+            "cell": 9,
+            "userId": "uh",
+            "value": "A",
+            "at": 80000
+          },
+          {
+            "seq": 10,
+            "cell": 10,
+            "userId": "uh",
+            "value": "A",
+            "at": 95000
+          },
+          {
+            "seq": 11,
+            "cell": 11,
+            "userId": "uh",
+            "value": "A",
+            "at": 110000
+          },
+          {
+            "seq": 12,
+            "cell": 17,
+            "userId": "us",
+            "value": "Z",
+            "at": 120000
+          },
+          {
+            "seq": 13,
+            "cell": 17,
+            "userId": "us",
+            "value": "A",
+            "at": 125000
+          },
+          {
+            "seq": 14,
+            "cell": 0,
+            "userId": "us",
+            "value": "Z",
+            "at": 130000
+          },
+          {
+            "seq": 15,
+            "cell": 1,
+            "userId": "us",
+            "value": null,
+            "at": 135000
+          },
+          {
+            "seq": 16,
+            "cell": 5,
+            "userId": "us",
+            "value": "Z",
+            "at": 140000
+          },
+          {
+            "seq": 17,
+            "cell": 0,
+            "userId": "uh",
+            "value": "A",
+            "at": 150000
+          },
+          {
+            "seq": 18,
+            "cell": 1,
+            "userId": "uh",
+            "value": "A",
+            "at": 155000
+          },
+          {
+            "seq": 19,
+            "cell": 5,
+            "userId": "ub",
+            "value": "A",
+            "at": 160000
+          },
+          {
+            "seq": 20,
+            "cell": 12,
+            "userId": "uh",
+            "value": "A",
+            "at": 215000
+          },
+          {
+            "seq": 21,
+            "cell": 14,
+            "userId": "uh",
+            "value": "A",
+            "at": 225000
+          },
+          {
+            "seq": 22,
+            "cell": 13,
+            "userId": "us",
+            "value": "A",
+            "at": 240000
+          },
+          {
+            "seq": 23,
+            "cell": 16,
+            "userId": "uh",
+            "value": "A",
+            "at": 250000
+          },
+          {
+            "seq": 24,
+            "cell": 15,
+            "userId": "us",
+            "value": "A",
+            "at": 260000
+          },
+          {
+            "seq": 25,
+            "cell": 18,
+            "userId": "uh",
+            "value": "A",
+            "at": 270000
+          },
+          {
+            "seq": 26,
+            "cell": 19,
+            "userId": "uh",
+            "value": "A",
+            "at": 280000
+          },
+          {
+            "seq": 27,
+            "cell": 21,
+            "userId": "us",
+            "value": "A",
+            "at": 290000
+          },
+          {
+            "seq": 28,
+            "cell": 22,
+            "userId": "us",
+            "value": "A",
+            "at": 300000
+          },
+          {
+            "seq": 29,
+            "cell": 23,
+            "userId": "ub",
+            "value": "A",
+            "at": 315000
+          },
+          {
+            "seq": 30,
+            "cell": 24,
+            "userId": "ub",
+            "value": "A",
+            "at": 330000
+          }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "ub": {
+            "fills": 6,
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
+            "lastFill": {
+              "at": 330000,
+              "seq": 30
+            },
+            "openingFills": 4,
+            "closingFills": 2,
+            "writes": 7,
+            "burst": 4,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 5,
+            "slotsFinished": 4,
+            "meddles": 2,
+            "slotsTouched": 7,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 330,
+            "brokeStall": 0
+          },
+          "uh": {
+            "fills": 12,
+            "firstFill": {
+              "at": 20000,
+              "seq": 5
+            },
+            "lastFill": {
+              "at": 280000,
+              "seq": 26
+            },
+            "openingFills": 1,
+            "closingFills": 1,
+            "writes": 14,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 3,
+            "slotsFinished": 2,
+            "meddles": 1,
+            "slotsTouched": 8,
+            "marqueeLeads": 0,
+            "spread": 8,
+            "focus": 0.5,
+            "homeQuadrantFills": 6,
+            "span": 260,
+            "brokeStall": 1
+          },
+          "us": {
+            "fills": 5,
+            "firstFill": {
+              "at": 125000,
+              "seq": 13
+            },
+            "lastFill": {
+              "at": 300000,
+              "seq": 28
+            },
+            "openingFills": 0,
+            "closingFills": 2,
+            "writes": 9,
+            "burst": 2,
+            "wrongWrites": 3,
+            "overwrites": 3,
+            "slotsStarted": 2,
+            "slotsFinished": 4,
+            "meddles": 4,
+            "slotsTouched": 7,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.8,
+            "homeQuadrantFills": 4,
+            "span": 175,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 90
+        }
+      }
+    }
+  ],
+  "awardTitles": [
+    {
+      "name": "solo rule: one event-member solver titles nobody, whatever the sheet says",
+      "intent": "TITLES.md solo rule: a completed game with fewer than two event-member solvers has titles []. u1's row passes the bullseye, sprinter, and ice-breaker gates outright, and still nothing awards: a superlative is social.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 10,
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
+            "openingFills": 2,
+            "closingFills": 2,
+            "writes": 12,
+            "burst": 5,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 6,
+            "marqueeLeads": 1,
+            "spread": 8,
+            "focus": 0.5,
+            "homeQuadrantFills": 5,
+            "span": 600,
+            "brokeStall": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 300
+        }
+      },
+      "then": {
+        "titles": []
+      }
+    },
+    {
+      "name": "two event members where only one has fills: titles award (the pool is event membership, not trace membership)",
+      "intent": "TITLES.md pool + solo rulings: the racer u2 typed (one wrong write, zero fills) so the room has two event members and titles are NOT empty. u1 takes bullseye (wrongWrites 0, fills >= BULLSEYE_MIN_FILLS = 5). u2 passes no gate (every other gate consumes fills, trace entries, or slots) and gets nothing: the floor guarantee covers solvers with fills >= 1 only. The ice-breaker gate also refuses here: u1 broke the stall but 90 < STALL_FLOOR_SECONDS = 120.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 5,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 1,
+            "closingFills": 1,
+            "writes": 6,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.8,
+            "homeQuadrantFills": 4,
+            "span": 240,
+            "brokeStall": 1
+          },
+          "u2": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 90
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "u1",
+            "title": "bullseye",
+            "evidence": 5
+          }
+        ]
+      }
+    },
+    {
+      "name": "the zero-fill saboteur: 0 fills, 3 overwrites of others' correct squares, titled at rung 1",
+      "intent": "TITLES.md pool ruling, stated exactly: everyone who typed at all is in the pool, and a zero-fill solver can only ever be saboteur. u2 passes the saboteur gate (overwrites >= SABOTEUR_MIN = 3) with no fills at all and takes rung 1 with its evidence; u1 takes bullseye behind them.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 8,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 2,
+            "closingFills": 2,
+            "writes": 9,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 6,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.5,
+            "homeQuadrantFills": 4,
+            "span": 300,
+            "brokeStall": 1
+          },
+          "u2": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 0,
+            "wrongWrites": 2,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 100
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "u2",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "u1",
+            "title": "bullseye",
+            "evidence": 8
+          }
+        ]
+      }
+    },
+    {
+      "name": "the specialty showcase: one-hit-wonder (latest firstFill), ice-breaker, headliner, meddler, quick-starter, and closer each award",
+      "intent": "Every specialty rung the other cases leave dark awards here, in ladder order (TITLES.md v1 ladder). s1 and s7 both pass the one-hit-wonder gate (fills == 1, wrongWrites == 0, room max fills 6 >= 3); the claim is the LATEST firstFill by (at, seq), so s1 (at 200000) beats s7 (at 100000), and the cameo's evidence is none (null). s2 owns the break of a 150s stall (>= STALL_FLOOR_SECONDS = 120): ice-breaker, evidence the room's stallSeconds. Bullseye refuses everyone: the clean rows (s2, s7) sit under BULLSEYE_MIN_FILLS = 5 and the big fillers all have a wrongWrite. s3 leads 2 marquee slots: headliner. Sprinter refuses (max burst 3 < SPRINTER_MIN_BURST = 4). s4 meddles 3 (>= MEDDLER_MIN = 2): meddler. s5 owns 3 opening-stretch fills: quick-starter; s6 owns 2 closing: closer. s7, the losing cameo, still gets its guaranteed floor title: specialist.",
+      "given": {
+        "solvers": {
+          "s1": {
+            "fills": 1,
+            "firstFill": {
+              "at": 200000,
+              "seq": 30
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 1,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "s2": {
+            "fills": 4,
+            "firstFill": {
+              "at": 10000,
+              "seq": 2
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 240,
+            "brokeStall": 1
+          },
+          "s3": {
+            "fills": 6,
+            "firstFill": {
+              "at": 5000,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 9,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 1,
+            "meddles": 1,
+            "slotsTouched": 5,
+            "marqueeLeads": 2,
+            "spread": 5,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 300,
+            "brokeStall": 0
+          },
+          "s4": {
+            "fills": 4,
+            "firstFill": {
+              "at": 20000,
+              "seq": 4
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 7,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 2,
+            "meddles": 3,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 0
+          },
+          "s5": {
+            "fills": 4,
+            "firstFill": {
+              "at": 12000,
+              "seq": 3
+            },
+            "openingFills": 3,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 100,
+            "brokeStall": 0
+          },
+          "s6": {
+            "fills": 4,
+            "firstFill": {
+              "at": 30000,
+              "seq": 6
+            },
+            "openingFills": 0,
+            "closingFills": 2,
+            "writes": 6,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 260,
+            "brokeStall": 0
+          },
+          "s7": {
+            "fills": 1,
+            "firstFill": {
+              "at": 100000,
+              "seq": 10
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 150
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "s1",
+            "title": "one-hit-wonder",
+            "evidence": null
+          },
+          {
+            "userId": "s2",
+            "title": "ice-breaker",
+            "evidence": 150
+          },
+          {
+            "userId": "s3",
+            "title": "headliner",
+            "evidence": 2
+          },
+          {
+            "userId": "s4",
+            "title": "meddler",
+            "evidence": 3
+          },
+          {
+            "userId": "s5",
+            "title": "quick-starter",
+            "evidence": 3
+          },
+          {
+            "userId": "s6",
+            "title": "closer",
+            "evidence": 2
+          },
+          {
+            "userId": "s7",
+            "title": "specialist",
+            "evidence": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "THE COVERAGE THEOREM: every specialty gate fails by a hair, and all six fillers still title off the floor",
+      "intent": "TITLES.md floor tier: a floor rung can never refuse while an untitled solver with a fill remains, so six fillers in a specialty-dark room all title. Each specialty gate is refused at its boundary: saboteur at 2 overwrites (SABOTEUR_MIN = 3, f1); one-hit-wonder because the cameo f2 has a wrongWrite (room max fills 8 >= 3, so the refusal is on clean hands); ice-breaker at stallSeconds 119 (STALL_FLOOR_SECONDS = 120, f3 owns the break); bullseye because nobody is clean; headliner on an empty marquee (all marqueeLeads 0); sprinter at burst 3 (SPRINTER_MIN_BURST = 4, f4); meddler at 1 meddle (MEDDLER_MIN = 2, f6); quick-starter and closer at zero opening/closing fills. The floor then walks: specialist resolves the f1/f2 focus tie (1 vs 1) by MORE FILLS to f1; long-hauler's room-wide argmax f1 (span 500) is already titled, so the claim runs over the untitled and f3's 400 wins; wanderer f4 (evidence none); scribbler f5; collector f6; and workhorse catches the last filler, f2, evidence 1.",
+      "given": {
+        "solvers": {
+          "f1": {
+            "fills": 2,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 2,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 1,
+            "homeQuadrantFills": 2,
+            "span": 500,
+            "brokeStall": 0
+          },
+          "f2": {
+            "fills": 1,
+            "firstFill": {
+              "at": 300000,
+              "seq": 40
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "f3": {
+            "fills": 4,
+            "firstFill": {
+              "at": 2000,
+              "seq": 2
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 400,
+            "brokeStall": 1
+          },
+          "f4": {
+            "fills": 8,
+            "firstFill": {
+              "at": 3000,
+              "seq": 3
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 12,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 6,
+            "marqueeLeads": 0,
+            "spread": 9,
+            "focus": 0.5,
+            "homeQuadrantFills": 4,
+            "span": 350,
+            "brokeStall": 0
+          },
+          "f5": {
+            "fills": 5,
+            "firstFill": {
+              "at": 4000,
+              "seq": 4
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 15,
+            "burst": 2,
+            "wrongWrites": 2,
+            "overwrites": 1,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.6,
+            "homeQuadrantFills": 3,
+            "span": 300,
+            "brokeStall": 0
+          },
+          "f6": {
+            "fills": 6,
+            "firstFill": {
+              "at": 5000,
+              "seq": 5
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 10,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 7,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 119
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "f1",
+            "title": "specialist",
+            "evidence": 2
+          },
+          {
+            "userId": "f3",
+            "title": "long-hauler",
+            "evidence": 400
+          },
+          {
+            "userId": "f4",
+            "title": "wanderer",
+            "evidence": null
+          },
+          {
+            "userId": "f5",
+            "title": "scribbler",
+            "evidence": 15
+          },
+          {
+            "userId": "f6",
+            "title": "collector",
+            "evidence": 7
+          },
+          {
+            "userId": "f2",
+            "title": "workhorse",
+            "evidence": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "the coverage theorem's edge: a SEVENTH filler leaves exactly one solver untitled (the documented remainder)",
+      "intent": "TITLES.md floor tier: coverage is arithmetic, six floor rungs deep. The same room plus a seventh filler f7 (mediocre everywhere, so it wins no earlier rung) still awards all six floor titles, but workhorse's max-fills claim among the last two untitled now prefers f7 (4 fills) over the cameo f2 (1 fill): f2 ends untitled and renders nothing, never a placeholder. Deepening the floor for bigger rooms is a vector diff, not a design change.",
+      "given": {
+        "solvers": {
+          "f1": {
+            "fills": 2,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 2,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 1,
+            "homeQuadrantFills": 2,
+            "span": 500,
+            "brokeStall": 0
+          },
+          "f2": {
+            "fills": 1,
+            "firstFill": {
+              "at": 300000,
+              "seq": 40
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "f3": {
+            "fills": 4,
+            "firstFill": {
+              "at": 2000,
+              "seq": 2
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 400,
+            "brokeStall": 1
+          },
+          "f4": {
+            "fills": 8,
+            "firstFill": {
+              "at": 3000,
+              "seq": 3
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 12,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 6,
+            "marqueeLeads": 0,
+            "spread": 9,
+            "focus": 0.5,
+            "homeQuadrantFills": 4,
+            "span": 350,
+            "brokeStall": 0
+          },
+          "f5": {
+            "fills": 5,
+            "firstFill": {
+              "at": 4000,
+              "seq": 4
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 15,
+            "burst": 2,
+            "wrongWrites": 2,
+            "overwrites": 1,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.6,
+            "homeQuadrantFills": 3,
+            "span": 300,
+            "brokeStall": 0
+          },
+          "f6": {
+            "fills": 6,
+            "firstFill": {
+              "at": 5000,
+              "seq": 5
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 10,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 7,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 0
+          },
+          "f7": {
+            "fills": 4,
+            "firstFill": {
+              "at": 6000,
+              "seq": 6
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.25,
+            "homeQuadrantFills": 1,
+            "span": 100,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 119
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "f1",
+            "title": "specialist",
+            "evidence": 2
+          },
+          {
+            "userId": "f3",
+            "title": "long-hauler",
+            "evidence": 400
+          },
+          {
+            "userId": "f4",
+            "title": "wanderer",
+            "evidence": null
+          },
+          {
+            "userId": "f5",
+            "title": "scribbler",
+            "evidence": 15
+          },
+          {
+            "userId": "f6",
+            "title": "collector",
+            "evidence": 7
+          },
+          {
+            "userId": "f7",
+            "title": "workhorse",
+            "evidence": 4
+          }
+        ]
+      }
+    },
+    {
+      "name": "already-titled fall-through: the sprinter argmax is the saboteur, so the rung falls to the next eligible; a single-claimant rung lapses",
+      "intent": "TITLES.md ladder walk: each solver receives at most one title, and a rung whose argmax winner is already titled falls to the next eligible solver. u1 takes saboteur (overwrites 4 >= SABOTEUR_MIN), then u1's burst 6 tops the sprinter column, so the rung falls to u2 (burst 4, evidence 4: the WINNER'S number rides the card, never the titled argmax's). The ice-breaker rung shows the lapse: u1 owns the break of a 200s stall (gate passes) but is titled, and no other solver owns a break, so the rung awards nobody. u3 is caught by the floor: specialist.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 5,
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 12,
+            "burst": 6,
+            "wrongWrites": 2,
+            "overwrites": 4,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.6,
+            "homeQuadrantFills": 3,
+            "span": 100,
+            "brokeStall": 1
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": {
+              "at": 5000,
+              "seq": 3
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 4,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 80,
+            "brokeStall": 0
+          },
+          "u3": {
+            "fills": 4,
+            "firstFill": {
+              "at": 10000,
+              "seq": 7
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 90,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 200
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "u1",
+            "title": "saboteur",
+            "evidence": 4
+          },
+          {
+            "userId": "u2",
+            "title": "sprinter",
+            "evidence": 4
+          },
+          {
+            "userId": "u3",
+            "title": "specialist",
+            "evidence": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "\"tie by fills\": an equal focus resolves to MORE fills, not to the universal earlier-firstFill rule",
+      "intent": "TITLES.md determinism: where a rung says \"tie by fills\", more fills wins first, then the universal rule. u1 and u2 tie on focus 0.8; u2 has 10 fills to u1's 5 and takes specialist, though the universal rule alone would prefer u1's earlier firstFill. Every specialty gate is quiet (both dirty, bursts under SPRINTER_MIN_BURST, one meddle under MEDDLER_MIN, no marquee, no opening/closing fills, stall under STALL_FLOOR_SECONDS); u1 falls to long-hauler.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 5,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 7,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.8,
+            "homeQuadrantFills": 4,
+            "span": 300,
+            "brokeStall": 0
+          },
+          "u2": {
+            "fills": 10,
+            "firstFill": {
+              "at": 2000,
+              "seq": 2
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 11,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 1,
+            "meddles": 1,
+            "slotsTouched": 8,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.8,
+            "homeQuadrantFills": 8,
+            "span": 200,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 60
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "u2",
+            "title": "specialist",
+            "evidence": 8
+          },
+          {
+            "userId": "u1",
+            "title": "long-hauler",
+            "evidence": 300
+          }
+        ]
+      }
+    },
+    {
+      "name": "the universal tie-break, both layers: earlier at wins first, then lower seq; and it engages only after \"tie by fills\" exhausts",
+      "intent": "TITLES.md determinism: every tie breaks by the earlier firstFill, ordered by (at, seq). Three solvers tie the saboteur column at 3 overwrites: u3's firstFill at 4000 beats both at-5000 rows, seq notwithstanding (at is primary). At the specialist rung, u1 and u2 then tie on focus AND on fills, so the universal rule runs: both firstFills sit at 5000 and u2's seq 4 beats u1's seq 9 (seq is the secondary key).",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 2,
+            "firstFill": {
+              "at": 5000,
+              "seq": 9
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 50,
+            "brokeStall": 0
+          },
+          "u2": {
+            "fills": 2,
+            "firstFill": {
+              "at": 5000,
+              "seq": 4
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 40,
+            "brokeStall": 0
+          },
+          "u3": {
+            "fills": 2,
+            "firstFill": {
+              "at": 4000,
+              "seq": 20
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 30,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 30
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "u3",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "u2",
+            "title": "specialist",
+            "evidence": 1
+          },
+          {
+            "userId": "u1",
+            "title": "long-hauler",
+            "evidence": 50
+          }
+        ]
+      }
+    },
+    {
+      "name": "the universal tie-break: a solver with a fill sorts before every zero-fill solver, however late the fill",
+      "intent": "TITLES.md determinism: a solver with no fills sorts after every solver with one. Three solvers tie saboteur at 3 overwrites; uz's single (very late, at 900000) fill still ranks it ahead of the zero-fill ua and ub, so uz is the saboteur. uz's clears-only rampage keeps wrongWrites 0 (a clear writes no value), and the one-hit-wonder rung then finds no untitled gate-passer: uz is titled and the zero-fill pair has no fill. Nobody else has a fill, so the floor is empty and the walk ends with one title.",
+      "given": {
+        "solvers": {
+          "ua": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "ub": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "uz": {
+            "fills": 1,
+            "firstFill": {
+              "at": 900000,
+              "seq": 90
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 30
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "uz",
+            "title": "saboteur",
+            "evidence": 3
+          }
+        ]
+      }
+    },
+    {
+      "name": "the universal tie-break's last resort: two identical zero-fill saboteurs resolve by ascending ASCII userId",
+      "intent": "TITLES.md determinism (INV-1): the final tie is ascending ASCII userId. ua and ub both have 3 overwrites and no fills (firstFill null on both), so every earlier key exhausts and \"ua\" < \"ub\" by ASCII: ua is the saboteur. The filler um takes the first floor rung, specialist.",
+      "given": {
+        "solvers": {
+          "ua": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 0,
+            "wrongWrites": 2,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "ub": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 0,
+            "wrongWrites": 2,
+            "overwrites": 3,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0
+          },
+          "um": {
+            "fills": 2,
+            "firstFill": {
+              "at": 1000,
+              "seq": 1
+            },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 60,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 45
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "ua",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "um",
+            "title": "specialist",
+            "evidence": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "THE REFERENCE WALK: the reference solve's exact sheet walks the full ladder to saboteur, bullseye, sprinter",
+      "intent": "The companion to the titleStats reference case: its output, verbatim (lastFill and the slot start/finish counts included; awardTitles ignores what the ladder does not read). The walk, rung by rung: (1) saboteur takes us (overwrites 3 >= SABOTEUR_MIN). (2) one-hit-wonder: nobody has fills == 1. (3) ice-breaker: uh owns the break but the 90s stall is under STALL_FLOOR_SECONDS = 120: refused. (4) bullseye: the clean rows are ub (6 fills) and uh (12); max fills takes uh, evidence 12. (5) headliner: a mini has no marquee, all marqueeLeads 0: refused. (6) sprinter: ub's opening streak burst 4 meets SPRINTER_MIN_BURST exactly (uh sits at 3): ub, evidence 4. Rungs 7-15 find every solver titled and award nobody. Output is ordered by ladder rank, one title per solver.",
+      "given": {
+        "solvers": {
+          "ub": {
+            "fills": 6,
+            "firstFill": {
+              "at": 0,
+              "seq": 1
+            },
+            "lastFill": {
+              "at": 330000,
+              "seq": 30
+            },
+            "openingFills": 4,
+            "closingFills": 2,
+            "writes": 7,
+            "burst": 4,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 5,
+            "slotsFinished": 4,
+            "meddles": 2,
+            "slotsTouched": 7,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 330,
+            "brokeStall": 0
+          },
+          "uh": {
+            "fills": 12,
+            "firstFill": {
+              "at": 20000,
+              "seq": 5
+            },
+            "lastFill": {
+              "at": 280000,
+              "seq": 26
+            },
+            "openingFills": 1,
+            "closingFills": 1,
+            "writes": 14,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 3,
+            "slotsFinished": 2,
+            "meddles": 1,
+            "slotsTouched": 8,
+            "marqueeLeads": 0,
+            "spread": 8,
+            "focus": 0.5,
+            "homeQuadrantFills": 6,
+            "span": 260,
+            "brokeStall": 1
+          },
+          "us": {
+            "fills": 5,
+            "firstFill": {
+              "at": 125000,
+              "seq": 13
+            },
+            "lastFill": {
+              "at": 300000,
+              "seq": 28
+            },
+            "openingFills": 0,
+            "closingFills": 2,
+            "writes": 9,
+            "burst": 2,
+            "wrongWrites": 3,
+            "overwrites": 3,
+            "slotsStarted": 2,
+            "slotsFinished": 4,
+            "meddles": 4,
+            "slotsTouched": 7,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.8,
+            "homeQuadrantFills": 4,
+            "span": 175,
+            "brokeStall": 0
+          }
+        },
+        "room": {
+          "stallSeconds": 90
+        }
+      },
+      "then": {
+        "titles": [
+          {
+            "userId": "us",
+            "title": "saboteur",
+            "evidence": 3
+          },
+          {
+            "userId": "uh",
+            "title": "bullseye",
+            "evidence": 12
+          },
+          {
+            "userId": "ub",
+            "title": "sprinter",
+            "evidence": 4
+          }
+        ]
+      }
+    }
+  ],
+  "titleStatsRevisit": [
+    {
+      "name": "THE RE-BASE (D29 fast-follow): the stall is the within-sitting gap; the morning's first arrival no longer breaks it",
+      "intent": "TITLES.md two-bases rule: brokeStall and room.stallSeconds read moments(solveTrace(collapseIdle(events), solution)), byte-identical to the bundle's shipped projection. The 28,800,000 ms overnight gap (>= SITTING_GAP_MS = 1,800,000) collapses to zero, so the largest active gap is the evening's 150 s stall and its breaker is u2 (>= STALL_FLOOR_SECONDS, so the award layer can cite it); a raw-basis engine names u3 (the morning's first arrival) with stallSeconds 28800 and fails loudly here. span and burst stay RAW: u1's span is the wall 28970 s, never the collapsed 170 s. sittingsPresent is attendance over the partition (u1 sat twice); room.sittingCount is 2.",
+      "given": {
+        "rows": 1,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 150000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 160000 },
+          { "seq": 4, "cell": 3, "userId": "u3", "value": "A", "at": 28960000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 28970000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 3,
+            "span": 28970,
+            "burst": 1,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 1,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          },
+          "u3": {
+            "fills": 1,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 150,
+          "sittingCount": 2
+        }
+      }
+    },
+    {
+      "name": "the anti-raw pin: every within-sitting gap is under the floor, so the re-based stall is 100 however long the night was",
+      "intent": "The failure mode the re-base kills, sub-case (b). The largest within-sitting gap is the 100 s broken by u2; the overnight gap of exactly 28,800,000 ms splits (the >= SITTING_GAP_MS boundary, pinned here in the titles context) and contributes nothing. room.stallSeconds is 100 < STALL_FLOOR_SECONDS = 120, so the ice breaker will refuse at award time; an accidental raw basis reads 28800 with u1 (the morning arrival) as breaker and would award, failing loudly on both the number and the owner. span stays wall: u1's is 28910.",
+      "given": {
+        "rows": 1,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 100000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 110000 },
+          { "seq": 4, "cell": 3, "userId": "u1", "value": "A", "at": 28910000 },
+          { "seq": 5, "cell": 4, "userId": "u2", "value": "A", "at": 28940000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "span": 28910,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 100,
+          "sittingCount": 2
+        }
+      }
+    },
+    {
+      "name": "presence is any event: a mere clear keeps u2 in sitting 1, so sittingsPresent is 2 while the fillers who sat once count 1",
+      "intent": "TITLES.md sittingsPresent: the number of sittings holding at least one of u's events, write or clear, correctness irrelevant (the SITTINGS.md any-activity rule; the partition covers the whole log, so every event belongs to exactly one sitting). u2's only sitting-1 activity is a clear of an empty cell (a write in the sheet, no wrongWrite since a clear writes no value, no overwrite since the board held nothing), and it still counts: sittingsPresent 2. u1 and u3 each sat once. The re-based turning point is the 20 s gap broken by u1.",
+      "given": {
+        "rows": 1,
+        "cols": 5,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 4, "userId": "u2", "value": null, "at": 10000 },
+          { "seq": 3, "cell": 1, "userId": "u1", "value": "A", "at": 20000 },
+          { "seq": 4, "cell": 2, "userId": "u2", "value": "A", "at": 28820000 },
+          { "seq": 5, "cell": 3, "userId": "u3", "value": "A", "at": 28830000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 2,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          },
+          "u2": {
+            "fills": 1,
+            "writes": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "sittingsPresent": 2
+          },
+          "u3": {
+            "fills": 1,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 20,
+          "sittingCount": 2
+        }
+      }
+    },
+    {
+      "name": "three sittings: the re-based stall is the middle sitting's 140 s gap, sittingCount is 3, and spans keep the wall basis",
+      "intent": "Cumulative collapse in the titles context (two boundaries: one of exactly SITTING_GAP_MS, one of 2,000,000 ms). On the active axis the largest gap is the 140 s stall inside sitting 2, broken by u2; a raw scan reports the 2,000 s pre-sitting-3 gap broken by u1 instead. Both solvers attended all three sittings (sittingsPresent 3, the marathoner's ground; the suggested copy's \"all 3 sittings\"). span keeps the wall basis (u1 3970, u2 3950) and burst stays raw (no two raw fills share a BURST_WINDOW_MS window: 1 each).",
+      "given": {
+        "rows": 1,
+        "cols": 6,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4, 5], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u2", "value": "A", "at": 30000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 1830000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 1970000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 3970000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "A", "at": 3980000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "span": 3970,
+            "burst": 1,
+            "brokeStall": 0,
+            "sittingsPresent": 3
+          },
+          "u2": {
+            "span": 3950,
+            "burst": 1,
+            "brokeStall": 1,
+            "sittingsPresent": 3
+          }
+        },
+        "room": {
+          "stallSeconds": 140,
+          "sittingCount": 3
+        }
+      }
+    },
+    {
+      "name": "burst and span stay RAW: a fill just across the collapsed seam never joins a burst window, and span is the wall span",
+      "intent": "TITLES.md two-bases rule, the anti-over-re-base pin. u1's fills sit at wall 0, 10000, and 1,820,000; the last lands one seam away (the 1,800,000 ms gap collapses, active instant 20000). A burst scan over collapsed times would count 3 fills in one closed BURST_WINDOW_MS = 30000 window; the pinned burst is the raw 2 (two fills hours apart must never read as one sprint). span is the wall 1820 s, never the active 20 s. The re-based turning point is the 10 s gap broken by u1 (the first of the two tied 10 s gaps, moments()'s first-wins tie-break).",
+      "given": {
+        "rows": 1,
+        "cols": 4,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 10000 },
+          { "seq": 3, "cell": 2, "userId": "u2", "value": "A", "at": 20000 },
+          { "seq": 4, "cell": 3, "userId": "u1", "value": "A", "at": 1820000 }
+        ]
+      },
+      "then": {
+        "solvers": {
+          "u1": {
+            "fills": 3,
+            "burst": 2,
+            "span": 1820,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 1,
+            "burst": 1,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 10,
+          "sittingCount": 2
+        }
+      }
+    }
+  ],
+  "awardTitlesRevisit": [
+    {
+      "name": "ice-breaker on the re-based sheet: the true breaker takes the rung with the ACTIVE stall as evidence",
+      "intent": "The award consequence of the re-base, sub-case (a): the sheet arrives with room.stallSeconds 150 (the within-sitting stall) and u2 as its breaker; 150 >= STALL_FLOOR_SECONDS = 120, so u2 is the ice breaker, evidence 150. On the retired raw basis this room read 28800 with u3 (the morning arrival) as breaker. u1 takes bullseye (clean, fills 6 >= BULLSEYE_MIN_FILLS). marathoner then lapses: the only ever-present solver (u1, sittingsPresent 2 == sittingCount) is already titled and u3 sat once, so the rung awards nobody; u3 is caught by the floor (specialist).",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 6,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 1,
+            "closingFills": 1,
+            "writes": 7,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 28970,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": { "at": 150000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          },
+          "u3": {
+            "fills": 2,
+            "firstFill": { "at": 28960000, "seq": 4 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 30,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 150,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u2", "title": "ice-breaker", "evidence": 150 },
+          { "userId": "u1", "title": "bullseye", "evidence": 6 },
+          { "userId": "u3", "title": "specialist", "evidence": 1 }
+        ]
+      }
+    },
+    {
+      "name": "ice-breaker refuses on a re-based 100 s stall however long the night was; marathoner takes max fills among the ever-present",
+      "intent": "Sub-case (b) at the award layer: brokeStall is set (u2) but room.stallSeconds is the within-sitting 100 < STALL_FLOOR_SECONDS = 120, so NOBODY is the ice breaker, though the room's wall gap was hours (the retired raw basis carried 28800 and would have awarded). marathoner: sittingCount 2 and both solvers have sittingsPresent 2, so both qualify; the claim is max fills, u1 (6 over 4), and the evidence is the sitting count, 2. u2 falls to the floor.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 6,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 8,
+            "burst": 3,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 5,
+            "marqueeLeads": 0,
+            "spread": 6,
+            "focus": 0.5,
+            "homeQuadrantFills": 3,
+            "span": 28910,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": { "at": 100000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 28840,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 100,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "marathoner", "evidence": 2 },
+          { "userId": "u2", "title": "specialist", "evidence": 2 }
+        ]
+      }
+    },
+    {
+      "name": "marathoner presence is events, not fills: a zero-fill regular qualifies and loses to a filler; the biggest filler missed a sitting and cannot qualify",
+      "intent": "TITLES.md marathoner gate: sittingCount >= 2 and sittingsPresent == sittingCount. ua has the most fills (5) but sat only once: not eligible, whatever the count. uz attended both sittings on clears alone (fills 0, presence is events): eligible, and loses the max-fills claim to um (4). um is the marathoner, evidence the sitting count 2; ua is caught by the floor; uz passes no other gate (a zero-fill solver can only ever be saboteur or marathoner) and gets nothing.",
+      "given": {
+        "solvers": {
+          "ua": {
+            "fills": 5,
+            "firstFill": { "at": 1000, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 7,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.6,
+            "homeQuadrantFills": 3,
+            "span": 200,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "um": {
+            "fills": 4,
+            "firstFill": { "at": 2000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 1,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 180,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "uz": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 60,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "um", "title": "marathoner", "evidence": 2 },
+          { "userId": "ua", "title": "specialist", "evidence": 3 }
+        ]
+      }
+    },
+    {
+      "name": "all marathoner qualifiers are zero-fill: the universal tie-break resolves by ascending ASCII userId",
+      "intent": "TITLES.md determinism (INV-1) inside the marathoner claim: ua and ub are both ever-present with 0 fills, so max fills ties at 0, both firstFills are null, and the last resort is ascending ASCII userId: ua wins, evidence 2. A zero-fill marathoner is legal by construction (presence is events, not fills; the pool paragraph names saboteur and marathoner as the two zero-fill-reachable rungs). uc, the room's only filler, missed a sitting and takes the floor.",
+      "given": {
+        "solvers": {
+          "ua": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 0,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "ub": {
+            "fills": 0,
+            "firstFill": null,
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 0,
+            "wrongWrites": 2,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 0,
+            "marqueeLeads": 0,
+            "spread": 0,
+            "focus": 0,
+            "homeQuadrantFills": 0,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "uc": {
+            "fills": 3,
+            "firstFill": { "at": 1000, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 1,
+            "homeQuadrantFills": 3,
+            "span": 60,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 45,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "ua", "title": "marathoner", "evidence": 2 },
+          { "userId": "uc", "title": "specialist", "evidence": 3 }
+        ]
+      }
+    },
+    {
+      "name": "a one-sitting room never has a marathoner, though presence is trivially universal",
+      "intent": "TITLES.md marathoner gate: sittingCount >= 2. Here sittingCount is 1 and both solvers have sittingsPresent 1 == sittingCount, and the rung still refuses: in a one-sitting room the title would be trivially universal, so it is silent. Both solvers title off the floor instead, exactly as a pre-revisit room did (the gapless identity).",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 4,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 1,
+            "homeQuadrantFills": 4,
+            "span": 90,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "u2": {
+            "fills": 2,
+            "firstFill": { "at": 3000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 3,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 2,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 1,
+            "span": 120,
+            "brokeStall": 1,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 30,
+          "sittingCount": 1
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "specialist", "evidence": 4 },
+          { "userId": "u2", "title": "long-hauler", "evidence": 120 }
+        ]
+      }
+    },
+    {
+      "name": "one per solver holds: the ever-present sprinter takes the earlier rung and marathoner falls to the next qualifier",
+      "intent": "TITLES.md ladder walk across the new rung: u1 passes sprinter (burst 5 >= SPRINTER_MIN_BURST = 4, rank 6) and is also ever-present with the room's max fills; sprinter titles u1 first, so the marathoner claim (rank 8) runs over the untitled and falls to u2 (sittingsPresent 2), evidence the sitting count 2, u2's smaller fill count notwithstanding. u3 (fills 1, but a wrongWrite kills the cameo) is caught by the floor. One title per solver, one per key.",
+      "given": {
+        "solvers": {
+          "u1": {
+            "fills": 7,
+            "firstFill": { "at": 0, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 9,
+            "burst": 5,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 6,
+            "marqueeLeads": 0,
+            "spread": 7,
+            "focus": 0.5,
+            "homeQuadrantFills": 4,
+            "span": 300,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 4,
+            "firstFill": { "at": 4000, "seq": 3 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 4,
+            "burst": 2,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 250,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          },
+          "u3": {
+            "fills": 1,
+            "firstFill": { "at": 90000, "seq": 9 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 2,
+            "focus": 1,
+            "homeQuadrantFills": 1,
+            "span": 0,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          }
+        },
+        "room": {
+          "stallSeconds": 80,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "sprinter", "evidence": 5 },
+          { "userId": "u2", "title": "marathoner", "evidence": 2 },
+          { "userId": "u3", "title": "specialist", "evidence": 1 }
+        ]
+      }
+    },
+    {
+      "name": "long-hauler's evidence in a multi-sitting room is the WALL span",
+      "intent": "TITLES.md two-bases rule read at the award layer: the sheet's span column is wall-clock by design, so w2's card cites 29000 s (the honest \"over two days\" flavor number), never an active span (~200 s here). w3 is the only ever-present solver: marathoner, evidence 2; its brokeStall is set but the within-sitting 110 s stall is under STALL_FLOOR_SECONDS = 120, so ice-breaker refused first. w1 takes specialist off the floor.",
+      "given": {
+        "solvers": {
+          "w1": {
+            "fills": 5,
+            "firstFill": { "at": 1000, "seq": 1 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 6,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 4,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 1,
+            "homeQuadrantFills": 5,
+            "span": 150,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "w2": {
+            "fills": 4,
+            "firstFill": { "at": 2000, "seq": 2 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 1,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.5,
+            "homeQuadrantFills": 2,
+            "span": 29000,
+            "brokeStall": 0,
+            "sittingsPresent": 1
+          },
+          "w3": {
+            "fills": 4,
+            "firstFill": { "at": 3000, "seq": 3 },
+            "openingFills": 0,
+            "closingFills": 0,
+            "writes": 5,
+            "burst": 2,
+            "wrongWrites": 1,
+            "overwrites": 0,
+            "meddles": 0,
+            "slotsTouched": 3,
+            "marqueeLeads": 0,
+            "spread": 4,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 60,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 110,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "w3", "title": "marathoner", "evidence": 2 },
+          { "userId": "w1", "title": "specialist", "evidence": 5 },
+          { "userId": "w2", "title": "long-hauler", "evidence": 29000 }
+        ]
+      }
+    },
+    {
+      "name": "COMPOSED (D29 fast-follow): raw burst refuses the sprinter across the seam, and the pipeline walks events to awards",
+      "intent": "The revisit's end-to-end case, mirroring the composed D29 idiom of the trace-projection files: given.solvers and given.room are exactly titleStats(given.events, given.solution, given.slots, {rows, cols}); the Wave 12.2 reader asserts that equality, then awards the sheet. The 1,800,000 ms gap (exactly SITTING_GAP_MS) splits two sittings, and u1's fourth fill lands one seam away: a collapsed-basis burst would read 4 and award sprinter (SPRINTER_MIN_BURST = 4), while the pinned RAW burst is 3 and sprinter refuses, so a mis-re-based engine fails loudly on the award array itself. Both solvers are ever-present, so marathoner takes max fills (u1, evidence 2) and u2 falls to closer (closingFills 1; the size-2 stretch is ceil(6/5) ordinally, seam notwithstanding). The sheet also pins the re-based turning point (the within-sitting 10 s gap, first-wins, u1) and the wall spans (1825, 1805).",
+      "given": {
+        "rows": 1,
+        "cols": 6,
+        "solution": [
+          [0, "A"],
+          [1, "A"],
+          [2, "A"],
+          [3, "A"],
+          [4, "A"],
+          [5, "A"]
+        ],
+        "slots": [{ "cells": [0, 1, 2, 3, 4, 5], "starred": false }],
+        "events": [
+          { "seq": 1, "cell": 0, "userId": "u1", "value": "A", "at": 0 },
+          { "seq": 2, "cell": 1, "userId": "u1", "value": "A", "at": 10000 },
+          { "seq": 3, "cell": 2, "userId": "u1", "value": "A", "at": 20000 },
+          { "seq": 4, "cell": 3, "userId": "u2", "value": "A", "at": 25000 },
+          { "seq": 5, "cell": 4, "userId": "u1", "value": "A", "at": 1825000 },
+          { "seq": 6, "cell": 5, "userId": "u2", "value": "A", "at": 1830000 }
+        ],
+        "solvers": {
+          "u1": {
+            "fills": 4,
+            "firstFill": { "at": 0, "seq": 1 },
+            "lastFill": { "at": 1825000, "seq": 5 },
+            "openingFills": 2,
+            "closingFills": 1,
+            "writes": 4,
+            "burst": 3,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 1,
+            "slotsFinished": 0,
+            "meddles": 0,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 5,
+            "focus": 0.75,
+            "homeQuadrantFills": 3,
+            "span": 1825,
+            "brokeStall": 1,
+            "sittingsPresent": 2
+          },
+          "u2": {
+            "fills": 2,
+            "firstFill": { "at": 25000, "seq": 4 },
+            "lastFill": { "at": 1830000, "seq": 6 },
+            "openingFills": 0,
+            "closingFills": 1,
+            "writes": 2,
+            "burst": 1,
+            "wrongWrites": 0,
+            "overwrites": 0,
+            "slotsStarted": 0,
+            "slotsFinished": 1,
+            "meddles": 1,
+            "slotsTouched": 1,
+            "marqueeLeads": 0,
+            "spread": 3,
+            "focus": 1,
+            "homeQuadrantFills": 2,
+            "span": 1805,
+            "brokeStall": 0,
+            "sittingsPresent": 2
+          }
+        },
+        "room": {
+          "stallSeconds": 10,
+          "sittingCount": 2
+        }
+      },
+      "then": {
+        "titles": [
+          { "userId": "u1", "title": "marathoner", "evidence": 2 },
+          { "userId": "u2", "title": "closer", "evidence": 1 }
+        ]
+      }
+    }
+  ]
+}

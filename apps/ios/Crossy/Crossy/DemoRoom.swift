@@ -597,7 +597,7 @@ actor LoopbackTransport: Transport {
                     CellSetMessage(
                         seq: seq, cell: clear.cell, value: nil,
                         by: selfUserId, commandId: clear.commandId, at: Self.now())))
-        case .hello, .moveCursor, .react, .checkRequest, .heartbeat, .requestSync:
+        case .hello, .moveCursor, .react, .checkPuzzle, .heartbeat, .requestSync:
             // Ephemerals vanish exactly as a serverless room would swallow them;
             // a react in particular is never echoed even by real servers
             // (PROTOCOL.md §9), so the local echo is the only sticker you see.

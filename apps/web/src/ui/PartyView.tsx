@@ -28,6 +28,7 @@ import type { FlashEntry, PresenceEntry } from "./CrosswordGrid";
 import { buildRoster, GROUP_CAP, GROUP_PAST } from "./roster";
 import type { ClueGroup, SolverEntry } from "./roster";
 import { partyProgress } from "./partyProgress";
+import { visibleCheckMarks } from "./roomActions";
 import { ClueText } from "./ClueText";
 import { buildShareUrl } from "../domain/invite";
 import { useElapsedSeconds, formatDuration } from "./gameTime";
@@ -140,6 +141,19 @@ export function PartyView({
   }, [store, version, puzzle]);
   const filled = useMemo(() => new Set(fills.keys()), [fills]);
 
+  // The room-check marks paint on the projector too (design doc §6: the marks are room
+  // state, identical for every member). Same derivation as the solve screen (PROTOCOL.md
+  // §10, R6); the projector never writes, so its overlay is empty and suppression is moot,
+  // but the shared path keeps the two surfaces incapable of diverging.
+  const checkMarks = useMemo(() => {
+    void version;
+    return visibleCheckMarks(store.checkedWrongCells, store.overlay);
+  }, [store, version]);
+  const markedPuzzle = useMemo(
+    () => ({ ...puzzle, wrong: checkMarks }),
+    [puzzle, checkMarks],
+  );
+
   // Teammate presence from the store's cursors (best-effort, PROTOCOL.md section 9). Empty until
   // the presence fan-out track lands; then the board lights up with no change here.
   const presence = useMemo(() => {
@@ -223,7 +237,7 @@ export function PartyView({
         >
           <div className="board-wrap">
             <CrosswordGrid
-              puzzle={puzzle}
+              puzzle={markedPuzzle}
               fills={fills}
               selection={null}
               presence={presence}

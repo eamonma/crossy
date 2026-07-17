@@ -52,6 +52,10 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(board.cells[1], Cell(v: nil, by: nil))
         XCTAssertEqual(board.cells[2], Cell(v: nil, by: "u2"))
         XCTAssertEqual(board.cursors, [Cursor(userId: "u1", cell: 17, direction: .across)])
+        // §4/§10: standing room-check marks and the permanent count ride every snapshot,
+        // so reconnect and resync heal the marks with no delta replay (D27).
+        XCTAssertEqual(board.checkedWrongCells, [0])
+        XCTAssertEqual(board.checkCount, 1)
     }
 
     func test_syncCompletedBoardCarriesNonNullStats() throws {
@@ -59,8 +63,32 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(sync.board.status, .completed)
         XCTAssertEqual(
             sync.board.stats,
-            Stats(solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4))
+            Stats(solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4, checkCount: 2))
         XCTAssertEqual(sync.board.completedAt, "2026-07-07T19:40:03Z")
+        // §4/§10: a completed board froze its permanent count into stats.checkCount (D27).
+        XCTAssertEqual(sync.board.checkCount, sync.board.stats?.checkCount)
+        // §4, D29: this fixture predates activeSolveSeconds/sittingCount (a frozen
+        // pre-D29 stats row); the lossless round trip above doubles as the absence
+        // pin — nil decoded, keys kept absent on re-encode, never backfilled.
+        XCTAssertNil(sync.board.stats?.activeSolveSeconds)
+        XCTAssertNil(sync.board.stats?.sittingCount)
+    }
+
+    func test_boardWithoutCheckFieldsDecodesWithDefaults_PROTOCOL14() throws {
+        // §14 additive posture (the avatarUrl pattern): checkedWrongCells and checkCount
+        // are always present from a current server (§4), but a pre-check payload still
+        // decodes, as no marks and no accepted checks. Decode-only: re-encode from a
+        // current client always writes both fields.
+        var frame = try XCTUnwrap(
+            try jsonObject(fixtureData(.wire, "sync")) as? [String: Any])
+        var board = try XCTUnwrap(frame["board"] as? [String: Any])
+        board.removeValue(forKey: "checkedWrongCells")
+        board.removeValue(forKey: "checkCount")
+        frame["board"] = board
+        let data = try JSONSerialization.data(withJSONObject: frame)
+        let sync = try JSONDecoder().decode(SyncMessage.self, from: data)
+        XCTAssertEqual(sync.board.checkedWrongCells, [])
+        XCTAssertEqual(sync.board.checkCount, 0)
     }
 
     // MARK: - Client to server (PROTOCOL.md §5)
@@ -86,9 +114,11 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(message, ReactMessage(emoji: "🎉", cell: 17))
     }
 
-    func test_checkRequestRoundTrips() throws {
-        let message = try pinClientFrame(CheckRequestMessage.self, "checkRequest")
-        XCTAssertEqual(message, CheckRequestMessage(commandId: "c3"))
+    func test_checkPuzzleRoundTrips() throws {
+        // §5, §10 (D27): the room-wide check carries only its commandId; the confirmed
+        // intent is the command, and the server needs no further ceremony.
+        let message = try pinClientFrame(CheckPuzzleMessage.self, "checkPuzzle")
+        XCTAssertEqual(message, CheckPuzzleMessage(commandId: "c3"))
     }
 
     func test_heartbeatRoundTrips() throws {
@@ -128,8 +158,26 @@ final class WireSnapshotTests: XCTestCase {
     func test_gameCompletedRoundTripsTheSection6Example() throws {
         let event = try pinServerFrame(GameCompletedMessage.self, "gameCompleted")
         XCTAssertEqual(event.seq, 900)
+        // §6 example, D29: the session fills activeSolveSeconds and sittingCount at
+        // completion beside the wall-clock solveTimeSeconds; the example's solve was
+        // one sitting, so the active seconds equal the wall seconds.
         XCTAssertEqual(
-            event.stats, Stats(solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4))
+            event.stats,
+            Stats(
+                solveTimeSeconds: 2272, totalEvents: 899, participantCount: 4, checkCount: 2,
+                activeSolveSeconds: 2272, sittingCount: 1))
+    }
+
+    func test_puzzleCheckedRoundTripsTheSection6Example() throws {
+        // §6, §10 (D27): sequenced (an accepted check mutates the standing marks and the
+        // permanent count) and deliberately neutral: no `by` ever crosses the wire; the
+        // sender recognizes its own commandId echo, which is all a client needs (INV-6).
+        let event = try pinServerFrame(PuzzleCheckedMessage.self, "puzzleChecked")
+        XCTAssertEqual(
+            event,
+            PuzzleCheckedMessage(
+                seq: 742, wrongCells: [3, 17, 44], checkCount: 2, commandId: "c4",
+                at: "2026-07-07T19:31:40Z"))
     }
 
     func test_gameAbandonedRoundTripsTheSection6Example() throws {
@@ -161,11 +209,6 @@ final class WireSnapshotTests: XCTestCase {
         XCTAssertEqual(notice, ReactionMessage(userId: "u2", emoji: "🎉", cell: 5))
     }
 
-    func test_checkResultRoundTrips() throws {
-        let notice = try pinServerFrame(CheckResultMessage.self, "checkResult")
-        XCTAssertEqual(notice, CheckResultMessage(commandId: "c4", wrongCells: [3, 7, 12]))
-    }
-
     func test_kickedRoundTrips() throws {
         let notice = try pinServerFrame(KickedMessage.self, "kicked")
         XCTAssertEqual(notice, KickedMessage(reason: "removed by host"))
@@ -194,7 +237,10 @@ final class WireSnapshotTests: XCTestCase {
     func test_sequencedEventsExposeSeqAndEphemeralNoticesDoNot_INV2() throws {
         // INV-2: `seq` is the total order; the §7 gap check keys on exactly the
         // sequenced messages. `ServerMessage.seq` is the split as one accessor.
-        let sequenced = ["cellSet", "cellSet-clear", "cellSet-firstFill", "gameCompleted", "gameAbandoned"]
+        let sequenced = [
+            "cellSet", "cellSet-clear", "cellSet-firstFill", "gameCompleted",
+            "puzzleChecked", "gameAbandoned",
+        ]
         for name in sequenced {
             let message = try JSONDecoder().decode(
                 ServerMessage.self, from: fixtureData(.wire, name))
@@ -202,7 +248,7 @@ final class WireSnapshotTests: XCTestCase {
         }
         let ephemeral = [
             "welcome", "sync", "sync-completed", "playerConnected", "playerDisconnected",
-            "cursor", "reaction", "checkResult", "kicked", "error-nonfatal", "error-fatal",
+            "cursor", "reaction", "kicked", "error-nonfatal", "error-fatal",
         ]
         for name in ephemeral {
             let message = try JSONDecoder().decode(

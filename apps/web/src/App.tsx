@@ -3,7 +3,8 @@
 // `/puzzles` is the library; `/new` is the create flow; `/game/<id>` is the live game (invite
 // links carry `?code=`). Legacy query-routed URLs (`?game=`, `?puzzles=1`, `?create=1`) parse
 // to the same surfaces and are canonicalized once via replaceState, so old invite links keep
-// working; `?demo=1` keeps the fake-session boards for hacking. The `?api=`/`?ws=`/`?token=`
+// working; `?demo=1` keeps the fake-session boards for hacking and `?loupe=1` mounts the
+// word-lens material lab. The `?api=`/`?ws=`/`?token=`
 // overrides (smoke and dogfood) stay query params on any route. Navigation is pushState so
 // the app never full-reloads between screens, and the identity session survives.
 import {
@@ -20,6 +21,7 @@ import type { Clue } from "./domain/types";
 import { createFakeSession, SELF_USER_ID } from "./demo/fakeSession";
 import type { FakeSession } from "./demo/fakeSession";
 import { MosaicDemo } from "./demo/MosaicDemo";
+import { WordLoupeLab } from "./demo/WordLoupeLab";
 import {
   cellClick,
   clueClick,
@@ -154,6 +156,10 @@ function Router({
 
   if (route.kind === "demo") {
     return <DemoApp config={config} identity={identity} />;
+  }
+
+  if (route.kind === "loupe-lab") {
+    return <WordLoupeLab />;
   }
 
   // The magic-link landing owns its own full-viewport chrome (like the landing) and must render
@@ -613,13 +619,14 @@ function DemoApp({
             bloom={bloomOnCompletion}
           />
           {/* The same selection and aim layer LiveApp mounts, so `?demo=1` proves the completed
-              board is selectable without a live room: click a cell, the ring moves, the tray and
-              the `/` HUD anchor there (§9). The demo's onCellClick focuses this wrapper (gridRef),
-              so keyboard aim survives a click; the grid and mosaic never mount at once here (the
-              ternary), so they share the one ref safely. */}
+              board is selectable without a live room: click a cell, the word loupe and fixed focus
+              move, and the tray and `/` HUD anchor there (§9). The demo's onCellClick focuses this
+              wrapper (gridRef), so keyboard aim survives a click; the grid and mosaic never mount
+              at once here (the ternary), so they share the one ref safely. */}
           <MosaicSelectLayer
             grid={grid}
             selectedCell={selection.cell}
+            direction={selection.direction}
             onSelect={onCellClick}
           />
           {/* Reactions stay legal in any game status (§9): stickers paint over the mosaic

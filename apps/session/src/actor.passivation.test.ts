@@ -12,7 +12,7 @@ import type { GamePersistence } from "./writer";
 
 const persistence: GamePersistence = {
   flush: async () => undefined,
-  flushTerminal: async (_gameId, _events, build) => build(1).stats,
+  flushTerminal: async (_gameId, _events, _checks, build) => build(1, []).stats,
 };
 
 function makeActor(nowMs: () => number): GameActor {

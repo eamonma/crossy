@@ -1,0 +1,99 @@
+[
+  {
+    "name": "§10: a second check replaces the standing marks wholesale and increments the permanent count",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 20,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u1" }
+      },
+      "checkedWrong": [0, 1],
+      "checkCount": 1
+    },
+    "when": [
+      {
+        "type": "placeLetter",
+        "commandId": "c1",
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "at": "2026-07-07T00:00:30Z"
+      },
+      { "type": "checkPuzzle", "commandId": "c2" }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "cellSet",
+          "seq": 21,
+          "cell": 0,
+          "value": "A",
+          "by": "u1",
+          "commandId": "c1"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 22,
+          "wrongCells": [1],
+          "checkCount": 2,
+          "commandId": "c2"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 22,
+        "checkedWrong": [1],
+        "checkCount": 2
+      }
+    }
+  },
+  {
+    "name": "§10/D27: two checks with no edit between are two accepted checks; each counts, the marks are identical",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 6,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      }
+    },
+    "when": [
+      { "type": "checkPuzzle", "commandId": "c1" },
+      { "type": "checkPuzzle", "commandId": "c2" }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "puzzleChecked",
+          "seq": 7,
+          "wrongCells": [1],
+          "checkCount": 1,
+          "commandId": "c1"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 8,
+          "wrongCells": [1],
+          "checkCount": 2,
+          "commandId": "c2"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 8,
+        "checkedWrong": [1],
+        "checkCount": 2
+      }
+    }
+  }
+]

@@ -13,6 +13,7 @@ export type ErrorCode =
   | "GAME_NOT_ONGOING"
   | "INVALID_CELL"
   | "INVALID_VALUE"
+  | "GRID_NOT_FULL"
   | "ROLE_FORBIDDEN"
   | "RATE_LIMITED"
   | "UNKNOWN_TYPE"
@@ -48,6 +49,10 @@ export const ERROR_CODES: Readonly<Record<ErrorCode, ErrorSpec>> = {
   },
   INVALID_CELL: { fatal: false, meaning: "out of range, or a black square" },
   INVALID_VALUE: { fatal: false, meaning: "fails ^[A-Z0-9]{1,10}$" },
+  GRID_NOT_FULL: {
+    fatal: false,
+    meaning: "checkPuzzle while a playable cell is empty",
+  },
   ROLE_FORBIDDEN: { fatal: false, meaning: "a spectator sent a mutation" },
   RATE_LIMITED: { fatal: false, meaning: "slow down" },
   UNKNOWN_TYPE: { fatal: false, meaning: "unrecognized command type" },

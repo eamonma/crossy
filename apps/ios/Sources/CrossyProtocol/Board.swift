@@ -144,11 +144,70 @@ public struct Stats: Sendable, Equatable, Codable {
     public let solveTimeSeconds: Int
     public let totalEvents: Int
     public let participantCount: Int
+    /// The permanent room-check count, frozen at completion (PROTOCOL.md §4, §10; D27).
+    /// Always present from a current server; decoded tolerantly (default 0, the
+    /// avatarUrl posture toward additive fields) so a pre-check payload still decodes.
+    public let checkCount: Int
+    /// `solveTimeSeconds` with idle collapsed: same endpoints, same rounding, minus
+    /// every gap of `SITTING_GAP_MS` or more between consecutive cell events, clamped
+    /// at 0 (the sittings partition, PROTOCOL.md §4; DESIGN.md D29). Additive
+    /// (2026-07-16) and never backfilled: stats frozen before it shipped lack it, so
+    /// it stays optional and absence keeps meaning "fall back to `solveTimeSeconds`"
+    /// (`headlineSolveSeconds`), never a default that fakes a number.
+    public let activeSolveSeconds: Int?
+    /// The sittings partition's count (PROTOCOL.md §4; DESIGN.md D29). Additive like
+    /// `activeSolveSeconds`: nil from a frozen pre-D29 row, and nil renders exactly
+    /// as one sitting does (no context suffix).
+    public let sittingCount: Int?
 
-    public init(solveTimeSeconds: Int, totalEvents: Int, participantCount: Int) {
+    public init(
+        solveTimeSeconds: Int, totalEvents: Int, participantCount: Int, checkCount: Int = 0,
+        activeSolveSeconds: Int? = nil, sittingCount: Int? = nil
+    ) {
         self.solveTimeSeconds = solveTimeSeconds
         self.totalEvents = totalEvents
         self.participantCount = participantCount
+        self.checkCount = checkCount
+        self.activeSolveSeconds = activeSolveSeconds
+        self.sittingCount = sittingCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case solveTimeSeconds
+        case totalEvents
+        case participantCount
+        case checkCount
+        case activeSolveSeconds
+        case sittingCount
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        solveTimeSeconds = try container.decode(Int.self, forKey: .solveTimeSeconds)
+        totalEvents = try container.decode(Int.self, forKey: .totalEvents)
+        participantCount = try container.decode(Int.self, forKey: .participantCount)
+        checkCount = try container.decodeIfPresent(Int.self, forKey: .checkCount) ?? 0
+        activeSolveSeconds = try container.decodeIfPresent(Int.self, forKey: .activeSolveSeconds)
+        sittingCount = try container.decodeIfPresent(Int.self, forKey: .sittingCount)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(solveTimeSeconds, forKey: .solveTimeSeconds)
+        try container.encode(totalEvents, forKey: .totalEvents)
+        try container.encode(participantCount, forKey: .participantCount)
+        try container.encode(checkCount, forKey: .checkCount)
+        // Absent stays absent (unlike checkCount, whose 0 is a real count): a frozen
+        // pre-D29 stats row re-encodes without the keys, keeping the round trip honest.
+        try container.encodeIfPresent(activeSolveSeconds, forKey: .activeSolveSeconds)
+        try container.encodeIfPresent(sittingCount, forKey: .sittingCount)
+    }
+
+    /// The headline Time everywhere stats render (owner ruling, DESIGN.md D29;
+    /// PROTOCOL.md §4): active time is THE time, and a frozen pre-D29 row falls back
+    /// to the wall-clock `solveTimeSeconds` it always showed.
+    public var headlineSolveSeconds: Int {
+        activeSolveSeconds ?? solveTimeSeconds
     }
 }
 
@@ -164,6 +223,14 @@ public struct Board: Sendable, Equatable, Codable {
     public let completedAt: String?
     public let abandonedAt: String?
     public let cells: [Cell]
+    /// The standing room-check marks, ascending, `[]` when none stand (PROTOCOL.md §4,
+    /// §10; D27). They ride every snapshot, so reconnect and resync heal the marks with
+    /// no delta replay. Always present from a current server; decoded tolerantly
+    /// (default `[]`, the avatarUrl posture toward additive fields).
+    public let checkedWrongCells: [Int]
+    /// The game's total accepted checks, `0` before the first; permanent, never reset
+    /// (PROTOCOL.md §4, §10; D27). Decoded tolerantly (default 0) like the marks.
+    public let checkCount: Int
     public let participants: [Participant]
     public let cursors: [Cursor]
     public let recentCommandIds: [String]
@@ -176,6 +243,8 @@ public struct Board: Sendable, Equatable, Codable {
         completedAt: String?,
         abandonedAt: String?,
         cells: [Cell],
+        checkedWrongCells: [Int] = [],
+        checkCount: Int = 0,
         participants: [Participant],
         cursors: [Cursor],
         recentCommandIds: [String],
@@ -187,6 +256,8 @@ public struct Board: Sendable, Equatable, Codable {
         self.completedAt = completedAt
         self.abandonedAt = abandonedAt
         self.cells = cells
+        self.checkedWrongCells = checkedWrongCells
+        self.checkCount = checkCount
         self.participants = participants
         self.cursors = cursors
         self.recentCommandIds = recentCommandIds
@@ -200,6 +271,8 @@ public struct Board: Sendable, Equatable, Codable {
         case completedAt
         case abandonedAt
         case cells
+        case checkedWrongCells
+        case checkCount
         case participants
         case cursors
         case recentCommandIds
@@ -214,6 +287,11 @@ public struct Board: Sendable, Equatable, Codable {
         completedAt = try container.decode(String?.self, forKey: .completedAt)
         abandonedAt = try container.decode(String?.self, forKey: .abandonedAt)
         cells = try container.decode([Cell].self, forKey: .cells)
+        // Absent-tolerant defaults (the avatarUrl posture): a pre-check server's
+        // snapshot decodes as unmarked and uncounted; a present non-array/non-int
+        // still throws (PROTOCOL.md §4).
+        checkedWrongCells = try container.decodeIfPresent([Int].self, forKey: .checkedWrongCells) ?? []
+        checkCount = try container.decodeIfPresent(Int.self, forKey: .checkCount) ?? 0
         participants = try container.decode([Participant].self, forKey: .participants)
         cursors = try container.decode([Cursor].self, forKey: .cursors)
         recentCommandIds = try container.decode([String].self, forKey: .recentCommandIds)
@@ -228,6 +306,8 @@ public struct Board: Sendable, Equatable, Codable {
         try container.encode(completedAt, forKey: .completedAt)
         try container.encode(abandonedAt, forKey: .abandonedAt)
         try container.encode(cells, forKey: .cells)
+        try container.encode(checkedWrongCells, forKey: .checkedWrongCells)
+        try container.encode(checkCount, forKey: .checkCount)
         try container.encode(participants, forKey: .participants)
         try container.encode(cursors, forKey: .cursors)
         try container.encode(recentCommandIds, forKey: .recentCommandIds)

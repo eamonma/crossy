@@ -1,0 +1,112 @@
+{
+  "purpose": "Room-aware color spread (DESIGN.md D28, PROTOCOL.md sections 4 and 6). The server assigns each room member a roster slot before emitting the wire color: members are processed in join order (joinedAt ascending, userId ascending on ties, ASCII byte order, INV-1); a member keeps their hash-preferred slot ((fnv1a(userId) & 0xffffff) % 12) when it is unclaimed, else takes the free slot maximizing the minimum OKLab deltaE to every claimed slot (packages/protocol room-colors.ts table; ties to the lower slot index). Past twelve members the candidates become the least-claimed slots, same rule against the other claimed slots. The emitted wire color is the exact hash bytes when the preferred slot is kept, else the hash minimally adjusted so (value % 12) equals the assigned slot (value - value%12 + slot, minus 12 on 24-bit overflow). Client bucketing (roster.json slotForWireColor) is unchanged. `given.members` may be listed in any order; the assignment sorts. `then.assigned` lists every member: `slot` is always asserted, `wire` only where present (the assertion rule).",
+  "assignRoomColors": [
+    {
+      "name": "distinct preferred slots are kept and the wire is today's exact hash bytes",
+      "given": {
+        "members": [
+          { "userId": "u-ana", "joinedAt": "2026-07-16T00:00:01Z" },
+          { "userId": "u-kip", "joinedAt": "2026-07-16T00:00:02Z" },
+          { "userId": "u-lu", "joinedAt": "2026-07-16T00:00:03Z" }
+        ]
+      },
+      "then": {
+        "assigned": [
+          { "userId": "u-ana", "slot": 3, "wire": "#C26F4F" },
+          { "userId": "u-kip", "slot": 1, "wire": "#2872A5" },
+          { "userId": "u-lu", "slot": 8, "wire": "#79724C" }
+        ]
+      }
+    },
+    {
+      "name": "a two-member collision bumps the second joiner to the farthest free slot (both prefer 0 violet; farthest is 4 ochre) with a minimally adjusted wire",
+      "given": {
+        "members": [
+          { "userId": "u-fox", "joinedAt": "2026-07-16T00:00:01Z" },
+          { "userId": "u-gus", "joinedAt": "2026-07-16T00:00:02Z" }
+        ]
+      },
+      "then": {
+        "assigned": [
+          { "userId": "u-fox", "slot": 0, "wire": "#9F6744" },
+          { "userId": "u-gus", "slot": 4, "wire": "#D691F8" }
+        ]
+      }
+    },
+    {
+      "name": "a six-member room: collisions spread by max-min distance, earlier members keep their slots (u-hal collides on 0 and takes 4; u-ned collides on 2 and takes 1)",
+      "given": {
+        "members": [
+          { "userId": "u-ana", "joinedAt": "2026-07-16T00:00:01Z" },
+          { "userId": "u-ben", "joinedAt": "2026-07-16T00:00:02Z" },
+          { "userId": "u-cai", "joinedAt": "2026-07-16T00:00:03Z" },
+          { "userId": "u-hal", "joinedAt": "2026-07-16T00:00:04Z" },
+          { "userId": "u-mae", "joinedAt": "2026-07-16T00:00:05Z" },
+          { "userId": "u-ned", "joinedAt": "2026-07-16T00:00:06Z" }
+        ]
+      },
+      "then": {
+        "assigned": [
+          { "userId": "u-ana", "slot": 3 },
+          { "userId": "u-ben", "slot": 0 },
+          { "userId": "u-cai", "slot": 2 },
+          { "userId": "u-hal", "slot": 4 },
+          { "userId": "u-mae", "slot": 8 },
+          { "userId": "u-ned", "slot": 1 }
+        ]
+      }
+    },
+    {
+      "name": "equal joinedAt ties break by userId ascending (ASCII, INV-1) regardless of the given list order: u-fox sorts before u-gus and keeps the contested slot 0",
+      "given": {
+        "members": [
+          { "userId": "u-gus", "joinedAt": "2026-07-16T00:00:01Z" },
+          { "userId": "u-fox", "joinedAt": "2026-07-16T00:00:01Z" }
+        ]
+      },
+      "then": {
+        "assigned": [
+          { "userId": "u-gus", "slot": 4 },
+          { "userId": "u-fox", "slot": 0 }
+        ]
+      }
+    },
+    {
+      "name": "a thirteen-member wrap: all twelve slots claimed, so the thirteenth (u-uma, prefers 0) duplicates the most isolated slot (4 ochre, the largest nearest-neighbor distance); no earlier member repaints",
+      "given": {
+        "members": [
+          { "userId": "u-ana", "joinedAt": "2026-07-16T00:00:01Z" },
+          { "userId": "u-ben", "joinedAt": "2026-07-16T00:00:02Z" },
+          { "userId": "u-cai", "joinedAt": "2026-07-16T00:00:03Z" },
+          { "userId": "u-dot", "joinedAt": "2026-07-16T00:00:04Z" },
+          { "userId": "u-eve", "joinedAt": "2026-07-16T00:00:05Z" },
+          { "userId": "u-ivy", "joinedAt": "2026-07-16T00:00:06Z" },
+          { "userId": "u-kip", "joinedAt": "2026-07-16T00:00:07Z" },
+          { "userId": "u-lu", "joinedAt": "2026-07-16T00:00:08Z" },
+          { "userId": "u-oz", "joinedAt": "2026-07-16T00:00:09Z" },
+          { "userId": "u-rae", "joinedAt": "2026-07-16T00:01:00Z" },
+          { "userId": "u-mae", "joinedAt": "2026-07-16T00:01:01Z" },
+          { "userId": "u-ned", "joinedAt": "2026-07-16T00:01:02Z" },
+          { "userId": "u-uma", "joinedAt": "2026-07-16T00:01:03Z" }
+        ]
+      },
+      "then": {
+        "assigned": [
+          { "userId": "u-ana", "slot": 3 },
+          { "userId": "u-ben", "slot": 0 },
+          { "userId": "u-cai", "slot": 2 },
+          { "userId": "u-dot", "slot": 6 },
+          { "userId": "u-eve", "slot": 7 },
+          { "userId": "u-ivy", "slot": 11 },
+          { "userId": "u-kip", "slot": 1 },
+          { "userId": "u-lu", "slot": 8 },
+          { "userId": "u-oz", "slot": 10 },
+          { "userId": "u-rae", "slot": 5 },
+          { "userId": "u-mae", "slot": 4, "wire": "#09B0D4" },
+          { "userId": "u-ned", "slot": 9, "wire": "#273711" },
+          { "userId": "u-uma", "slot": 4, "wire": "#AB05A4" }
+        ]
+      }
+    }
+  ]
+}

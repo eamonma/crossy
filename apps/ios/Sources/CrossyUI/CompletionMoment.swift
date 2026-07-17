@@ -1,12 +1,15 @@
 // Completion and the terminal states (roadmap I2d). The celebration is the mosaic
 // (apps/ios/DESIGN.md §8): on the store's transition to completed, every letter
-// tints to its writer's color, holds for a breath, then settles back to ink; the
-// simple form is tint, hold, settle (EXPERIENCE.md §6). It fires on the status
-// TRANSITION as the store exposes it, exactly once (INV-3): never on render, never
-// again on a reconnect into an already-completed game (a welcome snapshot of a
-// completed game shows the terminal state without replaying the celebration). The
-// gate is a pure fold over observed store states so exactly-once pins headlessly;
-// the model is the thin observable the solve screen drives from onChange.
+// tints to its writer's color, holds for a breath, then the letters settle back to
+// ink while the wash beneath them STANDS — the completed board keeps the room's
+// fingerprint, the web reveal arc's settled WASH (ContributionMosaic: "the settled
+// on-screen record"). It fires on the status TRANSITION as the store exposes it,
+// exactly once (INV-3): never on render, never again on a reconnect into an
+// already-completed game (a welcome snapshot of a completed game shows the terminal
+// state — which wears the settled wash once first-correct owners land, without
+// replaying the celebration). The gate is a pure fold over observed store states so
+// exactly-once pins headlessly; the model is the thin observable the solve screen
+// drives from onChange.
 
 import CrossyDesign
 import CrossyStore
@@ -74,8 +77,10 @@ public enum MosaicEnvelope {
         riseDuration + holdDuration
     }
 
-    /// Tint intensity `elapsed` seconds after the trigger, in [0, 1]: an ease-out
-    /// rise, a flat hold, an ease-in-out settle, zero outside the envelope.
+    /// The GLYPH tint's intensity `elapsed` seconds after the trigger, in [0, 1]:
+    /// an ease-out rise, a flat hold, an ease-in-out settle back to zero (the
+    /// letters return to ink). The paper wash under them rides `washIntensity`
+    /// instead and never settles.
     public static func intensity(elapsed: TimeInterval) -> Double {
         if elapsed <= 0 { return 0 }
         if elapsed < riseDuration {
@@ -90,8 +95,43 @@ public enum MosaicEnvelope {
         return 1 - eased
     }
 
+    /// The paper WASH's intensity: the same ease-out rise as the glyph tint (one
+    /// clock, one bloom), then 1 forever. The settle returns the letters to ink
+    /// while the wash stands as the completed board's record — the web reveal
+    /// arc's WASH (INK -> FIELD -> WASH), never back to plain ink. An envelope
+    /// that ended at zero was the mosaic flash-then-disappear bug: the room's
+    /// fingerprint erased itself ~3 s after it appeared.
+    public static func washIntensity(elapsed: TimeInterval) -> Double {
+        if elapsed <= 0 { return 0 }
+        if elapsed >= riseDuration { return 1 }
+        let t = elapsed / riseDuration
+        return 1 - pow(1 - t, 3)
+    }
+
     public static func isClarified(elapsed: TimeInterval) -> Bool {
         elapsed >= 0 && elapsed < clarityDuration
+    }
+}
+
+/// The isolation filter's value (web legend parity: the analysis legend rows
+/// toggle the same dim on the web mosaic): which solver the settled wash
+/// isolates, who it isolated before, and the toggle's instant — enough for the
+/// draw pass to crossfade between the two dims statelessly. Pure presentation
+/// over the standing MosaicWash; it never touches the celebration (INV-3) or
+/// the wash's own clock.
+public struct MosaicIsolation: Equatable, Sendable {
+    /// The isolated solver's userId, or nil while a clear fades back to the
+    /// full multi-color wash.
+    public let solverId: String?
+    /// The previous value, the crossfade's from-side (nil = the full wash).
+    public let previousSolverId: String?
+    /// Reference-date seconds at the toggle.
+    public let changedAt: TimeInterval
+
+    public init(solverId: String?, previousSolverId: String?, changedAt: TimeInterval) {
+        self.solverId = solverId
+        self.previousSolverId = previousSolverId
+        self.changedAt = changedAt
     }
 }
 
@@ -105,6 +145,45 @@ public enum GridMosaic {
     /// The paper wash under the tinted glyph, scaled by the envelope's intensity.
     /// Louder than the teammate wash (0.12): the mosaic is the celebration.
     public static let washAlpha: Double = 0.30
+
+    /// The isolation dim's floor: the fraction of the standing wash a
+    /// non-isolated cell keeps. The wash composites as alpha OVER the paper, so
+    /// a lower alpha IS a step toward the ground color on both grounds by
+    /// construction — the dimmed hands recess into paper while the isolated one
+    /// holds the full wash. Dimmed, never erased: the record stays traceable.
+    public static let isolationDim: Double = 0.18
+
+    /// The isolation crossfade: fast and quiet (a filter, not a celebration),
+    /// and already the §7 reduced-motion form (a pure opacity crossfade).
+    public static let isolationFadeDuration: TimeInterval = 0.25
+
+    /// The per-cell wash multiplier under an isolation, `elapsed` seconds after
+    /// the toggle: an ease-in-out crossfade from the previous value's dim to
+    /// the current one's. Nil isolation is the full wash. Pure math, so the
+    /// filter pins headlessly and any frame past the fade (a paused timeline's
+    /// frozen date included) draws the exact target.
+    public static func isolationMultiplier(
+        owner: String, isolation: MosaicIsolation?, elapsed: TimeInterval
+    ) -> Double {
+        guard let isolation else { return 1 }
+        let from = isolationTarget(owner: owner, solverId: isolation.previousSolverId)
+        let to = isolationTarget(owner: owner, solverId: isolation.solverId)
+        if from == to { return to }
+        if elapsed <= 0 { return from }
+        let t = elapsed / isolationFadeDuration
+        if t >= 1 { return to }
+        // The settle's own ease-in-out: the filter leaves one value as gently
+        // as it lands on the other.
+        let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+        return from + (to - from) * eased
+    }
+
+    /// One side's resting multiplier: the full wash for no isolation or the
+    /// isolated solver's own hand, the dim floor for everyone else's.
+    private static func isolationTarget(owner: String, solverId: String?) -> Double {
+        guard let solverId else { return 1 }
+        return owner == solverId ? 1 : isolationDim
+    }
 
     /// Colors by cell. `writers` maps a cell to the userId whose letter it holds
     /// (sequenced state only); slotting follows the presence rule: the wire color
@@ -257,12 +336,31 @@ public struct ConfettiField: Equatable, Sendable {
 /// the render clock.
 public struct MosaicWash: Equatable, Sendable {
     public let colors: [Int: RGBColor]
+    /// Cell to the writer whose hand it is — the same map `colors` derives from,
+    /// carried alongside because the isolation filter keys per cell on the
+    /// OWNER, not the color (two solvers can share a roster slot's color).
+    public let writers: [Int: String]
     /// Reference-date seconds at the celebration trigger.
     public let startedAt: TimeInterval
+    /// True once the envelope has landed (or when the wash stands without ever
+    /// blooming, the reconnect-into-completed path): the draw pass paints the
+    /// standing wash (wash 1, glyph 0) with no clock, and the grid's timeline
+    /// pauses — a settled mosaic costs no frames.
+    public let settled: Bool
+    /// The isolation filter over the settled wash (CompletionModel.isolation),
+    /// or nil at the full multi-color record.
+    public let isolation: MosaicIsolation?
 
-    public init(colors: [Int: RGBColor], startedAt: TimeInterval) {
+    public init(
+        colors: [Int: RGBColor], writers: [Int: String] = [:],
+        startedAt: TimeInterval, settled: Bool = false,
+        isolation: MosaicIsolation? = nil
+    ) {
         self.colors = colors
+        self.writers = writers
         self.startedAt = startedAt
+        self.settled = settled
+        self.isolation = isolation
     }
 }
 
@@ -276,8 +374,25 @@ public struct MosaicWash: Equatable, Sendable {
 @MainActor
 @Observable
 public final class CompletionModel {
-    /// Non-nil while the mosaic plays; the grid's timeline runs against it.
+    /// Non-nil from the bloom's start on, forever: the settle lands on the
+    /// standing wash (MosaicEnvelope.washIntensity), never back on plain ink, so
+    /// the completed board keeps the room's fingerprint. The grid's timeline runs
+    /// against it only while `mosaicSettled` is false.
     public private(set) var mosaicStartedAt: TimeInterval?
+
+    /// True once the envelope has landed (or immediately, for a stand without a
+    /// bloom): the wash is a constant now, so the grid's timeline pauses.
+    public private(set) var mosaicSettled = false
+
+    /// The isolation filter's one truth: a tapped legend row isolates that
+    /// solver on the settled wash; nil is the full multi-color record. The
+    /// analysis panel's rows and the grid's draw pass both read this, so a
+    /// toggle is a value change, never a re-render of the wash arc.
+    public private(set) var isolation: MosaicIsolation?
+
+    /// The isolated solver, or nil at the full wash (the legend rows' selected
+    /// state).
+    public var isolatedSolverId: String? { isolation?.solverId }
 
     /// The §4 clarity beat: true through the tint and the hold on iOS 26 glass
     /// (the fallback below 26 stays inert; §8 names no fallback).
@@ -347,8 +462,9 @@ public final class CompletionModel {
         // confetti; the color comes a beat later, exactly as on the web.
     }
 
-    /// Start the completion mosaic once its colors are known: tint, hold, settle
-    /// back to ink (MosaicEnvelope). Deferred from the gate on purpose (owner
+    /// Start the completion mosaic once its colors are known: tint, hold, then
+    /// the letters settle back to ink over the standing wash (MosaicEnvelope).
+    /// Deferred from the gate on purpose (owner
     /// ruling 2026-07-13): the bloom is first-correct truth from GET /analysis, so
     /// it waits for the bundle rather than flashing the live last-writer log; the
     /// last-writer fallback stands only when the fetch is absent (or no fetch is
@@ -380,11 +496,57 @@ public final class CompletionModel {
             try? await Task.sleep(
                 for: .seconds(MosaicEnvelope.duration - MosaicEnvelope.clarityDuration))
             guard !Task.isCancelled else { return }
-            self?.mosaicStartedAt = nil
-            // The panel arrives after the bloom, never during it (owner ruling
-            // 2026-07-13): the settle landing is the summon's cue on the live path.
-            if summonOnSettle { self?.summonToken += 1 }
+            self?.settleMosaic(summonOnSettle: summonOnSettle)
         }
+    }
+
+    /// The settle's landing: the mosaic STANDS (the flash-then-disappear fix —
+    /// `mosaicStartedAt` is never nilled, the wash stays as the completed board's
+    /// record) and the timeline may pause. The panel arrives after the bloom,
+    /// never during it (owner ruling 2026-07-13): the settle landing is the
+    /// summon's cue on the live path. Internal so the fold pins headlessly
+    /// without riding the envelope's real ~3 s.
+    func settleMosaic(summonOnSettle: Bool) {
+        mosaicSettled = true
+        if summonOnSettle { summonToken += 1 }
+    }
+
+    /// Toggle isolation from a legend row: the same solver clears back to the
+    /// full wash, another switches to them. Isolation exists only on the
+    /// SETTLED wash — a bloom in flight ignores the tap outright (the one
+    /// arming and the celebration gate are untouchable, INV-3), and an
+    /// unsettled room has no standing record to filter. A pure presentation
+    /// value: nothing here moves the gate, the arming, the clock, or the
+    /// summon.
+    public func toggleIsolation(
+        _ userId: String, now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
+    ) {
+        guard mosaicSettled else { return }
+        let current = isolation?.solverId
+        isolation = MosaicIsolation(
+            solverId: current == userId ? nil : userId,
+            previousSolverId: current,
+            changedAt: now)
+    }
+
+    /// Stand the settled wash without a celebration: the reconnect-into-completed
+    /// path. INV-3 holds — no bloom, no clarity beat, no haptic, no confetti, no
+    /// summon replays; this is terminal-state RENDERING, not a celebration. The
+    /// completed board wears the first-correct fingerprint the moment the
+    /// analysis bundle lands, instead of reverting to plain ink forever (the
+    /// flash-then-disappear bug's revisit half). Shares the one arming with
+    /// `startMosaic`, so a stand can never follow a bloom or vice versa.
+    public func standMosaic(
+        mosaicEnabled: Bool = AttributionSwitches.completionMosaicEnabled,
+        now: TimeInterval = Date.now.timeIntervalSinceReferenceDate
+    ) {
+        guard !mosaicArmed else { return }
+        mosaicArmed = true
+        guard mosaicEnabled else { return }
+        // Born past its own envelope: any clock that reads it sees the settled
+        // form; `settled` is what the draw pass actually keys on.
+        mosaicStartedAt = now - MosaicEnvelope.duration
+        mosaicSettled = true
     }
 }
 

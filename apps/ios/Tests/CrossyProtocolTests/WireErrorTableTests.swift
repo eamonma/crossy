@@ -16,13 +16,14 @@ final class WireErrorTableTests: XCTestCase {
         "GAME_NOT_ONGOING": .never,
         "INVALID_CELL": .never,
         "INVALID_VALUE": .never,
+        "GRID_NOT_FULL": .never,
         "ROLE_FORBIDDEN": .never,
         "RATE_LIMITED": .never,
         "UNKNOWN_TYPE": .never,
         "INTERNAL": .varies,
     ]
 
-    func test_listsExactlyTheTwelveSection11Codes() throws {
+    func test_listsExactlyTheThirteenSection11Codes() throws {
         XCTAssertEqual(
             Set(ErrorCode.allCases.map(\.rawValue)),
             Set(Self.table.keys))

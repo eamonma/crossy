@@ -1,8 +1,9 @@
 // The clue surfaces. Desktop reads like v2's game screen: a quiet clue strip under the
 // toolbar (number tag, then the prose) closed by the dashed rule, and a right-hand rail of
 // the two lists with the gold-amber active row. Mobile keeps its own bar: prev/next steps,
-// and the label opens a bottom-sheet browser. All of it is the dashed rule and the one panel
-// recipe, never new chrome. Empty axes state themselves plainly.
+// and the label opens a bottom-sheet browser. Both active-clue bars remain after completion;
+// Analysis joins the clue panel instead of replacing its entry point. All of it is the dashed
+// rule and the one panel recipe, never new chrome. Empty axes state themselves plainly.
 import { useEffect, useRef } from "react";
 import {
   ChevronLeftIcon,
@@ -111,50 +112,22 @@ export function ClueStrip({ clue }: { clue: Clue | undefined }) {
  * Mobile only: the active-clue bar. Prev/next step through clues on the current axis; the
  * label opens the sheet. On a mini with no word on an axis it states that plainly.
  *
- * Once the room is completed (`completed`), the bar becomes the door to Analysis, the mock's iOS
- * treatment: a gold-edged invitation reading "Analysis" that opens the sheet on the Analysis tab.
- * The prev/next steppers drop (there is no active clue to step through on a finished board).
+ * Completion does not replace this bar: clue navigation stays live on a frozen board (DESIGN.md
+ * section 5), and Analysis is available beside Clues in the sheet's completed-state tabs.
  */
 export function ClueBar({
   clue,
   completed,
   onOpen,
-  onOpenAnalysis,
   onPrev,
   onNext,
 }: {
   clue: Clue | undefined;
   completed?: boolean | undefined;
   onOpen: () => void;
-  /** Open the sheet on the Analysis tab; used by the completed-state door. */
-  onOpenAnalysis?: (() => void) | undefined;
   onPrev: () => void;
   onNext: () => void;
 }) {
-  if (completed) {
-    return (
-      <button
-        type="button"
-        onClick={onOpenAnalysis ?? onOpen}
-        aria-label="Open analysis"
-        className={cx(
-          "md:hidden flex items-center gap-3 border-b border-border-dashed px-4 py-2.5 text-left",
-          "border-focus-ring bg-gradient-to-b from-gold-2 to-panel",
-        )}
-      >
-        <span className="min-w-0 flex-1">
-          <span className="block text-1 font-semibold uppercase tracking-[var(--tracking-caps)] text-gold-11">
-            Analysis
-          </span>
-          <span className="block text-2 text-text-subtle">
-            See how the room solved it
-          </span>
-        </span>
-        <ChevronRightIcon className="shrink-0 text-gold-9" />
-      </button>
-    );
-  }
-
   return (
     <div className="md:hidden flex items-stretch border-b border-dashed border-border-dashed">
       <Button
@@ -170,7 +143,9 @@ export function ClueBar({
         type="button"
         onClick={onOpen}
         className="flex-1 min-w-0 flex items-center gap-2.5 px-1 py-2 text-left"
-        aria-label="Show all clues"
+        aria-label={
+          completed ? "Show all clues and analysis" : "Show all clues"
+        }
       >
         {clue ? (
           <>
@@ -197,6 +172,35 @@ export function ClueBar({
         <ChevronRightIcon />
       </Button>
     </div>
+  );
+}
+
+/** The responsive active-clue chrome. It is deliberately status-stable: completing a room freezes
+ * mutations, not clue navigation, so neither the desktop strip nor mobile bar is unmounted. */
+export function ActiveClueHeader({
+  clue,
+  completed,
+  onOpen,
+  onPrev,
+  onNext,
+}: {
+  clue: Clue | undefined;
+  completed: boolean;
+  onOpen: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <>
+      <ClueStrip clue={clue} />
+      <ClueBar
+        clue={clue}
+        completed={completed}
+        onOpen={onOpen}
+        onPrev={onPrev}
+        onNext={onNext}
+      />
+    </>
   );
 }
 

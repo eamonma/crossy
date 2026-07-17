@@ -37,6 +37,7 @@ import type {
   PuzzleSnapshot,
 } from "../../apps/session/src/hydrate";
 import type {
+  CheckEventRow,
   GamePersistence,
   StateSnapshot,
 } from "../../apps/session/src/writer";
@@ -66,15 +67,18 @@ export interface FlushRecord {
  */
 export class RecordingPersistence implements GamePersistence {
   readonly log: CellSet[] = [];
+  readonly checkLog: CheckEventRow[] = [];
   readonly flushes: FlushRecord[] = [];
   snapshot: StateSnapshot | null = null;
 
   async flush(
     _gameId: string,
     events: readonly CellSet[],
+    checks: readonly CheckEventRow[],
     snap: StateSnapshot,
   ): Promise<void> {
     this.append(events);
+    this.appendChecks(checks);
     this.snapshot = snap;
     this.flushes.push({
       batch: events.length,
@@ -86,14 +90,23 @@ export class RecordingPersistence implements GamePersistence {
   async flushTerminal(
     _gameId: string,
     events: readonly CellSet[],
-    buildSnapshot: (participantCount: number) => {
+    checks: readonly CheckEventRow[],
+    buildSnapshot: (
+      participantCount: number,
+      eventAtMs: readonly number[],
+    ) => {
       snap: StateSnapshot;
       stats: import("@crossy/protocol").Stats;
     },
   ): Promise<import("@crossy/protocol").Stats> {
     this.append(events);
+    this.appendChecks(checks);
     const participantCount = new Set(this.log.map((e) => e.by)).size;
-    const { snap, stats } = buildSnapshot(participantCount);
+    // Mirror the real terminal read (D29): the whole log's timestamps in seq order.
+    const eventAtMs = [...this.log]
+      .sort((a, b) => a.seq - b.seq)
+      .map((e) => Date.parse(e.at));
+    const { snap, stats } = buildSnapshot(participantCount, eventAtMs);
     this.snapshot = snap;
     this.flushes.push({
       batch: events.length,
@@ -108,6 +121,13 @@ export class RecordingPersistence implements GamePersistence {
       // Mirror the real ON CONFLICT (game_id, seq) DO NOTHING: never double-append a seq.
       if (this.log.some((e) => e.seq === event.seq)) continue;
       this.log.push(event);
+    }
+  }
+
+  private appendChecks(checks: readonly CheckEventRow[]): void {
+    for (const check of checks) {
+      if (this.checkLog.some((c) => c.seq === check.seq)) continue;
+      this.checkLog.push(check);
     }
   }
 }
@@ -176,7 +196,12 @@ export function completedSeedState(puzzle: SimPuzzle): GameStateRow {
     firstFillAt: new Date(SENTINEL_CLOCK_START).toISOString(),
     completedAt: new Date(SENTINEL_CLOCK_START + 60_000).toISOString(),
     abandonedAt: null,
-    stats: { solveTimeSeconds: 60, totalEvents: filled, participantCount: 1 },
+    stats: {
+      solveTimeSeconds: 60,
+      totalEvents: filled,
+      participantCount: 1,
+      checkCount: 0,
+    },
     recentCommandIds: [],
   };
 }

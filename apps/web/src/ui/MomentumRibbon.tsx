@@ -1,7 +1,9 @@
 // The room's tempo, drawn as a smooth ribbon over the 40 peak-normalized momentum samples the wire
 // ships (ANALYSIS.md). A gold area under a gold-11 line (the app's accent, not a chart palette), a
 // quiet baseline, and, when the turning point exists, a shaded stall region closing on the "picked
-// up" marker at breakSeconds. The math lives in analysisReadout.ts; this only draws it.
+// up" marker at breakSeconds. When the bundle carries sittings (D29), a recessive hairline seam
+// marks each interior sitting boundary on the same active axis; an older bundle draws none. The
+// math lives in analysisReadout.ts and sittingsReadout.ts; this only draws it.
 //
 // When replay is wired (the Analysis tab on a rail or dock), the ribbon doubles as the replay
 // transport: a scrub overlay captures the drag, a gold playhead marks the current time T, and the
@@ -25,6 +27,7 @@ import {
   xToTimeSeconds,
   type RibbonBox,
 } from "./analysisReadout";
+import { seamTickSeconds } from "./sittingsReadout";
 import type { AnalysisResponse } from "./completionAttribution";
 
 const BOX: RibbonBox = {
@@ -92,6 +95,20 @@ export function MomentumRibbon({
           BOX,
         )
       : null;
+
+  // The sitting seams (D29): each interior sitting boundary, mapped through the SAME forward
+  // pipeline the break marker uses (the spans share the bundle's active axis, PROTOCOL §12), so a
+  // seam sits exactly where the axis stitched two sittings together. Absent sittings (an older
+  // cached bundle) or a single sitting draws none, and a flat series has no shape to seam.
+  const seamXs = hasSignal
+    ? seamTickSeconds(bundle.sittings).map((t) =>
+        sampleIndexToX(
+          timeToSampleIndex(t, bundleDuration),
+          samples.length || 1,
+          BOX,
+        ),
+      )
+    : [];
 
   // The playhead's x: the SAME forward mapping the break uses, so a playhead and the break marker
   // align pixel-for-pixel when they sit at the same time.
@@ -192,6 +209,22 @@ export function MomentumRibbon({
         stroke="var(--color-border)"
         strokeWidth={1}
       />
+
+      {/* Sitting seams (D29): a recessive hairline where one sitting ends and the next begins.
+          The baseline's own border color, no dash, no dot, no label — deliberately quieter than
+          the break marker — and drawn under the gold area/line so the ribbon paints over it. */}
+      {seamXs.map((x, i) => (
+        <line
+          key={`seam-${i}`}
+          data-seam
+          x1={x}
+          y1={BOX.padTop}
+          x2={x}
+          y2={baselineY}
+          stroke="var(--color-border)"
+          strokeWidth={1}
+        />
+      ))}
 
       {area !== "" && <path d={area} fill={`url(#${gradId})`} />}
       {line !== "" && (

@@ -1,10 +1,11 @@
 // Postgres write adapter (DESIGN.md §4 adapters, §6 write-behind, §9 single-writer).
-// The session service is the single writer for game_state and cell_events (INV-7). Every
-// flush is ONE transaction: append the buffered cellSet events to the append-only
-// cell_events log and upsert the game_state snapshot together, so the restored
-// snapshot-plus-log pair is always internally consistent (INV-5). cell_events is
-// append-only by grant (INSERT + SELECT only), so this file never issues an UPDATE or
-// DELETE against it; game_state is a full-DML upsert.
+// The session service is the single writer for game_state, cell_events, and check_events
+// (INV-7). Every flush is ONE transaction: append the buffered cellSet events to the
+// append-only cell_events log, the buffered checks to the append-only check_events log
+// (D27), and upsert the game_state snapshot together, so the restored snapshot-plus-log
+// pair is always internally consistent (INV-5). Both logs are append-only by grant
+// (INSERT + SELECT only), so this file never issues an UPDATE or DELETE against them;
+// game_state is a full-DML upsert.
 //
 // participantCount (PROTOCOL.md §4) is authoritative here, not from actor memory: it is
 // DISTINCT user_id over cell_events, computed inside the terminal flush transaction after
@@ -32,11 +33,37 @@ export class SnapshotRegressionError extends Error {
   }
 }
 
+/**
+ * The board jsonb the snapshot persists (PROTOCOL.md §4 facts, DESIGN.md §9): the per-cell
+ * array plus the standing room-check marks and the permanent count, so the marks survive
+ * passivation with the board they describe (D27). hydrate.ts reads this shape back, and
+ * still accepts the pre-check bare cell array a legacy row holds (expand/contract: the
+ * reader widened before any writer produced the new shape).
+ */
+export interface BoardSnapshot {
+  /** Full per-cell array, length rows*cols; black/never-written cells are {v:null,by:null}. */
+  readonly cells: readonly { v: string | null; by: string | null }[];
+  /** The standing marks, ascending; `[]` when none stand (PROTOCOL.md §4, §10). */
+  readonly checkedWrongCells: readonly number[];
+  /** Total accepted checks, permanent and never reset (PROTOCOL.md §10). */
+  readonly checkCount: number;
+}
+
+/**
+ * One accepted room check awaiting its check_events row (DESIGN.md §9, D27). `userId` is the
+ * acting member the actor retains SERVER-SIDE only: it never rides the wire event (PROTOCOL.md
+ * §6 neutrality), it lands solely in the append-only log for future scoring.
+ */
+export interface CheckEventRow {
+  readonly seq: number;
+  readonly userId: string;
+  readonly at: string;
+}
+
 /** The game_state row this flush upserts (DESIGN.md §9). Column shapes match hydrate.ts. */
 export interface StateSnapshot {
   readonly status: "ongoing" | "completed" | "abandoned";
-  /** Full per-cell array, length rows*cols; black/never-written cells are {v:null,by:null}. */
-  readonly board: readonly { v: string | null; by: string | null }[];
+  readonly board: BoardSnapshot;
   readonly lastSeq: number;
   readonly firstFillAt: string | null;
   readonly completedAt: string | null;
@@ -60,6 +87,24 @@ async function insertEvents(
        values ($1, $2, $3, $4, $5, $6)
        on conflict (game_id, seq) do nothing`,
       [gameId, event.seq, event.cell, event.by, event.value, event.at],
+    );
+  }
+}
+
+/** Append buffered room checks to the immutable check_events log (D27). INSERT only (§9). */
+async function insertCheckEvents(
+  client: PoolClient,
+  gameId: string,
+  checks: readonly CheckEventRow[],
+): Promise<void> {
+  for (const check of checks) {
+    // Same retry guard as cell_events: ON CONFLICT DO NOTHING is still an INSERT, so the
+    // log stays append-only at the grant layer.
+    await client.query(
+      `insert into check_events (game_id, seq, user_id, at)
+       values ($1, $2, $3, $4)
+       on conflict (game_id, seq) do nothing`,
+      [gameId, check.seq, check.userId, check.at],
     );
   }
 }
@@ -127,6 +172,24 @@ export async function countDistinctWriters(
   return Number(rows[0]?.n ?? "0");
 }
 
+/**
+ * The game's cell-event timestamps as epoch ms, in the actor's write order (seq). Read inside
+ * the terminal flush transaction after the final append, so the list is the whole log the
+ * sittings stats describe (PROTOCOL.md §4, D29). Like `participantCount`, this is authoritative
+ * over cell_events rather than actor memory, which is lost on passivation. One narrow column
+ * over the `(game_id, seq)` primary key, an index range scan.
+ */
+export async function selectEventTimesAsc(
+  client: PoolClient,
+  gameId: string,
+): Promise<number[]> {
+  const { rows } = await client.query<{ at: Date | string }>(
+    "select at from cell_events where game_id = $1 order by seq asc",
+    [gameId],
+  );
+  return rows.map((r) => new Date(r.at).getTime());
+}
+
 /** Run `fn` inside one transaction on a dedicated client; rollback and rethrow on error. */
 async function inTransaction<T>(
   pool: Pool,
@@ -160,34 +223,43 @@ export async function flushToPostgres(
   pool: Pool,
   gameId: string,
   events: readonly CellSet[],
+  checks: readonly CheckEventRow[],
   snap: StateSnapshot,
 ): Promise<void> {
   await inTransaction(pool, async (client) => {
     await insertEvents(client, gameId, events);
+    await insertCheckEvents(client, gameId, checks);
     await upsertSnapshot(client, gameId, snap);
   });
 }
 
 /**
  * Terminal (completion) flush, synchronous before the broadcast (INV-3). The completing
- * cellSets are appended first, then participantCount is read DISTINCT over cell_events
- * inside the same transaction so it counts the completing writer, then the snapshot is
- * upserted with the stats. `buildSnapshot` receives the authoritative participantCount and
- * returns the snapshot to persist plus the stats to broadcast.
+ * cellSets are appended first, then participantCount is read DISTINCT over cell_events and
+ * the event timestamps are read in seq order inside the same transaction (so both count the
+ * completing writer's rows), then the snapshot is upserted with the stats. `buildSnapshot`
+ * receives the authoritative participantCount and the full log's epoch-ms timestamps (the
+ * sittings inputs, D29) and returns the snapshot to persist plus the stats to broadcast.
  */
 export async function flushTerminalToPostgres(
   pool: Pool,
   gameId: string,
   events: readonly CellSet[],
-  buildSnapshot: (participantCount: number) => {
+  checks: readonly CheckEventRow[],
+  buildSnapshot: (
+    participantCount: number,
+    eventAtMs: readonly number[],
+  ) => {
     snap: StateSnapshot;
     stats: Stats;
   },
 ): Promise<Stats> {
   return inTransaction(pool, async (client) => {
     await insertEvents(client, gameId, events);
+    await insertCheckEvents(client, gameId, checks);
     const participantCount = await countDistinctWriters(client, gameId);
-    const { snap, stats } = buildSnapshot(participantCount);
+    const eventAtMs = await selectEventTimesAsc(client, gameId);
+    const { snap, stats } = buildSnapshot(participantCount, eventAtMs);
     await upsertSnapshot(client, gameId, snap);
     return stats;
   });
@@ -199,17 +271,25 @@ export async function flushTerminalToPostgres(
  * stays testable and IO stays at the boundary.
  */
 export interface GamePersistence {
-  /** Write-behind flush: buffered events plus the snapshot in one transaction. */
+  /** Write-behind flush: buffered events, buffered checks, and the snapshot in one transaction. */
   flush(
     gameId: string,
     events: readonly CellSet[],
+    checks: readonly CheckEventRow[],
     snap: StateSnapshot,
   ): Promise<void>;
-  /** Terminal flush: append events, read authoritative participantCount, upsert snapshot. */
+  /**
+   * Terminal flush: append both logs, read the authoritative participantCount and the log's
+   * event timestamps (seq order, epoch ms; the sittings inputs, D29), upsert snapshot.
+   */
   flushTerminal(
     gameId: string,
     events: readonly CellSet[],
-    buildSnapshot: (participantCount: number) => {
+    checks: readonly CheckEventRow[],
+    buildSnapshot: (
+      participantCount: number,
+      eventAtMs: readonly number[],
+    ) => {
       snap: StateSnapshot;
       stats: Stats;
     },
@@ -219,9 +299,9 @@ export interface GamePersistence {
 /** Bind the persistence port to a `pg` Pool (the crossy_session-role connection, §9). */
 export function createPgPersistence(pool: Pool): GamePersistence {
   return {
-    flush: (gameId, events, snap) =>
-      flushToPostgres(pool, gameId, events, snap),
-    flushTerminal: (gameId, events, build) =>
-      flushTerminalToPostgres(pool, gameId, events, build),
+    flush: (gameId, events, checks, snap) =>
+      flushToPostgres(pool, gameId, events, checks, snap),
+    flushTerminal: (gameId, events, checks, build) =>
+      flushTerminalToPostgres(pool, gameId, events, checks, build),
   };
 }

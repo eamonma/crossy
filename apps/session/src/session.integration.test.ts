@@ -618,9 +618,8 @@ describe("placeLetter to cellSet broadcast (PROTOCOL.md §6)", () => {
   it("refuses a spectator's clearCell with ROLE_FORBIDDEN, same gate as placeLetter (§5, §11)", async () => {
     // Guests seat as spectators (owner decision 2026-07-10, PROTOCOL.md §12); the server is
     // the real guard, so every mutation type a spectator can send must hit the same role gate
-    // (actor.ts handleMutation), not just placeLetter. checkRequest is not exercised here: it
-    // is a deferred no-op for every role today (server.ts "checkRequest is Phase 3"), so there
-    // is no ROLE_FORBIDDEN behavior yet to assert for it.
+    // (actor.ts handleMutation), not just placeLetter. checkPuzzle rides the same gate; its
+    // spectator rejection is asserted in the room-check suite below (PROTOCOL.md §10, D27).
     const spectatorId = randomUUID();
     const gameId = await seedGame({
       snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
@@ -853,7 +852,7 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
     } as unknown as StateSnapshot;
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, poisoned),
+      flushToPostgres(sessionPool, gameId, events, [], poisoned),
     ).rejects.toThrow();
 
     // Neither the event nor the snapshot landed: the transaction was all-or-nothing.
@@ -881,11 +880,15 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
     ];
     const snap: StateSnapshot = {
       status: "ongoing",
-      board: [
-        { v: "A", by: userId },
-        { v: null, by: null },
-        { v: "C", by: userId },
-      ],
+      board: {
+        cells: [
+          { v: "A", by: userId },
+          { v: null, by: null },
+          { v: "C", by: userId },
+        ],
+        checkedWrongCells: [],
+        checkCount: 0,
+      },
       lastSeq: 2,
       firstFillAt: "2026-07-08T00:00:00.000Z",
       completedAt: null,
@@ -893,7 +896,7 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
       stats: null,
       recentCommandIds: ["c-1", "c-2"],
     };
-    await flushToPostgres(sessionPool, gameId, events, snap);
+    await flushToPostgres(sessionPool, gameId, events, [], snap);
 
     // Rehydrate via the same read path the actor uses on first connect.
     const loadedRow = await loadGameRow(adminPool, gameId);
@@ -1157,7 +1160,8 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
   // guarded fields (board, status, last_seq) are byte-identical after a rejected flush.
   interface StoredRow {
     status: string;
-    board: RawCell[];
+    /** Either board generation: the writer's object shape, or a seeded legacy array. */
+    board: unknown;
     last_seq: string;
   }
   async function storedRow(gameId: string): Promise<StoredRow> {
@@ -1178,7 +1182,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
   ): StateSnapshot {
     return {
       status,
-      board,
+      board: { cells: board, checkedWrongCells: [], checkCount: 0 },
       lastSeq,
       firstFillAt: "2026-07-08T00:00:00.000Z",
       completedAt: status === "completed" ? "2026-07-08T00:10:00.000Z" : null,
@@ -1220,7 +1224,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(3, 0, "X", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, stale),
+      flushToPostgres(sessionPool, gameId, events, [], stale),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     // The stored row is byte-identical: the stale board, status, and seq never landed.
@@ -1257,7 +1261,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(3, 0, "X", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, stale),
+      flushToPostgres(sessionPool, gameId, events, [], stale),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     const ev = await adminPool.query(
@@ -1301,7 +1305,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(9, 0, "Z", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, regressing),
+      flushToPostgres(sessionPool, gameId, events, [], regressing),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     expect(await storedRow(gameId)).toEqual(before);
@@ -1339,7 +1343,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(9, 0, "Z", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, regressing),
+      flushToPostgres(sessionPool, gameId, events, [], regressing),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     expect(await storedRow(gameId)).toEqual(before);
@@ -1379,7 +1383,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     );
 
     await expect(
-      flushToPostgres(sessionPool, gameId, [], switching),
+      flushToPostgres(sessionPool, gameId, [], [], switching),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     expect(await storedRow(gameId)).toEqual(before);
@@ -1414,13 +1418,17 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     });
 
     await expect(
-      flushToPostgres(sessionPool, gameId, [], retry),
+      flushToPostgres(sessionPool, gameId, [], [], retry),
     ).resolves.toBeUndefined();
 
     const after = await storedRow(gameId);
     expect(after.status).toBe("completed");
     expect(after.last_seq).toBe(before.last_seq);
-    expect(after.board).toEqual(stored);
+    expect(after.board).toEqual({
+      cells: stored,
+      checkedWrongCells: [],
+      checkCount: 0,
+    });
   });
 
   it("a normal monotonic flush (higher last_seq, ongoing over ongoing) still applies", async () => {
@@ -1452,17 +1460,21 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(2, 1, "B", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, advanced),
+      flushToPostgres(sessionPool, gameId, events, [], advanced),
     ).resolves.toBeUndefined();
 
     const after = await storedRow(gameId);
     expect(after.status).toBe("ongoing");
     expect(after.last_seq).toBe("2");
-    expect(after.board).toEqual([
-      { v: "A", by: userId },
-      { v: "B", by: userId },
-      { v: null, by: null },
-    ]);
+    expect(after.board).toEqual({
+      cells: [
+        { v: "A", by: userId },
+        { v: "B", by: userId },
+        { v: null, by: null },
+      ],
+      checkedWrongCells: [],
+      checkCount: 0,
+    });
     // The advancing event landed too: the pair is consistent.
     const ev = await adminPool.query<{ seq: string }>(
       "select seq from cell_events where game_id = $1 order by seq",
@@ -1525,6 +1537,253 @@ describe("participantCount authoritative over cell_events (PROTOCOL.md §4)", ()
 
     first.client.close();
     second.client.close();
+  });
+});
+
+describe("sittings stats authoritative over cell_events (PROTOCOL.md §4; D29)", () => {
+  it("a gapless solve is one sitting and activeSolveSeconds equals solveTimeSeconds exactly (D29 identity)", async () => {
+    const a = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: a, role: "solver" }],
+    });
+    const first = await connectAndHello(gameId, a);
+
+    // Three live fills milliseconds apart: no gap anywhere near SITTING_GAP_MS.
+    first.client.sendJson(placeLetter(0, "A"));
+    await first.client.waitForCount("cellSet", 1);
+    first.client.sendJson(placeLetter(1, "B"));
+    await first.client.waitForCount("cellSet", 2);
+    first.client.sendJson(placeLetter(2, "C"));
+    const completed = (await first.client.waitForType("gameCompleted")) as {
+      stats: {
+        solveTimeSeconds: number;
+        activeSolveSeconds: number;
+        sittingCount: number;
+      };
+    };
+
+    expect(completed.stats.sittingCount).toBe(1);
+    expect(completed.stats.activeSolveSeconds).toBe(
+      completed.stats.solveTimeSeconds,
+    );
+
+    // Persisted before broadcast (INV-3): the frozen stats row carries both fields.
+    const gs = await adminPool.query<{
+      stats: { activeSolveSeconds: number; sittingCount: number };
+    }>("select stats from game_state where game_id = $1", [gameId]);
+    expect(gs.rows[0]?.stats.sittingCount).toBe(1);
+    expect(gs.rows[0]?.stats.activeSolveSeconds).toBe(
+      completed.stats.activeSolveSeconds,
+    );
+
+    first.client.close();
+  });
+
+  it("a solve resumed after a long-dead first fill counts two sittings and collapses the idle from activeSolveSeconds (D29)", async () => {
+    const a = randomUUID();
+    // The first sitting happened long ago: one seeded fill (cell 0) whose cell_events row and
+    // firstFillAt are a fixed past instant, far more than SITTING_GAP_MS before the live
+    // completion below. The actor's memory never held it (hydrated from the snapshot), so the
+    // partition MUST come from the log read inside the terminal flush, like participantCount.
+    const longAgo = "2026-07-08T00:00:00.000Z";
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId: a, role: "solver" }],
+      gameState: {
+        board: [
+          { v: "A", by: a },
+          { v: null, by: null },
+          { v: null, by: null },
+        ],
+        lastSeq: 1,
+        firstFillAt: longAgo,
+      },
+    });
+    await adminPool.query(
+      `insert into cell_events (game_id, seq, cell, user_id, value, at)
+         values ($1, 1, 0, $2, 'A', $3)`,
+      [gameId, a, longAgo],
+    );
+
+    const first = await connectAndHello(gameId, a);
+    first.client.sendJson(placeLetter(1, "B"));
+    await first.client.waitForCount("cellSet", 1);
+    first.client.sendJson(placeLetter(2, "C"));
+    const completed = (await first.client.waitForType("gameCompleted")) as {
+      stats: {
+        solveTimeSeconds: number;
+        activeSolveSeconds: number;
+        sittingCount: number;
+      };
+    };
+
+    // Two sittings: the seeded fill, then the live pair after the giant gap.
+    expect(completed.stats.sittingCount).toBe(2);
+    // The wall clock spans the whole dead stretch (>= 30 minutes by construction) …
+    expect(completed.stats.solveTimeSeconds).toBeGreaterThanOrEqual(1800);
+    // … while active time collapses it: the seeded fill IS firstFillAt and the live pair
+    // lands within seconds, so nearly nothing remains after the collapse.
+    expect(completed.stats.activeSolveSeconds).toBeLessThanOrEqual(5);
+
+    first.client.close();
+  });
+});
+
+describe("room check: one deliberate act, marked for everyone, neutral on the wire (PROTOCOL.md §10; D27)", () => {
+  it("broadcasts a sequenced puzzleChecked with no by, snapshots the marks, and persists the check_events row (INV-6, INV-5)", async () => {
+    const checker = randomUUID();
+    const watcher = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: checker, role: "solver" },
+        { userId: watcher, role: "solver" },
+      ],
+    });
+    const first = await connectAndHello(gameId, checker);
+    const second = await connectAndHello(gameId, watcher);
+
+    // Fill the grid with one wrong letter: A, X, C (seqs 1-3).
+    first.client.sendJson(placeLetter(0, "A"));
+    first.client.sendJson(placeLetter(1, "X"));
+    first.client.sendJson(placeLetter(2, "C"));
+    await first.client.waitForCount("cellSet", 3);
+
+    // The accepted check consumes seq 4 and broadcasts to the WHOLE room, sender included.
+    const check = { type: "checkPuzzle", commandId: randomUUID() };
+    first.client.sendJson(check);
+    const checkedFrames = await Promise.all([
+      first.client.waitForType("puzzleChecked"),
+      second.client.waitForType("puzzleChecked"),
+    ]);
+    for (const frame of checkedFrames) {
+      expect(frame).toMatchObject({
+        type: "puzzleChecked",
+        seq: 4,
+        wrongCells: [1],
+        checkCount: 1,
+        commandId: check.commandId,
+      });
+      expect((frame as { at: string }).at).toEqual(expect.any(String));
+    }
+    // Neutrality is structural (D27, INV-6-style): the RAW frame carries no `by`, so no
+    // client can attribute the check. The decoded shape proves nothing; the bytes do.
+    for (const client of [first.client, second.client]) {
+      const raw = client.rawOfType("puzzleChecked")[0]!;
+      expect(Object.keys(JSON.parse(raw) as object)).not.toContain("by");
+    }
+
+    // The snapshot heals the marks with no delta replay (PROTOCOL.md §4).
+    second.client.sendJson({ type: "requestSync" });
+    const sync = (await second.client.waitForType("sync")) as SyncMessage;
+    expect(sync.board.checkedWrongCells).toEqual([1]);
+    expect(sync.board.checkCount).toBe(1);
+    expect(sync.board.seq).toBe(4);
+
+    // Correcting the marked cell completes the game (the completion interplay: the mark
+    // clears on the value change and a full correct board completes; seqs 5-6).
+    second.client.sendJson(placeLetter(1, "B"));
+    const completed = (await first.client.waitForType("gameCompleted")) as {
+      seq: number;
+      stats: { checkCount: number };
+    };
+    expect(completed.seq).toBe(6);
+    // The permanent count froze into the stats (PROTOCOL.md §4, §10).
+    expect(completed.stats.checkCount).toBe(1);
+
+    // Persistence (DESIGN.md §9, D27): the check_events row carries the acting user the
+    // wire never did, in the same transaction discipline as the snapshot (INV-5); the
+    // terminal flush ran synchronously before the broadcast, so the rows are committed.
+    const checkRows = await adminPool.query<{ seq: string; user_id: string }>(
+      "select seq, user_id from check_events where game_id = $1",
+      [gameId],
+    );
+    expect(checkRows.rows).toHaveLength(1);
+    expect(Number(checkRows.rows[0]!.seq)).toBe(4);
+    expect(checkRows.rows[0]!.user_id).toBe(checker);
+
+    // The persisted board snapshot carries the check facts (marks cleared by the
+    // correction, count permanent), so a rehydrated actor serves them back (INV-5).
+    const gs = await adminPool.query<{
+      board: { checkedWrongCells: number[]; checkCount: number };
+      stats: { checkCount: number };
+    }>("select board, stats from game_state where game_id = $1", [gameId]);
+    expect(gs.rows[0]!.board.checkedWrongCells).toEqual([]);
+    expect(gs.rows[0]!.board.checkCount).toBe(1);
+    expect(gs.rows[0]!.stats.checkCount).toBe(1);
+
+    // A check on a terminal board is refused (INV-4; PROTOCOL.md §10): GAME_NOT_ONGOING.
+    const lateCheck = { type: "checkPuzzle", commandId: randomUUID() };
+    first.client.sendJson(lateCheck);
+    const late = (await first.client.waitForType("error")) as {
+      code: string;
+      fatal: boolean;
+      commandId: string;
+    };
+    expect(late.code).toBe("GAME_NOT_ONGOING");
+    expect(late.fatal).toBe(false);
+    expect(late.commandId).toBe(lateCheck.commandId);
+
+    first.client.close();
+    second.client.close();
+  });
+
+  it("rejects a check below a full grid with GRID_NOT_FULL, consuming no seq (PROTOCOL.md §5, §10, §11; INV-2)", async () => {
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+    });
+    const { client } = await connectAndHello(gameId, userId);
+
+    client.sendJson(placeLetter(0, "A"));
+    await client.waitForCount("cellSet", 1);
+
+    const early = { type: "checkPuzzle", commandId: randomUUID() };
+    client.sendJson(early);
+    const refused = (await client.waitForType("error")) as {
+      code: string;
+      fatal: boolean;
+      commandId: string;
+    };
+    expect(refused.code).toBe("GRID_NOT_FULL");
+    expect(refused.fatal).toBe(false);
+    expect(refused.commandId).toBe(early.commandId);
+
+    // A rejection consumes no seq (INV-2): the next accepted mutation takes seq 2.
+    client.sendJson(placeLetter(1, "X"));
+    const sets = (await client.waitForCount("cellSet", 2)) as Array<{
+      seq: number;
+    }>;
+    expect(sets[1]?.seq).toBe(2);
+
+    client.close();
+  });
+
+  it("refuses a spectator's checkPuzzle with ROLE_FORBIDDEN, the same gate as the cell mutations (PROTOCOL.md §5, §11)", async () => {
+    const spectatorId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: spectatorId, role: "spectator" },
+        { userId: randomUUID(), role: "host" },
+      ],
+    });
+    const { client } = await connectAndHello(gameId, spectatorId);
+
+    const cmd = { type: "checkPuzzle", commandId: randomUUID() };
+    client.sendJson(cmd);
+    const forbidden = (await client.waitForType("error")) as {
+      code: string;
+      fatal: boolean;
+      commandId: string;
+    };
+    expect(forbidden.code).toBe("ROLE_FORBIDDEN");
+    expect(forbidden.fatal).toBe(false);
+    expect(forbidden.commandId).toBe(cmd.commandId);
+
+    client.close();
   });
 });
 

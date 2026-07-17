@@ -51,6 +51,14 @@ export const MOMENTUM_SAMPLES = 40;
 /** Turning-point burst window in milliseconds (30s). A vector cites this, not a magic number. */
 export const BURST_WINDOW_MS = 30_000;
 
+/**
+ * The sitting boundary in milliseconds (30 minutes, DESIGN.md D29). A gap of at least this
+ * between consecutive cell events (seq order) ends a sitting; exactly the threshold splits
+ * (`>=`), a negative gap (clock skew) never does. Frozen with the same status as
+ * BURST_WINDOW_MS: named, cited by vectors, never inlined.
+ */
+export const SITTING_GAP_MS = 1_800_000;
+
 /** A named beat: the cell, its author, and its time in relative seconds from t0. */
 export interface Beat {
   readonly cell: number;
@@ -248,4 +256,168 @@ export function solveSequence(trace: readonly TraceEntry[]): SequenceStep[] {
   for (const entry of trace) if (entry.at < t0) t0 = entry.at;
   const ordered = [...trace].sort((a, b) => a.at - b.at || a.seq - b.seq);
   return ordered.map((e) => ({ cell: e.cell, atSeconds: (e.at - t0) / 1000 }));
+}
+
+/** One sitting's extent on the active axis, in relative seconds. Numbers only (INV-6). */
+export interface SittingSpan {
+  readonly startSeconds: number;
+  readonly endSeconds: number;
+}
+
+/**
+ * The wire `sittings` field (PROTOCOL.md section 12, DESIGN.md D29): the partition's size,
+ * its spans on the active axis, and the wall-clock trace span kept for flavor copy.
+ */
+export interface SittingsResult {
+  readonly count: number;
+  readonly spans: SittingSpan[];
+  readonly wallSeconds: number;
+}
+
+/**
+ * The one sitting-boundary rule (design/post-game/SITTINGS.md): a gap of at least
+ * SITTING_GAP_MS between consecutive events (seq order) ends a sitting; exactly the
+ * threshold splits (`>=`), a negative gap (clock skew) never does. Every partition
+ * consumer (collapseIdle's collapse, sittings()'s seams, sittingIndices' assignment)
+ * reads gaps through this predicate, so the partition can never fork into two
+ * definitions.
+ */
+function endsSitting(prevAt: number, at: number): boolean {
+  return at - prevAt >= SITTING_GAP_MS;
+}
+
+/**
+ * The sittings partition as an assignment (SITTINGS.md; TITLES.md `sittingsPresent`):
+ * each event's zero-based sitting index, parallel to the seq-ordered event log (sorted
+ * defensively, as every walk here is). Any activity is presence, writes, wrong writes,
+ * and clears alike, so the partition covers the whole log and every event belongs to
+ * exactly one sitting. The last index plus one is the partition's sitting count, the
+ * same count sittings() ships. titleStats reads attendance and the room's sittingCount
+ * from this, never from a second boundary walk.
+ */
+export function sittingIndices(events: readonly SolveEvent[]): number[] {
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const indices: number[] = [];
+  let index = 0;
+  let prevAt: number | null = null;
+  for (const event of ordered) {
+    if (prevAt !== null && endsSitting(prevAt, event.at)) index++;
+    prevAt = event.at;
+    indices.push(index);
+  }
+  return indices;
+}
+
+/**
+ * Remap the event log onto concatenated active time (design/post-game/SITTINGS.md, D29).
+ * Events are walked in ascending seq order (sorted defensively, as solveTrace does); every
+ * gap of SITTING_GAP_MS or more between consecutive events collapses to exactly zero, so
+ * `activeAt = at - (sum of collapsed gaps before it)`. A collapsed gap is subtracted in
+ * full: the boundary events share one active instant (the seam), the axis has no holes and
+ * no overlaps. A negative gap (clock skew) is under the threshold and never splits. A log
+ * with no gap at the threshold is the identity mapping, which is the D29 compat proof:
+ * every single-sitting game reads byte-identically to the pre-sittings pipeline.
+ *
+ * Production composes `solveTrace(collapseIdle(events), solution)`; the composition itself
+ * belongs to the caller, the engine only exports the pieces.
+ */
+export function collapseIdle(events: readonly SolveEvent[]): SolveEvent[] {
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const active: SolveEvent[] = [];
+  let shift = 0;
+  let prevAt: number | null = null;
+  for (const event of ordered) {
+    if (prevAt !== null && endsSitting(prevAt, event.at)) {
+      shift += event.at - prevAt;
+    }
+    prevAt = event.at;
+    active.push({ ...event, at: event.at - shift });
+  }
+  return active;
+}
+
+/** Min/max `at` over a trace, or null when the trace is empty. */
+function traceBounds(
+  trace: readonly TraceEntry[],
+): { t0: number; tEnd: number } | null {
+  if (trace.length === 0) return null;
+  let t0 = Infinity;
+  let tEnd = -Infinity;
+  for (const entry of trace) {
+    if (entry.at < t0) t0 = entry.at;
+    if (entry.at > tEnd) tEnd = entry.at;
+  }
+  return { t0, tEnd };
+}
+
+/**
+ * The sittings wire projection (design/post-game/SITTINGS.md, D29): partition the full
+ * seq-ordered event log into sittings (any event is presence: writes, wrong writes, and
+ * clears alike, never the first-correct trace, so a struggling solver bridges a gap), then
+ * express each sitting as a span on the active axis of the remapped trace, the same axis
+ * momentum's durationSeconds and sequence's atSeconds live on.
+ *
+ * Spans are contiguous by construction (spans[k+1].startSeconds == spans[k].endSeconds,
+ * first start 0, last end durationSeconds): each boundary is the seam's active instant in
+ * seconds relative to the remapped trace's t0, clamped to [0, durationSeconds] and
+ * non-decreasing, so a sitting holding no trace entry (a wrong-writes-only sitting)
+ * degenerates to a zero-width span at the axis edge while the count stays honest.
+ * `wallSeconds` is the wall-clock span of the UNREMAPPED trace, the number durationSeconds
+ * reported before the re-base, flavor copy only. Exact division throughout: the engine
+ * subtracts and divides, it does not round.
+ */
+export function sittings(
+  events: readonly SolveEvent[],
+  solution: Solution,
+): SittingsResult {
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  if (ordered.length === 0) return { count: 0, spans: [], wallSeconds: 0 };
+
+  // The remap; collapseIdle sorts by the same key, so active[i] mirrors ordered[i].
+  const active = collapseIdle(ordered);
+
+  // Each boundary's seam: the shared active instant of the events on either side of a
+  // collapsed gap (>= SITTING_GAP_MS between consecutive wall timestamps, seq order).
+  const seamActiveAts: number[] = [];
+  for (let i = 1; i < ordered.length; i++) {
+    const prev = ordered[i - 1];
+    const curr = ordered[i];
+    const currActive = active[i];
+    // Guards satisfy noUncheckedIndexedAccess; the indices exist by construction.
+    if (prev === undefined || curr === undefined || currActive === undefined) {
+      continue;
+    }
+    if (endsSitting(prev.at, curr.at)) seamActiveAts.push(currActive.at);
+  }
+
+  // Both traces: spans anchor to the remapped (active) trace, wallSeconds to the raw one.
+  const activeBounds = traceBounds(solveTrace(active, solution));
+  const wallBounds = traceBounds(solveTrace(ordered, solution));
+  const durationSeconds =
+    activeBounds === null ? 0 : (activeBounds.tEnd - activeBounds.t0) / 1000;
+  const wallSeconds =
+    wallBounds === null ? 0 : (wallBounds.tEnd - wallBounds.t0) / 1000;
+
+  // Boundaries in relative seconds, clamped to [0, durationSeconds] and non-decreasing.
+  const cuts: number[] = [];
+  let floor = 0;
+  for (const seamAt of seamActiveAts) {
+    let boundary =
+      activeBounds === null ? 0 : (seamAt - activeBounds.t0) / 1000;
+    if (boundary < floor) boundary = floor;
+    if (boundary > durationSeconds) boundary = durationSeconds;
+    cuts.push(boundary);
+    floor = boundary;
+  }
+
+  // Contiguous spans: each sitting starts exactly where the previous ended.
+  const spans: SittingSpan[] = [];
+  let start = 0;
+  for (const cut of cuts) {
+    spans.push({ startSeconds: start, endSeconds: cut });
+    start = cut;
+  }
+  spans.push({ startSeconds: start, endSeconds: durationSeconds });
+
+  return { count: spans.length, spans, wallSeconds };
 }

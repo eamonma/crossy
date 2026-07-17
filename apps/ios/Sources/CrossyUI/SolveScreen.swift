@@ -59,6 +59,12 @@ public struct SolveScreen: View {
     /// Hand the link to the system share surface (UIActivityViewController
     /// lives in the app target, AD-2; the card only reports the intent).
     private let onShareInvite: () -> Void
+    /// Whether this composition's transport carries `checkPuzzle` to a real
+    /// server (design R8): the live room passes true; the demo's loopback DROPS
+    /// the command, so it — and every lab and preview — keeps the default and
+    /// the facts sheet never grows the check row. Gates the row's existence
+    /// entirely, not just the send.
+    private let supportsRoomCheck: Bool
     /// End the game, host abandon (`POST /games/{id}/abandon`, PROTOCOL.md §12).
     /// Confirmed in the facts card, then reported here.
     private let onEndGame: () -> Void
@@ -152,6 +158,7 @@ public struct SolveScreen: View {
         avatarCache: AvatarImageCache? = nil,
         opening: Bool = false,
         barSettled: Bool = true,
+        supportsRoomCheck: Bool = false,
         onBack: @escaping () -> Void = {},
         onJoinIn: @escaping () -> Void = {},
         onExit: @escaping () -> Void = {},
@@ -174,6 +181,7 @@ public struct SolveScreen: View {
         self.shareUrl = shareUrl
         self.opening = opening
         self.barSettled = barSettled
+        self.supportsRoomCheck = supportsRoomCheck
         self.onBack = onBack
         self.onJoinIn = onJoinIn
         self.onExit = onExit
@@ -344,6 +352,12 @@ public struct SolveScreen: View {
                     analysisPhase: analysis.phase,
                     analysisMembers: members,
                     selfUserId: store.selfUserId,
+                    isolatedSolverId: completion.isolatedSolverId,
+                    // Isolation exists only on the SETTLED wash: nil while the
+                    // bloom plays keeps the legend rows plain labels, and the
+                    // model's own gate holds even if a stale tap lands.
+                    onIsolateSolver: completion.mosaicSettled
+                        ? { completion.toggleIsolation($0) } : nil,
                     onDismissTransients: dismissTransients,
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },
@@ -515,9 +529,23 @@ public struct SolveScreen: View {
                 ground: ground,
                 content: factsContent,
                 operations: factsPanelOperations,
-                solveTimeSeconds: store.stats?.solveTimeSeconds,
+                // The headline Time is active time (owner ruling, D29): the stats
+                // twin's preference rule, wall-clock fallback for frozen pre-D29 rows.
+                solveTimeSeconds: store.stats?.headlineSolveSeconds,
                 firstFillAt: store.firstFillAt,
                 completedAt: store.completedAt ?? store.abandonedAt,
+                // The confirm-time race resolves in layers (design R2): fullness
+                // re-derives from SEQUENCED state at the confirm tap — a teammate
+                // emptying a cell between render and confirm quietly falls back
+                // to the row, already disabled again — and a server GRID_NOT_FULL
+                // stays silent (§11 non-fatal; the newly empty cell and the row's
+                // hint are the explanation). The send is the store's intent (R1);
+                // the sheet closes so the marks land in view.
+                onCheckPuzzle: {
+                    guard store.filledCount == puzzle.playableCellCount else { return }
+                    store.checkPuzzle()
+                    factsPresented = false
+                },
                 // The abandon's terminal transition dismisses the sheet through
                 // observeRoomState anyway; closing here too keeps it prompt.
                 onEndGame: {
@@ -559,17 +587,24 @@ public struct SolveScreen: View {
         // ruling 2026-07-13). Only the LIVE completion edge blooms (the gate fired,
         // celebrationFiredAt set): a ready bundle blooms in first-correct color and
         // arms the panel summon; an absent bundle falls back to the last-writer bloom
-        // with no summon. A reconnect into a completed room fetched for the tab but
-        // never blooms or summons (the celebration is a live-edge moment, INV-3).
+        // with no summon. A reconnect into a completed room never blooms or summons
+        // (the celebration is a live-edge moment, INV-3) — but the terminal board
+        // WEARS the settled wash once the bundle lands (standMosaic): the record
+        // stands on every visit, it does not exist only inside the one bloom (the
+        // flash-then-disappear fix's revisit half). An absent bundle stands nothing:
+        // the wash is first-correct truth, and without the bundle there is none.
         .onChange(of: analysis.phase) { _, phase in
-            guard completion.celebrationFiredAt != nil else { return }
-            switch phase {
-            case .ready:
-                completion.startMosaic(summonOnSettle: true, reduceMotion: reduceMotion)
-            case .absent:
-                completion.startMosaic(summonOnSettle: false, reduceMotion: reduceMotion)
-            case .idle, .loading:
-                break
+            if completion.celebrationFiredAt != nil {
+                switch phase {
+                case .ready:
+                    completion.startMosaic(summonOnSettle: true, reduceMotion: reduceMotion)
+                case .absent:
+                    completion.startMosaic(summonOnSettle: false, reduceMotion: reduceMotion)
+                case .idle, .loading:
+                    break
+                }
+            } else if roomStatus == .completed, case .ready = phase {
+                completion.standMosaic()
             }
         }
         // The panel arrives AFTER the bloom settles (owner ruling 2026-07-13): melt
@@ -593,6 +628,11 @@ public struct SolveScreen: View {
             observeHaptics()
             SolveHaptics.shared.prepare()
             wireReactionSink()
+            // The room's check landing (PROTOCOL.md §6, §10; D27): one soft thud
+            // when the marks paint for everyone. The store fires this only for
+            // the live sequenced event — snapshot healing is history arriving
+            // and stays silent (the SolveHapticFold grammar).
+            store.onPuzzleChecked = { _ in SolveHaptics.shared.play(.checkLanded) }
         }
         // The sink closes over the grid it validates against, so the live room's
         // retarget from the 1x1 stand-in must re-wire it (the stand-in would drop
@@ -645,6 +685,18 @@ public struct SolveScreen: View {
                 // lands (owner ruling 2026-07-13); nil until then, where the grid
                 // falls back to the event log's last writer (the absent fallback).
                 mosaicOwners: analysis.bundle?.owners,
+                // Once the envelope lands the wash STANDS and the grid's timeline
+                // pauses (the flash-then-disappear fix: the settle returns the
+                // letters to ink, never the board to plain).
+                mosaicSettled: completion.mosaicSettled,
+                // The isolation filter over the settled wash: the analysis
+                // legend's tapped solver holds the full wash, everyone else
+                // recesses toward paper. One truth on CompletionModel, read by
+                // the legend rows and this draw pass alike.
+                mosaicIsolation: completion.isolation,
+                // The approved directional loupe belongs only to the settled completed board's
+                // Analysis reading. The Clues tab keeps the established frozen paper treatment.
+                showsWordLoupe: analysisResting && completion.mosaicSettled,
                 // The BOARD's standing occlusion is constant-built (DESIGN.md §2,
                 // SLICE C): the top inset is the room container's system-bar height
                 // (roomTopInset, read off the room's own container), never the
@@ -766,21 +818,33 @@ public struct SolveScreen: View {
             puzzleDate: puzzleDate,
             completed: roomStatus == .completed,
             totalEvents: store.stats?.totalEvents,
-            participantCount: store.stats?.participantCount)
+            participantCount: store.stats?.participantCount,
+            // The mid-solve check record (R10): "Checked once" among the facts.
+            checkCount: store.checkCount,
+            // The sitting count as completed-facts context (D29): "· 2 sittings",
+            // rendered only at two or more; nil (a pre-D29 row) reads as today.
+            sittingCount: store.stats?.sittingCount)
     }
 
-    /// The facts card's operations (FactsOperations pins the rule): only the
-    /// host's end-game now (copying the invite code moved to the share menu,
-    /// owner ruling 2026-07-11), and only while the room runs. The destructive
-    /// end-game renders only for the host (the server enforces host-only
-    /// anyway; the client simply does not offer it to a non-host). A terminal
-    /// card carries none: it is the record, not a control surface (ending an
-    /// already-ended game is a no-op, INV-4).
+    /// The facts card's operations (FactsOperations pins the rule): the room
+    /// check above the host's end-game, only while the room runs. The check row
+    /// stands for hosts and solvers on a check-capable transport (R8: the demo
+    /// never grows it) and enables only on a full SEQUENCED grid (R9: the store's
+    /// filledCount excludes overlays, mirroring the server's own gate); the
+    /// destructive end-game renders only for the host (the server enforces both
+    /// gates regardless; the client simply does not offer what it will refuse).
+    /// A terminal card carries none: it is the record, not a control surface
+    /// (ending an already-ended game is a no-op, INV-4).
     private var factsPanelOperations: FactsOperations {
         guard roomStatus == .ongoing else { return .none }
+        let members = rosterMembers
         let selfIsHost =
-            rosterMembers.first { $0.userId == store.selfUserId }?.isHost ?? false
-        return FactsOperations.make(isHost: selfIsHost)
+            members.first { $0.userId == store.selfUserId }?.isHost ?? false
+        return FactsOperations.make(
+            isHost: selfIsHost,
+            isSpectator: RosterList.selfIsSpectator(members, selfUserId: store.selfUserId),
+            supportsCheck: supportsRoomCheck,
+            emptyCells: puzzle.playableCellCount - store.filledCount)
     }
 
     /// The invite in hand, or nil when there is nothing to share yet: the

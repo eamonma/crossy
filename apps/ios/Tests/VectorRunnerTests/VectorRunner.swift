@@ -23,6 +23,7 @@ enum VectorFamily: String, CaseIterable, Sendable {
     case comparator
     case navigation
     case completion
+    case check
     case clientStore = "client-store"
     case clueRuns = "clue-runs"
 }
