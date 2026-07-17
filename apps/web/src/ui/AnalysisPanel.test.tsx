@@ -156,3 +156,46 @@ describe("the Time stat's sittings context (D29: count is context at 2+, never a
     expect(single).not.toContain("sittings");
   });
 });
+
+describe("the header's Share card action (SHARE.md wave S1: only against a ready bundle)", () => {
+  const share = {
+    bundle,
+    members: members.map((m) => ({
+      userId: m.userId,
+      name: m.name,
+      color: m.color,
+    })),
+    cols: 2,
+    rows: 2,
+    blocks: [],
+    puzzleTitle: null,
+    puzzleAuthor: null,
+    roomName: null,
+    gameId: "g-1",
+  };
+
+  it("renders the Share card button in the header when the caller wires share", () => {
+    const html = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={bundle}
+        members={members}
+        selfId={null}
+        idBase="t"
+        share={share}
+      />,
+    );
+    expect(html).toContain("Share card");
+  });
+
+  it("renders no share action when the caller passes none (the demo, an absent bundle)", () => {
+    const html = renderToStaticMarkup(
+      <AnalysisPanel
+        bundle={bundle}
+        members={members}
+        selfId={null}
+        idBase="t"
+      />,
+    );
+    expect(html).not.toContain("Share card");
+  });
+});

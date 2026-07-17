@@ -13,6 +13,7 @@
   "dependencies": {
     "@crossy/engine": "workspace:*",
     "@crossy/protocol": "workspace:*",
+    "@crossy/share-card": "workspace:*",
     "@fontsource/geist-mono": "^5.2.8",
     "@fontsource/newsreader": "^5.2.10",
     "@fontsource/schibsted-grotesk": "^5.2.8",
