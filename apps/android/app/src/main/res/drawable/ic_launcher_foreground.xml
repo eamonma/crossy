@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The mark: a crossword translated from the iOS AppIcon (apps/ios/.../AppIcon.appiconset). The iOS
+     mark is full-bleed; Android's adaptive model wants the logo in the foreground's safe zone with the
+     paper bleeding from the background layer, so the grid is a framed 5x5 centered in the inner 72dp
+     (origin 18, cell 14.4) with a transparent margin. That margin matters: a foreground opaque to the
+     canvas edge trips the launcher's legacy-icon normalization, which shrinks the icon and plates it;
+     inside the safe zone it renders as a true adaptive icon over the bone background. The pattern is
+     the iOS mark verbatim:
+         . # . . .
+         # . . # .
+         . . # . .
+         . # . O #
+         . . . # .
+     with the accent (O, the "color is the people" cell, DESIGN.md §3) at cell (col 3, row 3),
+     center (68.4, 68.4), well inside the safe zone so no mask ever crops it. Rules are drawn first,
+     then the squares over them, so adjacent filled cells merge with no rule between (the accent meets
+     its neighbors seamlessly, as on iOS). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- The rules: the framing border and every interior boundary of the 5x5. -->
+    <path
+        android:strokeColor="#1D1B18"
+        android:strokeWidth="1.0"
+        android:pathData="M18,18V90 M32.4,18V90 M46.8,18V90 M61.2,18V90 M75.6,18V90 M90,18V90 M18,18H90 M18,32.4H90 M18,46.8H90 M18,61.2H90 M18,75.6H90 M18,90H90" />
+    <!-- The black squares (ink), full-cell so they merge over the rules. -->
+    <path
+        android:fillColor="#1D1B18"
+        android:pathData="M32.4,18h14.4v14.4h-14.4z M18,32.4h14.4v14.4h-14.4z M61.2,32.4h14.4v14.4h-14.4z M46.8,46.8h14.4v14.4h-14.4z M32.4,61.2h14.4v14.4h-14.4z M75.6,61.2h14.4v14.4h-14.4z M61.2,75.6h14.4v14.4h-14.4z" />
+    <!-- The person-colored cell, the icon's accent verbatim from the iOS mark. -->
+    <path
+        android:fillColor="#978365"
+        android:pathData="M61.2,61.2h14.4v14.4h-14.4z" />
+</vector>

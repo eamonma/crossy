@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The solve's haptic grammar (DESIGN.md §7; SolveHapticPlayer): the double-tick and completion
+         patterns play through the Vibrator, which needs this. The single-pulse ticks and thuds run
+         through View.performHapticFeedback and need no permission; a device without a motor no-ops. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- The camera-first invite scan (JoinCameraScan): a back camera reads the host's QR. Both the
+         camera and autofocus are required=false, so a device without either still installs and joins
+         by typed code (the scan viewport resolves to DENIED, never a dead end). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- Cleartext is dev-only: the dev stack serves http on the emulator's host loopback
+         (10.0.2.2:8790-8792). A release variant pins https and drops this (a later track). -->
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Crossy.Splash"
+        android:usesCleartextTraffic="true"
+        android:supportsRtl="true">
+        <!-- singleTask so the OAuth redirect re-enters the standing activity: the Custom Tab's
+             crossy://auth/callback VIEW intent lands in onNewIntent on a warm return instead of
+             stacking a second instance over the tab. A cold return (the tab outlived the app)
+             arrives through onCreate's launch intent instead; MainActivity handles both. -->
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTask"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- The OAuth deep-link return: exactly the crossy://auth/callback shape the Supabase
+                 allowlist carries (SupabaseConfig.redirectUrl; iOS rides the same value). BROWSABLE
+                 so the browser's redirect can resolve here; scheme+host+path pinned so no other
+                 crossy:// URI is claimed by this filter. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="auth"
+                    android:path="/callback" />
+            </intent-filter>
+            <!-- The custom-scheme invite route (iOS CrossyApp.onOpenURL crossy://game/<id>?code=):
+                 the web invite gate's "Open in the Crossy app" button, for taps that never became an
+                 App Link. DeepLinkRouter digests it through the same InviteScan the QR and paste
+                 paths use, so the join flow honors it identically. Host pinned to `game` so the auth
+                 lanes above are untouched; App Links (the https invite shapes /g/<code>, /<code>)
+                 stay owner-gated (PARITY.md) and are not registered here. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="game" />
+            </intent-filter>
+            <!-- The magic-link confirm route (roadmap I3b; iOS AuthConfirmLink /auth/confirm): a
+                 Supabase email link carrying token_hash + type. AuthConfirm parses the crossy-scheme
+                 shape registered here (host `auth`, path `/confirm`, distinct from /callback above)
+                 into completeMagicLink. Pointing Supabase's email template at the crossy scheme is
+                 the OWNER's server-side switch; until then the link stays https. AuthConfirm ALSO
+                 parses that https /auth/confirm shape, so the day App Links land (owner-gated
+                 verification, PARITY.md) the same parser drops in with no change and the https
+                 filter joins the invite App Links then. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="auth"
+                    android:path="/confirm" />
+            </intent-filter>
+            <!-- The Safari/Chrome "Play in Crossy" hand-off (iOS crossy://play/<puzzleId>): holds a
+                 PendingPlay for the Puzzles tab to open. Registered now; the navigation into the
+                 Puzzles library is a sibling's tab work (the seam is named in CrossyApp). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="crossy"
+                    android:host="play" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

@@ -1,0 +1,31 @@
+{
+  "type": "welcome",
+  "protocolVersion": 1,
+  "self": { "userId": "u1", "role": "solver" },
+  "board": {
+    "seq": 412,
+    "status": "ongoing",
+    "firstFillAt": "2026-07-07T19:02:11Z",
+    "completedAt": null,
+    "abandonedAt": null,
+    "cells": [
+      { "v": "A", "by": "u1" },
+      { "v": null, "by": null },
+      { "v": null, "by": "u2" }
+    ],
+    "checkedWrongCells": [],
+    "checkCount": 0,
+    "participants": [
+      {
+        "userId": "u1",
+        "displayName": "Ana",
+        "color": "#7F77DD",
+        "role": "host",
+        "connected": true
+      }
+    ],
+    "cursors": [{ "userId": "u1", "cell": 17, "direction": "across" }],
+    "recentCommandIds": ["cmd-1", "cmd-2"],
+    "stats": null
+  }
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Activity window shell. NoActionBar because the app is full-bleed Compose (edge-to-edge is
+         enabled in MainActivity); the window background is the ground so the frame the system draws
+         before the first Compose paint is bone, never the framework white (apps/ios/DESIGN.md §5).
+         values-night swaps the parent and the ground for Observatory. -->
+    <style name="Theme.Crossy" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/crossy_ground</item>
+    </style>
+
+    <!-- The launch theme (androidx core-splashscreen). The launch window wears the ground while the
+         mark shows centered, then postSplashScreenTheme hands the window to Theme.Crossy for Compose.
+         No branding animation: a static mark on a quiet ground (apps/ios/DESIGN.md §7, standing chrome
+         has no overshoot). The background color and the icon both resolve per configuration, so the
+         splash matches the ground in dark mode without a night override of this style. -->
+    <style name="Theme.Crossy.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/crossy_ground</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Crossy</item>
+    </style>
+</resources>

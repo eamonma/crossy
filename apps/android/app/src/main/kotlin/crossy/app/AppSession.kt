@@ -1,0 +1,178 @@
+// The composition root's session and API wiring (ARCHITECTURE.md: ":app wires everything"). It
+// builds the Supabase auth leg and the REST client from BuildConfig, and it holds the one bearer
+// provider every auth path feeds: the AuthSession (OAuth over the browser leg and email OTP;
+// there are no passwords in production). Token storage arrives as a TokenStore (AAD-2 / AD-4): the
+// activity injects the Keystore-backed KeystoreTokenStore, and [restore] rehydrates a persisted
+// (or refreshable) session at cold start so it lands in Rooms with no sign-in, the twin of iOS
+// restoring from the Keychain at ArrivalModel init. The default in-memory store keeps unit tests
+// pure.
+
+package crossy.app
+
+import crossy.api.AuthPhase
+import crossy.api.AuthProvider
+import crossy.api.AuthSession
+import crossy.api.BearerTokenProvider
+import crossy.api.CrossyApiClient
+import crossy.api.InMemoryTokenStore
+import crossy.api.SignedOutError
+import crossy.api.SupabaseAuthClient
+import crossy.api.SupabaseConfig
+import crossy.api.TokenStore
+import crossy.api.TurnstileMintPolicy
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.OkHttpClient
+
+/** The origins the root dials, read from BuildConfig. `apiBaseUrl` is the core API; `sessionWsBase`
+ *  is where a room's WebSocket lives once :session lands (unused tonight, the scripted transport
+ *  stands in). */
+data class AppUrls(val apiBaseUrl: HttpUrl, val sessionWsBase: String)
+
+/** Read the committed public config from BuildConfig. Every value is public by design (INV-6 note,
+ *  deploy/README.md); the issuer is a separate datum, never derived from the auth origin. */
+object AppConfig {
+    fun urls(): AppUrls = AppUrls(BuildConfig.API_BASE_URL.toHttpUrl(), BuildConfig.SESSION_WS_BASE)
+
+    /** The invite host the share link is built against (PROTOCOL.md §12). Bare host, no scheme;
+     *  ShareInvite prepends https. Configured via BuildConfig.INVITE_HOST (default crossy.ing). */
+    fun inviteHost(): String = BuildConfig.INVITE_HOST
+
+    fun supabase(): SupabaseConfig = SupabaseConfig(
+        authBaseUrl = BuildConfig.SUPABASE_AUTH_URL.toHttpUrl(),
+        apiKey = BuildConfig.SUPABASE_API_KEY,
+        issuer = BuildConfig.SUPABASE_ISSUER,
+    )
+
+    /** The Cloudflare Turnstile site key the email OTP send mints an invisible token against (public
+     *  by design; #230). Empty means no captcha (the plain send); the default is Cloudflare's
+     *  always-pass test key so the dev stack works out of the box, and the prod key arrives via the
+     *  CI/secret build variant like the other config. */
+    fun turnstileSiteKey(): String = BuildConfig.TURNSTILE_SITE_KEY
+}
+
+/** A bearer provider whose backing swaps at runtime: null before sign-in, the AuthSession after a
+ *  grant. The REST client holds one of these for its whole life, so the auth path can change under
+ *  it without rebuilding the client. */
+class SwitchableTokenProvider : BearerTokenProvider {
+    @Volatile
+    var delegate: BearerTokenProvider? = null
+
+    override suspend fun currentToken(): String = (delegate ?: throw SignedOutError()).currentToken()
+
+    override suspend fun refreshedToken(): String = (delegate ?: throw SignedOutError()).refreshedToken()
+}
+
+/** The app's one session object: the auth leg, the REST client, and the current identity. */
+class AppSession(
+    val urls: AppUrls,
+    supabaseConfig: SupabaseConfig,
+    http: OkHttpClient,
+    // The captcha mint policy for the OTP send, null when this build carries no Turnstile site key
+    // (the plain pre-captcha send). Built in the composition root over a WebView-backed minter; the
+    // policy owns the timeout/retry/error mapping and is tested against a fake (TurnstileMintPolicyTests).
+    private val turnstile: TurnstileMintPolicy? = null,
+    // Secure storage arrives via the port (AAD-2): the activity injects KeystoreTokenStore; the
+    // default in-memory store keeps existing unit tests pure and network-free.
+    private val tokenStore: TokenStore = InMemoryTokenStore(),
+) {
+    private val authClient = SupabaseAuthClient(supabaseConfig, http)
+    val auth = AuthSession(authClient, tokenStore)
+    private val bearer = SwitchableTokenProvider()
+
+    /** The REST client every shell screen calls, bearer-authenticated through [bearer]. */
+    val api = CrossyApiClient(urls.apiBaseUrl, bearer, http)
+
+    /** The socket handshake's token (PROTOCOL.md §2). Same bearer the REST client rides; the
+     *  transport folds a thrown SignedOutError into its signed-out stop. */
+    suspend fun bearerToken(): String = bearer.currentToken()
+
+    /** The signed-in user id, for seeding the room's self identity. Display only; the token is the
+     *  identity authority (DESIGN.md §8). */
+    var selfUserId: String? = null
+        private set
+
+    val isSignedIn: Boolean get() = bearer.delegate != null
+
+    /** Cold-start restore, called by the activity before the first frame (the twin of iOS restoring
+     *  from the Keychain at ArrivalModel init). Reads the persisted session; on success it seeds the
+     *  bearer delegate and the self id exactly as [completeOAuth] does, so a valid session routes
+     *  straight to Rooms with no sign-in. An expired-but-refreshable session restores too: restore
+     *  gates nothing on expiry, and the refresh leg lands lazily on the first token use. No network,
+     *  so it is safe on the main thread. */
+    fun restore() {
+        auth.restore()
+        if (auth.phase != AuthPhase.SIGNED_IN) return
+        bearer.delegate = auth
+        selfUserId = auth.userId
+    }
+
+    /** OAuth step one (Discord / Apple / Hisbaan, the split browser flow): mint the attempt and
+     *  hand back the authorize URL for the activity to open in a Custom Tab. Effect-free (fresh
+     *  PKCE verifier, no phase change, no network), so an abandoned browser trip leaves nothing to
+     *  undo and a re-tap simply supersedes the stale attempt. */
+    fun beginOAuth(provider: AuthProvider): HttpUrl = auth.beginOAuth(provider)
+
+    /** OAuth step two: digest the crossy://auth/callback redirect. The exact twin of
+     *  [verifyEmailOtp] once the exchange lands: the bearer speaks for the session and the self id
+     *  is seeded. AuthSession rethrows a provider refusal (typed InvalidCallback) and network
+     *  weather, and returns false for a stray callback with no pending begin; either way the host
+     *  shows the calm inline reason, never a crash. */
+    suspend fun completeOAuth(callbackUri: String): Boolean {
+        if (!auth.completeOAuth(callbackUri)) return false
+        if (auth.phase != AuthPhase.SIGNED_IN) return false
+        bearer.delegate = auth
+        selfUserId = auth.userId
+        return true
+    }
+
+    /** Email OTP step one (AAD-3, mirrors #230): ask the server to email a one-time code. No bearer
+     *  swap and no phase change yet; the verify step lands the session. Throws through to the host,
+     *  which shows the send-failed copy.
+     *
+     *  When this build carries a Turnstile site key, mint an invisible captcha token first (Supabase
+     *  has captcha on project-wide, so a send without one is refused with `captcha_failed`) and nest
+     *  it under gotrue_meta_security.captcha_token. A mint failure throws here, so the host shows the
+     *  calm send-failed copy: never a silent captcha-less send the server would reject. A null policy
+     *  (no site key) sends the plain body, the dev/local posture. Mirrors iOS captchaTokenIfNeeded. */
+    suspend fun sendEmailOtp(email: String) {
+        val captchaToken = turnstile?.mint()
+        auth.sendEmailOTP(email, captchaToken)
+    }
+
+    /** Email OTP step two (AAD-3): verify the entered code. Same shape as [completeOAuth] once
+     *  the grant lands: the bearer speaks for the session and the self id is seeded. AuthSession
+     *  rethrows a bad code, so a false return means the machine did not reach SIGNED_IN. */
+    suspend fun verifyEmailOtp(email: String, code: String): Boolean {
+        auth.verifyEmailOTP(email, code)
+        if (auth.phase != AuthPhase.SIGNED_IN) return false
+        bearer.delegate = auth
+        selfUserId = auth.userId
+        return true
+    }
+
+    /** Complete a magic link by its `token_hash` (roadmap I3b): the deep-link twin of
+     *  [verifyEmailOtp]. Same shape once the link-verify grant lands: the bearer speaks for the
+     *  session and the self id is seeded, so the shell routes on the phase alone. AuthSession
+     *  rethrows a bad or expired link; a false return means the machine did not reach SIGNED_IN
+     *  (including the no-op when a sign-in is already in flight, the honest outcome). No pending
+     *  verifier to persist the way OAuth does: the token_hash rides the URL itself, so nothing is
+     *  staged before the redirect and [AuthSession.completeMagicLink]'s own persist is enough. */
+    suspend fun completeMagicLink(tokenHash: String, type: String): Boolean {
+        auth.completeMagicLink(tokenHash, type)
+        if (auth.phase != AuthPhase.SIGNED_IN) return false
+        bearer.delegate = auth
+        selfUserId = auth.userId
+        return true
+    }
+
+    /** Drop the bearer and the local identity. The persisted store is wiped by the paired
+     *  [AuthSession.signOut] (or purgeForAccountDeletion) that the sign-out path also runs: its
+     *  purge nulls the in-memory session and clears every store slot in one step, so the persisted
+     *  tokens and the in-memory session fall together and no in-flight refresh can re-persist a
+     *  just-cleared session. The vendor logout is best-effort and never awaited. */
+    fun clearSession() {
+        bearer.delegate = null
+        selfUserId = null
+    }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The dark ground twin of values/colors.xml. -->
+<resources>
+    <!-- Observatory (dark) canvas: the illuminated instrument panel's ground (apps/ios/DESIGN.md §5). -->
+    <color name="crossy_ground">#121118</color>
+</resources>
