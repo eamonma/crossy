@@ -147,7 +147,38 @@ revoked_at IS NULL`, so the mint is idempotent (mint-or-return-existing). A revo
     ground, so forking it server-side would break "never fork a string" and promoting it
     to a vector is wider than this wave. The bundle's titles are still read for the solo
     rule.
-- **S3, the replay loop (blocked on S2).** The share page plays the solve back: the
-  bundle's `sequence` driving the same mosaic reveal the Analysis tab owns, a living
-  card for whoever taps through. Exit: a share link opens to the replay, still
-  spoiler-free.
+- **S3, the replay loop (done, Wave 13.3).** The share page plays the solve back: the
+  bundle's `sequence` drives the mosaic, each square washing in with its owner's tint
+  (or the solo gold ramp), looping gently. Exit met: a share link opens to the replay,
+  still spoiler-free. The motion decisions:
+  - **The loop: 16 seconds.** A 0.8s lead on the blank grid, an 11.6s reveal window,
+    a 3.0s hold on the finished mosaic (the last 0.6s of the loop is the dissolve back
+    to blank, so the settled board stands ~2.5s clean), then restart. The segments
+    partition the loop exactly; a test pins the sum.
+  - **Timing compression: real and linear, with a stall cap.** The sequence's active
+    seconds map linearly onto the reveal window, so bursts read as bursts and stalls
+    read as beats, never a metronome. One guard: a single inter-fill gap is clamped at
+    90 active seconds BEFORE the scaling, so one long stare reads as the maximum beat
+    instead of flattening everything else into a blur. Idle gaps are already collapsed
+    upstream (D29); the cap only tempers within-sitting stalls.
+  - **The wash: 0.5s, ease-out.** Each square fades from the blank face to its
+    finished fill with a settle (`cubic-bezier(0.22,0.61,0.36,1)`); the finished fill
+    is the same OWNER_TINT mix (or ramp color) the card paints, via the same builder.
+  - **Pure CSS, no script.** The board is `completionBoardSvg` (the share-card
+    builder's bare-mosaic render), inlined twice (Studio and Observatory, swapped by
+    `prefers-color-scheme`), each open cell classed into a reveal group. Every cell
+    shares one 16s infinite animation with zero delay; the reveal moment lives in each
+    group's own keyframes (hidden until its percentage, wash, hold, communal fade), so
+    the wrap clears the whole board in a single beat and the loop can never drift.
+    Same-instant fills share a keyframes block, which keeps the emitted CSS small
+    (a 15x15 page gzips under 10 KB). The page fetches nothing and carries no script.
+  - **Reduced motion: the finished board, full stop.** The SVG's static state IS the
+    completed mosaic; every animation rule lives inside one
+    `prefers-reduced-motion: no-preference` media block, so reduced-motion viewers get
+    the still card with zero motion and zero JS, and the hero is never empty.
+  - **Solo.** The same loop, but the mosaic washes in on the pale-to-gold fill-order
+    ramp (the S1 solo rule), so a solo replay reads as the grid warming toward the
+    last square.
+  - **Unchanged from S2:** the OpenGraph tags (unfurlers run no CSS; `og:image` stays
+    the PNG), the shell's `public, max-age=3600` cache posture, the rate limit, and
+    the soft 404.

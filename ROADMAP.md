@@ -1300,9 +1300,15 @@ The client Analysis header grows a "Copy share link" action (a generalized `Copy
 Exit met: pasting a share link into Discord unfurls the mosaic card. See
 `design/post-game/SHARE.md` (S2 decisions: token/cache/font rules).
 
-### Wave 13.3 — replay loop on the share page (blocked on 13.2)
+### Wave 13.3 — replay loop on the share page (done)
 
-The share page plays the solve back: the bundle's `sequence` drives the same
-time-gated mosaic reveal the Analysis tab ships, so the card a friend taps is the solve
-happening, still letter-free. Exit: a share link opens to the replay on web without
-membership.
+The share page plays the solve back: the bundle's `sequence` drives the mosaic drawing
+itself in solve order on `GET /s/{token}`, each square washing in with its owner's tint
+(the solo gold ramp for a one-solver room), looping on a 16s cycle with a hold on the
+finished board. Pure inline CSS via `@crossy/share-card`'s additive `completionBoardSvg`
+(both grounds inlined, swapped by `prefers-color-scheme`); real relative timing linearly
+compressed with a 90s stall cap; the whole animation gated behind
+`prefers-reduced-motion: no-preference`, so reduced motion gets the finished static
+mosaic and the page carries zero script. Still letter-free (INV-6). See
+`design/post-game/SHARE.md` S3 for the motion decisions. Exit met: a share link opens
+to the replay on web without membership.

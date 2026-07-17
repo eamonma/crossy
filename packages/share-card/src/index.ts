@@ -9,12 +9,15 @@ export type {
   ShareCardSolver,
   ShareCardStats,
 } from "./types";
+export type { BoardOnlyOptions } from "./card";
 export {
+  BOARD_ONLY_CELL,
   BUDGETS,
   DARK_BOARD,
   MAX_CREDITS,
   MAX_OG_CREDITS,
   OWNER_TINT,
+  completionBoardSvg,
   completionCardSvg,
   soloRampColor,
 } from "./card";
