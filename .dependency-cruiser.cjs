@@ -24,6 +24,19 @@ module.exports = {
       to: { path: "^(packages/(?!protocol/)|apps/)" },
     },
     {
+      name: "share-card-is-standalone",
+      comment:
+        "packages/share-card is a pure SVG builder (design/post-game/SHARE.md): it " +
+        "imports NOTHING outside itself — no npm deps, no workspace packages, no node " +
+        "builtins — so the same card can render in the browser today and on the server " +
+        "for the S2 OG image without dragging a dependency graph across that boundary. " +
+        "The engine-is-pure posture, stricter than protocol's (which allows npm schema " +
+        "tooling). Test files may import vitest.",
+      severity: "error",
+      from: { path: "^packages/share-card/src", pathNot: "\\.test\\.ts$" },
+      to: { pathNot: "^packages/share-card/src" },
+    },
+    {
       name: "no-package-imports-app",
       comment: "Inner rings never import outward (DESIGN.md §4).",
       severity: "error",

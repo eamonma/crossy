@@ -127,6 +127,10 @@ interface GameView {
   // client prefers these and falls back to the URL query params, so old invite links still work.
   name?: string | null;
   inviteCode?: string;
+  // The puzzle's display metadata (PROTOCOL.md §12, additive): the share card's masthead.
+  // Optional so an older server (absent fields) reads as null, display-only, never a solution.
+  puzzleTitle?: string | null;
+  puzzleAuthor?: string | null;
 }
 
 /** Attach clue prose (from the payload) to the geometry-derived runs; numbering comes from the
@@ -209,6 +213,10 @@ interface Ready {
   /** The REST membership snapshot: the only pre-welcome truth about the room, sizing the
    * SolvingNow placeholder before presence arrives with the first snapshot. */
   members: readonly GameMember[];
+  /** The puzzle's display title and author off the view (null on an older server or an
+   * untitled document): the share card's masthead, with the room name as fallback. */
+  puzzleTitle: string | null;
+  puzzleAuthor: string | null;
 }
 
 type LoadState =
@@ -422,6 +430,8 @@ export function LiveApp({
           selfId,
           isAnonymous,
           members: view.members,
+          puzzleTitle: view.puzzleTitle ?? null,
+          puzzleAuthor: view.puzzleAuthor ?? null,
         },
       });
     })().catch(() => {
@@ -1223,6 +1233,29 @@ function LiveGame({
     [isolatedSolver],
   );
 
+  // The share card's input: assembled only once the bundle is ready (the button's
+  // gate), plain data the lazy export module turns into a PNG on tap. Names and colors
+  // ride the same StackMember list the legend reads; the puzzle masthead comes off the
+  // expanded game view with the room name (then the dims) as fallback, resolved in the
+  // assembly. Memoized so the two panel copies share one object.
+  const shareCard = useMemo(
+    () =>
+      analysis.status === "ready"
+        ? {
+            bundle: analysis.bundle,
+            members,
+            cols: puzzle.cols,
+            rows: puzzle.rows,
+            blocks: [...puzzle.blocks],
+            puzzleTitle: ready.puzzleTitle,
+            puzzleAuthor: ready.puzzleAuthor,
+            roomName: name,
+            gameId,
+          }
+        : undefined,
+    [analysis, members, puzzle, ready, name, gameId],
+  );
+
   // The Analysis panel body. Two forms of the same panel: the rail and the dock keep the board and
   // the ribbon co-visible, so they carry the replay transport; the phone bottom sheet covers the
   // board (a playhead there would drive a board you cannot see, REPLAY.md), so its copy omits the
@@ -1234,6 +1267,7 @@ function LiveGame({
         members={members}
         selfId={ready.selfId}
         idBase="panel"
+        share={shareCard}
         replay={{
           time: replay.time,
           playing: replay.playing,
@@ -1253,6 +1287,7 @@ function LiveGame({
         members={members}
         selfId={ready.selfId}
         idBase="sheet"
+        share={shareCard}
         isolation={isolation}
       />
     ) : (

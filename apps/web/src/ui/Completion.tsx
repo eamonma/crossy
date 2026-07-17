@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { AvatarStack, CapsLabel, cx, Divider } from "./primitives";
 import type { StackMember } from "./primitives";
 import { celebrationPalette, completionCells } from "./completionStats";
+import { ShareCardButton } from "../share/ShareCardButton";
+import type { ShareCardInput } from "../share/shareCardData";
 
 /** How long the drift lasts, spawn stagger included. Long enough to feel like weather,
  * short enough that the card is the thing you are left with. */
@@ -159,6 +161,7 @@ export function CompletionOverlay({
   members,
   selfId,
   shareUrl,
+  share,
   onDismiss,
   onHome,
 }: {
@@ -171,6 +174,9 @@ export function CompletionOverlay({
   members: readonly StackMember[];
   selfId: string | null;
   shareUrl: string | null;
+  /** The mosaic share card's input, present only once the analysis bundle is ready
+   * (useGameAnalysis "ready"); absent hides the Share card action entirely. */
+  share?: ShareCardInput | undefined;
   /** Tap the scrim to hide the summary and admire the finished board. */
   onDismiss: () => void;
   /** Leave the game for home. */
@@ -234,6 +240,7 @@ export function CompletionOverlay({
         <Divider />
 
         <div className="flex items-center justify-end gap-2 px-5 py-4">
+          {share !== undefined && <ShareCardButton input={share} size="lg" />}
           {shareUrl !== null && <CopyLink shareUrl={shareUrl} />}
           <Button variant="default" size="lg" onClick={onHome}>
             Back to home
