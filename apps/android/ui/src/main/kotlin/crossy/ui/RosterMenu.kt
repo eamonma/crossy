@@ -369,6 +369,7 @@ private fun RosterRow(
                 displayName = member.displayName,
                 ground = ground,
                 diameter = 30.dp,
+                wireColor = member.wireColor,
                 avatar = avatar,
             )
         }

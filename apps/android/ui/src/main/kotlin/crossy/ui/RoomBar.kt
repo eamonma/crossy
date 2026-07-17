@@ -166,6 +166,7 @@ private fun RosterCluster(members: List<RosterMember>, ground: GridGround, onOpe
                         displayName = member.displayName,
                         ground = ground,
                         diameter = 22.dp,
+                        wireColor = member.wireColor,
                     )
                 }
             }

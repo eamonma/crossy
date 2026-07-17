@@ -7,10 +7,35 @@
 
 package crossy.ui
 
+import crossy.design.IdentityRoster
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Test
 
 class RosterPuckTests {
+    @Test
+    fun puckIdentity_bucketsTheWireColorSlot_neverTheUserIdHash_whenAWireExists() {
+        // design/identity/ROOM-COLORS.md: a client only ever buckets the wire color into a roster
+        // slot, it never paints the wire verbatim. D28 made the server assign room-aware slots, so a
+        // bumped member's wire slot can diverge from their local id hash; the off-board puck must
+        // follow the wire, the same slot the board buckets (Presence, RoomScreen), not the hash.
+        val wire = "#000000" // low 24 bits 0 -> roster slot 0
+        assertEquals(IdentityRoster.colorForWireColor(wire), puckIdentity("ada", wire))
+        assertNotEquals(
+            IdentityRoster.color("ada"),
+            puckIdentity("ada", wire),
+            "ada's id hash lands a different slot than the wire, and the wire wins",
+        )
+    }
+
+    @Test
+    fun puckIdentity_nullOrEmptyWire_fallsBackToTheIdHash() {
+        // A Settings/onboarding puck carries no wire (null); a seeded member's wire is empty. Both
+        // read the identity hash, so those pucks render exactly as before.
+        assertEquals(IdentityRoster.color("ada"), puckIdentity("ada", null))
+        assertEquals(IdentityRoster.color("ada"), puckIdentity("ada", ""))
+    }
+
     @Test
     fun puckInitial_emptyName_isBlank_soTheColoredCircleStandsAlone() {
         // PROTOCOL.md §4: a nameless account (pre-onboarding) shows the colored circle, no letter.

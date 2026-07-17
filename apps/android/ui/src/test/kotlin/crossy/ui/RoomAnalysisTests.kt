@@ -19,13 +19,50 @@ class RoomAnalysisTests {
         turningPoint = null,
     )
 
+    // The Analysis header's Time label renders through the one moment formatter, and it must match
+    // the web's formatMSS (apps/web/src/ui/analysisReadout.ts) digit for digit so the same room
+    // reads identically on both platforms. The pre-fix twin never rolled minutes into hours, so a
+    // 3700-second solve read "61:40" on Android while the web read "1:01:40"; these pin the roll.
+    // Twin of apps/ios RoomAnalysisTimeTests.swift.
+    private fun label(seconds: Double) = bundle(emptyMap(), duration = seconds).durationLabel
+
     @Test
-    fun formatMSSFloorsSecondsAndNeverCapsMinutes() {
-        assertEquals("0:00", RoomAnalysis.formatMSS(0.0))
-        assertEquals("0:59", RoomAnalysis.formatMSS(59.9))
-        assertEquals("1:05", RoomAnalysis.formatMSS(65.0))
-        assertEquals("75:00", RoomAnalysis.formatMSS(4500.0))
-        assertEquals("0:00", RoomAnalysis.formatMSS(-3.0), "negative clamps to zero")
+    fun formatWholeMinutesAndSecondsZeroPadsTheSecondsField() {
+        assertEquals("6:12", label(372.0))
+        assertEquals("0:09", label(9.0))
+        assertEquals("0:00", label(0.0))
+    }
+
+    @Test
+    fun formatFloorsFractionalSecondsNeverADecimal() {
+        assertEquals("2:05", label(125.9))
+    }
+
+    @Test
+    fun formatUnderAnHourStaysMSSUpToThe5959Boundary() {
+        // The last M:SS reading before the hour rolls: 59:59 keeps the flat shape.
+        assertEquals("59:59", label(3599.0))
+    }
+
+    @Test
+    fun formatTheHourBoundaryRollsTo1_00_00() {
+        // Exactly 3600s is the first H:MM:SS reading, minutes and seconds zero-padded.
+        assertEquals("1:00:00", label(3600.0))
+    }
+
+    @Test
+    fun formatPastAnHourCarriesTheHourTheBugWas3700Read6140() {
+        // The fix: a 3700-second solve rolls minutes into hours (1:01:40), matching the web; the
+        // pre-fix formatter left it "61:40".
+        assertEquals("1:01:40", label(3700.0))
+        assertEquals("1:01:01", label(3661.0))
+    }
+
+    @Test
+    fun formatNegativeOrNonFiniteReadsZeroNeverNaN() {
+        assertEquals("0:00", label(-5.0), "negative clamps to zero")
+        assertEquals("0:00", label(Double.NaN))
+        assertEquals("0:00", label(Double.POSITIVE_INFINITY))
     }
 
     @Test
