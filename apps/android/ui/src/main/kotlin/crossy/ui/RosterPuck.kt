@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import crossy.design.IdentityColor
 import crossy.design.IdentityRoster
 import crossy.protocol.asciiUppercase
 
@@ -44,7 +45,13 @@ import crossy.protocol.asciiUppercase
  * url gets everywhere (PROTOCOL.md §4). The 1.5 dp ring wraps the whole stack so it frames the
  * image the same as the initial.
  *
- * @param userId  the roster-color source (the identity hash; DESIGN.md §3).
+ * @param userId  the roster-color source when no wire color is in hand (the identity-hash
+ *   fallback; DESIGN.md §3).
+ * @param wireColor  the server's `#RRGGBB` wire color for this member (PROTOCOL.md §4), the
+ *   authoritative slot source: the board buckets it (Presence, RoomScreen) and the off-board pucks
+ *   must too, or a room-aware bumped slot (D28) diverges from the local hash. Bucketed, never
+ *   painted verbatim (design/identity/ROOM-COLORS.md). null or empty (a Settings/onboarding puck
+ *   with no wire, a seeded member) falls back to the `userId` hash.
  * @param displayName  the initial source; empty renders the colored circle alone.
  * @param avatar  the resolved image, or null for the initial. The live surface passes the cache's
  *   current image (AvatarImageCache in :app); a preview passes null and shows the initial.
@@ -60,10 +67,11 @@ fun RosterPuck(
     ground: GridGround,
     diameter: Dp,
     modifier: Modifier = Modifier,
+    wireColor: String? = null,
     avatar: ImageBitmap? = null,
     contentDescription: String? = null,
 ) {
-    val fill = ground.rosterColor(IdentityRoster.color(userId)).toColor()
+    val fill = ground.rosterColor(puckIdentity(userId, wireColor)).toColor()
     val cell = ground.tokens.cell.toColor()
     Box(
         modifier = modifier
@@ -98,6 +106,16 @@ fun RosterPuck(
         }
     }
 }
+
+/** The puck's roster identity: the wire color's bucketed slot when the server gave one, the userId
+ *  hash otherwise (twin of iOS GridPresence.rosterColor / RosterMember.identity). The wire wins
+ *  wherever it exists, so an off-board puck lands the same room-aware slot the board buckets the
+ *  member into (D28), and a bumped member never diverges from their own board color. The client only
+ *  ever buckets the wire into a slot, never paints it verbatim (design/identity/ROOM-COLORS.md). A
+ *  null wire (a Settings/onboarding puck) or an empty/malformed one (a seeded member) falls back to
+ *  the hash, so those pucks read exactly as before. */
+internal fun puckIdentity(userId: String, wireColor: String?): IdentityColor =
+    wireColor?.let { IdentityRoster.colorForWireColor(it) } ?: IdentityRoster.color(userId)
 
 /** The puck's initial: the display name's first character, ASCII-uppercased via :protocol (INV-1;
  *  a non-ASCII initial passes through verbatim), empty when the name is empty (the colored circle
