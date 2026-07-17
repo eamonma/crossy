@@ -41,10 +41,21 @@ data class RoomAnalysis(
     val durationLabel: String get() = formatMSS(momentum.durationSeconds)
 
     companion object {
-        /** `M:SS`, seconds floored, minutes uncapped. Pure so it pins headlessly. */
+        /** A seconds count as `M:SS`, or `H:MM:SS` past an hour, matching the web's formatMSS
+         *  (apps/web/src/ui/analysisReadout.ts) digit for digit: seconds floored, the seconds and
+         *  (when hours show) minutes fields zero-padded, negatives and non-finite input clamped to
+         *  "0:00" so a degenerate span never reads "NaN". Pure so it pins headlessly. */
         fun formatMSS(seconds: Double): String {
-            val total = maxOf(0, seconds.toInt())
-            return "${total / 60}:" + "%02d".format(total % 60)
+            val safe = if (seconds.isFinite()) seconds else 0.0
+            val total = maxOf(0, kotlin.math.floor(safe).toInt())
+            val hours = total / 3600
+            val minutes = (total % 3600) / 60
+            val secs = total % 60
+            return if (hours > 0) {
+                "$hours:${"%02d".format(minutes)}:${"%02d".format(secs)}"
+            } else {
+                "$minutes:${"%02d".format(secs)}"
+            }
         }
     }
 }
