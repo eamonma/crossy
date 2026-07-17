@@ -20,7 +20,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -218,6 +221,14 @@ private fun ClueBrowserSheet(
     LaunchedEffect(tab, completed) {
         if (AnalysisChrome.showsAnalysis(completed, tab)) onOpenAnalysis()
     }
+    // The sheet's bottom bleed: the ModalBottomSheet draws edge to edge and its default insets
+    // (BottomSheetDefaults.windowInsets) pad only the top and sides, so the scroll content bleeds
+    // under the system navigation bar, the Android twin of iOS's melt geometry overshooting the
+    // safe-area bottom by ChromeLayout.sheetBottomBleed. The completed sheet grows tall enough to
+    // scroll, so margin the completed scroll by that same bleed (margin == bleed, iOS commit
+    // 78237ad) and its last analysis rows land above the nav bar instead of under it. Mid-solve the
+    // clue list is short and anchored, so no margin then, matching iOS's `completed ? bleed : 0`.
+    val bleed = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -229,7 +240,7 @@ private fun ClueBrowserSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp)
-                .padding(bottom = 24.dp),
+                .padding(bottom = 24.dp + if (completed) bleed else 0.dp),
         ) {
             if (AnalysisChrome.tabbed(completed)) {
                 AnalysisTabPicker(
