@@ -3,6 +3,7 @@ package crossy.engine.vectors
 import crossy.engine.BoardState
 import crossy.engine.Cell
 import crossy.engine.CellSet
+import crossy.engine.CheckPuzzle
 import crossy.engine.ClearCell
 import crossy.engine.Command
 import crossy.engine.Direction
@@ -10,6 +11,7 @@ import crossy.engine.Event
 import crossy.engine.GameCompleted
 import crossy.engine.Grid
 import crossy.engine.PlaceLetter
+import crossy.engine.PuzzleChecked
 import crossy.engine.Solution
 import crossy.engine.Status
 import crossy.engine.Toward
@@ -68,6 +70,9 @@ fun buildBoardState(given: JsonObject): BoardState {
         cells[key] = Cell(v = v, by = by)
         if (v != null) filledCount += 1
     }
+    // Standing check marks and the permanent count (check family; PROTOCOL §10, D27). Optional
+    // in `given`: absent means no marks and no accepted checks yet.
+    val checkedWrong = (given["checkedWrong"] as? JsonArray)?.mapNotNull { intField(it) }?.toSet() ?: emptySet()
     return BoardState(
         grid = buildGrid(given),
         status = parseStatus(stringField(given["status"])),
@@ -75,6 +80,8 @@ fun buildBoardState(given: JsonObject): BoardState {
         firstFillAt = stringField(given["firstFillAt"]), // null for null or absent
         cells = cells,
         filledCount = filledCount,
+        checkedWrong = checkedWrong,
+        checkCount = intField(given["checkCount"]) ?: 0,
     )
 }
 
@@ -93,9 +100,13 @@ fun buildSolution(given: JsonObject): Solution {
     return out
 }
 
-/** A `when` entry (wire command plus server meta) as the engine command, plain data (INV-9). */
+/**
+ * A `when` entry (wire command plus server meta) as the engine command, plain data (INV-9).
+ * `checkPuzzle` carries only its commandId (vectors/README.md "Check cases"; PROTOCOL §10).
+ */
 fun asCommand(w: JsonObject): Command {
     val commandId = stringField(w["commandId"]) ?: ""
+    if (stringField(w["type"]) == "checkPuzzle") return CheckPuzzle(commandId = commandId)
     val cell = intField(w["cell"]) ?: -1
     val by = stringField(w["by"]) ?: ""
     val at = stringField(w["at"]) ?: ""
@@ -122,6 +133,9 @@ fun serializeState(state: BoardState): JsonObject = buildJsonObject {
             }
         }
     }
+    // The wire and the vectors list the standing marks ascending (PROTOCOL §10).
+    put("checkedWrong", JsonArray(state.checkedWrong.sorted().map { JsonPrimitive(it) }))
+    put("checkCount", state.checkCount)
 }
 
 fun serializeCellSet(event: CellSet): JsonObject = buildJsonObject {
@@ -139,6 +153,13 @@ fun serializeEvent(event: Event): JsonObject = when (event) {
     is GameCompleted -> buildJsonObject {
         put("type", "gameCompleted")
         put("seq", event.seq)
+    }
+    is PuzzleChecked -> buildJsonObject {
+        put("type", "puzzleChecked")
+        put("seq", event.seq)
+        put("wrongCells", JsonArray(event.wrongCells.map { JsonPrimitive(it) }))
+        put("checkCount", event.checkCount)
+        put("commandId", event.commandId)
     }
 }
 

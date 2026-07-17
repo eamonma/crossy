@@ -10,6 +10,7 @@ enum class VectorFamily(val dir: String) {
     COMPARATOR("comparator"),
     NAVIGATION("navigation"),
     COMPLETION("completion"),
+    CHECK("check"),
     CLIENT_STORE("client-store"),
     CLUE_RUNS("clue-runs"),
     ;

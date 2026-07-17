@@ -1,5 +1,7 @@
 package crossy.engine.vectors
 
+import crossy.engine.CheckPuzzle
+import crossy.engine.MutationCommand
 import crossy.engine.RejectionCode
 import crossy.engine.applyWithCompletion
 import crossy.engine.backspaceTarget
@@ -32,6 +34,7 @@ object EngineBindings {
         VectorFamily.NAVIGATION,
         VectorFamily.COMPARATOR,
         VectorFamily.COMPLETION,
+        VectorFamily.CHECK,
     )
 
     /** Runs one case against the engine, or throws NoEngineBindingError for a foreign family. */
@@ -41,6 +44,7 @@ object EngineBindings {
             VectorFamily.NAVIGATION -> runNavigation(case)
             VectorFamily.COMPARATOR -> runComparator(case)
             VectorFamily.COMPLETION -> runCompletion(case)
+            VectorFamily.CHECK -> runCheck(case)
             else -> throw NoEngineBindingError(family)
         }
     }
@@ -56,7 +60,13 @@ private fun runReducer(c: JsonObject) {
     val events = mutableListOf<JsonElement>()
     var error: RejectionCode? = null
     for (step in c.getValue("when").jsonArray) {
-        val result = reduce(state, asCommand(step.jsonObject))
+        // The reducer never sees a checkPuzzle; it belongs to the check family (PROTOCOL §10). The
+        // `when` is exhaustive over the sealed Command and smart-casts the mutation arm.
+        val result = when (val command = asCommand(step.jsonObject)) {
+            is CheckPuzzle ->
+                throw VectorMismatch("checkPuzzle belongs to the check family; the reducer never sees it (PROTOCOL §10)")
+            is MutationCommand -> reduce(state, command)
+        }
         state = result.state
         result.events.forEach { events.add(serializeCellSet(it)) }
         if (result.error != null) error = result.error
@@ -151,6 +161,34 @@ private fun runCompletion(c: JsonObject) {
     val then = c.getValue("then").jsonObject
     then["events"]?.let { expectMatch(JsonArray(events), it, "then.events") }
     then["state"]?.let { expectMatch(serializeState(state), it, "then.state") }
+}
+
+/**
+ * The room check (PROTOCOL §10, D27): the completion driver's shape plus the reducer's rejection
+ * convention. Apply each command in mailbox order through the two-phase driver, accumulating the
+ * sequenced stream; a rejected command (the GRID_NOT_FULL / GAME_NOT_ONGOING gates) emits
+ * nothing, consumes no seq (INV-2), and surfaces its code for `then.error`.
+ */
+private fun runCheck(c: JsonObject) {
+    val given = c.getValue("given").jsonObject
+    val solution = buildSolution(given)
+    var state = buildBoardState(given)
+    val events = mutableListOf<JsonElement>()
+    var error: RejectionCode? = null
+    for (step in c.getValue("when").jsonArray) {
+        val result = applyWithCompletion(state, asCommand(step.jsonObject), solution)
+        state = result.state
+        result.events.forEach { events.add(serializeEvent(it)) }
+        if (result.error != null) error = result.error
+    }
+    val then = c.getValue("then").jsonObject
+    then["events"]?.let { expectMatch(JsonArray(events), it, "then.events") }
+    then["state"]?.let { expectMatch(serializeState(state), it, "then.state") }
+    // then.error follows the reducer convention; unasserted when absent (assertion rule).
+    if (then.containsKey("error")) {
+        val actual: JsonElement = error?.let { JsonPrimitive(it.wire) } ?: JsonNull
+        expectMatch(actual, then.getValue("error"), "then.error")
+    }
 }
 
 /** The label the runner shows for a case: comparator by solution, everything else by name. */

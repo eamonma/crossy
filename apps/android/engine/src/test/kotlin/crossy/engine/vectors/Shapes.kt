@@ -243,6 +243,59 @@ fun completionShapeProblems(c: JsonObject): List<String> {
     return problems
 }
 
+/**
+ * The room check shares the completion shape (vectors/README.md "Check cases"; PROTOCOL.md §10,
+ * D27): it needs `given.solution` for the comparator. Two additions, both optional in `given`:
+ * `checkedWrong` (ascending int array of standing marks, default none) and `checkCount` (the
+ * permanent count, default 0). Rejections follow the reducer convention, so `then` may carry an
+ * optional `error` string (PROTOCOL §11 codes GRID_NOT_FULL, GAME_NOT_ONGOING).
+ */
+fun checkShapeProblems(c: JsonObject): List<String> {
+    val problems = mutableListOf<String>()
+    if (!isString(c["name"])) problems.add("name: string required")
+    val given = c["given"] as? JsonObject
+    if (given == null) {
+        problems.add("given: object required")
+    } else {
+        if (!isInt(given["cols"])) problems.add("given.cols: integer required")
+        if (!isInt(given["rows"])) problems.add("given.rows: integer required")
+        if (!isIntArray(given["blocks"])) problems.add("given.blocks: int[] required")
+        if (!isString(given["status"])) problems.add("given.status: string required")
+        if (!isInt(given["seq"])) problems.add("given.seq: integer required")
+        if (!isSolutionMap(given["solution"])) {
+            problems.add("given.solution: sparse map of cell index to non-empty string")
+        }
+        if (given["cells"] != null && !isCellMap(given["cells"])) {
+            problems.add("given.cells: sparse map of cell index to {v, by}")
+        }
+        if (given["checkedWrong"] != null && !isIntArray(given["checkedWrong"])) {
+            problems.add("given.checkedWrong: int[] when present")
+        }
+        if (given["checkCount"] != null && !isInt(given["checkCount"])) {
+            problems.add("given.checkCount: integer when present")
+        }
+        val firstFillAt = given["firstFillAt"]
+        if (firstFillAt != null && firstFillAt !is JsonNull && !isString(firstFillAt)) {
+            problems.add("given.firstFillAt: string or null")
+        }
+    }
+    val whenArray = c["when"] as? JsonArray
+    if (whenArray == null || whenArray.isEmpty() ||
+        whenArray.any { (it as? JsonObject)?.let { w -> isString(w["type"]) } != true }
+    ) {
+        problems.add("when: non-empty array of commands, each with a string type")
+    }
+    val then = c["then"] as? JsonObject
+    if (then == null) {
+        problems.add("then: object required")
+    } else {
+        if (!isEventArray(then["events"])) problems.add("then.events: array of events, each with type and seq")
+        if (!isObject(then["state"])) problems.add("then.state: object required")
+        if (then["error"] != null && !isString(then["error"])) problems.add("then.error: string when present")
+    }
+    return problems
+}
+
 fun clientStoreShapeProblems(c: JsonObject): List<String> {
     val problems = mutableListOf<String>()
     if (!isString(c["name"])) problems.add("name: string required")
@@ -367,6 +420,7 @@ fun shapeProblems(family: VectorFamily, c: JsonObject): List<String> = when (fam
     VectorFamily.COMPARATOR -> comparatorShapeProblems(c)
     VectorFamily.NAVIGATION -> navigationShapeProblems(c)
     VectorFamily.COMPLETION -> completionShapeProblems(c)
+    VectorFamily.CHECK -> checkShapeProblems(c)
     VectorFamily.CLIENT_STORE -> clientStoreShapeProblems(c)
     VectorFamily.CLUE_RUNS -> clueRunsShapeProblems(c)
 }
