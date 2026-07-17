@@ -2,10 +2,11 @@
 // .swift): the same readout the web panel carries, re-set native on the bone/void ground. It rides
 // inside the completed clue browser's Analysis tab (ClueBar), so this is content only, no scroll of its
 // own and no chrome: the "Solved together" eyebrow, the Time/Solvers/Squares trio, the roster legend,
-// the momentum ribbon, and the two moment cards.
+// the momentum ribbon, and the title cards (design/post-game/TITLES.md; the person moment cards, First
+// square and Last square, retired in their favor).
 //
-// Everything here is first-correct truth from GET /analysis (RoomAnalysis): the legend and the moments
-// read the owners map's userIds, colored through the same roster seam the avatars and the mosaic use
+// Everything here is first-correct truth from GET /analysis (RoomAnalysis): the legend and the titles
+// read the bundle's userIds, colored through the same roster seam the avatars and the mosaic use
 // (IdentityRoster wire-else-hash, then paired for the ground). No solve value is in reach (INV-6): the
 // bundle carries userIds, cells, and numbers only. The derivations are pure and Compose-free, so tests
 // pin the legend order, the stat trio, and the caption without a view.
@@ -73,12 +74,10 @@ object AnalysisCopy {
     const val isolateHintSelf: String = "Shows only your squares on the board."
     const val isolateHintOther: String = "Shows only their squares on the board."
     const val momentumLabel: String = "Momentum"
-    const val momentsLabel: String = "Moments"
+    const val titlesLabel: String = "Titles"
     const val timeLabel: String = "Time"
     const val solversLabel: String = "Solvers"
     const val squaresLabel: String = "Squares"
-    const val firstSquare: String = "First square"
-    const val lastSquare: String = "Last square"
     const val you: String = "You"
     const val aSolver: String = "A solver"
 
@@ -104,7 +103,7 @@ data class AnalysisLegendRow(
 object AnalysisPanelModel {
     /** The solvers who own at least one square, self first and named "You" (the web's legendSolvers). A
      *  member who owns nothing is dropped; an owner no longer in the roster is not invented here (the
-     *  moments still name them). Twin of the iOS legendRows. */
+     *  titles still name them). Twin of the iOS legendRows. */
     fun legendRows(
         analysis: RoomAnalysis,
         members: List<RosterMember>,
@@ -145,11 +144,13 @@ object AnalysisPanelModel {
         }
     }
 
-    /** The stat trio as (label, value) pairs: Time (M:SS), Solvers, Squares. Twin of the iOS statTrio. */
-    fun statTrio(analysis: RoomAnalysis): List<Pair<String, String>> = listOf(
-        AnalysisCopy.timeLabel to analysis.durationLabel,
-        AnalysisCopy.solversLabel to analysis.solverCount.toString(),
-        AnalysisCopy.squaresLabel to analysis.entryCount.toString(),
+    /** The stat trio as (label, value, context) triples: Time (M:SS), Solvers, Squares. The Time cell
+     *  carries the sitting-count context ("2 sittings", owner ruling D29), only at two or more; the
+     *  other two never do. Twin of the iOS statTrio. */
+    fun statTrio(analysis: RoomAnalysis): List<Triple<String, String, String?>> = listOf(
+        Triple(AnalysisCopy.timeLabel, analysis.durationLabel, analysis.sittingCountSuffix),
+        Triple(AnalysisCopy.solversLabel, analysis.solverCount.toString(), null),
+        Triple(AnalysisCopy.squaresLabel, analysis.entryCount.toString(), null),
     )
 
     /** The one line that reads the ribbon, matching the web copy: the stalled form when there is a
@@ -161,8 +162,8 @@ object AnalysisPanelModel {
             AnalysisCopy.momentumCaptionPlain
         }
 
-    /** A solver's name for the moments: "You", the roster display name, or a plain fallback for someone
-     *  who has left (an owner can outlive their roster row). Twin of the iOS name(for:). */
+    /** A solver's name for the title cards: "You", the roster display name, or a plain fallback for
+     *  someone who has left (a titled solver can outlive their roster row). Twin of the iOS name(for:). */
     fun nameFor(userId: String, members: List<RosterMember>, selfUserId: String?): String {
         if (userId == selfUserId) return AnalysisCopy.you
         return members.firstOrNull { it.userId == userId }?.displayName ?: AnalysisCopy.aSolver
@@ -262,7 +263,12 @@ private fun Content(
     }
 
     CapsLabel(AnalysisCopy.momentumLabel, ground, modifier = Modifier.padding(top = 20.dp, bottom = 8.dp))
-    MomentumRibbon(momentum = analysis.momentum, turningPoint = analysis.turningPoint, ground = ground)
+    MomentumRibbon(
+        momentum = analysis.momentum,
+        turningPoint = analysis.turningPoint,
+        ground = ground,
+        sittings = analysis.sittings,
+    )
     Text(
         AnalysisPanelModel.momentumCaption(analysis),
         color = tokens.number.toColor().copy(alpha = 0.85f),
@@ -270,22 +276,25 @@ private fun Content(
         modifier = Modifier.padding(top = 8.dp),
     )
 
-    if (analysis.firstToFall != null || analysis.lastSquare != null) {
-        CapsLabel(AnalysisCopy.momentsLabel, ground, modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
+    // Titles: everyone's superlative (design/post-game/TITLES.md), one card per titled solver, in the
+    // wire's ladder-rank order (reordering client-side would fork the two platforms' surfaces). An
+    // unknown key renders nothing (PROTOCOL §12: a client MUST ignore an unknown key; that is how the
+    // ladder grows), and a solo solve (or an older API) ships no titles, so the section vanishes
+    // entirely, never an empty-state box.
+    val cards = analysis.titles.mapNotNull { TitleLadder.card(it) }
+    if (cards.isNotEmpty()) {
+        CapsLabel(AnalysisCopy.titlesLabel, ground, modifier = Modifier.padding(top = 22.dp, bottom = 2.dp))
         Column {
-            analysis.firstToFall?.let {
-                MomentRow(AnalysisCopy.firstSquare, it.userId, members, selfUserId, ground)
-            }
-            if (analysis.firstToFall != null && analysis.lastSquare != null) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(tokens.number.toColor().copy(alpha = 0.18f)),
-                )
-            }
-            analysis.lastSquare?.let {
-                MomentRow(AnalysisCopy.lastSquare, it.userId, members, selfUserId, ground)
+            cards.forEachIndexed { index, card ->
+                if (index > 0) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(tokens.number.toColor().copy(alpha = 0.18f)),
+                    )
+                }
+                TitleRow(card, members, selfUserId, ground)
             }
         }
     }
@@ -357,7 +366,9 @@ private fun StatTrio(analysis: RoomAnalysis, ground: GridGround, modifier: Modif
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .border(1.dp, tokens.number.toColor().copy(alpha = 0.22f), RoundedCornerShape(14.dp)),
-        verticalAlignment = Alignment.CenterVertically,
+        // Top-aligned so the caps labels stay on one line when the Time cell grows its context caption;
+        // without a caption nothing moves (iOS HStack alignment .top).
+        verticalAlignment = Alignment.Top,
     ) {
         AnalysisPanelModel.statTrio(analysis).forEachIndexed { index, cell ->
             if (index > 0) {
@@ -368,22 +379,37 @@ private fun StatTrio(analysis: RoomAnalysis, ground: GridGround, modifier: Modif
                         .background(tokens.number.toColor().copy(alpha = 0.18f)),
                 )
             }
+            val (label, value, context) = cell
             Column(
                 modifier = Modifier.weight(1f).padding(vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                CapsLabel(cell.first, ground)
-                Text(cell.second, color = tokens.ink.toColor(), fontSize = 21.sp, style = digits)
+                CapsLabel(label, ground)
+                Text(value, color = tokens.ink.toColor(), fontSize = 21.sp, style = digits)
+                // The Time cell's quiet context (owner ruling, D29): active time is THE time and the
+                // sitting count is context, never a second stat, so it rides inside the cell as a small
+                // caption ("2 sittings"), only at two or more. A single sitting and an older bundle read
+                // exactly as today.
+                if (context != null) {
+                    Text(
+                        context,
+                        color = tokens.number.toColor().copy(alpha = 0.85f),
+                        fontSize = 11.sp,
+                        style = digits,
+                    )
+                }
             }
         }
     }
 }
 
+/** One title card, the retired moment row's exact grammar plus the evidence line: the solver's dot, the
+ *  title's caps label, the name, and the claim (nothing when the rung's number did not arrive; the card
+ *  degrades to the label alone). Twin of the iOS titleRow. */
 @Composable
-private fun MomentRow(
-    label: String,
-    userId: String,
+private fun TitleRow(
+    card: TitleCard,
     members: List<RosterMember>,
     selfUserId: String?,
     ground: GridGround,
@@ -398,16 +424,23 @@ private fun MomentRow(
             Modifier
                 .size(11.dp)
                 .clip(RoundedCornerShape(50))
-                .background(AnalysisPanelModel.colorFor(userId, members, ground).toColor()),
+                .background(AnalysisPanelModel.colorFor(card.userId, members, ground).toColor()),
         )
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            CapsLabel(label, ground)
+            CapsLabel(card.label, ground)
             Text(
-                AnalysisPanelModel.nameFor(userId, members, selfUserId),
+                AnalysisPanelModel.nameFor(card.userId, members, selfUserId),
                 color = tokens.ink.toColor(),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
+            card.detail?.let { detail ->
+                Text(
+                    detail,
+                    color = tokens.number.toColor().copy(alpha = 0.85f),
+                    fontSize = 12.sp,
+                )
+            }
         }
     }
 }
