@@ -147,7 +147,7 @@ class GameStoreTest {
     @Test
     fun inOrderGameCompletedFreezesMutationAndAppliesStats_INV4() {
         val (store, _) = makeLiveStore(board(seq = 5))
-        val stats = Stats(solveTimeSeconds = 2272, totalEvents = 5, participantCount = 2)
+        val stats = Stats(solveTimeSeconds = 2272, totalEvents = 5, participantCount = 2, checkCount = 0)
         store.receive(ServerMessage.GameCompleted(GameCompletedMessage(6, "2026-07-07T19:40:03Z", stats)))
         assertEquals(GameStatus.COMPLETED, store.render.value.status)
         assertEquals(6, store.render.value.seq)

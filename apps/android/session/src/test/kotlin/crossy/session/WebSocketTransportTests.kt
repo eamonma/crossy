@@ -12,7 +12,7 @@
 
 package crossy.session
 
-import crossy.protocol.CheckRequestMessage
+import crossy.protocol.CheckPuzzleMessage
 import crossy.protocol.ClearCellMessage
 import crossy.protocol.ClientMessage
 import crossy.protocol.Direction
@@ -202,7 +202,7 @@ class WebSocketTransportTests {
         transport.send(ClientMessage.PlaceLetter(PlaceLetterMessage("c1", 17, "A")))
         transport.send(ClientMessage.ClearCell(ClearCellMessage("c2", 17)))
         transport.send(ClientMessage.MoveCursor(MoveCursorMessage(17, Direction.ACROSS)))
-        transport.send(ClientMessage.CheckRequest(CheckRequestMessage("c3")))
+        transport.send(ClientMessage.CheckPuzzle(CheckPuzzleMessage("c3")))
         transport.send(ClientMessage.Heartbeat(HeartbeatMessage()))
         transport.send(ClientMessage.RequestSync(RequestSyncMessage()))
 
@@ -211,7 +211,7 @@ class WebSocketTransportTests {
         assertJsonEquivalent(WireFixtures.text("placeLetter"), frames[1], "placeLetter")
         assertJsonEquivalent(WireFixtures.text("clearCell"), frames[2], "clearCell")
         assertJsonEquivalent(WireFixtures.text("moveCursor"), frames[3], "moveCursor")
-        assertJsonEquivalent(WireFixtures.text("checkRequest"), frames[4], "checkRequest")
+        assertJsonEquivalent(WireFixtures.text("checkPuzzle"), frames[4], "checkPuzzle")
         assertJsonEquivalent(WireFixtures.text("heartbeat"), frames[5], "heartbeat")
         assertJsonEquivalent(WireFixtures.text("requestSync"), frames[6], "requestSync")
     }

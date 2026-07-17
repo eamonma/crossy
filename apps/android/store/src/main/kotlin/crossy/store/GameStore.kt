@@ -460,10 +460,11 @@ class GameStore(
                 _reactions.tryEmit(ReactionEvent(notice.userId, notice.emoji, notice.cell))
                 return
             }
-            is ServerMessage.CheckResult ->
-                // Check styling is M6 scope (root ROADMAP Phase 5); ignored here exactly as the
-                // web and iOS store skeletons ignore it. No state change, no publish.
-                return
+            is ServerMessage.PuzzleChecked ->
+                // Sequenced (§7), so it must ride the gap gate even before the D27 surface lands:
+                // dropping it would leave a hole at seq+1 and force a full resync on every room
+                // check. Mark state and the checked haptic land with the check-surface track.
+                applySequenced(message.message.seq) {}
             is ServerMessage.Kicked -> {
                 // Followed by close 1008; the transport surfaces the closure. Nothing to reconcile
                 // (the notice carries no seq), so hand it to the composition root and return.

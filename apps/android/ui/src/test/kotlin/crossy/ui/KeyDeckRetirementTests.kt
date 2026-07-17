@@ -69,7 +69,7 @@ class KeyDeckRetirementTests {
         val store = GameStore()
         store.receive(welcome(board(seq = 5, status = GameStatus.ONGOING)))
         assertFalse(deckRetired(store.render.value), "the live room shows the deck before completion")
-        val stats = Stats(solveTimeSeconds = 2272, totalEvents = 5, participantCount = 2)
+        val stats = Stats(solveTimeSeconds = 2272, totalEvents = 5, participantCount = 2, checkCount = 0)
         store.receive(ServerMessage.GameCompleted(GameCompletedMessage(6, "2026-07-07T19:40:03Z", stats)))
         assertTrue(deckRetired(store.render.value), "the completion transition retires the deck")
     }
