@@ -62,6 +62,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntSize
 import crossy.design.Motion
 import crossy.design.RGBColor
+import kotlinx.coroutines.delay
 import kotlin.math.exp
 
 /**
@@ -91,7 +92,11 @@ fun CrossyGrid(
     // The completion mosaic (apps/ios/DESIGN.md §8; CompletionMoment): the palette and trigger
     // instant the room hands down on gated completion (INV-3). Null on the happy path; a non-null
     // wash blooms every filled cell to its writer's color and drives the per-frame redraw the way a
-    // live flash does, retiring when its envelope settles (the room nils it). Drawn OVER the ink pass.
+    // live flash does. On the settle the GLYPH returns to ink (`intensity` -> 0) while the WASH STANDS
+    // (`washIntensity` holds 1, `mosaic.settled`): the completed board keeps the room's fingerprint,
+    // never reverting to plain ink (the flash-then-disappear fix; web parity: the reveal arc ends at
+    // WASH). A settled wash is a constant, so the frame loop pauses and the draw skips the clock. The
+    // `mosaic.isolation` filter recesses every non-isolated hand toward paper. Drawn OVER the ink pass.
     mosaic: MosaicWash? = null,
     // Reduce Motion holds the flash as a step and skips the frame loop, and snaps the camera follow
     // instead of gliding it (RoomScreen's rememberReduceMotion; iOS gates the follow on the same
@@ -139,14 +144,32 @@ fun CrossyGrid(
 
     // The per-frame sample of the monotonic seconds clock (the flash book's and the mosaic's shared
     // origin), read inside withFrameNanos so it rides the compositor's cadence without re-rendering
-    // anything but the flash rects and the mosaic bloom. Only armed while a flash is live or the
-    // mosaic plays and motion is allowed; under Reduce Motion the value is sampled once (the flash and
-    // the mosaic step, held until the room retires the book or nils the wash).
+    // anything but the flash rects and the mosaic bloom. Only armed while a flash is live, the mosaic
+    // BLOOMS (a settled wash is a constant and costs no frames), or an isolation toggle crossfades.
+    // Under Reduce Motion the flash and the bloom are held as a single step (sampled once), but an
+    // isolation crossfade is a pure opacity fade, the §7 reduced-motion form itself, so it still runs.
     var now by remember { mutableStateOf(reactionNow()) }
-    LaunchedEffect(flashes, mosaic, reduceMotion) {
-        if (flashes.isEmpty && mosaic == null) return@LaunchedEffect
+    // The mosaic BLOOMS only until it settles; past that the standing wash is a constant.
+    val mosaicBlooming = mosaic != null && !mosaic.settled
+    // True while an isolation toggle's crossfade runs: the settled frame loop unpauses for just the
+    // fade's window, then rests again (a settled mosaic must keep costing no frames). Re-armed on every
+    // toggle by its changedAt, the flash sweep's retire pattern; the small margin past the fade lets the
+    // resting frame draw the exact target. Runs under Reduce Motion too (an opacity crossfade is allowed).
+    var isolationFading by remember { mutableStateOf(false) }
+    LaunchedEffect(mosaic?.isolation?.changedAt) {
+        if (mosaic?.isolation?.changedAt == null) return@LaunchedEffect
+        isolationFading = true
+        withFrameNanos { now = reactionNow() }
+        delay((GridMosaic.ISOLATION_FADE_SECONDS * 1000).toLong() + 50)
         now = reactionNow()
-        if (reduceMotion) return@LaunchedEffect
+        isolationFading = false
+    }
+    LaunchedEffect(flashes, mosaicBlooming, isolationFading, reduceMotion) {
+        if (flashes.isEmpty && !mosaicBlooming && !isolationFading) return@LaunchedEffect
+        now = reactionNow()
+        // Reduce Motion holds the flash and the bloom as a single step (no eased motion); only an
+        // isolation crossfade, a pure opacity fade, keeps sampling frames.
+        if (reduceMotion && !isolationFading) return@LaunchedEffect
         while (true) withFrameNanos { now = reactionNow() }
     }
 
@@ -398,28 +421,45 @@ fun CrossyGrid(
         }
 
         // Pass 6b: the completion mosaic (apps/ios/DESIGN.md §8), painted OVER the ink pass and under
-        // the flashes exactly as iOS orders it (drawMosaic before drawFlashes): every filled cell's
-        // paper washes in its writer's color and the glyph crossfades from ink to that color, both
-        // scaled by the envelope's intensity, so tint, hold, and settle fall out of one clock. A cell
-        // without a mosaic color (empty, or cleared with no letter) never tints. Under Reduce Motion
-        // the intensity is a held step (no eased rise or settle); the room nils the wash on settle.
-        val mosaicIntensity = mosaic?.let { MosaicEnvelope.intensity(now - it.startedAt, reduceMotion) } ?: 0.0
-        if (mosaic != null && mosaicIntensity > 0.0) {
-            val glyphWeightMosaic = FontWeight(ground.glyphWeight)
-            for ((c, color) in mosaic.colors) {
-                if (c in geometry.blocks || !onScreen(c)) continue
-                val origin = Offset(offX + (c % cols) * cellPx, offY + (c / cols) * cellPx)
-                val tinted = color.toColor()
-                drawRect(tinted.copy(alpha = GridMosaic.WASH_ALPHA * mosaicIntensity.toFloat()), origin, Size(cellPx, cellPx))
-                val value = values[c]
-                if (value.isNullOrEmpty()) continue
-                val fontUnits = glyphUnits(value.length)
-                val layout = measurer.measure(
-                    value,
-                    TextStyle(color = tinted.copy(alpha = mosaicIntensity.toFloat()), fontSize = (fontUnits * s).toSp(), fontWeight = glyphWeightMosaic),
-                )
-                val center = cellCenter(c, cols, cellPx, offX, offY)
-                drawText(layout, topLeft = Offset(center.x - layout.size.width / 2f, center.y - layout.size.height / 2f))
+        // the flashes exactly as iOS orders it (drawMosaic before drawFlashes). Two clocks share one
+        // rise: the paper WASH rides `washIntensity` and STANDS at 1 once settled (the completed board's
+        // record, never plain ink again, the flash-then-disappear fix), while the glyph rides
+        // `intensity` and settles back to ink. A settled mosaic reads wash 1 / glyph 0 with no clock, so
+        // the paused frame loop's frozen `now` cannot misdraw it. The isolation filter recesses every
+        // non-isolated hand toward paper by a per-cell wash multiplier (keyed on the OWNER, crossfading
+        // ease-in-out over 0.25s). A cell without a mosaic color (empty, or cleared) never tints. Under
+        // Reduce Motion the rise and settle are held steps; the isolation crossfade is a pure fade.
+        if (mosaic != null) {
+            val elapsed = now - mosaic.startedAt
+            val wash = if (mosaic.settled) 1.0 else MosaicEnvelope.washIntensity(elapsed, reduceMotion)
+            val glyph = if (mosaic.settled) 0.0 else MosaicEnvelope.intensity(elapsed, reduceMotion)
+            if (wash > 0.0) {
+                val glyphWeightMosaic = FontWeight(ground.glyphWeight)
+                for ((c, color) in mosaic.colors) {
+                    if (c in geometry.blocks || !onScreen(c)) continue
+                    val origin = Offset(offX + (c % cols) * cellPx, offY + (c / cols) * cellPx)
+                    val tinted = color.toColor()
+                    // The isolation filter (a legend-row tap over the settled wash): the isolated
+                    // solver's cells hold the full wash, every other hand recesses toward paper (a lower
+                    // alpha over the ground IS the recessive step, on both grounds by construction).
+                    var alpha = GridMosaic.WASH_ALPHA * wash.toFloat()
+                    val owner = mosaic.writers[c]
+                    if (mosaic.isolation != null && owner != null) {
+                        val mult = GridMosaic.isolationMultiplier(owner, mosaic.isolation, now - mosaic.isolation.changedAt)
+                        alpha *= mult.toFloat()
+                    }
+                    drawRect(tinted.copy(alpha = alpha), origin, Size(cellPx, cellPx))
+                    if (glyph <= 0.0) continue
+                    val value = values[c]
+                    if (value.isNullOrEmpty()) continue
+                    val fontUnits = glyphUnits(value.length)
+                    val layout = measurer.measure(
+                        value,
+                        TextStyle(color = tinted.copy(alpha = glyph.toFloat()), fontSize = (fontUnits * s).toSp(), fontWeight = glyphWeightMosaic),
+                    )
+                    val center = cellCenter(c, cols, cellPx, offX, offY)
+                    drawText(layout, topLeft = Offset(center.x - layout.size.width / 2f, center.y - layout.size.height / 2f))
+                }
             }
         }
 

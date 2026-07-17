@@ -123,7 +123,40 @@ object MosaicEnvelope {
         val eased = if (t < 0.5) 4.0 * t * t * t else 1.0 - (-2.0 * t + 2.0).pow(3) / 2.0
         return 1.0 - eased
     }
+
+    /**
+     * The paper WASH's intensity `elapsed` seconds after the trigger: the same ease-out rise as the
+     * glyph tint (one clock, one bloom), then 1 forever. The settle returns the LETTERS to ink
+     * ([intensity] falls to zero) while the wash STANDS as the completed board's record, the web
+     * reveal arc's settled WASH (INK -> FIELD -> WASH), never back to plain ink. An envelope that fell
+     * to zero was the flash-then-disappear bug: the room's fingerprint erased itself ~3s after it
+     * appeared. Under Reduce Motion the eased rise is a single step (full wash held), the [intensity]
+     * reduced-motion doctrine; the wash stands either way. Twin of the Swift MosaicEnvelope.washIntensity.
+     */
+    fun washIntensity(elapsed: Double, reduceMotion: Boolean = false): Double {
+        if (elapsed <= 0.0) return 0.0
+        if (reduceMotion) return 1.0
+        if (elapsed >= RISE_SECONDS) return 1.0
+        val t = elapsed / RISE_SECONDS
+        return 1.0 - (1.0 - t).pow(3)
+    }
 }
+
+/**
+ * The isolation filter's value (web legend parity: the analysis legend rows toggle the same dim on the
+ * web mosaic): which solver the settled wash isolates, who it isolated before, and the toggle's
+ * instant, enough for the draw pass to crossfade between the two dims statelessly. Pure presentation
+ * over the standing MosaicWash; it never touches the celebration (INV-3) or the wash's own clock. Twin
+ * of the Swift MosaicIsolation.
+ */
+data class MosaicIsolation(
+    /** The isolated solver's userId, or null while a clear fades back to the full multi-color wash. */
+    val solverId: String?,
+    /** The previous value, the crossfade's from-side (null = the full wash). */
+    val previousSolverId: String?,
+    /** The monotonic seconds clock (reactionNow) at the toggle. */
+    val changedAt: Double,
+)
 
 /**
  * The mosaic's palette: writer attribution to roster color, one entry per cell that holds a sequenced
@@ -136,6 +169,43 @@ object GridMosaic {
     /** The paper wash under the tinted glyph, scaled by the envelope's intensity. Louder than the
      *  teammate wash (0.10): the mosaic is the celebration. */
     const val WASH_ALPHA: Float = 0.30f
+
+    /** The isolation dim's floor: the fraction of the standing wash a non-isolated cell keeps. The
+     *  wash composites as alpha OVER the paper, so a lower alpha IS a step toward the ground color on
+     *  both grounds by construction; the dimmed hands recess into paper while the isolated one holds
+     *  the full wash. Dimmed, never erased: the record stays traceable. Twin of the iOS isolationDim. */
+    const val ISOLATION_DIM: Double = 0.18
+
+    /** The isolation crossfade: fast and quiet (a filter, not a celebration), and already the §7
+     *  reduced-motion form (a pure opacity crossfade). Twin of the iOS isolationFadeDuration. */
+    const val ISOLATION_FADE_SECONDS: Double = 0.25
+
+    /**
+     * The per-cell wash multiplier under an isolation, `elapsed` seconds after the toggle: an
+     * ease-in-out crossfade from the previous value's dim to the current one's. Null isolation is the
+     * full wash. Pure math, so the filter pins headlessly and any frame past the fade (a paused frame
+     * loop's frozen clock included) draws the exact target. Keys per cell on the OWNER, not the color
+     * (two solvers can share a roster slot's color). Twin of the iOS isolationMultiplier.
+     */
+    fun isolationMultiplier(owner: String, isolation: MosaicIsolation?, elapsed: Double): Double {
+        if (isolation == null) return 1.0
+        val from = isolationTarget(owner, isolation.previousSolverId)
+        val to = isolationTarget(owner, isolation.solverId)
+        if (from == to) return to
+        if (elapsed <= 0.0) return from
+        val t = elapsed / ISOLATION_FADE_SECONDS
+        if (t >= 1.0) return to
+        // The settle's own ease-in-out: the filter leaves one value as gently as it lands on the other.
+        val eased = if (t < 0.5) 4.0 * t * t * t else 1.0 - (-2.0 * t + 2.0).pow(3) / 2.0
+        return from + (to - from) * eased
+    }
+
+    /** One side's resting multiplier: the full wash for no isolation or the isolated solver's own
+     *  hand, the dim floor for everyone else's. */
+    private fun isolationTarget(owner: String, solverId: String?): Double {
+        if (solverId == null) return 1.0
+        return if (owner == solverId) 1.0 else ISOLATION_DIM
+    }
 
     /**
      * Colors by cell. `writers` maps a cell to the userId whose sequenced letter it holds; slotting
@@ -162,14 +232,101 @@ object GridMosaic {
 }
 
 /**
- * One mosaic in flight: the palette and the trigger instant, snapshotted by the room and consumed by
- * the grid's per-frame draw pass against the render clock (reactionNow). Twin of the iOS MosaicWash.
+ * One mosaic in flight, or a standing wash at rest: the palette and the trigger instant, snapshotted
+ * by the room and consumed by the grid's per-frame draw pass against the render clock (reactionNow).
+ * `settled` splits the two clocks the grid keys on (wash stands at 1, glyph falls to ink); `writers`
+ * carries the per-cell owner the isolation filter keys on (not the color); `isolation` is the legend's
+ * tapped solver over the settled wash. Twin of the iOS MosaicWash.
  */
 data class MosaicWash(
     val colors: Map<Int, RGBColor>,
     /** The monotonic seconds clock (reactionNow) at the celebration trigger. */
     val startedAt: Double,
+    /** Cell to the writer whose hand it is (the same map `colors` derives from): the isolation filter
+     *  keys per cell on the OWNER, not the color, so two solvers sharing a slot's color still split. */
+    val writers: Map<Int, String> = emptyMap(),
+    /** True once the envelope has landed (or immediately, for a stand with no bloom, the
+     *  reconnect-into-completed path): the draw pass paints the standing wash (wash 1, glyph 0) with no
+     *  clock, and the grid's frame loop pauses. A settled mosaic costs no frames. */
+    val settled: Boolean = false,
+    /** The isolation filter over the settled wash, or null at the full multi-color record. */
+    val isolation: MosaicIsolation? = null,
 )
+
+/**
+ * The mosaic's lifecycle as an immutable value the room folds forward (the CelebrationGate idiom: the
+ * pure twin of iOS's mutable @Observable CompletionModel mosaic fields, held beside the render model so
+ * a snapshot or resync provably cannot touch it). Split from CelebrationGate on purpose: the GATE is the
+ * exactly-once celebration arbiter (INV-3); this is the wash's own presentation lifecycle. The bloom and
+ * the stand share ONE arming, so neither can follow the other, and the stand never runs through the
+ * gate, so a reconnect-into-completed wears the record without ever celebrating (INV-3 by construction).
+ * Twin of the Swift CompletionModel's mosaicStartedAt / mosaicSettled / isolation trio.
+ */
+data class MosaicMoment(
+    /** Non-null from the bloom's start (or a stand) on, forever: the settle lands on the STANDING wash,
+     *  never back on plain ink, so the completed board keeps the room's fingerprint. */
+    val startedAt: Double? = null,
+    /** True once the envelope has landed (or immediately, for a stand): the wash is a constant now, so
+     *  the grid's frame loop pauses. */
+    val settled: Boolean = false,
+    /** The one arming the bloom and the stand share; spent once, forever. */
+    val armed: Boolean = false,
+    /** The isolation filter's one truth: a tapped legend row isolates that solver on the settled wash;
+     *  null is the full multi-color record. */
+    val isolation: MosaicIsolation? = null,
+) {
+    /** The isolated solver, or null at the full wash (the legend rows' selected state). */
+    val isolatedSolverId: String? get() = isolation?.solverId
+
+    /**
+     * Start the completion bloom on the gate's one firing (INV-3): arm and set the trigger, so the wash
+     * blooms on the clock. A no-op once armed. `enabled` is the ID-1 mute (a muted switch arms but
+     * derives no wash, so the mosaic can never later bloom). Twin of the iOS startMosaic's mosaic arming.
+     */
+    fun bloom(now: Double, enabled: Boolean): MosaicMoment {
+        if (armed) return this
+        return if (enabled) copy(startedAt = now, settled = false, armed = true) else copy(armed = true)
+    }
+
+    /** The settle's landing: the mosaic STANDS (`startedAt` is never nilled, the wash stays as the
+     *  completed board's record) and the frame loop may pause. Twin of the iOS settleMosaic. */
+    fun settle(): MosaicMoment = copy(settled = true)
+
+    /**
+     * Stand the settled wash without a celebration: the reconnect-into-completed path. INV-3 holds, no
+     * bloom plays; this is terminal-state RENDERING, not a celebration. Born past its own envelope, so
+     * any clock that reads it sees the settled form; `settled` is what the draw pass actually keys on.
+     * Shares the one arming with [bloom], so a stand can never follow a bloom or vice versa. `enabled`
+     * is the ID-1 mute (a muted switch stands nothing). Twin of the iOS standMosaic.
+     */
+    fun stand(now: Double, enabled: Boolean): MosaicMoment {
+        if (armed) return this
+        return if (enabled) {
+            copy(startedAt = now - MosaicEnvelope.DURATION_SECONDS, settled = true, armed = true)
+        } else {
+            copy(armed = true)
+        }
+    }
+
+    /**
+     * Toggle isolation from a legend row: the same solver clears back to the full wash, another
+     * switches to them. Isolation exists only on the SETTLED wash, so a bloom in flight (or an
+     * unsettled room) ignores the tap outright: the one arming and the celebration gate are
+     * untouchable (INV-3), and a pure presentation value moves nothing but `isolation`. The previous
+     * value rides along as the crossfade's from-side. Twin of the iOS toggleIsolation.
+     */
+    fun toggleIsolation(userId: String, now: Double): MosaicMoment {
+        if (!settled) return this
+        val current = isolation?.solverId
+        return copy(
+            isolation = MosaicIsolation(
+                solverId = if (current == userId) null else userId,
+                previousSolverId = current,
+                changedAt = now,
+            ),
+        )
+    }
+}
 
 /**
  * The completion confetti (owner ask 2026-07-11, amending §8's no-confetti line): a restrained drift
