@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Crossy iOS Roadmap
@@ -204,9 +205,14 @@ cursors), so this phase consumes and renders presence, nothing more.
       follow wired. Owner device checks riding this build: melt feel, glint
       subtlety, roster inflation. Deferred: browser per-row presence dots (I4);
       reconnect countdown wiring (I3, the driver sets reconnectRetryAt).
-- [ ] d. Completion and terminals: the mosaic in its simple form (tint, hold,
+- [x] d. Completion and terminals: the mosaic in its simple form (tint, hold,
       settle), the stats card, board freeze on `completed` and `abandoned`, the
-      kicked exit with its one honest sentence.
+      kicked exit with its one honest sentence. Code landed: CompletionMoment.swift
+      and TerminalChrome.swift both self-cite "roadmap I2d"; GridMosaicTests,
+      CelebrationGateTests, and RoomTerminalTests pin it. The stats card moved off
+      the terminal screen onto the room-facts surface, then to a plain system sheet
+      (RoomFactsSheet, PR #203, DESIGN.md §4), with post-game stats on the analysis
+      surface. The phase's owner smoke test (below) stays the exit gate.
 - [ ] e. Haptics and motion per DESIGN.md section 7, tuned on device.
 
 **Exit: against the local stack, an iOS simulator or device and a web browser
@@ -219,19 +225,27 @@ celebrates exactly once on both (INV-3), and an owner smoke test of typing feel
 - [ ] a. Sign-in: Discord through Supabase via `ASWebAuthenticationSession`,
       honoring the pinned ref-domain issuer (deploy/README.md; it has caused an
       outage once). Session in the Keychain, silent refresh, sign-out. The welcome
-      screen per EXPERIENCE.md.
+      screen per EXPERIENCE.md. Code merged: the CrossyAPI auth stack (SupabaseAuth,
+      AuthStateMachine) and WelcomeScreen; the owner exit gate (production dogfood
+      below) is pending.
 - [ ] b. Rooms: `GET /games` and `GET /puzzles` with cursor pagination, geometry
       fingerprints, the create flow (Files or pasted URL → `POST /puzzles` →
       `POST /games`), every named ingestion rejection surfaced in the lexicon
-      voice, the share card into the system sheet.
+      voice, the share card into the system sheet. Code merged: RoomsScreen,
+      PuzzlesScreen, RoomCard, ShareMenu (CrossyUI); the owner exit gate is pending.
 - [ ] c. Join: code entry (`POST /games/join`), universal links on SP-i4's AASA,
-      signed-out deep links holding their context through auth.
+      signed-out deep links holding their context through auth. Code merged:
+      JoinCodeScreen and ArrivalConfig; universal-link proof waits on SP-i4's
+      owner-held app record (above).
 - [ ] d. Account: identity, roster color, sign out, `DELETE /account` with its
-      tombstone consequences worded plainly.
+      tombstone consequences worded plainly. Code merged: SettingsScreen with
+      CrossyAPIClient's `deleteAccount` (plus the shipped display-name and
+      reaction-set editing, EXPERIENCE.md §3/§6).
 
 **Exit (= M5): on production, a fresh device signs in with Discord, joins by code,
 is solving within seconds, and finishes a puzzle with a web friend, observed in a
-dogfood session.**
+dogfood session.** The screens above are merged; this owner-judged dogfood exit is
+the open gate.
 
 ## Phase I4 — Parity (the M6 iOS half)
 
@@ -254,7 +268,9 @@ owner on device (root M6 exit).**
 
 - [ ] a. Live Activity, v1 shape from SP-i3: started on backgrounding an ongoing
       room, timer native from `firstFillAt`, last-known board state, island and
-      lock screen. No pushes yet.
+      lock screen. No pushes yet. Code merged: SolveActivityController (app target)
+      and the CrossyWidgets extension, with the App Group island-avatar cache
+      (IslandAvatarStore, ARCHITECTURE.md §6); the owner device-walk exit is pending.
 - [ ] b. Polish pass: motion curves, haptic strengths, Reduce Motion and Reduce
       Transparency fallbacks proven, both grounds walked in every screen.
 - [ ] c. TestFlight: owner-held Apple account actions (app record, certificates,
@@ -264,6 +280,23 @@ owner on device (root M6 exit).**
 **Exit: a friend installs from TestFlight on their own phone and solves an evening
 puzzle with the owner; the island ticks through a backgrounded solve; nothing in
 the flow requires anyone to explain anything.**
+
+## Shipped outside this wave list (recorded)
+
+Surfaces that merged after this file's phases were drawn, tracked in the root
+`ROADMAP.md` waves rather than here, recorded so the execution picture is honest.
+Their specs live with the companions (EXPERIENCE.md §6, DESIGN.md §2/§8), not here.
+
+- **Reactions.** Ephemeral emoji reactions: the clue-bar fan, the Canvas sticker layer,
+  and personal reaction sets in Settings (PRs #248, #250, #256; the iMessage-loud
+  entrance ruling PR #258).
+- **Post-game Analysis.** The tabbed analysis surface (PR #210): the solver-title ladder
+  (PR #271 and the D29 fast-follow titles waves, root ROADMAP 12.1-12.5, iOS half #289;
+  the re-base #291, contract #288), the momentum ribbon (ports web #209), the directional
+  word loupe on the settled mosaic (PR #287), and sittings / active time (PR #285).
+
+These are v1-adjacent parity with the web, not new phases; if a follow-up needs a wave
+gate it lands as one here.
 
 ## Post-v1 ledger (recorded, unscheduled)
 

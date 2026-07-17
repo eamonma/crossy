@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Crossy iOS Experience
@@ -175,9 +176,12 @@ navigates).
 
 Minimal: identity as Discord presents it, your roster color, sign out, and account
 deletion (`DELETE /account`, root DESIGN.md section 8 tombstone semantics, worded
-plainly with its consequences). A Privacy row sits below the two actions,
-opening the same live `/privacy` page. Display-name editing has no API surface
-today; see section 7.
+plainly with its consequences). Display name is editable inline: an edit posts
+`PATCH /me` and the row carries its save, reject, and rate-limit states (PR #236,
+CrossyAPIClient's `GET`/`PATCH /me`); a nameless account is caught at first launch by
+a small onboarding sheet. `docs/design/name-onboarding.md` owns that flow. Your
+personal reaction set is editable here too (PR #256, section 6). A Privacy row sits
+below the actions, opening the same live `/privacy` page.
 
 ## 4. System behaviors
 
@@ -246,11 +250,26 @@ pass. Auth breadth (Sign in with Apple, passkeys) is owner-gated and deliberatel
 unscheduled; it gates public App Store release, not the TestFlight v1
 (`apps/ios/ROADMAP.md`, distribution note).
 
+**Shipped beyond this cut.** Surfaces that landed after this document's launch-cut was
+drawn, recorded so the doc matches reality; each keeps its own home:
+
+- **Reactions.** Ephemeral emoji reactions with a clue-bar fan and a Canvas sticker
+  layer; your personal five are editable in Settings (`ReactionFan`, `ReactionModel`,
+  `ReactionSetStore`; PRs #248, #250, #256). The sticker's iMessage-loud entrance is a
+  DESIGN.md motion ruling (PR #258).
+- **Post-game Analysis.** The completed room grows a tabbed analysis surface
+  (`AnalysisPanel`, `AnalysisTabPicker`; PR #210): the solver-title ladder where
+  everyone earns a superlative (`TitleLadder`; PRs #271, then the D29 fast-follow
+  #288/#289/#291), the momentum ribbon that replays the solve (`MomentumRibbon`;
+  ports web PR #209), and the directional word loupe over the settled mosaic (PR #287;
+  apps/ios/DESIGN.md §2 owns the loupe). Sittings and active time land here too (PR #285).
+
 ## 7. Open questions (owner review)
 
-- **Display name.** The `users` mirror carries a display name from the provider,
-  and no endpoint edits it today. Ship v1 with Discord-derived names, or add a
-  small API surface first? Leaning ship-as-is for v1.
+- **Display name.** Resolved (PR #236): `GET`/`PATCH /me` shipped, with an
+  onboarding sheet for nameless accounts and inline Settings editing
+  (save / reject / rate-limit states). `docs/design/name-onboarding.md` owns the
+  flow. Discord-derived names stay the default; a person can now change theirs.
 - **Leaving a room.** No self-leave endpoint exists; membership rows are removed
   only by kick or deletion. v1 answer: rooms simply persist in your list. If leaving
   matters, that is an API-side conversation, not an iOS workaround.

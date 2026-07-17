@@ -1,55 +1,69 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # apps/ios
 
-A SwiftPM package (no Xcode project). Two targets:
+A SwiftPM package plus a thin, committed Xcode project (`Crossy/Crossy.xcodeproj`,
+ARCHITECTURE.md AD-5). The package holds seven library targets; the project holds the app
+target and the `CrossyWidgets` extension (the Live Activity). This file is orientation
+only; ARCHITECTURE.md §2 (AD-2) owns the module graph and the ring rules.
 
-- **`CrossyEngine`** (`Sources/CrossyEngine`): the pure crossword domain, the Swift twin
-  of `packages/engine` (DESIGN.md §5, INV-9: imports nothing, takes timestamps and user
-  ids as data). It exports nothing today. The Wave 3 port lands here, driven red-to-green
-  by the shared vectors under `vectors/` (ROADMAP.md Phase 3, Track C).
-- **`VectorRunnerTests`** (`Tests/VectorRunnerTests`): the XCTest conformance vector
-  runner, mirroring `packages/engine/src/vectors.test.ts`. It discovers every family
-  directory under `vectors/v1`, decodes every case with Codable structs matching the
-  shapes in `vectors/README.md`, and gates execution on a checked skip manifest.
+## Targets
+
+`Package.swift` declares seven libraries, each with a matching test target:
+
+- **`CrossyEngine`**: the pure crossword domain, the Swift twin of `packages/engine`
+  (INV-9: imports nothing; timestamps and user ids arrive as data). Implemented, bound,
+  and green.
+- **`CrossyProtocol`**: Codable twins of every wire and REST payload, pinned by contract
+  snapshots.
+- **`CrossyStore`**: GameStore, optimistic overlay, reconciliation, the connection state
+  machine; the store ports are protocols defined here.
+- **`CrossyAPI`**: REST client, auth session, Keychain, issuer-pinned tokens.
+- **`CrossySession`**: the `URLSessionWebSocketTask` transport implementing the store's port.
+- **`CrossyDesign`**: tokens (grounds, roster, type scale, motion); shared with the widget.
+- **`CrossyUI`**: SwiftUI views, the Canvas grid, the key deck, haptics.
+
+`VectorRunnerTests` runs the conformance vectors; the other seven suites
+(`CrossyProtocolTests` through `CrossyUITests`) pin their own targets.
 
 ## Run
 
 ```
-swift test --package-path apps/ios   # from the repo root
-# or: cd apps/ios && swift test
+swift test --package-path apps/ios          # vectors plus every unit suite
+# app target (signing disabled, simulator):
+xcodebuild build -project apps/ios/Crossy/Crossy.xcodeproj -scheme Crossy \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
 ```
 
-Discovery and shape validation are hard pass/fail; the skip manifest is checked, not
-trusted; one guard runs a real case against the unimplemented engine and asserts it
-throws `no engine binding`, so CI stays green while proving red is real. The four
-engine-bound families (`reducer`, `comparator`, `navigation`, `completion`) report as
-`XCTSkip` with their case lists until Wave 3 binds the engine. `client-store` is a
-foreign family: its consumer is the web + iOS store, never the engine, so it is
-discovered and shape-validated here but reports as an `XCTSkip` labeled
-`[foreign: apps/web + iOS store]`, executed by the consumer's own suite.
+## Vector runner
 
-## Skip manifest
+`VectorRunnerTests` mirrors `packages/engine/src/vectors.test.ts`: it discovers every
+family under `vectors/v1`, decodes every case with Codable structs, and gates on a checked
+skip manifest. Discovery and shape validation are hard pass/fail; the manifest is checked,
+not trusted.
 
-`vectors.skip.json` mirrors `packages/engine/vectors.skip.json`, with two disjoint
-buckets. `families` are skipped-until-engine: every discovered family is either bound to
-`CrossyEngine` (`EngineBindings.bound`) or listed here, and guard tests fail the build if
-a listed family gains a binding or loses its vector files. Wave 3 adds each implemented
-family to `EngineBindings.bound` (plus a `case` in `EngineBindings.run`) and removes it
-here. `foreign.families` name a consumer that is never the engine (`client-store`): they
-are shape-validated but never bound and never leave the manifest, so the Wave 3 rebind
-that drains `families` never touches them. A family in both buckets is a hard error.
+The engine is bound. `EngineBindings.bound` is `reducer`, `navigation`, `comparator`,
+`completion`, `check` (EngineBindings.swift): five families, none skipped, each with a
+`case` in `run` that parses the vector, calls `CrossyEngine`, and asserts the vector's
+`then`. Binding a family is a compile-time act (a `case` cannot name a symbol that does not
+exist yet), so `bound` is the checked mirror the guard tests read.
+
+`vectors.skip.json` carries two disjoint buckets. `families` (skipped-until-engine) is now
+empty: the Wave 3 port bound every engine family and drained it, and a per-family guard
+fails the build if a bound family reappears there. `foreign.families` are `client-store`
+and `clue-runs`: consumers that are never the engine (the store; the clue-run renderer),
+shape-validated here but executed by their own suites. A family that reaches `run` with no
+binding falls through to `.noEngineBinding`; that path is now the foreign honest-failure
+guard only.
 
 ## CI
 
-`.github/workflows/ios.yml` runs `swift test` on `macos-latest`, path-filtered to
-`apps/ios/**` and `vectors/**`. See that file for why the Swift port runs on macOS rather
-than piggybacking on the Ubuntu JS job.
-
-## Later (Phase 4, M5)
-
-The SwiftUI app itself: Canvas grid renderer, `URLSessionWebSocketTask` with the shared
-reconnect state machine, native Sign in with Apple, universal links. It builds on the
-green engine and the same vectors. See ROADMAP.md.
+`.github/workflows/ios.yml` runs on `macos-26`, pinned (not `macos-latest`): the glass
+chrome needs the iOS 26 SDK, and the `macos-latest` label is mid-migration, a lottery
+between Xcode versions with and without the glass symbols. Two jobs run per iOS-touching
+push, path-filtered to `apps/ios/**` and `vectors/**`: `swift test` (the vector runner plus
+the unit suites) and a signing-disabled simulator build of the app target. See the file for
+why the Swift port runs on macOS rather than piggybacking on the Ubuntu JS job.

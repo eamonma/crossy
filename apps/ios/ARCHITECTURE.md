@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Crossy iOS Architecture
@@ -111,11 +112,24 @@ profiling on a 25x25 with a full room disagrees.
 
 ## 6. Persistence (AD-4)
 
-None beyond the Keychain session in v1. No SwiftData, no CoreData, no cache. The
-server is the system of record, a full resync costs about 3 KB compressed
-(PROTOCOL.md section 1), and local persistence would quietly reinvent the offline
-posture D19 deliberately deferred. Cache when it hurts, and when it does, it enters
-as an adapter behind a port, not as a schema the store knows about.
+No game-state database in v1: no SwiftData, no CoreData, no local model of sequenced
+board state. The server is the system of record, a full resync costs about 3 KB
+compressed (PROTOCOL.md section 1), and persisting game state would quietly reinvent
+the offline posture D19 deliberately deferred.
+
+What does persist is narrow, client-local, and never a shadow of the shared truth:
+
+- **`NavigationSettingsStore`** (CrossyUI): per-device typing preferences in
+  UserDefaults, off the wire entirely (INV-6 untouched; nothing here is a game mutation).
+- **`ReactionSetStore`** (CrossyUI): a UserDefaults mirror of the account's reaction set
+  from `GET /me`, cached so a cold start offline still shows the last-known five. A
+  mirror, never a writer; `PATCH /me` is the single write path (D25).
+- **`IslandAvatarStore`** (Crossy/Shared): downscaled avatar PNGs written to the App
+  Group container via FileManager, so the widget renders island pucks with no network
+  and no async load. The colored initial is always the floor.
+
+Each is a lightweight preference or cache entering behind its own seam, not a schema
+the GameStore knows about. Cache further when it hurts, still as an adapter behind a port.
 
 ## 7. Replay is the superpower
 
@@ -160,8 +174,10 @@ generators until it hurts, mirroring the root's no-orchestrator rule.
   boundary lint.
 - **AD-3 The GameStore is MainActor** (proposed). Revisit only on profiling
   evidence; the dedicated-actor alternative is named in section 5.
-- **AD-4 No local database in v1** (proposed). Keychain only; cache when it hurts,
-  behind a port.
+- **AD-4 No game-state database in v1** (amended). No SwiftData/CoreData model of
+  sequenced state; the Keychain session plus three lightweight client-local stores
+  (typing prefs, the reaction-set mirror, the island avatar cache; section 6). Cache
+  further when it hurts, behind a port.
 - **AD-5 Thin committed Xcode project over SwiftPM sources; no generators**
   (proposed). Created once by the owner; provisioning exception.
 - **AD-6 Reconnect logic is store code; adapters only sleep, jitter, and dial**

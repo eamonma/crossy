@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Crossy iOS Design Language
@@ -93,6 +94,15 @@ button-anchored) survives for the FACTS CARD's span and the CLUE-BAR MELT only,
 both post-welcome when their own reported frames are live; the BOARD no longer
 reads it at all.
 
+**Camera framing frames the word, not the cursor** (PR #199, 2026-07-12). On a clue
+change the camera frames per axis by whether the WHOLE current word fits the
+unobstructed window (the standing-inset window of the full-bleed board), never by
+where the cursor sits: a word that fits is brought fully into view, its across axis
+and down axis judged independently, so the answer reads whole. A word too wide (or
+too tall) for the window falls back to single-cell follow on that axis, tracking the
+cursor. The clue-bar keep-clear rescue stays single-cell: a wrapped clue's taller bar
+pans only the selected cell clear (above), never the whole word.
+
 **Attribution at rest (ID-1, adopted 2026-07-10).** Letters are always ink; the
 only person-marker on the board at rest is the presence puck in the cell corner. A
 writer's color appears in motion (the flash, a cursor) and at completion (the
@@ -149,7 +159,7 @@ The standing pieces:
 | ------------ | -------- | ---------------------------------------------------------------- |
 | room bar     | frosted  | a cluster: a back button (circular standing glass), time (weather dot, reconnect countdown, the ambient clock; always tappable; sealed with a quiet check at completion, the bare frozen clock after an abandonment), players (pucks, overflow count) |
 | clue bar     | frosted  | active clue, direction chip, prev/next; wraps long clues to three lines and the bar breathes (owner ruling 2026-07-10, the ClueFitLab verdict); floats over the full-bleed board on a feather, a wash of the ground's canvas fading up from beneath the glass so live cells never meet a hard edge (both grounds by token, ID-3) |
-| sheets       | frosted  | clue browser; a custom overlay panel (SP-i1), a morph target below. The roster and the share pill ride system menus instead; the facts card rides the system metaball on 26+ |
+| sheets       | frosted  | clue browser; a custom overlay panel (SP-i1), a morph target below. The roster and the share pill ride system menus instead; the facts card is a plain system sheet (RoomFactsSheet, PR #203; the earlier metaball note superseded, §4 amendment 2026-07-12) |
 | key deck     | clear    | interactive pucks over solid canvas, never over the grid (ID-4)  |
 | rebus bubble | clear    | momentary, exhaled by the cell (root DESIGN.md D12)              |
 | word loupe   | clear    | settled completion, Analysis tab only; directional glass above paper |
@@ -271,7 +281,8 @@ goo unreachable by hand. This is scoped tightly: the drag-scrubbed melt keeps
 frame interpolation (SP-i1 unchanged, a finger owns progress raw and a two-view
 swap snaps under it), and below iOS 26 the facts card falls back to the same
 frame-interpolation walk. Only the tap-opened facts card, only on 26+, rides the
-system swap.
+system swap. (Superseded by PR #203, 2026-07-12: the metaball materialize is
+removed and the facts card becomes a plain system sheet; see the amendment below.)
 
 Amended 2026-07-11 (the toolbar-adoption ruling, judged on device; SP-i6, Route
 1). The Rooms→room seam's TOP CHROME becomes the system navigation bar's own
@@ -461,6 +472,22 @@ so an edge swipe belongs to the system's own dismissal again. The back button's 
 surface also grew to the capsule it always drew (a bare chevron is a ~10 pt target;
 the label now fills 28 pt, all of it tappable, the circle unchanged).
 
+Amended 2026-07-12 (the facts surface goes plain; PR #203). Every pill-inflate
+morph for the facts card retires. The tap-opened facts card is now a plain system
+sheet (RoomFactsSheet, one fixed detent, the ShareQRSheet register), not a morph:
+the PillInflation prototype and its metaball / clean / overshoot inflation are
+removed, the owner having read the morph as ad-hoc goo, and a system sheet is the
+same verdict the roster and share surfaces already earned (RosterMenu, ShareMenu).
+This SUPERSEDES the 2026-07-11 rulings that ratified the pill-inflate morph and the
+26+ metaball materialize for this surface (both marked superseded in place above),
+and it dissolves the recorded-not-fixed bar-hosted metaball break (two containers
+cannot blend): there is no morph left to break. Scope: the facts card is a
+mid-solve surface only, gated to an ongoing room (SolveScreen gates openFacts to
+ongoing), so a tap on a terminal pill is a no-op; at completion the pill seals and
+stands as the record (the frozen clock beside a quiet check). Post-game stats move
+to the analysis surface, never the sheet. The clue-browser melt keeps its
+drag-scrubbed frame interpolation (SP-i1 unchanged); only the facts card changed.
+
 Content rides the morph (owner device finding, 2026-07-10; scoped 2026-07-11).
 A drag-scrubbed morph is never empty glass: the clue bar's pinned row travels
 with the surface and hands off from the chrome it left, so the melt never
@@ -503,7 +530,9 @@ clean instead. The morph targets:
   surface as the stats card (ID-2: the timer becomes the headline, frozen),
   operations gone. Content fades in late as one block (the browser-list rule);
   an outside touch pours the card back and the pill, sealed or ticking, summons
-  it again.
+  it again. (Superseded by PR #203, 2026-07-12: the facts card is a plain system
+  sheet, mid-solve only, gated to an ongoing room; a terminal pill tap is a no-op
+  and post-game stats live on the analysis surface. See the §4 amendment.)
 - Tap the share pill: the share menu flows out of it, the system's morph (the
   RosterMenu mechanism, ruled 2026-07-11). Copy link, Share…, and Show QR code
   (a small system sheet, since a menu cannot render a scannable code inline);
@@ -690,6 +719,17 @@ reduced-motion equivalent that crossfades instead of moving.
   lively room).
 - **The key deck**: specular pop plus haptic tick per press, sixty times a minute,
   tuned on hardware before anything else is (ID-4).
+
+**Reaction stickers: one loud entrance** (PRs #257/#258, on the web substrate
+#245/#247/#250). An ephemeral emoji reaction enters iMessage-loud and nothing else:
+fade in small, balloon to 1.9x, a decaying tremble, then settle. A second reaction of
+the same emoji coalesces by replaying the whole gesture, never a quiet bump. This
+retired the earlier spring slap and the 1.16 pulse; the keyframes converged byte for
+byte with the web's, so the entrance is one grammar across clients. The compositor
+law: animate the transforms of ONE pinned, rasterized layer, never re-render the
+sticker per frame, and every keyframe track ends at identity, so a coalesce or a
+settle leaves a clean transform. Native emoji only, no bundled assets (#245). Reduce
+Motion cuts the balloon and tremble to a plain fade.
 
 ## 8. Signature moments
 
