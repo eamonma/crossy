@@ -10,9 +10,10 @@ enum class CellFill {
     BLOCK,
     CURRENT,
 
-    /** Check styling is M6 scope (the store ignores checkResult today, DESIGN.md §11 / ROADMAP
-     *  Phase 5); the level is declared now so checks slot into the pinned order later without
-     *  reordering anything. */
+    /** The room-wide check mark (PROTOCOL.md §10, D27): a standing `checkedWrong` cell wears a flat
+     *  check-token coat, identical for every member (a room act, never a personal color), above the
+     *  cross-reference wash and below the current-cell fill. A cell with a pending optimistic
+     *  overlay renders the overlay, not the mark: the caller suppresses it before resolve. */
     CHECK,
 
     /** The clue under the cursor names this cell's word ("With 27-Down"): a faint tint below check
