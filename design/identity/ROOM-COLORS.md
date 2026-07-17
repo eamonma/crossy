@@ -1,5 +1,6 @@
 ---
 status: normative
+verified: 133db08
 ---
 
 # Room-aware color spread

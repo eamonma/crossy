@@ -1,5 +1,6 @@
 ---
 status: normative
+verified: 133db08
 ---
 
 # Solver titles
