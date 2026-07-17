@@ -1090,7 +1090,7 @@
 /*
  * Contribution mosaic (ui/ContributionMosaic.tsx): the post-game reveal treatment of the solved
  * board. Each cell's owner color and its letter animate opacity as the arc moves INK -> FIELD ->
- * WASH; the per-cell transition-delay is set inline by the component to drive the diagonal sweep.
+ * SETTLED; the per-cell transition-delay is set inline by the component to drive the diagonal sweep.
  * The color fades a touch slower than the letter (the field is the thing that blooms). The
  * component sets transition: none inline for a snap frame or reduced motion, so this rule is the
  * animated default and the inline override is the honest exception.
@@ -1110,11 +1110,20 @@
     fill 300ms var(--ease-standard);
 }
 
+/* The blurred settled layer's isolation gate (ui/ContributionMosaic.tsx): a React-rendered group
+   opacity that hides the blur while a solver is isolated (the crisp cells return in its place).
+   The outer layer's group opacity is imperative (the arc's melt, the settled handoff); this inner
+   gate multiplies it, so isolating crossfades the layers without touching the sweep. */
+.board-mosaic .mosaic-blur-iso {
+  transition: opacity 250ms var(--ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
-  /* The component already crosses straight to WASH under reduced motion; belt-and-braces, kill
-     any transition so nothing sweeps even if a frame slips through. */
+  /* The component already crosses straight to the settled frame under reduced motion;
+     belt-and-braces, kill any transition so nothing sweeps even if a frame slips through. */
   .board-mosaic .mosaic-color,
-  .board-mosaic .mosaic-letter {
+  .board-mosaic .mosaic-letter,
+  .board-mosaic .mosaic-blur-iso {
     transition: none;
   }
 }

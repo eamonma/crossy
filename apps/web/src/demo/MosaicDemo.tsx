@@ -1,8 +1,8 @@
-// The mosaic demo mount: the real ContributionMosaic component rendered in its three static
-// frames (INK, FIELD, WASH), the static plate for a share/projector still, and a running reveal
-// with a replay control and beat indicator. It lives in the demo surface (App.tsx's `?demo=1`),
-// deliberately plain chrome, so the reveal arc and the wash/plate strengths can be reviewed on the
-// real tokens without a live game.
+// The mosaic demo mount: the real ContributionMosaic component rendered in its static frames
+// (INK, FIELD, the crisp WASH the replay keeps, the blurred SETTLED record), the static plate for
+// a share/projector still, and a running reveal with a replay control and beat indicator. It
+// lives in the demo surface (App.tsx's `?demo=1`), deliberately plain chrome, so the reveal arc,
+// the melt, and the wash/plate strengths can be reviewed on the real tokens without a live game.
 //
 // Ultimate mount: the reveal belongs behind the live completion state (LiveApp's `completed`), as
 // a treatment of the solved board once the CompletionOverlay is dismissed. That surface is
@@ -110,8 +110,8 @@ export function MosaicDemo() {
         </h2>
         <p className="mt-2 max-w-[46ch] text-3 text-text-muted">
           The solved board blooms into a wall of pure color, letters gone, one
-          held breath. Then it settles into the quiet wash you keep. The plate
-          is the crescendo; the wash is where it lands.
+          held breath. Then it melts into the soft blurred field you keep. The
+          plate is the crescendo; the settled field is where it lands.
         </p>
       </header>
 
@@ -176,8 +176,9 @@ export function MosaicDemo() {
         </div>
       </div>
 
-      {/* The dial: the three static frames the reveal moves through. */}
-      <div className="mt-14 grid gap-6 md:grid-cols-3">
+      {/* The dial: the static frames the reveal moves through, plus the crisp wash the replay
+          keeps (the settled record itself is the blurred field). */}
+      <div className="mt-14 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <DialFigure
           n="01"
           step="Solved"
@@ -204,14 +205,26 @@ export function MosaicDemo() {
         </DialFigure>
         <DialFigure
           n="03"
-          step="Settled"
-          title="The quiet record"
-          desc="Color drops to a low wash, letters fade back in. A solved board first."
+          step="Wash &middot; crisp"
+          title="The replay's tint"
+          desc="The crisp per-cell tint at 0.3. The time-gated replay wears it square by square."
         >
           <ContributionMosaic
             {...shared}
             behavior={{ kind: "static", state: "wash" }}
-            ariaLabel="The settled wash: ink letters over a quiet owner tint"
+            ariaLabel="The crisp wash: ink letters over a quiet per-cell owner tint"
+          />
+        </DialFigure>
+        <DialFigure
+          n="04"
+          step="Settled"
+          title="The blurred record"
+          desc="Color melts into a soft field under the letters. Isolation snaps back to crisp cells."
+        >
+          <ContributionMosaic
+            {...shared}
+            behavior={{ kind: "static", state: "settled" }}
+            ariaLabel="The settled record: a blurred owner-color field under ink letters"
           />
         </DialFigure>
       </div>

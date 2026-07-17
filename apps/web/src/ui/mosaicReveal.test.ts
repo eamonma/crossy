@@ -6,13 +6,19 @@ import { describe, expect, it } from "vitest";
 import {
   bloomDelay,
   BLOOM_SPREAD_MS,
+  blurOverscan,
+  blurRadius,
   INK,
   JITTER_MS,
   luminance,
+  MOSAIC_BLUR_RADIUS_RATIO,
   mosaicCells,
+  overscanTintRect,
+  SETTLED_WASH_ALPHA,
   settleDelay,
   SETTLE_SPREAD_MS,
   textOn,
+  WASH_ALPHA,
   WHITE,
 } from "./mosaicReveal";
 
@@ -121,5 +127,62 @@ describe("the diagonal sweep timing (plate-study.html arc)", () => {
     expect(near).toBe(0);
     expect(far).toBeCloseTo((28 / 30) * SETTLE_SPREAD_MS, 5);
     expect(far).toBeLessThan(bloomDelay(14, 14, 15, 15, 0)); // the settle is faster than the bloom
+  });
+});
+
+describe("the blurred settled record (wash-blur-study tokens, owner-ratified 2026-07-17)", () => {
+  it("keeps the exact ratified blur ratio: stdDeviation 20 at the 36-unit cell module", () => {
+    expect(MOSAIC_BLUR_RADIUS_RATIO).toBe(20 / 36);
+    expect(blurRadius(36)).toBeCloseTo(20, 10);
+  });
+
+  it("scales the radius with the cell module, so every platform derives the same look", () => {
+    expect(blurRadius(72)).toBeCloseTo(40, 10);
+    expect(blurRadius(18)).toBeCloseTo(10, 10);
+  });
+
+  it("separates the settled weight from the replay wash: 0.5 for the blurred record, WASH_ALPHA stays 0.3", () => {
+    expect(SETTLED_WASH_ALPHA).toBe(0.5);
+    expect(WASH_ALPHA).toBe(0.3); // the time-gated replay's crisp tint is untouched
+  });
+
+  it("overscans board-edge tints by at least 1.5x the blur radius, so the clipped blur stays saturated at the frame", () => {
+    expect(blurOverscan(36)).toBeGreaterThanOrEqual(1.5 * blurRadius(36));
+    expect(blurOverscan(36)).toBeCloseTo(30, 10);
+  });
+
+  it("keeps an interior cell's tint rect the plain cell square (overscan touches edges only)", () => {
+    const r = overscanTintRect(3, 4, 15, 15, 36, 30);
+    expect(r).toEqual({ x: 108, y: 144, width: 36, height: 36 });
+  });
+
+  it("extends a board-edge cell outward past the frame on its outer sides only", () => {
+    // Left edge: extends left, normal elsewhere.
+    expect(overscanTintRect(0, 4, 15, 15, 36, 30)).toEqual({
+      x: -30,
+      y: 144,
+      width: 66,
+      height: 36,
+    });
+    // Bottom-right corner: extends right and down.
+    expect(overscanTintRect(14, 14, 15, 15, 36, 30)).toEqual({
+      x: 504,
+      y: 504,
+      width: 66,
+      height: 66,
+    });
+    // Top-left corner: extends left and up.
+    expect(overscanTintRect(0, 0, 15, 15, 36, 30)).toEqual({
+      x: -30,
+      y: -30,
+      width: 66,
+      height: 66,
+    });
+  });
+
+  it("is pure: the same cell yields the same rect", () => {
+    expect(overscanTintRect(0, 0, 15, 15, 36, 30)).toEqual(
+      overscanTintRect(0, 0, 15, 15, 36, 30),
+    );
   });
 });

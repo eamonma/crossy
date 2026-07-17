@@ -71,7 +71,9 @@ export function WordLoupeLab() {
   const [mode, setMode] = useState<LensMode>("refraction");
   const [focusMode, setFocusMode] = useState<FocusMode>("etched");
   const [strength, setStrength] = useState(58);
-  const [frame, setFrame] = useState<Exclude<MosaicState, "plate">>("wash");
+  // Defaults to the settled record (the blurred field): the frame the loupe actually floats
+  // over on the live completed board; "wash" stays offered as the replay's crisp stress case.
+  const [frame, setFrame] = useState<Exclude<MosaicState, "plate">>("settled");
   const [isolated, setIsolated] = useState(false);
 
   const activeClue =
@@ -397,8 +399,8 @@ export function WordLoupeLab() {
             </ControlGroup>
 
             <ControlGroup eyebrow="Stress" title="Change what sits beneath it">
-              <div className="grid grid-cols-3 gap-2">
-                {(["ink", "wash", "field"] as const).map((state) => (
+              <div className="grid grid-cols-4 gap-2">
+                {(["ink", "wash", "settled", "field"] as const).map((state) => (
                   <Button
                     key={state}
                     variant={frame === state ? "default" : "secondary"}
@@ -406,7 +408,7 @@ export function WordLoupeLab() {
                     onClick={() => setFrame(state)}
                     className="capitalize"
                   >
-                    {state === "wash" ? "Settled" : state}
+                    {state}
                   </Button>
                 ))}
               </div>

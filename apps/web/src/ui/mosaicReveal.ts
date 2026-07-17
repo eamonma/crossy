@@ -146,10 +146,74 @@ export const PEAK_HOLD_MS = 1050;
 export const JITTER_MS = 130;
 /** The wash's quieter re-sweep spread once the peak lets go, ms. */
 export const SETTLE_SPREAD_MS = 260;
-/** The tint the owner color drops to under the glyph in the settled wash (never a slab). Matched to
- * iOS's GridMosaic.washAlpha (apps/ios CompletionMoment.swift) so the mosaic reads at the same weight
- * on both platforms now that the owner colors are the shared identity palette. */
+/** The crisp per-cell tint weight of the WASH frame. The time-gated replay (REPLAY.md) paints
+ * revealed squares at this weight, and the small static "wash" thumbnails keep it; the settled
+ * record no longer wears it (it melts into the blurred field at SETTLED_WASH_ALPHA below).
+ * Matched to iOS's GridMosaic.washAlpha (apps/ios CompletionMoment.swift) so the crisp tint reads
+ * at the same weight on both platforms now that the owner colors are the shared identity palette. */
 export const WASH_ALPHA = 0.3;
+
+// --- The settled record: the blurred field ---------------------------------------------------
+// At the settle the crisp field no longer drops to a hard per-cell tint. The crisp cells fade out
+// on the settle diagonal while a gaussian-blurred duplicate of the tint layer fades in UNDER the
+// ink letters, so contribution reads as territory flowing behind the grid, not a checkerboard
+// (wash-blur-study, owner-ratified 2026-07-17; design/post-game/ANALYSIS.md). The peak FIELD and
+// the share plate stay crisp and letterless; the replay keeps the crisp WASH_ALPHA tint; isolating
+// a solver hides the blur and returns crisp cells (isolation has no shape in a blurred single hue).
+
+/** The blur's stdDeviation as a fraction of the cell module: exactly 20 at the web's 36-unit
+ * cell. iOS and Android carry the same cell-relative token, the way WASH_ALPHA is shared. */
+export const MOSAIC_BLUR_RADIUS_RATIO = 20 / 36;
+
+/** The blurred layer's settled weight over the ground (group opacity on the blur layer). The
+ * blurred settled record wears this while replay keeps WASH_ALPHA; under isolation the crisp
+ * cells return at this weight (times ISOLATION_DIM for everyone but the isolated owner). Shared
+ * cross-platform like WASH_ALPHA: iOS and Android adopt the same 0.5 in parallel. */
+export const SETTLED_WASH_ALPHA = 0.5;
+
+/** The melt: how the blurred layer fades in at the settle while the crisp cells let go. */
+export const MELT_FADE_MS = 900;
+export const MELT_DELAY_MS = 120;
+export const MELT_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+
+/** The blur radius in board units for a given cell module (20 at the 36-unit cell). */
+export function blurRadius(cell: number): number {
+  return cell * MOSAIC_BLUR_RADIUS_RATIO;
+}
+
+/** How far a board-edge tint rect extends past the frame before blurring: 1.5x the blur radius,
+ * so the clipped blur stays saturated at the frame instead of fading toward the ground. */
+export function blurOverscan(cell: number): number {
+  return 1.5 * blurRadius(cell);
+}
+
+/** An axis-aligned rect in board units. */
+export interface TintRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * The blurred layer's tint rect for a cell: the plain cell square, except sides on the board edge
+ * extend outward by `overscan` (the blur layer is clipped to the board rect, so the overhang only
+ * feeds the blur; it never paints outside the frame). Pure: same input, same output.
+ */
+export function overscanTintRect(
+  col: number,
+  row: number,
+  cols: number,
+  rows: number,
+  cell: number,
+  overscan: number,
+): TintRect {
+  const x0 = col === 0 ? -overscan : col * cell;
+  const y0 = row === 0 ? -overscan : row * cell;
+  const x1 = col === cols - 1 ? cols * cell + overscan : (col + 1) * cell;
+  const y1 = row === rows - 1 ? rows * cell + overscan : (row + 1) * cell;
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
 
 /**
  * A cell's bloom delay, ms: its anti-diagonal distance over the board's span, scaled to the

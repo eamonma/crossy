@@ -9,7 +9,7 @@ import {
   isolationAlpha,
   nextIsolation,
 } from "./mosaicIsolation";
-import { mosaicCells, WASH_ALPHA } from "./mosaicReveal";
+import { mosaicCells, SETTLED_WASH_ALPHA, WASH_ALPHA } from "./mosaicReveal";
 
 describe("isolationAlpha: full vs dimmed washes under an isolated solver", () => {
   it("no isolation: every cell keeps its full wash (multiplier exactly 1, the paint untouched)", () => {
@@ -25,12 +25,23 @@ describe("isolationAlpha: full vs dimmed washes under an isolated solver", () =>
     expect(isolationAlpha(undefined, "u-1")).toBe(ISOLATION_DIM);
   });
 
-  it("dims via opacity toward the ground: the multiplier is a real fraction, so over the settled wash the tint stays visible but quiet", () => {
+  it("dims via opacity toward the ground: the multiplier is a real fraction, so over the replay's crisp wash the tint stays visible but quiet", () => {
     expect(ISOLATION_DIM).toBeGreaterThan(0);
     expect(ISOLATION_DIM).toBeLessThan(1);
     const dimmedWash = WASH_ALPHA * ISOLATION_DIM;
     expect(dimmedWash).toBeGreaterThan(0);
     expect(dimmedWash).toBeLessThan(WASH_ALPHA);
+  });
+
+  it("the settled record isolates CRISP at the ratified weights: the owner at 0.5, everyone else at 0.1 (wash-blur-study)", () => {
+    // On the blurred settled record isolation hides the blur and returns crisp cells at
+    // SETTLED_WASH_ALPHA; the fill-opacity multiplier composes exactly as everywhere else.
+    expect(SETTLED_WASH_ALPHA * isolationAlpha("u-1", "u-1")).toBe(0.5);
+    expect(SETTLED_WASH_ALPHA * isolationAlpha("u-2", "u-1")).toBeCloseTo(
+      0.1,
+      10,
+    );
+    expect(SETTLED_WASH_ALPHA * ISOLATION_DIM).toBeCloseTo(0.1, 10);
   });
 
   it("maps a real owner map: exactly the isolated solver's cells read full", () => {

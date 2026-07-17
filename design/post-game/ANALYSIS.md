@@ -46,6 +46,44 @@ time-lapse) stays a separate, later, harder-gated endpoint; nothing here carries
 `firstCorrect` over the trace, unchanged (FIRST-CORRECT.md). Cell index to owning userId,
 userIds only. Folded into the analysis bundle so the board and the tab are one fetch.
 
+#### The settled record is a blurred field (owner ruling 2026-07-17)
+
+The reveal arc's peak (the crisp, letterless FIELD) and the share plate are unchanged. What
+changed is where the arc lands: the settled on-screen record is no longer a crisp per-cell
+tint. The owner tints render at full saturation into a color layer that is gaussian-blurred
+and composited under the crisp ink letters and clue numbers, so contribution reads as
+territory flowing behind the grid, not a checkerboard.
+
+Tokens, ratified from the wash-blur-study prototype and shared cross-platform as
+cell-relative values (iOS and Android adopt the same numbers in parallel):
+
+- **Blur radius**: stdDeviation = 20/36 of the cell module (`MOSAIC_BLUR_RADIUS_RATIO`,
+  exactly 20 at the web's 36-unit cell).
+- **Settled weight**: the blurred layer composites at 0.5 (`SETTLED_WASH_ALPHA`).
+- **Replay unchanged**: the time-gated replay keeps the crisp per-cell tint at
+  `WASH_ALPHA` 0.3, and small static "wash" thumbnails stay crisp. The blur is the
+  full-size settled record only.
+
+Construction rules:
+
+- **Blocks above the blur.** Block cells are redrawn crisp on top of the blurred layer, so
+  the color flows behind the block grid instead of smearing over it.
+- **Edge saturation.** Tint rects on board-edge cells extend outward past the frame by at
+  least 1.5x the blur radius before blurring, and the blurred layer clips to the board
+  rect, so the field stays saturated at the frame instead of fading to ground.
+
+The settle beat is a melt: INK to FIELD is untouched, timings included. At the settle the
+crisp field cells fade to 0 per cell on the existing settle diagonal (`SETTLE_SPREAD_MS`),
+letters fade back per cell as before, and the blurred layer fades in from 0 to 0.5 over
+900ms on cubic-bezier(0.22, 0.61, 0.36, 1) with a 120ms delay. prefers-reduced-motion
+crosses straight to the settled blurred frame, no sweep.
+
+Isolation stays crisp: a blurred single hue has no shape to read, so isolating a solver
+from the legend hides the blurred layer and returns the crisp per-cell tints, the isolated
+owner at 0.5 and everyone else at 0.5 x `ISOLATION_DIM` (0.2) = 0.1, with a ~250ms ease-out
+crossfade both ways. Clearing isolation returns the blurred field. The isolation contract
+(`isolationAlpha`, `nextIsolation`, `ISOLATION_DIM`) is unchanged.
+
 ### Momentum (the room's tempo)
 
 The solve's rhythm across its own duration: where it stalled, where it broke open. A
