@@ -22,6 +22,14 @@ One law governs all of it: **moments may be judged, people are never scored agai
 other.** No leaderboard, no rating, no fastest-solver. A name appears only as the incidental
 author of a moment. Momentum is the room's tempo, not one player's rate against another's.
 
+Amended 2026-07-13 (#204; clue chrome #280): the Analysis tab is the whole post-game
+surface. The completion popup (`CompletionOverlay`) is retired from the live solve (the
+`?demo=1` sandbox keeps it for isolated review); the mosaic bloom is the completion moment,
+and the popup's headline stats (time, solvers, squares) live in the tab as a salient stat
+block. Analysis is the default tab on completion. Clue chrome stays available
+post-completion: the Clues tab keeps live clue navigation beside Analysis (#280), and on
+Clues the board is the plain solved grid, so jumping to a clue highlights its answer.
+
 Amended 2026-07-16 (owner ruling) for solver titles, the per-person superlatives that
 replace the person moment cards: titles count, they never interpret (an argmax over a
 countable fact, never an inferred causal story); one title per solver, at most; a title may
