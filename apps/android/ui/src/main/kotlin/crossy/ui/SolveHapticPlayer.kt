@@ -13,6 +13,9 @@
 //   WORD_THUD       -> performHapticFeedback(LONG_PRESS)   (iOS .soft @1.0: a firmer single thud)
 //   REACTION_SENT   -> performHapticFeedback(KEYBOARD_TAP) (iOS .light @0.7: a crisp confirm)
 //   REACTION_LANDED -> performHapticFeedback(CLOCK_TICK)   (iOS .soft @0.5: the softest tap)
+//   CHECK_LANDED    -> Vibrator single beat at the 0.8 amplitude (iOS thud @0.8: one soft thud, the
+//                      room-event register weighted up; the amplitude is load-bearing, so it rides
+//                      the Vibrator rather than the constant rail that cannot express it)
 //   DOUBLE_TICK     -> Vibrator waveform, two beats with the 90ms gap at the 0.8 amplitude
 //   COMPLETION      -> Vibrator waveform, a distinct rising two-beat (the analog of iOS's
 //                      UINotification .success; Android has no notification-success primitive)
@@ -71,6 +74,7 @@ internal class AndroidSolveHapticPlayer(
             SolveHaptic.WORD_THUD -> view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             SolveHaptic.REACTION_SENT -> view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             SolveHaptic.REACTION_LANDED -> view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            SolveHaptic.CHECK_LANDED -> vibrate(checkLandedWaveform())
             SolveHaptic.DOUBLE_TICK -> vibrate(doubleTickWaveform())
             SolveHaptic.COMPLETION -> vibrate(completionWaveform())
         }
@@ -97,6 +101,13 @@ internal class AndroidSolveHapticPlayer(
                     .build(),
             )
         }
+    }
+
+    /** The room check's landing (D27): one soft thud at the 0.8 amplitude, a single deliberate beat,
+     *  distinct from the local word thud's constant and the sticker's tick (iOS's thud @0.8). */
+    private fun checkLandedWaveform(): VibrationEffect {
+        val amp = amplitude(SolveHapticTuning.CHECK_LANDED_INTENSITY)
+        return waveform(longArrayOf(0L, BEAT_MS), intArrayOf(0, amp))
     }
 
     /** The double tick: a beat, the 90ms gap, a beat, at the 0.8 amplitude (the iOS two-`tick` play). */

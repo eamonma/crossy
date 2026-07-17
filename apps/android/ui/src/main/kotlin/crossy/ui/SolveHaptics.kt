@@ -36,6 +36,12 @@ enum class SolveHaptic {
     /** A teammate's sticker landed on or beside your active word (Wave 7.5; gated by proximity
      *  and the receive-haptics toggle, never fired for a sticker across the board). */
     REACTION_LANDED,
+
+    /** The room's check landed (PROTOCOL.md §6, §10; D27): the marks just painted for everyone.
+     *  One soft thud in the room-event register (the reactionLanded family, weighted up: a
+     *  deliberate act, not a passing wave), never a celebration pattern. Fired off the store's
+     *  live-event beat only (GameStore.onPuzzleChecked); snapshot healing stays silent. */
+    CHECK_LANDED,
 }
 
 /** Starting values for the device tuning pass (DESIGN.md §7: tuned on hardware). One block to
@@ -52,6 +58,10 @@ object SolveHapticTuning {
      *  word taps softer still (it is a wave, not a knock). */
     const val REACTION_SENT_INTENSITY: Double = 0.7
     const val REACTION_LANDED_INTENSITY: Double = 0.5
+
+    /** The room check's landing thud (D27): heavier than a sticker's wave, lighter than the local
+     *  word thud. Mirrors iOS SolveHapticTuning.checkLandedIntensity. */
+    const val CHECK_LANDED_INTENSITY: Double = 0.8
 }
 
 /** The exactly-when derivation. Feed every observed (filled, selection) pair; at most one haptic

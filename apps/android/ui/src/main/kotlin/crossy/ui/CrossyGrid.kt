@@ -4,7 +4,7 @@
 //
 //   * a 36-unit cell module scaled through the camera, one unit factor from module units to pixels;
 //   * background precedence block > current > check > cross-reference > active word > teammate >
-//     default (CellFill; check and cross-reference are M6 and paint nothing yet);
+//     default (CellFill); the room check paints a flat check-token coat (PROTOCOL.md §10, D27);
 //   * clue numbers top-left (+2,+10), circles as inset rings, shaded circles as a soft wash;
 //   * the local cursor and its active word tinted in the player's roster color (color in motion,
 //     ID-1); teammate presence anchored bottom-right, clear of the top-left number.
@@ -86,6 +86,12 @@ fun CrossyGrid(
     // The cells of the clues the active clue cross-references (ClueRefs.referencedCells), tinted
     // faintly relative to the selection. Empty on read-only surfaces that carry no active clue.
     crossReference: Set<Int> = emptySet(),
+    // The standing room-check marks (PROTOCOL.md §10, D27), ALREADY through the overlay-suppression
+    // rule: a cell with a pending optimistic overlay renders the overlay, not the mark, so the caller
+    // passes `checkedWrong - overlayCells` (RoomScreen's visibleCheckMarks). Each member draws a flat
+    // full-cell check-token coat, identical for all (a room act, never a personal color), above the
+    // cross-reference wash and below the current-cell fill. No animation, no timeout: pure state.
+    checkedWrong: Set<Int> = emptySet(),
     // Conflict flashes in flight (GameStore.onConflictFlash routed through RoomScreen). Empty on the
     // happy path; a non-empty book drives a per-frame redraw until it sweeps.
     flashes: FlashBook = FlashBook(),
@@ -356,6 +362,11 @@ fun CrossyGrid(
                 drawRect(tokens.cell.toColor(), origin, cellSize)
                 when {
                     c == selection?.cell -> drawRect(tint.copy(alpha = GridModule.CURRENT_ALPHA), origin, cellSize)
+                    // The room check coat (PROTOCOL.md §10, D27): a flat opaque token fill replacing the
+                    // paper outright, above the cross-reference wash and below the current-cell fill,
+                    // identical for every member (CellFill.CHECK). The caller already suppressed any
+                    // cell under a pending overlay.
+                    c in checkedWrong -> drawRect(tokens.check.toColor(), origin, cellSize)
                     c in crossReference -> drawRect(tint.copy(alpha = GridModule.CROSS_REFERENCE_ALPHA), origin, cellSize)
                     c in activeWord -> drawRect(tint.copy(alpha = GridModule.ACTIVE_WORD_ALPHA), origin, cellSize)
                     presence.containsKey(c) ->

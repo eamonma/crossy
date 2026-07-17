@@ -12,6 +12,7 @@ package crossy.store
 import crossy.protocol.Board
 import crossy.protocol.Cell
 import crossy.protocol.CellSetMessage
+import crossy.protocol.CheckPuzzleMessage
 import crossy.protocol.ClientMessage
 import crossy.protocol.Cursor
 import crossy.protocol.CursorMessage
@@ -28,6 +29,7 @@ import crossy.protocol.Participant
 import crossy.protocol.PlaceLetterMessage
 import crossy.protocol.PlayerConnectedMessage
 import crossy.protocol.PlayerDisconnectedMessage
+import crossy.protocol.PuzzleCheckedMessage
 import crossy.protocol.RequestSyncMessage
 import crossy.protocol.Role
 import crossy.protocol.ServerMessage
@@ -54,6 +56,8 @@ class GameStoreTest {
         status: GameStatus = GameStatus.ONGOING,
         firstFillAt: String? = null,
         cells: List<Cell>? = null,
+        checkedWrongCells: List<Int> = emptyList(),
+        checkCount: Int = 0,
         participants: List<Participant> = emptyList(),
         cursors: List<Cursor> = emptyList(),
         recentCommandIds: List<String> = emptyList(),
@@ -64,6 +68,8 @@ class GameStoreTest {
         completedAt = null,
         abandonedAt = null,
         cells = cells ?: List(20) { Cell(null, null) },
+        checkedWrongCells = checkedWrongCells,
+        checkCount = checkCount,
         participants = participants,
         cursors = cursors,
         recentCommandIds = recentCommandIds,
@@ -549,6 +555,161 @@ class GameStoreTest {
         assertEquals(2, store.render.value.filledCount)
         store.receive(cellSet(seq = 3, cell = 0, value = null))
         assertEquals(1, store.render.value.filledCount, "an erase drops the value: no longer filled")
+    }
+
+    // --- Room check (PROTOCOL.md §5, §10; D27), mirrored from the web/iOS stores ---
+
+    private fun puzzleChecked(
+        seq: Int,
+        wrongCells: List<Int>,
+        checkCount: Int,
+        commandId: String = "c-check",
+    ): ServerMessage = ServerMessage.PuzzleChecked(
+        PuzzleCheckedMessage(seq, wrongCells, checkCount, commandId, "2026-07-16T00:00:00Z"),
+    )
+
+    @Test
+    fun puzzleCheckedAppliesMarksAndCountUnderTheSeqGate_PROTOCOL10() {
+        val (store, _) = makeLiveStore(board(seq = 3))
+        store.receive(puzzleChecked(seq = 4, wrongCells = listOf(2, 5, 9), checkCount = 1))
+        assertEquals(setOf(2, 5, 9), store.render.value.checkedWrong)
+        assertEquals(1, store.render.value.checkCount)
+        assertEquals(4, store.render.value.seq, "a check consumes a seq exactly as cellSet")
+    }
+
+    @Test
+    fun puzzleCheckedReplacesStandingMarksWholesale_PROTOCOL10() {
+        val (store, _) = makeLiveStore()
+        store.receive(puzzleChecked(seq = 1, wrongCells = listOf(2, 5), checkCount = 1))
+        store.receive(puzzleChecked(seq = 2, wrongCells = listOf(7), checkCount = 2))
+        assertEquals(setOf(7), store.render.value.checkedWrong, "the event replaces, never unions")
+        assertEquals(2, store.render.value.checkCount)
+    }
+
+    @Test
+    fun stalePuzzleCheckedIsDiscarded_PROTOCOL7() {
+        val (store, _) = makeLiveStore(board(seq = 5))
+        store.receive(puzzleChecked(seq = 3, wrongCells = listOf(1), checkCount = 9))
+        assertTrue(store.render.value.checkedWrong.isEmpty())
+        assertEquals(0, store.render.value.checkCount)
+        assertEquals(5, store.render.value.seq)
+    }
+
+    /** The marks and count ride every snapshot (PROTOCOL.md §4), so reconnect and resync heal the
+     * check state with no delta replay, and a snapshot without marks clears a stale local set. */
+    @Test
+    fun snapshotHealsMarksAndCount_PROTOCOL4() {
+        val (store, _) = makeLiveStore(board(checkedWrongCells = listOf(4, 11), checkCount = 2))
+        assertEquals(setOf(4, 11), store.render.value.checkedWrong)
+        assertEquals(2, store.render.value.checkCount)
+        store.receive(
+            ServerMessage.Sync(SyncMessage(board(seq = 8, checkedWrongCells = listOf(11), checkCount = 3))),
+        )
+        assertEquals(setOf(11), store.render.value.checkedWrong, "the snapshot replaces sequenced state wholesale")
+        assertEquals(3, store.render.value.checkCount)
+    }
+
+    /** The §10 clearing rule: a cellSet that CHANGES the cell's value removes the mark, a different
+     * letter or a clear, because the mark's claim is stale. */
+    @Test
+    fun cellSetValueChangeClearsTheMark_PROTOCOL10() {
+        val cells = MutableList(20) { Cell(null, null) }
+        cells[2] = Cell("A", "u-other")
+        cells[5] = Cell("B", "u-other")
+        val (store, _) = makeLiveStore(board(cells = cells, checkedWrongCells = listOf(2, 5), checkCount = 1))
+        store.receive(cellSet(seq = 1, cell = 2, value = "X"))
+        assertEquals(setOf(5), store.render.value.checkedWrong, "an overwrite with a new letter clears the mark")
+        store.receive(cellSet(seq = 2, cell = 5, value = null))
+        assertTrue(store.render.value.checkedWrong.isEmpty(), "a clear to null clears the mark")
+        assertEquals(1, store.render.value.checkCount, "the count is permanent; edits never lower it")
+    }
+
+    /** A same-value no-op keeps the mark, because the mark is still true (PROTOCOL.md §10; D27
+     * rejected clearing on any write for exactly this case). */
+    @Test
+    fun cellSetSameValueKeepsTheMark_PROTOCOL10() {
+        val cells = MutableList(20) { Cell(null, null) }
+        cells[2] = Cell("A", "u-other")
+        val (store, _) = makeLiveStore(board(cells = cells, checkedWrongCells = listOf(2), checkCount = 1))
+        store.receive(cellSet(seq = 1, cell = 2, value = "A"))
+        assertEquals(setOf(2), store.render.value.checkedWrong, "a same-value rewrite is not a value change")
+    }
+
+    /** A teammate retyping the marked letter in lowercase reaches the wire as the server-normalized
+     * SAME value (INV-1: normalization is byte-wise ASCII on both sides), so the mark stands:
+     * normalize-same is same-value, never a change. */
+    @Test
+    fun normalizedSameValueEchoKeepsTheMark_INV1() {
+        val cells = MutableList(20) { Cell(null, null) }
+        cells[2] = Cell("A", "me")
+        val (store, _) = makeLiveStore(board(cells = cells, checkedWrongCells = listOf(2), checkCount = 1))
+        // The teammate typed "a"; the server's echo carries the normalized "A".
+        store.receive(cellSet(seq = 1, cell = 2, value = "A", by = "u-other", commandId = "c-low"))
+        assertEquals(setOf(2), store.render.value.checkedWrong)
+    }
+
+    // --- The checkPuzzle intent (PROTOCOL.md §5; design R1, R2) ---
+
+    @Test
+    fun checkPuzzleSendsOneCommandWithAMintedId_PROTOCOL5() {
+        val store = GameStore(newCommandId = { "c-minted" })
+        store.receive(welcome(board()))
+        store.checkPuzzle()
+        assertEquals(
+            listOf<ClientMessage>(ClientMessage.CheckPuzzle(CheckPuzzleMessage("c-minted"))),
+            store.outbox,
+        )
+        assertTrue(store.render.value.overlay.isEmpty(), "a check is not a cell write: no optimistic entry")
+    }
+
+    @Test
+    fun checkPuzzleHonorsACallerSuppliedCommandId_PROTOCOL5() {
+        val (store, _) = makeLiveStore()
+        store.checkPuzzle("c-explicit")
+        assertEquals(
+            listOf<ClientMessage>(ClientMessage.CheckPuzzle(CheckPuzzleMessage("c-explicit"))),
+            store.outbox,
+        )
+    }
+
+    @Test
+    fun checkPuzzleRefusedWhileConnectingAndAfterTerminal_INV4() {
+        val connecting = GameStore()
+        connecting.checkPuzzle()
+        assertTrue(connecting.outbox.isEmpty(), "no authoritative board yet")
+        val (completed, _) = makeLiveStore(board(status = GameStatus.COMPLETED))
+        completed.checkPuzzle()
+        assertTrue(completed.outbox.isEmpty(), "the server would answer GAME_NOT_ONGOING")
+    }
+
+    /** GRID_NOT_FULL is non-fatal and silent (PROTOCOL.md §11; design R2): the rejection is
+     * recorded, no overlay entry exists for the check's commandId to clear (the handler must not
+     * assume one), and the connection stays live. */
+    @Test
+    fun gridNotFullRejectionIsSilentAndClearsNoOverlay_PROTOCOL11() {
+        val (store, _) = makeLiveStore()
+        store.placeLetter(0, "A", "c-cell")
+        store.checkPuzzle("c-check")
+        val rejection = ErrorMessage(ErrorCode.GRID_NOT_FULL, "grid not full", false, "c-check")
+        store.receive(ServerMessage.Error(rejection))
+        assertEquals(rejection, store.render.value.lastRejection)
+        assertEquals(listOf("c-cell"), store.render.value.overlay.map { it.commandId }, "the cell entry is untouched")
+        assertEquals(SyncState.LIVE, store.render.value.sync)
+    }
+
+    /** The live-event beat surfaces for the view's haptic exactly once per applied event; snapshot
+     * healing is history arriving and stays silent. */
+    @Test
+    fun onPuzzleCheckedFiresForTheLiveEventNotForSnapshots_PROTOCOL7() {
+        val beats = mutableListOf<Int>()
+        val store = GameStore()
+        store.onPuzzleChecked = { beats.add(it.checkCount) }
+        store.receive(welcome(board(checkedWrongCells = listOf(3), checkCount = 1)))
+        assertEquals(emptyList<Int>(), beats, "healing marks from a welcome is not a moment")
+        store.receive(puzzleChecked(seq = 1, wrongCells = listOf(3, 4), checkCount = 2))
+        assertEquals(listOf(2), beats)
+        store.receive(puzzleChecked(seq = 1, wrongCells = listOf(3, 4), checkCount = 2))
+        assertEquals(listOf(2), beats, "a stale redelivery never re-fires the beat")
     }
 
     // --- The mailbox (AD-1): one consumption loop, one ordered outbound pump ---

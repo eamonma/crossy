@@ -72,6 +72,8 @@ internal object PreviewFixtures {
             completedAt = null,
             abandonedAt = null,
             cells = cells,
+            checkedWrongCells = emptyList(),
+            checkCount = 0,
             participants = participants,
             cursors = listOf(Cursor(MATE, cell = 6, direction = Direction.DOWN)),
             recentCommandIds = emptyList(),

@@ -104,6 +104,11 @@ fun RoomScreen(
     // received sticker taps softly only when this is on AND it lands near the active word. A stored
     // default, ON, with no Settings UI (matching iOS); the composition root reads it on room entry.
     receiveReactionHaptics: Boolean = true,
+    // Whether this composition's transport carries `checkPuzzle` to a real server (design R8): the
+    // live room passes true; the demo's scripted transport DROPS the command, so it (and every
+    // preview) keeps the default and the facts sheet never grows the check row. Gates the row's
+    // existence entirely, not just the send (iOS SolveScreen.supportsRoomCheck).
+    supportsRoomCheck: Boolean = false,
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
@@ -117,6 +122,13 @@ fun RoomScreen(
 
     val values = remember(render) { buildValues(render, geometry) }
     val filled = values.keys
+    // The standing room-check marks the grid paints (PROTOCOL.md §10, D27), through the §10
+    // overlay-suppression rule: a cell with a pending optimistic overlay renders the overlay, not the
+    // mark (visibleCheckMarks = marks - overlayCells; iOS GridFrame.visibleCheckMarks). Indices only,
+    // never values (INV-6). Empty until the first accepted check.
+    val visibleCheckMarks = remember(render) {
+        render.checkedWrong - render.overlay.map { it.cell }.toSet()
+    }
     // A terminal room (completed or abandoned) freezes input and retires the deck (INV-4): one
     // condition, one predicate. `frozen` gates local mutation through InputActions; `deckRetired`
     // reads the same fact to remove the deck itself below.
@@ -203,7 +215,15 @@ fun RoomScreen(
                 ?: IdentityRoster.color(flash.by)
             flashes = flashes.record(flash.cell, ground.rosterColor(identity), reactionNow())
         }
-        onDispose { store.onConflictFlash = null }
+        // The room's check landing (PROTOCOL.md §6, §10; D27): one soft thud when the marks paint for
+        // everyone. The store fires this only for the live sequenced event (the onConflictFlash
+        // pattern) — snapshot healing is history arriving and stays silent (the store's §7 seq gate),
+        // so no gate is needed here. The marks and count themselves are state the grid and facts read.
+        store.onPuzzleChecked = { haptics.play(SolveHaptic.CHECK_LANDED) }
+        onDispose {
+            store.onConflictFlash = null
+            store.onPuzzleChecked = null
+        }
     }
     // The sweep (the FlashBook pattern): re-armed on every trigger, it sleeps to the soonest envelope
     // end, then retires everything past it. Under Reduce Motion the grid holds the wash static and
@@ -493,11 +513,34 @@ fun RoomScreen(
         if (factsOpen && render.status == GameStatus.ONGOING) {
             RoomFactsSheet(
                 ground = ground,
-                content = RoomFactsContent.make(roomName?.takeIf { it.isNotBlank() } ?: "Crossy"),
-                operations = FactsOperations.make(isHost = selfIsHost && onEndGame != null),
-                solveTimeSeconds = render.stats?.solveTimeSeconds,
+                content = RoomFactsContent.make(
+                    roomName?.takeIf { it.isNotBlank() } ?: "Crossy",
+                    // The mid-solve check record (R10) and the sitting-count context (D29): each null
+                    // mid-solve (stats arrive at completion), so both read as today until then.
+                    checkCount = render.checkCount,
+                    sittingCount = render.stats?.sittingCount,
+                ),
+                // The check row (any host or solver on a live transport, R8/§5) above the host's
+                // end-game (§12); its enable gate reads the SEQUENCED empty-cell count (R9: overlays
+                // excluded, mirroring the server's own filledCount gate).
+                operations = FactsOperations.make(
+                    isHost = selfIsHost && onEndGame != null,
+                    isSpectator = spectating,
+                    supportsCheck = supportsRoomCheck,
+                    emptyCells = geometry.playableCellCount - render.filledCount,
+                ),
+                // The headline Time is active time (owner ruling, D29): the stats twin's preference
+                // rule, wall-clock fallback for a frozen pre-D29 row.
+                solveTimeSeconds = render.stats?.headlineSolveSeconds,
                 firstFillAt = render.firstFillAt,
                 freezeAt = render.completedAt ?: render.abandonedAt,
+                // The confirm-time race resolves in layers (design R2): fullness re-derives from
+                // SEQUENCED state at the confirm tap (a teammate emptying a cell between render and
+                // confirm quietly falls back to the disabled row), and a server GRID_NOT_FULL stays
+                // silent (§11 non-fatal). The send is the store's intent (R1, no overlay entry).
+                onCheckPuzzle = {
+                    if (store.render.value.filledCount == geometry.playableCellCount) store.checkPuzzle()
+                },
                 onEndGame = { onEndGame?.invoke() },
                 onDismiss = { factsOpen = false },
             )
@@ -515,6 +558,7 @@ fun RoomScreen(
                 ground = ground,
                 cursorTint = cursorTint,
                 crossReference = crossReference,
+                checkedWrong = visibleCheckMarks,
                 flashes = flashes,
                 mosaic = mosaic,
                 reduceMotion = reduceMotion,

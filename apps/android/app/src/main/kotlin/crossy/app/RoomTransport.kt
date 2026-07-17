@@ -117,6 +117,8 @@ object RoomScripts {
             completedAt = null,
             abandonedAt = null,
             cells = cells,
+            checkedWrongCells = emptyList(),
+            checkCount = 0,
             participants = participants,
             cursors = cursors,
             recentCommandIds = emptyList(),
