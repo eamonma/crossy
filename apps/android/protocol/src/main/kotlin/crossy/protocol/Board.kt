@@ -77,13 +77,33 @@ public data class Cursor(
     val direction: Direction,
 )
 
-/** Completion stats, non-null only when the game is completed (PROTOCOL.md §4). Twin of `Stats`. */
+/**
+ * Completion stats, non-null only when the game is completed (PROTOCOL.md §4). Twin of `Stats`.
+ *
+ * `checkCount` is the permanent room-check count frozen at completion (§4, §10; D27), a required
+ * field: the current server always writes it, so it carries no default (the key is required on
+ * decode), mirroring the TS `asInt`. `activeSolveSeconds` and `sittingCount` are additive-optional
+ * (§4; DESIGN.md D29, 2026-07-16): `solveTimeSeconds` with idle collapsed and the sittings count.
+ * They are absent-optional (a null default, no @EncodeDefault), so a frozen pre-D29 stats row that
+ * lacks them decodes to null and a null re-encodes absent, never backfilled with a faked number.
+ */
 @Serializable
 public data class Stats(
     val solveTimeSeconds: Int,
     val totalEvents: Int,
     val participantCount: Int,
-)
+    val checkCount: Int,
+    val activeSolveSeconds: Int? = null,
+    val sittingCount: Int? = null,
+) {
+    /**
+     * The headline Time everywhere stats render (owner ruling, DESIGN.md D29; §4): active time is
+     * THE time, and a frozen pre-D29 row falls back to the wall-clock `solveTimeSeconds` it always
+     * showed. Twin of the Swift `headlineSolveSeconds`.
+     */
+    public val headlineSolveSeconds: Int
+        get() = activeSolveSeconds ?: solveTimeSeconds
+}
 
 /**
  * The full board snapshot (PROTOCOL.md §4). `cells` has length `rows * cols`.
@@ -91,6 +111,12 @@ public data class Stats(
  * Reconnect always transfers the whole board; there are no deltas (§1). Twin of `Board`.
  * Timestamps stay `String` (ISO 8601, server clock, §3): the wire type is a string, and
  * parsing to a date is a consumer concern, never a codec transform.
+ *
+ * `checkedWrongCells` is the standing room-check marks, ascending, `[]` when none stand, and
+ * `checkCount` is the game's total accepted checks, `0` before the first (§4, §10; D27). They ride
+ * every snapshot, so reconnect and resync heal the marks with no delta replay. Both are required
+ * (no default): the current server always sends them, matching the TS required `asNonNegativeIntArray`
+ * / `asInt`, and they carry cell indices and a count only, never values or answers (INV-6).
  */
 @Serializable
 public data class Board(
@@ -100,6 +126,8 @@ public data class Board(
     val completedAt: String?,
     val abandonedAt: String?,
     val cells: List<Cell>,
+    val checkedWrongCells: List<Int>,
+    val checkCount: Int,
     val participants: List<Participant>,
     val cursors: List<Cursor>,
     val recentCommandIds: List<String>,
