@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Sittings (active time over the event log)
 
 Status: plan of record. Date: 2026-07-16 (owner rulings same day, all final).

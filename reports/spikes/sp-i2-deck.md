@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP-i2: The deck in hand
 
 **Question.** Does the clear-glass key deck hold up under real typing: press latency,

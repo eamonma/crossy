@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP4: Session WS library + snapshot size
 
 **Questions.** Two, both blocking Wave 2.1c (the session service):

@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Contract fixture provenance
 
 Every file under `wire/` and `rest/` is copied **verbatim** from the iOS twin at

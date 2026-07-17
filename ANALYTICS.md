@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Crossy Analytics
 
 Normative. Product analytics ride PostHog. This document owns the event vocabulary, the

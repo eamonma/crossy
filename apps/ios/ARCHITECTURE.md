@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy iOS Architecture
 
 Status: draft 1, for owner review. Date: 2026-07-10.

@@ -33,7 +33,11 @@ apps/android/local.properties
 
 # OS / editor
 .DS_Store
-.claude/
+
+# Claude harness state (worktrees, local settings) stays local; the checked-in
+# project skills under .claude/skills/ are source.
+.claude/*
+!.claude/skills/
 
 # Scratch design-review screenshots (verification artifacts, never committed).
 design-shots/

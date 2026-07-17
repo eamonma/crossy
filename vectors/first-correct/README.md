@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # First-correct attribution vectors
 
 Status: **data-only, ahead of the engine.** These fixtures pin a NEW engine projection,

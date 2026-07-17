@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Frozen extraction reports
 
 `v2-spec-extraction.md` and `v3-mining.md` land here verbatim when recovered: exact

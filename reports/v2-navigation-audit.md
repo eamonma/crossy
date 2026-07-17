@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # v2 navigation audit
 
 Settles two gating questions for the track-d navigation vectors (Shift+Tab semantics,

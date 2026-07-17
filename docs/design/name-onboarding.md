@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Display name onboarding and the Settings nickname editor
 
 Status: design, revised after adversarial review, ready to build. Branch

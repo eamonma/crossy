@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # apps/ios
 
 A SwiftPM package (no Xcode project). Two targets:

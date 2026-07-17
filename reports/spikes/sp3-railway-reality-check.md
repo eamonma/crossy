@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP3: Railway reality check
 
 **Questions.** Five, all gating Wave 2.2's decision to deploy the two-service shape to

@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # apps/web
 
 The Vite + React SPA. As of **Wave 2.1d** this is the web client skeleton: the real

@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # Crossy v2 — Behavioral Specification
 
 A real-time collaborative crossword-solving web application.

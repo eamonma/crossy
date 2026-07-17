@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Conformance vectors
 
 Normative test vectors for the engine, protocol behaviors, and client stores

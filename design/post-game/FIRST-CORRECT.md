@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # First-correct attribution
 
 Status: plan of record. Date: 2026-07-12.

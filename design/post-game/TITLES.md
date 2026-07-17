@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Solver titles
 
 Status: plan of record. Date: 2026-07-16 (amended same day after adversarial review;

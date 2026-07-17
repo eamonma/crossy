@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Post-game analysis vectors
 
 Status: the four trace projections (`solveTrace`, `momentum`, `moments`, `solveSequence`)

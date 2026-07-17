@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # @crossy/engine
 
 Pure domain logic for Crossy: the reducer, comparator, and navigation (DESIGN.md
