@@ -76,20 +76,32 @@ function fillOrderOf(
   return out;
 }
 
+/** Everything the public share surface renders from: the card's data for the builder, plus the
+ * bundle's replay sequence verbatim (cells + active seconds, ascending; INV-6 letter-free by shape)
+ * for the shell's replay loop, and the solo verdict so the shell paints the same mosaic the card
+ * paints (owners wash, or the fill-order gold ramp). */
+export interface ShareAssembly {
+  readonly card: ShareCardData;
+  readonly sequence: readonly { cell: number; atSeconds: number }[];
+  readonly solo: boolean;
+}
+
 /**
- * Assemble the completion card's data for a game, on read. Returns null when the game does not exist
- * or is not completed (the same gate the analysis endpoint applies), so the public routes surface a
- * soft 404 rather than compute anything. A completed game is immutable (INV-4), so this is stable:
- * the same inputs yield the same card, which is why the card is safely long-cached.
+ * Assemble the completion share surface's data for a game, on read. Returns null when the game does
+ * not exist or is not completed (the same gate the analysis endpoint applies), so the public routes
+ * surface a soft 404 rather than compute anything. A completed game is immutable (INV-4), so this is
+ * stable: the same inputs yield the same card and the same replay, which is why both are safely
+ * cached.
  *
- * The unfurl always rasterizes the og variant (1200x630, light ground; SHARE.md S2), so this returns
- * only the data; `fillOrderByCell` is still populated for a solo solve (the og variant ignores it,
- * but it keeps the shape faithful to the portrait/solo consumers).
+ * The unfurl always rasterizes the og variant (1200x630, light ground; SHARE.md S2) from `card`;
+ * `fillOrderByCell` is still populated for a solo solve (the og variant ignores it, but it keeps the
+ * shape faithful to the portrait/solo consumers). `sequence` feeds the shell's replay loop (wave
+ * 13.3), the same rows the analysis endpoint serves.
  */
 export async function assembleShareCard(
   db: Db,
   gameId: string,
-): Promise<ShareCardData | null> {
+): Promise<ShareAssembly | null> {
   // Completion gate + geometry + masthead in one read. Geometry is projected out of the snapshot in
   // SQL so the solution-bearing jsonb never enters the process (INV-6), the game view's pattern.
   // The puzzle title/author come from the joined puzzles row (named columns, never `data`).
@@ -183,7 +195,7 @@ export async function assembleShareCard(
   const solverCount = ownerIds.size;
   const solo = bundle.titles.length === 0 || solverCount < 2;
 
-  const data: ShareCardData = {
+  const card: ShareCardData = {
     rows: row.puzzleRows,
     cols: row.puzzleCols,
     blocks: row.puzzleBlocks ?? [],
@@ -206,5 +218,5 @@ export async function assembleShareCard(
     solvedOn: formatShareDate(row.completedAt),
   };
 
-  return data;
+  return { card, sequence: bundle.sequence, solo };
 }

@@ -22,6 +22,7 @@ import type { FakeAuthProvider } from "@crossy/auth";
 import { buildApp } from "../app";
 import { createDb } from "../db/client";
 import type { ApiEnv, AppDeps } from "../context";
+import { LOOP_SECONDS } from "./shell";
 import { SHARE_TOKEN_PATTERN } from "./token";
 
 const POSTGRES_IMAGE = "postgres:16-alpine";
@@ -302,6 +303,83 @@ describe("public GET /s/{token} shell + card (SHARE.md S2)", () => {
     ).json()) as { token: string };
     expect(second.token).not.toBe(first.token);
     expect((await getPublic(`/s/${second.token}`)).status).toBe(200);
+  });
+});
+
+/** The reveal moment (seconds into the loop) the shell emitted for a cell: its rect's reveal-group
+ * class, then that group's keyframes first stop. */
+function revealSecondOf(html: string, cell: number): number {
+  const rect = new RegExp(
+    `<rect data-cell="${cell}" [^>]*class="rv (k\\d+)"/>`,
+  ).exec(html);
+  expect(rect, `cell ${cell} carries a reveal group`).not.toBeNull();
+  const frames = new RegExp(
+    `@keyframes ${rect![1]}\\{0%,([\\d.]+)%\\{opacity:0`,
+  ).exec(html);
+  expect(frames, `keyframes for ${rect![1]} exist`).not.toBeNull();
+  return (Number(frames![1]) / 100) * LOOP_SECONDS;
+}
+
+describe("the replay loop on the shell (SHARE.md S3; PROTOCOL.md §12)", () => {
+  it("animates only under no-preference motion, revealing cells in the solve's own order", async () => {
+    const { gameId, hostToken } = await completedGame();
+    const { token } = (await (
+      await post(`/games/${gameId}/share`, hostToken, {})
+    ).json()) as { token: string };
+    const res = await getPublic(`/s/${token}`);
+    expect(res.status).toBe(200);
+    // The shell's cache posture is unchanged from S2.
+    expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
+    const html = await res.text();
+    // The whole animation lives inside the reduced-motion gate; nothing animates outside it.
+    const gate = html.indexOf("@media (prefers-reduced-motion: no-preference)");
+    expect(gate).toBeGreaterThan(-1);
+    expect(html.indexOf("@keyframes")).toBeGreaterThan(gate);
+    expect(html.slice(0, gate)).not.toContain("animation");
+    // The seeded solve went 0, 1, 2, 3 at distinct seconds: the emitted delays are strictly
+    // monotone in that order (parsed from the keyframes, not trusted from the input).
+    const seconds = [0, 1, 2, 3].map((cell) => revealSecondOf(html, cell));
+    for (let i = 1; i < seconds.length; i += 1) {
+      expect(seconds[i]!).toBeGreaterThan(seconds[i - 1]!);
+    }
+    // Both grounds ride the page: the light and dark boards, and the dark-scheme swap.
+    expect(html).toContain('class="g-light"');
+    expect(html).toContain('class="g-dark"');
+    expect(html).toContain("@media (prefers-color-scheme: dark)");
+  });
+
+  it("a solo solve's shell replays the gold ramp (SHARE.md solo rule)", async () => {
+    const hostId = randomUUID();
+    const hostToken = await auth.mintUpgraded({
+      sub: hostId,
+      userMetadata: { full_name: "Ada" },
+    });
+    const { gameId } = await createGame(hostToken);
+    await seedFill(gameId, hostId, 1, 0, "H");
+    await seedFill(gameId, hostId, 2, 1, "I");
+    await seedFill(gameId, hostId, 3, 2, "O");
+    await seedFill(gameId, hostId, 4, 3, "N");
+    await seedCompleted(gameId);
+    const { token } = (await (
+      await post(`/games/${gameId}/share`, hostToken, {})
+    ).json()) as { token: string };
+    const html = await (await getPublic(`/s/${token}`)).text();
+    // The last square lands on brand gold (#978365), the one place gold may live.
+    expect(html).toContain("#978365");
+    // And it still replays: the last-filled cell reveals after the first.
+    expect(revealSecondOf(html, 3)).toBeGreaterThan(revealSecondOf(html, 0));
+  });
+
+  it("INV-6: the shell's board is rects and timings only, never a text node (no letter can render)", async () => {
+    const { gameId, hostToken } = await completedGame();
+    const { token } = (await (
+      await post(`/games/${gameId}/share`, hostToken, {})
+    ).json()) as { token: string };
+    const html = await (await getPublic(`/s/${token}`)).text();
+    // The board SVGs carry no <text> element at all, and the page runs no script: the replay is
+    // cells, owners, and seconds, so nothing letter-shaped exists to leak.
+    expect(html).not.toContain("<text");
+    expect(html).not.toContain("<script");
   });
 });
 

@@ -1,22 +1,22 @@
-// The public share surface (design/post-game/SHARE.md wave S2; PROTOCOL.md §12). Two unauthenticated
-// routes behind one unguessable token:
+// The public share surface (design/post-game/SHARE.md waves S2 + S3; PROTOCOL.md §12). Two
+// unauthenticated routes behind one unguessable token:
 //   GET /s/{token}           an HTML shell with OpenGraph tags, modeled on the invite unfurl
 //                            (games/unfurl.ts): og:title from the puzzle title, og:image pointing at
-//                            the card PNG with its dimensions, plus a minimal human page (the card,
-//                            the title, a link to the app). Link unfurlers do not run JavaScript, so
-//                            the SPA cannot serve its own preview (DESIGN.md §7); this static shell is
-//                            the unfurler and browser fallback.
+//                            the card PNG with its dimensions, plus the human page whose hero is the
+//                            replay loop (shell.ts): the mosaic drawing itself in solve order, pure
+//                            CSS, static finished board under reduced motion. Link unfurlers do not
+//                            run JavaScript or CSS, so the OpenGraph contract is untouched by the
+//                            replay (DESIGN.md §7).
 //   GET /s/{token}/card.png  the server-rasterized og card, built from the SAME letter-free analysis
 //                            bundle and the SAME @crossy/share-card builder the web client uses.
 //
-// INV-6 by construction: the token resolves to a gameId, and the card is assembled from the analysis
-// bundle (owners, counts) plus display metadata (names, title/author, date); no board letter is ever
-// read (SHARE.md "No letters, ever"). Unknown, revoked, and malformed tokens all resolve to the SAME
-// soft 404 shell, so the surface is no valid-vs-invalid oracle and never confirms token structure.
-// Per-IP rate limiting mirrors the unfurl exactly (a plain-text 429), a flood cap in front of
-// Cloudflare's edge rules, not a brute-force gate (the token space is 2^256).
-//
-// Wave 13.3 adds a replay loop to the shell; the human-page body is the clean seam for it.
+// INV-6 by construction: the token resolves to a gameId, and both surfaces are assembled from the
+// analysis bundle (owners, sequence cells + seconds) plus display metadata (names, title/author,
+// date); no board letter is ever read (SHARE.md "No letters, ever"). Unknown, revoked, and malformed
+// tokens all resolve to the SAME soft 404 shell, so the surface is no valid-vs-invalid oracle and
+// never confirms token structure. Per-IP rate limiting mirrors the unfurl exactly (a plain-text
+// 429), a flood cap in front of Cloudflare's edge rules, not a brute-force gate (the token space is
+// 2^256).
 import { Hono } from "hono";
 import { and, eq, isNull } from "drizzle-orm";
 import { schema } from "@crossy/db";
@@ -24,7 +24,8 @@ import { escapeXml } from "@crossy/share-card";
 import type { AppDeps, ApiEnv } from "../context";
 import { clientIp, createRateLimiter } from "../http/rate-limit";
 import { assembleShareCard } from "./cardData";
-import { OG_HEIGHT, OG_WIDTH, renderShareCardPng } from "./render";
+import { renderShareCardPng } from "./render";
+import { shareShell } from "./shell";
 import { SHARE_TOKEN_PATTERN } from "./token";
 
 /**
@@ -58,41 +59,6 @@ function notFoundShell(appOrigin: string): string {
 <body>
 <h1>This share link isn't available</h1>
 <p>The link may have been turned off, or it never existed. <a href="${escapeXml(appOrigin)}">Go to Crossy</a>.</p>
-</body>
-</html>
-`;
-}
-
-/** The share page: OpenGraph tags for unfurlers, and a minimal page for a human (the card, the
- * title, a link to the app). `title` is display content shown back verbatim, so it is XML-escaped;
- * `cardUrl` and `appOrigin` are config- and DB-derived, never raw caller input. */
-function shareShell(args: {
-  title: string;
-  cardUrl: string;
-  appOrigin: string;
-}): string {
-  const title = escapeXml(args.title);
-  const cardUrl = escapeXml(args.cardUrl);
-  const appOrigin = escapeXml(args.appOrigin);
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Crossy">
-<meta property="og:title" content="${title}">
-<meta property="og:description" content="A finished crossword on Crossy.">
-<meta property="og:image" content="${cardUrl}">
-<meta property="og:image:width" content="${OG_WIDTH}">
-<meta property="og:image:height" content="${OG_HEIGHT}">
-<meta name="twitter:card" content="summary_large_image">
-<title>${title} · Crossy</title>
-</head>
-<body>
-<img src="${cardUrl}" width="${OG_WIDTH}" height="${OG_HEIGHT}" alt="${title}" style="max-width:100%;height:auto">
-<h1>${title}</h1>
-<p><a href="${appOrigin}">Open Crossy</a></p>
 </body>
 </html>
 `;
@@ -145,9 +111,9 @@ export function shareRoutes(deps: AppDeps): Hono<ApiEnv> {
     }
     const gameId = await resolveActiveToken(deps, c.req.param("token"));
     if (gameId === null) return c.text("not found", 404);
-    const data = await assembleShareCard(deps.db, gameId);
-    if (data === null) return c.text("not found", 404);
-    const png = renderShareCardPng(data);
+    const assembly = await assembleShareCard(deps.db, gameId);
+    if (assembly === null) return c.text("not found", 404);
+    const png = renderShareCardPng(assembly.card);
     return c.body(png, 200, {
       "content-type": "image/png",
       "cache-control": CARD_CACHE_CONTROL,
@@ -169,8 +135,8 @@ export function shareRoutes(deps: AppDeps): Hono<ApiEnv> {
         "cache-control": "no-store",
       });
     }
-    const data = await assembleShareCard(deps.db, gameId);
-    if (data === null) {
+    const assembly = await assembleShareCard(deps.db, gameId);
+    if (assembly === null) {
       return c.html(notFoundShell(appOrigin), 404, {
         "cache-control": "no-store",
       });
@@ -180,8 +146,8 @@ export function shareRoutes(deps: AppDeps): Hono<ApiEnv> {
     const cardUrl = `${new URL(c.req.url).origin}/s/${c.req.param("token")}/card.png`;
     // og:title uses the card's own title, with the same fallbacks the card uses (puzzle title, then
     // the room name, then the board dims), so the unfurl headline and the card headline agree.
-    const title = data.puzzle.title ?? "Crossy";
-    return c.html(shareShell({ title, cardUrl, appOrigin }), 200, {
+    const title = assembly.card.puzzle.title ?? "Crossy";
+    return c.html(shareShell({ title, cardUrl, appOrigin, assembly }), 200, {
       "cache-control": SHELL_CACHE_CONTROL,
     });
   });
