@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # Crossy Android Architecture
@@ -77,9 +78,11 @@ Android main looper (it is JVM-pure), so confinement is the composition root's j
 
 ## Divergences from iOS, recorded
 
-- **AAD-3 Auth v0 is dev-token/email.** Native Google Sign-In needs owner console
-  work (the Android analog of the Apple Developer owner-held actions) and lands as
-  its own track. The PKCE flow in `CrossyAPI` ports as-is when that happens.
+- **AAD-3 Native Google Sign-In deferred.** OAuth (Discord / Apple / Hisbaan) and
+  email OTP ship with the PKCE flow ported from `CrossyAPI`; dev-token sign-in was
+  removed on the owner's call (PARITY.md). Native Google Sign-In still needs owner
+  console work (the Android analog of the Apple Developer owner-held actions) and
+  lands as its own track.
 - **AAD-4 No Live Activity analog in v1.** Android 16 Live Updates are the closest
   cousin and much weaker; recorded as post-v1, not scaffolded.
 - **AAD-5 Identity placeholders.** `applicationId` is `dev.crossy.android` until the
