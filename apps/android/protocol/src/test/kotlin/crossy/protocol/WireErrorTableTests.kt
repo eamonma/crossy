@@ -17,6 +17,7 @@ class WireErrorTableTests {
         "GAME_NOT_ONGOING" to Fatality.NEVER,
         "INVALID_CELL" to Fatality.NEVER,
         "INVALID_VALUE" to Fatality.NEVER,
+        "GRID_NOT_FULL" to Fatality.NEVER,
         "ROLE_FORBIDDEN" to Fatality.NEVER,
         "RATE_LIMITED" to Fatality.NEVER,
         "UNKNOWN_TYPE" to Fatality.NEVER,
@@ -24,7 +25,7 @@ class WireErrorTableTests {
     )
 
     @Test
-    fun listsExactlyTheTwelveSection11Codes() {
+    fun listsExactlyTheThirteenSection11Codes() {
         assertEquals(table.keys, ErrorCode.entries.map { it.name }.toSet())
     }
 

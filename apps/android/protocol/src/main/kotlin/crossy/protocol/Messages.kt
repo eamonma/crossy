@@ -134,13 +134,17 @@ public data class ReactMessage(
     public companion object { public const val WIRE_TYPE: String = "react" }
 }
 
-/** Request a whole-grid check (PROTOCOL.md §5). The server replies with a unicast checkResult. */
+/**
+ * Request the room-wide check (PROTOCOL.md §5, §10; D27): one command marks every incorrect entry
+ * for everyone, without revealing answers. Legal only while the game is ongoing and the grid is
+ * full; the server broadcasts the sequenced puzzleChecked. Twin of the Swift CheckPuzzleMessage.
+ */
 @Serializable
-public data class CheckRequestMessage(
+public data class CheckPuzzleMessage(
     val commandId: String,
     @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
 ) {
-    public companion object { public const val WIRE_TYPE: String = "checkRequest" }
+    public companion object { public const val WIRE_TYPE: String = "checkPuzzle" }
 }
 
 /** Liveness ping, every 15 s (PROTOCOL.md §5, §9). Carries nothing but its type. */
@@ -195,6 +199,28 @@ public data class GameCompletedMessage(
     @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
 ) {
     public companion object { public const val WIRE_TYPE: String = "gameCompleted" }
+}
+
+/**
+ * Broadcast for every accepted checkPuzzle (PROTOCOL.md §6, §10; D27). Sequenced: an accepted check
+ * mutates durable state (the standing marks and the permanent count), so it consumes a `seq` and
+ * rides the §7 gap check like cellSet. `wrongCells` lists, ascending, every playable cell whose
+ * value fails the comparator; indices only, never values or answers (INV-6), and never empty (the
+ * §10 gates). Deliberately no `by`: a check is a room act recorded neutrally; the sender recognizes
+ * its own `commandId` echo, which is all a client needs. `at` is stamped by the session adapter from
+ * the server clock, like gameCompleted's. All fields are required-and-present (no default), so the
+ * key is required on decode. Twin of the Swift PuzzleCheckedMessage.
+ */
+@Serializable
+public data class PuzzleCheckedMessage(
+    val seq: Int,
+    val wrongCells: List<Int>,
+    val checkCount: Int,
+    val commandId: String,
+    val at: String,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "puzzleChecked" }
 }
 
 /** The game was abandoned by the host (PROTOCOL.md §6; INV-4). */
@@ -287,19 +313,6 @@ public data class ReactionMessage(
     public companion object { public const val WIRE_TYPE: String = "reaction" }
 }
 
-/**
- * Unicast reply to checkRequest (PROTOCOL.md §6, §10). Lists filled cells whose value fails
- * the comparator; empty cells are never listed.
- */
-@Serializable
-public data class CheckResultMessage(
-    val commandId: String,
-    val wrongCells: List<Int>,
-    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
-) {
-    public companion object { public const val WIRE_TYPE: String = "checkResult" }
-}
-
 /** The caller was removed (PROTOCOL.md §6, §12). Followed by a 1008 close. */
 @Serializable
 public data class KickedMessage(
@@ -351,8 +364,8 @@ public sealed class ClientMessage {
     public data class React(val message: ReactMessage) : ClientMessage() {
         override val type: String get() = ReactMessage.WIRE_TYPE
     }
-    public data class CheckRequest(val message: CheckRequestMessage) : ClientMessage() {
-        override val type: String get() = CheckRequestMessage.WIRE_TYPE
+    public data class CheckPuzzle(val message: CheckPuzzleMessage) : ClientMessage() {
+        override val type: String get() = CheckPuzzleMessage.WIRE_TYPE
     }
     public data class Heartbeat(val message: HeartbeatMessage) : ClientMessage() {
         override val type: String get() = HeartbeatMessage.WIRE_TYPE
@@ -382,6 +395,10 @@ public sealed class ServerMessage {
         override val type: String get() = GameCompletedMessage.WIRE_TYPE
         override val seq: Int get() = message.seq
     }
+    public data class PuzzleChecked(val message: PuzzleCheckedMessage) : ServerMessage() {
+        override val type: String get() = PuzzleCheckedMessage.WIRE_TYPE
+        override val seq: Int get() = message.seq
+    }
     public data class GameAbandoned(val message: GameAbandonedMessage) : ServerMessage() {
         override val type: String get() = GameAbandonedMessage.WIRE_TYPE
         override val seq: Int get() = message.seq
@@ -403,9 +420,6 @@ public sealed class ServerMessage {
     }
     public data class Reaction(val message: ReactionMessage) : ServerMessage() {
         override val type: String get() = ReactionMessage.WIRE_TYPE
-    }
-    public data class CheckResult(val message: CheckResultMessage) : ServerMessage() {
-        override val type: String get() = CheckResultMessage.WIRE_TYPE
     }
     public data class Kicked(val message: KickedMessage) : ServerMessage() {
         override val type: String get() = KickedMessage.WIRE_TYPE
@@ -444,8 +458,8 @@ public object ClientMessageSerializer : KSerializer<ClientMessage> {
                 ClientMessage.MoveCursor(input.json.decodeFromJsonElement(MoveCursorMessage.serializer(), element))
             ReactMessage.WIRE_TYPE ->
                 ClientMessage.React(input.json.decodeFromJsonElement(ReactMessage.serializer(), element))
-            CheckRequestMessage.WIRE_TYPE ->
-                ClientMessage.CheckRequest(input.json.decodeFromJsonElement(CheckRequestMessage.serializer(), element))
+            CheckPuzzleMessage.WIRE_TYPE ->
+                ClientMessage.CheckPuzzle(input.json.decodeFromJsonElement(CheckPuzzleMessage.serializer(), element))
             HeartbeatMessage.WIRE_TYPE ->
                 ClientMessage.Heartbeat(input.json.decodeFromJsonElement(HeartbeatMessage.serializer(), element))
             RequestSyncMessage.WIRE_TYPE ->
@@ -463,7 +477,7 @@ public object ClientMessageSerializer : KSerializer<ClientMessage> {
             is ClientMessage.ClearCell -> output.json.encodeToJsonElement(ClearCellMessage.serializer(), value.message)
             is ClientMessage.MoveCursor -> output.json.encodeToJsonElement(MoveCursorMessage.serializer(), value.message)
             is ClientMessage.React -> output.json.encodeToJsonElement(ReactMessage.serializer(), value.message)
-            is ClientMessage.CheckRequest -> output.json.encodeToJsonElement(CheckRequestMessage.serializer(), value.message)
+            is ClientMessage.CheckPuzzle -> output.json.encodeToJsonElement(CheckPuzzleMessage.serializer(), value.message)
             is ClientMessage.Heartbeat -> output.json.encodeToJsonElement(HeartbeatMessage.serializer(), value.message)
             is ClientMessage.RequestSync -> output.json.encodeToJsonElement(RequestSyncMessage.serializer(), value.message)
         }
@@ -485,6 +499,8 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
                 ServerMessage.CellSet(input.json.decodeFromJsonElement(CellSetMessage.serializer(), element))
             GameCompletedMessage.WIRE_TYPE ->
                 ServerMessage.GameCompleted(input.json.decodeFromJsonElement(GameCompletedMessage.serializer(), element))
+            PuzzleCheckedMessage.WIRE_TYPE ->
+                ServerMessage.PuzzleChecked(input.json.decodeFromJsonElement(PuzzleCheckedMessage.serializer(), element))
             GameAbandonedMessage.WIRE_TYPE ->
                 ServerMessage.GameAbandoned(input.json.decodeFromJsonElement(GameAbandonedMessage.serializer(), element))
             WelcomeMessage.WIRE_TYPE ->
@@ -499,8 +515,6 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
                 ServerMessage.Cursor(input.json.decodeFromJsonElement(CursorMessage.serializer(), element))
             ReactionMessage.WIRE_TYPE ->
                 ServerMessage.Reaction(input.json.decodeFromJsonElement(ReactionMessage.serializer(), element))
-            CheckResultMessage.WIRE_TYPE ->
-                ServerMessage.CheckResult(input.json.decodeFromJsonElement(CheckResultMessage.serializer(), element))
             KickedMessage.WIRE_TYPE ->
                 ServerMessage.Kicked(input.json.decodeFromJsonElement(KickedMessage.serializer(), element))
             ErrorMessage.WIRE_TYPE ->
@@ -515,6 +529,7 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
         val element = when (value) {
             is ServerMessage.CellSet -> output.json.encodeToJsonElement(CellSetMessage.serializer(), value.message)
             is ServerMessage.GameCompleted -> output.json.encodeToJsonElement(GameCompletedMessage.serializer(), value.message)
+            is ServerMessage.PuzzleChecked -> output.json.encodeToJsonElement(PuzzleCheckedMessage.serializer(), value.message)
             is ServerMessage.GameAbandoned -> output.json.encodeToJsonElement(GameAbandonedMessage.serializer(), value.message)
             is ServerMessage.Welcome -> output.json.encodeToJsonElement(WelcomeMessage.serializer(), value.message)
             is ServerMessage.Sync -> output.json.encodeToJsonElement(SyncMessage.serializer(), value.message)
@@ -522,7 +537,6 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
             is ServerMessage.PlayerDisconnected -> output.json.encodeToJsonElement(PlayerDisconnectedMessage.serializer(), value.message)
             is ServerMessage.Cursor -> output.json.encodeToJsonElement(CursorMessage.serializer(), value.message)
             is ServerMessage.Reaction -> output.json.encodeToJsonElement(ReactionMessage.serializer(), value.message)
-            is ServerMessage.CheckResult -> output.json.encodeToJsonElement(CheckResultMessage.serializer(), value.message)
             is ServerMessage.Kicked -> output.json.encodeToJsonElement(KickedMessage.serializer(), value.message)
             is ServerMessage.Error -> output.json.encodeToJsonElement(ErrorMessage.serializer(), value.message)
         }

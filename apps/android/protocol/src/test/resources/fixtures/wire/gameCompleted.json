@@ -4,7 +4,10 @@
   "at": "2026-07-07T19:40:03Z",
   "stats": {
     "solveTimeSeconds": 2272,
+    "activeSolveSeconds": 2272,
+    "sittingCount": 1,
     "totalEvents": 899,
-    "participantCount": 4
+    "participantCount": 4,
+    "checkCount": 2
   }
 }

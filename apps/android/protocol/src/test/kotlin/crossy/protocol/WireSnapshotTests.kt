@@ -61,14 +61,28 @@ class WireSnapshotTests {
         assertEquals(Cell(v = null, by = null), board.cells[1])
         assertEquals(Cell(v = null, by = "u2"), board.cells[2])
         assertEquals(listOf(Cursor(userId = "u1", cell = 17, direction = Direction.ACROSS)), board.cursors)
+        // §4/§10: standing room-check marks and the permanent count ride every snapshot, so
+        // reconnect and resync heal the marks with no delta replay (D27).
+        assertEquals(listOf(0), board.checkedWrongCells)
+        assertEquals(1, board.checkCount)
     }
 
     @Test
     fun syncCompletedBoardCarriesNonNullStats() {
         val sync = pinServerFrame(SyncMessage.serializer(), "sync-completed")
         assertEquals(GameStatus.COMPLETED, sync.board.status)
-        assertEquals(Stats(solveTimeSeconds = 2272, totalEvents = 899, participantCount = 4), sync.board.stats)
+        assertEquals(
+            Stats(solveTimeSeconds = 2272, totalEvents = 899, participantCount = 4, checkCount = 2),
+            sync.board.stats,
+        )
         assertEquals("2026-07-07T19:40:03Z", sync.board.completedAt)
+        // §4/§10: a completed board froze its permanent count into stats.checkCount (D27).
+        assertEquals(sync.board.stats?.checkCount, sync.board.checkCount)
+        // §4, D29: this fixture predates activeSolveSeconds/sittingCount (a frozen pre-D29 stats
+        // row); the lossless round trip above doubles as the absence pin — null decoded, keys kept
+        // absent on re-encode, never backfilled.
+        assertNull(sync.board.stats?.activeSolveSeconds)
+        assertNull(sync.board.stats?.sittingCount)
     }
 
     // --- Client to server (PROTOCOL.md §5) ---
@@ -98,9 +112,11 @@ class WireSnapshotTests {
     }
 
     @Test
-    fun checkRequestRoundTrips() {
-        val message = pinClientFrame(CheckRequestMessage.serializer(), "checkRequest")
-        assertEquals(CheckRequestMessage(commandId = "c3"), message)
+    fun checkPuzzleRoundTrips() {
+        // §5, §10 (D27): the room-wide check carries only its commandId; the confirmed intent is
+        // the command, and the server needs no further ceremony.
+        val message = pinClientFrame(CheckPuzzleMessage.serializer(), "checkPuzzle")
+        assertEquals(CheckPuzzleMessage(commandId = "c3"), message)
     }
 
     @Test
@@ -147,7 +163,31 @@ class WireSnapshotTests {
     fun gameCompletedRoundTripsTheSection6Example() {
         val event = pinServerFrame(GameCompletedMessage.serializer(), "gameCompleted")
         assertEquals(900, event.seq)
-        assertEquals(Stats(solveTimeSeconds = 2272, totalEvents = 899, participantCount = 4), event.stats)
+        // §6 example, D29: the session fills activeSolveSeconds and sittingCount at completion beside
+        // the wall-clock solveTimeSeconds; the example's solve was one sitting, so the active seconds
+        // equal the wall seconds.
+        assertEquals(
+            Stats(
+                solveTimeSeconds = 2272, totalEvents = 899, participantCount = 4, checkCount = 2,
+                activeSolveSeconds = 2272, sittingCount = 1,
+            ),
+            event.stats,
+        )
+    }
+
+    @Test
+    fun puzzleCheckedRoundTripsTheSection6Example() {
+        // §6, §10 (D27): sequenced (an accepted check mutates the standing marks and the permanent
+        // count) and deliberately neutral: no `by` ever crosses the wire; the sender recognizes its
+        // own commandId echo, which is all a client needs (INV-6).
+        val event = pinServerFrame(PuzzleCheckedMessage.serializer(), "puzzleChecked")
+        assertEquals(
+            PuzzleCheckedMessage(
+                seq = 742, wrongCells = listOf(3, 17, 44), checkCount = 2, commandId = "c4",
+                at = "2026-07-07T19:31:40Z",
+            ),
+            event,
+        )
     }
 
     @Test
@@ -188,12 +228,6 @@ class WireSnapshotTests {
     }
 
     @Test
-    fun checkResultRoundTrips() {
-        val notice = pinServerFrame(CheckResultMessage.serializer(), "checkResult")
-        assertEquals(CheckResultMessage(commandId = "c4", wrongCells = listOf(3, 7, 12)), notice)
-    }
-
-    @Test
     fun kickedRoundTrips() {
         val notice = pinServerFrame(KickedMessage.serializer(), "kicked")
         assertEquals(KickedMessage(reason = "removed by host"), notice)
@@ -226,14 +260,16 @@ class WireSnapshotTests {
     fun sequencedEventsExposeSeqAndEphemeralNoticesDoNot_INV2() {
         // INV-2: `seq` is the total order; the §7 gap check keys on exactly the sequenced
         // messages. ServerMessage.seq is the split as one accessor.
-        val sequenced = listOf("cellSet", "cellSet-clear", "cellSet-firstFill", "gameCompleted", "gameAbandoned")
+        val sequenced = listOf(
+            "cellSet", "cellSet-clear", "cellSet-firstFill", "gameCompleted", "puzzleChecked", "gameAbandoned",
+        )
         for (name in sequenced) {
             val message = ProtocolJson.decodeFromString(ServerMessageSerializer, Fixtures.text(FixtureGroup.WIRE, name))
             assertTrue(message.seq != null, "$name is a sequenced event (§6)")
         }
         val ephemeral = listOf(
             "welcome", "sync", "sync-completed", "playerConnected", "playerDisconnected",
-            "cursor", "reaction", "checkResult", "kicked", "error-nonfatal", "error-fatal",
+            "cursor", "reaction", "kicked", "error-nonfatal", "error-fatal",
         )
         for (name in ephemeral) {
             val message = ProtocolJson.decodeFromString(ServerMessageSerializer, Fixtures.text(FixtureGroup.WIRE, name))
