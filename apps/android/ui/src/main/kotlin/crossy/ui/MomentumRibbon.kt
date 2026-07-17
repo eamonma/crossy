@@ -74,6 +74,15 @@ object MomentumRibbonGeometry {
     /** The dashed break line's pattern (web strokeDasharray "2 3"), in reference points. */
     val breakDash: FloatArray get() = floatArrayOf(2f, 3f)
 
+    /** The sitting seam tick (D29): a short hairline notch crossing the baseline at each interior
+     *  sitting boundary. Deliberately quieter than the turning-point marker (achromatic where the break
+     *  is gold, a notch where the riser runs full height): the seam is axis furniture, not a moment.
+     *  `number` at low alpha holds recessive on both grounds. */
+    const val seamTickWidth: Float = 1f
+    const val seamTickRise: Float = 5f
+    const val seamTickDrop: Float = 4f
+    const val seamTickAlpha: Float = 0.55f
+
     const val labelEdgeGuard: Float = 60f
     const val labelNudge: Float = 7f
     const val labelGap: Float = 3f
@@ -102,6 +111,24 @@ object MomentumRibbonGeometry {
         val raw = if (duration > 0) (time / duration * (count - 1)).roundToInt() else 0
         val index = raw.coerceIn(0, count - 1)
         return xForSampleIndex(index.toFloat(), count)
+    }
+
+    /** The seam ticks' x positions in the reference box (D29): each interior sitting boundary
+     *  (`spans[k].endSeconds`, k < count-1, the active axis) through the SAME inverse bucketing the
+     *  break marker maps by (xForTime), so a seam lands on the bin its sittings butt against. Boundaries
+     *  at the axis edges draw nothing (a zero-width span clamps to an edge by contract, PROTOCOL.md §12,
+     *  and an edge tick would read as a border, not a seam), and two boundaries bucketed into one bin
+     *  collapse to one tick. Returns reference-space x; the Canvas scales each to the device. */
+    fun seamTickXs(sittings: RoomSittings?, duration: Double, count: Int): List<Float> {
+        if (sittings == null || duration <= 0.0 || count < 3) return emptyList()
+        val indices = mutableListOf<Int>()
+        for (boundary in sittings.interiorBoundarySeconds) {
+            if (boundary <= 0.0 || boundary >= duration) continue
+            val index = (boundary / duration * (count - 1)).roundToInt()
+            if (index < 1 || index > count - 2) continue
+            if (indices.lastOrNull() != index) indices.add(index)
+        }
+        return indices.map { xForSampleIndex(it.toFloat(), count) }
     }
 
     /** The samples as points: x over the span, y the (already peak-normalized) value flipped. A single
@@ -152,6 +179,9 @@ fun MomentumRibbon(
     turningPoint: RoomTurningPoint?,
     ground: GridGround,
     modifier: Modifier = Modifier,
+    // The sittings partition (D29), or null (an older bundle, or a single sitting via
+    // interiorBoundarySeconds being empty): no seam ticks either way. Twin of the iOS sittings param.
+    sittings: RoomSittings? = null,
 ) {
     val measurer = rememberTextMeasurer()
     val label = if (momentum.hasSignal) {
@@ -165,13 +195,14 @@ fun MomentumRibbon(
             .aspectRatio(MomentumRibbonGeometry.aspect)
             .semantics { contentDescription = label },
     ) {
-        drawRibbon(momentum, turningPoint, ground, measurer)
+        drawRibbon(momentum, turningPoint, sittings, ground, measurer)
     }
 }
 
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRibbon(
     momentum: RoomMomentum,
     turningPoint: RoomTurningPoint?,
+    sittings: RoomSittings?,
     ground: GridGround,
     measurer: TextMeasurer,
 ) {
@@ -208,6 +239,19 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawRibbon(
         end = Offset(size.width - sx(g.padX), baselineY),
         strokeWidth = sx(g.baselineWidth),
     )
+
+    // The sitting seams (D29): a quiet notch across the baseline at each interior boundary, drawn with
+    // the axis so everything with a voice (the area, the curve, the break marker) reads over it. No
+    // sittings or a single sitting draws nothing, so an older bundle renders exactly as before.
+    for (tickXRef in g.seamTickXs(sittings, momentum.durationSeconds, momentum.samples.size)) {
+        val tickX = sx(tickXRef)
+        drawLine(
+            color = ground.tokens.number.toColor().copy(alpha = g.seamTickAlpha),
+            start = Offset(tickX, baselineY - sx(g.seamTickRise)),
+            end = Offset(tickX, baselineY + sx(g.seamTickDrop)),
+            strokeWidth = sx(g.seamTickWidth),
+        )
+    }
 
     if (!momentum.hasSignal) {
         // Degenerate: a flat, quiet gold line along the baseline says "a short solve".

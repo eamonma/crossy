@@ -21,14 +21,15 @@ import kotlinx.coroutines.delay
 data class RoomAnalysis(
     val owners: Map<Int, String>,
     val momentum: RoomMomentum,
-    /** The first square to fall, or null for an empty trace (a completed game with no recorded
-     *  first-correct events, e.g. a seeded fixture). */
-    val firstToFall: RoomBeat?,
-    /** The square that finished the board, or null for an empty trace. */
-    val lastSquare: RoomBeat?,
     /** The room's longest pause and the burst that broke it, or null when the trace is too short
      *  to have a gap (fewer than two fills). */
     val turningPoint: RoomTurningPoint?,
+    /** The solver superlatives, in the wire's ladder-rank order (design/post-game/TITLES.md): at most
+     *  one per solver, empty for a solo solve (the solo rule) or an older API that predates titles. */
+    val titles: List<RoomTitle>,
+    /** The sittings partition (design/post-game/SITTINGS.md, D29), or null from an older cached
+     *  bundle, which renders exactly as today: no context suffix, no seam ticks. */
+    val sittings: RoomSittings? = null,
 ) {
     /** Distinct solvers who own at least one square (the stat trio's "Solvers"). */
     val solverCount: Int get() = owners.values.toSet().size
@@ -37,8 +38,18 @@ data class RoomAnalysis(
     val entryCount: Int get() = owners.size
 
     /** The solve span as `M:SS` (the stat trio's "Time"): the momentum duration, the reach from
-     *  the first fill to the last, which is what the web panel labels Time. */
+     *  the first fill to the last, which is what the web panel labels Time. Active seconds once the
+     *  server re-bases the bundle (D29); the label logic does not change. */
     val durationLabel: String get() = formatMSS(momentum.durationSeconds)
+
+    /** The sitting-count context beside the headline Time ("24:13 · 2 sittings", owner ruling, D29):
+     *  context, never a second stat, so it renders only at two or more sittings. A single-sitting
+     *  game, an older bundle, and a degenerate count all read exactly as today: null, no suffix. */
+    val sittingCountSuffix: String?
+        get() {
+            val count = sittings?.count ?: return null
+            return if (count >= 2) "$count sittings" else null
+        }
 
     companion object {
         /** A seconds count as `M:SS`, or `H:MM:SS` past an hour, matching the web's formatMSS
@@ -74,10 +85,39 @@ data class RoomMomentum(
     val hasSignal: Boolean get() = samples.any { it > 0 }
 }
 
-/** One named moment: who, which square, and when (engine `Beat`). The panel shows the person
- *  only; the time degenerates (first is always 0, last always the duration), so it is carried
- *  but not rendered. */
-data class RoomBeat(val cell: Int, val userId: String, val atSeconds: Double)
+/** One solver superlative (design/post-game/TITLES.md): the wire's award, carried verbatim. `key` is
+ *  the lowercase-kebab ladder key ("saboteur"); the display table (TitleLadder) decides what it knows,
+ *  so an unknown key from a grown ladder is skipped at render, never dropped here (forward
+ *  compatibility, PROTOCOL.md §12). Twin of the iOS RoomTitle. */
+data class RoomTitle(
+    val userId: String,
+    /** The pinned lowercase-kebab title key, verbatim from the wire. */
+    val key: String,
+    /** The rung's own count (overwrites, whole seconds, squares), or null for a rung that cites
+     *  none. Never a letter (INV-6). */
+    val evidence: Int?,
+)
+
+/** The sittings partition, render-ready (design/post-game/SITTINGS.md, D29): the count for the
+ *  headline's context suffix, the spans for the ribbon's seam ticks, and the wall span for flavor
+ *  copy. All seconds ride the bundle's active axis, the same axis as `RoomMomentum.durationSeconds`,
+ *  so a seam places by lookup. Twin of the iOS RoomSittings. */
+data class RoomSittings(
+    val count: Int,
+    val spans: List<Span>,
+    /** The wall-clock trace span (the pre-D29 duration), flavor only, never a competing stat
+     *  (owner ruling, D29). */
+    val wallSeconds: Double,
+) {
+    /** One sitting's reach on the active axis, contiguous with its neighbors. */
+    data class Span(val startSeconds: Double, val endSeconds: Double)
+
+    /** The interior sitting boundaries on the active axis: `spans[k].endSeconds` for every k but the
+     *  last, where the ribbon draws its seam ticks. Empty for a single sitting, so the ribbon renders
+     *  exactly as today. */
+    val interiorBoundarySeconds: List<Double>
+        get() = spans.dropLast(1).map { it.endSeconds }
+}
 
 /** The room's longest pause and the burst that ended it (engine `TurningPoint`): the ribbon
  *  shades the stall span and marks where solving picked back up. */

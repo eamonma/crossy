@@ -8,6 +8,7 @@ package crossy.ui
 import crossy.design.IdentityRoster
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -30,14 +31,14 @@ class AnalysisPanelModelTests {
         duration: Double = 65.0,
         momentum: RoomMomentum? = null,
         turningPoint: RoomTurningPoint? = null,
-        first: RoomBeat? = null,
-        last: RoomBeat? = null,
+        titles: List<RoomTitle> = emptyList(),
+        sittings: RoomSittings? = null,
     ) = RoomAnalysis(
         owners = owners,
         momentum = momentum ?: RoomMomentum(duration, List(40) { 0.0 }),
-        firstToFall = first,
-        lastSquare = last,
         turningPoint = turningPoint,
+        titles = titles,
+        sittings = sittings,
     )
 
     @Test
@@ -63,12 +64,40 @@ class AnalysisPanelModelTests {
     }
 
     @Test
-    fun `the stat trio reads Time, Solvers, Squares off the owners`() {
+    fun `the stat trio reads Time, Solvers, Squares off the owners, no context without sittings`() {
         val trio = AnalysisPanelModel.statTrio(bundle(mapOf(0 to "ada", 1 to "ada", 2 to "grace")))
         assertEquals(
-            listOf("Time" to "1:05", "Solvers" to "2", "Squares" to "3"),
+            listOf(
+                Triple("Time", "1:05", null),
+                Triple("Solvers", "2", null),
+                Triple("Squares", "3", null),
+            ),
             trio,
         )
+    }
+
+    @Test
+    fun `the Time cell carries the sitting-count context at two or more, the others never`() {
+        val twoSittings = RoomSittings(
+            count = 2,
+            spans = listOf(RoomSittings.Span(0.0, 30.0), RoomSittings.Span(30.0, 65.0)),
+            wallSeconds = 4000.0,
+        )
+        val trio = AnalysisPanelModel.statTrio(
+            bundle(mapOf(0 to "ada", 1 to "grace"), sittings = twoSittings),
+        )
+        assertEquals("2 sittings", trio[0].third, "the Time cell wears the context")
+        assertNull(trio[1].third)
+        assertNull(trio[2].third)
+
+        // A single sitting reads exactly as today: no context on any cell.
+        val oneSitting = RoomSittings(
+            count = 1,
+            spans = listOf(RoomSittings.Span(0.0, 65.0)),
+            wallSeconds = 65.0,
+        )
+        val flat = AnalysisPanelModel.statTrio(bundle(mapOf(0 to "ada"), sittings = oneSitting))
+        assertNull(flat[0].third, "one sitting adds no context")
     }
 
     @Test

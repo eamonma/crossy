@@ -14,9 +14,8 @@ class RoomAnalysisTests {
     private fun bundle(owners: Map<Int, String>, duration: Double = 65.0) = RoomAnalysis(
         owners = owners,
         momentum = RoomMomentum(durationSeconds = duration, samples = List(40) { 0.0 }),
-        firstToFall = null,
-        lastSquare = null,
         turningPoint = null,
+        titles = emptyList(),
     )
 
     // The Analysis header's Time label renders through the one moment formatter, and it must match
