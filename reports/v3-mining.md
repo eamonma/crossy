@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # v3 Mining Report — for v4 Ideation
 
 Extraction only (no architecture proposals). Source = the abandoned v3 rewrite.

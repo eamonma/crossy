@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy deploy (Wave 2.2)
 
 Production deploys happen only from CI, off `main`, never from a laptop. `main` is golden:

@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # vectors/identity
 
 The cross-client player identity palette (DESIGN.md §8).

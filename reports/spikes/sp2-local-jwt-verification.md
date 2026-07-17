@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP2: Local JWT verification
 
 **Question.** Can the API and session service verify Supabase access tokens with zero

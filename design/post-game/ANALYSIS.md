@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Post-game analysis
 
 Status: plan of record. Date: 2026-07-12.

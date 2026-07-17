@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP1: Guest upgrade keeps `user_id`
 
 **Question.** When a Supabase anonymous user is upgraded to a permanent account, by

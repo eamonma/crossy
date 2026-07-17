@@ -33,6 +33,19 @@ jobs:
       - run: pnpm test
       - run: pnpm format:check
 
+  # Advisory only (not in the ruleset's required checks): warns when a normative
+  # doc's `verified` watermark falls behind the code, meaning a dream is due
+  # (.claude/skills/dream/SKILL.md). Full history so rev-list can count from any
+  # watermark sha.
+  doc-staleness:
+    name: doc staleness (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: ./scripts/doc-staleness.sh
+
   smoke:
     name: M1 Playwright smoke
     runs-on: ubuntu-latest

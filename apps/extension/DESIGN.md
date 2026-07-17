@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy extension design
 
 Auth: adopted (owner ruling, 2026-07-12); it replaced the earlier

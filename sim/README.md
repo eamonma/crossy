@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # @crossy/sim
 
 The seeded simulation harness for M2 Track A: the regression fortress DESIGN.md section 11

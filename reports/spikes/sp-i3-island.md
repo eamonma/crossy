@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP-i3: Live Activity solve timer from a fixed `firstFillAt`
 
 **Question.** Does a Live Activity with `Text(timerInterval:)` anchored at a fixed

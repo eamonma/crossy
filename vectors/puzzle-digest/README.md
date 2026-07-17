@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Puzzle-digest vectors
 
 Status: **ratified (DESIGN.md D23, owner 2026-07-12) and live.** These fixtures pin the

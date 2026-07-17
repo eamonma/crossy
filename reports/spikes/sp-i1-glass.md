@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP-i1: Liquid Glass against the real SDK
 
 Ran 2026-07-10 against Xcode 26.5 (iOS 26.5 SDK), iPhone 17 Pro simulator (iOS 26.3),

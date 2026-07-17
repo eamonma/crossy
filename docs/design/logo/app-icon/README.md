@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # App icon source
 
 The Crossy app icon is the **wordless mark at `crop-medium`**: a full-bleed,

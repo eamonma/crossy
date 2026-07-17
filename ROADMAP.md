@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy v4 Roadmap
 
 Execution plan for the design in `DESIGN.md` and the wire contract in `PROTOCOL.md`.

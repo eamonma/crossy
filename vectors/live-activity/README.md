@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Live Activity content-state vectors
 
 Normative fixtures for the iOS Live Activity content-state payload (PROTOCOL.md

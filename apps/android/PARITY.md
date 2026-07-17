@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Android parity ledger
 
 synced-to: fe7079a (2026-07-16) · audited: 2026-07-16 (round 2: two-surface delta

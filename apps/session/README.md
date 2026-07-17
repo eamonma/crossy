@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # @crossy/session
 
 The session service (DESIGN.md section 3, section 6): the stateful WebSocket tier. One

@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy
 
 A real-time collaborative crossword solver: friends open the same grid, letters appear

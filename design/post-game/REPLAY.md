@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Post-game replay (the solve, in time order)
 
 Status: plan of record. Date: 2026-07-13.

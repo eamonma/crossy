@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # The room actions control (check puzzle, end game, party)
 
 Status: design, revised after adversarial review, ready to build. Branch

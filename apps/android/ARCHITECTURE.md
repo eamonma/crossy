@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy Android Architecture
 
 Status: draft 1, written during the overnight port (2026-07-13). Owner review pending.

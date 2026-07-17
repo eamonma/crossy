@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # Wave 0.2c: Supabase region recommendation and create-project checklist
 
 Question (DESIGN.md §15, ROADMAP 0.2c): which region hosts the Postgres project, given

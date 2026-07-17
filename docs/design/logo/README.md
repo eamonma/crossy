@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Crossy logo
 
 The canonical identity: one mark, one wordmark, two lockups, light and dark.

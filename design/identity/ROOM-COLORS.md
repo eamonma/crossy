@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Room-aware color spread
 
 Status: plan of record. Date: 2026-07-16. Decision: D28 (DESIGN.md registry).

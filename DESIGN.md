@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Crossy v4 Design
 
 Status: draft 1, for review. Date: 2026-07-07.

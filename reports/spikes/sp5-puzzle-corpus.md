@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP5: Puzzle corpus
 
 **Question.** What do real crossword puzzles actually contain, in volume? Measure rebus

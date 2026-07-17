@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # Social preview (Open Graph) image
 
 `og.png` is the card that renders when a `https://crossy.party` link is shared.

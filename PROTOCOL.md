@@ -1,3 +1,7 @@
+---
+status: normative
+---
+
 # Crossy Realtime Protocol, version 1
 
 Status: draft 1, for review. Date: 2026-07-07.

@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # The share surface
 
 Status: SHIPPED as the native menu (owner ruling 2026-07-11). Date: 2026-07-11.

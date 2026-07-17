@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP6: Recover the frozen v2/v3 reports
 
 Question: do the frozen extraction reports (`v2-spec-extraction.md`, `v3-mining.md`)

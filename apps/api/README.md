@@ -1,3 +1,7 @@
+---
+status: descriptive
+---
+
 # @crossy/api
 
 The core API (DESIGN.md section 7): a stateless modular monolith over REST. Modules:

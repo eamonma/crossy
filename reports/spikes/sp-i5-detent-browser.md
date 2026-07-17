@@ -1,3 +1,7 @@
+---
+status: archive
+---
+
 # SP-i5: the clue browser as a non-modal detent sheet
 
 Ran 2026-07-10 against Xcode 26.5 (iOS 26.5 SDK), iPhone 17 Pro Max simulator
