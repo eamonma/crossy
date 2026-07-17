@@ -1,12 +1,14 @@
 // Completion and the terminal states (roadmap I2d). The celebration is the mosaic
 // (apps/ios/DESIGN.md §8): on the store's transition to completed, every letter
 // tints to its writer's color, holds for a breath, then the letters settle back to
-// ink while the wash beneath them STANDS — the completed board keeps the room's
-// fingerprint, the web reveal arc's settled WASH (ContributionMosaic: "the settled
-// on-screen record"). It fires on the status TRANSITION as the store exposes it,
+// ink while the crisp color melts into a BLURRED field that stands (ratified
+// 2026-07-17, the wash-blur study) — the completed board keeps the room's
+// fingerprint as a soft color field under the ink, the web reveal arc's settled
+// record (ContributionMosaic). It fires on the status TRANSITION as the store
+// exposes it,
 // exactly once (INV-3): never on render, never again on a reconnect into an
 // already-completed game (a welcome snapshot of a completed game shows the terminal
-// state — which wears the settled wash once first-correct owners land, without
+// state — which wears the settled field once first-correct owners land, without
 // replaying the celebration). The gate is a pure fold over observed store states so
 // exactly-once pins headlessly; the model is the thin observable the solve screen
 // drives from onChange.
@@ -79,8 +81,9 @@ public enum MosaicEnvelope {
 
     /// The GLYPH tint's intensity `elapsed` seconds after the trigger, in [0, 1]:
     /// an ease-out rise, a flat hold, an ease-in-out settle back to zero (the
-    /// letters return to ink). The paper wash under them rides `washIntensity`
-    /// instead and never settles.
+    /// letters return to ink). The crisp paper wash under them rides this SAME
+    /// envelope (one clock, one melt): on the settle the hard cells let go with
+    /// the letters' return while the blurred field breathes in (`fieldIntensity`).
     public static func intensity(elapsed: TimeInterval) -> Double {
         if elapsed <= 0 { return 0 }
         if elapsed < riseDuration {
@@ -95,16 +98,26 @@ public enum MosaicEnvelope {
         return 1 - eased
     }
 
-    /// The paper WASH's intensity: the same ease-out rise as the glyph tint (one
-    /// clock, one bloom), then 1 forever. The settle returns the letters to ink
-    /// while the wash stands as the completed board's record — the web reveal
-    /// arc's WASH (INK -> FIELD -> WASH), never back to plain ink. An envelope
-    /// that ended at zero was the mosaic flash-then-disappear bug: the room's
-    /// fingerprint erased itself ~3 s after it appeared.
-    public static func washIntensity(elapsed: TimeInterval) -> Double {
-        if elapsed <= 0 { return 0 }
-        if elapsed >= riseDuration { return 1 }
-        let t = elapsed / riseDuration
+    /// The blurred field's melt (ratified 2026-07-17, the wash-blur study): the
+    /// settle's crossfade partner starts this beat after the crisp cells begin
+    /// letting go (web parity: the 120 ms transition delay).
+    public static let fieldDelay: TimeInterval = 0.12
+    /// The field's fade, an ease-out (web parity: 900 ms
+    /// cubic-bezier(0.22, 0.61, 0.36, 1)).
+    public static let fieldFadeDuration: TimeInterval = 0.9
+
+    /// The blurred FIELD's intensity: zero through the tint and the hold, an
+    /// ease-out rise across the settle (the melt), then 1 forever. The settled
+    /// record is the field now — the web reveal arc still ends standing, never
+    /// back at plain ink, and an envelope that ended at zero was the mosaic
+    /// flash-then-disappear bug: the room's fingerprint erased itself ~3 s
+    /// after it appeared. The fade's tail runs `fieldDelay` past the envelope's
+    /// landing; the settled draw pass paints the exact resting weight, so the
+    /// pause frame lands it (the isolation-fade discipline).
+    public static func fieldIntensity(elapsed: TimeInterval) -> Double {
+        let t = (elapsed - riseDuration - holdDuration - fieldDelay) / fieldFadeDuration
+        if t <= 0 { return 0 }
+        if t >= 1 { return 1 }
         return 1 - pow(1 - t, 3)
     }
 
@@ -114,7 +127,7 @@ public enum MosaicEnvelope {
 }
 
 /// The isolation filter's value (web legend parity: the analysis legend rows
-/// toggle the same dim on the web mosaic): which solver the settled wash
+/// toggle the same dim on the web mosaic): which solver the settled record
 /// isolates, who it isolated before, and the toggle's instant — enough for the
 /// draw pass to crossfade between the two dims statelessly. Pure presentation
 /// over the standing MosaicWash; it never touches the celebration (INV-3) or
@@ -142,47 +155,122 @@ public struct MosaicIsolation: Equatable, Sendable {
 /// the completion mosaic is muteable by a single constant; a muted switch derives
 /// nothing, so no draw pass can leak a tint.
 public enum GridMosaic {
-    /// The paper wash under the tinted glyph, scaled by the envelope's intensity.
-    /// Louder than the teammate wash (0.12): the mosaic is the celebration.
+    /// The BLOOM's crisp wash under the tinted glyph, scaled by the envelope's
+    /// intensity. Louder than the teammate wash (0.12): the mosaic is the
+    /// celebration. The bloom's weight only — the settle melts it into the
+    /// blurred field at `settledAlpha`. Web parity: this crisp 0.3 stays the
+    /// time-gated replay's per-cell weight (mosaicReveal.ts WASH_ALPHA).
     public static let washAlpha: Double = 0.30
 
-    /// The isolation dim's floor: the fraction of the standing wash a
-    /// non-isolated cell keeps. The wash composites as alpha OVER the paper, so
+    /// The settled record's weight (ratified 2026-07-17 with the blur tokens
+    /// below, 0.5 on all three platforms): the blurred field's alpha over the
+    /// paper, and the crisp spotlight's an isolation returns. A NEW constant
+    /// beside `washAlpha` on purpose, so the replay weight never moves with it.
+    public static let settledAlpha: Double = 0.5
+
+    /// The field's gaussian radius as a fraction of the cell module (ratified
+    /// 2026-07-17: 20/36 of the cell, ~0.56x). ONE constant expressed as the
+    /// fraction, so the blur scales with the cell in points everywhere.
+    public static let fieldBlurFraction: Double = 20.0 / 36.0
+
+    /// The field's radius in module units (GridModule.unit is the 36-unit cell).
+    public static var fieldBlurRadius: CGFloat {
+        GridModule.unit * fieldBlurFraction
+    }
+
+    /// Edge cells' tint rects extend outward this many radii past the frame
+    /// before blurring (edge saturation): the layer clips back to the board,
+    /// and past ~1.5 radii the gaussian's missing tail is sub-perceptual, so
+    /// the field holds full strength at the frame instead of fading into it.
+    public static let fieldOverscanFactor: Double = 1.5
+
+    /// The overscan in module units.
+    public static var fieldOverscan: CGFloat {
+        fieldBlurRadius * fieldOverscanFactor
+    }
+
+    /// The blurred field's tint rect for a cell: the full cell module, with
+    /// edge cells extended outward past the frame by the overscan. Pure
+    /// geometry, so the edge saturation pins headlessly.
+    public static func fieldRect(_ cell: Int, rows: Int, cols: Int) -> CGRect {
+        var rect = GridModule.cellRect(cell, cols: cols)
+        let row = cell / cols
+        let col = cell % cols
+        if col == 0 {
+            rect.origin.x -= fieldOverscan
+            rect.size.width += fieldOverscan
+        }
+        if col == cols - 1 { rect.size.width += fieldOverscan }
+        if row == 0 {
+            rect.origin.y -= fieldOverscan
+            rect.size.height += fieldOverscan
+        }
+        if row == rows - 1 { rect.size.height += fieldOverscan }
+        return rect
+    }
+
+    /// The isolation dim's floor: the fraction of the settled weight a
+    /// non-isolated cell keeps. The tint composites as alpha OVER the paper, so
     /// a lower alpha IS a step toward the ground color on both grounds by
     /// construction — the dimmed hands recess into paper while the isolated one
-    /// holds the full wash. Dimmed, never erased: the record stays traceable.
+    /// holds the settled weight. Dimmed, never erased: the record stays
+    /// traceable.
     public static let isolationDim: Double = 0.18
 
     /// The isolation crossfade: fast and quiet (a filter, not a celebration),
     /// and already the §7 reduced-motion form (a pure opacity crossfade).
     public static let isolationFadeDuration: TimeInterval = 0.25
 
-    /// The per-cell wash multiplier under an isolation, `elapsed` seconds after
-    /// the toggle: an ease-in-out crossfade from the previous value's dim to
-    /// the current one's. Nil isolation is the full wash. Pure math, so the
-    /// filter pins headlessly and any frame past the fade (a paused timeline's
-    /// frozen date included) draws the exact target.
-    public static func isolationMultiplier(
-        owner: String, isolation: MosaicIsolation?, elapsed: TimeInterval
+    /// The blurred field's opacity multiplier under the isolation filter: the
+    /// field carries the record only while no solver is isolated (a blurred
+    /// single hand has no shape to read), so a toggle crossfades it against
+    /// the crisp spotlight, on the same quiet clock both ways.
+    public static func fieldMultiplier(
+        isolation: MosaicIsolation?, elapsed: TimeInterval
     ) -> Double {
         guard let isolation else { return 1 }
-        let from = isolationTarget(owner: owner, solverId: isolation.previousSolverId)
-        let to = isolationTarget(owner: owner, solverId: isolation.solverId)
+        return crossfade(
+            from: isolation.previousSolverId == nil ? 1 : 0,
+            to: isolation.solverId == nil ? 1 : 0,
+            elapsed: elapsed)
+    }
+
+    /// The crisp spotlight's per-cell multiplier over the settled weight,
+    /// `elapsed` seconds after the toggle: the isolated solver's cells hold the
+    /// full settled weight, every other hand rests at the dim floor, and no
+    /// isolation is zero (the blurred field carries the full record instead).
+    /// Pure math, so the filter pins headlessly and any frame past the fade (a
+    /// paused timeline's frozen date included) draws the exact target.
+    public static func spotlightMultiplier(
+        owner: String, isolation: MosaicIsolation?, elapsed: TimeInterval
+    ) -> Double {
+        guard let isolation else { return 0 }
+        return crossfade(
+            from: spotlightTarget(owner: owner, solverId: isolation.previousSolverId),
+            to: spotlightTarget(owner: owner, solverId: isolation.solverId),
+            elapsed: elapsed)
+    }
+
+    /// One side's resting spotlight: nothing at the full record (the field
+    /// owns it), the settled weight for the isolated solver's own hand, the
+    /// dim floor for everyone else's.
+    private static func spotlightTarget(owner: String, solverId: String?) -> Double {
+        guard let solverId else { return 0 }
+        return owner == solverId ? 1 : isolationDim
+    }
+
+    /// One ease-in-out crossfade over the fade's window: the filter leaves one
+    /// value as gently as it lands on the other. Shared by the field and the
+    /// spotlight so the two layers cross on exactly the same clock.
+    private static func crossfade(
+        from: Double, to: Double, elapsed: TimeInterval
+    ) -> Double {
         if from == to { return to }
         if elapsed <= 0 { return from }
         let t = elapsed / isolationFadeDuration
         if t >= 1 { return to }
-        // The settle's own ease-in-out: the filter leaves one value as gently
-        // as it lands on the other.
         let eased = t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
         return from + (to - from) * eased
-    }
-
-    /// One side's resting multiplier: the full wash for no isolation or the
-    /// isolated solver's own hand, the dim floor for everyone else's.
-    private static func isolationTarget(owner: String, solverId: String?) -> Double {
-        guard let solverId else { return 1 }
-        return owner == solverId ? 1 : isolationDim
     }
 
     /// Colors by cell. `writers` maps a cell to the userId whose letter it holds
@@ -342,13 +430,14 @@ public struct MosaicWash: Equatable, Sendable {
     public let writers: [Int: String]
     /// Reference-date seconds at the celebration trigger.
     public let startedAt: TimeInterval
-    /// True once the envelope has landed (or when the wash stands without ever
-    /// blooming, the reconnect-into-completed path): the draw pass paints the
-    /// standing wash (wash 1, glyph 0) with no clock, and the grid's timeline
-    /// pauses — a settled mosaic costs no frames.
+    /// True once the envelope has landed (or when the record stands without
+    /// ever blooming, the reconnect-into-completed path): the draw pass paints
+    /// the standing record (the blurred field at the settled weight, glyph 0)
+    /// with no clock, and the grid's timeline pauses — a settled mosaic costs
+    /// no frames.
     public let settled: Bool
-    /// The isolation filter over the settled wash (CompletionModel.isolation),
-    /// or nil at the full multi-color record.
+    /// The isolation filter over the settled record (CompletionModel.isolation),
+    /// or nil at the full multi-color field.
     public let isolation: MosaicIsolation?
 
     public init(
@@ -375,9 +464,9 @@ public struct MosaicWash: Equatable, Sendable {
 @Observable
 public final class CompletionModel {
     /// Non-nil from the bloom's start on, forever: the settle lands on the
-    /// standing wash (MosaicEnvelope.washIntensity), never back on plain ink, so
-    /// the completed board keeps the room's fingerprint. The grid's timeline runs
-    /// against it only while `mosaicSettled` is false.
+    /// standing blurred field (MosaicEnvelope.fieldIntensity), never back on
+    /// plain ink, so the completed board keeps the room's fingerprint. The
+    /// grid's timeline runs against it only while `mosaicSettled` is false.
     public private(set) var mosaicStartedAt: TimeInterval?
 
     /// True once the envelope has landed (or immediately, for a stand without a
@@ -385,7 +474,7 @@ public final class CompletionModel {
     public private(set) var mosaicSettled = false
 
     /// The isolation filter's one truth: a tapped legend row isolates that
-    /// solver on the settled wash; nil is the full multi-color record. The
+    /// solver on the settled record; nil is the full multi-color record. The
     /// analysis panel's rows and the grid's draw pass both read this, so a
     /// toggle is a value change, never a re-render of the wash arc.
     public private(set) var isolation: MosaicIsolation?
@@ -463,7 +552,8 @@ public final class CompletionModel {
     }
 
     /// Start the completion mosaic once its colors are known: tint, hold, then
-    /// the letters settle back to ink over the standing wash (MosaicEnvelope).
+    /// the letters settle back to ink while the crisp color melts into the
+    /// standing blurred field (MosaicEnvelope).
     /// Deferred from the gate on purpose (owner
     /// ruling 2026-07-13): the bloom is first-correct truth from GET /analysis, so
     /// it waits for the bundle rather than flashing the live last-writer log; the
@@ -529,7 +619,7 @@ public final class CompletionModel {
             changedAt: now)
     }
 
-    /// Stand the settled wash without a celebration: the reconnect-into-completed
+    /// Stand the settled record without a celebration: the reconnect-into-completed
     /// path. INV-3 holds — no bloom, no clarity beat, no haptic, no confetti, no
     /// summon replays; this is terminal-state RENDERING, not a celebration. The
     /// completed board wears the first-correct fingerprint the moment the

@@ -695,25 +695,30 @@ reduced-motion equivalent that crossfades instead of moving.
 
 - **The mosaic.** On `gameCompleted`, every letter tints to its writer's color: the
   solve's fingerprint, who carried the theme, who cleaned the corners. It holds for
-  a breath, then the letters settle back to ink while the wash beneath them stands:
-  the completed board keeps the fingerprint as its record (web parity — the reveal
-  arc ends at the settled wash, never back at plain ink), and a reconnect into a
-  completed room wears the settled wash without replaying the celebration.
-  Derived entirely from the event log. This is
+  a breath, then the letters settle back to ink while the crisp color melts into a
+  blurred field that stands (ratified 2026-07-17, the wash-blur study: gaussian
+  radius 20/36 of the cell module, alpha 0.5, on all platforms; owner tints at full
+  saturation, edge cells overscanned past the frame, the layer clipped to the
+  board, ink and blocks crisp above). The completed board keeps the fingerprint as
+  a soft color field, its record (web parity: the reveal arc ends standing, never
+  back at plain ink), and a reconnect into a completed room wears the settled field
+  without replaying the celebration. Derived entirely from the event log. This is
   the celebration's centerpiece. A restrained confetti drift rides the same instant
   (owner ask 2026-07-11, amending this section's original no-confetti rule):
   roster-colored flecks between paper and glass, deliberately quieter than the
   web's, skipped whole under Reduce Motion, muteable by one constant (the ID-1
   pattern, `AttributionSwitches.completionConfettiEnabled`).
-- **The isolation filter.** Once the wash has settled, tapping a solver's legend
-  row in the analysis panel isolates their hand on the board: their cells hold the
-  full wash while everyone else's recess toward paper (the wash composites as alpha
-  over the ground, so a lower alpha is the recessive step on both grounds by
-  construction — `GridMosaic.isolationDim`). The same row again clears; another
-  row switches. A fast, quiet crossfade — a filter, not a celebration: it exists
-  only on the standing record, one truth on `CompletionModel`, and can never
-  re-arm or replay the bloom (INV-3). Web parity: the AnalysisPanel legend rows
-  toggle the same dim on the web mosaic.
+- **The isolation filter.** Once the record has settled, tapping a solver's legend
+  row in the analysis panel isolates their hand on the board: the blurred field
+  yields to a crisp spotlight (a blurred single hand has no shape to read), their
+  cells at the settled weight while everyone else's recess toward paper (the tint
+  composites as alpha over the ground, so a lower alpha is the recessive step on
+  both grounds by construction, `settledAlpha * isolationDim`). The same row again
+  clears the spotlight and the blurred field returns; another row switches. A fast,
+  quiet crossfade, a filter, not a celebration: it exists only on the standing
+  record, one truth on `CompletionModel`, and can never re-arm or replay the bloom
+  (INV-3). Web parity: the AnalysisPanel legend rows toggle the same dim on the web
+  mosaic.
 - **The clarity beat.** During the mosaic, all standing glass momentarily clears,
   then refrosts as the stats arrive.
 - **Honest weather.** Three connection states, three registers (PROTOCOL.md

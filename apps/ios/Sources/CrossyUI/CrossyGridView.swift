@@ -36,16 +36,17 @@ public struct CrossyGridView: View {
     /// fetch is absent, and every non-completion caller.
     private let mosaicOwners: [Int: String]?
     /// True once the mosaic's envelope has landed (CompletionModel.mosaicSettled):
-    /// the wash is a constant now (wash standing, letters back in ink), so the
-    /// draw pass skips the clock and the timeline pauses. The settled wash is the
-    /// completed board's record — it never reverts to plain ink (the
-    /// flash-then-disappear fix; web parity: the reveal arc ends at WASH).
+    /// the record is a constant now (the blurred field standing, letters back in
+    /// ink), so the draw pass skips the clock and the timeline pauses. The
+    /// settled field is the completed board's record — it never reverts to plain
+    /// ink (the flash-then-disappear fix; web parity: the reveal arc ends
+    /// standing).
     private let mosaicSettled: Bool
-    /// The isolation filter over the settled wash (CompletionModel.isolation):
-    /// a tapped legend row keeps that solver's cells at the full wash and
-    /// recesses everyone else's toward paper. Presentation only — it exists
-    /// only once the wash has settled (the model gates the toggle), and nil is
-    /// the full multi-color record.
+    /// The isolation filter over the settled record (CompletionModel.isolation):
+    /// a tapped legend row hides the blurred field and returns crisp per-cell
+    /// tints, that solver's at the settled weight, everyone else's recessed
+    /// toward paper. Presentation only — it exists only once the record has
+    /// settled (the model gates the toggle), and nil is the full blurred field.
     private let mosaicIsolation: MosaicIsolation?
     /// The completed Analysis tab's directional loupe. It is a clear glass view above the Canvas,
     /// never a grid fill; the caller gates it to the settled post-game mosaic.
@@ -179,7 +180,7 @@ public struct CrossyGridView: View {
             }
             // The timeline drives redraws only while a flash decays, the mosaic
             // BLOOMS, or an isolation toggle crossfades; a settled mosaic is a
-            // constant wash, so it pauses like rest
+            // constant field, so it pauses like rest
             // (the Canvas redraws only when the snapshot inputs change).
             // Reaction stickers deliberately do NOT ride this Canvas: per-frame
             // Canvas redraws re-rasterize the emoji at every intermediate scale,
@@ -344,7 +345,7 @@ public struct CrossyGridView: View {
                 followCamera(from: camera, to: target)
             }
             .onAppear { wireFlashSink() }
-            // An isolation toggle (a legend-row tap over the settled wash): run
+            // An isolation toggle (a legend-row tap over the settled record): run
             // the timeline just long enough for the quiet crossfade, then let it
             // pause again. A rapid retoggle cancels and re-arms the retire, so a
             // fade in flight is never cut short; the small margin past the
@@ -490,6 +491,12 @@ extension CrossyGridView {
             viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
 
         drawFills(frame, visible, tokens, &context)
+        // The settled record's blurred color field lives UNDER everything that
+        // must stay crisp: blocks (redrawn inside the field pass), hairlines,
+        // numbers, letters, and the closing frame all draw after it.
+        if let mosaic {
+            drawMosaicField(frame, visible, mosaic, now, tokens, &context)
+        }
         drawLines(puzzle, visible, tokens, &context)
         drawCellContent(frame, visible, ground, &context)
         if let mosaic {
@@ -676,45 +683,117 @@ extension CrossyGridView {
         }
     }
 
-    /// The mosaic (apps/ios/DESIGN.md §8): every letter tints to its writer's
+    /// The settled record's color field (apps/ios/DESIGN.md §8, ratified
+    /// 2026-07-17, the wash-blur study): the owner tints render at FULL
+    /// saturation into one layer, gaussian-blurred at the module-scaled radius
+    /// and composited over the paper at the settled weight — a soft field
+    /// flowing under the ink and behind the block grid (blocks redraw crisp
+    /// here; hairlines, numbers, letters, and the frame draw after this pass).
+    /// Edge cells overscan past the frame and the layer clips back to the
+    /// board, so the field holds its saturation at the edge. The field breathes
+    /// in across the settle (MosaicEnvelope.fieldIntensity, the melt) and
+    /// yields to the crisp spotlight while a solver is isolated — a blurred
+    /// single hand has no shape to read — crossfading on the isolation's own
+    /// clock. The spotlight's crisp tints draw here too, under the ink. A
+    /// settled mosaic skips every clock, so the paused timeline's frozen date
+    /// draws the exact resting weights.
+    private nonisolated static func drawMosaicField(
+        _ frame: GridFrame, _ visible: (rows: Range<Int>, cols: Range<Int>),
+        _ mosaic: MosaicWash, _ now: TimeInterval, _ tokens: GroundTokens,
+        _ context: inout GraphicsContext
+    ) {
+        let puzzle = frame.puzzle
+        let melt =
+            mosaic.settled
+            ? 1 : MosaicEnvelope.fieldIntensity(elapsed: now - mosaic.startedAt)
+        var fieldAlpha = GridMosaic.settledAlpha * melt
+        if let isolation = mosaic.isolation {
+            fieldAlpha *= GridMosaic.fieldMultiplier(
+                isolation: isolation, elapsed: now - isolation.changedAt)
+        }
+        if fieldAlpha > 0 {
+            let board = CGRect(
+                origin: .zero,
+                size: GridCamera.boardSize(rows: puzzle.rows, cols: puzzle.cols))
+            // One layer for every colored cell, visible or not: the blur bleeds
+            // across the visible window's edge, and the board clip bounds the
+            // filter's work either way. Full saturation inside the layer; the
+            // settled weight composites it whole.
+            var field = context
+            field.clip(to: Path(board))
+            field.opacity = fieldAlpha
+            field.addFilter(.blur(radius: GridMosaic.fieldBlurRadius))
+            field.drawLayer { layer in
+                for (cell, color) in mosaic.colors {
+                    layer.fill(
+                        Path(
+                            GridMosaic.fieldRect(
+                                cell, rows: puzzle.rows, cols: puzzle.cols)),
+                        with: .color(Color(rgb: color)))
+                }
+            }
+            // Blocks redraw crisp above the field, so the color reads as
+            // flowing behind the block grid, never fogging it.
+            for row in visible.rows {
+                for col in visible.cols {
+                    let cell = row * puzzle.cols + col
+                    guard puzzle.blocks.contains(cell) else { continue }
+                    context.fill(
+                        Path(GridModule.cellRect(cell, cols: puzzle.cols)),
+                        with: .color(Color(rgb: tokens.block)))
+                }
+            }
+        }
+        // The isolation spotlight (a legend-row tap over the settled record):
+        // crisp per-cell tints return, the isolated solver's at the settled
+        // weight, every other hand at the dim floor — a lower alpha over the
+        // ground IS the recessive step, on both grounds by construction.
+        // Settled only: the model gates the toggle.
+        guard mosaic.settled, let isolation = mosaic.isolation else { return }
+        let isolationElapsed = now - isolation.changedAt
+        for row in visible.rows {
+            for col in visible.cols {
+                let cell = row * puzzle.cols + col
+                guard let color = mosaic.colors[cell], let owner = mosaic.writers[cell]
+                else { continue }
+                let alpha =
+                    GridMosaic.settledAlpha
+                    * GridMosaic.spotlightMultiplier(
+                        owner: owner, isolation: isolation, elapsed: isolationElapsed)
+                guard alpha > 0 else { continue }
+                context.fill(
+                    Path(GridModule.cellRect(cell, cols: puzzle.cols)),
+                    with: .color(Color(rgb: color).opacity(alpha)))
+            }
+        }
+    }
+
+    /// The bloom (apps/ios/DESIGN.md §8): every letter tints to its writer's
     /// color while the paper beneath it washes in the same color, one clock for
-    /// both. On the settle the GLYPH returns to ink (`intensity` falls to zero)
-    /// while the WASH stands (`washIntensity` holds 1): the completed board keeps
-    /// the room's fingerprint, the web reveal arc's settled WASH, never reverting
-    /// to plain ink (the flash-then-disappear fix). A settled mosaic skips the
-    /// clock entirely, so the paused timeline's frozen date cannot misdraw it.
-    /// Painted over the ink pass: the tinted glyph crossfades in over the ink one
-    /// and back out on the settle, and a cell without a mosaic color (empty, or
-    /// cleared with no letter) never tints.
+    /// both — and on the settle both let go together, the glyph back to ink and
+    /// the crisp wash melting into the blurred field (drawMosaicField, under
+    /// the ink). A settled mosaic draws nothing here: the standing record lives
+    /// in the field pass, so the paused timeline's frozen date cannot misdraw
+    /// it. Painted over the ink pass: the tinted glyph crossfades in over the
+    /// ink one and back out on the settle, and a cell without a mosaic color
+    /// (empty, or cleared with no letter) never tints.
     private nonisolated static func drawMosaic(
         _ frame: GridFrame, _ visible: (rows: Range<Int>, cols: Range<Int>),
         _ mosaic: MosaicWash, _ now: TimeInterval, _ ground: GridGround,
         _ context: inout GraphicsContext
     ) {
-        let elapsed = now - mosaic.startedAt
-        let wash = mosaic.settled ? 1 : MosaicEnvelope.washIntensity(elapsed: elapsed)
-        let intensity = mosaic.settled ? 0 : MosaicEnvelope.intensity(elapsed: elapsed)
-        guard wash > 0 else { return }
+        guard !mosaic.settled else { return }
+        let intensity = MosaicEnvelope.intensity(elapsed: now - mosaic.startedAt)
+        guard intensity > 0 else { return }
         let puzzle = frame.puzzle
         for row in visible.rows {
             for col in visible.cols {
                 let cell = row * puzzle.cols + col
                 guard let color = mosaic.colors[cell] else { continue }
-                // The isolation filter (a legend-row tap over the settled wash):
-                // the isolated solver's cells hold the full wash, every other
-                // hand recesses toward paper — a lower alpha over the ground IS
-                // the recessive step, on both grounds by construction. Pure
-                // presentation: the wash's own clock and colors are untouched.
-                var alpha = GridMosaic.washAlpha * wash
-                if let isolation = mosaic.isolation, let owner = mosaic.writers[cell] {
-                    alpha *= GridMosaic.isolationMultiplier(
-                        owner: owner, isolation: isolation,
-                        elapsed: now - isolation.changedAt)
-                }
                 context.fill(
                     Path(GridModule.cellRect(cell, cols: puzzle.cols)),
-                    with: .color(Color(rgb: color).opacity(alpha)))
-                guard intensity > 0, let value = frame.values[cell] else { continue }
+                    with: .color(Color(rgb: color).opacity(GridMosaic.washAlpha * intensity)))
+                guard let value = frame.values[cell] else { continue }
                 let origin = GridModule.cellOrigin(cell, cols: puzzle.cols)
                 let size = GridModule.glyphSize(forLength: value.count)
                 let hasMarks = !(frame.presence[cell] ?? []).isEmpty
