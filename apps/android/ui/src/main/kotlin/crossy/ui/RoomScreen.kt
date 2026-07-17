@@ -322,10 +322,11 @@ fun RoomScreen(
         hapticFold.observe(filled, selection, geometry)?.let { haptics.play(it) }
     }
     // The settle's landing: once the envelope lands the mosaic STANDS (the flash-then-disappear fix,
-    // iOS settleMosaic). The wash is never nilled, so the completed board keeps the room's fingerprint,
-    // the letters settled back to ink over it (web parity: the reveal arc ends at WASH, not plain ink);
-    // `settled` also pauses the grid's frame loop, a constant wash costing no frames. Runs only for a
-    // live bloom; a stand is born settled, so this returns at once.
+    // iOS settleMosaic). The record is never nilled, so the completed board keeps the room's
+    // fingerprint as the blurred color field under the returning ink (the wash-blur ratification; the
+    // reveal arc ends at the FIELD's melt, not plain ink); `settled` also pauses the grid's frame
+    // loop, a constant record costing no frames. Runs only for a live bloom; a stand is born settled,
+    // so this returns at once. The envelope's duration already covers the blur fade's landing.
     LaunchedEffect(moment.startedAt, moment.settled) {
         val start = moment.startedAt
         if (start == null || moment.settled) return@LaunchedEffect
