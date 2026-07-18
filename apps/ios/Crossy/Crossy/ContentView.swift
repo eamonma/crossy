@@ -368,7 +368,11 @@ struct RealRoomView: View {
                     reactionFanPlacement: ContentView.reactionFanPlacement,
                     // The personal five (D25): the shared store when the arrival
                     // flow composes this room, else the cache-backed fallback.
-                    reactionSets: reactionSets ?? fallbackReactionSets
+                    reactionSets: reactionSets ?? fallbackReactionSets,
+                    // The person's live swipe-sensitivity preference (root DESIGN.md
+                    // §5): read here in the view body so the @Observable store tracks,
+                    // and a Settings change reaches this open room's next swipe.
+                    swipeTuning: room.swipeTuning
                 )
                 // The island (I5a), same wiring as DemoRoom, plus the push-token
                 // registration (§12a): the live room threads its game id and REST sink so

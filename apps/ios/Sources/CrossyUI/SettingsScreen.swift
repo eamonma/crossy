@@ -191,6 +191,7 @@ public struct SettingsScreen: View {
                     .padding(.top, 22)
                     .padding(.bottom, 8)
                 solvingCard
+                solvingFooter
 
                 // The personal reaction set (Wave 8.5; D25): rendered only when the
                 // composition supplies the store, the onSaveDisplayName gating idiom.
@@ -511,17 +512,54 @@ public struct SettingsScreen: View {
                 .labelsHidden()
                 .tint(Color(rgb: ground.tokens.number))
             }
+
+            rowDivider
+
+            settingRow(title: ArrivalCopy.settingsSwipeSensitivityTitle) {
+                // The three presets map to the pure SwipeTuning at the board's edge; the
+                // collapsed menu shows the compact preset word (the store reads the case
+                // back), and the row's meaning rides the footer below the card.
+                Picker(
+                    ArrivalCopy.settingsSwipeSensitivityTitle,
+                    selection: $typingPrefs.swipeSensitivity
+                ) {
+                    Text(verbatim: ArrivalCopy.settingsSwipeSensitivityRelaxed)
+                        .tag(SwipeSensitivity.relaxed)
+                    Text(verbatim: ArrivalCopy.settingsSwipeSensitivityStandard)
+                        .tag(SwipeSensitivity.standard)
+                    Text(verbatim: ArrivalCopy.settingsSwipeSensitivityPrecise)
+                        .tag(SwipeSensitivity.precise)
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .tint(Color(rgb: ground.tokens.number))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground())
     }
 
-    /// One preference row: title over subtitle on the left, the control trailing. The
-    /// control is a @ViewBuilder so a toggle and a menu picker share one row frame and
-    /// read as siblings, which the naked-controls v1 never did.
+    /// The swipe-sensitivity picker's footer: a quiet caption under the solving card
+    /// that carries the row's explanation (the grouped-list footer grammar), so the
+    /// picker row itself stays a title and a control.
+    private var solvingFooter: some View {
+        Text(verbatim: ArrivalCopy.settingsSwipeSensitivityFooter)
+            .font(.system(size: 13))
+            .foregroundStyle(Color(rgb: ground.tokens.number))
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Layout.rowPadding)
+            .padding(.top, 8)
+    }
+
+    /// One preference row: title over an optional subtitle on the left, the control
+    /// trailing. The control is a @ViewBuilder so a toggle and a menu picker share one
+    /// row frame and read as siblings, which the naked-controls v1 never did. A row
+    /// whose meaning rides a section footer instead (the swipe-sensitivity picker)
+    /// passes no subtitle and the title stands alone.
     private func settingRow(
         title: String,
-        subtitle: String,
+        subtitle: String? = nil,
         @ViewBuilder control: () -> some View
     ) -> some View {
         HStack(spacing: 12) {
@@ -529,9 +567,11 @@ public struct SettingsScreen: View {
                 Text(verbatim: title)
                     .font(.system(size: 16))
                     .foregroundStyle(Color(rgb: ground.tokens.ink))
-                Text(verbatim: subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color(rgb: ground.tokens.number))
+                if let subtitle {
+                    Text(verbatim: subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(rgb: ground.tokens.number))
+                }
             }
             Spacer(minLength: 12)
             control()

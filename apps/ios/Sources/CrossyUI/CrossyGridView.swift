@@ -67,6 +67,10 @@ public struct CrossyGridView: View {
     /// The live cover the selected cell must escape (the wrapped bar plus
     /// feather): feeds only the follow pan.
     private let keepClear: GridOcclusion
+    /// How readily a drag the camera could not spend reads as a swipe (the person's
+    /// per-device preference, resolved to thresholds). Standard is the pre-preference
+    /// behavior; the composition root threads the live value from Settings.
+    private let swipeTuning: SwipeTuning
     private let onSwipe: ((SwipeIntent) -> Void)?
     private let onPlaceCursor: (Int) -> Void
 
@@ -118,6 +122,7 @@ public struct CrossyGridView: View {
         showsWordLoupe: Bool = false,
         occlusion: GridOcclusion = .none,
         keepClear: GridOcclusion? = nil,
+        swipeTuning: SwipeTuning = .standard,
         onSwipe: ((SwipeIntent) -> Void)? = nil,
         onPlaceCursor: @escaping (Int) -> Void
     ) {
@@ -135,6 +140,7 @@ public struct CrossyGridView: View {
         self.showsWordLoupe = showsWordLoupe
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
+        self.swipeTuning = swipeTuning
         self.onSwipe = onSwipe
         self.onPlaceCursor = onPlaceCursor
         _camera = State(initialValue: initialCamera)
@@ -287,11 +293,17 @@ public struct CrossyGridView: View {
                         // (scale present) is never a swipe. Along the solving
                         // direction is next/previous word, across it toggles (root
                         // DESIGN.md §5); the classifier is pure and pinned in tests.
+                        // Flick assist consults the drag's predicted end translation
+                        // when the actual travel falls short, so a fast, short flick
+                        // still turns the page (the iOS sluggish-swipes fix); the
+                        // person's sensitivity preference sets the thresholds.
                         guard value.first == nil, let onSwipe, let base,
                             let drag = value.second, base == self.camera,
                             let intent = SwipeClassifier.classify(
                                 translation: drag.translation,
-                                isAcross: selection?.isAcross ?? true)
+                                predicted: drag.predictedEndTranslation,
+                                isAcross: selection?.isAcross ?? true,
+                                tuning: swipeTuning)
                         else { return }
                         onSwipe(intent)
                     }

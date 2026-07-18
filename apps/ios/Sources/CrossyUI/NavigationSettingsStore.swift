@@ -23,6 +23,7 @@ public final class NavigationSettingsStore {
     private enum Key {
         static let skipFilledInWord = "nav.skipFilledInWord"
         static let endOfWordIsNextClue = "nav.endOfWordIsNextClue"
+        static let swipeSensitivity = "input.swipeSensitivity"
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -41,6 +42,14 @@ public final class NavigationSettingsStore {
         didSet { defaults.set(endOfWordIsNextClue, forKey: Key.endOfWordIsNextClue) }
     }
 
+    /// How readily a swipe on the grid turns the page (root DESIGN.md §5): Relaxed
+    /// accepts shorter, looser swipes, Precise waits for a deliberate one. Standard is
+    /// the pre-preference behavior. Stored as the raw case string, mapped to the pure
+    /// SwipeTuning at the board's boundary (`swipeTuning`).
+    public var swipeSensitivity: SwipeSensitivity {
+        didSet { defaults.set(swipeSensitivity.rawValue, forKey: Key.swipeSensitivity) }
+    }
+
     /// Reads any persisted values, else the pre-slice defaults. `UserDefaults.bool`
     /// returns false for an absent key, so an unset device reads `skipFilledInWord`
     /// false by mistake; the presence check restores the true default explicitly.
@@ -49,6 +58,12 @@ public final class NavigationSettingsStore {
         self.skipFilledInWord =
             defaults.object(forKey: Key.skipFilledInWord) as? Bool ?? true
         self.endOfWordIsNextClue = defaults.bool(forKey: Key.endOfWordIsNextClue)
+        // Absent (an unset device) or an unrecognized string both resolve to the
+        // standard preset, the pre-preference behavior; only a stored, recognized
+        // case moves off it.
+        self.swipeSensitivity =
+            (defaults.string(forKey: Key.swipeSensitivity)).flatMap(SwipeSensitivity.init)
+            ?? .standard
     }
 
     /// The store's prefs re-expressed for the navigation layer (BoardNavigation owns the
@@ -58,4 +73,9 @@ public final class NavigationSettingsStore {
             skipFilledInWord: skipFilledInWord,
             endOfWord: endOfWordIsNextClue ? .nextClue : .firstBlank)
     }
+
+    /// The stored preference resolved to the board's swipe thresholds, the one bridge
+    /// SolveScreen reads into CrossyGridView (the navigationPrefs pattern for the grid's
+    /// gesture layer).
+    public var swipeTuning: SwipeTuning { swipeSensitivity.tuning }
 }
