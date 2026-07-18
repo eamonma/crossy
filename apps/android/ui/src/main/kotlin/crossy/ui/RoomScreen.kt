@@ -77,6 +77,11 @@ fun RoomScreen(
     // root from the persisted NavigationSettingsStore. DEFAULT reproduces the pre-slice behavior
     // exactly, so the demo room and previews (which pass nothing) diverge from no navigation vector.
     navigationPrefs: BoardNavigation.NavigationPrefs = BoardNavigation.NavigationPrefs.DEFAULT,
+    // The person's swipe-sensitivity choice as the grid's tuning (personal-settings), threaded by the
+    // composition root from the persisted NavigationSettingsStore the same way navigationPrefs is.
+    // STANDARD (the default) reproduces the pre-tuning swipe grammar, so the demo room and previews
+    // (which pass nothing) keep the pinned behavior.
+    swipeTuning: SwipeTuning = SwipeTuning.STANDARD,
     // The resolved-avatar bridge for the roster sheet's pucks (threaded from :app's AvatarImageCache).
     // The demo room and previews pass the no-cache provider, which renders every roster row as its
     // initial (PROTOCOL.md §4, the first-class fallback).
@@ -576,6 +581,7 @@ fun RoomScreen(
                 reduceMotion = reduceMotion,
                 gridContentDescription = gridA11yLabel,
                 activeCellDescription = activeCellA11y,
+                swipeTuning = swipeTuning,
                 modifier = Modifier.fillMaxWidth(),
                 onCamera = { gridCamera = it },
                 onCellTap = { cell ->

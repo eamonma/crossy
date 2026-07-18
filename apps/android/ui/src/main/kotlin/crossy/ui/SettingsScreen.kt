@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 data class SolvingPrefs(
     val skipFilledInWord: Boolean,
     val endOfWordIsNextClue: Boolean,
+    val swipeSensitivity: SwipeSensitivity,
 )
 
 /** The result of the injected delete call: success (the parent navigates to sign-in), or a failure
@@ -94,6 +95,7 @@ fun SettingsScreen(
     solving: SolvingPrefs? = null,
     onSkipFilledChange: (Boolean) -> Unit = {},
     onEndOfWordNextClueChange: (Boolean) -> Unit = {},
+    onSwipeSensitivityChange: (SwipeSensitivity) -> Unit = {},
     // The two-beat destructive delete, or null when the composition supplies none (the harness): the
     // Delete row then does not render. Returns the typed outcome the inline sentence keys on.
     onDeleteAccount: (suspend () -> DeleteAccountResult)? = null,
@@ -173,6 +175,7 @@ fun SettingsScreen(
                     prefs = solving,
                     onSkipFilledChange = onSkipFilledChange,
                     onEndOfWordNextClueChange = onEndOfWordNextClueChange,
+                    onSwipeSensitivityChange = onSwipeSensitivityChange,
                 )
             }
 
@@ -278,6 +281,7 @@ private fun SolvingSection(
     prefs: SolvingPrefs,
     onSkipFilledChange: (Boolean) -> Unit,
     onEndOfWordNextClueChange: (Boolean) -> Unit,
+    onSwipeSensitivityChange: (SwipeSensitivity) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Solving", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -291,19 +295,37 @@ private fun SolvingSection(
                 onChange = onEndOfWordNextClueChange,
             )
         }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        // The swipe-sensitivity picker, the same row grammar as the end-of-word control; its footer
+        // stands full-width beneath (the iOS section footer), so the row keeps the picker uncrowded.
+        SettingRow(title = ArrivalCopy.settingsSwipeSensitivityTitle) {
+            SwipeSensitivityPicker(
+                selected = prefs.swipeSensitivity,
+                onChange = onSwipeSensitivityChange,
+            )
+        }
+        Text(
+            ArrivalCopy.settingsSwipeSensitivityFooter,
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
-/** One preference row: title over subtitle on the left, the native control trailing. */
+/** One preference row: the title (over an optional subtitle) on the left, the native control
+ *  trailing. A null subtitle is a title-only row whose fuller copy stands as a footer below. */
 @Composable
-private fun SettingRow(title: String, subtitle: String, control: @Composable () -> Unit) {
+private fun SettingRow(title: String, subtitle: String? = null, control: @Composable () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, fontSize = 16.sp)
-            Text(subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (subtitle != null) {
+                Text(subtitle, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
         control()
     }
@@ -329,6 +351,33 @@ private fun EndOfWordPicker(isNextClue: Boolean, onChange: (Boolean) -> Unit) {
             )
         }
     }
+}
+
+/** The swipe-sensitivity picker: a compact menu whose collapsed value is the selected preset's short
+ *  label, the same shape as the end-of-word picker (iOS twin: the same menu picker over SwipeSensitivity). */
+@Composable
+private fun SwipeSensitivityPicker(selected: SwipeSensitivity, onChange: (SwipeSensitivity) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        TextButton(onClick = { expanded = true }) {
+            Text(swipeSensitivityLabel(selected))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            SwipeSensitivity.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(swipeSensitivityLabel(option)) },
+                    onClick = { onChange(option); expanded = false },
+                )
+            }
+        }
+    }
+}
+
+/** The short label for a swipe-sensitivity case, verbatim to iOS so the two pickers read identically. */
+private fun swipeSensitivityLabel(sensitivity: SwipeSensitivity): String = when (sensitivity) {
+    SwipeSensitivity.RELAXED -> ArrivalCopy.settingsSwipeSensitivityRelaxed
+    SwipeSensitivity.STANDARD -> ArrivalCopy.settingsSwipeSensitivityStandard
+    SwipeSensitivity.PRECISE -> ArrivalCopy.settingsSwipeSensitivityPrecise
 }
 
 @Composable

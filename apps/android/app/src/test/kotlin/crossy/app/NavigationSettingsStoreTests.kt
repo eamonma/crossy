@@ -9,6 +9,7 @@ package crossy.app
 
 import crossy.api.AuthProvider
 import crossy.store.BoardNavigation
+import crossy.ui.SwipeSensitivity
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -16,11 +17,18 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class NavigationSettingsStoreTests {
-    private class FakeBackend(val map: MutableMap<String, Boolean> = mutableMapOf()) :
-        NavigationPrefsBackend {
+    private class FakeBackend(
+        val map: MutableMap<String, Boolean> = mutableMapOf(),
+        val strings: MutableMap<String, String> = mutableMapOf(),
+    ) : NavigationPrefsBackend {
         override fun getBoolean(key: String, default: Boolean): Boolean = map[key] ?: default
         override fun putBoolean(key: String, value: Boolean) {
             map[key] = value
+        }
+
+        override fun getString(key: String, default: String?): String? = strings[key] ?: default
+        override fun putString(key: String, value: String) {
+            strings[key] = value
         }
     }
 
@@ -68,6 +76,33 @@ class NavigationSettingsStoreTests {
         assertFalse(restored.skipFilledInWord)
         assertTrue(restored.endOfWordIsNextClue)
         assertEquals(BoardNavigation.EndOfWord.NEXT_CLUE, restored.navigationPrefs.endOfWord)
+    }
+
+    @Test
+    fun swipeSensitivity_defaultsToStandard_soTheSwipeGrammarIsUnchanged() {
+        // An unset device keeps the pre-tuning swipe grammar (STANDARD), so the swipe tables stay pinned.
+        val store = NavigationSettingsStore(FakeBackend())
+        assertEquals(SwipeSensitivity.STANDARD, store.swipeSensitivity)
+    }
+
+    @Test
+    fun swipeSensitivity_roundTripsThroughTheBackendAsItsCaseName() {
+        val backend = FakeBackend()
+        NavigationSettingsStore(backend).updateSwipeSensitivity(SwipeSensitivity.PRECISE)
+
+        // Persisted as the raw enum case name under the pinned key.
+        assertEquals("PRECISE", backend.strings[NavigationSettingsStore.KEY_SWIPE_SENSITIVITY])
+        // A cold start over the same backend rehydrates the persisted case, not the default.
+        assertEquals(SwipeSensitivity.PRECISE, NavigationSettingsStore(backend).swipeSensitivity)
+    }
+
+    @Test
+    fun swipeSensitivity_anUnrecognizedStoredValueResolvesToStandard() {
+        // A name no case matches (a downgrade wrote a case this build dropped) falls back to STANDARD.
+        val backend = FakeBackend(
+            strings = mutableMapOf(NavigationSettingsStore.KEY_SWIPE_SENSITIVITY to "BLAZING"),
+        )
+        assertEquals(SwipeSensitivity.STANDARD, NavigationSettingsStore(backend).swipeSensitivity)
     }
 
     @Test

@@ -1033,9 +1033,11 @@ private fun SettingsContent(
         solving = SolvingPrefs(
             skipFilledInWord = navPrefs.skipFilledInWord,
             endOfWordIsNextClue = navPrefs.endOfWordIsNextClue,
+            swipeSensitivity = navPrefs.swipeSensitivity,
         ),
         onSkipFilledChange = navPrefs::updateSkipFilledInWord,
         onEndOfWordNextClueChange = navPrefs::updateEndOfWordIsNextClue,
+        onSwipeSensitivityChange = navPrefs::updateSwipeSensitivity,
         // The two-beat delete: tombstone the account (DELETE /account), purge the local session the
         // same way sign-out does (but no vendor logout: the account is gone), then land at sign-in.
         // A rejection carries its §12 code back for the inline sentence (INV-11: never a lockout).
@@ -1279,6 +1281,7 @@ private fun RoomHost(
             reactionEmojis = reactionEmojis,
             reconnectRetryAt = reconnectRetryAt,
             navigationPrefs = navPrefs.navigationPrefs,
+            swipeTuning = navPrefs.swipeSensitivity.tuning,
             haptics = haptics,
             receiveReactionHaptics = reactionSettings.receiveHapticsEnabled,
             avatars = avatars,
