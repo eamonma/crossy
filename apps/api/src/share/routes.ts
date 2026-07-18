@@ -65,6 +65,37 @@ function notFoundShell(appOrigin: string): string {
 }
 
 /**
+ * The card's two whitelisted shape params (PROTOCOL.md §12): `variant` (og | portrait) and `ground`
+ * (light | dark), both defaulting to today's og/light so a bare `card.png` is byte-identical to the
+ * pre-14.3 render (the og:image bytes never move). The native clients pass `variant=portrait` and,
+ * on a dark device, `ground=dark`. The builder's `solo` variant is not exposed as a param: the route
+ * derives it from the assembly's solo verdict, exactly as the web export does.
+ */
+const CARD_VARIANTS = new Set(["og", "portrait"]);
+const CARD_GROUNDS = new Set(["light", "dark"]);
+
+interface CardShape {
+  readonly variant: "og" | "portrait";
+  readonly ground: "light" | "dark";
+}
+
+/**
+ * Parse the card's shape from the query string, whitelisting both params. An absent param takes its
+ * default (og / light); any unrecognized value returns null so the route hands back the SAME soft
+ * 404 an unknown/revoked/malformed token gets: no distinct 400 oracle, the surface confirms nothing
+ * (including which param, or which value, was rejected).
+ */
+function parseCardShape(
+  rawVariant: string | undefined,
+  rawGround: string | undefined,
+): CardShape | null {
+  const variant = rawVariant ?? "og";
+  const ground = rawGround ?? "light";
+  if (!CARD_VARIANTS.has(variant) || !CARD_GROUNDS.has(ground)) return null;
+  return { variant, ground } as CardShape;
+}
+
+/**
  * Resolve an ACTIVE (non-revoked) share token to its gameId. A malformed token is shape-rejected
  * before any DB probe (so garbage never touches the index), and a revoked one is filtered out in
  * SQL, so both return null exactly as an unknown token does: one soft 404, no oracle.
@@ -109,11 +140,23 @@ export function shareRoutes(deps: AppDeps): Hono<ApiEnv> {
         "retry-after": String(gate.retryAfterSec),
       });
     }
+    // Shape params are whitelisted before the DB probe: a bad value lands the SAME soft 404 as a
+    // malformed token (garbage never touches the index, and the two are indistinguishable).
+    const shape = parseCardShape(c.req.query("variant"), c.req.query("ground"));
+    if (shape === null) return c.text("not found", 404);
     const gameId = await resolveActiveToken(deps, c.req.param("token"));
     if (gameId === null) return c.text("not found", 404);
     const assembly = await assembleShareCard(deps.db, gameId);
     if (assembly === null) return c.text("not found", 404);
-    const png = renderShareCardPng(assembly.card);
+    // A portrait request for a solo solve renders the builder's solo layout (the fill-order gold
+    // ramp), matching the web export; og is never solo. The card is immutable for every shape, so
+    // all combinations carry the same long-lived cache posture.
+    const variant =
+      shape.variant === "portrait" && assembly.solo ? "solo" : shape.variant;
+    const png = renderShareCardPng(assembly.card, {
+      ground: shape.ground,
+      variant,
+    });
     return c.body(png, 200, {
       "content-type": "image/png",
       "cache-control": CARD_CACHE_CONTROL,
