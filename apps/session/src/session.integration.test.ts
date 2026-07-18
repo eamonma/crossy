@@ -272,6 +272,22 @@ class TestClient {
     });
   }
 
+  /**
+   * Resolve with the error frame carrying `commandId`. Non-fatal errors accumulate in the stream
+   * (a §11 code per rejected command), so waiting on the type alone (`waitForType("error")`) returns
+   * a stale earlier error; matching the commandId waits for the one this command produced (§8, §11).
+   */
+  waitForError(commandId: string): Promise<ServerMessage> {
+    return this.waitUntil(
+      () =>
+        this.received.find(
+          (f) =>
+            f.msg.type === "error" &&
+            (f.msg as { commandId?: string }).commandId === commandId,
+        )?.msg,
+    );
+  }
+
   waitForClose(): Promise<{ code: number; reason: string }> {
     if (this.closeInfo !== null) return Promise.resolve(this.closeInfo);
     return new Promise((resolve) => this.closeWaiters.push(resolve));
@@ -1646,133 +1662,156 @@ describe("room check vote: the proposer proposes, the room decides (PROTOCOL.md 
   });
 
   it("opens an attributed vote, a decisive approval passes it, and the check lands with by, marks, and persistence (INV-5, INV-6; D32)", async () => {
-    const checker = randomUUID();
-    const watcher = randomUUID();
-    const gameId = await seedGame({
-      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
-      members: [
-        { userId: checker, role: "solver" },
-        { userId: watcher, role: "solver" },
-      ],
+    // A dedicated server that flushes after every accepted command, so the persistence assertions
+    // below see the vote lifecycle in Postgres without waiting on the default ~25-event threshold
+    // (the vote passes but never completes the game, so no terminal flush fires).
+    const voteServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushEventThreshold: 1, flushIntervalMs: 600_000 },
+      internalBearer: INTERNAL_BEARER,
     });
-    const first = await connectAndHello(gameId, checker);
-    const second = await connectAndHello(gameId, watcher);
+    try {
+      const checker = randomUUID();
+      const watcher = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [
+          { userId: checker, role: "solver" },
+          { userId: watcher, role: "solver" },
+        ],
+      });
+      const first = await connectAndHelloOn(voteServer, gameId, checker);
+      const second = await connectAndHelloOn(voteServer, gameId, watcher);
 
-    // Fill the grid with one wrong letter: A, X, C (seqs 1-3).
-    first.client.sendJson(placeLetter(0, "A"));
-    first.client.sendJson(placeLetter(1, "X"));
-    first.client.sendJson(placeLetter(2, "C"));
-    await first.client.waitForCount("cellSet", 3);
+      // Fill the grid with one wrong letter: A, X, C (seqs 1-3).
+      first.client.sendJson(placeLetter(0, "A"));
+      first.client.sendJson(placeLetter(1, "X"));
+      first.client.sendJson(placeLetter(2, "C"));
+      await first.client.waitForCount("cellSet", 3);
 
-    // The proposal opens a vote at seq 4, broadcast to the WHOLE room; no immediate check (D32).
-    const propose = checkPuzzle();
-    first.client.sendJson(propose);
-    const opened = (await second.client.waitForType(
-      "checkVoteOpened",
-    )) as unknown as {
-      seq: number;
-      by: string;
-      electorate: string[];
-      needed: number;
-      expiresAt: string;
-      commandId: string;
-    };
-    expect(opened).toMatchObject({
-      seq: 4,
-      by: checker,
-      electorate: [checker, watcher].sort(),
-      needed: 2,
-      commandId: propose.commandId,
-    });
-    expect(typeof opened.expiresAt).toBe("string");
-    // No puzzleChecked yet: the vote is still open (needed 2, only the proposer's approval).
-    expect(first.client.ofType("puzzleChecked")).toHaveLength(0);
-
-    // The snapshot heals a reconnecting client mid-vote with the whole §4 checkVote (no delta replay).
-    second.client.sendJson({ type: "requestSync" });
-    const midVote = (await second.client.waitForType("sync")) as SyncMessage;
-    expect(midVote.board.checkVote).toMatchObject({
-      openedSeq: 4,
-      by: checker,
-      approvals: [checker],
-      rejections: [],
-      needed: 2,
-    });
-
-    // A decisive approval closes the vote passed and fires the check, attributed to the proposer.
-    second.client.sendJson(castCheckVote(4, true));
-    const checkedFrames = await Promise.all([
-      first.client.waitForType("puzzleChecked"),
-      second.client.waitForType("puzzleChecked"),
-    ]);
-    for (const frame of checkedFrames) {
-      expect(frame).toMatchObject({
-        type: "puzzleChecked",
-        wrongCells: [1],
-        checkCount: 1,
+      // The proposal opens a vote at seq 4, broadcast to the WHOLE room; no immediate check (D32).
+      const propose = checkPuzzle();
+      first.client.sendJson(propose);
+      const opened = (await second.client.waitForType(
+        "checkVoteOpened",
+      )) as unknown as {
+        seq: number;
+        by: string;
+        electorate: string[];
+        needed: number;
+        expiresAt: string;
+        commandId: string;
+      };
+      expect(opened).toMatchObject({
+        seq: 4,
         by: checker,
+        electorate: [checker, watcher].sort(),
+        needed: 2,
         commandId: propose.commandId,
       });
+      expect(typeof opened.expiresAt).toBe("string");
+      // No puzzleChecked yet: the vote is still open (needed 2, only the proposer's approval).
+      expect(first.client.ofType("puzzleChecked")).toHaveLength(0);
+
+      // The snapshot heals a reconnecting client mid-vote with the whole §4 checkVote (no delta replay).
+      second.client.sendJson({ type: "requestSync" });
+      const midVote = (await second.client.waitForType("sync")) as SyncMessage;
+      expect(midVote.board.checkVote).toMatchObject({
+        openedSeq: 4,
+        by: checker,
+        approvals: [checker],
+        rejections: [],
+        needed: 2,
+      });
+
+      // A decisive approval closes the vote passed and fires the check, attributed to the proposer.
+      second.client.sendJson(castCheckVote(4, true));
+      const checkedFrames = await Promise.all([
+        first.client.waitForType("puzzleChecked"),
+        second.client.waitForType("puzzleChecked"),
+      ]);
+      for (const frame of checkedFrames) {
+        expect(frame).toMatchObject({
+          type: "puzzleChecked",
+          wrongCells: [1],
+          checkCount: 1,
+          by: checker,
+          commandId: propose.commandId,
+        });
+      }
+      // Attribution is now on the wire (D32 overturns the D27 neutrality): the RAW frame carries by.
+      const rawChecked = first.client.rawOfType("puzzleChecked")[0]!;
+      expect(Object.keys(JSON.parse(rawChecked) as object)).toContain("by");
+
+      // The close preceded the check: checkVoteClosed(passed) at seq 6, puzzleChecked at seq 7.
+      const closed = (await first.client.waitForType(
+        "checkVoteClosed",
+      )) as unknown as {
+        seq: number;
+        outcome: string;
+      };
+      expect(closed).toMatchObject({ seq: 6, outcome: "passed" });
+      const checked = first.client.ofType("puzzleChecked")[0] as {
+        seq: number;
+      };
+      expect(checked.seq).toBe(7);
+
+      // The snapshot heals the marks and clears the vote (PROTOCOL.md §4). This is the SECOND sync
+      // (the first was the mid-vote heal above), so read the latest rather than the stale first frame.
+      second.client.sendJson({ type: "requestSync" });
+      const syncs = (await second.client.waitForCount(
+        "sync",
+        2,
+      )) as SyncMessage[];
+      const sync = syncs[syncs.length - 1]!;
+      expect(sync.board.checkedWrongCells).toEqual([1]);
+      expect(sync.board.checkCount).toBe(1);
+      expect(sync.board.checkVote).toBeNull();
+      expect(sync.board.seq).toBe(7);
+
+      await waitForLastSeq(gameId, 7);
+      // check_events keeps the proposer whose vote passed (DESIGN.md §9); check_vote_events keeps the
+      // whole lifecycle, one row per consumed seq (opened, cast, closed).
+      const checkRows = await adminPool.query<{ seq: string; user_id: string }>(
+        "select seq, user_id from check_events where game_id = $1",
+        [gameId],
+      );
+      expect(checkRows.rows).toEqual([{ seq: "7", user_id: checker }]);
+      const voteRows = await adminPool.query<{
+        seq: string;
+        kind: string;
+        user_id: string | null;
+        approve: boolean | null;
+        vote_seq: string;
+        electorate: string[] | null;
+        outcome: string | null;
+      }>(
+        "select seq, kind, user_id, approve, vote_seq, electorate, outcome from check_vote_events where game_id = $1 order by seq",
+        [gameId],
+      );
+      expect(
+        voteRows.rows.map((r) => [r.kind, Number(r.seq), r.outcome]),
+      ).toEqual([
+        ["opened", 4, null],
+        ["cast", 5, null],
+        ["closed", 6, "passed"],
+      ]);
+      expect(voteRows.rows[0]).toMatchObject({
+        user_id: checker,
+        vote_seq: "4",
+        electorate: [checker, watcher].sort(),
+      });
+      expect(voteRows.rows[1]).toMatchObject({
+        user_id: watcher,
+        approve: true,
+      });
+
+      first.client.close();
+      second.client.close();
+    } finally {
+      await voteServer.close();
     }
-    // Attribution is now on the wire (D32 overturns the D27 neutrality): the RAW frame carries by.
-    const rawChecked = first.client.rawOfType("puzzleChecked")[0]!;
-    expect(Object.keys(JSON.parse(rawChecked) as object)).toContain("by");
-
-    // The close preceded the check: checkVoteClosed(passed) at seq 6, puzzleChecked at seq 7.
-    const closed = (await first.client.waitForType(
-      "checkVoteClosed",
-    )) as unknown as {
-      seq: number;
-      outcome: string;
-    };
-    expect(closed).toMatchObject({ seq: 6, outcome: "passed" });
-    const checked = first.client.ofType("puzzleChecked")[0] as { seq: number };
-    expect(checked.seq).toBe(7);
-
-    // The snapshot heals the marks and clears the vote (PROTOCOL.md §4).
-    second.client.sendJson({ type: "requestSync" });
-    const sync = (await second.client.waitForType("sync")) as SyncMessage;
-    expect(sync.board.checkedWrongCells).toEqual([1]);
-    expect(sync.board.checkCount).toBe(1);
-    expect(sync.board.checkVote).toBeNull();
-    expect(sync.board.seq).toBe(7);
-
-    await waitForLastSeq(gameId, 7);
-    // check_events keeps the proposer whose vote passed (DESIGN.md §9); check_vote_events keeps the
-    // whole lifecycle, one row per consumed seq (opened, cast, closed).
-    const checkRows = await adminPool.query<{ seq: string; user_id: string }>(
-      "select seq, user_id from check_events where game_id = $1",
-      [gameId],
-    );
-    expect(checkRows.rows).toEqual([{ seq: "7", user_id: checker }]);
-    const voteRows = await adminPool.query<{
-      seq: string;
-      kind: string;
-      user_id: string | null;
-      approve: boolean | null;
-      vote_seq: string;
-      electorate: string[] | null;
-      outcome: string | null;
-    }>(
-      "select seq, kind, user_id, approve, vote_seq, electorate, outcome from check_vote_events where game_id = $1 order by seq",
-      [gameId],
-    );
-    expect(
-      voteRows.rows.map((r) => [r.kind, Number(r.seq), r.outcome]),
-    ).toEqual([
-      ["opened", 4, null],
-      ["cast", 5, null],
-      ["closed", 6, "passed"],
-    ]);
-    expect(voteRows.rows[0]).toMatchObject({
-      user_id: checker,
-      vote_seq: "4",
-      electorate: [checker, watcher].sort(),
-    });
-    expect(voteRows.rows[1]).toMatchObject({ user_id: watcher, approve: true });
-
-    first.client.close();
-    second.client.close();
   });
 
   it("a solo electorate passes at open: the checkVoteOpened/closed/puzzleChecked triple in one command (§10)", async () => {
@@ -2109,14 +2148,13 @@ describe("room check vote: the proposer proposes, the room decides (PROTOCOL.md 
     ca.client.sendJson(placeLetter(2, "C"));
     await ca.client.waitForCount("cellSet", 3);
 
-    // NO_VOTE_OPEN: a ballot before any vote is open.
+    // NO_VOTE_OPEN: a ballot before any vote is open. Errors accumulate in the stream, so each
+    // assertion below waits on the error carrying ITS commandId, not merely the first error (§8).
     const early = castCheckVote(4, true);
     ca.client.sendJson(early);
-    expect(await ca.client.waitForType("error")).toMatchObject({
-      code: "NO_VOTE_OPEN",
-      fatal: false,
-      commandId: early.commandId,
-    });
+    expect(
+      await ca.client.waitForError(early.commandId as string),
+    ).toMatchObject({ code: "NO_VOTE_OPEN", fatal: false });
 
     // Open a vote (needed 2, electorate [a, b]).
     ca.client.sendJson(checkPuzzle());
@@ -2125,44 +2163,40 @@ describe("room check vote: the proposer proposes, the room decides (PROTOCOL.md 
     // VOTE_PENDING: a second proposal while one is open.
     const second = checkPuzzle();
     ca.client.sendJson(second);
-    expect(await ca.client.waitForType("error")).toMatchObject({
-      code: "VOTE_PENDING",
-      commandId: second.commandId,
-    });
+    expect(
+      await ca.client.waitForError(second.commandId as string),
+    ).toMatchObject({ code: "VOTE_PENDING" });
 
     // ALREADY_VOTED: the proposer casting a ballot (already approved at proposal time).
     const dup = castCheckVote(4, true);
     ca.client.sendJson(dup);
-    const aErr = ca.client.ofType("error") as Array<{
-      code: string;
-      commandId: string;
-    }>;
-    expect(aErr.find((e) => e.commandId === dup.commandId)?.code).toBe(
-      "ALREADY_VOTED",
+    expect(await ca.client.waitForError(dup.commandId as string)).toMatchObject(
+      {
+        code: "ALREADY_VOTED",
+      },
     );
 
     // NO_VOTE_OPEN also covers a stale voteSeq naming a vote that is not open.
     const stale = castCheckVote(999, true);
     cb.client.sendJson(stale);
-    expect(await cb.client.waitForType("error")).toMatchObject({
-      code: "NO_VOTE_OPEN",
-      commandId: stale.commandId,
-    });
+    expect(
+      await cb.client.waitForError(stale.commandId as string),
+    ).toMatchObject({ code: "NO_VOTE_OPEN" });
 
-    // NOT_ELECTOR: a host/solver who joined after the electorate froze.
+    // NOT_ELECTOR: a host/solver who joined after the electorate froze. Seed the user row before
+    // the membership row (memberships.user_id references users, §8).
     const late = randomUUID();
+    await insertUser(late, "Latecomer");
     await adminPool.query(
       "insert into memberships (game_id, user_id, role) values ($1, $2, 'solver')",
       [gameId, late],
     );
-    await insertUser(late, "Latecomer");
     const cl = await connectAndHello(gameId, late);
     const notElector = castCheckVote(4, true);
     cl.client.sendJson(notElector);
-    expect(await cl.client.waitForType("error")).toMatchObject({
-      code: "NOT_ELECTOR",
-      commandId: notElector.commandId,
-    });
+    expect(
+      await cl.client.waitForError(notElector.commandId as string),
+    ).toMatchObject({ code: "NOT_ELECTOR" });
 
     ca.client.close();
     cb.client.close();
@@ -2195,13 +2229,12 @@ describe("room check vote: the proposer proposes, the room decides (PROTOCOL.md 
       approve: true,
     };
     client.sendJson(ballot);
-    const errs = client.ofType("error") as Array<{
-      code: string;
-      commandId: string;
-    }>;
-    expect(errs.find((e) => e.commandId === ballot.commandId)?.code).toBe(
-      "ROLE_FORBIDDEN",
-    );
+    // Await the ballot's own error frame (the propose error already sits in the stream), so the
+    // read is not racing the async reply (§8): the spectator ballot hits the same role gate.
+    expect(await client.waitForError(ballot.commandId)).toMatchObject({
+      code: "ROLE_FORBIDDEN",
+      fatal: false,
+    });
     client.close();
   });
 });
