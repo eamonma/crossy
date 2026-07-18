@@ -1383,8 +1383,25 @@ to `puzzleChecked`.**
 
 ### Waves 15.4 web, 15.5 iOS, 15.6 Android (blocked on 15.3)
 
-Deliberately unspecced. The vote UI (surfacing `checkVote`, its `needed`, the running
-tally, and `expiresAt`; whether the multiplayer confirm dialog retires; how a solo
-auto-pass reads) is left for the owner to iterate on hands-on before these waves are
-written. The contract above (the `checkVote` snapshot field, the three events, the four
-errors) is all a client needs to begin.
+Specced 2026-07-18 by the owner's UX session; the shared grammar is
+`design/check-vote/UX.md` (the five beats, hold-to-propose, the luminous ring as the
+only clock, verbs not votes, faces not numbers, the choreographed reveal, the quiet
+recess). Each client also owns the store work: the three vote events applied under the
+seq gate, `board.checkVote` replacing wholesale on snapshot (mid-vote reconnects
+reconstruct fully), solo suppression (the auto-pass triple renders as an instant
+check, no vote chrome), and tolerance for a bare `puzzleChecked` during the server
+rollout window.
+
+- **Wave 15.4 web**: the Proscenium (the room chrome above the grid transforms), the
+  ring on the SVG grid's halo, hold-to-propose on the Check control; mobile web is a
+  best-effort docked strip above the active-clue bar. Exit: the venue states are pure
+  projections of `checkVote` plus the event stream, and the four checks are green.
+- **Wave 15.5 iOS**: the Bench (non-modal partial sheet, grid interactive above), the
+  haptic grammar, and the Swift engine port of the vote state machine, rebinding the
+  check family and draining `apps/ios/vectors.skip.json`. Live Activity and Dynamic
+  Island are untouched by owner ruling. Exit: the Swift vector runner executes every
+  check case; the Bench ships the grammar.
+- **Wave 15.6 Android**: the Bench in the app's own Compose language (predictive back
+  never dismisses a pending vote), the haptic grammar, and the Kotlin engine port,
+  rebinding check and draining `apps/android/vectors.skip.json`. Exit: the JUnit
+  vector runner executes every check case; the Bench ships the grammar.
