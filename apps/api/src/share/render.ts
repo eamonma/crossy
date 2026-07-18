@@ -23,6 +23,27 @@ import type { ShareCardData } from "@crossy/share-card";
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;
 
+/** The portrait (and solo) flagship dimensions (SHARE.md layout contract): the shape the native
+ * clients fetch. Exported so a caller and the tests can assert them without re-deriving. */
+export const PORTRAIT_WIDTH = 1080;
+export const PORTRAIT_HEIGHT = 1620;
+
+/** How to shape one render: which builder ground and variant to draw. A subset of the builder's
+ * `ShareCardOptions` (no `fontCss`; the faces are loaded through resvg's fontFiles, never an SVG
+ * data URI). `solo` is the portrait geometry painted by fill order (the builder's solo layout); the
+ * route selects it for a solo solve exactly as the web export does, so the two cannot drift. */
+export interface ShareCardRenderOptions {
+  readonly ground: "light" | "dark";
+  readonly variant: "og" | "portrait" | "solo";
+}
+
+/** The default shape: the og unfurl card, light ground, 1200x630. A bare `renderShareCardPng(data)`
+ * is byte-identical to the pre-14.3 render (the og:image bytes never move). */
+const DEFAULT_RENDER: ShareCardRenderOptions = {
+  ground: "light",
+  variant: "og",
+};
+
 /** The vendored faces the card names (SHARE.md type contract): Newsreader 500 normal + italic,
  * Schibsted Grotesk 400/500/600, Geist Mono 500. Hardcoded (not a directory scan) so the loaded set
  * is exactly the reviewed faces and nothing a stray file could sneak in. */
@@ -35,13 +56,15 @@ const FONT_FILES = [
   "GeistMono-500-normal.ttf",
 ].map((name) => fileURLToPath(new URL(`./fonts/${name}`, import.meta.url)));
 
-/** Rasterize the og completion card for `data` to PNG bytes. Light ground, og layout, 1200x630; the
- * render is font-hermetic (only the vendored faces, no system fonts). Returns a plain Uint8Array (an
- * ArrayBuffer-backed copy) so it drops straight into a Hono response body. */
+/** Rasterize a completion card for `data` to PNG bytes in the requested shape (default: the og
+ * layout, light ground, 1200x630). The render is font-hermetic (only the vendored faces, no system
+ * fonts), so a shape's bytes depend only on the data and the committed faces. Returns a plain
+ * Uint8Array (an ArrayBuffer-backed copy) so it drops straight into a Hono response body. */
 export function renderShareCardPng(
   data: ShareCardData,
+  options: ShareCardRenderOptions = DEFAULT_RENDER,
 ): Uint8Array<ArrayBuffer> {
-  const { svg } = completionCardSvg(data, { ground: "light", variant: "og" });
+  const { svg } = completionCardSvg(data, options);
   const resvg = new Resvg(svg, {
     font: {
       fontFiles: FONT_FILES,

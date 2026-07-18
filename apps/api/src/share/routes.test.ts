@@ -306,6 +306,102 @@ describe("public GET /s/{token} shell + card (SHARE.md S2)", () => {
   });
 });
 
+/** The IHDR width/height of a PNG body (bytes 16..20 and 20..24), after the 8-byte signature. */
+function pngDims(png: Uint8Array): { width: number; height: number } {
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  return { width: view.getUint32(16), height: view.getUint32(20) };
+}
+
+describe("the card.png variant/ground params (SHARE.md; PROTOCOL.md §12)", () => {
+  /** Mint a share token for a fresh two-solver completed game. */
+  async function sharedGame(): Promise<string> {
+    const { gameId, hostToken } = await completedGame();
+    const { token } = (await (
+      await post(`/games/${gameId}/share`, hostToken, {})
+    ).json()) as { token: string };
+    return token;
+  }
+
+  it("defaults a bare card.png to the og shape, unchanged: image/png, 1200x630, immutable (og:image bytes never move)", async () => {
+    const token = await sharedGame();
+    const res = await getPublic(`/s/${token}/card.png`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    const png = new Uint8Array(await res.arrayBuffer());
+    expect(pngDims(png)).toEqual({ width: 1200, height: 630 });
+  });
+
+  it("serves variant=portrait as a PNG at the flagship dimensions 1080x1620, immutable (the native-client shape)", async () => {
+    const token = await sharedGame();
+    const res = await getPublic(`/s/${token}/card.png?variant=portrait`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("cache-control")).toContain("immutable");
+    const png = new Uint8Array(await res.arrayBuffer());
+    expect([...png.subarray(0, 8)]).toEqual([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    ]);
+    expect(pngDims(png)).toEqual({ width: 1080, height: 1620 });
+  });
+
+  it("renders ground=dark differently from the default light ground (the device-dark shape is a distinct render)", async () => {
+    const token = await sharedGame();
+    const light = new Uint8Array(
+      await (
+        await getPublic(`/s/${token}/card.png?variant=portrait`)
+      ).arrayBuffer(),
+    );
+    const dark = new Uint8Array(
+      await (
+        await getPublic(`/s/${token}/card.png?variant=portrait&ground=dark`)
+      ).arrayBuffer(),
+    );
+    expect([...dark]).not.toEqual([...light]);
+  });
+
+  it("carries the immutable cache posture on every variant/ground combination (a completed card never changes for any shape)", async () => {
+    const token = await sharedGame();
+    for (const query of [
+      "",
+      "?variant=og",
+      "?variant=portrait",
+      "?ground=dark",
+      "?variant=og&ground=dark",
+      "?variant=portrait&ground=dark",
+    ]) {
+      const res = await getPublic(`/s/${token}/card.png${query}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe(
+        "public, max-age=31536000, immutable",
+      );
+    }
+  });
+
+  it("gives an unrecognized variant/ground the SAME soft 404 as a malformed token (no distinct 400 oracle), even on a valid token", async () => {
+    const token = await sharedGame();
+    // A valid token with a bad param must not become a valid-vs-invalid oracle: it dies exactly like
+    // an unknown token, a plain 404, never confirming the token or naming the bad param.
+    for (const query of [
+      "?variant=solo", // real builder variant, but not a whitelisted param value
+      "?variant=square",
+      "?ground=sepia",
+      "?variant=portrait&ground=sepia",
+      "?variant=", // present but empty
+    ]) {
+      const res = await getPublic(`/s/${token}/card.png${query}`);
+      expect(res.status).toBe(404);
+    }
+    // And a bad param on an unknown token is the same plain 404: the two are indistinguishable.
+    const unknown = await getPublic(
+      `/s/${"A".repeat(43)}/card.png?variant=square`,
+    );
+    expect(unknown.status).toBe(404);
+  });
+});
+
 /** The reveal moment (seconds into the loop) the shell emitted for a cell: its rect's reveal-group
  * class, then that group's keyframes first stop. */
 function revealSecondOf(html: string, cell: number): number {

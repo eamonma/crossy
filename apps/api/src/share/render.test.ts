@@ -8,7 +8,13 @@ import { describe, expect, it } from "vitest";
 import { Resvg } from "@resvg/resvg-js";
 import { completionCardSvg } from "@crossy/share-card";
 import type { ShareCardData } from "@crossy/share-card";
-import { OG_HEIGHT, OG_WIDTH, renderShareCardPng } from "./render";
+import {
+  OG_HEIGHT,
+  OG_WIDTH,
+  PORTRAIT_HEIGHT,
+  PORTRAIT_WIDTH,
+  renderShareCardPng,
+} from "./render";
 
 /** A two-solver completed mini, enough to exercise mosaic, masthead, stats, and the color chips. */
 const DATA: ShareCardData = {
@@ -43,6 +49,43 @@ describe("share card render (SHARE.md wave S2)", () => {
     const png = renderShareCardPng(DATA);
     expect([...png.subarray(0, 8)]).toEqual(PNG_SIGNATURE);
     expect(pngDimensions(png)).toEqual({ width: OG_WIDTH, height: OG_HEIGHT });
+  });
+
+  it("defaults to the og/light shape, so a bare call is byte-identical to the explicit og/light one (og:image bytes never move)", () => {
+    // The default-argument path and the explicit og/light shape must draw the same SVG, so the
+    // og:image an unfurler fetches is unchanged by wave 14.3.
+    const bare = renderShareCardPng(DATA);
+    const explicit = renderShareCardPng(DATA, {
+      ground: "light",
+      variant: "og",
+    });
+    expect([...bare]).toEqual([...explicit]);
+  });
+
+  it("renders the portrait variant as a PNG at the flagship dimensions 1080x1620 (the native-client shape)", () => {
+    const png = renderShareCardPng(DATA, {
+      ground: "light",
+      variant: "portrait",
+    });
+    expect([...png.subarray(0, 8)]).toEqual(PNG_SIGNATURE);
+    expect(pngDimensions(png)).toEqual({
+      width: PORTRAIT_WIDTH,
+      height: PORTRAIT_HEIGHT,
+    });
+  });
+
+  it("draws the dark ground differently from the light ground (the device-dark shape is a distinct render)", () => {
+    // A dark-ground render must not be byte-identical to the light one: the grounds differ, so the
+    // bytes must. Checked on the portrait variant the native clients fetch.
+    const light = renderShareCardPng(DATA, {
+      ground: "light",
+      variant: "portrait",
+    });
+    const dark = renderShareCardPng(DATA, {
+      ground: "dark",
+      variant: "portrait",
+    });
+    expect([...dark]).not.toEqual([...light]);
   });
 
   it("actually uses the vendored faces, not a silent fallback (SHARE.md fonts)", () => {

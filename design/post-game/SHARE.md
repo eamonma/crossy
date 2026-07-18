@@ -201,3 +201,16 @@ revoked_at IS NULL`, so the mint is idempotent (mint-or-return-existing). A revo
   - **Unchanged from S2:** the OpenGraph tags (unfurlers run no CSS; `og:image` stays
     the PNG), the shell's `public, max-age=3600` cache posture, the rate limit, and
     the soft 404.
+- **The card params (done, Wave 14.3).** The iOS and Android apps share the completion
+  card natively by fetching `card.png` rather than porting the `@crossy/share-card`
+  builder into Swift and Kotlin: the server already draws the identical card, so a fetch
+  is a lift, not a third and fourth copy of the layout that could drift from the web's.
+  That means the one server render must cover the shapes a native share sheet wants, so
+  `card.png` gains two whitelisted query params: `variant` (`og` default, the 1200x630
+  unfurl; or `portrait`, the 1080x1620 flagship) and `ground` (`light` default, or `dark`
+  for a dark device). Both default to today's og/light, so `og:image` is byte-identical
+  to before. A `portrait` request for a solo solve renders the builder's solo layout, the
+  same map the web export makes from the assembly's solo verdict; `og` is never solo. An
+  unrecognized value falls into the shell's soft 404 (no distinct 400 oracle, no named bad
+  param), and the `immutable` cache posture holds for every variant/ground combination,
+  since a completed card never changes for any shape.
