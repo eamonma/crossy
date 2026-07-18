@@ -237,3 +237,14 @@ revoked_at IS NULL`, so the mint is idempotent (mint-or-return-existing). A revo
   unrecognized value falls into the shell's soft 404 (no distinct 400 oracle, no named bad
   param), and the `immutable` cache posture holds for every variant/ground combination,
   since a completed card never changes for any shape.
+
+## Native clients consume the server card
+
+Native clients do not render a card. The server render is the single visual source of
+truth, so a native app mints the link (`POST /games/{id}/share`) and fetches the
+rasterized PNG at `{shareUrl}/card.png?variant=portrait&ground={light|dark}` (the
+public, immutable-cached endpoint, ground following the app theme), then hands the image
+and the link to the system share sheet. This is what keeps every surface pixel-identical
+without porting the builder. Android ships this in Wave 14.6 (the "Share card"
+affordance in the completed room's Analysis header, over a narrowly-scoped FileProvider);
+iOS follows.

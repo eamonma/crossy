@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import crossy.api.AuthProvider
 import crossy.api.CrossyApiError
+import crossy.api.ShareCard
 import crossy.protocol.AnalysisView
 import crossy.protocol.ClientPuzzle
 import crossy.protocol.CreateGameRequest
@@ -112,8 +113,10 @@ import crossy.ui.ReactionPolicy
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private sealed interface Screen {
     data object SignIn : Screen
@@ -1330,6 +1333,40 @@ private fun RoomHost(
             // absent. INV-6-safe (userIds and numbers only).
             fetchAnalysis = gameId?.let { id ->
                 suspend { runCatching { analysisFromView(session.api.gameAnalysis(id)) }.getOrNull() }
+            },
+            // The completion share card (design/post-game/SHARE.md; Wave 14.6). The "Share card" header
+            // affordance fires this: mint the game's public share link (POST /games/{id}/share, member +
+            // completed gated server-side, idempotent), fetch the SERVER-rendered card PNG (the single
+            // visual source of truth, no native renderer) for the app's ground (Studio -> light,
+            // Observatory -> dark), and hand the image plus the link to the system share sheet through a
+            // narrowly-scoped FileProvider (EXTRA_STREAM the card with a per-share read grant, EXTRA_TEXT
+            // the share URL). Null for the demo room (no gameId), so no affordance appears there. Every
+            // failure (a not-completed 404, offline, a card fetch fault) resolves quietly with a log,
+            // consistent with the analysis fetch; the person canceling the chooser is not a failure.
+            onShareCard = gameId?.let { id ->
+                {
+                    scope.launch {
+                        runCatching {
+                            val share = session.api.mintShare(id)
+                            val cardGround =
+                                if (ground == GridGround.OBSERVATORY) ShareCard.Ground.DARK else ShareCard.Ground.LIGHT
+                            val cardUrl = ShareCard.pngUrl(share.shareUrl, cardGround)
+                            val uri = withContext(Dispatchers.IO) {
+                                ShareCardExport.download(context, session.httpClient, cardUrl, ShareCard.FILE_NAME)
+                            }
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "image/png"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                putExtra(Intent.EXTRA_TEXT, share.shareUrl)
+                                // The chooser reads the streamed card through this grant; ClipData carries
+                                // the same Uri so the grant applies to every target the sheet offers.
+                                clipData = ClipData.newRawUri(null, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(send, null))
+                        }.onFailure { android.util.Log.w("CrossyRoom", "share card failed: ${it::class.simpleName}") }
+                    }
+                }
             },
         )
     }

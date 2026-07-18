@@ -80,6 +80,12 @@ class AppSession(
     val auth = AuthSession(authClient, tokenStore)
     private val bearer = SwitchableTokenProvider()
 
+    /** The shared OkHttpClient, for the composition root's own public GETs that ride no bearer and no
+     *  typed REST path: today the completion share card PNG (design/post-game/SHARE.md), a public,
+     *  immutable-cached image. Reuses the one client's connection pool and config rather than minting a
+     *  second. The REST client and the auth leg still own every §12 JSON route. */
+    val httpClient: OkHttpClient = http
+
     /** The REST client every shell screen calls, bearer-authenticated through [bearer]. */
     val api = CrossyApiClient(urls.apiBaseUrl, bearer, http)
 

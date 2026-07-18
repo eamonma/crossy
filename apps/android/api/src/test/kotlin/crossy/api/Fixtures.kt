@@ -129,6 +129,12 @@ object Fixtures {
 
     val ABANDON_RESPONSE = """{ "gameId": "7d9f34a2-4b1e-4c3a-9d2f-8a6b5c4d3e2f", "status": "abandoned" }"""
 
+    // POST /games/{id}/share: {shareUrl, token} (§12; SHARE.md). The token matches the pinned
+    // base64url 43-char shape; shareUrl is {share-origin}/s/{token}.
+    val SHARE_RESPONSE = """
+        { "shareUrl": "https://crossy.ing/s/aB3dEf7GhIjKlMnOpQrStUvWxYz012345678-_abcd", "token": "aB3dEf7GhIjKlMnOpQrStUvWxYz012345678-_abcd" }
+    """.trimIndent()
+
     val KICK_RESPONSE = """{ "gameId": "7d9f34a2-4b1e-4c3a-9d2f-8a6b5c4d3e2f", "removed": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e" }"""
 
     val DELETE_ACCOUNT_RESPONSE = """

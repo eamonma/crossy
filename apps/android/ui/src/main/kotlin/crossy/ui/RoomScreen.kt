@@ -96,6 +96,12 @@ fun RoomScreen(
     // mapping, keeping :ui out of the REST ring (the AvatarImageCache/AAD-2 pattern). Idempotent: the
     // room drives it on the completion edge and on a tab-open, and AnalysisModel fetches at most once.
     fetchAnalysis: (suspend () -> RoomAnalysis?)? = null,
+    // The completion card share intent (design/post-game/SHARE.md; Wave 14.6), surfaced as the "Share
+    // card" affordance in the completed room's analysis header. Null when there is no game to share (the
+    // demo room, previews): there the affordance never appears. The composition root closes over the REST
+    // mint, the server card PNG download, and the system share sheet (the server card is the single visual
+    // source of truth), keeping :ui out of the REST and FileProvider rings.
+    onShareCard: (() -> Unit)? = null,
     // The solve's haptic player (DESIGN.md §7; the Vibrator-and-View-backed twin of iOS
     // SolveHaptics.shared). The composition root builds it from the live View and Vibrator; previews
     // and the demo room pass the inert NONE, so nothing buzzes off-device.
@@ -667,6 +673,10 @@ fun RoomScreen(
             onIsolateSolver = if (moment.settled) {
                 { id: String -> moment = moment.toggleIsolation(id, reactionNow()) }
             } else null,
+            // The "Share card" header affordance rides only the completed analysis surface; ClueBar
+            // renders it only when the room is completed and this intent is wired (the demo room passes
+            // null, so no affordance appears there).
+            onShareCard = onShareCard,
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235

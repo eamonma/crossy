@@ -223,6 +223,25 @@ class EndpointDecodeTests : MockServerTest() {
     }
 
     @Test
+    fun mintShare_postsWithNoBodyToTheSharePathAndDecodesTheLink() = runBlocking {
+        server.enqueue(jsonResponse(200, Fixtures.SHARE_RESPONSE))
+        val share = client().mintShare(gameId = GAME_ID)
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertEquals("/games/$GAME_ID/share", request.requestUrl?.encodedPath)
+        assertEquals("Bearer test-token", request.getHeader("Authorization"))
+        assertTrue(request.body.size == 0L, "the route reads no body, so none is sent")
+        assertNull(request.getHeader("Content-Type"), "no body, no content type")
+
+        assertEquals("https://crossy.ing/s/aB3dEf7GhIjKlMnOpQrStUvWxYz012345678-_abcd", share.shareUrl)
+        assertEquals("aB3dEf7GhIjKlMnOpQrStUvWxYz012345678-_abcd", share.token)
+        // INV-6: the share response is a URL and a bare token; re-encoding can carry no solution.
+        val reencoded = ProtocolJson.encodeToString(crossy.protocol.ShareResponse.serializer(), share)
+        assertFalse(reencoded.contains("solution"))
+    }
+
+    @Test
     fun deleteAccount_deletesTheAccountPathAndDecodesTheTombstone() = runBlocking {
         server.enqueue(jsonResponse(200, Fixtures.DELETE_ACCOUNT_RESPONSE))
         val response = client().deleteAccount()
