@@ -7,6 +7,9 @@
 // formatMSS the header uses, no-evidence rungs as their fixed line, and a numeric rung with a
 // missing number drops the line rather than printing a blank. The amended law rides the copy: a
 // card cites only its own number, never a rate or a rank.
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { TITLE_LADDER } from "@crossy/engine";
 import type { Roster } from "./mosaicReveal";
@@ -33,6 +36,37 @@ function award(
 ): WireTitle {
   return { userId, title, evidence };
 }
+
+describe("TITLE_COPY labels are the cross-client vector (TITLES.md; PROTOCOL §12; SHARE.md)", () => {
+  // The web TITLE_COPY labels are the ratified card copy: promoted to shared normative ground so the
+  // server-rendered share card credits a title with the exact words the web panel paints (native
+  // apps consume the server card PNG). If a web label ever drifts from the frozen vector, this fails.
+  // LABELS ONLY: the detail line under a label interpolates the solve's stats and stays client-owned,
+  // so it is not pinned here.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const vector = JSON.parse(
+    readFileSync(
+      resolve(here, "../../../../vectors/analysis/title-labels.json"),
+      "utf8",
+    ),
+  ) as { labels: { key: string; label: string }[] };
+
+  it("carries exactly the pinned labels, byte for byte, keyed by the wire title key", () => {
+    const fromCopy = Object.fromEntries(
+      Object.entries(TITLE_COPY).map(([key, copy]) => [key, copy.label]),
+    );
+    const fromVector = Object.fromEntries(
+      vector.labels.map((l) => [l.key, l.label]),
+    );
+    expect(fromCopy).toEqual(fromVector);
+  });
+
+  it("resolves each pinned key to its exact label through titleCopyOf", () => {
+    for (const { key, label } of vector.labels) {
+      expect(titleCopyOf(key)?.label).toBe(label);
+    }
+  });
+});
 
 describe("titleCards (the wire's awards become the section's cards)", () => {
   it("renders names, claims, and evidence for a two-solver payload, in wire (ladder-rank) order", () => {

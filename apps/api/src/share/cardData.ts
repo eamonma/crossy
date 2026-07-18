@@ -17,11 +17,14 @@
 // owners, counts, names, and title/author display strings. Nothing letter-shaped is accepted, so
 // none can render (SHARE.md "No letters, ever").
 //
-// Title copy: the og card renders solver color chips and names, not the client-owned superlative
-// copy (apps/web titlesReadout.ts TITLE_COPY). That copy is client prose, not shared normative
-// ground, so forking it server-side would break the "never fork a string" rule (SHARE.md) and
-// promoting it to a vector is a wider contract change than this wave scopes. The bundle's titles are
-// still read for the solo rule (fewer than two writers -> the fill-order ramp), matching the web.
+// Title copy: the og card renders each titled solver's credit, the film-credit LABEL for their
+// title key ("The saboteur") beside their color chip and name. The label is shared normative ground
+// (vectors/analysis/title-labels.json, pinned by titleLabels.ts, the same vector the web/iOS/Android
+// surfaces pin against), so the server card does not fork a string. LABELS ONLY: the evidence/detail
+// line under a label interpolates the solve's stats and stays client-owned, and the og variant
+// compresses credits to titles only anyway (packages/share-card), so the server sets `label` and no
+// `detail`. The bundle's titles are still read for the solo rule (fewer than two writers -> the
+// fill-order ramp, no credits), matching the web.
 import { eq, sql } from "drizzle-orm";
 import { schema } from "@crossy/db";
 import { assignRoomColors } from "@crossy/protocol";
@@ -29,6 +32,7 @@ import type { ShareCardData, ShareCardSolver } from "@crossy/share-card";
 import type { Db } from "../db/client";
 import { gameAnalysis } from "../archive/analysis";
 import { identityColor } from "./identityRoster";
+import { titleLabelOf } from "./titleLabels";
 
 /** The §4 tombstone fallback: a member whose mirror row holds no display name. Matches the
  * FORMER_PARTICIPANT string the game view and the session participant payload send. */
@@ -153,8 +157,11 @@ export async function assembleShareCard(
   );
   const nameById = new Map(members.map((m) => [m.userId, m.name]));
 
-  // Card order: owners in room (join) order, then any owner the roster no longer knows (ascending
-  // id, deterministic). No title ordering: the server card carries no client-owned title copy.
+  // Card order: titled solvers first in WIRE (ladder-rank) order (SHARE.md "Credits keep wire
+  // order"; the og card renders the credits in solver-array order, so titled-first-in-wire-order is
+  // what makes the credits read ladder-ranked), then untitled owners in room (join) order, then any
+  // owner the roster no longer knows (ascending id, deterministic). Byte-identical ordering to the
+  // web assembly (shareCardData.ts), so both cards seat one room the same way.
   const ownerIds = new Set(Object.values(bundle.owners));
   const memberOrder = [...members].sort(
     (a, b) =>
@@ -169,17 +176,32 @@ export async function assembleShareCard(
       ids.push(id);
     }
   };
+  for (const t of bundle.titles) push(t.userId);
   for (const m of memberOrder) if (ownerIds.has(m.userId)) push(m.userId);
   for (const id of [...ownerIds].filter((x) => !seen.has(x)).sort()) push(id);
+
+  // The credit label per titled solver: the pinned label for the wire's title key (titleLabelOf, the
+  // shared vector). At most one title per solver (the wire already guarantees it; the guard is
+  // defensive), and an unknown key from a newer server credits the solver with no title line (the
+  // PROTOCOL.md §12 MUST-ignore rule). LABELS ONLY: no detail line (client-owned, and the og variant
+  // renders titles only).
+  const labelById = new Map<string, string>();
+  for (const t of bundle.titles) {
+    if (labelById.has(t.userId)) continue;
+    const label = titleLabelOf(t.title);
+    if (label !== null) labelById.set(t.userId, label);
+  }
 
   const solvers: ShareCardSolver[] = ids.map((id) => {
     const known = nameById.has(id);
     const wire = wireColors.get(id);
+    const label = labelById.get(id);
     return {
       name: known ? (nameById.get(id) ?? FORMER_PARTICIPANT) : DEPARTED.name,
       colorLight:
         wire !== undefined ? identityColor(wire, false) : DEPARTED.light,
       colorDark: wire !== undefined ? identityColor(wire, true) : DEPARTED.dark,
+      ...(label !== undefined && { title: { label } }),
     };
   });
 

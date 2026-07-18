@@ -184,11 +184,22 @@ revoked_at IS NULL`, so the mint is idempotent (mint-or-return-existing). A revo
   - **Cache.** A completed game's card never changes (INV-4), so `card.png` is
     `public, max-age=31536000, immutable`; the shell (which gains a replay loop in S3) is
     `public, max-age=3600`.
-  - **Title copy.** The server card renders solver names and color chips but NOT the
-    client-owned superlative copy (`TITLE_COPY`): that prose is not shared normative
-    ground, so forking it server-side would break "never fork a string" and promoting it
-    to a vector is wider than this wave. The bundle's titles are still read for the solo
-    rule.
+  - **Title copy (superseded by Wave 14.4).** S2 shipped with the server card rendering
+    solver names and color chips but NOT the title copy, on the reasoning that the copy
+    was client-owned prose, not shared normative ground, so forking it server-side would
+    break "never fork a string" and promoting it to a vector was wider than S2 scoped.
+    **Wave 14.4 promoted the title LABELS to a vector and the server card now renders
+    them.** The forcing function is the native apps: iOS and Android are about to share
+    the SERVER card PNG, not a client render, so a titled solve's card must carry the
+    film-credit titles or the credits block is empty on every native share. The narrow
+    promotion that resolves the S2 tension: the label (`"The saboteur"`) is frozen in
+    `vectors/analysis/title-labels.json` and pinned by all four consumers (web `TITLE_COPY`,
+    iOS/Android `TitleLadder`, the API's `apps/api/src/share/titleLabels.ts`), so the
+    server card reads a label it does not fork. **Labels only:** the evidence/detail line
+    under a label (`"Overwrote 7 correct squares"`) interpolates the solve's own stats and
+    stays client-owned prose, and the og variant compresses credits to titles only anyway,
+    so the server sets `label` and no `detail`. The bundle's titles were already read for
+    the solo rule, and still are (fewer than two writers -> the fill-order ramp, no credits).
 - **S3, the replay loop (done, Wave 13.3).** The share page plays the solve back: the
   bundle's `sequence` drives the mosaic, each square washing in with its owner's tint
   (or the solo gold ramp), looping gently. Exit met: a share link opens to the replay,
