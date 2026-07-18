@@ -32,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   applyWithCompletion,
+  applyWithVote,
   backspaceTarget,
   getNextCell,
   matches,
@@ -42,13 +43,18 @@ import {
 } from "./index";
 import type {
   BoardState,
+  CastCheckVote,
   Cell,
+  CheckProposal,
   CheckPuzzle,
+  CheckVote,
   Command,
   Direction,
+  ExpireCheckVote,
   Grid,
   Solution,
   Toward,
+  VoteCommand,
 } from "./index";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -78,11 +84,10 @@ const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   comparator: runComparator,
   navigation: runNavigation,
   completion: runCompletion,
-  // Wave 15.1 rewrote the check contract to the attributed-majority vote flow
-  // (PROTOCOL.md sections 6, 10; DESIGN.md D32). The vote state machine is not in the
-  // shipped driver, so check is unbound and listed in vectors.skip.json `families`
-  // (skipped-until-engine); Wave 15.2 implements it and rebinds this to the driver.
-  check: null,
+  // Wave 15.1 rewrote the check contract to the attributed-majority vote flow (PROTOCOL.md
+  // sections 6, 10; DESIGN.md D32) and unbound check. Wave 15.2 implemented the vote state
+  // machine (applyWithVote) and rebinds check to it here, draining it from vectors.skip.json.
+  check: runCheck,
   "client-store": null,
   "clue-runs": null,
 };
@@ -355,10 +360,35 @@ function completionShapeProblems(c: JsonObject): string[] {
 }
 
 /**
- * Check cases share the completion shape (they need `given.solution` for the
- * comparator) plus the room-check fields (PROTOCOL §10, vectors/README.md): `given`
- * may carry standing `checkedWrong` marks and a `checkCount`, and a rejection follows
- * the reducer convention (`then.error` a string when present).
+ * The open-vote shape (PROTOCOL §10, D32, vectors/README.md): null (no vote) or
+ * `{openedSeq, by, electorate, approvals, rejections}`, the user arrays ascending ASCII
+ * (INV-1). Present in `given.checkVote` and `then.state.checkVote`.
+ */
+function checkVoteShapeProblems(x: unknown, where: string): string[] {
+  if (x === null) return [];
+  if (!isObject(x))
+    return [
+      `${where}: null or {openedSeq, by, electorate, approvals, rejections}`,
+    ];
+  const problems: string[] = [];
+  if (!isInt(x.openedSeq))
+    problems.push(`${where}.openedSeq: integer required`);
+  if (!isString(x.by)) problems.push(`${where}.by: string required`);
+  if (!isStringArray(x.electorate))
+    problems.push(`${where}.electorate: string[] required`);
+  if (!isStringArray(x.approvals))
+    problems.push(`${where}.approvals: string[] required`);
+  if (!isStringArray(x.rejections))
+    problems.push(`${where}.rejections: string[] required`);
+  return problems;
+}
+
+/**
+ * Check cases share the completion shape (they need `given.solution` for the comparator)
+ * plus the room-check fields (PROTOCOL §10, D32, vectors/README.md): `given` may carry
+ * standing `checkedWrong` marks, a `checkCount`, and an open `checkVote`; `then.state`
+ * asserts the same `checkVote` shape; and a rejection follows the reducer convention
+ * (`then.error` a string when present).
  */
 function checkShapeProblems(c: JsonObject): string[] {
   const problems = completionShapeProblems(c);
@@ -368,9 +398,20 @@ function checkShapeProblems(c: JsonObject): string[] {
       problems.push("given.checkedWrong: int[] when present");
     if (g.checkCount !== undefined && !isInt(g.checkCount))
       problems.push("given.checkCount: integer when present");
+    if (g.checkVote !== undefined)
+      problems.push(...checkVoteShapeProblems(g.checkVote, "given.checkVote"));
   }
-  if (isObject(c.then) && c.then.error !== undefined && !isString(c.then.error))
-    problems.push("then.error: string when present");
+  if (isObject(c.then)) {
+    if (isObject(c.then.state) && c.then.state.checkVote !== undefined)
+      problems.push(
+        ...checkVoteShapeProblems(
+          c.then.state.checkVote,
+          "then.state.checkVote",
+        ),
+      );
+    if (c.then.error !== undefined && !isString(c.then.error))
+      problems.push("then.error: string when present");
+  }
   return problems;
 }
 
@@ -573,19 +614,38 @@ function buildBoardState(given: JsonObject): BoardState {
         : (given.firstFillAt as string | null),
     cells,
     filledCount,
-    // Room-check fields (PROTOCOL §10): optional in `given`, defaulting to no marks
-    // and a zero count, so every pre-check reducer/completion case stays valid.
+    // Room-check fields (PROTOCOL §10): optional in `given`, defaulting to no marks, a
+    // zero count, and no open vote, so every pre-check reducer/completion case stays valid.
     checkedWrong: new Set((given.checkedWrong as number[] | undefined) ?? []),
     checkCount: (given.checkCount as number | undefined) ?? 0,
+    checkVote: buildCheckVote(given.checkVote),
   };
 }
 
-/** A `when` entry (wire command plus server meta) is the engine command as plain data. */
+/**
+ * Build the open vote from `given.checkVote` (PROTOCOL §10, D32): null or absent means no
+ * vote. The documented state shape omits the proposal's `commandId` (internal to the
+ * engine); default it, since the check vectors always open a vote from a null `given`.
+ */
+function buildCheckVote(raw: unknown): CheckVote | null {
+  if (!isObject(raw)) return null;
+  return {
+    openedSeq: raw.openedSeq as number,
+    by: raw.by as string,
+    commandId: (raw.commandId as string | undefined) ?? "",
+    electorate: raw.electorate as string[],
+    approvals: raw.approvals as string[],
+    rejections: raw.rejections as string[],
+  };
+}
+
+/**
+ * A `when` entry (wire command plus server meta) is the engine command as plain data. This
+ * is the reducer/completion adapter: it maps the cell mutations and the legacy immediate
+ * `checkPuzzle` (commandId only). The check family's vote commands go through
+ * `asVoteCommand` below, which is the D32-aware adapter.
+ */
 function asCommand(w: JsonObject): Command | CheckPuzzle {
-  // Legacy pre-vote adapter, live only for still-bound families. The check family is
-  // skipped-until-engine (Wave 15.1), so its vote commands (checkPuzzle now carries a
-  // frozen `electorate`, plus castCheckVote and expireCheckVote) never reach this in a
-  // run; Wave 15.2 rebinds check and teaches this adapter the vote commands.
   if (w.type === "checkPuzzle")
     return { type: "checkPuzzle", commandId: w.commandId as string };
   if (w.type === "placeLetter")
@@ -606,6 +666,39 @@ function asCommand(w: JsonObject): Command | CheckPuzzle {
   };
 }
 
+/**
+ * The check family's adapter (PROTOCOL §10, D32): the vote commands as plain data (INV-9).
+ * `checkPuzzle` now carries the proposer and the frozen `electorate`; `castCheckVote` carries
+ * `voteSeq` and `approve`; `expireCheckVote` is the session's timeout tick with no commandId.
+ * Cell mutations reuse `asCommand`.
+ */
+function asVoteCommand(w: JsonObject): VoteCommand {
+  if (w.type === "checkPuzzle") {
+    const proposal: CheckProposal = {
+      type: "checkPuzzle",
+      commandId: w.commandId as string,
+      by: w.by as string,
+      electorate: w.electorate as string[],
+    };
+    return proposal;
+  }
+  if (w.type === "castCheckVote") {
+    const ballot: CastCheckVote = {
+      type: "castCheckVote",
+      commandId: w.commandId as string,
+      by: w.by as string,
+      voteSeq: w.voteSeq as number,
+      approve: w.approve as boolean,
+    };
+    return ballot;
+  }
+  if (w.type === "expireCheckVote") {
+    const tick: ExpireCheckVote = { type: "expireCheckVote" };
+    return tick;
+  }
+  return asCommand(w) as Command;
+}
+
 /** Serialize a board state to the `then.state` JSON shape (cells as a sparse map). */
 function serializeState(state: BoardState): JsonObject {
   const cells: JsonObject = {};
@@ -621,6 +714,19 @@ function serializeState(state: BoardState): JsonObject {
     // unasserted per the assertion rule.
     checkedWrong: [...state.checkedWrong].sort((a, b) => a - b),
     checkCount: state.checkCount,
+    // The open vote (PROTOCOL §10, D32) in the documented `{openedSeq, by, electorate,
+    // approvals, rejections}` shape, or null. The engine's internal `commandId` is omitted:
+    // the vectors never assert it (the assertion rule).
+    checkVote:
+      state.checkVote === undefined || state.checkVote === null
+        ? null
+        : {
+            openedSeq: state.checkVote.openedSeq,
+            by: state.checkVote.by,
+            electorate: state.checkVote.electorate,
+            approvals: state.checkVote.approvals,
+            rejections: state.checkVote.rejections,
+          },
   };
 }
 
@@ -779,9 +885,9 @@ function buildSolution(given: JsonObject): Solution {
  * accumulating the full sequenced stream. Concurrency collapses to this total order
  * (PROTOCOL §10), and the level-triggered check re-runs on same-count overwrites
  * (DESIGN §3). A rejected trailing command emits nothing (INV-4). The last error is
- * tracked like runReducer's so rejection cases assert their code. The check family
- * bound here until Wave 15.1: it now asserts the vote flow (PROTOCOL §10, D32) and is
- * skipped-until-engine (vectors.skip.json `families`) until Wave 15.2 rebinds it.
+ * tracked like runReducer's so rejection cases assert their code. The check family used
+ * this driver until Wave 15.1; since D32 it asserts the vote flow and runs through
+ * `runCheck` below.
  */
 function runCompletion(c: JsonObject): void {
   const given = c.given as JsonObject;
@@ -791,6 +897,33 @@ function runCompletion(c: JsonObject): void {
   let error: string | undefined;
   for (const w of c.when as JsonObject[]) {
     const result = applyWithCompletion(state, asCommand(w), solution);
+    state = result.state;
+    for (const e of result.events) events.push(e);
+    if (result.error !== undefined) error = result.error;
+  }
+  const then = c.then as JsonObject;
+  expectMatch(events, then.events, "then.events");
+  expectMatch(serializeState(state), then.state, "then.state");
+  if ("error" in then) expect(error, "then.error").toBe(then.error);
+}
+
+/**
+ * Check runner (PROTOCOL §10, D32): apply each command through the vote driver in mailbox
+ * order, threading state and accumulating the sequenced stream (checkVoteOpened /
+ * checkVoteCast / checkVoteClosed / puzzleChecked plus cellSet and gameCompleted). A
+ * proposal opens a vote, ballots resolve it, an expiry tick closes it, and a cell mutation
+ * runs completion and cancellation. The last error is tracked so the vote gates
+ * (VOTE_PENDING, NO_VOTE_OPEN, NOT_ELECTOR, ALREADY_VOTED, GRID_NOT_FULL, GAME_NOT_ONGOING)
+ * assert their code, exactly as runReducer's does.
+ */
+function runCheck(c: JsonObject): void {
+  const given = c.given as JsonObject;
+  const solution = buildSolution(given);
+  let state = buildBoardState(given);
+  const events: unknown[] = [];
+  let error: string | undefined;
+  for (const w of c.when as JsonObject[]) {
+    const result = applyWithVote(state, asVoteCommand(w), solution);
     state = result.state;
     for (const e of result.events) events.push(e);
     if (result.error !== undefined) error = result.error;

@@ -4,14 +4,23 @@
 // revealing; the engine owns these types, apps adapt at their boundary (see README.md).
 export type {
   BoardState,
+  CastCheckVote,
   Cell,
   CellSet,
+  CheckProposal,
   CheckPuzzle,
+  CheckVote,
+  CheckVoteCast,
+  CheckVoteCloseReason,
+  CheckVoteClosed,
+  CheckVoteOpened,
+  CheckVoteOutcome,
   ClearCell,
   Command,
   CompletionResult,
   Direction,
   Event,
+  ExpireCheckVote,
   GameCompleted,
   Grid,
   PlaceLetter,
@@ -21,9 +30,13 @@ export type {
   Solution,
   Status,
   Toward,
+  VoteCommand,
+  VoteEvent,
+  VoteRejectionCode,
+  VoteResult,
 } from "./types";
 export { matches } from "./comparator";
-export { applyWithCompletion } from "./completion";
+export { applyWithCompletion, applyWithVote } from "./completion";
 export { firstCorrect } from "./first-correct";
 export type { OwnerMap, WriteEvent } from "./first-correct";
 export {
