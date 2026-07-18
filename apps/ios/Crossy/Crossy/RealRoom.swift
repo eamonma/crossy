@@ -24,6 +24,7 @@ import CrossySession
 import CrossyStore
 import CrossyUI
 import Foundation
+import UIKit
 
 @available(iOS 18.0, *)
 @MainActor
@@ -53,6 +54,12 @@ final class RealRoom {
     /// /games/{id}` returns it to any member). The facts card's copy row
     /// reads it; nil until the fetch lands.
     private(set) var inviteCode: String?
+
+    /// The puzzle's display title, held from the game view (PROTOCOL.md §12, §13.1:
+    /// `GET /games/{id}` returns the additive `puzzleTitle`). The completion share
+    /// card's share sheet uses it as the subject line; nil until the fetch lands, or
+    /// when the document carried no title.
+    private(set) var puzzleTitle: String?
 
     /// A fatal wiring failure (no room, the view fetch refused, an unusable endpoint),
     /// surfaced plainly rather than papered over. Nil on the happy path.
@@ -169,6 +176,7 @@ final class RealRoom {
         clues = mapped.clues
         roomName = view.name ?? ""
         inviteCode = view.inviteCode
+        puzzleTitle = view.puzzleTitle
         // Re-target the ONE model in place (the one-host arrival, DESIGN.md §4):
         // the view's @State pin holds this instance, and its navigationPrefs
         // closure reads live prefs, so nothing needs rebuilding.
@@ -270,6 +278,41 @@ final class RealRoom {
     func fetchAnalysis() async -> RoomAnalysis? {
         do {
             return RoomMapping.analysis(try await api.gameAnalysis(gameId))
+        } catch {
+            return nil
+        }
+    }
+
+    /// The completion share card's whole server-side act (Wave 14.5; PROTOCOL.md §12,
+    /// design/post-game/SHARE.md). Mint (or return) the public share link
+    /// (`POST /games/{id}/share`, member + completed gated, idempotent), build the card
+    /// PNG URL for the current ground (ShareCardLink, the single pure construction the
+    /// UI also pins), and fetch the SERVER-rendered card. The card endpoint is public
+    /// (no bearer) and immutable-cached, so a plain `URLSession` fetch is right; the
+    /// server card is the one visual source of truth (the same `@crossy/share-card`
+    /// builder the web uses), so nothing is drawn natively here. INV-6 holds: no board
+    /// letter enters this path, only the PNG the server renders from the letter-free
+    /// bundle. Returns the image, the minted share URL, and the puzzle title (the sheet's
+    /// subject), or nil on any failure (mint 4xx, PNG fetch, offline) so the affordance
+    /// resolves to its quiet non-scolding failure, never a scolding alert.
+    func mintShareCard(ground: GridGround) async -> (image: UIImage, url: URL, title: String?)? {
+        let link: ShareLinkResponse
+        do {
+            link = try await api.createShareLink(gameId: gameId)
+        } catch {
+            logRESTGap("share", error)
+            return nil
+        }
+        guard let shareUrl = URL(string: link.shareUrl),
+            let cardURL = ShareCardLink.cardURL(shareUrl: shareUrl, ground: ground)
+        else { return nil }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: cardURL)
+            guard let http = response as? HTTPURLResponse,
+                (200..<300).contains(http.statusCode),
+                let image = UIImage(data: data)
+            else { return nil }
+            return (image, shareUrl, puzzleTitle)
         } catch {
             return nil
         }

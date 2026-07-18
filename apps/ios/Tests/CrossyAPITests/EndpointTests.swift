@@ -271,6 +271,38 @@ final class EndpointTests: XCTestCase {
         XCTAssertEqual(response.status, .abandoned)
     }
 
+    // MARK: - Share links (section 12: POST /games/{id}/share)
+
+    func test_createShareLink_postsWithNoBodyAndDecodesTheUrlAndToken() async throws {
+        try stub(200, fixture: "share-link-response")
+        let response = try await makeStubbedClient().createShareLink(gameId: gameId)
+
+        let request = try onlyRequest()
+        XCTAssertEqual(request.method, "POST")
+        XCTAssertEqual(request.path, "/games/\(gameId)/share")
+        XCTAssertNil(request.body, "the route reads no body, so none is sent")
+        XCTAssertNil(request.headers["Content-Type"], "no body, no content type")
+        XCTAssertEqual(request.headers["Authorization"], "Bearer test-token")
+
+        XCTAssertTrue(response.shareUrl.hasPrefix("https://crossy.ing/s/"))
+        XCTAssertTrue(response.shareUrl.hasSuffix(response.token))
+    }
+
+    func test_createShareLink_surfacesTheTypedEnvelopeWhenNotCompleted() async throws {
+        // Gated exactly as GET /games/{id}/analysis (section 12): a non-member is
+        // NOT_PARTICIPANT, and a game that is not completed (or the brief completion
+        // race) answers 404 GAME_NOT_FOUND, surfaced as the typed .api envelope.
+        let body = Data(#"{"error":"GAME_NOT_FOUND","message":"no such completed game"}"#.utf8)
+        StubURLProtocol.install { _ in (404, body) }
+        do {
+            _ = try await makeStubbedClient().createShareLink(gameId: gameId)
+            XCTFail("a 404 must throw")
+        } catch let CrossyAPIError.api(status, envelope) {
+            XCTAssertEqual(status, 404)
+            XCTAssertEqual(envelope.code, .gameNotFound)
+        }
+    }
+
     func test_deleteAccount_deletesTheAccountPathAndDecodesTheTombstone() async throws {
         try stub(200, fixture: "delete-account-response")
         let response = try await makeStubbedClient().deleteAccount()
@@ -351,6 +383,7 @@ final class EndpointTests: XCTestCase {
             "game-view": try SharedRESTFixtures.data("game-view"),
             "kick-response": try SharedRESTFixtures.data("kick-response"),
             "abandon-response": try SharedRESTFixtures.data("abandon-response"),
+            "share-link-response": try SharedRESTFixtures.data("share-link-response"),
             "delete-account-response": try SharedRESTFixtures.data("delete-account-response"),
         ]
         StubURLProtocol.install { request in
@@ -367,6 +400,8 @@ final class EndpointTests: XCTestCase {
                 return (200, bodies["kick-response"]!)
             case ("POST", "/games/\(gameId)/abandon"):
                 return (200, bodies["abandon-response"]!)
+            case ("POST", "/games/\(gameId)/share"):
+                return (200, bodies["share-link-response"]!)
             case ("DELETE", "/account"):
                 return (200, bodies["delete-account-response"]!)
             default:
@@ -385,10 +420,11 @@ final class EndpointTests: XCTestCase {
         _ = try await client.changeRole(gameId: gameId, to: .solver)
         _ = try await client.kickMember(gameId: gameId, userId: memberId)
         _ = try await client.abandonGame(gameId: gameId)
+        _ = try await client.createShareLink(gameId: gameId)
         _ = try await client.deleteAccount()
 
         let requests = StubURLProtocol.recordedRequests
-        XCTAssertEqual(requests.count, 11, "the full section 12 surface")
+        XCTAssertEqual(requests.count, 12, "the full section 12 surface")
         for request in requests {
             XCTAssertEqual(
                 request.headers["Authorization"], "Bearer test-token",

@@ -200,6 +200,10 @@ struct RealRoomView: View {
     /// (only bar content goes hollow), so the room's content arrives at `ready`.
     @State private var pushSettled = false
     @State private var shareURL: URL?
+    /// The minted completion share card, presented on success (Wave 14.5). Set by the
+    /// injected prepare closure once the mint + PNG fetch land; `.sheet(item:)` clears it
+    /// on dismissal.
+    @State private var shareCardPayload: ShareCardPayload?
     /// One avatar cache shared by the room's live pucks and the island snapshot, so the
     /// island writes the very images the room already resolved (no second fetch).
     @State private var avatarCache = AvatarImageCache()
@@ -345,6 +349,21 @@ struct RealRoomView: View {
                     // owns the when (completed) and the retries (owner ruling
                     // 2026-07-13).
                     fetchAnalysis: { await room.fetchAnalysis() },
+                    // The completion share card (Wave 14.5): the composition root owns
+                    // the REST mint, the public PNG fetch, the UIImage, and the activity
+                    // sheet (AD-2), so the whole act rides here. On success it stages the
+                    // payload the sheet presents and reports true; any failure reports
+                    // false, which the panel's button shows as its quiet retry. The live
+                    // room passes this; the offline demo passes none (no server to mint),
+                    // so its analysis header carries no button.
+                    prepareShareCard: { ground in
+                        guard let card = await room.mintShareCard(ground: ground) else {
+                            return false
+                        }
+                        shareCardPayload = ShareCardPayload(
+                            image: card.image, url: card.url, subject: card.title)
+                        return true
+                    },
                     // The Wave 7.5 placement pick, same flag as the demo room.
                     reactionFanPlacement: ContentView.reactionFanPlacement,
                     // The personal five (D25): the shared store when the arrival
@@ -362,6 +381,7 @@ struct RealRoomView: View {
                     registration: room.liveActivityRegistration,
                     avatarCache: avatarCache)
                 .shareInviteSheet(url: $shareURL)
+                .shareCardSheet(payload: $shareCardPayload)
             }
         }
         .task {

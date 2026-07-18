@@ -664,6 +664,18 @@ public struct GameView: Sendable, Equatable, Codable {
     public let inviteCode: String
     /// `ClientPuzzle`: solution-stripped by type (INV-6).
     public let puzzle: ClientPuzzle
+    /// The puzzle's display title (§12, §14), read from the `puzzles` row exactly as
+    /// the list endpoints read it, never from the snapshot: display content for
+    /// post-game surfaces such as the share card, not a solution (INV-6 untouched).
+    /// Null when the document carried none. Additive per §14: decoded with
+    /// `decodeIfPresent` so an older server that omits the key reads as nil, exactly
+    /// as an explicit JSON null does. It sits beside `puzzle`, which stays exactly
+    /// `ClientPuzzle`.
+    public let puzzleTitle: String?
+    /// The puzzle's display author (§12, §14), the twin of `puzzleTitle`: same source,
+    /// same nullability, same additive tolerance. Display metadata, never a solution
+    /// (INV-6 untouched).
+    public let puzzleAuthor: String?
     public let members: [Member]
     public let session: SessionEndpoint
 
@@ -674,6 +686,8 @@ public struct GameView: Sendable, Equatable, Codable {
         name: String?,
         inviteCode: String,
         puzzle: ClientPuzzle,
+        puzzleTitle: String? = nil,
+        puzzleAuthor: String? = nil,
         members: [Member],
         session: SessionEndpoint
     ) {
@@ -683,6 +697,8 @@ public struct GameView: Sendable, Equatable, Codable {
         self.name = name
         self.inviteCode = inviteCode
         self.puzzle = puzzle
+        self.puzzleTitle = puzzleTitle
+        self.puzzleAuthor = puzzleAuthor
         self.members = members
         self.session = session
     }
@@ -694,6 +710,8 @@ public struct GameView: Sendable, Equatable, Codable {
         case name
         case inviteCode
         case puzzle
+        case puzzleTitle
+        case puzzleAuthor
         case members
         case session
     }
@@ -706,6 +724,10 @@ public struct GameView: Sendable, Equatable, Codable {
         name = try container.decode(String?.self, forKey: .name)
         inviteCode = try container.decode(String.self, forKey: .inviteCode)
         puzzle = try container.decode(ClientPuzzle.self, forKey: .puzzle)
+        // Additive and optional (§14): an older server omits these, which reads as nil,
+        // exactly as the current server's explicit JSON null does.
+        puzzleTitle = try container.decodeIfPresent(String.self, forKey: .puzzleTitle)
+        puzzleAuthor = try container.decodeIfPresent(String.self, forKey: .puzzleAuthor)
         members = try container.decode([Member].self, forKey: .members)
         session = try container.decode(SessionEndpoint.self, forKey: .session)
     }
@@ -718,8 +740,31 @@ public struct GameView: Sendable, Equatable, Codable {
         try container.encode(name, forKey: .name)
         try container.encode(inviteCode, forKey: .inviteCode)
         try container.encode(puzzle, forKey: .puzzle)
+        // Explicit null when nil: the current server always writes the key
+        // (nullable-and-present), so the fixture's value survives the round trip.
+        try container.encode(puzzleTitle, forKey: .puzzleTitle)
+        try container.encode(puzzleAuthor, forKey: .puzzleAuthor)
         try container.encode(members, forKey: .members)
         try container.encode(session, forKey: .session)
+    }
+}
+
+// MARK: - Share links (PROTOCOL.md §12: POST /games/{id}/share)
+
+/// The `POST /games/{id}/share` response (§12; design/post-game/SHARE.md): the game's
+/// public completion share link. `shareUrl` is `{share-origin}/s/{token}` and `token`
+/// is the unguessable 256-bit URL-safe secret that fronts it (the sole capability). Both
+/// are always present; neither is a solution (the token carries no board content, INV-6).
+/// Minted only by a member of a completed game, and idempotent: one active token per
+/// game, so a re-POST returns the same link. Twin of the `{shareUrl, token}` body
+/// (apps/api/src/games/routes.ts). Default synthesized Codable: two required strings.
+public struct ShareLinkResponse: Sendable, Equatable, Codable {
+    public let shareUrl: String
+    public let token: String
+
+    public init(shareUrl: String, token: String) {
+        self.shareUrl = shareUrl
+        self.token = token
     }
 }
 

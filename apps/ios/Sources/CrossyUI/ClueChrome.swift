@@ -47,6 +47,12 @@ struct ClueChrome: View {
     /// unavailable (the bloom still playing): the rows render as the plain
     /// labels they always were then.
     let onIsolateSolver: ((String) -> Void)?
+    /// The share card affordance's state machine (Wave 14.5), threaded into the
+    /// Analysis header, or nil for a composition with no server card to mint.
+    let shareCard: ShareCardModel?
+    /// Report the "Share card" tap (AD-2: the app target owns the mint, PNG fetch, and
+    /// activity sheet). Nil hides the affordance, so it and `shareCard` travel together.
+    let onShareCard: (() -> Void)?
     /// Transient panels yield to intent (DESIGN.md §4): any touch on the clue
     /// chrome is intent, so the room dismisses an open roster or stats card
     /// through this while the touch still lands here. Fired by the surface's
@@ -324,7 +330,9 @@ struct ClueChrome: View {
                     selfUserId: selfUserId,
                     ground: ground,
                     isolatedSolverId: isolatedSolverId,
-                    onIsolateSolver: onIsolateSolver)
+                    onIsolateSolver: onIsolateSolver,
+                    shareCard: shareCard,
+                    onShareCard: onShareCard)
             } else {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     section(title: "Across", rows: acrossRows)
