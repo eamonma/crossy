@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # @crossy/session
@@ -17,6 +18,10 @@ Handshake, mailbox, write-behind flush, reconnect resync, and SIGTERM drain land
 - `GET /` (and any other path): a plain `ok` health probe.
 - `POST /internal/games/{gameId}/membership-changed`: the internal membership signal
   (DESIGN.md section 6). See below.
+- `POST /internal/games/{gameId}/live-activity-registered`: the Live Activity welcome
+  notice (PROTOCOL.md section 12a). The API POSTs here after a token registers, so the
+  emitter hands the fresh island the current authoritative frame at once. Same static
+  bearer and private-port routing as membership-changed.
 
 ## The membership-changed internal endpoint (DESIGN.md section 6, INV-8)
 
@@ -54,18 +59,31 @@ The bearer is defense-in-depth on an already-private channel (DESIGN.md section 
 access, because the actor re-reads authoritative state from Postgres and treats the body only
 as a hint.
 
+## Live Activity push (`src/push/`)
+
+The session pushes iOS Live Activity updates over APNs as a game progresses (PROTOCOL.md
+"Live Activity push"). The emitter (`emitter.ts`) turns actor events into frames, `roster.ts`
+tracks the registered per-activity update tokens for a game, `policy.ts` decides when a frame
+is worth a push (rate and change gating), `tokens.ts` reads the tokens the API registered, and
+`apns.ts` is the APNs adapter over HTTP/2. It is built only when the APNs env is complete;
+otherwise the emitter is inert and the rest of the service runs unchanged, so dev and CI never
+touch APNs.
+
 ## Configuration
 
 Read only in `main.ts` (12-factor), passed to `createSessionServer`:
 
-| Variable                | Required | Purpose                                                                                          |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`          | yes      | Postgres connection (the `crossy_session` role in production).                                   |
-| `SUPABASE_ISSUER`       | yes      | Token issuer for the auth port (JWKS derived from it).                                           |
-| `INTERNAL_BEARER_TOKEN` | no       | Enables the membership-changed endpoint; unset disables it.                                      |
-| `PORT` / `HOST`         | no       | Listen address (defaults 8081 / 0.0.0.0).                                                        |
-| `POSTHOG_TOKEN`         | no       | Enables product analytics (posthog-node); unset selects a noop and the SDK is never constructed. |
-| `POSTHOG_HOST`          | no       | PostHog ingestion host; defaults to `https://us.i.posthog.com`.                                  |
+| Variable                                            | Required | Purpose                                                                                                |
+| --------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                                      | yes      | Postgres connection (the `crossy_session` role in production).                                         |
+| `SUPABASE_ISSUER`                                   | yes      | Token issuer for the auth port (JWKS derived from it).                                                 |
+| `INTERNAL_BEARER_TOKEN`                             | no       | Enables the internal endpoints (membership-changed, live-activity-registered); unset disables them.    |
+| `PORT` / `HOST`                                     | no       | Listen address (defaults 8081 / 0.0.0.0).                                                              |
+| `INTERNAL_PORT`                                     | no       | Separate private port for `/internal` (Railway deploy); unset serves `/internal` on the public `PORT`. |
+| `APNS_TEAM_ID` / `APNS_KEY_ID` / `APNS_PRIVATE_KEY` | no       | APNs credentials for the Live Activity push emitter; with any absent the emitter is inert.             |
+| `PASSIVATE_AFTER_MS`                                | no       | Override the idle-passivation window (DESIGN.md section 15); unset uses the server default.            |
+| `POSTHOG_TOKEN`                                     | no       | Enables product analytics (posthog-node); unset selects a noop and the SDK is never constructed.       |
+| `POSTHOG_HOST`                                      | no       | PostHog ingestion host; defaults to `https://us.i.posthog.com`.                                        |
 
 ## Testing
 

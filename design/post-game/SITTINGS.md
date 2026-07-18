@@ -1,5 +1,6 @@
 ---
 status: normative
+verified: 133db08
 ---
 
 # Sittings (active time over the event log)

@@ -42,11 +42,15 @@ classifies any that forgot.
 Repair direction follows status, never convenience:
 
 - **Normative doc vs code drift is a code bug.** File a GitHub issue labeled
-  `drift/normative`, one per confirmed drift, citing evidence on both sides
-  (`doc section` and `file:line`). NEVER edit a normative doc to match the code:
-  that launders a bug into the spec. The issue may propose a code fix or an
-  owner-ruled doc amendment; the owner decides which.
+  `drift/normative`, one per owning doc with the drifts itemized and
+  severity-tagged, citing evidence on both sides (`doc section` and `file:line`).
+  NEVER edit a normative doc to match the code: that launders a bug into the spec.
+  The issue may propose a code fix or an owner-ruled doc amendment; the owner
+  decides which.
 - **Descriptive doc vs code drift is a doc bug.** Fix the doc in a scoped PR.
+- **Broken cross-references are mechanical repairs**, even in normative docs: a
+  dead pointer cannot launder a bug, so retargeting or removing it rides a dream
+  PR. The direction rule protects behavior claims.
 
 ## Running a dream
 
@@ -56,10 +60,15 @@ is the doc's `verified` sha, or its last-touched commit when unverified.
 
 **Pass 1, accuracy.** For each non-archive doc whose subject code changed since its
 watermark: extract every checkable claim (ownership statements, constants, behavior,
-file paths, cross-references), verify each against code and vectors. Fan out one
-agent per doc; agents return claim verdicts, they do not edit. Confirmed clean means
-stamp `verified: <HEAD>`. Drifted descriptive claims become doc fixes. Drifted
-normative claims become issues.
+file paths, cross-references), verify each against code and vectors. Weight status
+lines and temporal phrasing ("later", "upcoming", "ahead of the engine", "this PR")
+highest: dream #1 found nearly all drift there, not in behavior claims. Fan out one
+agent per doc; agents return claim verdicts, they do not edit. Drifted descriptive
+claims become doc fixes. Drifted normative claims become issues.
+
+Watermarks stamp only fully-settled docs: clean as verified, or clean once the fix
+riding the same PR lands. A doc with an open `drift/normative` issue stays
+unstamped so the staleness nudge keeps pointing at it until the owner rules.
 
 **Pass 2, decision capture.** Walk PRs merged since the last dream. For each, ask:
 did this embody a design decision no doc records (a tradeoff chosen, a contract
@@ -79,6 +88,12 @@ rides the same PR as the watermark stamps.
 
 ## Output conventions
 
+- Cut, don't append (owner ruling 2026-07-17). Reconciliation prefers deleting
+  stale prose to layering corrections; a dream that only grows the docs has done
+  half its job. A superseded ruling shrinks to a one-line tombstone citing the PR;
+  git holds the history. Resolved open questions and shipped "later" sections are
+  deleted, not annotated. Net line count is a review signal: dream #1 ran +415 and
+  should have run negative.
 - Branches: `dream/<yyyy-mm-dd>-<area>`. Doc-fix PRs stay small, one area each,
   through the normal PR gate (main is golden).
 - Watermark stamps for a doc ride the same PR as that doc's fixes.

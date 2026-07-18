@@ -1,5 +1,6 @@
 ---
 status: descriptive
+verified: 133db08
 ---
 
 # The share surface
@@ -81,8 +82,10 @@ Web mirrors the hierarchy inside the existing SharePopover (its popover is the
 web's grammar; the melt is iOS's): invite-link copy row first, the bare-code
 row beside it, then the QR (uqr, ECC M, the party projector's exact register),
 then a feature-detected navigator.share button that is simply absent where the
-platform lacks it. The host's end-game row stays where it was, below its
-hairline.
+platform lacks it. **Superseded by room-actions-control R3
+(`docs/design/room-actions-control.md`):** the host's end-game row moved out of
+Share into the room-actions popover, and the Share popover now carries Party
+instead (`GameToolbar.tsx:274,398`).
 
 ## One QR across clients
 
@@ -106,14 +109,19 @@ The owner judged the candidates on device and ruled:
    is the best feel on the bar, the same verdict the players pill's roster
    menu earned. Copying the bare invite code moves onto the share surface (the
    menu's titled section carries the code; Copy link carries the URL).
-2. **The facts card adopts the metaball morph as its shipping default** on iOS
-   26+ (the system's materialize swap inside a GlassEffectContainer, the
-   `-gooMetaball` recipe: unique glassEffectIDs, spacing 40, Mail's timing).
-   Below 26 it falls back to the clean frame-interpolation walk. `-gooClean`
-   and `-gooOvershoot` stay reachable as launch-argument overrides for
-   reference and regression. The tap-open exception to the single-surface
-   grammar is ratified in DESIGN.md §4 (drag-scrubbed morphs keep frame
-   interpolation regardless, SP-i1 unchanged).
+2. **SUPERSEDED (PR #203, b02eec3).** This ruling no longer holds. The facts
+   card's metaball morph was retired: `PillInflation.swift` and
+   `RoomFactsCard.swift` were deleted, the facts UI is now the browser-melt
+   `RoomFactsSheet` (`meltProgress`), and no goo fixtures remain.
+   `apps/ios/DESIGN.md` is the current owner of the facts surface. The original ruling,
+   kept for history: **the facts card adopts the metaball morph as its shipping
+   default** on iOS 26+ (the system's materialize swap inside a
+   GlassEffectContainer, the `-gooMetaball` recipe: unique glassEffectIDs,
+   spacing 40, Mail's timing). Below 26 it falls back to the clean
+   frame-interpolation walk. `-gooClean` and `-gooOvershoot` stay reachable as
+   launch-argument overrides for reference and regression. The tap-open
+   exception to the single-surface grammar is ratified in DESIGN.md §4
+   (drag-scrubbed morphs keep frame interpolation regardless, SP-i1 unchanged).
 
 The metaball close-deflate gap that the first run flagged (an empty
 pill-shaped glass standing for ~0.25 s after the system's 0.18 s deflate
@@ -137,17 +145,19 @@ should confirm the close reads clean.
 - iOS share surface: `apps/ios/Sources/CrossyUI/ShareMenu.swift` (the Menu
   label, the rows, the QR tile and QR sheet), `RoomBar.swift` (the pill's
   placement outside the cluster container).
-- iOS facts-card morph: `PillInflation.swift` (the metaball surface, the
-  default character, the close-deflate fix), `RoomFactsCard.swift`,
-  `RoomChromeModel.swift` (the facts walk), `GlassMorph.swift`.
-- Fixture: `-demoRoom` for live taps on the share menu and the facts card;
-  `-gooClean` / `-gooOvershoot` override the facts card's default metaball
-  (share is a system Menu now, so it cannot be scripted open).
+- iOS facts surface: `RoomFactsSheet.swift` (the browser-melt facts sheet,
+  `meltProgress`) and `RoomChromeModel.swift` (the chrome model). The former
+  `PillInflation.swift` / `RoomFactsCard.swift` metaball morph was deleted
+  (PR #203); `apps/ios/DESIGN.md` is the current owner of the facts surface.
+- Fixture: `-demoRoom` for live taps on the share menu and the facts sheet
+  (share is a system Menu now, so it cannot be scripted open; no goo fixtures
+  remain).
 - Tests: `ShareMenuTests` (row set, words, QR sheet arithmetic, tile
   geometry), `InviteQRTests` (uqr parity), `ShareInviteTests` (buildShareUrl
-  parity), `PillInflationTests` (the overshoot curve).
-- Web: `apps/web/src/ui/GameToolbar.tsx` (SharePopover: link, code, QR,
-  native share, end game) — unchanged by these rulings.
+  parity).
+- Web: `apps/web/src/ui/GameToolbar.tsx`. The SharePopover carries link, code,
+  QR, native share, and Party; end game moved to the room-actions popover
+  (`GameToolbar.tsx:274,398`), per room-actions-control R3.
 
 DESIGN.md §4 carries the ratified amendments (share = native menu, facts card
 = metaball on 26+); this note is history and pointers, DESIGN.md stays

@@ -39,6 +39,36 @@ reproducibility is a launch gate (DESIGN.md §9).
 - Use high leverage language
 - Be concise
 
+## Working model
+
+Claude orchestrates; substantive implementation goes to worktree-isolated subagents.
+The orchestrator reviews diffs, pushes agent branches, opens PRs, and arms squash
+auto-merge. Subagents never push. Small doc edits may be done inline. Nothing is
+racing a deadline.
+
+Owner-held, never do directly: secret and DNS mutations, Supabase/Railway dashboard
+changes, production deploys and destructive migrations. Ask, with the exact command
+ready to paste.
+
+- The owner's commit signing needs a hardware key: agent commits and rebases use
+  `-c commit.gpgsign=false`. Force-pushes are owner-run; hand over the command.
+- Any brief that starts services mandates teardown plus an orphan sweep afterward.
+- When a diff changes a contract, sweep callers outside its fence (`e2e/`,
+  `scripts/`) before merging.
+
+## Design taste
+
+High-end and intentional: Verner Panton, the Eameses, space-age; claude.ai and
+apple.com product pages as quality bars. Lead with a point of view and named
+directions the owner can react to. Work that reads as AI slop gets killed, UI or
+prose. The web UI is not a visual spec for other platforms.
+
+## Recurring gotchas
+
+- macOS is case-insensitive: sibling module basenames must differ in more than case
+  (`PartyView.tsx` vs `partyView.ts` class of bug; three occurrences so far).
+- Read gradle exit codes from gradle's own `$?`, never a piped tail's.
+
 ## Hard rules
 
 - **Engine purity (INV-9)**: `packages/engine` imports nothing — no other workspace

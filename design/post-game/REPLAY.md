@@ -1,5 +1,6 @@
 ---
 status: normative
+verified: 133db08
 ---
 
 # Post-game replay (the solve, in time order)

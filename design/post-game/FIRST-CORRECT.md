@@ -1,11 +1,12 @@
 ---
 status: normative
+verified: 133db08
 ---
 
 # First-correct attribution
 
 Status: plan of record. Date: 2026-07-12.
-Companion: `SYNTHESIS.md` (the wider post-game surface) references this projection; this
+Companion: `ANALYSIS.md` (the wider post-game surface) references this projection; this
 document owns the first-correct attribution model, its home, its wire, and its build order.
 
 ## Purpose
