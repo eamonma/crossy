@@ -565,13 +565,15 @@ function handleConnection(
     }
     const message = decoded.value;
     switch (message.type) {
-      // The room check (checkPuzzle) rides the same mutation path as the cell commands
-      // (PROTOCOL.md §5, §10; D27): the actor's mailbox serializes it, its role gate
-      // rejects spectators (ROLE_FORBIDDEN), and the engine's check gate maps a bad
-      // moment to GAME_NOT_ONGOING or GRID_NOT_FULL.
+      // The vote proposal (checkPuzzle) and ballot (castCheckVote) ride the same mutation path as
+      // the cell commands (PROTOCOL.md §5, §10; D32): the actor's mailbox serializes them, its role
+      // gate rejects spectators (ROLE_FORBIDDEN), and the engine's vote driver maps a bad moment to
+      // the §11 codes (GAME_NOT_ONGOING, GRID_NOT_FULL, VOTE_PENDING, NO_VOTE_OPEN, NOT_ELECTOR,
+      // ALREADY_VOTED), each a non-fatal error carrying the offending commandId.
       case "placeLetter":
       case "clearCell":
       case "checkPuzzle":
+      case "castCheckVote":
         if (actor !== null && connection !== null) {
           void actor.submit(connection, message);
         }

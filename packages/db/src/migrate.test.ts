@@ -35,7 +35,12 @@ const API_TABLES = [
   "memberships",
   "game_denylist",
 ] as const;
-const SESSION_TABLES = ["game_state", "cell_events", "check_events"] as const;
+const SESSION_TABLES = [
+  "game_state",
+  "cell_events",
+  "check_events",
+  "check_vote_events",
+] as const;
 const ALL_TABLES = [...API_TABLES, ...SESSION_TABLES];
 
 let container: StartedPostgreSqlContainer;
@@ -145,6 +150,22 @@ describe("data model shape (DESIGN.md §9)", () => {
     expect((await columnsOf("check_events")).sort()).toEqual(
       ["at", "game_id", "seq", "user_id"].sort(),
     );
+    // §9 names check_vote_events(game_id, seq, kind, user_id, approve, vote_seq, electorate,
+    // outcome, reason, at) exactly (D32): one row per vote lifecycle event.
+    expect((await columnsOf("check_vote_events")).sort()).toEqual(
+      [
+        "approve",
+        "at",
+        "electorate",
+        "game_id",
+        "kind",
+        "outcome",
+        "reason",
+        "seq",
+        "user_id",
+        "vote_seq",
+      ].sort(),
+    );
     // §9 game_state carries the board, last_seq, terminal timestamps, stats, and the
     // bounded command-id ring.
     expect(await columnsOf("game_state")).toEqual(
@@ -200,6 +221,8 @@ describe("data model shape (DESIGN.md §9)", () => {
     expect(await pkCols("cell_events")).toEqual(["game_id", "seq"]);
     // §9: check_events UNIQUE(game_id, seq) — the composite primary key subsumes it (D27).
     expect(await pkCols("check_events")).toEqual(["game_id", "seq"]);
+    // §9: check_vote_events UNIQUE(game_id, seq) — the composite primary key subsumes it (D32).
+    expect(await pkCols("check_vote_events")).toEqual(["game_id", "seq"]);
     expect(await pkCols("memberships")).toEqual(["game_id", "user_id"]);
     // §9: games.invite_code is a unique lookup key.
     const { rows: uniq } = await pool.query<{ n: string }>(
@@ -229,11 +252,15 @@ describe("data model shape (DESIGN.md §9)", () => {
     // carries the same rule (D27): the server-only check attribution outlives the account.
     expect(await fkDeleteType("cell_events", "user_id")).toBe("a");
     expect(await fkDeleteType("check_events", "user_id")).toBe("a");
+    // check_vote_events carries the same tombstone rule (D32): a vote's server-only attribution
+    // (proposer, voter) outlives the account, so replay stays deterministic (INV-1).
+    expect(await fkDeleteType("check_vote_events", "user_id")).toBe("a");
     expect(await fkDeleteType("memberships", "user_id")).toBe("a");
     expect(await fkDeleteType("games", "created_by")).toBe("a");
     // game_id belongs to the game aggregate: cascade is the composition semantics.
     expect(await fkDeleteType("cell_events", "game_id")).toBe("c");
     expect(await fkDeleteType("check_events", "game_id")).toBe("c");
+    expect(await fkDeleteType("check_vote_events", "game_id")).toBe("c");
     // A puzzle referenced by a game cannot be hard-deleted; the snapshot decouples it.
     expect(await fkDeleteType("games", "puzzle_id")).toBe("r");
   });
@@ -338,6 +365,51 @@ describe("single writer per table via least-privilege roles (INV-7; DESIGN.md §
           "insert into check_events (game_id, seq, user_id) values ($1, 51, $2)",
           [seed.gameId, seed.userId],
         ),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+  });
+
+  it("gives check_vote_events the cell_events posture: session appends, nobody rewrites (INV-7, §9, D32)", async () => {
+    // Positive: the session role appends the vote log (the write-behind flush path). An opened row.
+    await asRole("crossy_session", (c) =>
+      c.query(
+        `insert into check_vote_events
+           (game_id, seq, kind, user_id, vote_seq, electorate, at)
+         values ($1, 60, 'opened', $2, 60, $3::jsonb, now())`,
+        [seed.gameId, seed.userId, JSON.stringify([seed.userId])],
+      ),
+    );
+    // A closed row carries a null user_id and an outcome/reason (D32): the nullable columns round-trip.
+    await asRole("crossy_session", (c) =>
+      c.query(
+        `insert into check_vote_events
+           (game_id, seq, kind, user_id, vote_seq, outcome, reason, at)
+         values ($1, 61, 'closed', null, 60, 'failed', 'EXPIRED', now())`,
+        [seed.gameId],
+      ),
+    );
+    // Append-only at the grant layer: UPDATE and DELETE are denied even to the writer.
+    await expect(
+      asRole("crossy_session", (c) =>
+        c.query("update check_vote_events set outcome = 'passed'"),
+      ),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      asRole("crossy_session", (c) => c.query("delete from check_vote_events")),
+    ).rejects.toThrow(/permission denied/i);
+    // The kind CHECK pins the three-value domain (D32): an unknown kind is rejected.
+    await expect(
+      asRole("crossy_session", (c) =>
+        c.query(
+          "insert into check_vote_events (game_id, seq, kind, vote_seq) values ($1, 62, 'abstained', 60)",
+          [seed.gameId],
+        ),
+      ),
+    ).rejects.toThrow(/check_vote_events_kind/);
+    // The API holds no grant at all: a future scoring read would be its own SELECT-only expand.
+    await expect(
+      asRole("crossy_api", (c) =>
+        c.query("select count(*) from check_vote_events"),
       ),
     ).rejects.toThrow(/permission denied/i);
   });

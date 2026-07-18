@@ -22,6 +22,7 @@ const BOARD_FIXTURE = {
   ],
   checkedWrongCells: [3, 17],
   checkCount: 1,
+  checkVote: null,
   participants: [
     {
       userId: "u1",
@@ -105,6 +106,33 @@ describe("board payload (PROTOCOL.md §4)", () => {
     if (result.ok) expect(result.value.stats).toEqual(frozen);
   });
 
+  it("decodes a board carrying an open check vote (PROTOCOL.md §4, §10; D32)", () => {
+    const withVote = {
+      ...BOARD_FIXTURE,
+      checkVote: {
+        openedSeq: 740,
+        by: "u1",
+        electorate: ["u1", "u2", "u3"],
+        approvals: ["u1"],
+        rejections: [],
+        needed: 2,
+        expiresAt: "2026-07-07T19:32:10Z",
+      },
+    };
+    const result = decodeBoard(withVote);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(withVote);
+  });
+
+  it("tolerates a board with no checkVote key, so a pre-vote snapshot still decodes (additive, §14)", () => {
+    const { checkVote, ...noVote } = BOARD_FIXTURE;
+    void checkVote;
+    const result = decodeBoard(noVote);
+    assertOk(result);
+    // No checkVote key is invented when the snapshot omits it.
+    if (result.ok) expect(result.value).toEqual(noVote);
+  });
+
   it("rejects a board missing a required field as malformed", () => {
     const { seq, ...noSeq } = BOARD_FIXTURE;
     void seq;
@@ -175,6 +203,15 @@ describe("client to server messages (PROTOCOL.md §5)", () => {
       frame: { type: "react", emoji: "🎉", cell: 17 },
     },
     { name: "checkPuzzle", frame: { type: "checkPuzzle", commandId: "c3" } },
+    {
+      name: "castCheckVote",
+      frame: {
+        type: "castCheckVote",
+        commandId: "c4",
+        voteSeq: 740,
+        approve: true,
+      },
+    },
     { name: "heartbeat", frame: { type: "heartbeat" } },
     { name: "requestSync", frame: { type: "requestSync" } },
   ];
@@ -287,7 +324,22 @@ describe("sequenced events (PROTOCOL.md §6)", () => {
     if (result.ok) expect(result.value).toEqual(completed);
   });
 
-  it("decodes the §6 puzzleChecked example: sequenced, neutral (no by), wrongCells indices only (§10, INV-6)", () => {
+  it("decodes the §6 puzzleChecked example: sequenced, attributed by the proposer, wrongCells indices only (§10, D32, INV-6)", () => {
+    const checked = {
+      type: "puzzleChecked",
+      seq: 743,
+      wrongCells: [3, 17, 44],
+      checkCount: 2,
+      by: "u1",
+      commandId: "c-check",
+      at: "2026-07-07T19:31:44Z",
+    };
+    const result = decodeServerMessage(checked);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(checked);
+  });
+
+  it("tolerates a puzzleChecked without by, so a pre-vote frame still decodes (additive, §14)", () => {
     const checked = {
       type: "puzzleChecked",
       seq: 742,
@@ -298,7 +350,92 @@ describe("sequenced events (PROTOCOL.md §6)", () => {
     };
     const result = decodeServerMessage(checked);
     assertOk(result);
+    // No `by` key is invented when the frame omits it.
     if (result.ok) expect(result.value).toEqual(checked);
+  });
+
+  it("decodes the §6 checkVoteOpened example: proposer, frozen electorate, needed, expiresAt (§10, D32)", () => {
+    const opened = {
+      type: "checkVoteOpened",
+      seq: 740,
+      by: "u1",
+      electorate: ["u1", "u2", "u3"],
+      needed: 2,
+      expiresAt: "2026-07-07T19:32:10Z",
+      commandId: "c-check",
+      at: "2026-07-07T19:31:40Z",
+    };
+    const result = decodeServerMessage(opened);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(opened);
+  });
+
+  it("decodes the §6 checkVoteCast example: voteSeq identity, voter, ballot (§10, D32)", () => {
+    const cast = {
+      type: "checkVoteCast",
+      seq: 741,
+      voteSeq: 740,
+      by: "u2",
+      approve: true,
+      commandId: "c-ballot",
+      at: "2026-07-07T19:31:44Z",
+    };
+    const result = decodeServerMessage(cast);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(cast);
+  });
+
+  it("decodes the §6 checkVoteClosed passed example: no reason on a pass (§10, D32)", () => {
+    const closed = {
+      type: "checkVoteClosed",
+      seq: 742,
+      voteSeq: 740,
+      outcome: "passed",
+      at: "2026-07-07T19:31:44Z",
+    };
+    const result = decodeServerMessage(closed);
+    assertOk(result);
+    // No `reason` key is invented on a passing close.
+    if (result.ok) expect(result.value).toEqual(closed);
+  });
+
+  it("decodes a checkVoteClosed failed EXPIRED, carrying the reason (§10, D32)", () => {
+    const closed = {
+      type: "checkVoteClosed",
+      seq: 812,
+      voteSeq: 800,
+      outcome: "failed",
+      reason: "EXPIRED",
+      at: "2026-07-07T19:32:10Z",
+    };
+    const result = decodeServerMessage(closed);
+    assertOk(result);
+    if (result.ok) expect(result.value).toEqual(closed);
+  });
+
+  it("rejects a checkVoteClosed with an unknown outcome as malformed (§10, D32)", () => {
+    const result = decodeServerMessage({
+      type: "checkVoteClosed",
+      seq: 742,
+      voteSeq: 740,
+      outcome: "vetoed",
+      at: "2026-07-07T19:31:44Z",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
+  });
+
+  it("rejects a checkVoteClosed with an unknown reason as malformed (§10, D32)", () => {
+    const result = decodeServerMessage({
+      type: "checkVoteClosed",
+      seq: 742,
+      voteSeq: 740,
+      outcome: "cancelled",
+      reason: "BORED",
+      at: "2026-07-07T19:31:44Z",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("malformed");
   });
 
   it("rejects a puzzleChecked with a negative wrongCells index as malformed (§3 cell indexing)", () => {

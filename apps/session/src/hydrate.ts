@@ -5,9 +5,10 @@
 // engine's own domain types (BoardState, a solution map), and the solution stays
 // server-side for the comparator, never on any outbound frame (INV-6).
 
-import type { BoardState, Cell, Grid } from "@crossy/engine";
+import type { BoardState, Cell, CheckVote, Grid } from "@crossy/engine";
 import type { Stats } from "@crossy/protocol";
 import { serverPuzzleToSolution } from "@crossy/protocol";
+import type { PersistedCheckVote } from "./writer";
 
 /** The engine's comparator input: cell index to its full solution string. */
 export type EngineSolution = ReadonlyMap<number, string>;
@@ -40,6 +41,8 @@ export type StoredBoard =
       readonly cells: readonly RawCell[];
       readonly checkedWrongCells?: readonly number[];
       readonly checkCount?: number;
+      /** The open vote (D32), or null/absent when none. Absent on a pre-vote row (expand/contract). */
+      readonly checkVote?: PersistedCheckVote | null;
     };
 
 /** The `game_state` row (DESIGN.md §9). Absent for a game no one has played yet. */
@@ -61,6 +64,13 @@ export interface HydratedGame {
   readonly completedAt: string | null;
   readonly abandonedAt: string | null;
   readonly recentCommandIds: readonly string[];
+  /**
+   * The session-owned absolute timeout of the hydrated open vote, or null when no vote is open
+   * (PROTOCOL.md §10; D32). The engine `boardState.checkVote` models no clock (INV-9), so the actor
+   * carries `expiresAt` beside it: on hydrate it re-arms the timer for the remaining time, or closes
+   * the vote EXPIRED when the deadline already passed (the crash-rehydrate close).
+   */
+  readonly checkVoteExpiresAt: string | null;
   /**
    * The room's display name (`games.name`, nullable). Carried so the completion Live Activity alert
    * body can name the room without a second read on the hot path (PROTOCOL.md 12a). Display content
@@ -119,6 +129,20 @@ export function hydrateGame(
   const storedCells = legacy ? stored : stored.cells;
   const storedChecked = legacy ? [] : (stored.checkedWrongCells ?? []);
   const storedCheckCount = legacy ? 0 : (stored.checkCount ?? 0);
+  // The open vote (D32), null on a legacy or pre-vote row. Its `expiresAt` is session-owned, so it
+  // rides HydratedGame separately; the engine `CheckVote` keeps only the pure fields (INV-9).
+  const storedVote = legacy ? null : (stored.checkVote ?? null);
+  const checkVote: CheckVote | null =
+    storedVote === null
+      ? null
+      : {
+          openedSeq: storedVote.openedSeq,
+          by: storedVote.by,
+          commandId: storedVote.commandId,
+          electorate: [...storedVote.electorate],
+          approvals: [...storedVote.approvals],
+          rejections: [...storedVote.rejections],
+        };
 
   const cells = new Map<number, Cell>();
   let filledCount = 0;
@@ -139,6 +163,8 @@ export function hydrateGame(
     // they describe (PROTOCOL.md §4, §10; D27).
     checkedWrong: new Set(storedChecked),
     checkCount: storedCheckCount,
+    // The open vote survives passivation too (D32); null when none is open.
+    checkVote,
   };
 
   // The single writer serialized this from a Stats at the terminal flush (INV-7), so the
@@ -160,6 +186,7 @@ export function hydrateGame(
     completedAt: state?.completedAt ?? null,
     abandonedAt: state?.abandonedAt ?? null,
     recentCommandIds: state?.recentCommandIds ?? [],
+    checkVoteExpiresAt: storedVote?.expiresAt ?? null,
     roomName,
     stats,
   };

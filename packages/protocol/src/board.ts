@@ -45,6 +45,28 @@ export interface Cursor {
   readonly direction: Direction;
 }
 
+/**
+ * The open check vote carried on a snapshot (PROTOCOL.md §4, §10; D32), `null` on the board when
+ * none is open. It heals a reconnecting client's mid-vote view with no delta replay. `openedSeq`
+ * is the `seq` of the vote's `checkVoteOpened` (its identity, the `voteSeq` a ballot names); `by`
+ * is the proposer; `electorate` is the frozen ascending userId array of eligible voters (host and
+ * solver members connected when the proposal was accepted, INV-1); `approvals` and `rejections`
+ * are the ascending userIds who have voted each way, `approvals` opening as `[by]` (the proposal
+ * is the proposer's approval); `needed` is `floor(electorate.length / 2) + 1`, the strict majority,
+ * carried so no client reimplements the arithmetic; `expiresAt` is the absolute ISO 8601 timeout,
+ * stamped by the session adapter from the server clock like `at`. Cell values and answers are
+ * never present (INV-6).
+ */
+export interface CheckVoteView {
+  readonly openedSeq: number;
+  readonly by: string;
+  readonly electorate: readonly string[];
+  readonly approvals: readonly string[];
+  readonly rejections: readonly string[];
+  readonly needed: number;
+  readonly expiresAt: string;
+}
+
 /** Completion stats, non-null only when the game is completed (PROTOCOL.md §4). */
 export interface Stats {
   readonly solveTimeSeconds: number;
@@ -82,6 +104,13 @@ export interface Board {
   readonly checkedWrongCells: readonly number[];
   /** The game's total accepted checks, `0` before the first; permanent, never reset (§10). */
   readonly checkCount: number;
+  /**
+   * The open check vote (PROTOCOL.md §4, §10; D32), `null` when none is open. Optional on the
+   * type so a pre-vote producer (a demo shim, an older client fake) still typechecks; the
+   * session always emits it, `null` or the object, so a reconnecting client heals a mid-vote
+   * from the snapshot alone. A decoder omits the key when absent (additive, §14).
+   */
+  readonly checkVote?: CheckVoteView | null;
   readonly participants: readonly Participant[];
   readonly cursors: readonly Cursor[];
   readonly recentCommandIds: readonly string[];

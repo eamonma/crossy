@@ -392,6 +392,62 @@ export const checkEvents = pgTable(
 );
 
 /**
+ * `check_vote_events` (writer: session). The append-only check-vote log (DESIGN.md §9, D32): one
+ * row per vote lifecycle event, exactly the shape §9 names,
+ * `(game_id, seq, kind, user_id, approve, vote_seq, electorate, outcome, reason, at, UNIQUE(game_id, seq))`.
+ * The same append-only twin of `cell_events` one level up from `check_events`: each vote event
+ * (`checkVoteOpened`, `checkVoteCast`, `checkVoteClosed`) consumes a `seq` but sets no cell, so it
+ * lands here rather than widening `cell_events`; together the logs plus the two terminal facts
+ * account for every consumed `seq` (INV-1 replay). `kind` is `opened`, `cast`, or `closed`;
+ * `user_id` is the proposer on an `opened` row, the voter on a `cast` row, and NULL on a `closed`
+ * row; `approve` is the ballot on a `cast` row; `vote_seq` is the opening event's `seq`, the vote's
+ * identity, so every row of one vote joins on it; `electorate` is the frozen ascending userId array
+ * persisted on the `opened` row (jsonb); `outcome` and `reason` are set on the `closed` row.
+ *
+ * Like `cell_events` and `check_events`: the composite primary key `(game_id, seq)` subsumes the
+ * UNIQUE, `user_id` is ON DELETE NO ACTION (tombstoned, never cascaded, §8), `game_id` cascades
+ * with the game aggregate, the session role holds INSERT + SELECT only (append-only at the grant
+ * layer, see the migration), and a vote never makes a voter a `participantCount` participant.
+ */
+export const checkVoteEvents = pgTable(
+  "check_vote_events",
+  {
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.gameId, { onDelete: "cascade" }),
+    // Per-game sequence, assigned only by the actor, shared with cell_events (INV-2).
+    seq: bigint("seq", { mode: "number" }).notNull(),
+    // The lifecycle stage this row records; the CHECK pins the three-value domain (D32).
+    kind: text("kind").notNull(),
+    // The acting member: proposer on `opened`, voter on `cast`, NULL on `closed`. Server-side only,
+    // tombstoned, never cascaded (§8). Nullable so a `closed` row carries no user.
+    userId: uuid("user_id").references(() => users.userId, {
+      onDelete: "no action",
+    }),
+    // The ballot on a `cast` row; NULL otherwise (D32).
+    approve: boolean("approve"),
+    // The opening event's seq, the vote's identity every row of one vote joins on (D32).
+    voteSeq: bigint("vote_seq", { mode: "number" }).notNull(),
+    // The frozen ascending electorate on the `opened` row (jsonb string array); NULL otherwise.
+    electorate: jsonb("electorate").$type<string[]>(),
+    // The resolution on the `closed` row; NULL otherwise (passed/failed/cancelled, D32).
+    outcome: text("outcome"),
+    // The close reason on a non-passing `closed` row; NULL otherwise (D32).
+    reason: text("reason"),
+    // Server-timestamped fact (§2); the actor supplies it as data (INV-9).
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.gameId, t.seq] }),
+    check("check_vote_events_seq_positive", sql`${t.seq} >= 1`),
+    check(
+      "check_vote_events_kind",
+      sql`${t.kind} IN ('opened', 'cast', 'closed')`,
+    ),
+  ],
+);
+
+/**
  * `live_activity_tokens` (writer: API). The ActivityKit per-activity update tokens the emitter
  * pushes ContentState to (PROTOCOL.md "Live Activity push"). API-owned: the iOS client registers
  * and unregisters tokens through bearer-authed REST, so the single writer is `crossy_api` (INV-7).
