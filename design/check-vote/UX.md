@@ -11,6 +11,12 @@ produced owner rulings that tighten U1, U4, and U8 below. Amendments are folded 
 the rulings in place; the fix waves are 15.7 (web), 15.8 (iOS reference), 15.9
 (Android copies iOS after the owner tunes 15.8 on a physical iPhone).
 
+Amended again 2026-07-18 (device tuning): the owner tuned 15.8 on a physical iPhone
+and reversed course. The luminous ring is retired on every platform (U4 rewritten);
+the strip-first Bench is scrapped wholesale; iOS rebuilds as a native blocking
+voting card (U2 and U8 rewritten; wave 15.10, a fresh design), and Android copies
+the tuned card. Web keeps its 15.7 Proscenium, minus the ring (wave 15.11).
+
 ## The frame
 
 A check vote is a social negotiation about spoilers, compressed into thirty seconds.
@@ -34,43 +40,36 @@ proposer falls back to "A teammate", a chip name to "Player"; a raw user id neve
 renders. "Checking…" uses the single ellipsis character on every platform. Long
 names truncate inside the name span only; the verb phrase survives.
 
-**U2 Non-blocking, always.** Play continues during a vote by contract, so the vote
-lives in transforming product furniture, never a modal, never a corner toast or
-snackbar. Focus is never stolen; a solver mid-word loses no keystroke when a vote
-opens.
+**U2 Non-blocking on web; blocking on the phones (rewritten at device tuning).**
+Play continues during a vote by wire contract, always: the room's other members keep
+solving no matter what any one screen shows. On web the vote stays in transforming
+product furniture (the Proscenium), never a modal, and focus is never stolen. On iOS
+and Android the owner traded the non-blocking law for decisiveness: the vote presents
+as a blocking card, and answering it is the way back to the board. The trade is
+deliberate — on a phone the question deserves the screen.
 
 **U3 Hold-to-propose.** In multiplayer the Check control is press-and-hold (~600 ms
 fill; early release cancels), replacing the confirm dialog: deliberateness without
 double ceremony. Solo keeps the plain confirm, and the solo auto-pass renders as
 today's instant check with zero vote chrome, not one frame of it.
 
-**U4 The luminous ring is the only clock.** A rounded-rect halo just outside the grid,
-in the warm gold accent (the solo-gold ramp hue; never an identity roster color),
-draining continuously against `expiresAt`. No digits, no countdown text anywhere.
-It ignites from a pulse that originates at the proposer's cursor position (attribution
-made spatial), flashes and dissolves inward on a pass, fades quietly otherwise.
-Reduced motion: stepped opacity, no sweep, no pulse.
-
-Amendment, the Meridian register (audit ruling): the ring is a true parallel offset
-of the grid's real frame (camera-projected on native; the grid, never a screen or
-container), its corner radius equal to its offset gap so the curve stays optically
-parallel. The drain seam sits at top-center and drains clockwise, a clock anyone can
-read; the seam is built into the path, never faked with rotation transforms. The
-stroke is thin (~2px); luminosity rides a soft blur, not stroke weight. The last
-drained fraction is frozen at close: a pass flashes the arc that was actually
-standing, then dissolves; every other close fades quietly from that frozen arc. The
-ring never vanishes, refills, or snaps at the close boundary. Reduced motion steps
-opacity in quarters on every platform.
+**U4 No clock renders (rewritten at device tuning; the ring is retired).** The
+luminous ring — in both its original and Meridian registers — is retired on every
+platform: the owner judged it a bad look in the hand, and the simplification is the
+ruling. Nothing renders the timebox: no ring, no drain, no digits, no progress bar.
+The chips settling are the vote's only live signal, and the timebox is felt only at
+its end, as the lapse line. If real rooms find silent expiry abrupt, a quiet cue is
+a future owner call, not a door for the ring to return through.
 
 **U5 Faces, not numbers.** The room reads elector chips (the existing identity
 system): settled chips voted, dimmed chips have not. No tallies or counts render for
 the room. After a failed vote the proposer alone sees "{approvals} of {needed}".
 
 **U6 The reveal is choreographed.** On a pass: the venue resolves to "Checking...",
-one deliberate breath (~600 ms of stillness), the ring flashes and dissolves as the
-wrong-cell marks wash across the board in ascending cell order (whole wash under
-900 ms, existing check-mark style), and "{n} to fix" lands last. Reduced motion:
-marks apply instantly. On phones the pass carries a success haptic timed to the wash.
+one deliberate breath (~600 ms of stillness), then the wrong-cell marks wash across
+the board in ascending cell order (whole wash under 900 ms, existing check-mark
+style), and "{n} to fix" lands last. Reduced motion: marks apply instantly. On
+phones the pass carries a success haptic timed to the wash.
 
 **U7 Quiet recess, no re-litigation.** A failed, lapsed, or cancelled vote shows its
 one line for about 2.5 s and withdraws. No try-again affordance exists; a new proposal
@@ -86,19 +85,18 @@ requires a fresh deliberate hold.
   the surface's entire life and the swap is one-for-one; the board never moves a
   pixel on any vote transition.
 - **Web mobile, best effort**: a slim strip docked above the active-clue bar. Same
-  store, copy, and ring; no further ceremony owed. Compromises land here, never on
+  store and copy; no further ceremony owed. Compromises land here, never on
   desktop — but the ballot verb is never unreachable: past a few electors the chips
   collapse to a stack before a verb ever leaves the screen.
-- **iOS and Android, the Bench — strip-first (amendment)**: the vote opens as the
-  docked strip (proposal line and both verbs inline), which never covers the key
-  deck or any input surface and never leaks a touch through to it; a tap expands
-  the full Bench (avatar chips, wrapping past six, height following content), a
-  swipe returns it to the strip, and it resolves in whichever posture it stands.
-  Each platform's own material and motion language; the grid stays interactive;
-  predictive back on Android never dismisses it. A clue-browser or facts sheet
-  collision resolves in the vote's favor: the modal sheet yields, a pending vote is
-  never invisible. iOS (15.8) is the reference implementation; Android copies its
-  tuned look and feel, not the web's.
+- **iOS and Android, the Card (rewritten at device tuning)**: the vote presents as
+  a native centered card, blocking, in each platform's own material and idiom —
+  deliberately simple: the proposal line, the elector pucks settling as ballots
+  land, the two verbs. Casting a ballot is the card's exit; the resolution plays
+  in the card (the calm line, the proposer's tally) before it withdraws, and a
+  pass yields to the board for the wash. The strip-first Bench and every previous
+  iOS vote surface are scrapped. iOS (wave 15.10, a fresh design) is the
+  reference; Android copies the tuned card. A clue-browser or facts sheet
+  collision still resolves in the vote's favor; a pending vote is never invisible.
 
 **U9 Haptic grammar (native apps).** Open: one firm impact. Each ballot: a light
 tick. Pass: success, timed to the wash. Fail or lapse: two soft ticks.
@@ -117,11 +115,12 @@ reduced-motion signals honored everywhere motion is specified.
 
 ## Rejected
 
-A modal or center-stage lightbox (contradicts U2 and the contract's play-continues
-rule); a corner card or rail placement on desktop (sidelines the room's shared moment
-into notification territory); a clue-bar takeover on mobile (the bar is the steering
-wheel of solving; the vote may dock beside it, never take it); approve/reject language
-(U1); visible countdown digits (manufactured anxiety); a try-again CTA after a failure
-(would turn the no-cooldown rule into a spam affordance); rendering rejector identity
-in the resolution line (the chips already told anyone watching; the summary should not
-immortalize it).
+A modal or center-stage lightbox **on web** (contradicts U2's web law; on the phones
+the owner overruled this at device tuning — the Card is the venue); a corner card or
+rail placement on desktop (sidelines the room's shared moment into notification
+territory); a clue-bar takeover on mobile (the bar is the steering wheel of solving;
+the vote may dock beside it, never take it); approve/reject language (U1); visible
+countdown digits (manufactured anxiety); any rendered clock at all, the retired ring
+included (U4); a try-again CTA after a failure (would turn the no-cooldown rule into
+a spam affordance); rendering rejector identity in the resolution line (the chips
+already told anyone watching; the summary should not immortalize it).
