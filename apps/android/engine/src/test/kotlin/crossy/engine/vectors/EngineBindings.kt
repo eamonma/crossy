@@ -4,6 +4,7 @@ import crossy.engine.CheckPuzzle
 import crossy.engine.MutationCommand
 import crossy.engine.RejectionCode
 import crossy.engine.applyWithCompletion
+import crossy.engine.applyWithVote
 import crossy.engine.backspaceTarget
 import crossy.engine.getNextCell
 import crossy.engine.matches
@@ -30,15 +31,16 @@ import kotlinx.serialization.json.jsonObject
 object EngineBindings {
     /**
      * Families the port implements. Kept in sync with `run` and drained from the manifest.
-     * CHECK was bound (D27) until Wave 15.1 rewrote its contract to the attributed-majority
-     * vote flow (D32); the Kotlin port does not compute the vote state machine yet, so check
-     * is unbound and skipped in vectors.skip.json until Wave 15.6 rebinds it.
+     * CHECK rebinds here in Wave 15.6: the Kotlin port now computes the attributed-majority vote
+     * state machine (`applyWithVote`, D32), so the family executes and is drained from
+     * vectors.skip.json.
      */
     val bound: Set<VectorFamily> = setOf(
         VectorFamily.REDUCER,
         VectorFamily.NAVIGATION,
         VectorFamily.COMPARATOR,
         VectorFamily.COMPLETION,
+        VectorFamily.CHECK,
     )
 
     /** Runs one case against the engine, or throws NoEngineBindingError for a foreign family. */
@@ -168,10 +170,12 @@ private fun runCompletion(c: JsonObject) {
 }
 
 /**
- * The room check (PROTOCOL §10, D27): the completion driver's shape plus the reducer's rejection
- * convention. Apply each command in mailbox order through the two-phase driver, accumulating the
- * sequenced stream; a rejected command (the GRID_NOT_FULL / GAME_NOT_ONGOING gates) emits
- * nothing, consumes no seq (INV-2), and surfaces its code for `then.error`.
+ * The attributed check vote (PROTOCOL §10, D32): the vote driver's stream plus the reducer's
+ * rejection convention. Apply each command in mailbox order through `applyWithVote`, accumulating
+ * the sequenced stream of completion and vote events; a rejected command (the vote gates and the
+ * reducer gates) emits nothing, consumes no seq (INV-2), and surfaces its code for `then.error`.
+ * The when-steps are the vote commands: checkPuzzle (a proposal), castCheckVote, expireCheckVote,
+ * and the cell mutations.
  */
 private fun runCheck(c: JsonObject) {
     val given = c.getValue("given").jsonObject
@@ -180,7 +184,7 @@ private fun runCheck(c: JsonObject) {
     val events = mutableListOf<JsonElement>()
     var error: RejectionCode? = null
     for (step in c.getValue("when").jsonArray) {
-        val result = applyWithCompletion(state, asCommand(step.jsonObject), solution)
+        val result = applyWithVote(state, asVoteCommand(step.jsonObject), solution)
         state = result.state
         result.events.forEach { events.add(serializeEvent(it)) }
         if (result.error != null) error = result.error

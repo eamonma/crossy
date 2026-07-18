@@ -78,6 +78,28 @@ public data class Cursor(
 )
 
 /**
+ * The open check vote inside a board snapshot (PROTOCOL.md §4, §10; D32), the `board.checkVote`
+ * object, null when no vote is open. It heals a mid-vote reconnect with no delta replay: a client
+ * reconstructs the whole vote from it. `openedSeq` is the vote's identity (the `voteSeq` a ballot
+ * names); `by` is the proposer; `electorate` is the frozen ascending eligible-voter userId array
+ * (INV-1); `approvals` and `rejections` are the ascending userIds voted each way, `approvals`
+ * opening as `[by]`; `needed` is `floor(electorate.size / 2) + 1`, carried so no client reimplements
+ * the arithmetic; `expiresAt` is the absolute ISO 8601 timeout the session stamped. Cell values and
+ * answers never appear (INV-6). Absent-optional on [Board] (a null default): a pre-vote server or a
+ * no-vote snapshot omits the key, and a null re-encodes absent, so the older fixtures round-trip.
+ */
+@Serializable
+public data class CheckVoteSnapshot(
+    val openedSeq: Int,
+    val by: String,
+    val electorate: List<String>,
+    val approvals: List<String>,
+    val rejections: List<String>,
+    val needed: Int,
+    val expiresAt: String,
+)
+
+/**
  * Completion stats, non-null only when the game is completed (PROTOCOL.md §4). Twin of `Stats`.
  *
  * `checkCount` is the permanent room-check count frozen at completion (§4, §10; D27), a required
@@ -132,4 +154,11 @@ public data class Board(
     val cursors: List<Cursor>,
     val recentCommandIds: List<String>,
     val stats: Stats?,
+    /**
+     * The open check vote, null when none (PROTOCOL.md §4, §10; D32). Absent-optional (a null
+     * default, no @EncodeDefault): a pre-vote server or a no-vote snapshot omits the key and a null
+     * re-encodes absent, so the pre-D32 board fixtures still round-trip losslessly, while a mid-vote
+     * snapshot heals the whole vote for a reconnecting client.
+     */
+    val checkVote: CheckVoteSnapshot? = null,
 )

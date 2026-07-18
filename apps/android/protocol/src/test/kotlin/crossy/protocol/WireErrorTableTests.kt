@@ -7,7 +7,10 @@ import org.junit.jupiter.api.Test
 // packages/protocol/src/errors.test.ts + version.test.ts and apps/ios WireErrorTableTests.swift.
 
 class WireErrorTableTests {
-    // The §11 table: code -> fatality. `INTERNAL` is VARIES (fatal:true means reconnect).
+    // The §11 table: code -> fatality. `INTERNAL` is VARIES (fatal:true means reconnect). The four
+    // vote codes (VOTE_PENDING, NO_VOTE_OPEN, NOT_ELECTOR, ALREADY_VOTED) are the D32 additions
+    // (Wave 15.1 rewrote §11), all non-fatal: a rejected proposal or ballot clears the pending
+    // intent and shows no toast (Wave 15.6 store).
     private val table = mapOf(
         "UNAUTHORIZED" to Fatality.ALWAYS,
         "NOT_PARTICIPANT" to Fatality.ALWAYS,
@@ -18,6 +21,10 @@ class WireErrorTableTests {
         "INVALID_CELL" to Fatality.NEVER,
         "INVALID_VALUE" to Fatality.NEVER,
         "GRID_NOT_FULL" to Fatality.NEVER,
+        "VOTE_PENDING" to Fatality.NEVER,
+        "NO_VOTE_OPEN" to Fatality.NEVER,
+        "NOT_ELECTOR" to Fatality.NEVER,
+        "ALREADY_VOTED" to Fatality.NEVER,
         "ROLE_FORBIDDEN" to Fatality.NEVER,
         "RATE_LIMITED" to Fatality.NEVER,
         "UNKNOWN_TYPE" to Fatality.NEVER,
@@ -25,7 +32,7 @@ class WireErrorTableTests {
     )
 
     @Test
-    fun listsExactlyTheThirteenSection11Codes() {
+    fun listsExactlyTheSeventeenSection11Codes() {
         assertEquals(table.keys, ErrorCode.entries.map { it.name }.toSet())
     }
 
