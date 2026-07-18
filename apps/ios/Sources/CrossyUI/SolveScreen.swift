@@ -648,14 +648,8 @@ public struct SolveScreen: View {
             observeHaptics()
             SolveHaptics.shared.prepare()
             wireReactionSink()
-            // The room's check landing (PROTOCOL.md §6, §10; D32): the marks paint
-            // for everyone. Under the vote flow the marks wash in as the pass reveal,
-            // so an attributed check (carrying `by`) plays the vote's success pattern,
-            // timed to this beat; a bare check (the rollout window, no `by`) keeps the
-            // legacy soft thud. Fired only for the live sequenced event.
-            store.onPuzzleChecked = { msg in
-                SolveHaptics.shared.play(msg.by != nil ? .checkVotePassed : .checkLanded)
-            }
+            // The room's check landing and the three vote beats (PROTOCOL.md §6, §10; D32):
+            // haptics, the ring phase, and the reveal. Fired only for live sequenced events.
             wireCheckVoteBeats()
         }
         // The sink closes over the grid it validates against, so the live room's
@@ -1164,20 +1158,30 @@ public struct SolveScreen: View {
                 voteRecess = nil
                 return
             }
-            // Pass reveals through the mark wash (onPuzzleChecked plays it); fail/lapse taps here.
-            if let haptic = CheckVoteHaptics.forClose(outcome: msg.outcome, reason: msg.reason),
-                haptic != .checkVotePassed
-            {
+            if msg.outcome == .passed {
+                // The reveal (passed): the ring flashes and dissolves inward while the Bench
+                // holds "Checking\u{2026}"; onPuzzleChecked lands the marks and swaps in
+                // "{n} to fix". The pass haptic is timed to that mark wash, not here.
+                voteRingPhase = .passing
+                let token = (voteRecess?.token ?? 0) + 1
+                withAnimation(reduceMotion ? nil : .crossyChrome) {
+                    voteRecess = CheckVoteRecess(
+                        model: model, line: CheckVoteCopy.checking, tally: nil, token: token)
+                }
+                return
+            }
+            // The recess (failed/lapsed/grid-broken): two soft taps, the ring fades, one calm
+            // line (plus the proposer's tally) stands ~2.5 s, then the Bench withdraws. A
+            // terminal close is silent (completion or abandon owns the beat).
+            if let haptic = CheckVoteHaptics.forClose(outcome: msg.outcome, reason: msg.reason) {
                 SolveHaptics.shared.play(haptic)
             }
-            voteRingPhase = (msg.outcome == .passed) ? .passing : .fading
+            voteRingPhase = .fading
             let line = CheckVoteCopy.recessLine(outcome: msg.outcome, reason: msg.reason)
             let tally = CheckVoteTally.line(
                 for: msg.outcome, viewerRole: model.viewerRole,
                 approvals: vote.approvals.count, needed: vote.needed)
-            // The pass has no recess line (it reveals on the grid); a non-passing close shows one
-            // calm line ~2.5 s then withdraws (the recess beat).
-            guard msg.outcome != .passed, line != nil || tally != nil else {
+            guard line != nil || tally != nil else {
                 voteRecess = nil
                 return
             }
@@ -1185,11 +1189,35 @@ public struct SolveScreen: View {
             withAnimation(reduceMotion ? nil : .crossyChrome) {
                 voteRecess = CheckVoteRecess(model: model, line: line, tally: tally, token: token)
             }
+            scheduleRecessWithdraw(token: token, after: 2500)
+        }
+        // The check landing (PROTOCOL.md §6, §10; D32). An attributed check (carrying `by`) is
+        // a passing vote's mark wash: play the success pattern timed to it, and after a short
+        // breath swap the Bench's "Checking\u{2026}" for "{n} to fix", then withdraw. A bare
+        // check (the rollout window, no `by`) keeps the legacy soft thud and no vote reveal.
+        store.onPuzzleChecked = { msg in
+            SolveHaptics.shared.play(msg.by != nil ? .checkVotePassed : .checkLanded)
+            guard msg.by != nil, let model = voteRecess?.model else { return }
+            let count = msg.wrongCells.count
+            let token = (voteRecess?.token ?? 0) + 1
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(2500))
-                if voteRecess?.token == token {
-                    withAnimation(reduceMotion ? nil : .crossyChrome) { voteRecess = nil }
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 600))
+                withAnimation(reduceMotion ? nil : .crossyChrome) {
+                    voteRecess = CheckVoteRecess(
+                        model: model, line: CheckVoteCopy.toFix(count), tally: nil, token: token)
                 }
+                scheduleRecessWithdraw(token: token, after: 2500)
+            }
+        }
+    }
+
+    /// Withdraw the recess Bench after the beat, unless a newer vote/recess supersedes it (the
+    /// token guards against a fresh proposal landing during the withdrawal).
+    private func scheduleRecessWithdraw(token: Int, after milliseconds: Int) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+            if voteRecess?.token == token {
+                withAnimation(reduceMotion ? nil : .crossyChrome) { voteRecess = nil }
             }
         }
     }
