@@ -107,7 +107,11 @@ private func applyMutation(
         cells: cells,
         filledCount: filledCount,
         checkedWrong: checkedWrong,
-        checkCount: state.checkCount)
+        checkCount: state.checkCount,
+        // An open vote rides through the mutation untouched; the vote driver decides
+        // whether it cancels (PROTOCOL §10, D32). The TS `reduce` preserves it through its
+        // spread; here it is threaded explicitly.
+        checkVote: state.checkVote)
 
     return ReduceResult(events: [event], state: next, error: nil)
 }

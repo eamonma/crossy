@@ -53,7 +53,8 @@ public func applyWithCompletion(
             cells: next.cells,
             filledCount: next.filledCount,
             checkedWrong: next.checkedWrong,
-            checkCount: next.checkCount)
+            checkCount: next.checkCount,
+            checkVote: next.checkVote)
         events.append(.gameCompleted(GameCompleted(seq: seq)))
     }
 
@@ -94,7 +95,8 @@ private func applyCheck(
         cells: state.cells,
         filledCount: state.filledCount,
         checkedWrong: Set(wrongCells),
-        checkCount: state.checkCount + 1)
+        checkCount: state.checkCount + 1,
+        checkVote: state.checkVote)
     let event = PuzzleChecked(
         seq: seq,
         wrongCells: wrongCells,

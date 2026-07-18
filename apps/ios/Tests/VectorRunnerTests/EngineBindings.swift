@@ -17,12 +17,11 @@ import CrossyEngine
 // VectorEngineAdapter.swift; a runner throws `VectorMismatch` on a failed assertion, which
 // the calling XCTest method surfaces as a located failure.
 enum EngineBindings {
-    /// Families the Wave 3 port implements. `check` was bound (D27) until Wave 15.1
-    /// rewrote its contract to the attributed-majority vote flow (D32); the Swift port
-    /// does not compute the vote state machine yet, so check is unbound and skipped in
-    /// vectors.skip.json until Wave 15.5 rebinds it. Kept in sync with `run` and drained
-    /// from vectors.skip.json as each binds.
-    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion]
+    /// Families the Wave 3 port implements. `check` was bound (D27), unbound at Wave 15.1
+    /// when its contract became the attributed-majority vote flow (D32), and rebound here
+    /// at Wave 15.5 once `applyWithVote` landed in CrossyEngine. Kept in sync with `run`
+    /// and drained from vectors.skip.json as each binds.
+    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion, .check]
 
     /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
     /// has not implemented (which after Wave 3 is only the foreign client-store family).
@@ -172,11 +171,13 @@ enum EngineBindings {
 
     // MARK: - Check
 
-    /// The room check (PROTOCOL §10, D27): the completion driver's shape plus the
-    /// reducer's rejection convention. Apply each command in mailbox order through the
-    /// two-phase driver, accumulating the sequenced stream; a rejected command (the
-    /// GRID_NOT_FULL / GAME_NOT_ONGOING gates) emits nothing, consumes no seq (INV-2),
-    /// and surfaces its code for `then.error`.
+    /// The attributed check vote (PROTOCOL §10, D32): the vote driver's shape plus the
+    /// reducer's rejection convention. Apply each command in mailbox order through
+    /// `applyWithVote`, accumulating the sequenced stream (cell, completion, and the three
+    /// vote events); a rejected command (GRID_NOT_FULL / GAME_NOT_ONGOING / VOTE_PENDING /
+    /// NO_VOTE_OPEN / NOT_ELECTOR / ALREADY_VOTED) emits nothing, consumes no seq (INV-2),
+    /// and surfaces its code for `then.error`. An expiry with no vote open is a silent no-op
+    /// (no event, no error), so `error` is only set by a real rejection.
     private static func runCheck(_ c: [String: Any]) throws {
         guard let given = c["given"] as? [String: Any],
             let when = c["when"] as? [Any],
@@ -190,9 +191,9 @@ enum EngineBindings {
         var error: String?
         for step in when {
             guard let w = step as? [String: Any] else { continue }
-            let result = applyWithCompletion(state, asCommand(w), solution)
+            let result = applyWithVote(state, asVoteCommand(w), solution)
             state = result.state
-            for event in result.events { events.append(serializeEvent(event)) }
+            for event in result.events { events.append(serializeVoteEvent(event)) }
             if let code = result.error { error = code.rawValue }
         }
         if let expectedEvents = then["events"] {
