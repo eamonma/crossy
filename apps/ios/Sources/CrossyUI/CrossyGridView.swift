@@ -393,6 +393,15 @@ public struct CrossyGridView: View {
                 followTask?.cancel()
                 isolationFadeTask?.cancel()
             }
+            // The camera's PROJECTED grid rect, reported upward in the board view's own
+            // coordinates (origin = camera offset, size = board units × scale; Wave 15.8):
+            // the solve screen anchors the check-vote ring to this, so the ring tracks pan
+            // and zoom instead of hugging the full-bleed container. A derived value set in
+            // body, so it rides every camera write, gesture frames included.
+            .preference(
+                key: GridProjectionKey.self,
+                value: CheckVoteRingGeometry.projected(
+                    camera: camera, rows: puzzle.rows, cols: puzzle.cols))
             // The edge-pop gutter (owner report 2026-07-12): the camera drag
             // claims any touch that moves one point, so a back swipe from the
             // leading edge never reached the system's interactive pop — the
@@ -486,6 +495,17 @@ public struct CrossyGridView: View {
                 flashes.sweep(at: Date().timeIntervalSinceReferenceDate)
             }
         }
+    }
+}
+
+/// The projected grid rect in the board view's local coordinates (Wave 15.8): the camera's
+/// truth for anything that must hug the drawn grid (the check-vote ring, the ignition
+/// pulse). Reported from body so it follows every pan and zoom frame.
+public struct GridProjectionKey: PreferenceKey {
+    public static let defaultValue: CGRect? = nil
+
+    public static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) {
+        if let next = nextValue() { value = next }
     }
 }
 

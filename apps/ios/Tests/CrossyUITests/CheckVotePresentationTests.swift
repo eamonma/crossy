@@ -54,7 +54,22 @@ final class CheckVotePresentationTests: XCTestCase {
         let model = CheckVoteBenchModel.make(vote: vote(), selfUserId: "u1", nameFor: { _ in "Ada" })!
         XCTAssertEqual(model.viewerRole, .proposer)
         XCTAssertFalse(model.showsVerbs(selfUserId: "u1"), "the proposer already approved: no verbs")
-        XCTAssertEqual(model.proposalLine, "Ada wants to check the puzzle")
+    }
+
+    // The proposer never reads their own name back (owner ruling, Wave 15.8): their line is
+    // the wait itself.
+    func test_proposerLineIsWaitingForTheRoom_ownerRuling() {
+        XCTAssertEqual(CheckVoteCopy.waiting, "Waiting for the room")
+        let model = CheckVoteBenchModel.make(vote: vote(), selfUserId: "u1", nameFor: { _ in "Ada" })!
+        XCTAssertEqual(model.proposalLine, "Waiting for the room")
+        let elector = CheckVoteBenchModel.make(vote: vote(), selfUserId: "u2", nameFor: { _ in "Ada" })!
+        XCTAssertEqual(elector.proposalLine, "Ada wants to check the puzzle")
+    }
+
+    // "Checking…" is the single ellipsis character, never three periods.
+    func test_checkingUsesTheSingleEllipsisCharacter() {
+        XCTAssertTrue(CheckVoteCopy.checking.hasSuffix("\u{2026}"))
+        XCTAssertFalse(CheckVoteCopy.checking.contains("..."))
     }
 
     func test_unvotedElectorSeesVerbs_D32() {
@@ -75,9 +90,18 @@ final class CheckVotePresentationTests: XCTestCase {
         XCTAssertFalse(model.showsVerbs(selfUserId: "u9"))
     }
 
-    func test_proposerNameFallsBackToIdWhenRosterMisses_D32() {
+    // A departed or unknown proposer reads as a neutral teammate, never the raw userId
+    // (the audit found opaque ids rendered verbatim; Wave 15.8 fix).
+    func test_departedProposerReadsAsATeammate_D32() {
+        XCTAssertEqual(CheckVoteCopy.fallbackProposer, "A teammate")
         let model = CheckVoteBenchModel.make(vote: vote(by: "u1"), selfUserId: "u2", nameFor: { _ in nil })!
-        XCTAssertEqual(model.proposalLine, "u1 wants to check the puzzle")
+        XCTAssertEqual(model.proposalLine, "A teammate wants to check the puzzle")
+    }
+
+    // A chip whose roster entry is gone falls back to "Player" (the puck's neutral name),
+    // never the raw userId.
+    func test_departedChipFallsBackToPlayer_D32() {
+        XCTAssertEqual(CheckVoteCopy.fallbackElector, "Player")
     }
 
     // MARK: - Chip states, electorate order, dimming (Wave 15.5 UX)
@@ -133,5 +157,53 @@ final class CheckVotePresentationTests: XCTestCase {
         XCTAssertNil(
             CheckVoteHaptics.forClose(outcome: .cancelled, reason: .terminal),
             "the completion or abandon owns the terminal beat")
+    }
+
+    // The landing haptic (Wave 15.8 fix): the success fanfare belongs ONLY to a multiplayer
+    // pass with the Bench standing; a solo check marking your own errors keeps the soft
+    // checkLanded thud, as does a bare rollout check.
+    func test_soloCheckKeepsTheQuietThud_D32() {
+        XCTAssertEqual(
+            CheckVoteHaptics.forPuzzleChecked(attributed: true, benchStanding: false),
+            .checkLanded, "a solo pass is your own act, not a room ceremony")
+        XCTAssertEqual(
+            CheckVoteHaptics.forPuzzleChecked(attributed: false, benchStanding: false),
+            .checkLanded)
+        XCTAssertEqual(
+            CheckVoteHaptics.forPuzzleChecked(attributed: true, benchStanding: true),
+            .checkVotePassed)
+    }
+
+    // MARK: - VoiceOver announcements (U10, Wave 15.8)
+
+    func test_openAnnouncementPerRole_U10() {
+        let elector = CheckVoteBenchModel.make(vote: vote(), selfUserId: "u2", nameFor: { _ in "Ada" })!
+        XCTAssertEqual(
+            CheckVoteAnnouncement.opened(model: elector),
+            "Ada wants to check the puzzle. Actions available.")
+        let proposer = CheckVoteBenchModel.make(vote: vote(), selfUserId: "u1", nameFor: { _ in "Ada" })!
+        XCTAssertEqual(
+            CheckVoteAnnouncement.opened(model: proposer),
+            "Check proposed. Waiting for the room.")
+        let reader = CheckVoteBenchModel.make(vote: vote(), selfUserId: "u9", nameFor: { _ in "Ada" })!
+        XCTAssertEqual(
+            CheckVoteAnnouncement.opened(model: reader),
+            "Ada wants to check the puzzle.", "a non-elector hears no actions offer")
+    }
+
+    func test_closeAnnouncementJoinsLineAndTally_U10() {
+        XCTAssertEqual(
+            CheckVoteAnnouncement.closed(line: "The room keeps solving", tally: "1 of 2"),
+            "The room keeps solving. 1 of 2.")
+        XCTAssertEqual(
+            CheckVoteAnnouncement.closed(line: "The vote lapsed", tally: nil),
+            "The vote lapsed.")
+        XCTAssertNil(
+            CheckVoteAnnouncement.closed(line: nil, tally: nil),
+            "a terminal close announces nothing")
+    }
+
+    func test_toFixAnnouncement_U10() {
+        XCTAssertEqual(CheckVoteAnnouncement.toFix(3), "3 to fix.")
     }
 }

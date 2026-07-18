@@ -413,8 +413,9 @@ public final class GameStore {
     }
 
     /// The check-vote timebox, `CHECK_VOTE_TTL_MS` = 30,000 ms (PROTOCOL.md §10), the ring's
-    /// full-drain span and the clamp ceiling.
-    public static let checkVoteTTLSeconds: TimeInterval = 30
+    /// full-drain span and the clamp ceiling. `nonisolated`: a plain wire constant, read by
+    /// the ring's pure freeze math off the main actor (Wave 15.8).
+    public nonisolated static let checkVoteTTLSeconds: TimeInterval = 30
 
     /// Parse a wire ISO 8601 timestamp (server clock, §3), tolerating fractional seconds. The
     /// wire type is a string; parsing to `Date` is a consumer concern, done only here for the

@@ -202,17 +202,37 @@ enum RoomFactsSheetLayout {
     static let dividerHeight: CGFloat = 1
     static let operationsAirBelow: CGFloat = 14
     static let operationRowHeight: CGFloat = 44
+    /// The multiplayer check row is the 48 pt hold-to-propose control, NOT a 44 pt list
+    /// row (Wave 15.8 fix: counting it as 44 clipped the sheet by ~25 pt with the hint
+    /// standing). The view pins the control and hint to these exact heights.
+    static let holdControlHeight: CGFloat = 48
+    static let holdHintGap: CGFloat = 4
+    static let holdHintHeight: CGFloat = 16
 
+    /// The detent height. `holdCheckRow` swaps ONE of `operationRows` (the check row) from
+    /// the standard row height to the hold control's honest slot; `holdHint` adds the
+    /// remaining-cells hint's gap and line (R7: every conditional counted honestly, or the
+    /// sheet clips). Both flags are inert when no rows stand.
     static func height(
-        hasDetail: Bool, hasCheckedLine: Bool, operationRows: Int
+        hasDetail: Bool, hasCheckedLine: Bool, operationRows: Int,
+        holdCheckRow: Bool = false, holdHint: Bool = false
     ) -> CGFloat {
-        verticalPadding * 2 + labelHeight + labelGap + timeHeight
+        let rowBlock: CGFloat
+        if operationRows > 0 {
+            let hold = holdCheckRow
+            let standardRows = CGFloat(operationRows - (hold ? 1 : 0))
+            rowBlock =
+                operationsAirAbove + dividerHeight + operationsAirBelow
+                + operationRowHeight * standardRows
+                + (hold ? holdControlHeight : 0)
+                + (hold && holdHint ? holdHintGap + holdHintHeight : 0)
+        } else {
+            rowBlock = 0
+        }
+        return verticalPadding * 2 + labelHeight + labelGap + timeHeight
             + (hasDetail ? detailGap + detailHeight : 0)
             + (hasCheckedLine ? checkedLineGap + checkedLineHeight : 0)
-            + (operationRows > 0
-                ? operationsAirAbove + dividerHeight + operationsAirBelow
-                    + operationRowHeight * CGFloat(operationRows)
-                : 0)
+            + rowBlock
     }
 }
 
@@ -259,7 +279,11 @@ struct RoomFactsSheet: View {
                         RoomFactsSheetLayout.height(
                             hasDetail: content.detail != nil,
                             hasCheckedLine: content.checkedLine != nil,
-                            operationRows: operations.rowCount))
+                            operationRows: operations.rowCount,
+                            // The multiplayer check row is the 48 pt hold control, counted
+                            // honestly with its hint (R7; the Wave 15.8 clip fix).
+                            holdCheckRow: !soloRoom && operations.check != nil,
+                            holdHint: !soloRoom && operations.check?.hint != nil))
                 ])
                 .presentationDragIndicator(.visible)
             #endif
@@ -388,15 +412,19 @@ struct RoomFactsSheet: View {
             // Multiplayer: press-and-hold to propose the room vote (PROTOCOL.md §10, D32; Wave
             // 15.5). The vote is the ceremony now, so there is no confirm dialog; releasing
             // early cancels, the completed hold opens the vote for the room to decide.
-            VStack(spacing: 4) {
+            // Heights are pinned to the layout constants so the detent arithmetic is honest
+            // (R7; the Wave 15.8 clip fix).
+            VStack(spacing: RoomFactsSheetLayout.holdHintGap) {
                 HoldToProposeButton(
                     title: "Check puzzle", ground: ground, reduceMotion: reduceMotion,
                     enabled: check.isEnabled, onPropose: onCheckPuzzle)
+                    .frame(height: RoomFactsSheetLayout.holdControlHeight)
                 if let hint = check.hint {
                     Text(verbatim: hint)
                         .font(.system(size: 13, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(quiet)
+                        .frame(height: RoomFactsSheetLayout.holdHintHeight)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }

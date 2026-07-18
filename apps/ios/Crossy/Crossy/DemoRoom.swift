@@ -53,6 +53,19 @@
 //    -reactionFanClueBarCorner  host the reaction fan in the clue bar's corner
 //                           (the Wave 7.5 A/B variant) instead of the floating
 //                           default; Bee's periodic reactions run in every demo room
+//    Check-vote scripts (Wave 15.8; the vote events ride deliver() like every other
+//    scripted room beat — the loopback swallows the local castCheckVote, so the
+//    scripted ballots are the only ones that land):
+//    -voteOpen              Bee proposes; Ada approves after a beat; the vote stands
+//                           open draining (the strip, the Meridian ring, the ballot)
+//    -voteFail              Bee proposes; Ada rejects; the vote closes failed
+//                           (the recess line "The room keeps solving")
+//    -voteProposer          YOU propose ("Waiting for the room"); the room rejects;
+//                           the proposer-only "1 of 2" tally lands with the line
+//    -votePass              wrong letters land first, Bee proposes, Ada approves,
+//                           the vote passes: breath, ring flash, mark wash, "2 to fix"
+//    -voteSolo              the solo ceremony: auto-pass with ZERO vote chrome and
+//                           the quiet checkLanded thud (marks apply instantly)
 //
 
 import CrossyProtocol
@@ -288,6 +301,25 @@ final class DemoRoom {
             chrome.kicked = true
         }
 
+        // The check-vote scripts (Wave 15.8): every beat is a delivered wire event, so the
+        // store's §7 seq gate, the beats' callbacks, and the whole ceremony run exactly the
+        // production path.
+        if arguments.contains("-voteOpen") {
+            await voteScript(mode: .open)
+        }
+        if arguments.contains("-voteFail") {
+            await voteScript(mode: .fail)
+        }
+        if arguments.contains("-voteProposer") {
+            await voteScript(mode: .proposerFail)
+        }
+        if arguments.contains("-votePass") {
+            await voteScript(mode: .pass)
+        }
+        if arguments.contains("-voteSolo") {
+            await voteScript(mode: .solo)
+        }
+
         if arguments.contains("-i2cClueCycle") {
             // The breathing proof (the full-bleed ruling, owner ask 2026-07-10):
             // the selection walks the across words on a loop, so the bar cycles
@@ -304,6 +336,148 @@ final class DemoRoom {
 }
 
 extension DemoRoom {
+    /// The scripted vote ceremonies (Wave 15.8). Each is a sequence of delivered wire
+    /// events: the same checkVoteOpened / checkVoteCast / checkVoteClosed / puzzleChecked
+    /// frames a real room would emit, so the strip, the Bench, the Meridian ring, the
+    /// haptics, and the reveal all run the production beats.
+    private enum VoteScriptMode {
+        case open, fail, proposerFail, pass, solo
+    }
+
+    private func voteScript(mode: VoteScriptMode) async {
+        try? await Task.sleep(for: .milliseconds(800))
+        var seq = store.seq
+
+        func deliver(_ message: ServerMessage) async {
+            await transport.deliver(message)
+        }
+        func expires(in seconds: TimeInterval) -> String {
+            Date(timeIntervalSinceNow: seconds).ISO8601Format()
+        }
+
+        // The pass and solo ceremonies need wrong letters standing so the reveal has marks
+        // to wash: Bee and Ada write two wrong letters into 6-Across (FORCE).
+        if mode == .pass || mode == .solo {
+            for (cell, value, by) in [(5, "X", "bee"), (6, "Q", "ada")] {
+                seq += 1
+                await deliver(
+                    .cellSet(
+                        CellSetMessage(
+                            seq: seq, cell: cell, value: value, by: by,
+                            commandId: "demo-vote-wrong-\(cell)", at: DemoFixture.isoNow())))
+            }
+            try? await Task.sleep(for: .milliseconds(600))
+        }
+
+        if mode == .solo {
+            // The solo auto-pass: open, close, and check land as one command's burst;
+            // the UI must show ZERO vote chrome and play the quiet checkLanded thud.
+            seq += 1
+            await deliver(
+                .checkVoteOpened(
+                    CheckVoteOpenedMessage(
+                        seq: seq, by: "you", electorate: ["you"], needed: 1,
+                        expiresAt: expires(in: 30), commandId: "demo-vote-solo",
+                        at: DemoFixture.isoNow())))
+            let voteSeq = seq
+            seq += 1
+            await deliver(
+                .checkVoteClosed(
+                    CheckVoteClosedMessage(
+                        seq: seq, voteSeq: voteSeq, outcome: .passed, at: DemoFixture.isoNow())))
+            seq += 1
+            await deliver(
+                .puzzleChecked(
+                    PuzzleCheckedMessage(
+                        seq: seq, wrongCells: [5, 6], checkCount: 1, by: "you",
+                        commandId: "demo-vote-solo", at: DemoFixture.isoNow())))
+            return
+        }
+
+        // The proposer: Bee for the room's view; YOU for the proposer's own view
+        // ("Waiting for the room", and the post-fail tally).
+        let proposer = mode == .proposerFail ? "you" : "bee"
+        seq += 1
+        await deliver(
+            .checkVoteOpened(
+                CheckVoteOpenedMessage(
+                    seq: seq, by: proposer, electorate: ["ada", "bee", "you"], needed: 2,
+                    expiresAt: expires(in: 30), commandId: "demo-vote",
+                    at: DemoFixture.isoNow())))
+        let voteSeq = seq
+
+        switch mode {
+        case .open:
+            // Ada's approval lands after a beat (a chip settles, a ballot tick); the vote
+            // then stands open, the ring draining, the verbs live for you.
+            try? await Task.sleep(for: .milliseconds(4000))
+            seq += 1
+            await deliver(
+                .checkVoteCast(
+                    CheckVoteCastMessage(
+                        seq: seq, voteSeq: voteSeq, by: "ada", approve: true,
+                        commandId: "demo-vote-ada", at: DemoFixture.isoNow())))
+        case .fail:
+            try? await Task.sleep(for: .milliseconds(3000))
+            seq += 1
+            await deliver(
+                .checkVoteCast(
+                    CheckVoteCastMessage(
+                        seq: seq, voteSeq: voteSeq, by: "ada", approve: false,
+                        commandId: "demo-vote-ada", at: DemoFixture.isoNow())))
+            try? await Task.sleep(for: .milliseconds(2500))
+            seq += 1
+            await deliver(
+                .checkVoteClosed(
+                    CheckVoteClosedMessage(
+                        seq: seq, voteSeq: voteSeq, outcome: .failed, reason: .rejected,
+                        at: DemoFixture.isoNow())))
+        case .proposerFail:
+            // The room turns you down: two rejections close it, and the proposer alone
+            // reads "1 of 2" beside the calm line.
+            for (delay, by) in [(3000, "ada"), (2000, "bee")] {
+                try? await Task.sleep(for: .milliseconds(delay))
+                seq += 1
+                await deliver(
+                    .checkVoteCast(
+                        CheckVoteCastMessage(
+                            seq: seq, voteSeq: voteSeq, by: by, approve: false,
+                            commandId: "demo-vote-\(by)", at: DemoFixture.isoNow())))
+            }
+            try? await Task.sleep(for: .milliseconds(800))
+            seq += 1
+            await deliver(
+                .checkVoteClosed(
+                    CheckVoteClosedMessage(
+                        seq: seq, voteSeq: voteSeq, outcome: .failed, reason: .rejected,
+                        at: DemoFixture.isoNow())))
+        case .pass:
+            // Ada's approval reaches the majority (Bee + Ada of 2): the close and the
+            // attributed check follow, and the reveal choreography runs (U6).
+            try? await Task.sleep(for: .milliseconds(3500))
+            seq += 1
+            await deliver(
+                .checkVoteCast(
+                    CheckVoteCastMessage(
+                        seq: seq, voteSeq: voteSeq, by: "ada", approve: true,
+                        commandId: "demo-vote-ada", at: DemoFixture.isoNow())))
+            try? await Task.sleep(for: .milliseconds(400))
+            seq += 1
+            await deliver(
+                .checkVoteClosed(
+                    CheckVoteClosedMessage(
+                        seq: seq, voteSeq: voteSeq, outcome: .passed, at: DemoFixture.isoNow())))
+            seq += 1
+            await deliver(
+                .puzzleChecked(
+                    PuzzleCheckedMessage(
+                        seq: seq, wrongCells: [5, 6], checkCount: 1, by: proposer,
+                        commandId: "demo-vote", at: DemoFixture.isoNow())))
+        case .solo:
+            break  // handled above
+        }
+    }
+
     /// The reaction script: every ~7 s Bee (or Ada, alternating) reacts at a cell in
     /// or near her word, cycling a set that includes 🔥 (receive-any, PROTOCOL.md
     /// §9); every third beat repeats the same reaction after a breath so the

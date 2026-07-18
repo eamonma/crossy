@@ -14,6 +14,15 @@ public enum CheckVoteCopy {
     /// The proposal line on the Bench: "{name} wants to check the puzzle".
     public static func proposal(name: String) -> String { "\(name) wants to check the puzzle" }
 
+    /// The PROPOSER's own line (owner ruling, Wave 15.8): they never read their own name
+    /// back; their line is the wait itself.
+    public static let waiting = "Waiting for the room"
+
+    /// The neutral stand-in for a departed or unknown proposer (never the raw userId).
+    public static let fallbackProposer = "A teammate"
+    /// The neutral stand-in for a chip whose roster entry is gone.
+    public static let fallbackElector = "Player"
+
     /// The two verbs, "Check it" primary.
     public static let approve = "Check it"
     public static let reject = "Keep solving"
@@ -98,8 +107,12 @@ public struct CheckVoteBenchModel: Equatable, Sendable {
         self.voteSeq = voteSeq
     }
 
-    /// The proposal line for the header.
-    public var proposalLine: String { CheckVoteCopy.proposal(name: proposerName) }
+    /// The proposal line for the header. The proposer reads the wait, never their own name
+    /// back (owner ruling, Wave 15.8); everyone else reads the attributed question.
+    public var proposalLine: String {
+        viewerRole == .proposer
+            ? CheckVoteCopy.waiting : CheckVoteCopy.proposal(name: proposerName)
+    }
 
     /// Has the viewer already voted (proposer counts as voted; a non-elector never votes)?
     public var viewerHasVoted: Bool {
@@ -119,8 +132,8 @@ public struct CheckVoteBenchModel: Equatable, Sendable {
     }
 
     /// Build the Bench model from the store's open vote and the viewer's identity, or nil when
-    /// no vote is open. `nameFor` resolves a display name (roster lookup); it falls back to the
-    /// raw id so a missing roster entry never blanks the line.
+    /// no vote is open. `nameFor` resolves a display name (roster lookup); a missing roster
+    /// entry falls back to the neutral "A teammate", never the raw userId (Wave 15.8 fix).
     public static func make(
         vote: CheckVoteState?, selfUserId: String?, nameFor: (String) -> String?
     ) -> CheckVoteBenchModel? {
@@ -139,7 +152,7 @@ public struct CheckVoteBenchModel: Equatable, Sendable {
         }()
         return CheckVoteBenchModel(
             proposerId: vote.by,
-            proposerName: nameFor(vote.by) ?? vote.by,
+            proposerName: nameFor(vote.by) ?? CheckVoteCopy.fallbackProposer,
             electors: electors,
             viewerRole: role,
             voteSeq: vote.openedSeq)
@@ -180,4 +193,40 @@ public enum CheckVoteHaptics {
         default: return nil
         }
     }
+
+    /// The haptic for a landing `puzzleChecked` (Wave 15.8 fix): the success fanfare belongs
+    /// only to a MULTIPLAYER pass with the Bench standing (the U6 ceremony); a solo check
+    /// marking your own errors, and a bare rollout check, keep the soft checkLanded thud.
+    public static func forPuzzleChecked(attributed: Bool, benchStanding: Bool) -> SolveHaptic {
+        attributed && benchStanding ? .checkVotePassed : .checkLanded
+    }
+}
+
+/// The VoiceOver announcements (U10; Wave 15.8): posted politely at the vote's beats so a
+/// screen-reader solver hears the room's motion without focus theft. Pure strings, pinned.
+public enum CheckVoteAnnouncement {
+    /// The open announcement, per viewer role: an elector hears the question and that
+    /// actions exist; the proposer hears their proposal confirmed; a non-elector hears the
+    /// question alone (no actions to offer).
+    public static func opened(model: CheckVoteBenchModel) -> String {
+        switch model.viewerRole {
+        case .proposer:
+            return "Check proposed. \(CheckVoteCopy.waiting)."
+        case .elector:
+            return "\(CheckVoteCopy.proposal(name: model.proposerName)). Actions available."
+        case .nonElector:
+            return "\(CheckVoteCopy.proposal(name: model.proposerName))."
+        }
+    }
+
+    /// The close announcement: the recess line, joined with the proposer's tally when it
+    /// stands. Nil (a terminal close) announces nothing.
+    public static func closed(line: String?, tally: String?) -> String? {
+        let parts = [line, tally].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return parts.map { "\($0)." }.joined(separator: " ")
+    }
+
+    /// The reveal's landing count.
+    public static func toFix(_ count: Int) -> String { "\(CheckVoteCopy.toFix(count))." }
 }

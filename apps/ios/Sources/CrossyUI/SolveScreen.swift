@@ -12,6 +12,7 @@
 // name; the transport behind the store is the only thing that changes between
 // the demo room and I3's real connection.
 
+import Accessibility
 import CrossyDesign
 import CrossyProtocol
 import CrossyStore
@@ -127,15 +128,22 @@ public struct SolveScreen: View {
     /// replacing the inflate-from-the-pill morph). A mid-solve surface only, so
     /// openFacts gates it to `ongoing` and a terminal transition dismisses it.
     @State private var factsPresented = false
-    // The check vote (PROTOCOL.md §10, D32; Wave 15.5). `benchVote` mirrors `store.checkVote`
-    // so a close callback can read the pre-close vote (the store has already cleared it when the
-    // close beat fires); `voteRecess` holds the one calm recess line for its ~2.5 s beat;
-    // `voteRingPhase` drives the gold ring's ignite/drain/pass/fade; `voteCollapsed` docks the
-    // Bench to its slim strip.
+    // The check vote (PROTOCOL.md §10, D32; Wave 15.5, rebuilt strip-first in 15.8).
+    // `benchVote` mirrors `store.checkVote` so a close callback can read the pre-close vote
+    // (the store has already cleared it when the close beat fires); `voteRecess` holds the one
+    // calm recess line for its ~2.5 s beat; `voteRingPhase` drives the Meridian ring's
+    // ignite/drain/pass/fade; `voteExpanded` lifts the docked strip into the full Bench;
+    // `voteFrozenProgress` mirrors the last drained fraction across the close (the store nils
+    // the vote, so the ring would otherwise vanish during the breath); `projectedGrid` is the
+    // camera's reported grid rect (board-local), the ring's anchor; `voteIgnition` is the
+    // one-shot pulse at the proposer's cursor (U4).
     @State private var benchVote: CheckVoteState?
     @State private var voteRecess: CheckVoteRecess?
     @State private var voteRingPhase: CheckVoteRingPhase = .draining
-    @State private var voteCollapsed = false
+    @State private var voteExpanded = false
+    @State private var voteFrozenProgress: Double?
+    @State private var projectedGrid: CGRect?
+    @State private var voteIgnition: VoteIgnition?
     /// The mark wash (U6): the reference-date instant a passing check's coats begin revealing
     /// in ascending cell order. Set on a live attributed check (never on snapshot healing, never
     /// under Reduce Motion), a breath after the marks apply, and retired once the wash finishes;
@@ -299,6 +307,24 @@ public struct SolveScreen: View {
                     boardArea(weather: weather)
                         .transition(.opacity)
 
+                    // The vote's docked strip (owner ruling, Wave 15.8: STRIP-FIRST): it
+                    // inserts in the band between the clue bar and the deck — the rebus
+                    // field's own slot, over solid canvas (ID-4) — so the deck's keys never
+                    // move under live thumbs (U2: a solver mid-word loses no keystroke) and
+                    // the strip can never cover or leak to the deck. The board yields the
+                    // strip's 52 pt on the chrome spring (the clue bar rides up exactly as
+                    // it does for a wrapping clue); the camera reclamps through the animated
+                    // frames, so the grid glides rather than jumping.
+                    if voteStripStanding {
+                        voteStrip
+                            .padding(.top, 8)
+                            .background(Color(rgb: ground.tokens.canvas))
+                            .transition(
+                                reduceMotion
+                                    ? .opacity
+                                    : .move(edge: .bottom).combined(with: .opacity))
+                    }
+
                     // A terminal status retires the deck for everyone, spectator or
                     // not (RoomTerminal.deckRetired; a frozen room has no seat worth
                     // upgrading): mutations were already refused by the store and
@@ -343,6 +369,10 @@ public struct SolveScreen: View {
             // spring instead of jumping (owner finding 2026-07-10). Reduce
             // Motion cuts.
             .animation(reduceMotion ? nil : .crossyChrome, value: status)
+            // The vote strip's arrival and withdrawal reshape the same joint on
+            // the same spring (Wave 15.8): the board yields its band, the clue
+            // bar rides up, nothing teleports.
+            .animation(reduceMotion ? nil : .crossyChrome, value: voteStripStanding)
             // The withheld birth's settle beat rides the same spring (the
             // one-host arrival): the grid fades in place, the deck rises. Reduce
             // Motion cuts, leaving the honest instant swap.
@@ -498,6 +528,10 @@ public struct SolveScreen: View {
             }
         )
         .onPreferenceChange(ChromeFramesKey.self) { frames = $0 }
+        // The camera's projected grid rect (board-local; Wave 15.8): the Meridian ring and
+        // the ignition pulse anchor to this, converted into room space against the board's
+        // reported frame, so both track pan and zoom.
+        .onPreferenceChange(GridProjectionKey.self) { projectedGrid = $0 }
         // The bar items report through a closure (RoomBarInputs.reportFrame), not
         // a preference: a preference set inside a ToolbarItem never crosses the
         // UIKit nav-bar boundary (the integration trap, DESIGN.md §4). The room
@@ -648,6 +682,10 @@ public struct SolveScreen: View {
         // and tally (the store nils `checkVote` before firing onCheckVoteClosed).
         .onChange(of: store.checkVote) { _, vote in benchVote = vote }
         .onAppear {
+            // Seed the mirror for a screen mounted INTO an already-open vote (a rejoin):
+            // onChange never fires for the standing value, and without the mirror the
+            // eventual close would lose its line, tally, haptic, and ring fade (Wave 15.8).
+            benchVote = store.checkVote
             observeRoomState()
             // Seed the haptic fold (the first observation never buzzes) and
             // keep the generators warm (the KeyHaptics discipline).
@@ -1063,60 +1101,126 @@ public struct SolveScreen: View {
         let token: Int
     }
 
-    /// The ring and the Bench. The live vote raises the Bench (never for a solo electorate); a
-    /// close leaves a short recess line behind. Both float above the interactive board.
-    @ViewBuilder private var checkVoteLayer: some View {
+    /// The proposer-cursor ignition (U4): the cell the pulse blooms at and a token so a
+    /// stale clear can never kill a newer pulse.
+    private struct VoteIgnition: Equatable {
+        let cell: Int
+        let token: Int
+    }
+
+    /// Whether the docked strip stands: a live multiplayer vote or a standing recess line.
+    private var voteStripStanding: Bool {
+        if let vote = store.checkVote, CheckVoteBenchModel.shouldPresent(vote: vote) {
+            return true
+        }
+        return voteRecess != nil
+    }
+
+    /// The docked strip (owner ruling, Wave 15.8): the vote's opening posture and its
+    /// resolution surface. Lives IN the layout (never over the deck); the expanded Bench is
+    /// the overlay in `checkVoteLayer`.
+    @ViewBuilder private var voteStrip: some View {
         if let vote = store.checkVote, CheckVoteBenchModel.shouldPresent(vote: vote),
-            let model = checkVoteBenchModel(vote)
+            let stripModel = checkVoteBenchModel(vote)
         {
-            checkVoteRing
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                CheckVoteBench(
-                    model: model, selfUserId: store.selfUserId, ground: ground,
-                    reduceMotion: reduceMotion, collapsed: $voteCollapsed,
-                    colorFor: checkVoteColor, initialFor: checkVoteInitial,
-                    onApprove: { store.castCheckVote(voteSeq: model.voteSeq, approve: true) },
-                    onReject: { store.castCheckVote(voteSeq: model.voteSeq, approve: false) })
-                    .padding(.bottom, 10)
-            }
-            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+            CheckVoteStrip(
+                model: stripModel, selfUserId: store.selfUserId, ground: ground,
+                reduceMotion: reduceMotion,
+                memberFor: rosterMemberFor,
+                onExpand: {
+                    withAnimation(reduceMotion ? nil : .crossyChrome) { voteExpanded = true }
+                },
+                onApprove: { store.castCheckVote(voteSeq: stripModel.voteSeq, approve: true) },
+                onReject: { store.castCheckVote(voteSeq: stripModel.voteSeq, approve: false) })
         } else if let recess = voteRecess {
-            checkVoteRing  // the ring fades/dissolves through its phase while the line stands
+            CheckVoteStrip(
+                model: recess.model, selfUserId: store.selfUserId, ground: ground,
+                reduceMotion: reduceMotion,
+                recessLine: recess.line, proposerTally: recess.tally,
+                memberFor: rosterMemberFor,
+                onExpand: {}, onApprove: {}, onReject: {})
+        }
+    }
+
+    /// The overlay half of the vote: the Meridian ring, the ignition pulse, and the
+    /// EXPANDED Bench (summoned by the strip's tap, folded back by a drag). The grid stays
+    /// interactive beneath all of it (U2).
+    @ViewBuilder private var checkVoteLayer: some View {
+        if voteStripStanding {
+            checkVoteRing
+        }
+        if let ignition = voteIgnition {
+            ignitionPulse(ignition)
+        }
+        if voteExpanded, let vote = store.checkVote,
+            CheckVoteBenchModel.shouldPresent(vote: vote),
+            let benchModel = checkVoteBenchModel(vote)
+        {
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 CheckVoteBench(
-                    model: recess.model, selfUserId: store.selfUserId, ground: ground,
-                    reduceMotion: reduceMotion, recessLine: recess.line, proposerTally: recess.tally,
-                    collapsed: .constant(false),
-                    colorFor: checkVoteColor, initialFor: checkVoteInitial,
-                    onApprove: {}, onReject: {})
+                    model: benchModel, selfUserId: store.selfUserId, ground: ground,
+                    reduceMotion: reduceMotion,
+                    memberFor: rosterMemberFor,
+                    onCollapse: {
+                        withAnimation(reduceMotion ? nil : .crossyChrome) {
+                            voteExpanded = false
+                        }
+                    },
+                    onApprove: { store.castCheckVote(voteSeq: benchModel.voteSeq, approve: true) },
+                    onReject: { store.castCheckVote(voteSeq: benchModel.voteSeq, approve: false) })
                     .padding(.bottom, 10)
             }
             .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
         }
     }
 
-    /// The gold ring around the board, draining with the vote's remaining time (the only clock;
-    /// no digits). A display link ticks the drain; Reduce Motion slows the tick to 1 Hz (the
-    /// ring steps its opacity rather than sweeping). The board's laid-out frame anchors it,
-    /// inset below the standing top bar so the halo clears the chrome.
+    /// The Meridian ring (U4, Wave 15.8): anchored to the CAMERA's projected grid rect —
+    /// reported by the grid view, converted into room space against the board's frame — so
+    /// it tracks pan and zoom, outset 6 pt with a matching 6 pt corner (a true parallel
+    /// offset of the grid's drawn corner). A display link ticks the drain at 30 Hz; Reduce
+    /// Motion slows it to 1 Hz (the ring steps opacity in quarters instead of sweeping).
+    /// Across a close the FROZEN fraction holds the arc through the breath (the store nils
+    /// the vote before the close beat fires).
     @ViewBuilder private var checkVoteRing: some View {
-        if let board = chromeFrames[.board] {
-            let top = board.minY + roomTopInset + 4
-            let ringRect = CGRect(
-                x: board.minX + 4, y: top,
-                width: max(0, board.width - 8), height: max(0, board.maxY - top - 4))
-            TimelineView(.animation(minimumInterval: reduceMotion ? 1 : 1.0 / 30.0, paused: false)) {
-                timeline in
-                let remaining = store.checkVoteRemaining(asOf: timeline.date) ?? 0
-                CheckVoteRing(
-                    progress: remaining / GameStore.checkVoteTTLSeconds,
-                    phase: voteRingPhase, ground: ground, reduceMotion: reduceMotion)
-                    .frame(width: ringRect.width, height: ringRect.height)
-                    .position(x: ringRect.midX, y: ringRect.midY)
+        if let board = chromeFrames[.board], let projected = projectedGrid {
+            let ringRect = CheckVoteRingGeometry.ringRect(
+                projected: projected.offsetBy(dx: board.minX, dy: board.minY),
+                viewport: board)
+            if ringRect.width > 0, ringRect.height > 0 {
+                TimelineView(
+                    .animation(minimumInterval: reduceMotion ? 1 : 1.0 / 30.0, paused: false)
+                ) { timeline in
+                    let progress: Double =
+                        store.checkVote != nil
+                        ? (store.checkVoteRemaining(asOf: timeline.date) ?? 0)
+                            / GameStore.checkVoteTTLSeconds
+                        : (voteFrozenProgress ?? 0)
+                    CheckVoteRing(
+                        progress: progress,
+                        phase: voteRingPhase, ground: ground, reduceMotion: reduceMotion)
+                        .frame(width: ringRect.width, height: ringRect.height)
+                        .position(x: ringRect.midX, y: ringRect.midY)
+                }
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
+        }
+    }
+
+    /// The ignition pulse at the proposer's cursor cell (U4, "Ember's soul"): positioned
+    /// through the same camera projection the ring rides, so it lands on the drawn cell at
+    /// any pan or zoom. Mounted once per open beat; never under Reduce Motion.
+    @ViewBuilder private func ignitionPulse(_ ignition: VoteIgnition) -> some View {
+        if let board = chromeFrames[.board], let projected = projectedGrid,
+            projected.width > 0, ignition.cell >= 0, ignition.cell < puzzle.cellCount
+        {
+            let scale = projected.width / (CGFloat(puzzle.cols) * GridModule.unit)
+            let cellRect = GridModule.cellRect(ignition.cell, cols: puzzle.cols)
+            CheckVoteIgnitionPulse(ground: ground, cellSize: GridModule.unit * scale)
+                .position(
+                    x: board.minX + projected.minX + cellRect.midX * scale,
+                    y: board.minY + projected.minY + cellRect.midY * scale)
+                .id(ignition.token)  // a fresh pulse per open, never a resumed one
         }
     }
 
@@ -1126,36 +1230,36 @@ public struct SolveScreen: View {
         }
     }
 
-    /// An elector's identity color (the roster system; never the gold, which is the ring's). A
-    /// missing roster entry (an elector who has since dropped) falls back to the userId hash,
-    /// exactly as GridPresence does.
-    private func checkVoteColor(_ userId: String) -> Color {
-        let wire = store.participants.first { $0.userId == userId }?.color ?? ""
-        return Color(rgb: ground.rosterColor(GridPresence.rosterColor(wireColor: wire, userId: userId)))
+    /// The roster entry behind a chip's puck; nil (a departed elector) renders the neutral
+    /// "Player" stand-in inside the Bench (CheckVoteChipMember).
+    private func rosterMemberFor(_ userId: String) -> RosterMember? {
+        rosterMembers.first { $0.userId == userId }
     }
 
-    private func checkVoteInitial(_ userId: String) -> String {
-        rosterMembers.first { $0.userId == userId }?.initial
-            ?? String(userId.prefix(1)).uppercased()
-    }
-
-    /// Wire the three vote beats to haptics, the ring phase, and the recess (the onPuzzleChecked
-    /// pattern). Solo votes are skipped (no chrome, no open beat). Fired only under the store's
-    /// §7 seq gate, so snapshot healing stays silent.
+    /// Wire the three vote beats to haptics, the ring phase, the announcements, and the
+    /// recess (the onPuzzleChecked pattern). Solo votes are skipped (no chrome, no open
+    /// beat). Fired only under the store's §7 seq gate, so snapshot healing stays silent.
     private func wireCheckVoteBeats() {
         store.onCheckVoteOpened = { _ in
             guard let vote = store.checkVote, !vote.isSolo else { return }
             voteRecess = nil
-            voteCollapsed = false
+            voteFrozenProgress = nil
+            voteExpanded = false
+            // A vote opening while the facts sheet is up would stand behind the modal
+            // scrim: dismiss the sheet so the room's moment is visible (Wave 15.8 fix).
+            factsPresented = false
             SolveHaptics.shared.play(.checkVoteOpened)
+            if let openedModel = checkVoteBenchModel(vote) {
+                // VoiceOver hears the open politely (U10): the question plus the actions
+                // offer for an elector, the proposer's own confirmation otherwise.
+                AccessibilityNotification.Announcement(
+                    CheckVoteAnnouncement.opened(model: openedModel)
+                ).post()
+            }
             if reduceMotion {
-                voteRingPhase = .draining
+                voteRingPhase = .draining  // no pulse, no flare (U4)
             } else {
-                voteRingPhase = .igniting
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(240))
-                    if store.checkVote != nil { voteRingPhase = .draining }
-                }
+                igniteVote(vote)
             }
         }
         store.onCheckVoteCast = { _ in
@@ -1164,52 +1268,68 @@ public struct SolveScreen: View {
         }
         store.onCheckVoteClosed = { msg in
             // The store cleared `checkVote` already; read the pre-close vote from the mirror.
-            guard let vote = benchVote, !vote.isSolo, let model = checkVoteBenchModel(vote) else {
+            guard let vote = benchVote, !vote.isSolo, let closedModel = checkVoteBenchModel(vote)
+            else {
                 voteRecess = nil
                 return
             }
+            // Freeze the last drained fraction across the close (the ring otherwise
+            // vanishes during the breath and reappears full; Wave 15.8 fix): the recess
+            // ring draws this standing arc until it flashes or fades.
+            voteFrozenProgress = CheckVoteRingFreeze.progress(
+                expiresAt: vote.expiresAt, asOf: Date())
+            // The Bench folds to the strip for the resolution: the calm line is one row,
+            // and the chips are history now.
+            withAnimation(reduceMotion ? nil : .crossyChrome) { voteExpanded = false }
             if msg.outcome == .passed {
-                // The reveal (passed): the Bench holds "Checking\u{2026}" through the breath; the
-                // ring keeps its steady draw until onPuzzleChecked flashes it inward at the wash
-                // start (so the flash, the marks, and the success haptic land together, U6). The
-                // ring stays visible because the recess Bench mounts it.
+                // The reveal (passed): the strip holds "Checking\u{2026}" through the breath;
+                // the ring holds its frozen arc until onPuzzleChecked flashes it at the wash
+                // start (so the flash, the marks, and the success haptic land together, U6).
                 let token = (voteRecess?.token ?? 0) + 1
                 withAnimation(reduceMotion ? nil : .crossyChrome) {
                     voteRecess = CheckVoteRecess(
-                        model: model, line: CheckVoteCopy.checking, tally: nil, token: token)
+                        model: closedModel, line: CheckVoteCopy.checking, tally: nil,
+                        token: token)
                 }
                 return
             }
-            // The recess (failed/lapsed/grid-broken): two soft taps, the ring fades, one calm
-            // line (plus the proposer's tally) stands ~2.5 s, then the Bench withdraws. A
-            // terminal close is silent (completion or abandon owns the beat).
+            // The recess (failed/lapsed/grid-broken): two soft taps, the ring fades from the
+            // frozen arc, one calm line (WITH the proposer's tally beside it — the audit's
+            // dead-code fix) stands ~2.5 s, then the strip withdraws. A terminal close is
+            // silent (completion or abandon owns the beat).
             if let haptic = CheckVoteHaptics.forClose(outcome: msg.outcome, reason: msg.reason) {
                 SolveHaptics.shared.play(haptic)
             }
             voteRingPhase = .fading
             let line = CheckVoteCopy.recessLine(outcome: msg.outcome, reason: msg.reason)
             let tally = CheckVoteTally.line(
-                for: msg.outcome, viewerRole: model.viewerRole,
+                for: msg.outcome, viewerRole: closedModel.viewerRole,
                 approvals: vote.approvals.count, needed: vote.needed)
+            if let announcement = CheckVoteAnnouncement.closed(line: line, tally: tally) {
+                AccessibilityNotification.Announcement(announcement).post()
+            }
             guard line != nil || tally != nil else {
                 voteRecess = nil
                 return
             }
             let token = (voteRecess?.token ?? 0) + 1
             withAnimation(reduceMotion ? nil : .crossyChrome) {
-                voteRecess = CheckVoteRecess(model: model, line: line, tally: tally, token: token)
+                voteRecess = CheckVoteRecess(
+                    model: closedModel, line: line, tally: tally, token: token)
             }
             scheduleRecessWithdraw(token: token, after: 2500)
         }
-        // The check landing (PROTOCOL.md §6, §10; D32). A multiplayer pass reveal (the Bench is
-        // on "Checking\u{2026}") runs the U6 ceremony: the just-applied coats hide, and after a
-        // ~600 ms breath they wash in ascending cell order (< 900 ms) while the success haptic
-        // fires timed to that wash start and the Bench swaps to "{n} to fix". A solo pass and a
-        // bare rollout check (no `by`, no Bench) are instant: the haptic plays now, no wash.
+        // The check landing (PROTOCOL.md §6, §10; D32). A multiplayer pass reveal (the strip
+        // is on "Checking\u{2026}") runs the U6 ceremony: the just-applied coats hide, and
+        // after a ~600 ms breath they wash in ascending cell order (< 900 ms) while the
+        // success haptic fires timed to that wash start and the strip swaps to "{n} to fix".
+        // A solo pass and a bare rollout check (no Bench) are instant: the quiet checkLanded
+        // thud, never the fanfare (Wave 15.8 fix; CheckVoteHaptics.forPuzzleChecked).
         store.onPuzzleChecked = { msg in
-            guard msg.by != nil, let model = voteRecess?.model else {
-                // Solo pass (attributed, no Bench) or a bare check: instant, no wash.
-                SolveHaptics.shared.play(msg.by != nil ? .checkVotePassed : .checkLanded)
+            guard msg.by != nil, let revealModel = voteRecess?.model else {
+                SolveHaptics.shared.play(
+                    CheckVoteHaptics.forPuzzleChecked(
+                        attributed: msg.by != nil, benchStanding: false))
                 return
             }
             let count = msg.wrongCells.count
@@ -1218,13 +1338,15 @@ public struct SolveScreen: View {
                 // Reduce Motion: no breath, no wash. The coats are already at full opacity
                 // (checkWashStartedAt stays nil); swap the line and play the success now.
                 SolveHaptics.shared.play(.checkVotePassed)
+                AccessibilityNotification.Announcement(CheckVoteAnnouncement.toFix(count)).post()
                 voteRecess = CheckVoteRecess(
-                    model: model, line: CheckVoteCopy.toFix(count), tally: nil, token: recessToken)
+                    model: revealModel, line: CheckVoteCopy.toFix(count), tally: nil,
+                    token: recessToken)
                 scheduleRecessWithdraw(token: recessToken, after: 2500)
                 return
             }
             // Hide the coats now (a future start makes every reveal 0 during the breath), then
-            // wash them in. The ring flash-dissolves at the wash start with them.
+            // wash them in. The ring flashes its standing arc at the wash start with them.
             let breathMilliseconds = 600
             let start = Date().timeIntervalSinceReferenceDate + Double(breathMilliseconds) / 1000
             checkWashStartedAt = start
@@ -1234,15 +1356,42 @@ public struct SolveScreen: View {
                 try? await Task.sleep(for: .milliseconds(breathMilliseconds))
                 SolveHaptics.shared.play(.checkVotePassed)  // timed to the wash start
                 voteRingPhase = .passing
+                AccessibilityNotification.Announcement(CheckVoteAnnouncement.toFix(count)).post()
                 withAnimation(.crossyChrome) {
                     voteRecess = CheckVoteRecess(
-                        model: model, line: CheckVoteCopy.toFix(count), tally: nil, token: recessToken)
+                        model: revealModel, line: CheckVoteCopy.toFix(count), tally: nil,
+                        token: recessToken)
                 }
                 // Retire the wash once it finishes (< 900 ms), re-pausing the grid timeline.
                 try? await Task.sleep(for: .milliseconds(950))
                 if checkWashToken == washToken { checkWashStartedAt = nil }
                 scheduleRecessWithdraw(token: recessToken, after: 2500)
             }
+        }
+    }
+
+    /// The ignition (U4, "Ember's soul"): a pulse at the PROPOSER's cursor cell hands the
+    /// flame to the ring's flare. The local proposer's cursor is the selection (self never
+    /// rides `store.cursors`); a teammate's rides presence. No cursor in hand (a proposer
+    /// who dropped between propose and open) skips the pulse; the ring alone ignites.
+    private func igniteVote(_ vote: CheckVoteState) {
+        let cell =
+            vote.by == store.selfUserId
+            ? model.selection.cell : store.cursors[vote.by]?.cell
+        if let cell {
+            let token = (voteIgnition?.token ?? 0) + 1
+            voteIgnition = VoteIgnition(cell: cell, token: token)
+            Task { @MainActor in
+                // The pulse plays 450 ms; unmount shortly after, token-guarded so a fresh
+                // vote's pulse is never cleared by a stale retirement.
+                try? await Task.sleep(for: .milliseconds(700))
+                if voteIgnition?.token == token { voteIgnition = nil }
+            }
+        }
+        voteRingPhase = .igniting
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(240))
+            if store.checkVote != nil { voteRingPhase = .draining }
         }
     }
 
@@ -1316,7 +1465,12 @@ public struct SolveScreen: View {
         // A standing (tap-opened) fan yields to intent like any transient (DESIGN.md
         // §4): the touch closes it AND lands. The fan's own surface never routes
         // here (its overlay stands outside the chrome's dismiss gestures).
-        withAnimation(reduceMotion ? nil : .crossyChrome) { fan.tapAway() }
+        withAnimation(reduceMotion ? nil : .crossyChrome) {
+            fan.tapAway()
+            // The expanded Bench yields to intent the same way: a board touch folds it
+            // back to the docked strip (the vote stays visible; play continues, U2).
+            voteExpanded = false
+        }
     }
 
     /// The facts sheet's summon (2026-07-12: the pill's tap presents
