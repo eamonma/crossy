@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CheckVoteSurface } from "./CheckVoteSurface";
+import { VoteChips } from "./VoteChips";
 import type { CheckVoteView } from "./useCheckVote";
 import type { ElectorChip } from "./voteView";
 
@@ -38,15 +39,18 @@ function view(o: Partial<CheckVoteView> = {}): CheckVoteView {
     vote: null,
     role: "elector",
     chips,
+    proposal: { self: false, name: "Ana" },
     proposalText: "Ana wants to check the puzzle",
     showVerbs: true,
     pending: false,
+    verbsDisabled: false,
     onApprove: () => {},
     onReject: () => {},
     resolutionText: null,
     tallyText: null,
     ring: null,
     wash: null,
+    revealedWrongCells: null,
     pulse: null,
     ariaMessage: "Ana wants to check the puzzle",
     reducedMotion: true,
@@ -62,11 +66,36 @@ describe("the Proscenium offers the ballot to a not-yet-voted elector (the UX sp
     expect(html).toContain("Keep solving");
   });
 
-  it("the proposer sees chips but NO verbs (their proposal was their approval)", () => {
+  it("truncates only the NAME span, never the verb phrase (Wave 15.7)", () => {
     const html = renderToStaticMarkup(
-      <CheckVoteSurface view={view({ role: "proposer", showVerbs: false })} />,
+      <CheckVoteSurface
+        view={view({
+          proposal: { self: false, name: "A very long teammate name here" },
+        })}
+      />,
     );
-    expect(html).toContain("Ana wants to check the puzzle");
+    // The name rides its own truncate span; the verb phrase is a separate, un-truncated span so a
+    // long name can never swallow the verb.
+    expect(html).toContain("truncate");
+    expect(html).toContain("A very long teammate name here");
+    expect(html).toMatch(/wants to check the puzzle<\/span>/);
+  });
+
+  it("the proposer sees 'Waiting for the room' and NO verbs (owner ruling, no self-echo)", () => {
+    const html = renderToStaticMarkup(
+      <CheckVoteSurface
+        view={view({
+          role: "proposer",
+          showVerbs: false,
+          proposal: { self: true },
+          proposalText: "Waiting for the room",
+          // The live region mirrors the corrected line, never the self-echo (owner ruling).
+          ariaMessage: "Waiting for the room",
+        })}
+      />,
+    );
+    expect(html).toContain("Waiting for the room");
+    expect(html).not.toContain("wants to check the puzzle");
     expect(html).not.toContain("Check it");
     expect(html).not.toContain("Keep solving");
   });
@@ -78,11 +107,24 @@ describe("the Proscenium offers the ballot to a not-yet-voted elector (the UX sp
     expect(html).not.toContain("Check it");
   });
 
-  it("a voter with a ballot in flight sees no verbs", () => {
+  it("a ballot in flight keeps the verbs mounted but disabled in place (no unmount slide)", () => {
     const html = renderToStaticMarkup(
-      <CheckVoteSurface view={view({ showVerbs: false, pending: true })} />,
+      <CheckVoteSurface
+        view={view({ showVerbs: true, pending: true, verbsDisabled: true })}
+      />,
     );
-    expect(html).not.toContain("Keep solving");
+    // The verbs stay so the block never unmounts mid-click; they are disabled, not gone.
+    expect(html).toContain("Check it");
+    expect(html).toContain("Keep solving");
+    expect(html).toContain("disabled");
+  });
+
+  it("a locally-expired-but-unclosed vote disables the verbs (no live verb on an empty ring)", () => {
+    const html = renderToStaticMarkup(
+      <CheckVoteSurface view={view({ verbsDisabled: true })} />,
+    );
+    expect(html).toContain("Check it");
+    expect(html).toContain("disabled");
   });
 });
 
@@ -133,5 +175,40 @@ describe("resolution and recess (beats 4-5)", () => {
     );
     expect(html).not.toContain("Check it");
     expect(html).not.toContain("wants to check");
+  });
+});
+
+describe("VoteChips collapse to an avatar stack beyond the strip cap (Wave 15.7 mobile)", () => {
+  function manyChips(n: number): ElectorChip[] {
+    return Array.from({ length: n }, (_, i) => ({
+      userId: `u${i}`,
+      name: `Name ${i}`,
+      initial: String.fromCharCode(65 + i),
+      avatarUrl: null,
+      color: "#6F66D4",
+      side: "undecided" as const,
+      isSelf: false,
+      isProposer: i === 0,
+    }));
+  }
+
+  it("shows every chip when under the cap", () => {
+    const html = renderToStaticMarkup(
+      <VoteChips chips={manyChips(3)} max={3} />,
+    );
+    expect(html).not.toContain("+");
+  });
+
+  it("collapses to a +N overflow beyond the cap, keeping the count honest", () => {
+    const html = renderToStaticMarkup(
+      <VoteChips chips={manyChips(7)} max={3} />,
+    );
+    // 7 electors, cap 3: two avatars plus a "+5" bubble (5 hidden), so the verbs never get pushed off.
+    expect(html).toContain("+5");
+  });
+
+  it("uncapped (desktop) renders the full row with no overflow bubble", () => {
+    const html = renderToStaticMarkup(<VoteChips chips={manyChips(9)} />);
+    expect(html).not.toMatch(/\+\d/);
   });
 });

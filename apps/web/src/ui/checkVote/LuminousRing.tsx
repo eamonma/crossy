@@ -1,21 +1,28 @@
-// The luminous ring (the UX spec): a halo OUTSIDE the grid, offset off the board's edge, ~3px, in
-// the warm brand gold (--color-gold-9, the solo-gold ramp hue; never a roster color). It is the
-// ONLY clock, so there is no countdown text anywhere; it drains proportionally to remaining time via
-// the stroke-dash technique (pathLength normalized to 1). Decorative and aria-hidden: the state
-// lives in the Proscenium text. Under prefers-reduced-motion it does not sweep; it steps down in
-// opacity at coarse intervals instead.
+// The luminous ring (U4; the Meridian redesign, Wave 15.7): a halo OUTSIDE the grid and a true
+// parallel offset of the square-cornered board. The corner radius EQUALS the offset gap, so the curve
+// is optically parallel to the board's square corners (the old rx=14 at ~8.5px pinched them). It is
+// the ONLY clock, so there is no countdown text anywhere; it drains CLOCKWISE from a top-center seam
+// via a custom path (meridianPath) whose start is the seam, not the SVG rect's top-left. Decorative
+// and aria-hidden: the state lives in the Proscenium text. Under prefers-reduced-motion it does not
+// sweep; it holds whole and steps opacity in quarters.
 //
-// Geometry: the SVG is rendered in PIXEL space. A ResizeObserver measures the halo box and the
-// viewBox matches it 1:1, so there is no preserveAspectRatio stretch to thicken the stroke on one
-// axis or distort the corner radius (the earlier `vector-effect: non-scaling-stroke` was not honored
-// under the stretch). The result is a crisp, uniform 3px stroke with a uniform radius at every board
-// aspect and width.
+// Light rides the blur, not the line: the stroke drops to a hairline 2px gold-9 core, and the glow is
+// a soft drop-shadow halo, so brightness comes from luminosity rather than stroke weight.
+//
+// Geometry: the SVG is rendered in PIXEL space. A ResizeObserver measures the halo box and the viewBox
+// matches it 1:1, so there is no preserveAspectRatio stretch to thicken the stroke on one axis or
+// distort the corner radius (the earlier `vector-effect: non-scaling-stroke` was not honored under the
+// stretch). Do not swap this for a percentage viewBox: it fixed a real Chromium bug.
 import { useCallback, useRef, useState } from "react";
-import { coarseOpacityStep, remainingFraction } from "./voteView";
+import { coarseOpacityStep, meridianPath, ringDashOffset } from "./voteView";
 import type { CheckVoteRing } from "./useCheckVote";
 
-const WEIGHT = 3;
-const RADIUS = 14;
+// The hairline core; luminosity is carried by the CSS glow, not the line (U4 Meridian).
+const WEIGHT = 2;
+// The halo's offset off the board (matches the CSS `--vote-ring-offset`). The corner radius equals the
+// offset gap (offset minus half the stroke), so the ring is a true parallel offset of the square board.
+const OFFSET = 10;
+const RADIUS = OFFSET - WEIGHT / 2;
 
 export function LuminousRing({
   ring,
@@ -41,9 +48,6 @@ export function LuminousRing({
     }
   }, []);
 
-  const fraction =
-    ring.expiresAt !== null ? remainingFraction(ring.expiresAt, ring.nowMs) : 0;
-
   const phaseClass =
     ring.phase === "passed"
       ? "vote-ring--passed"
@@ -51,14 +55,19 @@ export function LuminousRing({
         ? "vote-ring--fading"
         : "vote-ring--igniting";
 
-  // Full-time reads as a complete ring (dashoffset 0); at expiry the dash slides fully off
-  // (dashoffset 1). Reduced motion holds the ring whole and drops its opacity in coarse steps.
-  const dashOffset = reducedMotion ? 0 : 1 - fraction;
-  const opacity = reducedMotion ? coarseOpacityStep(fraction) : undefined;
+  // The seam is the path start (top-center); the drain runs clockwise from it. Reduced motion holds
+  // the ring whole (offset 0) and steps opacity down in quarters instead of sweeping.
+  const dashOffset = ringDashOffset(ring.fraction, reducedMotion);
+  const opacity = reducedMotion ? coarseOpacityStep(ring.fraction) : undefined;
 
   const { w, h } = size;
   return (
-    <div ref={hostRef} className={`vote-ring ${phaseClass}`} aria-hidden="true">
+    <div
+      ref={hostRef}
+      className={`vote-ring ${phaseClass}`}
+      style={{ inset: `-${OFFSET}px` }}
+      aria-hidden="true"
+    >
       {w > 0 && h > 0 && (
         <svg
           width="100%"
@@ -66,12 +75,8 @@ export function LuminousRing({
           viewBox={`0 0 ${w} ${h}`}
           style={opacity !== undefined ? { opacity } : undefined}
         >
-          <rect
-            x={WEIGHT / 2}
-            y={WEIGHT / 2}
-            width={w - WEIGHT}
-            height={h - WEIGHT}
-            rx={RADIUS}
+          <path
+            d={meridianPath(w, h, RADIUS, WEIGHT)}
             strokeWidth={WEIGHT}
             pathLength={1}
             strokeDashoffset={dashOffset}
