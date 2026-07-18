@@ -66,6 +66,10 @@ import { SolvingNow, SolvingNowPlaceholder } from "./ui/SolvingNow";
 import { useBearer } from "./ui/useResource";
 import { useNavPrefs } from "./ui/useNavPrefs";
 import { emptyPlayableCount, visibleCheckMarks } from "./ui/roomActions";
+import { useCheckVote } from "./ui/checkVote/useCheckVote";
+import { CheckVoteSurface } from "./ui/checkVote/CheckVoteSurface";
+import { VoteBoardOverlay } from "./ui/checkVote/VoteBoardOverlay";
+import { isSoloElector } from "./ui/checkVote/voteView";
 import { GROUP_PAST, buildRoster, cluePresence } from "./ui/roster";
 import type { SolverEntry } from "./ui/roster";
 import { referencedCells, referencedKeys } from "./ui/clueRefs";
@@ -922,6 +926,23 @@ function LiveGame({
     return true;
   }, [store, puzzle]);
 
+  // The check-vote surface (PROTOCOL.md §6, §10; D32). The store owns the vote; this view owns the
+  // ceremony (the Proscenium, the ring, the chips, the reveal). Solo detection keeps the confirm
+  // dialog and suppresses all vote chrome for the auto-pass; a real vote drives the whole surface.
+  const voteView = useCheckVote({
+    store,
+    selfUserId: store.selfUserId,
+    cols: puzzle.cols,
+    rows: puzzle.rows,
+    selfCell: selection.cell,
+  });
+  const solo = useMemo(() => {
+    void version;
+    return isSoloElector(store.participants, store.selfUserId);
+  }, [store, version]);
+  // A real (non-solo) vote is open: gate the propose control (a fresh proposal needs a fresh hold).
+  const voteOpen = voteView.active && voteView.phase === "open";
+
   const presence = useMemo(() => {
     void version;
     const byCell = new Map<number, PresenceEntry[]>();
@@ -1374,6 +1395,8 @@ function LiveGame({
             emptyCount,
             checkCount: store.checkCount,
             onCheckPuzzle: requestCheck,
+            solo,
+            voteOpen,
           }}
           onEnterParty={() => navigate(togglePartyHref(gameId, params, true))}
           onBack={goHome}
@@ -1391,9 +1414,14 @@ function LiveGame({
           />
         )}
 
+        {/* The vote surface sits where the chrome strip does, above the grid: on desktop the
+            Proscenium replaces the clue strip (hidden while active); on mobile a slim strip docks
+            above the active-clue bar, which stays. It returns the chrome on close. */}
+        <CheckVoteSurface view={voteView} />
         <ActiveClueHeader
           clue={activeClue}
           completed={boardCompleted}
+          hideStripOnDesktop={voteView.active && voteView.phase === "open"}
           onOpen={() => openSheetTo("clues")}
           onPrev={() => stepClue("backward")}
           onNext={() => stepClue("forward")}
@@ -1505,6 +1533,14 @@ function LiveGame({
                     xref={referencedCellSet}
                     onCellClick={onCellClick}
                     onFlashEnd={onFlashEnd}
+                  />
+                  {/* The luminous ring (outside the grid), the beat-1 pulse, and the reveal wash.
+                      Decorative and pointer-transparent; the vote's state lives in the Proscenium
+                      text and the polite live region (PROTOCOL.md §6; D32; the UX spec). */}
+                  <VoteBoardOverlay
+                    view={voteView}
+                    cols={puzzle.cols}
+                    rows={puzzle.rows}
                   />
                   {/* The sticker layer, an HTML overlay above the SVG (the settle-pop fix;
                       reactions/ReactionStickers.tsx). Inside the board wrapper so its cell

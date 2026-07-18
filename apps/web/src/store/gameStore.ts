@@ -7,8 +7,13 @@
 import type {
   Board,
   Cell,
+  CheckVoteCastEvent,
+  CheckVoteClosedEvent,
+  CheckVoteOpenedEvent,
+  CheckVoteView,
   Cursor,
   Direction,
+  ErrorCode,
   GameStatus,
   Participant,
   ReactionNotice,
@@ -16,6 +21,14 @@ import type {
   Stats,
 } from "@crossy/protocol";
 import type { GameTransport } from "./transport";
+
+/** The four non-fatal vote errors (PROTOCOL.md §11): they clear the optimistic intent, no drama. */
+const VOTE_ERROR_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  "VOTE_PENDING",
+  "NO_VOTE_OPEN",
+  "NOT_ELECTOR",
+  "ALREADY_VOTED",
+]);
 
 /**
  * The store's connection state. Three of these are the PROTOCOL.md section 7 wire
@@ -54,6 +67,18 @@ export interface ConflictFlash {
   readonly by: string;
 }
 
+/**
+ * A vote resolving (PROTOCOL.md §6 `checkVoteClosed`): the store clears `checkVote` on close, so the
+ * view (which must play the reveal or the recess AFTER the vote is gone from state) learns the
+ * outcome through this signal, the same detect-and-forward split as the conflict flash and the
+ * reaction. `reason` is absent when passed.
+ */
+export interface VoteClosedSignal {
+  readonly voteSeq: number;
+  readonly outcome: CheckVoteClosedEvent["outcome"];
+  readonly reason?: CheckVoteClosedEvent["reason"];
+}
+
 export interface GameStoreInit {
   transport: GameTransport;
   /** Command id source; defaults to crypto.randomUUID (PROTOCOL.md section 3). */
@@ -66,6 +91,16 @@ export interface GameStoreInit {
     overlay?: readonly PendingCommand[];
     status?: GameStatus;
   };
+}
+
+/** Insert into an ascending ASCII-ordered list, preserving order (INV-1: userId arrays are ascending
+ * ASCII byte order, which for ASCII ids is the default string comparison). Assumes `value` is absent. */
+function insertAscending(list: readonly string[], value: string): string[] {
+  const next = [...list];
+  let i = next.length;
+  while (i > 0 && next[i - 1]! > value) i -= 1;
+  next.splice(i, 0, value);
+  return next;
 }
 
 /** ASCII-only uppercase (INV-1): map a-z to A-Z, leave every other code point alone. */
@@ -100,11 +135,27 @@ export class GameStore {
   // tracks them now so a `puzzleChecked` is an ordinary event, never a forced resync.
   private checkedWrongValue = new Set<number>();
   private checkCountValue = 0;
+  // The open check vote (PROTOCOL.md §4, §6, §10; D32), reconciled like any sequenced state: the
+  // three vote events advance it under the seq gate, and every snapshot replaces it wholesale so a
+  // reconnect mid-vote heals the whole thing with no delta replay. `null` when none is open.
+  private checkVoteValue: CheckVoteView | null = null;
+  // A local, optimistic vote intent (the proposer's proposal or an elector's ballot), keyed by the
+  // command's id so the four non-fatal vote errors (§11) and the authoritative echo both clear it
+  // with no drama. It is NEVER reconciled state: the wire's vote is the truth, this only lets the
+  // verb buttons settle the instant you act and unstick the moment the server answers.
+  private pendingVoteValue: {
+    commandId: string;
+    kind: "propose" | "ballot";
+    approve?: boolean;
+  } | null = null;
 
   private version = 0;
   private readonly listeners = new Set<() => void>();
   private readonly flashListeners = new Set<(flash: ConflictFlash) => void>();
   private readonly reactionListeners = new Set<(r: ReactionNotice) => void>();
+  private readonly voteClosedListeners = new Set<
+    (close: VoteClosedSignal) => void
+  >();
 
   constructor(init: GameStoreInit) {
     this.transport = init.transport;
@@ -161,6 +212,21 @@ export class GameStore {
   /** The game's total accepted checks; permanent, never reset (PROTOCOL.md §10). */
   get checkCount(): number {
     return this.checkCountValue;
+  }
+  /** The open check vote (PROTOCOL.md §4, §10; D32), or null when none is open. Indices-free (INV-6). */
+  get checkVote(): CheckVoteView | null {
+    return this.checkVoteValue;
+  }
+  /**
+   * The local optimistic vote intent, or null. Lets the view settle the self chip and disable the
+   * verbs the instant you act, before the wire echoes; a non-fatal vote error or the echo clears it.
+   */
+  get pendingVote(): {
+    readonly commandId: string;
+    readonly kind: "propose" | "ballot";
+    readonly approve?: boolean;
+  } | null {
+    return this.pendingVoteValue;
   }
 
   /**
@@ -225,6 +291,17 @@ export class GameStore {
     return () => this.reactionListeners.delete(listener);
   }
 
+  /**
+   * Relay a vote resolution to the view (PROTOCOL.md §6). Like subscribeFlash the store DETECTS and
+   * forwards: it clears `checkVote` on the close, and the view uses this to play the passed reveal or
+   * the failed/cancelled recess after the fact. A snapshot never resurrects a close (it is not
+   * reconciled state), so a reconnect after a vote closed simply shows no vote, which is correct.
+   */
+  subscribeVoteClosed(listener: (close: VoteClosedSignal) => void): () => void {
+    this.voteClosedListeners.add(listener);
+    return () => this.voteClosedListeners.delete(listener);
+  }
+
   // --- Local commands (PROTOCOL.md section 8: overlay entry plus send) ---
 
   placeLetter(cell: number, value: string, commandId?: string): void {
@@ -272,10 +349,33 @@ export class GameStore {
     // server would answer with GAME_NOT_ONGOING anyway (INV-4 scope).
     if (this.syncValue === "connecting") return;
     if (this.statusValue !== "ongoing") return;
+    const id = commandId ?? this.newCommandId();
+    // Track the proposal so a VOTE_PENDING echo (a race with a vote already open, §11) clears it
+    // without drama; the accepted proposal clears it via the echoed checkVoteOpened's commandId.
+    this.pendingVoteValue = { commandId: id, kind: "propose" };
+    this.transport.send({ type: "checkPuzzle", commandId: id });
+    this.bump();
+  }
+
+  /**
+   * Cast one ballot on the open check vote (PROTOCOL.md §5, §10; D32). `voteSeq` is the open vote's
+   * `openedSeq`. Like `checkPuzzle` it owns no cell and paints nothing optimistically, but it records
+   * a pending intent so the verbs settle at once and a non-fatal error (`NO_VOTE_OPEN`, `NOT_ELECTOR`,
+   * `ALREADY_VOTED`) clears it quietly. Gated like every send: refused before the first snapshot and
+   * on a terminal board. The server enforces every gate regardless (the electorate, one-ballot rule).
+   */
+  castCheckVote(voteSeq: number, approve: boolean, commandId?: string): void {
+    if (this.syncValue === "connecting") return;
+    if (this.statusValue !== "ongoing") return;
+    const id = commandId ?? this.newCommandId();
+    this.pendingVoteValue = { commandId: id, kind: "ballot", approve };
     this.transport.send({
-      type: "checkPuzzle",
-      commandId: commandId ?? this.newCommandId(),
+      type: "castCheckVote",
+      commandId: id,
+      voteSeq,
+      approve,
     });
+    this.bump();
   }
 
   private sendMutation(
@@ -351,6 +451,20 @@ export class GameStore {
         // cell's true value is never masked (the immortal-overlay case, INV-10).
         if (message.commandId !== undefined) {
           this.removeOverlayEntry(message.commandId);
+          // The four vote errors (VOTE_PENDING, NO_VOTE_OPEN, NOT_ELECTOR, ALREADY_VOTED, §11)
+          // arrive like any non-fatal error with the offending commandId. There is no overlay to
+          // clear (a vote paints no cell), so we clear the optimistic vote intent instead and stay
+          // silent: no toast, no resync. The room's own state already shows why (the vote is open,
+          // or gone, or you are not an elector). A vote-coded error naming the pending intent clears
+          // it, so the verbs (or the propose control) never stick.
+          if (
+            this.pendingVoteValue !== null &&
+            this.pendingVoteValue.commandId === message.commandId &&
+            VOTE_ERROR_CODES.has(message.code)
+          ) {
+            this.pendingVoteValue = null;
+            this.bump();
+          }
         }
         return;
       case "playerConnected": {
@@ -405,6 +519,19 @@ export class GameStore {
           this.checkedWrongValue = new Set(message.wrongCells);
           this.checkCountValue = message.checkCount;
         });
+        return;
+      case "checkVoteOpened":
+        // A sequenced event (PROTOCOL.md §6, §7): applied under the same seq gate as cellSet, so the
+        // vote can never force a resync. It opens the vote with approvals `[by]`, because the
+        // proposal IS the proposer's approval (§10). `openedSeq` is this event's own seq, the
+        // identity a later ballot's `voteSeq` names.
+        this.applyCheckVoteOpened(message);
+        return;
+      case "checkVoteCast":
+        this.applyCheckVoteCast(message);
+        return;
+      case "checkVoteClosed":
+        this.applyCheckVoteClosed(message);
         return;
       case "kicked":
         // Followed by close 1008; the transport surfaces the closure. Nothing to
@@ -484,6 +611,69 @@ export class GameStore {
     }
   }
 
+  /** Open the vote (PROTOCOL.md §6, §10): approvals start as `[by]`, the proposer's own approval. */
+  private applyCheckVoteOpened(message: CheckVoteOpenedEvent): void {
+    this.applySequenced(message.seq, () => {
+      this.checkVoteValue = {
+        openedSeq: message.seq,
+        by: message.by,
+        electorate: message.electorate,
+        approvals: [message.by],
+        rejections: [],
+        needed: message.needed,
+        expiresAt: message.expiresAt,
+      };
+      if (this.pendingVoteValue?.commandId === message.commandId) {
+        this.pendingVoteValue = null;
+      }
+    });
+  }
+
+  /** Record one ballot (PROTOCOL.md §6): add the voter to approvals or rejections, ascending (INV-1),
+   * copy-on-write so a memoized consumer repaints. A ballot only lands on the vote its `voteSeq` names. */
+  private applyCheckVoteCast(message: CheckVoteCastEvent): void {
+    this.applySequenced(message.seq, () => {
+      const vote = this.checkVoteValue;
+      if (vote !== null && vote.openedSeq === message.voteSeq) {
+        const already =
+          vote.approvals.includes(message.by) ||
+          vote.rejections.includes(message.by);
+        if (!already) {
+          this.checkVoteValue = message.approve
+            ? {
+                ...vote,
+                approvals: insertAscending(vote.approvals, message.by),
+              }
+            : {
+                ...vote,
+                rejections: insertAscending(vote.rejections, message.by),
+              };
+        }
+      }
+      if (this.pendingVoteValue?.commandId === message.commandId) {
+        this.pendingVoteValue = null;
+      }
+    });
+  }
+
+  /** Close the vote (PROTOCOL.md §6, §10): clear it wholesale and forward the outcome to the view,
+   * which plays the passed reveal or the failed/cancelled recess AFTER the vote leaves state. */
+  private applyCheckVoteClosed(message: CheckVoteClosedEvent): void {
+    this.applySequenced(message.seq, () => {
+      this.checkVoteValue = null;
+      this.pendingVoteValue = null;
+      const signal: VoteClosedSignal =
+        message.reason === undefined
+          ? { voteSeq: message.voteSeq, outcome: message.outcome }
+          : {
+              voteSeq: message.voteSeq,
+              outcome: message.outcome,
+              reason: message.reason,
+            };
+      for (const listener of this.voteClosedListeners) listener(signal);
+    });
+  }
+
   private removeOverlayEntry(commandId: string): void {
     const index = this.overlayValue.findIndex(
       (entry) => entry.commandId === commandId,
@@ -511,6 +701,13 @@ export class GameStore {
     // heal the check state with no delta replay.
     this.checkedWrongValue = new Set(board.checkedWrongCells);
     this.checkCountValue = board.checkCount;
+    // The open vote rides every snapshot too (PROTOCOL.md §4): replace it wholesale, like all
+    // sequenced state, so a reconnect mid-vote reconstructs the whole vote (electorate, tallies,
+    // expiry) from the snapshot with no delta replay. `checkVote` is optional only for pre-vote
+    // fixtures and older snapshots; absent reads as no open vote. Any local optimistic intent is
+    // now moot: the authoritative snapshot either shows the vote (with my ballot in it) or does not.
+    this.checkVoteValue = board.checkVote ?? null;
+    this.pendingVoteValue = null;
     this.participantsValue = [...board.participants];
     this.cursorsValue = new Map(
       board.cursors.map((cursor) => [cursor.userId, cursor]),

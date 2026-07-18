@@ -88,9 +88,19 @@ export function clueOn(
 
 /** Desktop only: the active clue as a calm line of text. Navigation lives in the rail
  * and the keyboard, so this strip carries no controls (v2's clue bar exactly). */
-export function ClueStrip({ clue }: { clue: Clue | undefined }) {
+export function ClueStrip({
+  clue,
+  hidden = false,
+}: {
+  clue: Clue | undefined;
+  /** Hidden on desktop while the check-vote Proscenium takes the strip's band (it replaces this
+   * chrome, then returns it on close). The mobile clue bar is untouched. */
+  hidden?: boolean;
+}) {
   return (
-    <div className="hidden md:flex items-baseline px-4 py-1.5 border-b border-dashed border-border-dashed">
+    <div
+      className={`${hidden ? "md:hidden" : "md:flex"} hidden items-baseline px-4 py-1.5 border-b border-dashed border-border-dashed`}
+    >
       {clue ? (
         <>
           <span className="w-[5ch] shrink-0 text-2 font-semibold text-text-muted tabular-nums">
@@ -180,19 +190,22 @@ export function ClueBar({
 export function ActiveClueHeader({
   clue,
   completed,
+  hideStripOnDesktop = false,
   onOpen,
   onPrev,
   onNext,
 }: {
   clue: Clue | undefined;
   completed: boolean;
+  /** Hide the desktop clue strip while the vote Proscenium occupies its band. */
+  hideStripOnDesktop?: boolean;
   onOpen: () => void;
   onPrev: () => void;
   onNext: () => void;
 }) {
   return (
     <>
-      <ClueStrip clue={clue} />
+      <ClueStrip clue={clue} hidden={hideStripOnDesktop} />
       <ClueBar
         clue={clue}
         completed={completed}
