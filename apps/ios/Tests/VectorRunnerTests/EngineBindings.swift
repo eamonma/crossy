@@ -17,9 +17,12 @@ import CrossyEngine
 // VectorEngineAdapter.swift; a runner throws `VectorMismatch` on a failed assertion, which
 // the calling XCTest method surfaces as a located failure.
 enum EngineBindings {
-    /// Families the Wave 3 port implements (plus `check`, bound the moment it landed,
-    /// D27). Kept in sync with `run` and drained from vectors.skip.json as each binds.
-    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion, .check]
+    /// Families the Wave 3 port implements. `check` was bound (D27) until Wave 15.1
+    /// rewrote its contract to the attributed-majority vote flow (D32); the Swift port
+    /// does not compute the vote state machine yet, so check is unbound and skipped in
+    /// vectors.skip.json until Wave 15.5 rebinds it. Kept in sync with `run` and drained
+    /// from vectors.skip.json as each binds.
+    static let bound: Set<VectorFamily> = [.reducer, .navigation, .comparator, .completion]
 
     /// Runs one case against the engine. Throws `.noEngineBinding` for any family the port
     /// has not implemented (which after Wave 3 is only the foreign client-store family).

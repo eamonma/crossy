@@ -1,6 +1,6 @@
 [
   {
-    "name": "§10: correcting the last marked cell completes the game with zero standing marks; the count survives into the terminal state",
+    "name": "§10: correcting the last marked cell completes the game with zero standing marks; the count survives into the terminal state, no vote is open",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -43,12 +43,13 @@
         "seq": 17,
         "filledCount": 2,
         "checkedWrong": [],
-        "checkCount": 1
+        "checkCount": 1,
+        "checkVote": null
       }
     }
   },
   {
-    "name": "§10/INV-4: the check that raced a completion is rejected; a full and correct board is never checkable",
+    "name": "§10/INV-4: a proposal that raced a completion is rejected GAME_NOT_ONGOING; no vote opens, and a full and correct board is never checkable",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -73,7 +74,12 @@
         "by": "u2",
         "at": "2026-07-07T00:01:00Z"
       },
-      { "type": "checkPuzzle", "commandId": "c2" }
+      {
+        "type": "checkPuzzle",
+        "commandId": "c2",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      }
     ],
     "then": {
       "events": [
@@ -91,7 +97,8 @@
         "status": "completed",
         "seq": 17,
         "checkedWrong": [],
-        "checkCount": 1
+        "checkCount": 1,
+        "checkVote": null
       },
       "error": "GAME_NOT_ONGOING"
     }

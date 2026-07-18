@@ -1,0 +1,215 @@
+[
+  {
+    "name": "§10/D32: an E=3 proposal opens a vote (needed 2); one checkVoteOpened, approvals start as [proposer], no close yet",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 30,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 31,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 31,
+        "filledCount": 3,
+        "checkCount": 0,
+        "checkedWrong": [],
+        "checkVote": {
+          "openedSeq": 31,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "approvals": ["u1"],
+          "rejections": []
+        }
+      }
+    }
+  },
+  {
+    "name": "§10/D32: an E=2 proposal needs 2 approvals; the majority is strict, so the proposer's lone approval leaves the vote open",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 40,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 41,
+          "by": "u1",
+          "electorate": ["u1", "u2"],
+          "needed": 2,
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 41,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 41,
+          "by": "u1",
+          "electorate": ["u1", "u2"],
+          "approvals": ["u1"],
+          "rejections": []
+        }
+      }
+    }
+  },
+  {
+    "name": "§10/D32: a second proposal while a vote is open is VOTE_PENDING; no second vote opens, no seq consumed (one vote at a time per game)",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 50,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      {
+        "type": "checkPuzzle",
+        "commandId": "c2",
+        "by": "u2",
+        "electorate": ["u1", "u2", "u3"]
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 51,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 51,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 51,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "approvals": ["u1"],
+          "rejections": []
+        }
+      },
+      "error": "VOTE_PENDING"
+    }
+  },
+  {
+    "name": "§10/D32: a solo electorate of 1 passes at open; the proposer's own approval already reaches needed (floor(1/2)+1 = 1)",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 60,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u1" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1"]
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 61,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 62,
+          "voteSeq": 61,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 63,
+          "wrongCells": [1],
+          "checkCount": 1,
+          "by": "u1",
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 63,
+        "filledCount": 2,
+        "checkedWrong": [1],
+        "checkCount": 1,
+        "checkVote": null
+      }
+    }
+  }
+]

@@ -1,6 +1,6 @@
 [
   {
-    "name": "§5/§10: checkPuzzle below a full grid is GRID_NOT_FULL; no event, no seq (INV-2)",
+    "name": "§5/§10: checkPuzzle below a full grid is GRID_NOT_FULL; no vote opens, no seq (INV-2)",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -10,7 +10,14 @@
       "solution": { "0": "A", "1": "B" },
       "cells": { "0": { "v": "A", "by": "u1" } }
     },
-    "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      }
+    ],
     "then": {
       "events": [],
       "state": {
@@ -18,13 +25,14 @@
         "seq": 6,
         "filledCount": 1,
         "checkedWrong": [],
-        "checkCount": 0
+        "checkCount": 0,
+        "checkVote": null
       },
       "error": "GRID_NOT_FULL"
     }
   },
   {
-    "name": "§10/INV-4: checkPuzzle on a completed board is GAME_NOT_ONGOING",
+    "name": "§10/INV-4: checkPuzzle on a completed board is GAME_NOT_ONGOING; no vote opens",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -37,15 +45,27 @@
         "1": { "v": "B", "by": "u2" }
       }
     },
-    "when": [{ "type": "checkPuzzle", "commandId": "c2" }],
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c2",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      }
+    ],
     "then": {
       "events": [],
-      "state": { "status": "completed", "seq": 8, "checkCount": 0 },
+      "state": {
+        "status": "completed",
+        "seq": 8,
+        "checkCount": 0,
+        "checkVote": null
+      },
       "error": "GAME_NOT_ONGOING"
     }
   },
   {
-    "name": "§10/INV-4: checkPuzzle on an abandoned board is GAME_NOT_ONGOING",
+    "name": "§10/INV-4: checkPuzzle on an abandoned board is GAME_NOT_ONGOING; no vote opens",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -58,10 +78,22 @@
         "1": { "v": "Z", "by": "u2" }
       }
     },
-    "when": [{ "type": "checkPuzzle", "commandId": "c3" }],
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c3",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      }
+    ],
     "then": {
       "events": [],
-      "state": { "status": "abandoned", "seq": 5, "checkCount": 0 },
+      "state": {
+        "status": "abandoned",
+        "seq": 5,
+        "checkCount": 0,
+        "checkVote": null
+      },
       "error": "GAME_NOT_ONGOING"
     }
   }

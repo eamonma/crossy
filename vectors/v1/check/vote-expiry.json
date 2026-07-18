@@ -1,0 +1,139 @@
+[
+  {
+    "name": "§10/D32: expireCheckVote on a vote short of majority closes it failed EXPIRED; silence is never approval, the count is unchanged, no marks stand",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 30,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      { "type": "expireCheckVote" }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 31,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 32,
+          "voteSeq": 31,
+          "outcome": "failed",
+          "reason": "EXPIRED"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 32,
+        "checkedWrong": [],
+        "checkCount": 0,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: expireCheckVote with no vote open is a silent no-op; no event, no seq, no error (the actor may race its own timer)",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 40,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [{ "type": "expireCheckVote" }],
+    "then": {
+      "events": [],
+      "state": {
+        "status": "ongoing",
+        "seq": 40,
+        "checkCount": 0,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: a ballot after the vote expired is NO_VOTE_OPEN",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 50,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      { "type": "expireCheckVote" },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 51,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 51,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 52,
+          "voteSeq": 51,
+          "outcome": "failed",
+          "reason": "EXPIRED"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 52,
+        "checkCount": 0,
+        "checkVote": null
+      },
+      "error": "NO_VOTE_OPEN"
+    }
+  }
+]

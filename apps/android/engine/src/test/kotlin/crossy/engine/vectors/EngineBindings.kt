@@ -28,13 +28,17 @@ import kotlinx.serialization.json.jsonObject
 // mirror the guard tests read: a `run` arm cannot name an engine symbol that does not exist yet,
 // so binding a family is a compile-time act.
 object EngineBindings {
-    /** Families the port implements. Kept in sync with `run` and drained from the manifest. */
+    /**
+     * Families the port implements. Kept in sync with `run` and drained from the manifest.
+     * CHECK was bound (D27) until Wave 15.1 rewrote its contract to the attributed-majority
+     * vote flow (D32); the Kotlin port does not compute the vote state machine yet, so check
+     * is unbound and skipped in vectors.skip.json until Wave 15.6 rebinds it.
+     */
     val bound: Set<VectorFamily> = setOf(
         VectorFamily.REDUCER,
         VectorFamily.NAVIGATION,
         VectorFamily.COMPARATOR,
         VectorFamily.COMPLETION,
-        VectorFamily.CHECK,
     )
 
     /** Runs one case against the engine, or throws NoEngineBindingError for a foreign family. */

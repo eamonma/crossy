@@ -282,56 +282,148 @@ reducer never emits (PROTOCOL.md §10, §13; DESIGN.md §3). Shape:
 ## Check cases
 
 The room check (PROTOCOL.md §10) shares the completion shape: it needs
-`given.solution` for the comparator and asserts events the reducer never emits. Two
-additions, both optional in `given` and following the assertion rule in `then.state`:
-`checkedWrong`, an ascending int array of standing marks (default none), and
-`checkCount`, the permanent count (default 0). A `when` entry of type `checkPuzzle`
-carries only `commandId`; the engine command has no `by` or `at` (the wire event is
-neutral and the adapter stamps `at`, PROTOCOL.md §6). Rejections follow the reducer
-convention: `then.events` `[]`, unchanged `then.state`, and `then.error`
-(`GRID_NOT_FULL`, `GAME_NOT_ONGOING`).
+`given.solution` for the comparator and asserts events the reducer never emits. Since
+D32 the check passes through an attributed majority vote, so the family carries the vote
+envelope. Three additions in `given`, all optional and following the assertion rule in
+`then.state`: `checkedWrong`, an ascending int array of standing marks (default none);
+`checkCount`, the permanent count (default 0); and `checkVote`, the open vote (default
+`null`). `then.state.checkVote` asserts the same shape.
+
+**The `checkVote` object** (in `given` and `then.state`) is
+`{openedSeq, by, electorate, approvals, rejections}`, or `null` when no vote is open.
+`openedSeq` is the `seq` of the vote's `checkVoteOpened` (its identity, the `voteSeq` a
+ballot names); `by` is the proposer; `electorate` is the frozen ascending userId array;
+`approvals` and `rejections` are the ascending userIds voted each way, `approvals`
+opening as `[by]`. `needed` is **not** in the state, it derives as
+`floor(electorate.length / 2) + 1`; the emitted `checkVoteOpened` carries it explicitly.
+
+**The `when` command shapes** (the session supplies the server-side data, INV-9):
+
+- `checkPuzzle`: `{ "type": "checkPuzzle", "commandId": "c1", "by": "u1", "electorate": ["u1", "u2", "u3"] }`.
+  The proposer proposes; `electorate` is the frozen ascending set of eligible voters.
+- `castCheckVote`: `{ "type": "castCheckVote", "commandId": "c2", "by": "u2", "voteSeq": 31, "approve": true }`.
+  One ballot; `voteSeq` names the open vote's `openedSeq`.
+- `expireCheckVote`: `{ "type": "expireCheckVote" }`, the actor's timeout tick, no
+  `commandId` (the session drives expiry as an input when its timer fires).
+- Mutations (`placeLetter`, `clearCell`) keep their reducer/completion shape.
+
+**Engine-emitted events omit `at` and `expiresAt`** (like every family's events), which
+the session adapter stamps. The three vote events are `checkVoteOpened`
+`{type, seq, by, electorate, needed, commandId}`, `checkVoteCast`
+`{type, seq, voteSeq, by, approve, commandId}`, and `checkVoteClosed`
+`{type, seq, voteSeq, outcome, reason?}` (`outcome` `passed` | `failed` | `cancelled`,
+`reason` absent when passed, else `REJECTED` | `EXPIRED` | `GRID_BROKEN` | `TERMINAL`).
+`puzzleChecked` now carries `by` (the proposer) and fires only as the immediate
+successor of a `passed` close. Rejections follow the reducer convention: `then.events`
+`[]` (or the events up to the rejected command), unchanged `then.state`, and
+`then.error` (`VOTE_PENDING`, `NO_VOTE_OPEN`, `NOT_ELECTOR`, `ALREADY_VOTED`,
+`GRID_NOT_FULL`, `GAME_NOT_ONGOING`).
 
 ```json
 {
-  "name": "§10: a full-but-wrong board checks; wrongCells ascending, marks replace, count increments",
+  "name": "§10/D32: a decisive approval in E=3 closes the vote passed; puzzleChecked carries the proposer",
   "given": {
-    "cols": 2,
+    "cols": 3,
     "rows": 1,
     "blocks": [],
     "status": "ongoing",
-    "seq": 6,
-    "solution": { "0": "A", "1": "B" },
-    "cells": { "0": { "v": "X", "by": "u1" }, "1": { "v": "B", "by": "u2" } }
+    "seq": 30,
+    "solution": { "0": "A", "1": "B", "2": "C" },
+    "cells": {
+      "0": { "v": "X", "by": "u1" },
+      "1": { "v": "B", "by": "u2" },
+      "2": { "v": "Z", "by": "u3" }
+    },
+    "checkVote": null
   },
-  "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
+  "when": [
+    {
+      "type": "checkPuzzle",
+      "commandId": "c1",
+      "by": "u1",
+      "electorate": ["u1", "u2", "u3"]
+    },
+    {
+      "type": "castCheckVote",
+      "commandId": "c2",
+      "by": "u2",
+      "voteSeq": 31,
+      "approve": true
+    }
+  ],
   "then": {
     "events": [
       {
+        "type": "checkVoteOpened",
+        "seq": 31,
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"],
+        "needed": 2,
+        "commandId": "c1"
+      },
+      {
+        "type": "checkVoteCast",
+        "seq": 32,
+        "voteSeq": 31,
+        "by": "u2",
+        "approve": true,
+        "commandId": "c2"
+      },
+      {
+        "type": "checkVoteClosed",
+        "seq": 33,
+        "voteSeq": 31,
+        "outcome": "passed"
+      },
+      {
         "type": "puzzleChecked",
-        "seq": 7,
-        "wrongCells": [0],
+        "seq": 34,
+        "wrongCells": [0, 2],
         "checkCount": 1,
+        "by": "u1",
         "commandId": "c1"
       }
     ],
     "state": {
       "status": "ongoing",
-      "seq": 7,
-      "checkedWrong": [0],
-      "checkCount": 1
+      "seq": 34,
+      "checkedWrong": [0, 2],
+      "checkCount": 1,
+      "checkVote": null
     }
   }
 }
 ```
 
 - `then.state.checkedWrong` serializes as an ascending int array; `then.events`
-  `wrongCells` likewise. Marks and count are asserted only where listed (the
-  assertion rule), so reducer and completion cases predating the check stay
-  untouched.
+  `wrongCells` likewise, and every userId array (`electorate`, `approvals`,
+  `rejections`) is ascending ASCII byte order (INV-1). Marks, count, and `checkVote` are
+  asserted only where listed (the assertion rule), so reducer and completion cases
+  predating the check stay untouched.
+- **The migrated clusters** (`room-check`, `gates`, `recheck`, `completion-interplay`)
+  keep their pre-vote assertions verbatim in meaning. Every accepted `checkPuzzle` is
+  now a **solo-electorate** proposal (`by` one user, `electorate` that user), whose
+  events become the auto-pass triple `checkVoteOpened` (`needed` 1), `checkVoteClosed`
+  (`passed`), `puzzleChecked` (now with `by`), seqs shifted, and `then.state` gaining
+  `checkVote: null`. `mark-clearing` is untouched: its pure `cellSet` cases carry no
+  vote, and partial state assertion leaves `checkVote` unlisted.
+- **The vote-lifecycle clusters:** `vote-open` (opening at E=3 and E=2, the strict
+  majority, `VOTE_PENDING` on a second proposal, the solo instant pass); `vote-ballots`
+  (a decisive approval passes and attributes `puzzleChecked` to the proposer, a
+  non-decisive rejection records only, decisive and unreachable-majority rejections
+  close `failed` `REJECTED`, and the `ALREADY_VOTED` / `NOT_ELECTOR` / `NO_VOTE_OPEN`
+  gates including a stale `voteSeq`); `vote-expiry` (`EXPIRED` short of majority, a
+  silent no-op tick with no vote, a ballot after expiry); `vote-cancellation` (a clear
+  closes `cancelled` `GRID_BROKEN`, an overwrite rides and the later pass computes
+  `wrongCells` on the board at close time, an in-place correction closes `cancelled`
+  `TERMINAL` before `gameCompleted`).
 - Mark clearing is reducer semantics (a marked cell's mark clears exactly when its
   value changes; PROTOCOL.md §10), but its cases live here, not in the reducer
   family, because a meaningful starting state carries marks that only a check can
   mint.
+- The vote flow is unimplemented in the engine until Wave 15.2, so the family is
+  discovered and shape-validated as hard passes but execution-skipped via the `check`
+  entry in `vectors.skip.json` `families` (skipped-until-engine); Wave 15.2 rebinds it.
 
 ## Foreign families
 
@@ -345,9 +437,11 @@ the same JSON files.
 
 The mechanism is `packages/engine/vectors.skip.json`. It has two disjoint buckets:
 
-- `families`: skipped-until-engine. Wave 2.1a binds each to an engine entry point and
-  removes it from the list; the runner's coarse "engine has exports while families are
-  skipped" guard fails the moment the engine ships, forcing the rebind.
+- `families`: skipped-until-engine. Wave 2.1a bound each to an engine entry point and
+  removed it from the list; the per-family guard (Wave 2.1a's replacement for the coarse
+  export guard) then holds a family bound iff it is absent here. A family re-enters this
+  bucket when its contract is rewritten ahead of the engine: Wave 15.1 put `check` back
+  (the vote flow, D32), unbinding it in the runner, and Wave 15.2 rebinds and drains it.
 - `foreign.families`: a foreign consumer. Never bound to the engine, never removed.
   The coarse guard ignores this bucket, so the Wave 2.1a rebind that drains `families`
   and installs per-family checks never has to reason about the foreign set.

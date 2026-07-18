@@ -1,6 +1,6 @@
 {
-  "reason": "Wave 2.1a bound every engine family (reducer, comparator, navigation, completion) to an entry point and drained this list; it stays empty. A non-foreign family reappears here only if its engine binding is intentionally removed, which the per-family guard in src/vectors.test.ts then flags.",
-  "families": [],
+  "reason": "Wave 2.1a bound every engine family (reducer, comparator, navigation, completion) to an entry point and drained this list. Wave 15.1 rewrote the check contract to the attributed-majority vote flow (PROTOCOL.md sections 6, 10; DESIGN.md D32): the migrated and new check clusters assert the checkVoteOpened/checkVoteCast/checkVoteClosed envelope and the vote state machine, which the shipped engine driver does not compute, so check is unbound and skipped-until-engine here. Wave 15.2 implements the vote state machine, rebinds check to the driver, and drains it from this list. The per-family guard in src/vectors.test.ts holds throughout: a check case is bound iff check is absent from this list.",
+  "families": ["check"],
   "foreign": {
     "reason": "A foreign family's consumer is never packages/engine (PROTOCOL.md §13). client-store's consumer is apps/web's store (Wave 2.1d) and the iOS store (Phase I1b, apps/ios/Tests/CrossyStoreTests); clue-runs' consumer is the clue-run parser and renderer in apps/web and iOS. The engine runner discovers and shape-validates these vectors but never executes them; execution lives in the consumer suites. Unlike `families`, a foreign family is never bound to the engine and never leaves this list, so the Wave 2.1a per-family rebind that drains `families` must not touch it.",
     "families": ["client-store", "clue-runs"]
