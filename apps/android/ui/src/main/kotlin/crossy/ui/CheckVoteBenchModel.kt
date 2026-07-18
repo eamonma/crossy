@@ -20,6 +20,16 @@ object VoteCopy {
     /** The proposal line under the proposer, and the polite open announcement (TalkBack). */
     fun proposal(name: String): String = "$name wants to check the puzzle"
 
+    /** The proposer's own view of the line (owner ruling, Wave 15.9a): they read the room's pending
+     *  answer, never their own name in the third person. */
+    const val WAITING_FOR_ROOM: String = "Waiting for the room"
+
+    /** A departed or unknown proposer: the line stays collective, never a raw userId. */
+    const val PROPOSER_FALLBACK: String = "A teammate"
+
+    /** A departed or unknown elector's chip name: a neutral placeholder, never a raw userId. */
+    const val CHIP_FALLBACK: String = "Player"
+
     /** The two verbs, "Check it" primary. */
     const val CHECK_IT: String = "Check it"
     const val KEEP_SOLVING: String = "Keep solving"
@@ -106,8 +116,17 @@ data class ElectorChip(
 sealed interface VoteResolution {
     val startedAt: Long
 
+    /** The ring's remaining fraction the instant the vote closed (Wave 15.9a). The resolution fades
+     *  from this frozen value instead of snapping the drained ring back to full (U4): a failed vote
+     *  drains-then-fades, and a pass flashes-then-dissolves, both from where the clock stood. */
+    val fractionAtClose: Float
+
     /** A passing close: the check ran. `wrongCells` is the count for "{n} to fix". */
-    data class Passed(val wrongCells: Int, override val startedAt: Long) : VoteResolution
+    data class Passed(
+        val wrongCells: Int,
+        override val startedAt: Long,
+        override val fractionAtClose: Float = 1f,
+    ) : VoteResolution
 
     /**
      * A non-passing close (PROTOCOL.md §10 reasons). `reason` is REJECTED / EXPIRED / GRID_BROKEN /
@@ -120,6 +139,7 @@ sealed interface VoteResolution {
         val needed: Int,
         val isProposer: Boolean,
         override val startedAt: Long,
+        override val fractionAtClose: Float = 1f,
     ) : VoteResolution
 }
 
@@ -134,13 +154,14 @@ object CheckVoteBenchModel {
 
     /**
      * The elector chips in electorate order (already ascending ASCII, INV-1). `names` resolves a
-     * userId to its display name; an unknown id falls back to the id so a chip never renders blank.
+     * userId to its display name, or null when the elector is departed/unknown; a null falls back to
+     * [VoteCopy.CHIP_FALLBACK] so a chip never renders a raw userId (Wave 15.9a).
      */
-    fun chips(vote: VoteView, selfUserId: String?, names: (String) -> String): List<ElectorChip> =
+    fun chips(vote: VoteView, selfUserId: String?, names: (String) -> String?): List<ElectorChip> =
         vote.electorate.map { id ->
             ElectorChip(
                 userId = id,
-                name = names(id),
+                name = names(id) ?: VoteCopy.CHIP_FALLBACK,
                 vote = when {
                     id in vote.approvals -> ChipVote.APPROVED
                     id in vote.rejections -> ChipVote.REJECTED
@@ -150,6 +171,41 @@ object CheckVoteBenchModel {
                 isSelf = id == selfUserId,
             )
         }
+
+    /**
+     * The proposal line (Wave 15.9a owner ruling): the proposer reads the room's pending answer, not
+     * their own name in the third person; others read "{name} wants to check the puzzle"; a departed
+     * or unknown proposer falls back to [VoteCopy.PROPOSER_FALLBACK]. `proposerName` is null when the
+     * proposer is not a known participant.
+     */
+    fun proposalLine(vote: VoteView, selfUserId: String?, proposerName: String?): String =
+        if (vote.by == selfUserId) VoteCopy.WAITING_FOR_ROOM
+        else VoteCopy.proposal(proposerName ?: VoteCopy.PROPOSER_FALLBACK)
+
+    /**
+     * The chips' merged content description (U5, Wave 15.9a): the chips are the room's ONLY tally, so
+     * TalkBack needs one spoken summary of the ballot state that updates per ballot. One clause per
+     * state in ballot order (checked, kept solving, not voted), each naming its electors; the ring
+     * stays decorative. Empty electorate yields an empty string.
+     */
+    fun chipsSummary(chips: List<ElectorChip>): String {
+        val approved = chips.filter { it.vote == ChipVote.APPROVED }.map { it.name }
+        val rejected = chips.filter { it.vote == ChipVote.REJECTED }.map { it.name }
+        val unvoted = chips.filter { it.vote == ChipVote.UNVOTED }.map { it.name }
+        return buildList {
+            if (approved.isNotEmpty()) add("${joinNames(approved)} voted check")
+            if (rejected.isNotEmpty()) add("${joinNames(rejected)} voted keep solving")
+            if (unvoted.isNotEmpty()) add("${joinNames(unvoted)} ${if (unvoted.size == 1) "hasn't" else "haven't"} voted")
+        }.joinToString(", ")
+    }
+
+    /** A natural-language name list: "Ana", "Ana and Ben", "Ana, Ben, and Cleo" (Oxford comma). */
+    private fun joinNames(names: List<String>): String = when (names.size) {
+        0 -> ""
+        1 -> names[0]
+        2 -> "${names[0]} and ${names[1]}"
+        else -> names.dropLast(1).joinToString(", ") + ", and " + names.last()
+    }
 
     /**
      * Whether the local user sees the two verbs. Only a still-unvoted elector votes: the proposer
@@ -201,13 +257,15 @@ object CheckVoteBenchModel {
      * completion/abandon UI supersedes any line). A passing close reads "Checking…" through the
      * breath, then "{n} to fix" as the marks wash; a non-passing close reads its one calm line.
      */
-    fun resolutionLine(resolution: VoteResolution, nowMillis: Long): String? = when (resolution) {
-        is VoteResolution.Passed ->
-            if (nowMillis - resolution.startedAt < VoteBenchTiming.REVEAL_BREATH_MS) {
-                VoteCopy.CHECKING
-            } else {
-                VoteCopy.toFix(resolution.wrongCells)
-            }
+    fun resolutionLine(resolution: VoteResolution, nowMillis: Long, reduceMotion: Boolean = false): String? = when (resolution) {
+        is VoteResolution.Passed -> {
+            // "{n} to fix" lands LAST (U6): it holds "Checking…" through the breath AND the wash, then
+            // the count arrives at breath + wash. Reduced motion has no breath or wash, so the count
+            // (like the marks) applies instantly.
+            val landed = reduceMotion ||
+                nowMillis - resolution.startedAt >= VoteBenchTiming.REVEAL_BREATH_MS + VoteBenchTiming.WASH_MAX_MS
+            if (landed) VoteCopy.toFix(resolution.wrongCells) else VoteCopy.CHECKING
+        }
         is VoteResolution.Ended -> when (resolution.reason) {
             "REJECTED" -> VoteCopy.REJECTED
             "EXPIRED" -> VoteCopy.EXPIRED

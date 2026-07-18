@@ -341,6 +341,12 @@ class GameStore(
      * composition root for the open haptic and the ring pulse. */
     var onVoteOpened: ((CheckVoteOpenedMessage) -> Unit)? = null
 
+    /** A ballot settled on the open vote (PROTOCOL.md §6, §10; D32; U9): the light tick, one per
+     * ballot. Fired only under the §7 seq gate (a truly applied cast), so a reconnect that heals the
+     * approvals wholesale via snapshot never re-ticks history. Fires for every applied cast, self and
+     * remote; the composition root ticks remote ones (the self ballot already ticked at its tap). */
+    var onVoteCast: ((CheckVoteCastMessage) -> Unit)? = null
+
     /** A check vote closed (PROTOCOL.md §6, §10; D32): the resolution beat. Fired only under the §7
      * seq gate, so it marks the moment a vote resolved, never history arriving in a snapshot. The
      * Bench reads the outcome/reason for its one recess line and the pass/fail haptic. */
@@ -679,6 +685,9 @@ class GameStore(
                         }
                     }
                     clearPendingVote(event.commandId)
+                    // The ballot's tick beat (U9): surfaced only for a truly applied cast, never on
+                    // snapshot healing. The composition root ticks remote ballots (self already ticked).
+                    onVoteCast?.invoke(event)
                 }
             }
             is ServerMessage.CheckVoteClosed -> {

@@ -38,6 +38,61 @@ class CheckVoteBenchModelTests {
         assertEquals("The vote lapsed", VoteCopy.EXPIRED)
         assertEquals("Vote ended, the grid changed", VoteCopy.GRID_BROKEN)
         assertEquals("1 of 2", VoteCopy.tally(1, 2))
+        // The proposer sees the room's pending answer, not their own name (owner ruling); a departed
+        // or unknown proposer/elector stays collective, never a raw userId (Wave 15.9a).
+        assertEquals("Waiting for the room", VoteCopy.WAITING_FOR_ROOM)
+        assertEquals("A teammate", VoteCopy.PROPOSER_FALLBACK)
+        assertEquals("Player", VoteCopy.CHIP_FALLBACK)
+    }
+
+    // --- The proposal line: proposer, other, and departed/unknown (Wave 15.9a owner ruling) ---
+
+    @Test
+    fun theProposerSeesTheRoomNotTheirOwnNameAndUnknownStaysCollective_D32() {
+        val v = vote(by = "u1") // u1 is Ana
+        assertEquals(
+            "Waiting for the room",
+            CheckVoteBenchModel.proposalLine(v, selfUserId = "u1", proposerName = "Ana"),
+            "the proposer never reads their own name in the third person",
+        )
+        assertEquals(
+            "Ana wants to check the puzzle",
+            CheckVoteBenchModel.proposalLine(v, selfUserId = "u2", proposerName = "Ana"),
+            "others read the proposer's question",
+        )
+        assertEquals(
+            "A teammate wants to check the puzzle",
+            CheckVoteBenchModel.proposalLine(v, selfUserId = "u2", proposerName = null),
+            "a departed/unknown proposer falls back to a teammate, never a raw id",
+        )
+    }
+
+    @Test
+    fun anUnknownElectorsChipFallsBackToPlayerNotARawId_D32() {
+        val chips = CheckVoteBenchModel.chips(vote(), selfUserId = "u2", names = { null })
+        assertTrue(chips.all { it.name == "Player" }, "an unresolved elector chip reads Player, never its userId")
+    }
+
+    // --- The merged chip summary: the room's only tally for TalkBack (U5, Wave 15.9a) ---
+
+    @Test
+    fun chipSummaryMergesTheBallotStateForTalkBack_U5() {
+        val chips = CheckVoteBenchModel.chips(
+            vote(approvals = listOf("u1", "u2"), rejections = emptyList(), electorate = listOf("u1", "u2", "u3")),
+            selfUserId = "u3",
+            names = { mapOf("u1" to "Ana", "u2" to "Ben", "u3" to "Cleo")[it] },
+        )
+        assertEquals("Ana and Ben voted check, Cleo hasn't voted", CheckVoteBenchModel.chipsSummary(chips))
+        val split = CheckVoteBenchModel.chips(
+            vote(approvals = listOf("u1"), rejections = listOf("u2"), electorate = listOf("u1", "u2", "u3", "u4")),
+            selfUserId = "u4",
+            names = { mapOf("u1" to "Ana", "u2" to "Ben", "u3" to "Cleo", "u4" to "Dan")[it] },
+        )
+        assertEquals(
+            "Ana voted check, Ben voted keep solving, Cleo and Dan haven't voted",
+            CheckVoteBenchModel.chipsSummary(split),
+            "each ballot state gets its own clause; unvoted pluralizes",
+        )
     }
 
     // --- Chips: the floor and the division (PROTOCOL.md §10) ---
@@ -110,8 +165,14 @@ class CheckVoteBenchModelTests {
     @Test
     fun aPassingRevealReadsCheckingThenToFix_D32() {
         val r = VoteResolution.Passed(wrongCells = 4, startedAt = 0L)
+        // "{n} to fix" lands LAST (U6): it holds "Checking…" through the breath AND the wash, then the
+        // count arrives at breath + wash, not at the wash's first frame.
         assertEquals("Checking…", CheckVoteBenchModel.resolutionLine(r, 100L), "the breath reads Checking…")
-        assertEquals("4 to fix", CheckVoteBenchModel.resolutionLine(r, 700L), "after the breath, the count")
+        assertEquals("Checking…", CheckVoteBenchModel.resolutionLine(r, 700L), "the wash still reads Checking…")
+        val landsAt = VoteBenchTiming.REVEAL_BREATH_MS + VoteBenchTiming.WASH_MAX_MS
+        assertEquals("4 to fix", CheckVoteBenchModel.resolutionLine(r, landsAt), "the count lands after breath + wash")
+        // Reduced motion has no breath or wash: the marks and the line apply instantly (U6).
+        assertEquals("4 to fix", CheckVoteBenchModel.resolutionLine(r, 0L, reduceMotion = true), "reduced motion lands instantly")
         assertFalse(CheckVoteBenchModel.ringDissolving(r, 100L))
         assertTrue(CheckVoteBenchModel.ringDissolving(r, 700L), "the ring flash-dissolves after the breath")
         assertEquals(0f, CheckVoteBenchModel.washProgress(r, 100L), 0.001f, "no wash during the breath")

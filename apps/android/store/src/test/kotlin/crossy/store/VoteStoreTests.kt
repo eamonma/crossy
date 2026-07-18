@@ -123,6 +123,20 @@ class VoteStoreTests {
         assertEquals("REJECTED", beats.single().reason)
     }
 
+    @Test
+    fun aSequencedBallotSurfacesTheCastBeatForTheTick_PROTOCOL10() {
+        val store = liveAt(30)
+        val casts = mutableListOf<CheckVoteCastMessage>()
+        store.onVoteCast = { casts.add(it) }
+        store.receive(opened(31, listOf("me", "u2", "u3"), needed = 2))
+        store.receive(cast(32, voteSeq = 31, by = "u2", approve = true))
+        assertEquals(1, casts.size, "a truly applied ballot surfaces the cast beat once (U9 tick)")
+        assertEquals("u2", casts.single().by)
+        // A stale/gapped cast is not applied, so it fires no beat (never a tick on healing history).
+        store.receive(cast(32, voteSeq = 31, by = "u3", approve = false)) // seq 32 <= lastApplied: stale
+        assertEquals(1, casts.size, "a stale ballot fires no beat (§7 seq gate)")
+    }
+
     // --- Snapshot heals a mid-vote reconnect wholesale (PROTOCOL.md §4, §7; D32) ---
 
     @Test
