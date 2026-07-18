@@ -27,12 +27,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import crossy.store.BoardNavigation
+import crossy.ui.SwipeSensitivity
 
-/** The persistence seam (AAD-2): the store reads and writes two booleans through this, so its logic
- *  is exercised against an in-memory fake with no Android framework. */
+/** The persistence seam (AAD-2): the store reads and writes its prefs through this, so its logic is
+ *  exercised against an in-memory fake with no Android framework. Booleans for the two typing knobs,
+ *  and a raw string for the swipe sensitivity (stored as its enum case name, resolved by the store). */
 interface NavigationPrefsBackend {
     fun getBoolean(key: String, default: Boolean): Boolean
     fun putBoolean(key: String, value: Boolean)
+    fun getString(key: String, default: String?): String?
+    fun putString(key: String, value: String)
 }
 
 /** The production backend: plain SharedPreferences, applied asynchronously (nothing here gates a
@@ -41,6 +45,11 @@ class SharedPrefsNavigationBackend(private val prefs: SharedPreferences) : Navig
     override fun getBoolean(key: String, default: Boolean): Boolean = prefs.getBoolean(key, default)
     override fun putBoolean(key: String, value: Boolean) {
         prefs.edit().putBoolean(key, value).apply()
+    }
+
+    override fun getString(key: String, default: String?): String? = prefs.getString(key, default)
+    override fun putString(key: String, value: String) {
+        prefs.edit().putString(key, value).apply()
     }
 }
 
@@ -66,6 +75,19 @@ class NavigationSettingsStore(private val backend: NavigationPrefsBackend) {
         backend.putBoolean(KEY_END_OF_WORD_NEXT_CLUE, value)
     }
 
+    /** How readily a grid swipe turns the page (personal-settings; twin of iOS swipeSensitivity).
+     *  Persisted as the enum case name; an absent or unrecognized stored value resolves to STANDARD,
+     *  so an untouched device keeps the pre-tuning swipe grammar and the swipe tables stay pinned. */
+    var swipeSensitivity by mutableStateOf(
+        resolveSwipeSensitivity(backend.getString(KEY_SWIPE_SENSITIVITY, null)),
+    )
+        private set
+
+    fun updateSwipeSensitivity(value: SwipeSensitivity) {
+        swipeSensitivity = value
+        backend.putString(KEY_SWIPE_SENSITIVITY, value.name)
+    }
+
     /** The store's prefs re-expressed for the navigation layer (BoardNavigation owns the plain type;
      *  AD-2 keeps the engine's out of these upper layers). `DEFAULT` is reproduced bit for bit when
      *  neither knob has been touched, so an unset device diverges from no navigation vector. */
@@ -83,9 +105,15 @@ class NavigationSettingsStore(private val backend: NavigationPrefsBackend) {
         /** Namespaced so a future prefs surface never collides. */
         const val KEY_SKIP_FILLED = "nav.skipFilledInWord"
         const val KEY_END_OF_WORD_NEXT_CLUE = "nav.endOfWordIsNextClue"
+        const val KEY_SWIPE_SENSITIVITY = "input.swipeSensitivity"
 
         /** The SharedPreferences file the production backend reads. */
         const val PREFS_NAME = "crossy.navigation.settings"
+
+        /** Resolve a stored swipe-sensitivity string to a case, defaulting to STANDARD for an absent
+         *  value or one no case matches (a downgrade wrote a name this build dropped). */
+        fun resolveSwipeSensitivity(raw: String?): SwipeSensitivity =
+            SwipeSensitivity.entries.firstOrNull { it.name == raw } ?: SwipeSensitivity.STANDARD
     }
 }
 

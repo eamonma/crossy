@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -134,6 +135,11 @@ fun CrossyGrid(
     // full-bleed, so the room passes NONE; the seam a full-bleed board would grow through.
     occlusion: GridOcclusion = GridOcclusion.NONE,
     keepClear: GridOcclusion? = null,
+    // How readily a grid swipe turns the page (personal-settings; iOS threads the same SwipeTuning
+    // into its grid view). The person's Settings choice, mapped through SwipeSensitivity; STANDARD (the
+    // default) reproduces the pre-tuning swipe grammar exactly. Read fresh inside the long-lived gesture
+    // recognizer below (which is not keyed on it), the way the solving axis is.
+    swipeTuning: SwipeTuning = SwipeTuning.STANDARD,
     onCellTap: (Int) -> Unit = {},
     onSwipe: (SwipeIntent) -> Unit = {},
     // The live camera reported up to the room so a sibling overlay (ReactionStickerLayer) can ride the
@@ -165,6 +171,9 @@ fun CrossyGrid(
     // The latest solving axis, read fresh inside the long-lived gesture recognizer (which is not keyed
     // on selection, so it must not close over a stale one).
     val isAcrossState = rememberUpdatedState(selection?.isAcross ?: true)
+    // The latest swipe tuning, read fresh inside that same recognizer for the same reason (a Settings
+    // change must reach the next swipe without re-keying the long-lived gesture loop).
+    val swipeTuningState = rememberUpdatedState(swipeTuning)
 
     // The per-frame sample of the monotonic seconds clock (the flash book's and the mosaic's shared
     // origin), read inside withFrameNanos so it rides the compositor's cadence without re-rendering
@@ -278,6 +287,13 @@ fun CrossyGrid(
                     var cameraMoved = false
                     var panAccumX = 0f
                     var panAccumY = 0f
+                    // Lift-off velocity for the flick-assist path (SwipeClassifier.FLICK_PROJECTION_SECONDS):
+                    // iOS reads predictedEndTranslation off SwiftUI's drag, Android has none, so the primary
+                    // pointer's motion feeds a tracker here and the drag-end projects it into a predicted end
+                    // translation. Only the swipe classification reads this; the pan/pinch camera math is
+                    // untouched.
+                    val velocityTracker = VelocityTracker()
+                    velocityTracker.addPosition(down.uptimeMillis, down.position)
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
@@ -289,6 +305,11 @@ fun CrossyGrid(
                             val centroid = event.calculateCentroid()
                             panAccumX += pan.x
                             panAccumY += pan.y
+                            // Track the down pointer's position so the projected velocity matches the
+                            // one-finger translation the swipe reads (a swipe never fires for two).
+                            event.changes.firstOrNull { it.id == down.id }?.let { change ->
+                                if (change.pressed) velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            }
                             if (centroid != Offset.Unspecified && (zoom != 1f || pan != Offset.Zero)) {
                                 // Real movement: this is a drag or pinch, not a tap, so claim the
                                 // camera from any in-flight follow glide (a tap never flips this, so
@@ -325,10 +346,19 @@ fun CrossyGrid(
                     // Only a one-finger drag the camera held inert (the board fits, pan re-centered to
                     // no change) reads as a swipe; a pinch (two fingers) or a drag that panned never
                     // does, so pan and swipe cannot double-fire. Translation is measured in dp for the
-                    // classifier's 24dp travel floor.
+                    // tuning's travel floor. The predicted end translation is the actual translation plus
+                    // the lift-off velocity projected over FLICK_PROJECTION_SECONDS, so a fast short flick
+                    // still turns the page (the classifier caps it at 2x the actual travel).
                     if (maxPointers < 2 && !cameraMoved) {
+                        val velocity = velocityTracker.calculateVelocity()
+                        val projection = SwipeClassifier.FLICK_PROJECTION_SECONDS
                         SwipeClassifier.classify(
-                            panAccumX / density, panAccumY / density, isAcrossState.value,
+                            dx = panAccumX / density,
+                            dy = panAccumY / density,
+                            predictedDx = (panAccumX + velocity.x * projection) / density,
+                            predictedDy = (panAccumY + velocity.y * projection) / density,
+                            isAcross = isAcrossState.value,
+                            tuning = swipeTuningState.value,
                         )?.let(onSwipe)
                     }
                 }

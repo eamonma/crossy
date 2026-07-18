@@ -152,6 +152,14 @@ object ArrivalCopy {
     const val settingsEndOfWordNextClue = "Next clue"
     const val settingsEndOfWordFirstBlank = "First blank"
 
+    const val settingsSwipeSensitivityTitle = "Swipe sensitivity"
+    const val settingsSwipeSensitivityRelaxed = "Relaxed"
+    const val settingsSwipeSensitivityStandard = "Standard"
+    const val settingsSwipeSensitivityPrecise = "Precise"
+    const val settingsSwipeSensitivityFooter =
+        "How readily a swipe on the grid turns the page. Relaxed accepts shorter, looser swipes; " +
+            "Precise waits for a deliberate one."
+
     // Reactions (Wave 8.5; PROTOCOL.md §9, D25)
 
     const val settingsReactionsSection = "Reactions"
