@@ -147,6 +147,22 @@ public data class CheckPuzzleMessage(
     public companion object { public const val WIRE_TYPE: String = "checkPuzzle" }
 }
 
+/**
+ * Cast one ballot on the open check vote (PROTOCOL.md §5, §10; D32). Role host or solver. `voteSeq`
+ * names the open vote (its checkVoteOpened `seq`); `approve` is the direction. The server answers a
+ * broadcast checkVoteCast, or a non-fatal NO_VOTE_OPEN / NOT_ELECTOR / ALREADY_VOTED (§11); a stale
+ * `voteSeq` naming a closed vote is NO_VOTE_OPEN. `commandId` is the idempotency key, like a mutation.
+ */
+@Serializable
+public data class CastCheckVoteMessage(
+    val commandId: String,
+    val voteSeq: Int,
+    val approve: Boolean,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "castCheckVote" }
+}
+
 /** Liveness ping, every 15 s (PROTOCOL.md §5, §9). Carries nothing but its type. */
 @Serializable
 public data class HeartbeatMessage(
@@ -202,14 +218,14 @@ public data class GameCompletedMessage(
 }
 
 /**
- * Broadcast for every accepted checkPuzzle (PROTOCOL.md §6, §10; D27). Sequenced: an accepted check
- * mutates durable state (the standing marks and the permanent count), so it consumes a `seq` and
- * rides the §7 gap check like cellSet. `wrongCells` lists, ascending, every playable cell whose
- * value fails the comparator; indices only, never values or answers (INV-6), and never empty (the
- * §10 gates). Deliberately no `by`: a check is a room act recorded neutrally; the sender recognizes
- * its own `commandId` echo, which is all a client needs. `at` is stamped by the session adapter from
- * the server clock, like gameCompleted's. All fields are required-and-present (no default), so the
- * key is required on decode. Twin of the Swift PuzzleCheckedMessage.
+ * Emitted only as the immediate successor of a passing check vote close (PROTOCOL.md §6, §10; D32).
+ * Sequenced: an accepted check mutates durable state (the standing marks and the permanent count),
+ * so it consumes a `seq` and rides the §7 gap check like cellSet. `wrongCells` lists, ascending,
+ * every playable cell whose value fails the comparator at close time; indices only, never values or
+ * answers (INV-6), and never empty (the §10 gates). `by` is the proposer, the same id the vote
+ * carried (D32 overturns the earlier wire neutrality); it is absent-optional (a null default) so a
+ * pre-D32 server that omits it, or a fixture predating it, still decodes and a null re-encodes
+ * absent. `at` is stamped by the session adapter from the server clock, like gameCompleted's.
  */
 @Serializable
 public data class PuzzleCheckedMessage(
@@ -218,9 +234,71 @@ public data class PuzzleCheckedMessage(
     val checkCount: Int,
     val commandId: String,
     val at: String,
+    val by: String? = null,
     @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
 ) {
     public companion object { public const val WIRE_TYPE: String = "puzzleChecked" }
+}
+
+/**
+ * Broadcast for every accepted checkPuzzle proposal (PROTOCOL.md §6, §10; D32). Sequenced: opening a
+ * vote consumes a `seq`, so it rides the §7 gap check. `by` is the proposer; `electorate` is the
+ * frozen ascending eligible-voter userId array (INV-1); `needed` = floor(E/2)+1, the strict
+ * majority, carried so no client reimplements the arithmetic; `expiresAt` is the absolute ISO 8601
+ * timeout the session stamped, like `at`; `commandId` echoes the proposal so the proposer clears its
+ * optimistic intent. A solo electorate of one passes at open (a checkVoteClosed and puzzleChecked
+ * follow at once, same command processing). Cell values and answers never appear (INV-6).
+ */
+@Serializable
+public data class CheckVoteOpenedMessage(
+    val seq: Int,
+    val by: String,
+    val electorate: List<String>,
+    val needed: Int,
+    val expiresAt: String,
+    val commandId: String,
+    val at: String,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "checkVoteOpened" }
+}
+
+/**
+ * Broadcast for every accepted ballot (PROTOCOL.md §6, §10; D32). Sequenced. `voteSeq` identifies
+ * the vote (the `seq` of its checkVoteOpened); `by` is the voter; `approve` is the ballot, true for
+ * an approval and false for a rejection; `commandId` echoes the ballot command. `at` is
+ * adapter-stamped. Ballots are immutable and one per elector; the proposer never casts one.
+ */
+@Serializable
+public data class CheckVoteCastMessage(
+    val seq: Int,
+    val voteSeq: Int,
+    val by: String,
+    val approve: Boolean,
+    val commandId: String,
+    val at: String,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "checkVoteCast" }
+}
+
+/**
+ * Broadcast once when a vote resolves (PROTOCOL.md §6, §10; D32). Sequenced. `voteSeq` names the
+ * vote. `outcome` is `passed`, `failed`, or `cancelled`; `reason` is absent when `passed`, else
+ * `REJECTED`/`EXPIRED` (failed) or `GRID_BROKEN`/`TERMINAL` (cancelled). A `passed` close is
+ * immediately followed by one puzzleChecked at the next seq. `outcome`/`reason` stay wire strings
+ * (receive-any): a future reason decodes and the store maps what it knows. `at` is adapter-stamped.
+ */
+@Serializable
+public data class CheckVoteClosedMessage(
+    val seq: Int,
+    val voteSeq: Int,
+    val outcome: String,
+    val at: String,
+    val reason: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val type: String = WIRE_TYPE,
+) {
+    public companion object { public const val WIRE_TYPE: String = "checkVoteClosed" }
 }
 
 /** The game was abandoned by the host (PROTOCOL.md §6; INV-4). */
@@ -367,6 +445,9 @@ public sealed class ClientMessage {
     public data class CheckPuzzle(val message: CheckPuzzleMessage) : ClientMessage() {
         override val type: String get() = CheckPuzzleMessage.WIRE_TYPE
     }
+    public data class CastCheckVote(val message: CastCheckVoteMessage) : ClientMessage() {
+        override val type: String get() = CastCheckVoteMessage.WIRE_TYPE
+    }
     public data class Heartbeat(val message: HeartbeatMessage) : ClientMessage() {
         override val type: String get() = HeartbeatMessage.WIRE_TYPE
     }
@@ -397,6 +478,18 @@ public sealed class ServerMessage {
     }
     public data class PuzzleChecked(val message: PuzzleCheckedMessage) : ServerMessage() {
         override val type: String get() = PuzzleCheckedMessage.WIRE_TYPE
+        override val seq: Int get() = message.seq
+    }
+    public data class CheckVoteOpened(val message: CheckVoteOpenedMessage) : ServerMessage() {
+        override val type: String get() = CheckVoteOpenedMessage.WIRE_TYPE
+        override val seq: Int get() = message.seq
+    }
+    public data class CheckVoteCast(val message: CheckVoteCastMessage) : ServerMessage() {
+        override val type: String get() = CheckVoteCastMessage.WIRE_TYPE
+        override val seq: Int get() = message.seq
+    }
+    public data class CheckVoteClosed(val message: CheckVoteClosedMessage) : ServerMessage() {
+        override val type: String get() = CheckVoteClosedMessage.WIRE_TYPE
         override val seq: Int get() = message.seq
     }
     public data class GameAbandoned(val message: GameAbandonedMessage) : ServerMessage() {
@@ -460,6 +553,8 @@ public object ClientMessageSerializer : KSerializer<ClientMessage> {
                 ClientMessage.React(input.json.decodeFromJsonElement(ReactMessage.serializer(), element))
             CheckPuzzleMessage.WIRE_TYPE ->
                 ClientMessage.CheckPuzzle(input.json.decodeFromJsonElement(CheckPuzzleMessage.serializer(), element))
+            CastCheckVoteMessage.WIRE_TYPE ->
+                ClientMessage.CastCheckVote(input.json.decodeFromJsonElement(CastCheckVoteMessage.serializer(), element))
             HeartbeatMessage.WIRE_TYPE ->
                 ClientMessage.Heartbeat(input.json.decodeFromJsonElement(HeartbeatMessage.serializer(), element))
             RequestSyncMessage.WIRE_TYPE ->
@@ -478,6 +573,7 @@ public object ClientMessageSerializer : KSerializer<ClientMessage> {
             is ClientMessage.MoveCursor -> output.json.encodeToJsonElement(MoveCursorMessage.serializer(), value.message)
             is ClientMessage.React -> output.json.encodeToJsonElement(ReactMessage.serializer(), value.message)
             is ClientMessage.CheckPuzzle -> output.json.encodeToJsonElement(CheckPuzzleMessage.serializer(), value.message)
+            is ClientMessage.CastCheckVote -> output.json.encodeToJsonElement(CastCheckVoteMessage.serializer(), value.message)
             is ClientMessage.Heartbeat -> output.json.encodeToJsonElement(HeartbeatMessage.serializer(), value.message)
             is ClientMessage.RequestSync -> output.json.encodeToJsonElement(RequestSyncMessage.serializer(), value.message)
         }
@@ -501,6 +597,12 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
                 ServerMessage.GameCompleted(input.json.decodeFromJsonElement(GameCompletedMessage.serializer(), element))
             PuzzleCheckedMessage.WIRE_TYPE ->
                 ServerMessage.PuzzleChecked(input.json.decodeFromJsonElement(PuzzleCheckedMessage.serializer(), element))
+            CheckVoteOpenedMessage.WIRE_TYPE ->
+                ServerMessage.CheckVoteOpened(input.json.decodeFromJsonElement(CheckVoteOpenedMessage.serializer(), element))
+            CheckVoteCastMessage.WIRE_TYPE ->
+                ServerMessage.CheckVoteCast(input.json.decodeFromJsonElement(CheckVoteCastMessage.serializer(), element))
+            CheckVoteClosedMessage.WIRE_TYPE ->
+                ServerMessage.CheckVoteClosed(input.json.decodeFromJsonElement(CheckVoteClosedMessage.serializer(), element))
             GameAbandonedMessage.WIRE_TYPE ->
                 ServerMessage.GameAbandoned(input.json.decodeFromJsonElement(GameAbandonedMessage.serializer(), element))
             WelcomeMessage.WIRE_TYPE ->
@@ -530,6 +632,9 @@ public object ServerMessageSerializer : KSerializer<ServerMessage> {
             is ServerMessage.CellSet -> output.json.encodeToJsonElement(CellSetMessage.serializer(), value.message)
             is ServerMessage.GameCompleted -> output.json.encodeToJsonElement(GameCompletedMessage.serializer(), value.message)
             is ServerMessage.PuzzleChecked -> output.json.encodeToJsonElement(PuzzleCheckedMessage.serializer(), value.message)
+            is ServerMessage.CheckVoteOpened -> output.json.encodeToJsonElement(CheckVoteOpenedMessage.serializer(), value.message)
+            is ServerMessage.CheckVoteCast -> output.json.encodeToJsonElement(CheckVoteCastMessage.serializer(), value.message)
+            is ServerMessage.CheckVoteClosed -> output.json.encodeToJsonElement(CheckVoteClosedMessage.serializer(), value.message)
             is ServerMessage.GameAbandoned -> output.json.encodeToJsonElement(GameAbandonedMessage.serializer(), value.message)
             is ServerMessage.Welcome -> output.json.encodeToJsonElement(WelcomeMessage.serializer(), value.message)
             is ServerMessage.Sync -> output.json.encodeToJsonElement(SyncMessage.serializer(), value.message)

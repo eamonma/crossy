@@ -77,6 +77,12 @@ internal class AndroidSolveHapticPlayer(
             SolveHaptic.CHECK_LANDED -> vibrate(checkLandedWaveform())
             SolveHaptic.DOUBLE_TICK -> vibrate(doubleTickWaveform())
             SolveHaptic.COMPLETION -> vibrate(completionWaveform())
+            // The vote ceremony (D32): open is a firm click, a ballot a light tick, the pass a
+            // success-shaped double timed to the wash, the fail two soft ticks.
+            SolveHaptic.VOTE_OPENED -> vibrate(voteOpenedWaveform())
+            SolveHaptic.VOTE_BALLOT -> view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            SolveHaptic.VOTE_PASSED -> vibrate(votePassedWaveform())
+            SolveHaptic.VOTE_FAILED -> vibrate(voteFailedWaveform())
         }
     }
 
@@ -124,6 +130,21 @@ internal class AndroidSolveHapticPlayer(
         val timings = longArrayOf(0L, 26L, 70L, 30L, 44L, 70L)
         val amps = intArrayOf(0, amplitude(0.55), 0, amplitude(0.8), 0, amplitude(1.0))
         return waveform(timings, amps)
+    }
+
+    /** The vote open (D32): one firm click, heavier than the check thud, the call of the ceremony. */
+    private fun voteOpenedWaveform(): VibrationEffect =
+        waveform(longArrayOf(0L, BEAT_MS), intArrayOf(0, amplitude(0.95)))
+
+    /** The vote passed (D32): a success-shaped rising double, timed by the caller to the wash start;
+     *  lighter than the game-completion pattern (a check is not the solve). */
+    private fun votePassedWaveform(): VibrationEffect =
+        waveform(longArrayOf(0L, 22L, 60L, 30L), intArrayOf(0, amplitude(0.7), 0, amplitude(0.95)))
+
+    /** The vote failed or cancelled (D32): two soft ticks, quieter than the pass, a gentle "not now." */
+    private fun voteFailedWaveform(): VibrationEffect {
+        val gap = SolveHapticTuning.DOUBLE_TICK_GAP_MILLISECONDS.toLong()
+        return waveform(longArrayOf(0L, BEAT_MS, gap, BEAT_MS), intArrayOf(0, amplitude(0.4), 0, amplitude(0.4)))
     }
 
     /** Build a waveform, honoring the tuning amplitudes when the motor supports them and falling back

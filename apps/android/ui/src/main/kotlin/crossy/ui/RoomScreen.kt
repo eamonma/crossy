@@ -26,7 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -212,6 +214,48 @@ fun RoomScreen(
     var stickers by remember(puzzle) { mutableStateOf(emptyList<ReactionSticker>()) }
     var reactionSentAt by remember(puzzle) { mutableStateOf(emptyList<Double>()) }
 
+    // The check vote UX (PROTOCOL.md §10, D32; Wave 15.6): the Bench, the ring, and the resolution
+    // beat. The store owns the vote state; here the composable owns the transient resolution (a
+    // closed vote animating out, whose count and tally are snapshotted since the store has cleared
+    // `checkVote`), a frame clock the ring drains against, and the ignite origin. Solo is suppressed:
+    // the store's render never sets showVoteBench for a solo electorate, so none of this renders for
+    // the auto-pass triple, not for a frame.
+    var voteResolution by remember(puzzle) { mutableStateOf<VoteResolution?>(null) }
+    var pendingVotePass by remember(puzzle) { mutableStateOf(false) }
+    var voteNowMs by remember(puzzle) { mutableLongStateOf(System.currentTimeMillis()) }
+    var voteOpenedAt by remember(puzzle) { mutableLongStateOf(0L) }
+    val liveVote = rememberUpdatedState(render.checkVote)
+    val liveSolo = rememberUpdatedState(render.isSoloRoom)
+    // The frame clock: while a vote or its resolution is on screen, sample wall-clock each frame so the
+    // ring drains smoothly and the resolution withdraws on time. It also retires a finished resolution.
+    val voteOnScreen = render.showVoteBench || voteResolution != null
+    LaunchedEffect(voteOnScreen) {
+        while (voteOnScreen) {
+            withFrameMillis { voteNowMs = System.currentTimeMillis() }
+            voteResolution?.let { if (CheckVoteBenchModel.resolutionComplete(it, voteNowMs)) voteResolution = null }
+        }
+    }
+    // The success haptic is timed to the WASH START, not the close event (D32 reveal beat): after the
+    // "Checking…" breath, when the ring flash-dissolves and the marks wash in. A resolution replaced
+    // or withdrawn before the breath cancels this cleanly (the key change).
+    LaunchedEffect(voteResolution) {
+        if (voteResolution is VoteResolution.Passed) {
+            delay(VoteBenchTiming.REVEAL_BREATH_MS)
+            haptics.play(SolveHaptic.VOTE_PASSED)
+        }
+    }
+    // The reveal beat's mark choreography (D32; UX.md U6). During the breath (0..600ms) the grid holds
+    // all marks back so the beat reads "Checking…" first. After the breath the marks wash in in
+    // ascending cell order over <900ms (the grid owns the per-cell stagger). Reduced motion shows them
+    // all at once at the breath end, no stagger, so the wash gates off there. A solo/bare check has no
+    // resolution, so its instant marks are untouched.
+    val passedReveal = voteResolution as? VoteResolution.Passed
+    val sinceRevealMs = passedReveal?.let { voteNowMs - it.startedAt }
+    val revealingBreath = sinceRevealMs != null && sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS
+    val washingChecks = sinceRevealMs != null && !reduceMotion &&
+        sinceRevealMs >= VoteBenchTiming.REVEAL_BREATH_MS &&
+        sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS + VoteBenchTiming.WASH_MAX_MS + 100L
+
     // The conflict flash (PROTOCOL.md §8, D02): the store detects the trigger, the grid animates the
     // ~300 ms wash in the writer's color. The book is held HERE beside the render model (the iOS
     // CrossyGridView wireFlashSink placement), never inside the store. The sink resolves the writer's
@@ -230,10 +274,56 @@ fun RoomScreen(
         // everyone. The store fires this only for the live sequenced event (the onConflictFlash
         // pattern) — snapshot healing is history arriving and stays silent (the store's §7 seq gate),
         // so no gate is needed here. The marks and count themselves are state the grid and facts read.
-        store.onPuzzleChecked = { haptics.play(SolveHaptic.CHECK_LANDED) }
+        store.onPuzzleChecked = { checked ->
+            if (pendingVotePass) {
+                // A passing vote's reveal (D32): open the reveal beat ("Checking…" then the ~600 ms
+                // breath then the marks and "{n} to fix"). The success haptic is NOT played here (the
+                // close event): it is timed to the wash start below. A solo/bare check never sets this.
+                pendingVotePass = false
+                voteResolution = VoteResolution.Passed(checked.wrongCells.size, System.currentTimeMillis())
+            } else {
+                // A solo auto-pass or a bare puzzleChecked (server rollout window): the check lands as
+                // today, one soft thud, no vote chrome (D32 solo suppression; §10 tolerance).
+                haptics.play(SolveHaptic.CHECK_LANDED)
+            }
+        }
+        // The vote opened (D32): the firm click and the ring's ignite origin. Solo is suppressed at the
+        // source (a solo electorate of one shows no chrome and no haptic, not for a frame): only a real
+        // multi-elector vote rings and clicks. Snapshot healing stays silent (the §7 seq gate).
+        store.onVoteOpened = { opened ->
+            if (opened.electorate.size > 1) {
+                voteResolution = null
+                voteOpenedAt = System.currentTimeMillis()
+                haptics.play(SolveHaptic.VOTE_OPENED)
+            }
+        }
+        // The vote closed (D32): a pass defers its reveal to the puzzleChecked that follows; a fail or
+        // cancel shows its one calm line now, with the proposer-only tally from the pre-close vote.
+        // Solo is suppressed (the auto-pass triple shows no chrome). TERMINAL shows no line (the
+        // completion/abandon UI supersedes), so the Bench withdraws with an empty resolution.
+        store.onVoteClosed = { closed ->
+            val vote = liveVote.value
+            val solo = liveSolo.value || (vote?.isSolo ?: true)
+            if (!solo) {
+                if (closed.outcome == "passed") {
+                    pendingVotePass = true
+                } else {
+                    haptics.play(SolveHaptic.VOTE_FAILED)
+                    voteResolution = VoteResolution.Ended(
+                        reason = closed.reason,
+                        approvalsAtClose = vote?.approvals?.size ?: 0,
+                        needed = vote?.needed ?: 0,
+                        isProposer = vote?.by == store.render.value.selfUserId,
+                        startedAt = System.currentTimeMillis(),
+                    )
+                }
+            }
+        }
         onDispose {
             store.onConflictFlash = null
             store.onPuzzleChecked = null
+            store.onVoteOpened = null
+            store.onVoteClosed = null
         }
     }
     // The sweep (the FlashBook pattern): re-armed on every trigger, it sleeps to the soonest envelope
@@ -554,6 +644,10 @@ fun RoomScreen(
                 // SEQUENCED state at the confirm tap (a teammate emptying a cell between render and
                 // confirm quietly falls back to the disabled row), and a server GRID_NOT_FULL stays
                 // silent (§11 non-fatal). The send is the store's intent (R1, no overlay entry).
+                // Multiplayer proposes a public vote, so the check control holds to propose (U3, D32);
+                // solo auto-passes and keeps the confirm. The grid-full gate re-derives at the propose
+                // moment (R2); a GRID_NOT_FULL / VOTE_PENDING answer is non-fatal and silent (§11).
+                isSolo = render.isSoloRoom,
                 onCheckPuzzle = {
                     if (store.render.value.filledCount == geometry.playableCellCount) store.checkPuzzle()
                 },
@@ -574,7 +668,10 @@ fun RoomScreen(
                 ground = ground,
                 cursorTint = cursorTint,
                 crossReference = crossReference,
-                checkedWrong = visibleCheckMarks,
+                // Held back through the reveal breath so a passing vote reads "Checking…" first, then
+                // the marks wash in ascending (U6, driven by washingChecks); shown as today otherwise.
+                checkedWrong = if (revealingBreath) emptySet() else visibleCheckMarks,
+                washingChecks = washingChecks,
                 flashes = flashes,
                 mosaic = mosaic,
                 showsWordLoupe = showLoupe,
@@ -624,6 +721,39 @@ fun RoomScreen(
                 reduceMotion = reduceMotion,
                 modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
             )
+            // The vote ring (PROTOCOL.md §10, D32): a warm-gold halo just outside the grid bounds,
+            // draining with the remaining time. The ONLY clock (no digits anywhere). It is hit-inert
+            // (a decorative Canvas), so grid taps pass through: the grid above stays fully interactive
+            // during a vote. Shows for a live multi-elector vote (never solo) or a resolution fading
+            // out; ignites on open, flash-dissolves on a pass, fades quietly on a fail/cancel.
+            run {
+                val openVote = render.checkVote?.takeIf { render.showVoteBench }
+                val res = voteResolution
+                if (openVote != null || res != null) {
+                    val fraction = openVote?.let { CheckVoteBenchModel.ringFraction(it, voteNowMs, reduceMotion) } ?: 1f
+                    val ignite = if (reduceMotion || openVote == null) 1f
+                        else ((voteNowMs - voteOpenedAt).toFloat() / 300f).coerceIn(0.4f, 1f)
+                    val dissolve = if (res is VoteResolution.Passed && !reduceMotion) {
+                        ((voteNowMs - res.startedAt - VoteBenchTiming.REVEAL_BREATH_MS).toFloat() / 400f).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val ringAlpha = if (res is VoteResolution.Ended) {
+                        (1f - (voteNowMs - res.startedAt).toFloat() / VoteBenchTiming.RECESS_MS).coerceIn(0f, 1f)
+                    } else {
+                        1f
+                    }
+                    VoteRing(
+                        fraction = fraction,
+                        ground = ground,
+                        ignite = ignite,
+                        dissolve = dissolve,
+                        alpha = ringAlpha,
+                        reduceMotion = reduceMotion,
+                        modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
+                    )
+                }
+            }
             // The floating fan at the grid's trailing-bottom corner (near the clue bar's trailing
             // corner). It is composed here, OUTSIDE the terminal deck retirement below, so it stays
             // visible in any status (reactions are legal post-completion, §9). Gated only before the
@@ -736,6 +866,31 @@ fun RoomScreen(
               field = confettiField,
               startedAt = start,
               modifier = Modifier.matchParentSize(),
+          )
+      }
+      // The Bench (PROTOCOL.md §10, D32): the vote's venue, a NON-MODAL bottom sheet overlaying the
+      // room's bottom with no scrim, so the grid stays fully interactive above it. It installs no
+      // BackHandler, so predictive back keeps navigating the room while the Bench stays docked. Solo
+      // is suppressed (showVoteBench is false for a solo electorate). Its chips borrow the existing
+      // identity colors; its verbs cast the ballot and tick.
+      if (render.showVoteBench || voteResolution != null) {
+          VoteBench(
+              vote = render.checkVote?.takeIf { render.showVoteBench },
+              resolution = voteResolution,
+              selfUserId = render.selfUserId,
+              ground = ground,
+              nowMillis = voteNowMs,
+              reduceMotion = reduceMotion,
+              nameFor = { id -> render.participants.firstOrNull { it.userId == id }?.displayName ?: id },
+              colorFor = { id ->
+                  val member = render.participants.firstOrNull { it.userId == id }
+                  val identity = member?.let { IdentityRoster.colorForWireColor(it.color) ?: IdentityRoster.color(it.userId) }
+                      ?: IdentityRoster.color(id)
+                  ground.rosterColor(identity).toColor()
+              },
+              onApprove = { store.castCheckVote(approve = true); haptics.play(SolveHaptic.VOTE_BALLOT) },
+              onKeepSolving = { store.castCheckVote(approve = false); haptics.play(SolveHaptic.VOTE_BALLOT) },
+              modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
           )
       }
     }

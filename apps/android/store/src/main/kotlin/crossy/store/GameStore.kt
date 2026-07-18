@@ -14,13 +14,19 @@
 package crossy.store
 
 import crossy.protocol.Board
+import crossy.protocol.CastCheckVoteMessage
 import crossy.protocol.Cell
 import crossy.protocol.CellSetMessage
 import crossy.protocol.CheckPuzzleMessage
+import crossy.protocol.CheckVoteCastMessage
+import crossy.protocol.CheckVoteClosedMessage
+import crossy.protocol.CheckVoteOpenedMessage
+import crossy.protocol.CheckVoteSnapshot
 import crossy.protocol.ClearCellMessage
 import crossy.protocol.ClientMessage
 import crossy.protocol.Cursor
 import crossy.protocol.Direction
+import crossy.protocol.ErrorCode
 import crossy.protocol.ErrorMessage
 import crossy.protocol.GameStatus
 import crossy.protocol.HeartbeatMessage
@@ -31,9 +37,11 @@ import crossy.protocol.PlaceLetterMessage
 import crossy.protocol.PuzzleCheckedMessage
 import crossy.protocol.ReactMessage
 import crossy.protocol.RequestSyncMessage
+import crossy.protocol.Role
 import crossy.protocol.ServerMessage
 import crossy.protocol.Stats
 import crossy.protocol.normalizeValue
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -90,6 +98,66 @@ data class PendingCommand(
  */
 data class ConflictFlash(val cell: Int, val by: String)
 
+/** The check vote timebox (PROTOCOL.md §10, CHECK_VOTE_TTL_MS = 30,000 ms; D32). The clamp ceiling. */
+const val CHECK_VOTE_TTL_MS: Long = 30_000L
+
+/**
+ * The open check vote as the view reads it (PROTOCOL.md §4, §6, §10; D32), null on RenderModel when
+ * none is open. Reconstructed from the three sequenced vote events and healed wholesale by every
+ * snapshot (`board.checkVote`). `voteSeq` is the vote's identity (its checkVoteOpened `seq`, the id a
+ * ballot names); `by` is the proposer; `electorate` is the frozen ascending eligible-voter array;
+ * `approvals` and `rejections` are who has voted each way, `approvals` opening as `[by]`; `needed` is
+ * the strict majority the wire carried; `expiresAt` is the absolute ISO 8601 timeout. Indices and
+ * ids only, never values or answers (INV-6).
+ */
+data class VoteView(
+    val voteSeq: Int,
+    val by: String,
+    val electorate: List<String>,
+    val approvals: List<String>,
+    val rejections: List<String>,
+    val needed: Int,
+    val expiresAt: String,
+) {
+    /** The timeout as epoch millis, parsed once; null if the timestamp does not parse (render falls
+     * back to the full timebox rather than a jumpy ring). */
+    val expiresAtEpochMs: Long? = runCatching { Instant.parse(expiresAt).toEpochMilli() }.getOrNull()
+
+    /** Whether this elector has already cast a ballot (the proposer counts, opening in `approvals`). */
+    fun hasVoted(userId: String): Boolean = userId in approvals || userId in rejections
+
+    /**
+     * Remaining time in millis, `expiresAt − now` clamped to `[0, CHECK_VOTE_TTL_MS]` (D32). The
+     * store holds no clock (AAD-2): the caller passes `now`, so the ring drains against the same
+     * frame clock the view animates on. An unparseable timeout renders as the full timebox.
+     */
+    fun remainingMillis(nowMillis: Long): Long =
+        expiresAtEpochMs?.let { (it - nowMillis).coerceIn(0L, CHECK_VOTE_TTL_MS) } ?: CHECK_VOTE_TTL_MS
+
+    /** A solo electorate of one auto-passes at open; the vote chrome must never render for it (D32). */
+    val isSolo: Boolean get() = electorate.size <= 1
+}
+
+/**
+ * A vote's close, surfaced once for the view's resolution beat (PROTOCOL.md §6, §10; D32). Fired only
+ * under the §7 seq gate, so it marks the actual moment a vote resolved, never snapshot healing.
+ * `outcome` is `passed` / `failed` / `cancelled`; `reason` is the §10 cause (REJECTED, EXPIRED,
+ * GRID_BROKEN, TERMINAL), null when passed. The Bench reads it to choose the one recess line.
+ */
+data class VoteClosed(val voteSeq: Int, val outcome: String, val reason: String?)
+
+/**
+ * The non-fatal vote rejections (PROTOCOL.md §11; D32). A proposal or ballot the server refuses:
+ * handled quietly (clear the pending intent, no toast), unlike a mutation rejection which the UI
+ * surfaces. A ballot writes no cell, so none of these carries an overlay entry to clear.
+ */
+private val VOTE_ERROR_CODES: Set<ErrorCode> = setOf(
+    ErrorCode.VOTE_PENDING,
+    ErrorCode.NO_VOTE_OPEN,
+    ErrorCode.NOT_ELECTOR,
+    ErrorCode.ALREADY_VOTED,
+)
+
 /**
  * An inbound reaction to fan out to the sticker layer (PROTOCOL.md §6, §9; D24). The store holds
  * NOTHING for a reaction: it is never sequenced, never in RenderModel's board state, and never in a
@@ -128,14 +196,38 @@ data class RenderModel(
     val selfUserId: String?,
     /** The last non-fatal rejection, surfaced for the UI (PROTOCOL.md §8). */
     val lastRejection: ErrorMessage?,
-    /** The standing room-check marks (PROTOCOL.md §4, §10; D27): indices only, never values or
+    /** The standing room-check marks (PROTOCOL.md §4, §10; D32): indices only, never values or
      * answers (INV-6). Replaced wholesale by every accepted `puzzleChecked` and by every snapshot;
      * a mark clears only when the cell's value changes (`applyCellSet`). Mirrors the web store's
      * `checkedWrongCells` and the iOS `checkedWrong`. */
     val checkedWrong: Set<Int>,
     /** The game's total accepted checks; permanent, never reset (PROTOCOL.md §10). */
     val checkCount: Int,
+    /** The open check vote, null when none (PROTOCOL.md §4, §10; D32). Rebuilt from the three
+     * sequenced vote events and healed wholesale by every snapshot. The Bench renders when this is
+     * non-null and NOT solo; a solo electorate auto-passes and shows no chrome. */
+    val checkVote: VoteView?,
+    /** The commandId of a proposal or ballot this client sent that is still in flight (D32). Cleared
+     * when its own event echoes back or the server rejects it (the four vote errors, quietly). The
+     * hold/ballot affordance reads it; not sequenced state. */
+    val pendingVoteCommandId: String?,
 ) {
+    /**
+     * The connected voting members: host and solver, connected now (PROTOCOL.md §10). The proposer
+     * assembles a proposal's electorate from this on the server; the client uses it only to decide
+     * solo (a lone connected host/solver) so it keeps the confirm step instead of a hold, and never
+     * shows vote chrome for the auto-pass triple (D32).
+     */
+    val connectedVoters: List<String>
+        get() = participants.filter { it.connected && (it.role == Role.HOST || it.role == Role.SOLVER) }
+            .map { it.userId }
+
+    /** A lone connected host/solver: no room to interpose, so the client keeps the confirm flow and
+     * renders the auto-pass triple as an instant check, no Bench (D32). */
+    val isSoloRoom: Boolean get() = connectedVoters.size <= 1
+
+    /** The Bench shows only for a real multi-elector vote in flight; never solo, not for a frame. */
+    val showVoteBench: Boolean get() = checkVote != null && !checkVote.isSolo
     /**
      * The composite the user sees for one cell (INV-10): sequenced state painted with the overlay,
      * the most recently sent pending entry winning per cell (PROTOCOL.md §8). Pending values render
@@ -193,6 +285,8 @@ class GameStore(
     private var lastRejection: ErrorMessage? = null
     private var checkedWrong: Set<Int> = emptySet()
     private var checkCount: Int = 0
+    private var checkVote: VoteView? = null
+    private var pendingVoteCommandId: String? = null
 
     // PROTOCOL.md §3: commandId is a client-generated UUIDv4. Java's UUID.toString() is already the
     // RFC 4122 canonical lowercase-hex form the web's crypto.randomUUID emits, ASCII by
@@ -241,6 +335,17 @@ class GameStore(
      * composition root. */
     var onPuzzleChecked: ((PuzzleCheckedMessage) -> Unit)? = null
 
+    /** A check vote opened (PROTOCOL.md §6, §10; D32): the Bench rises and the ring ignites. Fired
+     * only under the §7 seq gate (a truly applied open), never on snapshot healing (a reconnecting
+     * client rebuilds the Bench from `checkVote` without replaying the ceremony). Set by the
+     * composition root for the open haptic and the ring pulse. */
+    var onVoteOpened: ((CheckVoteOpenedMessage) -> Unit)? = null
+
+    /** A check vote closed (PROTOCOL.md §6, §10; D32): the resolution beat. Fired only under the §7
+     * seq gate, so it marks the moment a vote resolved, never history arriving in a snapshot. The
+     * Bench reads the outcome/reason for its one recess line and the pass/fail haptic. */
+    var onVoteClosed: ((VoteClosed) -> Unit)? = null
+
     private var outboxWake: SendChannel<Unit>? = null
 
     // MARK: read helpers over live state (the render model is the canonical read surface)
@@ -269,6 +374,8 @@ class GameStore(
             lastRejection = lastRejection,
             checkedWrong = checkedWrong,
             checkCount = checkCount,
+            checkVote = checkVote,
+            pendingVoteCommandId = pendingVoteCommandId,
         )
 
     /** Republish the render model. StateFlow only emits when the snapshot differs, so a no-op
@@ -327,7 +434,30 @@ class GameStore(
         if (sync == SyncState.CONNECTING) return
         if (status != GameStatus.ONGOING) return
         val id = commandId ?: newCommandId()
+        // The proposal is now a vote proposal (D32): track it as the pending vote intent so its
+        // checkVoteOpened echo clears the hold affordance and a VOTE_PENDING / GRID_NOT_FULL
+        // rejection clears it quietly. Like a check, no overlay entry (INV-10): it writes no cell.
+        pendingVoteCommandId = id
         emit(ClientMessage.CheckPuzzle(CheckPuzzleMessage(id)))
+        publish()
+    }
+
+    /**
+     * Cast one ballot on the open check vote (PROTOCOL.md §5, §10; D32). Gated like [checkPuzzle]:
+     * refused before the first welcome (`connecting`) and after a terminal status. Refused with no
+     * open vote (nothing to name a `voteSeq` for). No overlay entry (INV-10): a ballot writes no
+     * cell. The `voteSeq` names the current open vote; the sent command is tracked as the pending
+     * intent so its checkVoteCast echo, or a NO_VOTE_OPEN / NOT_ELECTOR / ALREADY_VOTED rejection,
+     * clears the in-flight ballot affordance quietly (no toast, §11 D32).
+     */
+    fun castCheckVote(approve: Boolean, commandId: String? = null) {
+        if (sync == SyncState.CONNECTING) return
+        if (status != GameStatus.ONGOING) return
+        val vote = checkVote ?: return
+        val id = commandId ?: newCommandId()
+        pendingVoteCommandId = id
+        emit(ClientMessage.CastCheckVote(CastCheckVoteMessage(id, vote.voteSeq, approve)))
+        publish()
     }
 
     private fun sendMutation(cell: Int, value: String?, commandId: String?) {
@@ -446,6 +576,12 @@ class GameStore(
                     // overlay must survive for the post-reconnect re-send (PROTOCOL.md §7, §8; the
                     // fatal-error vector pins exactly this).
                     sync = SyncState.RECONNECTING
+                } else if (error.code in VOTE_ERROR_CODES) {
+                    // A rejected proposal or ballot (VOTE_PENDING, NO_VOTE_OPEN, NOT_ELECTOR,
+                    // ALREADY_VOTED; §11 D32): handled quietly. Clear the pending vote intent so the
+                    // hold/ballot affordance settles, and surface NO toast (`lastRejection`
+                    // untouched). A ballot writes no cell, so there is no overlay entry to clear.
+                    clearPendingVote(error.commandId)
                 } else {
                     // A non-fatal error for a pending command clears its overlay entry so the
                     // cell's true value is never masked (the immortal-overlay case, INV-10), and
@@ -506,6 +642,54 @@ class GameStore(
                     checkedWrong = event.wrongCells.toSet()
                     checkCount = event.checkCount
                     onPuzzleChecked?.invoke(event)
+                }
+            }
+            is ServerMessage.CheckVoteOpened -> {
+                val event = message.message
+                // Sequenced (PROTOCOL.md §6, §10; D32): applied under the §7 seq gate like cellSet.
+                // Opening creates the vote; approvals open as [by] (the proposal is the proposer's
+                // approval), the wire carries no approvals/rejections. The proposer's own echo
+                // clears its pending intent. The open beat fires only on a truly applied open.
+                applySequenced(event.seq) {
+                    checkVote = VoteView(
+                        voteSeq = event.seq,
+                        by = event.by,
+                        electorate = event.electorate,
+                        approvals = listOf(event.by),
+                        rejections = emptyList(),
+                        needed = event.needed,
+                        expiresAt = event.expiresAt,
+                    )
+                    clearPendingVote(event.commandId)
+                    onVoteOpened?.invoke(event)
+                }
+            }
+            is ServerMessage.CheckVoteCast -> {
+                val event = message.message
+                // Sequenced ballot (PROTOCOL.md §6, §10; D32): file it into the open vote if it names
+                // the current vote. The voter's own echo clears its pending ballot. A cast that does
+                // not match the open vote (a race across a snapshot) is ignored: the snapshot heals.
+                applySequenced(event.seq) {
+                    val vote = checkVote
+                    if (vote != null && vote.voteSeq == event.voteSeq && !vote.hasVoted(event.by)) {
+                        checkVote = if (event.approve) {
+                            vote.copy(approvals = (vote.approvals + event.by).sorted())
+                        } else {
+                            vote.copy(rejections = (vote.rejections + event.by).sorted())
+                        }
+                    }
+                    clearPendingVote(event.commandId)
+                }
+            }
+            is ServerMessage.CheckVoteClosed -> {
+                val event = message.message
+                // Sequenced close (PROTOCOL.md §6, §10; D32): clear the vote and surface the
+                // resolution beat once (only under the §7 gate, never on snapshot healing). A passing
+                // close is immediately followed by one puzzleChecked at the next seq, which applies
+                // the marks; the Bench's reveal reads that. Failed/cancelled change no marks or count.
+                applySequenced(event.seq) {
+                    checkVote = null
+                    onVoteClosed?.invoke(VoteClosed(event.voteSeq, event.outcome, event.reason))
                 }
             }
             is ServerMessage.Kicked -> {
@@ -570,6 +754,24 @@ class GameStore(
         }
     }
 
+    /** Clear the pending vote intent iff it matches (an echo or a rejection of the command we sent).
+     * A mismatched id (someone else's event) leaves ours in flight. */
+    private fun clearPendingVote(commandId: String?) {
+        if (commandId != null && commandId == pendingVoteCommandId) pendingVoteCommandId = null
+    }
+
+    /** Rebuild the view's [VoteView] from a snapshot's `board.checkVote` (PROTOCOL.md §4; D32). */
+    private fun voteViewFromSnapshot(snapshot: CheckVoteSnapshot): VoteView =
+        VoteView(
+            voteSeq = snapshot.openedSeq,
+            by = snapshot.by,
+            electorate = snapshot.electorate,
+            approvals = snapshot.approvals,
+            rejections = snapshot.rejections,
+            needed = snapshot.needed,
+            expiresAt = snapshot.expiresAt,
+        )
+
     /** Snapshot reconciliation, identical for welcome, sync, and a crash-rollback snapshot
      * (PROTOCOL.md §7, §8): replace all sequenced state (a lower seq is accepted and rolled back
      * to, INV-5), then per still-pending command: confirmed by recentCommandIds drops; aged out
@@ -586,6 +788,9 @@ class GameStore(
         // the check state with no delta replay, and a snapshot without marks clears a stale set.
         checkedWrong = board.checkedWrongCells.toSet()
         checkCount = board.checkCount
+        // The open vote rides every snapshot too (PROTOCOL.md §4, §10; D32): a reconnect mid-vote
+        // reconstructs the whole vote wholesale, and a snapshot with no vote clears a stale one.
+        checkVote = board.checkVote?.let(::voteViewFromSnapshot)
         participants = board.participants.toList()
         cursors = board.cursors.associateBy { it.userId }
         cells = buildMap {

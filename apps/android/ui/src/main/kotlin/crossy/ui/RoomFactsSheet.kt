@@ -14,10 +14,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -27,14 +32,18 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -181,8 +190,12 @@ fun RoomFactsSheet(
     solveTimeSeconds: Int?,
     firstFillAt: String?,
     freezeAt: String?,
-    // Check the puzzle for the room (PROTOCOL.md §5, §10; D27). Confirmed here first, then reported;
-    // the caller re-derives the grid-full gate at the confirm tap (design R2) and owns the send.
+    // Check the puzzle for the room (PROTOCOL.md §5, §10; D32). In multiplayer this proposes an
+    // attributed room vote, so the control is press-and-hold (design/check-vote/UX.md U3): a plain tap
+    // opening a public vote is the mispress the ruling prevents. In a solo room the proposal
+    // auto-passes, so the confirm dialog stands (there is no room to interpose). The caller re-derives
+    // the grid-full gate at the propose moment (design R2) and owns the send.
+    isSolo: Boolean = true,
     onCheckPuzzle: () -> Unit = {},
     onEndGame: () -> Unit,
     onDismiss: () -> Unit,
@@ -272,36 +285,90 @@ fun RoomFactsSheet(
                         .background(tokens.number.toColor().copy(alpha = 0.28f)),
                 )
                 operations.check?.let { check ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .then(
-                                if (check.isEnabled) {
-                                    Modifier.pointerInput(Unit) { detectTapGestures { confirmingCheck = true } }
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            RoomFactsCopy.checkAction,
-                            // The gate teaches through tone: full is ink, short is the quiet number
-                            // color (disabled), never red (a check is non-destructive, D27).
-                            color = if (check.isEnabled) tokens.ink.toColor() else tokens.number.toColor(),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        check.hint?.let { hint ->
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                hint,
-                                color = tokens.number.toColor(),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                style = androidx.compose.ui.text.TextStyle.Default.withTabularNumerals(),
+                    // Multiplayer proposes a public vote, so the control is press-and-hold (U3); solo
+                    // keeps the confirm dialog. The propose action re-derives nothing here (the caller
+                    // owns the grid-full re-check and the send) and closes the sheet.
+                    val holdToPropose = check.isEnabled && !isSolo
+                    val proposeCheck = { confirmingCheck = false; onCheckPuzzle(); onDismiss() }
+
+                    // The hold state: the gesture sets the press start, the frame loop advances the
+                    // fill, and the completion timer proposes at threshold; any early release clears
+                    // the start, cancelling both cleanly (design U3: early release cancels).
+                    var holdStartMs by remember { mutableStateOf<Long?>(null) }
+                    var holdNowMs by remember { mutableLongStateOf(0L) }
+                    LaunchedEffect(holdStartMs) {
+                        val start = holdStartMs ?: return@LaunchedEffect
+                        while (holdStartMs == start) { withFrameMillis { holdNowMs = System.currentTimeMillis() } }
+                    }
+                    LaunchedEffect(holdStartMs) {
+                        val start = holdStartMs ?: return@LaunchedEffect
+                        delay(VoteBenchTiming.HOLD_MS)
+                        if (holdStartMs == start) { holdStartMs = null; proposeCheck() } // the hold filled: propose
+                    }
+                    val fill = holdStartMs?.let { CheckVoteBenchModel.holdFraction(holdNowMs - it) } ?: 0f
+
+                    val gesture = when {
+                        !check.isEnabled -> Modifier
+                        holdToPropose -> Modifier
+                            .pointerInput(check.isEnabled) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    val start = System.currentTimeMillis()
+                                    holdStartMs = start
+                                    holdNowMs = start
+                                    waitForUpOrCancellation() // suspends until lift or cancel
+                                    // If the completion timer already proposed, holdStartMs is null;
+                                    // otherwise this is an early release, which cancels the fill.
+                                    if (holdStartMs == start) holdStartMs = null
+                                }
+                            }
+                            // The accessible activation path (U3): TalkBack cannot perform a timed
+                            // hold, so a custom click action proposes directly. The label names the act.
+                            .semantics {
+                                contentDescription = "Check puzzle. Hold to propose a room vote."
+                                onClick(label = "Propose check") { proposeCheck(); true }
+                            }
+                        else -> Modifier.pointerInput(Unit) { detectTapGestures { confirmingCheck = true } }
+                    }
+
+                    Box(modifier = Modifier.fillMaxWidth().height(44.dp).then(gesture)) {
+                        // The fill affordance (U3): a warm-gold sweep behind the row that tracks the
+                        // hold; it recedes to nothing on an early release. The gold ties the control to
+                        // the ring the completed hold ignites (AnalysisPalette.gold, ID-8, never a
+                        // roster color).
+                        if (fill > 0f) {
+                            Box(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(fill)
+                                    .background(AnalysisPalette.gold(ground).toColor().copy(alpha = 0.18f)),
                             )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                RoomFactsCopy.checkAction,
+                                // The gate teaches through tone: full is ink, short is the quiet number
+                                // color (disabled), never red (a check is non-destructive).
+                                color = if (check.isEnabled) tokens.ink.toColor() else tokens.number.toColor(),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            // The multiplayer hint teaches the gesture; solo keeps the plain confirm and
+                            // shows only the grid-full hint. The remaining-cells hint wins while short.
+                            val trailing = check.hint ?: if (holdToPropose) "Hold" else null
+                            trailing?.let { hint ->
+                                Spacer(Modifier.weight(1f))
+                                Text(
+                                    hint,
+                                    color = tokens.number.toColor(),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    style = androidx.compose.ui.text.TextStyle.Default.withTabularNumerals(),
+                                )
+                            }
                         }
                     }
                 }

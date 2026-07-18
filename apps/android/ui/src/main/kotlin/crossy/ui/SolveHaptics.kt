@@ -42,6 +42,19 @@ enum class SolveHaptic {
      *  deliberate act, not a passing wave), never a celebration pattern. Fired off the store's
      *  live-event beat only (GameStore.onPuzzleChecked); snapshot healing stays silent. */
     CHECK_LANDED,
+
+    /** A check vote opened (PROTOCOL.md §6, §10; D32): a firm click as the Bench rises and the ring
+     *  ignites. The predefined CLICK register, the call of the ceremony. */
+    VOTE_OPENED,
+
+    /** A ballot settled its chip (D32): a light tick in the division, one per ballot. */
+    VOTE_BALLOT,
+
+    /** The vote passed (D32): a success-shaped double, timed to the mark wash starting. */
+    VOTE_PASSED,
+
+    /** The vote failed or was cancelled (D32): two soft ticks, quieter than a pass. */
+    VOTE_FAILED,
 }
 
 /** Starting values for the device tuning pass (DESIGN.md §7: tuned on hardware). One block to
