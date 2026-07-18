@@ -6,6 +6,11 @@ PROTOCOL.md sections 4, 5, 6, 10 and are not restated here. The web UI is not a 
 spec for the native apps; this document is the shared grammar, each platform supplies
 its own joinery.
 
+Amended 2026-07-18 (same day, post-audit): a three-platform audit of the shipped waves
+produced owner rulings that tighten U1, U4, and U8 below. Amendments are folded into
+the rulings in place; the fix waves are 15.7 (web), 15.8 (iOS reference), 15.9
+(Android copies iOS after the owner tunes 15.8 on a physical iPhone).
+
 ## The frame
 
 A check vote is a social negotiation about spoilers, compressed into thirty seconds.
@@ -21,6 +26,13 @@ is collective and calm: "The room keeps solving" (rejected), "The vote lapsed"
 (expired), "Vote ended, the grid changed" (grid broken). A terminal cancellation needs
 no line; the completion or abandon surface supersedes. The word "vote" nearly
 disappears from the UI; what users see is a question from a teammate.
+
+The proposal line is "{name} wants to check the puzzle" to everyone except the
+proposer, who reads "Waiting for the room" (amendment: never a self-echo, and never
+a second-person contortion of the third-person template). A departed or unknown
+proposer falls back to "A teammate", a chip name to "Player"; a raw user id never
+renders. "Checking…" uses the single ellipsis character on every platform. Long
+names truncate inside the name span only; the verb phrase survives.
 
 **U2 Non-blocking, always.** Play continues during a vote by contract, so the vote
 lives in transforming product furniture, never a modal, never a corner toast or
@@ -38,6 +50,17 @@ draining continuously against `expiresAt`. No digits, no countdown text anywhere
 It ignites from a pulse that originates at the proposer's cursor position (attribution
 made spatial), flashes and dissolves inward on a pass, fades quietly otherwise.
 Reduced motion: stepped opacity, no sweep, no pulse.
+
+Amendment, the Meridian register (audit ruling): the ring is a true parallel offset
+of the grid's real frame (camera-projected on native; the grid, never a screen or
+container), its corner radius equal to its offset gap so the curve stays optically
+parallel. The drain seam sits at top-center and drains clockwise, a clock anyone can
+read; the seam is built into the path, never faked with rotation transforms. The
+stroke is thin (~2px); luminosity rides a soft blur, not stroke weight. The last
+drained fraction is frozen at close: a pass flashes the arc that was actually
+standing, then dissolves; every other close fades quietly from that frozen arc. The
+ring never vanishes, refills, or snaps at the close boundary. Reduced motion steps
+opacity in quarters on every platform.
 
 **U5 Faces, not numbers.** The room reads elector chips (the existing identity
 system): settled chips voted, dimmed chips have not. No tallies or counts render for
@@ -58,15 +81,24 @@ requires a fresh deliberate hold.
 - **Web desktop, the Proscenium**: the room chrome strip above the grid transforms
   into the vote surface for the vote's life (proposer and question, chips, verbs),
   full grid width, and returns on close. The room's own chrome transforming is what
-  keeps it from reading as a notification.
+  keeps it from reading as a notification. Amendment: the band holds one fixed
+  height through idle, open, resolution, and withdrawal — the clue strip yields for
+  the surface's entire life and the swap is one-for-one; the board never moves a
+  pixel on any vote transition.
 - **Web mobile, best effort**: a slim strip docked above the active-clue bar. Same
   store, copy, and ring; no further ceremony owed. Compromises land here, never on
-  desktop.
-- **iOS and Android, the Bench**: a non-modal partial-height bottom sheet in each
-  platform's own material and motion language; the grid stays interactive above it;
-  swipe collapses it to a docked strip; it re-rises for the resolution. Predictive
-  back on Android never dismisses it. A clue-browser sheet collision resolves by the
-  app's own sheet idiom; a pending vote is never invisible.
+  desktop — but the ballot verb is never unreachable: past a few electors the chips
+  collapse to a stack before a verb ever leaves the screen.
+- **iOS and Android, the Bench — strip-first (amendment)**: the vote opens as the
+  docked strip (proposal line and both verbs inline), which never covers the key
+  deck or any input surface and never leaks a touch through to it; a tap expands
+  the full Bench (avatar chips, wrapping past six, height following content), a
+  swipe returns it to the strip, and it resolves in whichever posture it stands.
+  Each platform's own material and motion language; the grid stays interactive;
+  predictive back on Android never dismisses it. A clue-browser or facts sheet
+  collision resolves in the vote's favor: the modal sheet yields, a pending vote is
+  never invisible. iOS (15.8) is the reference implementation; Android copies its
+  tuned look and feel, not the web's.
 
 **U9 Haptic grammar (native apps).** Open: one firm impact. Each ballot: a light
 tick. Pass: success, timed to the wash. Fail or lapse: two soft ticks.
