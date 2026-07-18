@@ -165,6 +165,18 @@ public struct CrossyAPIClient: Sendable {
         try await send(Endpoint(method: "POST", path: ["games", gameId, "abandon"]))
     }
 
+    /// `POST /games/{id}/share`: mint (or return) the game's public completion share
+    /// link (§12; design/post-game/SHARE.md). No request body; the route reads none,
+    /// modeled on `abandonGame`. Member-gated and completed-only, gated exactly as
+    /// `gameAnalysis`: a non-member is `NOT_PARTICIPANT`, and a game that is not
+    /// completed (or the brief completion race) answers `404 GAME_NOT_FOUND`, surfaced
+    /// as the typed `.api(status: 404, ...)` envelope. Idempotent server-side: one active
+    /// token per game, so a re-POST returns the same `{shareUrl, token}`. The token
+    /// carries no solution content (INV-6).
+    public func createShareLink(gameId: String) async throws -> ShareLinkResponse {
+        try await send(Endpoint(method: "POST", path: ["games", gameId, "share"]))
+    }
+
     // MARK: - Live Activity push (PROTOCOL.md section 12a)
 
     /// `POST /games/{gameId}/live-activity-tokens`: register the per-activity APNs update

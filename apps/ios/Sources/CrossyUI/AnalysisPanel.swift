@@ -29,6 +29,14 @@ struct AnalysisPanel: View {
     /// unavailable — the bloom still playing — where the chips stay the plain
     /// labels they always were.
     let onIsolateSolver: ((String) -> Void)?
+    /// The share card affordance's state machine (Wave 14.5), or nil for a composition
+    /// with no server card to mint (labs, previews, the offline demo), where the header
+    /// carries no button. The web puts its share button in the analysis header too.
+    let shareCard: ShareCardModel?
+    /// Report the "Share card" tap (AD-2: CrossyUI reports the intent; the app target
+    /// owns the REST mint, the PNG fetch, the UIImage, and the activity sheet). Nil hides
+    /// the affordance, so it and `shareCard` travel together.
+    let onShareCard: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -60,7 +68,7 @@ struct AnalysisPanel: View {
 
     @ViewBuilder
     private func content(_ analysis: RoomAnalysis) -> some View {
-        eyebrow("Solved together")
+        header
             .padding(.bottom, 12)
 
         statTrio(analysis)
@@ -117,6 +125,29 @@ struct AnalysisPanel: View {
                     titleRow(card)
                 }
             }
+        }
+    }
+
+    // MARK: The header
+
+    /// The panel's header row: the gold "Solved together" eyebrow, and — when a server
+    /// card can be minted — the "Share card" affordance trailing it (Wave 14.5), the
+    /// same place the web panel keeps its share button. The button reads the injected
+    /// state machine and reports its tap; both are nil for a composition with no card.
+    @ViewBuilder
+    private var header: some View {
+        if let shareCard, let onShareCard {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                eyebrow("Solved together")
+                Spacer(minLength: 8)
+                ShareCardButton(
+                    ground: ground, phase: shareCard.phase, action: onShareCard)
+                    // The button carries no baseline of its own to align on, so pin it
+                    // to the eyebrow's row rather than the text baseline.
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+            }
+        } else {
+            eyebrow("Solved together")
         }
     }
 

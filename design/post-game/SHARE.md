@@ -259,3 +259,10 @@ and the link to the system share sheet. This is what keeps every surface pixel-i
 without porting the builder. Android ships this in Wave 14.6 (the "Share card"
 affordance in the completed room's Analysis header, over a narrowly-scoped FileProvider);
 iOS follows.
+
+iOS ships the same flow in Wave 14.5 (apps/ios): the "Share card" affordance in the
+Analysis header, the same place the web puts its share button, mints the link, fetches
+the server card PNG for the current ground, and hands the system share sheet the image
+plus the share URL. iOS renders nothing natively, so the two clients can never drift,
+and INV-6 holds on this path exactly as on the web's: no board letter is read, only the
+PNG the server renders from the letter-free bundle.

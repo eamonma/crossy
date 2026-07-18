@@ -76,6 +76,14 @@ public struct SolveScreen: View {
     /// AD-2). Nil for compositions with no analysis (labs, some previews): there the
     /// completion keeps the old last-writer bloom and no panel summons.
     private let fetchAnalysis: (() async -> RoomAnalysis?)?
+    /// The completion share card's whole act (Wave 14.5), injected by the composition
+    /// root: mint the share link, fetch the SERVER card PNG for the given ground, build
+    /// the image, and present the system share sheet, returning true once the sheet has
+    /// it and false on any failure. Closes over the REST client, URLSession, UIImage, and
+    /// UIActivityViewController in the app target, so CrossyUI stays out of the REST ring
+    /// and free of UIKit (AD-2). Nil for compositions with no server card (labs, the
+    /// offline demo): the header carries no button then.
+    private let prepareShareCard: (@MainActor (GridGround) async -> Bool)?
     /// Where the reaction fan stands (Wave 7.5, revised by the owner's device pass
     /// 2026-07-14): detached and floating by default, the in-bar corner variant
     /// behind the launch flag so the A/B stays possible.
@@ -84,6 +92,7 @@ public struct SolveScreen: View {
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
     @State private var analysis = AnalysisModel()
+    @State private var shareCard = ShareCardModel()
     @State private var terminalPourBack = TerminalPourBackGate()
     @State private var hapticFold = SolveHapticFold()
     /// Room-space frames reported inside the room hierarchy (the board, the clue
@@ -167,6 +176,7 @@ public struct SolveScreen: View {
         onEndGame: @escaping () -> Void = {},
         onKick: @escaping (String) -> Void = { _ in },
         fetchAnalysis: (() async -> RoomAnalysis?)? = nil,
+        prepareShareCard: (@MainActor (GridGround) async -> Bool)? = nil,
         reactionFanPlacement: ReactionFanPlacement = .floating,
         reactionSets: ReactionSetStore? = nil
     ) {
@@ -190,6 +200,7 @@ public struct SolveScreen: View {
         self.onEndGame = onEndGame
         self.onKick = onKick
         self.fetchAnalysis = fetchAnalysis
+        self.prepareShareCard = prepareShareCard
         self.reactionFanPlacement = reactionFanPlacement
         self.reactionSets = reactionSets
         // The fan is born wearing the personal five (or the defaults); the onChange
@@ -358,6 +369,16 @@ public struct SolveScreen: View {
                     // model's own gate holds even if a stale tap lands.
                     onIsolateSolver: completion.mosaicSettled
                         ? { completion.toggleIsolation($0) } : nil,
+                    // The completion share card (Wave 14.5): the affordance stands only
+                    // when the composition root injected a way to mint and present it
+                    // (the live room; the offline demo and the labs pass none, so the
+                    // header carries no button). The intent runs the injected mint +
+                    // PNG fetch + present through the model's state machine, capturing
+                    // this room's current ground so the server renders the matching card.
+                    shareCard: prepareShareCard != nil ? shareCard : nil,
+                    onShareCard: prepareShareCard.map { prepare in
+                        { shareCard.share { await prepare(ground) } }
+                    },
                     onDismissTransients: dismissTransients,
                     onPrevious: { model.swipe(.previousWord) },
                     onNext: { model.swipe(.nextWord) },

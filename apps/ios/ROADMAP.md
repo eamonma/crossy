@@ -260,6 +260,12 @@ amendment to `apps/ios/EXPERIENCE.md` before it is built.
 - [ ] d. Hardware keyboard on iPhone; Dynamic Type on chrome (the grid scales by
       zoom, not type size); VoiceOver on chrome and clue reading. Deep grid
       VoiceOver is post-v1 by explicit cut, recorded here so the gap is visible.
+- [x] e. Completion share card (Wave 14.5): a "Share card" affordance in the
+      Analysis header mints the share link (`POST /games/{id}/share`), fetches the
+      SERVER-rendered card PNG for the current ground, and presents the system share
+      sheet with the image plus the URL. iOS consumes the server card
+      (`@crossy/share-card`, the single visual source of truth); no native renderer
+      (design/post-game/SHARE.md). Distinct from the invite share (I3.b).
 
 **Exit: the v2 parity checklist's iOS half is green, walked personally by the
 owner on device (root M6 exit).**

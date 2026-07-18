@@ -312,6 +312,46 @@ final class RESTSnapshotTests: XCTestCase {
         XCTAssertEqual(view.members[1].role, .spectator)
         XCTAssertEqual(view.puzzle.shadedCircles, [2], "present shadedCircles survive")
         XCTAssertTrue(view.session.ws.hasPrefix("wss://"), "§2 endpoint shape")
+        // Additive display metadata (§12, §14): the share card's masthead reads these
+        // beside `puzzle`, which stays exactly `ClientPuzzle` (no solution, INV-6).
+        XCTAssertEqual(view.puzzleTitle, "Sunday Themeless No. 42")
+        XCTAssertEqual(view.puzzleAuthor, "Robyn Weintraub")
+    }
+
+    func test_gameViewTitleAndAuthorReadAbsenceAsNull_additive14() throws {
+        // An older server (before the §13.1 additive fields) omits both keys; a client
+        // reads absence as null, never a decode failure. The rest of the view still
+        // decodes, so the room opens exactly as before the metadata shipped.
+        let legacy = Data(
+            #"""
+            {
+              "gameId": "7d9f34a2-4b1e-4c3a-9d2f-8a6b5c4d3e2f",
+              "createdBy": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+              "createdAt": "2026-07-08T12:00:00.000Z",
+              "name": null,
+              "inviteCode": "BQ7XKM2A",
+              "puzzle": {
+                "rows": 1, "cols": 1, "blocks": [], "circles": [],
+                "clues": { "across": [], "down": [] }
+              },
+              "members": [],
+              "session": { "ws": "wss://session.example/games/x/ws" }
+            }
+            """#.utf8)
+        let view = try JSONDecoder().decode(GameView.self, from: legacy)
+        XCTAssertNil(view.puzzleTitle)
+        XCTAssertNil(view.puzzleAuthor)
+    }
+
+    // MARK: - Share links (§12: POST /games/{id}/share)
+
+    func test_shareLinkResponseRoundTripsWithUrlAndToken() throws {
+        let response = try assertLosslessRoundTrip(
+            ShareLinkResponse.self, .rest, "share-link-response")
+        // `shareUrl` is `{share-origin}/s/{token}`: the token fronts the link and is
+        // its trailing path component (the sole capability; no gameId).
+        XCTAssertTrue(response.shareUrl.hasPrefix("https://crossy.ing/s/"))
+        XCTAssertTrue(response.shareUrl.hasSuffix(response.token))
     }
 
     // MARK: - Analysis (§12: GET /games/{id}/analysis)
