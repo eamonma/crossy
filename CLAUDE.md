@@ -46,6 +46,12 @@ The orchestrator reviews diffs, pushes agent branches, opens PRs, and arms squas
 auto-merge. Subagents never push. Small doc edits may be done inline. Nothing is
 racing a deadline.
 
+Strong preference for TDD. Write the failing test first (a vector where the behavior
+is normative, a unit or integration test otherwise), watch it fail, then implement to
+green. Tests written after the code assert what it does, not what it should; the
+vectors-before-implementations rule below is this preference made law for shared
+ground. Briefs to subagents carry the same expectation.
+
 Owner-held, never do directly: secret and DNS mutations, Supabase/Railway dashboard
 changes, production deploys and destructive migrations. Ask, with the exact command
 ready to paste.
