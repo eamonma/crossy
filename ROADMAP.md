@@ -1313,6 +1313,23 @@ mosaic and the page carries zero script. Still letter-free (INV-6). See
 `design/post-game/SHARE.md` S3 for the motion decisions. Exit met: a share link opens
 to the replay on web without membership.
 
+### Wave 14.4 — the titles become the film credits on the server card
+
+The native apps are about to share the SERVER card PNG (not a client render), so a titled
+solve's card must carry the film-credit titles. That promotes the title display LABELS to
+shared normative ground: `vectors/analysis/title-labels.json` freezes `key -> label` (the
+web `TITLE_COPY` labels verbatim, the ratified card copy; the three client twins were
+byte-identical, nothing reconciled). Four consumers pin it: web `TITLE_COPY`, iOS/Android
+`TitleLadder`, and the API's new `apps/api/src/share/titleLabels.ts` (the `identityRoster.ts`
+idiom). `apps/api/src/share/cardData.ts` now maps the analysis bundle's title keys through
+the pinned labels into the card's credits (titled solvers first in wire order, matching the
+web assembly), so the og credits render ladder-ranked. **Labels only:** the evidence/detail
+line interpolates the solve's stats and stays client-owned; the og variant renders titles
+only anyway. This supersedes the S2 "title copy is client-owned prose" decision
+(`design/post-game/SHARE.md`, now annotated). No wire change, no `packages/share-card`
+change, no web-visible behavior change (web is pinned, not re-rendered). Exit: a finished
+room's server card renders the credits; all four consumers pinned to one vector.
+
 ## Phase 15 — Check votes (D32)
 
 Users asked for a vote before the room-wide check fires, so D32 overturns D27's "no
@@ -1371,20 +1388,3 @@ tally, and `expiresAt`; whether the multiplayer confirm dialog retires; how a so
 auto-pass reads) is left for the owner to iterate on hands-on before these waves are
 written. The contract above (the `checkVote` snapshot field, the three events, the four
 errors) is all a client needs to begin.
-
-### Wave 14.4 — the titles become the film credits on the server card
-
-The native apps are about to share the SERVER card PNG (not a client render), so a titled
-solve's card must carry the film-credit titles. That promotes the title display LABELS to
-shared normative ground: `vectors/analysis/title-labels.json` freezes `key -> label` (the
-web `TITLE_COPY` labels verbatim, the ratified card copy; the three client twins were
-byte-identical, nothing reconciled). Four consumers pin it: web `TITLE_COPY`, iOS/Android
-`TitleLadder`, and the API's new `apps/api/src/share/titleLabels.ts` (the `identityRoster.ts`
-idiom). `apps/api/src/share/cardData.ts` now maps the analysis bundle's title keys through
-the pinned labels into the card's credits (titled solvers first in wire order, matching the
-web assembly), so the og credits render ladder-ranked. **Labels only:** the evidence/detail
-line interpolates the solve's stats and stays client-owned; the og variant renders titles
-only anyway. This supersedes the S2 "title copy is client-owned prose" decision
-(`design/post-game/SHARE.md`, now annotated). No wire change, no `packages/share-card`
-change, no web-visible behavior change (web is pinned, not re-rendered). Exit: a finished
-room's server card renders the credits; all four consumers pinned to one vector.
