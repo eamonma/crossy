@@ -78,7 +78,11 @@ const bindings: Record<Family, ((vectorCase: JsonObject) => void) | null> = {
   comparator: runComparator,
   navigation: runNavigation,
   completion: runCompletion,
-  check: runCompletion,
+  // Wave 15.1 rewrote the check contract to the attributed-majority vote flow
+  // (PROTOCOL.md sections 6, 10; DESIGN.md D32). The vote state machine is not in the
+  // shipped driver, so check is unbound and listed in vectors.skip.json `families`
+  // (skipped-until-engine); Wave 15.2 implements it and rebinds this to the driver.
+  check: null,
   "client-store": null,
   "clue-runs": null,
 };
@@ -578,7 +582,10 @@ function buildBoardState(given: JsonObject): BoardState {
 
 /** A `when` entry (wire command plus server meta) is the engine command as plain data. */
 function asCommand(w: JsonObject): Command | CheckPuzzle {
-  // checkPuzzle carries only commandId: no `by`, no `at` (PROTOCOL §6, D27).
+  // Legacy pre-vote adapter, live only for still-bound families. The check family is
+  // skipped-until-engine (Wave 15.1), so its vote commands (checkPuzzle now carries a
+  // frozen `electorate`, plus castCheckVote and expireCheckVote) never reach this in a
+  // run; Wave 15.2 rebinds check and teaches this adapter the vote commands.
   if (w.type === "checkPuzzle")
     return { type: "checkPuzzle", commandId: w.commandId as string };
   if (w.type === "placeLetter")
@@ -771,9 +778,10 @@ function buildSolution(given: JsonObject): Solution {
  * Completion runner: apply each command in mailbox order through the two-phase driver,
  * accumulating the full sequenced stream. Concurrency collapses to this total order
  * (PROTOCOL §10), and the level-triggered check re-runs on same-count overwrites
- * (DESIGN §3). A rejected trailing command emits nothing (INV-4). The check family
- * binds here too: checkPuzzle routes through the same driver (PROTOCOL §10, D27), and
- * the last error is tracked like runReducer's so rejection cases assert their code.
+ * (DESIGN §3). A rejected trailing command emits nothing (INV-4). The last error is
+ * tracked like runReducer's so rejection cases assert their code. The check family
+ * bound here until Wave 15.1: it now asserts the vote flow (PROTOCOL §10, D32) and is
+ * skipped-until-engine (vectors.skip.json `families`) until Wave 15.2 rebinds it.
  */
 function runCompletion(c: JsonObject): void {
   const given = c.given as JsonObject;

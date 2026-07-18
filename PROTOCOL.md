@@ -76,6 +76,7 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
   "cells": [ {"v":"A","by":"<userId>"}, {"v":null,"by":null}, ... ],
   "checkedWrongCells": [3, 17],
   "checkCount": 1,
+  "checkVote": null,
   "participants": [ {"userId":"...","displayName":"Ana","avatarUrl":"https://...","color":"#7F77DD","role":"host","connected":true} ],
   "cursors": [ {"userId":"...","cell":17,"direction":"across"} ],
   "recentCommandIds": ["<uuid>", "..."],
@@ -84,7 +85,8 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 ```
 
 - `cells` has length `rows * cols`. Black squares are present, always `{"v":null,"by":null}`, and immutable. A cleared or no-op'd playable cell keeps a non-null `by` (the writer or clearer), so `{"v":null,"by":null}` is reserved for black squares and never-written cells, while `{"v":null,"by":"<userId>"}` is a cell a writer set or cleared to null. This matches section 6 (a `cellSet` for a clear updates `by`) and the reducer vectors (section 13), which list such cells explicitly in `then.state.cells`.
-- `checkedWrongCells` is the standing room-check marks (section 10): the playable cells whose value failed the comparator at the game's most recent `checkPuzzle` and whose value has not changed since, ascending, `[]` when none stand. `checkCount` is the game's total accepted checks, `0` before the first. Both are cell indices and a count, never values or answers (INV-6). They ride every snapshot, so reconnect and resync heal the marks with no delta replay.
+- `checkedWrongCells` is the standing room-check marks (section 10): the playable cells whose value failed the comparator at the game's most recent accepted check and whose value has not changed since, ascending, `[]` when none stand. `checkCount` is the game's total accepted checks, `0` before the first. Both are cell indices and a count, never values or answers (INV-6). They ride every snapshot, so reconnect and resync heal the marks with no delta replay.
+- `checkVote` is the open check vote (section 10; D32), `null` when none is open, else the object `{"openedSeq", "by", "electorate", "approvals", "rejections", "needed", "expiresAt"}`: `openedSeq` is the `seq` of the vote's `checkVoteOpened` (the vote's identity, the `voteSeq` a ballot names); `by` is the proposer; `electorate` is the frozen ascending userId array of eligible voters (host and solver members connected when the proposal was accepted, INV-1); `approvals` and `rejections` are the ascending userIds who have voted each way, and `approvals` starts as `[by]` because the proposal is the proposer's approval; `needed` is `floor(electorate.length / 2) + 1`, the strict majority, carried so no client reimplements the arithmetic; `expiresAt` is the absolute ISO 8601 timeout, stamped by the session adapter like `at`. Every userId array is ascending ASCII byte order (INV-1). One vote is open at a time per game. `checkVote` rides every snapshot, so a client reconnecting mid-vote heals the whole vote with no delta replay. It carries no cell values or answers (INV-6).
 - `status` is one of `ongoing`, `completed`, `abandoned`. `stats` is non-null only when completed: `solveTimeSeconds` = `completedAt` − `firstFillAt`; `totalEvents` = the terminal event's `seq` − 1 (the count of sequenced events before it); `participantCount` = distinct users who sent at least one accepted mutation (not mere joiners, not spectators), computed as `DISTINCT user_id` over `cell_events` on the completion path, since it is not derivable from the board snapshot (last writer per cell only) nor from actor memory (lost on passivation); `checkCount` = the same permanent count the board payload carries, frozen at completion; `activeSolveSeconds` = `solveTimeSeconds` with idle collapsed: the same endpoints and the same rounding, minus the total milliseconds of every gap of `SITTING_GAP_MS` (1,800,000 ms) or more between consecutive cell events, clamped at 0 (the sittings partition, DESIGN.md D29; a gap of exactly the threshold collapses); `sittingCount` = the number of sittings, the maximal runs of cell events whose consecutive gaps are all under `SITTING_GAP_MS`. `activeSolveSeconds` and `sittingCount` are additive (2026-07-16): stats frozen before they shipped lack them, they are never backfilled, and a client MUST tolerate their absence, falling back to `solveTimeSeconds`. Where stats render, active time is the headline time stat and the sitting count is context, never a second stat (D29).
 - `recentCommandIds` is the last K applied `commandId`s, letting a client confirm and clear overlay entries whose echo fell inside a gap (section 8; DESIGN.md section 6).
 - Each participant carries `avatarUrl`, an opaque nullable string. It is resolved server-side, once, where the display name is (DESIGN.md section 8), and is the same field on every participant-carrying payload: the `welcome` and `sync` participants, `playerConnected` (section 6), and the `GET /games/{id}` member listing (section 12). A client renders the image when it is present and falls back to its existing initial avatar when it is `null`, while loading, or on a load error; `null` is a first-class value, not an error. The value is opaque by contract: a client MUST NOT infer which provider produced it or reconstruct any input to it. The server never puts an email or any hash input on the wire (DESIGN.md INV-6 spirit).
@@ -100,7 +102,8 @@ Used inside `welcome` and `sync`. The puzzle itself (geometry, numbers, circles,
 | `clearCell`    | host, solver      | `commandId`, `cell`          | board mutation; value becomes null |
 | `moveCursor`   | any               | `cell`, `direction`          | ephemeral; at most 10/s; spectator cursors suppressed client-side by default |
 | `react`        | any               | `emoji`, `cell`              | ephemeral; at most 5/s; any role incl. spectator; legal in any status (section 9) |
-| `checkPuzzle`  | host, solver      | `commandId`                  | room-wide check; grid must be full |
+| `checkPuzzle`  | host, solver      | `commandId`                  | proposes a room check vote; grid must be full |
+| `castCheckVote`| host, solver      | `commandId`, `voteSeq`, `approve` | casts one ballot on the open check vote |
 | `heartbeat`    | any               | none                         | every 15 s                         |
 | `requestSync`  | any               | none                         | server replies `sync`              |
 
@@ -112,6 +115,10 @@ Validation and error mapping (non-fatal unless stated):
 - `cell` out of range, or a black square: `INVALID_CELL`
 - `value` fails the pattern: `INVALID_VALUE`
 - `checkPuzzle` while any playable cell is empty: `GRID_NOT_FULL`
+- `checkPuzzle` while a check vote is already open: `VOTE_PENDING`
+- `castCheckVote` with no matching open vote, or naming a stale `voteSeq`: `NO_VOTE_OPEN`
+- `castCheckVote` from a sender outside the frozen electorate: `NOT_ELECTOR`
+- `castCheckVote` from a sender who has already voted (the proposer approved at proposal time): `ALREADY_VOTED`
 - role too low for the message: `ROLE_FORBIDDEN`
 - over a rate limit: `RATE_LIMITED`
 - duplicate `commandId`: dropped silently; no error, no event (the state it produced, if any, arrives via events or sync)
@@ -175,20 +182,68 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 
 `at` and `stats` are actor-supplied, not engine output. The reducer's completion result carries neither: `gameCompleted` at the next `seq` is all the engine emits (the completion vectors, section 13, pin no `stats`). The session adapter stamps `at` from the server clock and fills `stats` (`solveTimeSeconds` from the timestamps, `activeSolveSeconds` and `sittingCount` from the sittings partition over the game's cell events, section 4 and DESIGN.md D29, `totalEvents` and `participantCount` as section 4 defines) before broadcast. In the example the solve was one sitting, so `activeSolveSeconds` equals `solveTimeSeconds`.
 
-`puzzleChecked`, emitted for every accepted `checkPuzzle` (section 10) and broadcast to the whole room:
+`checkVoteOpened`, emitted for every accepted `checkPuzzle` (section 10) and broadcast to the whole room. It proposes a check: an attributed, timeboxed room vote instead of an immediate check.
 
 ```json
 {
-  "type": "puzzleChecked",
-  "seq": 742,
-  "wrongCells": [3, 17, 44],
-  "checkCount": 2,
+  "type": "checkVoteOpened",
+  "seq": 740,
+  "by": "<userId>",
+  "electorate": ["<userId>", "<userId>", "<userId>"],
+  "needed": 2,
+  "expiresAt": "2026-07-07T19:32:10Z",
   "commandId": "<origin>",
   "at": "2026-07-07T19:31:40Z"
 }
 ```
 
-`wrongCells` lists, ascending, every playable cell whose value fails the comparator (section 10) at the moment the check runs; cell indices only, never values or answers (INV-6). The gate in section 10 guarantees the grid is full when a check is accepted, so `wrongCells` is never empty (a full and correct board has already completed and a terminal board rejects the command). `checkCount` is the game's total accepted checks including this one; it is permanent state, never reset. The event deliberately carries no `by`: a check is a room act recorded neutrally, and no client can attribute it because the attribution never crosses the wire (the server retains the actor server-side, DESIGN.md section 9). The sender recognizes its own `commandId` echo, which is all a client needs. `at` is stamped by the session adapter from the server clock, like `gameCompleted`'s.
+`by` is the proposer. `electorate` is the frozen ascending userId array of eligible voters, the host and solver members connected at the instant the proposal was accepted; it always includes `by`, and it never changes for the vote's life (a later join, disconnect, or role change moves nothing). Spectators are never electors. `needed` is `floor(electorate.length / 2) + 1`, the strict majority, carried so no client reimplements the arithmetic. `expiresAt` is the absolute ISO 8601 timeout, stamped by the session adapter from the server clock like `at`. `commandId` echoes the proposal, so the proposer clears its optimistic intent. The proposal is the proposer's own approval, so the vote opens with one approval already counted; on a solo electorate of one, `needed` is one and the vote passes at open (a `checkVoteClosed` and `puzzleChecked` follow immediately, same command processing).
+
+`checkVoteCast`, emitted for every accepted `castCheckVote` (section 10) and broadcast to the whole room:
+
+```json
+{
+  "type": "checkVoteCast",
+  "seq": 741,
+  "voteSeq": 740,
+  "by": "<userId>",
+  "approve": true,
+  "commandId": "<origin>",
+  "at": "2026-07-07T19:31:44Z"
+}
+```
+
+`voteSeq` identifies the vote: it is the `seq` of that vote's `checkVoteOpened`. `by` is the voter. `approve` is the ballot, `true` for an approval and `false` for a rejection. Ballots are immutable and one per elector; the proposer never casts one (their proposal already approved). `commandId` echoes the ballot command. `at` is adapter-stamped.
+
+`checkVoteClosed`, emitted once when a vote resolves and broadcast to the whole room:
+
+```json
+{
+  "type": "checkVoteClosed",
+  "seq": 742,
+  "voteSeq": 740,
+  "outcome": "passed",
+  "at": "2026-07-07T19:31:44Z"
+}
+```
+
+`voteSeq` names the vote (the `checkVoteOpened` `seq`). `outcome` is one of `passed`, `failed`, or `cancelled`. `reason` is absent when `passed`; it is `REJECTED` or `EXPIRED` when `failed`, and `GRID_BROKEN` or `TERMINAL` when `cancelled` (section 10). A `passed` close is immediately followed by one `puzzleChecked` at the next `seq`, the same command processing; a `failed` or `cancelled` close is followed by neither and changes no marks or count. `at` is adapter-stamped.
+
+`puzzleChecked`, emitted only as the immediate successor of a `checkVoteClosed` whose `outcome` is `passed`, and broadcast to the whole room:
+
+```json
+{
+  "type": "puzzleChecked",
+  "seq": 743,
+  "wrongCells": [3, 17, 44],
+  "checkCount": 2,
+  "by": "<userId>",
+  "commandId": "<origin>",
+  "at": "2026-07-07T19:31:44Z"
+}
+```
+
+`wrongCells` lists, ascending, every playable cell whose value fails the comparator (section 10) at the moment the vote closes; cell indices only, never values or answers (INV-6). The check is computed against the board at close time, not at proposal time, and the section 10 lifecycle guarantees the board is full and imperfect at any pass, so `wrongCells` is never empty (a mutation that would make the board full and correct completes the game and cancels the vote first). `checkCount` is the game's total accepted checks including this one; it is permanent state, never reset. `by` is the proposer, the same id `checkVoteOpened` carried, and `commandId` still echoes the original `checkPuzzle`: the check is a fully attributed room act (D32 overturns the earlier wire neutrality). `at` is stamped by the session adapter from the server clock, like `gameCompleted`'s.
 
 `gameAbandoned`:
 
@@ -249,14 +304,21 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 - The server tracks `filledCount`. After every accepted mutation, while `filledCount` equals the playable-cell count (including a same-value or corrective overwrite that does not change the count), the server MUST validate the whole board against the solution. The check is level-triggered, not edge-triggered: it MUST re-run on a same-count overwrite, so a full-but-wrong board corrected in place still completes. Pass: exactly one `gameCompleted`, persisted before broadcast. Fail: nothing is emitted; play continues.
 - After `gameCompleted` or `gameAbandoned`: `placeLetter`, `clearCell`, and `checkPuzzle` receive `GAME_NOT_ONGOING`. The connection stays open for the post-game screen. A terminal state is final: a second `abandon`, or a late completion attempt, is a no-op (INV-4).
 
-**Room check.** The check is a deliberate, room-wide act: one command marks every incorrect entry for everyone, without revealing answers. There is no private check.
+**Room check vote.** The check is a deliberate, room-wide act, and it passes through an attributed majority vote (D32). A `checkPuzzle` proposes a check; the room votes; a passing vote is the accepted check, marking every incorrect entry for everyone without revealing answers. There is no private check and no immediate check.
 
-- `checkPuzzle` is legal only while the game is ongoing and the grid is full (`filledCount` equals the playable-cell count); otherwise `GAME_NOT_ONGOING` or `GRID_NOT_FULL` (section 5). Because completion is level-triggered, a full and correct board is never ongoing, so an accepted check always finds at least one wrong cell.
-- An accepted `checkPuzzle` consumes a `seq` and broadcasts one `puzzleChecked` (section 6) carrying `wrongCells`, every cell whose value fails the comparator, ascending. The event replaces any standing marks wholesale and increments the permanent `checkCount`.
+- `checkPuzzle` is legal only while the game is ongoing, the grid is full (`filledCount` equals the playable-cell count), and no vote is already open; otherwise `GAME_NOT_ONGOING`, `GRID_NOT_FULL`, or `VOTE_PENDING` (section 5). One vote is open at a time per game. Because completion is level-triggered, a full and correct board is never ongoing, and the lifecycle below cancels a vote before any completing mutation, so an accepted check always finds at least one wrong cell.
+- An accepted `checkPuzzle` consumes a `seq`, freezes the electorate, and broadcasts one `checkVoteOpened` (section 6). The **electorate** is the host and solver members connected at the instant the proposal is accepted, frozen for the vote's life: joins, disconnects, and role changes mid-vote change neither the electorate nor `needed`. Spectators are never electors, and the electorate always includes the proposer. The engine receives the frozen electorate as data on the command (INV-9); the session assembles it from live presence.
+- **Majority is strict:** `needed` = `floor(E / 2) + 1` approvals, where `E` is the electorate size. The proposal is the proposer's approval, so approvals open at one; the proposer casting a ballot later is `ALREADY_VOTED`.
+- `castCheckVote` casts one immutable ballot. Its gates, in order: role host or solver (`ROLE_FORBIDDEN`), game ongoing (`GAME_NOT_ONGOING`), an open vote whose `openedSeq` equals the command's `voteSeq` (`NO_VOTE_OPEN`, which also covers a stale `voteSeq` naming a vote that has closed), the sender in the frozen electorate (`NOT_ELECTOR`), and the sender not having voted (`ALREADY_VOTED`). An accepted ballot consumes a `seq` and broadcasts one `checkVoteCast`.
+- **Resolution** is immediate at each event, never buffered to the bell. The vote passes the instant approvals reach `needed`, possibly at open itself (a solo electorate of one passes immediately). It fails the instant a majority becomes unreachable, `E - rejections < needed`. Otherwise it fails when the timebox expires. Silence is never approval.
+- **The timebox** is `CHECK_VOTE_TTL_MS` = 30,000 ms, a session-owned constant. The wire carries the absolute `expiresAt`, stamped by the session adapter like `at`. When its timer fires the session feeds the engine an expiry input (the `expireCheckVote` actor tick in the vectors, section 13); an expiry with no vote open is a silent no-op, since the actor may race its own timer. On crash rehydrate the session closes an already-expired vote from the flushed state.
+- **A passing vote is the accepted check.** The `checkVoteClosed` with `outcome` `passed` is immediately followed by one `puzzleChecked` at the next `seq` (section 6), computed against the board **at close time**, incrementing the permanent `checkCount`. `wrongCells` replaces any standing marks wholesale. A `failed` or `cancelled` vote increments nothing and marks nothing.
+- **Cancellation** closes an open vote without a check when the board leaves the state a check needs. An accepted `clearCell` that empties a cell (the grid is no longer full) closes the vote `cancelled` with reason `GRID_BROKEN`, the `checkVoteClosed` emitted right after that cell's `cellSet`. An accepted mutation that completes the game closes the vote `cancelled` with reason `TERMINAL`, ordered `cellSet`, `checkVoteClosed`, `gameCompleted` (the terminal event stays last); an abandon mid-vote likewise closes it `cancelled` `TERMINAL` before `gameAbandoned`. Any other accepted mutation, an overwrite or a no-op that keeps the grid full, leaves the vote open: play continues during a vote.
+- There is **no cooldown** after a failed or cancelled vote; a fresh `checkPuzzle` may open a new vote at once. Attribution and the one-open-vote rule self-limit spam, so no dedup window is imposed (a window would be a magic number, the same posture the check took before the vote).
 - A mark stands until the cell's **value changes**: a `cellSet` that sets a different letter, or clears to null, removes that cell's mark; a same-value no-op keeps it, because the mark is still true. This is reducer semantics, identical in both ports and pinned by the `check` vectors (section 13).
 - At completion no mark stands: every marked cell was wrong, and passing the comparator required its value to change, which cleared the mark. Pinned by vectors.
-- `checkCount` is permanent, neutral state: it never resets, it survives passivation in the snapshot, it freezes into `stats.checkCount` at completion, and nothing on the wire attributes any check to a user (section 6). Future scoring surfaces may tax it; nothing displays who checked.
-- Client guidance, non-normative: a check affects the whole room, so a client SHOULD interpose a confirmation step before sending `checkPuzzle`; the command is the confirmed intent and the server needs no ceremony. Render `checkedWrongCells` in the check style; a cell with a pending optimistic overlay entry renders the overlay, not the mark.
+- `checkCount` is permanent state: it never resets, it survives passivation in the snapshot, and it freezes into `stats.checkCount` at completion. Proposing, voting, and checking are not cell mutations and never make a user a `participantCount` participant. The check is now fully attributed on the wire (`checkVoteOpened.by`, each ballot's `by`, and `puzzleChecked.by`), so future scoring surfaces can tax it by author; the `check_events.user_id` persistence (DESIGN.md section 9) is unchanged, it is simply no longer a secret.
+- Client guidance, non-normative: the vote is now the ceremony, so a client MAY drop the old confirm dialog before proposing in a multiplayer room; the proposal opens the vote and the room decides. In a solo room the vote auto-passes, so a solo client SHOULD keep a confirmation step before proposing, since there is no room to interpose. The vote UI (surfacing `checkVote`, its `needed`, tallies, and `expiresAt`) is deliberately left to later waves. Render `checkedWrongCells` in the check style; a cell with a pending optimistic overlay entry renders the overlay, not the mark.
 - **Comparator, normative** (mirrored in vectors): a filled value passes for a cell iff, case-insensitively, it equals the cell's full solution string, or it equals the solution's first character.
 - **Open question (unresolved):** whether the full-string branch accepts a solution string that no legal input can produce. For a rebus solution like `A/B`, the string `A/B` fails the `^[A-Z0-9]{1,10}$` charset, so it can never be entered, yet the literal rule above would still "match" it. The comparator vectors pin the enterable cases (solution `A/B` accepts `A`/`a`, rejects `B`/`AB`) but deliberately leave the unenterable full string `A/B` in neither `accept` nor `reject`. It is moot at runtime, because ingestion rejects whole-symbol cells (section 12; DESIGN.md section 7) and the input charset blocks entry, but the rule text is silent. Resolve before the comparator is considered final.
 
@@ -273,6 +335,10 @@ It appears on exactly that one event and on no other `cellSet`: a later fill, an
 | `INVALID_CELL`                 | no     | out of range, or a black square                          |
 | `INVALID_VALUE`                | no     | fails `^[A-Z0-9]{1,10}$`                                 |
 | `GRID_NOT_FULL`                | no     | `checkPuzzle` while a playable cell is empty             |
+| `VOTE_PENDING`                 | no     | `checkPuzzle` while a check vote is already open         |
+| `NO_VOTE_OPEN`                 | no     | `castCheckVote` with no matching open vote, or a stale `voteSeq` |
+| `NOT_ELECTOR`                  | no     | `castCheckVote` from a sender outside the frozen electorate |
+| `ALREADY_VOTED`                | no     | `castCheckVote` from a sender who has already voted      |
 | `ROLE_FORBIDDEN`               | no     | a spectator sent a mutation                              |
 | `RATE_LIMITED`                 | no     | slow down                                                |
 | `UNKNOWN_TYPE`                 | no     | unrecognized command type                                |
@@ -585,7 +651,7 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) and
 
 **Completion matrix vectors** (reducer cases plus actor integration): repeated completion attempts yield exactly one `gameCompleted`; a filled-but-wrong board emits nothing and stays `ongoing`; **a full-but-wrong board made correct by an in-place overwrite (no change to `filledCount`) completes exactly once**; two players filling the last two cells concurrently yield exactly one completion; any mutation after completion is rejected; a client disconnected across the completion learns of it from the snapshot.
 
-**Check vectors** (`check` family): the completion case shape (it needs `given.solution` for the comparator), with `given` optionally carrying standing `checkedWrong` marks and a `checkCount`, and `then.state` asserting both. The suite pins: an accepted check on a full-but-wrong board emits one `puzzleChecked` with `wrongCells` ascending and exactly the comparator failures (first-char rebus acceptance included); the gates (`GRID_NOT_FULL` below full, `GAME_NOT_ONGOING` on a terminal board); mark clearing on value change only (a same-value no-op keeps the mark, a different letter or a clear removes it, an edit elsewhere touches nothing); a second check replacing marks wholesale and incrementing the count; and the completion interplay (correcting the last wrong cell completes with zero standing marks).
+**Check vectors** (`check` family): the completion case shape (it needs `given.solution` for the comparator), with `given` optionally carrying standing `checkedWrong` marks, a `checkCount`, and a `checkVote` (the open vote as `{openedSeq, by, electorate, approvals, rejections}`, or `null`), and `then.state` asserting the same `checkVote` shape. Since D32 the check passes through the attributed majority vote, so a `checkPuzzle` command carries the frozen `electorate` as data (INV-9), a `castCheckVote` carries `voteSeq` and `approve`, and an `expireCheckVote` actor tick drives timeout; engine-emitted events omit `at` and `expiresAt`, which the adapter stamps. Every accepted `checkPuzzle` opens a vote, so the suite's solo-electorate cases (`by` one user, `electorate` that user) assert the auto-pass triple `checkVoteOpened` (`needed` 1), `checkVoteClosed` (`passed`), `puzzleChecked` (now carrying `by`), preserving the pre-vote checks on `wrongCells`, marks, and count verbatim in meaning. The vote lifecycle clusters pin: opening a vote (E=3 and E=2 stay open, strict majority, the solo instant pass, `VOTE_PENDING` on a second proposal); ballots (a decisive approval closes `passed` with `puzzleChecked.by` = the proposer and the proposal's `commandId`, a non-decisive rejection records only, a decisive or unreachable-majority rejection closes `failed` `REJECTED`, and the `ALREADY_VOTED` / `NOT_ELECTOR` / `NO_VOTE_OPEN` gates including a stale `voteSeq`); expiry (`EXPIRED` short of majority, a silent no-op tick with no vote, a ballot after expiry); and cancellation (a clear closes `cancelled` `GRID_BROKEN`, an overwrite keeps the vote open and the later pass computes `wrongCells` on the board at close time, an in-place correction closes `cancelled` `TERMINAL` before `gameCompleted`). The suite also keeps mark clearing on value change only (a same-value no-op keeps the mark, a different letter or a clear removes it, an edit elsewhere touches nothing) and the completion interplay (correcting the last wrong cell completes with zero standing marks). The engine is unimplemented against the vote flow until Wave 15.2, so the family is discovered and shape-validated as hard passes but execution-skipped via the `check` entry in both `vectors.skip.json` manifests.
 
 **Client-store vectors** (run in both vitest and XCTest, like the engine): given sequenced state plus an overlay plus an incoming message (`cellSet`, `error`, `sync`, or a crash-rollback snapshot), assert the resulting overlay and rendered cells, and where a case pins it the store's derived `firstFillAt` (the timer origin the first fill's `cellSet` carries on the delta path, section 6). A non-fatal `error` is in scope because it is what clears the immortal overlay (section 8), the case this family must cover. These pin the duplicated web + iOS reconciliation logic (overlay clear on echo, gap-to-sync re-send, rollback) where drift is most expensive, and cover the immortal-overlay case in section 8.
 
@@ -599,4 +665,4 @@ Planned additions under the same fixture: word-bounds cases, next-word (Tab) and
 
 **Pre-release amendments.** While v1 is the only version ever deployed and every client deploys continuously from main, v1 may be amended in place, including breaking changes such as a new sequenced event, by owner ruling (2026-07-15). The bump discipline above starts at the first externally frozen release.
 
-Changelog: v1, 2026-07-07, initial. Amended 2026-07-15 (pre-release, owner ruling): room check lands as the sequenced `puzzleChecked` plus the `checkPuzzle` command, `GRID_NOT_FULL`, and the board payload's `checkedWrongCells`/`checkCount`; the never-implemented per-user `checkRequest`/`checkResult` pair is removed (the room check is the only check).
+Changelog: v1, 2026-07-07, initial. Amended 2026-07-15 (pre-release, owner ruling): room check lands as the sequenced `puzzleChecked` plus the `checkPuzzle` command, `GRID_NOT_FULL`, and the board payload's `checkedWrongCells`/`checkCount`; the never-implemented per-user `checkRequest`/`checkResult` pair is removed (the room check is the only check). Amended 2026-07-18 (pre-release, owner ruling): the room check passes through an attributed majority vote (D32). `checkPuzzle` now proposes a check rather than checking immediately; three sequenced events join the wire (`checkVoteOpened`, `checkVoteCast`, `checkVoteClosed`), `puzzleChecked` gains `by` and fires only as the immediate successor of a passing close, the `castCheckVote` command and the `VOTE_PENDING`/`NO_VOTE_OPEN`/`NOT_ELECTOR`/`ALREADY_VOTED` errors are added, and the board payload gains `checkVote`; wire neutrality is overturned, the check is now fully attributed.

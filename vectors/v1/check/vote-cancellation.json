@@ -1,0 +1,226 @@
+[
+  {
+    "name": "§10/D32: an accepted clear during an open vote breaks the full grid; the cellSet is emitted, then the vote closes cancelled GRID_BROKEN, nothing checked, the count unchanged",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 30,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      },
+      {
+        "type": "clearCell",
+        "commandId": "c2",
+        "cell": 1,
+        "by": "u2",
+        "at": "2026-07-07T00:00:30Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 31,
+          "by": "u1",
+          "electorate": ["u1", "u2"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "cellSet",
+          "seq": 32,
+          "cell": 1,
+          "value": null,
+          "by": "u2",
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 33,
+          "voteSeq": 31,
+          "outcome": "cancelled",
+          "reason": "GRID_BROKEN"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 33,
+        "filledCount": 1,
+        "checkedWrong": [],
+        "checkCount": 0,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: an overwrite that keeps the grid full leaves the vote open (play continues during a vote); the later decisive approval passes and wrongCells is computed on the board at close time, not open time",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 40,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Y", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 0,
+        "value": "A",
+        "by": "u1",
+        "at": "2026-07-07T00:00:30Z"
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c3",
+        "by": "u2",
+        "voteSeq": 41,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 41,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "cellSet",
+          "seq": 42,
+          "cell": 0,
+          "value": "A",
+          "by": "u1",
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 43,
+          "voteSeq": 41,
+          "by": "u2",
+          "approve": true,
+          "commandId": "c3"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 44,
+          "voteSeq": 41,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 45,
+          "wrongCells": [1],
+          "checkCount": 1,
+          "by": "u1",
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 45,
+        "checkedWrong": [1],
+        "checkCount": 1,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: an in-place correction that completes the game mid-vote closes the vote cancelled TERMINAL before gameCompleted; exactly one completion, the count unchanged, the terminal event stays last",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 50,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null,
+      "firstFillAt": "2026-07-07T00:00:00Z"
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      },
+      {
+        "type": "placeLetter",
+        "commandId": "c2",
+        "cell": 1,
+        "value": "B",
+        "by": "u2",
+        "at": "2026-07-07T00:01:00Z"
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 51,
+          "by": "u1",
+          "electorate": ["u1", "u2"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "cellSet",
+          "seq": 52,
+          "cell": 1,
+          "value": "B",
+          "by": "u2",
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 53,
+          "voteSeq": 51,
+          "outcome": "cancelled",
+          "reason": "TERMINAL"
+        },
+        { "type": "gameCompleted", "seq": 54 }
+      ],
+      "state": {
+        "status": "completed",
+        "seq": 54,
+        "filledCount": 2,
+        "checkedWrong": [],
+        "checkCount": 0,
+        "checkVote": null
+      }
+    }
+  }
+]

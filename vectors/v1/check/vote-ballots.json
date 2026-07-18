@@ -1,0 +1,595 @@
+[
+  {
+    "name": "§10/D32: a decisive approval in E=3 reaches needed; the vote closes passed and puzzleChecked carries by = the proposer (not the last voter) and the proposal's commandId, wrongCells on the current board",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 30,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "B", "by": "u2" },
+        "2": { "v": "Z", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 31,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 31,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 32,
+          "voteSeq": 31,
+          "by": "u2",
+          "approve": true,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 33,
+          "voteSeq": 31,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 34,
+          "wrongCells": [0, 2],
+          "checkCount": 1,
+          "by": "u1",
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 34,
+        "checkedWrong": [0, 2],
+        "checkCount": 1,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: a non-decisive rejection in E=5 keeps the vote open (E - rejections still reaches needed); the ballot records but nothing closes",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 40,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3", "u4", "u5"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 41,
+        "approve": false
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 41,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3", "u4", "u5"],
+          "needed": 3,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 42,
+          "voteSeq": 41,
+          "by": "u2",
+          "approve": false,
+          "commandId": "c2"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 42,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 41,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3", "u4", "u5"],
+          "approvals": ["u1"],
+          "rejections": ["u2"]
+        }
+      }
+    }
+  },
+  {
+    "name": "§10/D32: a decisive rejection in E=2 makes the majority unreachable; the vote closes failed REJECTED, the count is unchanged, no marks stand",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 50,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 51,
+        "approve": false
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 51,
+          "by": "u1",
+          "electorate": ["u1", "u2"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 52,
+          "voteSeq": 51,
+          "by": "u2",
+          "approve": false,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 53,
+          "voteSeq": 51,
+          "outcome": "failed",
+          "reason": "REJECTED"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 53,
+        "checkedWrong": [],
+        "checkCount": 0,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: an E=3 vote survives the first rejection but the second makes the majority unreachable; the second rejection closes it failed REJECTED",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 60,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 61,
+        "approve": false
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c3",
+        "by": "u3",
+        "voteSeq": 61,
+        "approve": false
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 61,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 62,
+          "voteSeq": 61,
+          "by": "u2",
+          "approve": false,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 63,
+          "voteSeq": 61,
+          "by": "u3",
+          "approve": false,
+          "commandId": "c3"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 64,
+          "voteSeq": 61,
+          "outcome": "failed",
+          "reason": "REJECTED"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 64,
+        "checkCount": 0,
+        "checkVote": null
+      }
+    }
+  },
+  {
+    "name": "§10/D32: the proposer's proposal already counts as their approval; a later ballot from the proposer is ALREADY_VOTED, no event, no seq",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 70,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u1",
+        "voteSeq": 71,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 71,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 71,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 71,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "approvals": ["u1"],
+          "rejections": []
+        }
+      },
+      "error": "ALREADY_VOTED"
+    }
+  },
+  {
+    "name": "§10/D32: ballots are immutable; an elector who already voted is ALREADY_VOTED on a second ballot, even to switch it",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 80,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3", "u4", "u5"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 81,
+        "approve": true
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c3",
+        "by": "u2",
+        "voteSeq": 81,
+        "approve": false
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 81,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3", "u4", "u5"],
+          "needed": 3,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 82,
+          "voteSeq": 81,
+          "by": "u2",
+          "approve": true,
+          "commandId": "c2"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 82,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 81,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3", "u4", "u5"],
+          "approvals": ["u1", "u2"],
+          "rejections": []
+        }
+      },
+      "error": "ALREADY_VOTED"
+    }
+  },
+  {
+    "name": "§10/D32: a sender outside the frozen electorate is NOT_ELECTOR, even with a valid open voteSeq; spectators and late joiners never vote",
+    "given": {
+      "cols": 3,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 90,
+      "solution": { "0": "A", "1": "B", "2": "C" },
+      "cells": {
+        "0": { "v": "X", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" },
+        "2": { "v": "C", "by": "u3" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2", "u3"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u9",
+        "voteSeq": 91,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 91,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "needed": 2,
+          "commandId": "c1"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 91,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 91,
+          "by": "u1",
+          "electorate": ["u1", "u2", "u3"],
+          "approvals": ["u1"],
+          "rejections": []
+        }
+      },
+      "error": "NOT_ELECTOR"
+    }
+  },
+  {
+    "name": "§10/D32: a ballot with no vote open is NO_VOTE_OPEN; no event, no seq",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 100,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "castCheckVote",
+        "commandId": "c1",
+        "by": "u2",
+        "voteSeq": 100,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [],
+      "state": {
+        "status": "ongoing",
+        "seq": 100,
+        "checkCount": 0,
+        "checkVote": null
+      },
+      "error": "NO_VOTE_OPEN"
+    }
+  },
+  {
+    "name": "§10/D32: a stale voteSeq naming a closed vote is NO_VOTE_OPEN even while another vote is open; no cooldown means a fresh vote can already be open, and the ballot must name the current one",
+    "given": {
+      "cols": 2,
+      "rows": 1,
+      "blocks": [],
+      "status": "ongoing",
+      "seq": 110,
+      "solution": { "0": "A", "1": "B" },
+      "cells": {
+        "0": { "v": "A", "by": "u1" },
+        "1": { "v": "Z", "by": "u2" }
+      },
+      "checkVote": null
+    },
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1", "u2"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c2",
+        "by": "u2",
+        "voteSeq": 111,
+        "approve": false
+      },
+      {
+        "type": "checkPuzzle",
+        "commandId": "c3",
+        "by": "u2",
+        "electorate": ["u1", "u2"]
+      },
+      {
+        "type": "castCheckVote",
+        "commandId": "c4",
+        "by": "u1",
+        "voteSeq": 111,
+        "approve": true
+      }
+    ],
+    "then": {
+      "events": [
+        {
+          "type": "checkVoteOpened",
+          "seq": 111,
+          "by": "u1",
+          "electorate": ["u1", "u2"],
+          "needed": 2,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteCast",
+          "seq": 112,
+          "voteSeq": 111,
+          "by": "u2",
+          "approve": false,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 113,
+          "voteSeq": 111,
+          "outcome": "failed",
+          "reason": "REJECTED"
+        },
+        {
+          "type": "checkVoteOpened",
+          "seq": 114,
+          "by": "u2",
+          "electorate": ["u1", "u2"],
+          "needed": 2,
+          "commandId": "c3"
+        }
+      ],
+      "state": {
+        "status": "ongoing",
+        "seq": 114,
+        "checkCount": 0,
+        "checkVote": {
+          "openedSeq": 114,
+          "by": "u2",
+          "electorate": ["u1", "u2"],
+          "approvals": ["u2"],
+          "rejections": []
+        }
+      },
+      "error": "NO_VOTE_OPEN"
+    }
+  }
+]

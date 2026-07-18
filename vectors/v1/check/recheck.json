@@ -1,6 +1,6 @@
 [
   {
-    "name": "§10: a second check replaces the standing marks wholesale and increments the permanent count",
+    "name": "§10/D32: correcting a marked cell clears its mark, then a solo re-check vote passes and replaces the standing marks wholesale and increments the permanent count",
     "given": {
       "cols": 3,
       "rows": 1,
@@ -25,7 +25,12 @@
         "by": "u1",
         "at": "2026-07-07T00:00:30Z"
       },
-      { "type": "checkPuzzle", "commandId": "c2" }
+      {
+        "type": "checkPuzzle",
+        "commandId": "c2",
+        "by": "u1",
+        "electorate": ["u1"]
+      }
     ],
     "then": {
       "events": [
@@ -38,23 +43,39 @@
           "commandId": "c1"
         },
         {
-          "type": "puzzleChecked",
+          "type": "checkVoteOpened",
           "seq": 22,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 23,
+          "voteSeq": 22,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 24,
           "wrongCells": [1],
           "checkCount": 2,
+          "by": "u1",
           "commandId": "c2"
         }
       ],
       "state": {
         "status": "ongoing",
-        "seq": 22,
+        "seq": 24,
         "checkedWrong": [1],
-        "checkCount": 2
+        "checkCount": 2,
+        "checkVote": null
       }
     }
   },
   {
-    "name": "§10/D27: two checks with no edit between are two accepted checks; each counts, the marks are identical",
+    "name": "§10/D32: two solo votes with no edit between are two accepted checks; each auto-passes and counts, the marks are identical, and the second is not gated by the first (it closed at once)",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -68,31 +89,72 @@
       }
     },
     "when": [
-      { "type": "checkPuzzle", "commandId": "c1" },
-      { "type": "checkPuzzle", "commandId": "c2" }
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1"]
+      },
+      {
+        "type": "checkPuzzle",
+        "commandId": "c2",
+        "by": "u1",
+        "electorate": ["u1"]
+      }
     ],
     "then": {
       "events": [
         {
-          "type": "puzzleChecked",
+          "type": "checkVoteOpened",
           "seq": 7,
-          "wrongCells": [1],
-          "checkCount": 1,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
           "commandId": "c1"
         },
         {
-          "type": "puzzleChecked",
+          "type": "checkVoteClosed",
           "seq": 8,
+          "voteSeq": 7,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 9,
+          "wrongCells": [1],
+          "checkCount": 1,
+          "by": "u1",
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteOpened",
+          "seq": 10,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 11,
+          "voteSeq": 10,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 12,
           "wrongCells": [1],
           "checkCount": 2,
+          "by": "u1",
           "commandId": "c2"
         }
       ],
       "state": {
         "status": "ongoing",
-        "seq": 8,
+        "seq": 12,
         "checkedWrong": [1],
-        "checkCount": 2
+        "checkCount": 2,
+        "checkVote": null
       }
     }
   }

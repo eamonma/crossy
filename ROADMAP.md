@@ -1313,6 +1313,65 @@ mosaic and the page carries zero script. Still letter-free (INV-6). See
 `design/post-game/SHARE.md` S3 for the motion decisions. Exit met: a share link opens
 to the replay on web without membership.
 
+## Phase 15 — Check votes (D32)
+
+Users asked for a vote before the room-wide check fires, so D32 overturns D27's "no
+vote, but confirm" and wire-neutrality rulings while keeping the rest (room-wide only,
+reveal immediately, counted and permanent). A `checkPuzzle` now proposes a check: it
+opens an attributed, timeboxed majority vote over the electorate frozen at accept time
+(host and solver members connected then), and a passing vote is the accepted check,
+computed against the board at close time. Three sequenced events carry the lifecycle
+(`checkVoteOpened`, `checkVoteCast`, `checkVoteClosed`), `puzzleChecked` gains `by` and
+fires only after a passing close, `castCheckVote` and four errors
+(`VOTE_PENDING`, `NO_VOTE_OPEN`, `NOT_ELECTOR`, `ALREADY_VOTED`) join the wire, and the
+board payload gains `checkVote`. Contract-first, the house rule.
+
+**Vectors first.** The vote flow is shared normative ground: the `check` family migrates
+to the vote envelope and gains the vote-lifecycle clusters with the contract, ahead of
+the engine, and the family is skipped-until-engine in `vectors.skip.json` until Wave
+15.2 rebinds it.
+
+### Wave 15.1 — contract (this PR)
+
+The PROTOCOL amendments (sections 4, 5, 6, 10, 11, 13, 14), DESIGN.md D32 and the D27
+amendment pointer, the `check` family's migration to the solo-electorate vote envelope
+plus the new `vote-open` / `vote-ballots` / `vote-expiry` / `vote-cancellation`
+clusters, the skip-manifest posture (check unbound and skipped-until-engine, the runner
+guard held), the `CHECK_VOTE_TTL_MS` open question, and the vectors README. Docs and
+vectors only; no engine, server, or client code. **Exit: the four checks are green, the
+check family shape-validates against the vote envelope, and the waves below have a
+contract to land against.**
+
+### Wave 15.2 — engine (blocked on 15.1)
+
+The vote state machine in the check-and-completion driver beside the shipped reducers:
+`checkPuzzle` freezes the supplied electorate and opens a vote, `castCheckVote` records
+an immutable ballot, resolution fires on the majority/unreachable/expiry conditions, and
+cancellation closes on a broken grid or a completing mutation, all pure with the
+electorate and the expiry tick arriving as data (INV-9). Rebind the `check` family to
+the driver and drain it from both `vectors.skip.json` manifests. **Exit: the check
+vectors execute green; the reducers stay pure and deterministic; the per-family guard
+holds (check is bound iff drained).**
+
+### Wave 15.3 — server (blocked on 15.2)
+
+The session actor assembles and freezes the electorate from live presence at accept
+time, owns the `CHECK_VOTE_TTL_MS` timer and feeds the engine the expiry input when it
+fires, handles `castCheckVote` and returns the four error codes, persists the vote
+lifecycle to `check_vote_events` under write-behind (like `check_events`), carries the
+`checkVote` field on every snapshot, and closes an already-expired vote on crash
+rehydrate. **Exit: integration tests green against the vectors' semantics; a
+reconnecting client heals a mid-vote from the snapshot; a passing vote is the only path
+to `puzzleChecked`.**
+
+### Waves 15.4 web, 15.5 iOS, 15.6 Android (blocked on 15.3)
+
+Deliberately unspecced. The vote UI (surfacing `checkVote`, its `needed`, the running
+tally, and `expiresAt`; whether the multiplayer confirm dialog retires; how a solo
+auto-pass reads) is left for the owner to iterate on hands-on before these waves are
+written. The contract above (the `checkVote` snapshot field, the three events, the four
+errors) is all a client needs to begin.
+
 ### Wave 14.4 — the titles become the film credits on the server card
 
 The native apps are about to share the SERVER card PNG (not a client render), so a titled

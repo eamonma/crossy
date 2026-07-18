@@ -1,6 +1,6 @@
 [
   {
-    "name": "§10: a full-but-wrong board checks; wrongCells lists every comparator failure ascending, marks stand, count increments",
+    "name": "§10/D32: a solo electorate auto-passes; the opened vote closes passed at once and the check finds every comparator failure ascending, marks stand, count increments",
     "given": {
       "cols": 3,
       "rows": 1,
@@ -14,28 +14,51 @@
         "2": { "v": "Z", "by": "u1" }
       }
     },
-    "when": [{ "type": "checkPuzzle", "commandId": "c1" }],
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c1",
+        "by": "u1",
+        "electorate": ["u1"]
+      }
+    ],
     "then": {
       "events": [
         {
-          "type": "puzzleChecked",
+          "type": "checkVoteOpened",
           "seq": 10,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
+          "commandId": "c1"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 11,
+          "voteSeq": 10,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 12,
           "wrongCells": [0, 2],
           "checkCount": 1,
+          "by": "u1",
           "commandId": "c1"
         }
       ],
       "state": {
         "status": "ongoing",
-        "seq": 10,
+        "seq": 12,
         "filledCount": 3,
         "checkedWrong": [0, 2],
-        "checkCount": 1
+        "checkCount": 1,
+        "checkVote": null
       }
     }
   },
   {
-    "name": "§10/D12: first-char rebus acceptance is not a failure; only true comparator failures are listed",
+    "name": "§10/D12: first-char rebus acceptance is not a failure; the solo vote passes and only true comparator failures are listed",
     "given": {
       "cols": 2,
       "rows": 1,
@@ -48,27 +71,50 @@
         "1": { "v": "Z", "by": "u2" }
       }
     },
-    "when": [{ "type": "checkPuzzle", "commandId": "c2" }],
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c2",
+        "by": "u1",
+        "electorate": ["u1"]
+      }
+    ],
     "then": {
       "events": [
         {
-          "type": "puzzleChecked",
+          "type": "checkVoteOpened",
           "seq": 5,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
+          "commandId": "c2"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 6,
+          "voteSeq": 5,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 7,
           "wrongCells": [1],
           "checkCount": 1,
+          "by": "u1",
           "commandId": "c2"
         }
       ],
       "state": {
         "status": "ongoing",
-        "seq": 5,
+        "seq": 7,
         "checkedWrong": [1],
-        "checkCount": 1
+        "checkCount": 1,
+        "checkVote": null
       }
     }
   },
   {
-    "name": "§10: blocks are not playable; a full grid around a block checks and never lists the block",
+    "name": "§10: blocks are not playable; a full grid around a block passes its solo vote and never lists the block",
     "given": {
       "cols": 3,
       "rows": 1,
@@ -81,22 +127,45 @@
         "2": { "v": "C", "by": "u2" }
       }
     },
-    "when": [{ "type": "checkPuzzle", "commandId": "c3" }],
+    "when": [
+      {
+        "type": "checkPuzzle",
+        "commandId": "c3",
+        "by": "u1",
+        "electorate": ["u1"]
+      }
+    ],
     "then": {
       "events": [
         {
-          "type": "puzzleChecked",
+          "type": "checkVoteOpened",
           "seq": 4,
+          "by": "u1",
+          "electorate": ["u1"],
+          "needed": 1,
+          "commandId": "c3"
+        },
+        {
+          "type": "checkVoteClosed",
+          "seq": 5,
+          "voteSeq": 4,
+          "outcome": "passed"
+        },
+        {
+          "type": "puzzleChecked",
+          "seq": 6,
           "wrongCells": [0],
           "checkCount": 1,
+          "by": "u1",
           "commandId": "c3"
         }
       ],
       "state": {
         "status": "ongoing",
-        "seq": 4,
+        "seq": 6,
         "checkedWrong": [0],
-        "checkCount": 1
+        "checkCount": 1,
+        "checkVote": null
       }
     }
   }
