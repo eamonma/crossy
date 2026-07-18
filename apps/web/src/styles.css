@@ -1420,12 +1420,11 @@
  * the rule, so every piece has a reduced-motion answer.
  */
 
-/* The Proscenium and the mobile strip slide-and-fade in as one object; they withdraw the same way. */
+/* The Proscenium and the mobile strip slide-and-fade in as one object. There is no leave animation:
+ * the surface unmounts exactly as the ClueStrip returns, and both bands are pinned to one height
+ * (VOTE_BAND_MIN_H), so the swap is one-for-one with zero board shift (Wave 15.7 layout stability). */
 .vote-surface-enter {
   animation: vote-surface-in 260ms var(--ease-out) both;
-}
-.vote-surface-leave {
-  animation: vote-surface-out 220ms var(--ease-standard) both;
 }
 @keyframes vote-surface-in {
   from {
@@ -1437,49 +1436,47 @@
     transform: translateY(0);
   }
 }
-@keyframes vote-surface-out {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .vote-surface-enter,
-  .vote-surface-leave {
+  .vote-surface-enter {
     animation: none;
   }
 }
 
-/* The luminous ring: a halo OUTSIDE the grid, offset off the board's edge, ~3px, warm brand gold
- * (the solo-gold ramp hue, --color-gold-9 = #978365; never a roster color, and it lives outside the
- * grid so it never overlaps the cell highlight grammar). The stroke drains via stroke-dashoffset,
- * set inline from remaining time (pathLength=1). The ring is decorative (aria-hidden). */
+/* The luminous ring (the Meridian redesign): a halo OUTSIDE the grid, a true parallel offset of the
+ * square board, warm brand gold (--color-gold-9 = #978365; never a roster color). The offset is set
+ * inline by LuminousRing (OFFSET) so the corner radius can equal the gap. The core is a hairline 2px;
+ * the light rides a soft blur, not the line. It drains CLOCKWISE from a top-center seam via a custom
+ * path (pathLength=1), decorative (aria-hidden). */
 .vote-ring {
   position: absolute;
-  inset: calc(-1 * var(--vote-ring-offset, 10px));
   width: auto;
   height: auto;
   pointer-events: none;
   overflow: visible;
   z-index: 2;
 }
-.vote-ring rect {
+.vote-ring path {
   fill: none;
   stroke: var(--color-gold-9);
-  stroke-width: var(--vote-ring-weight, 3);
+  stroke-width: 2;
   stroke-linecap: round;
   /* pathLength is normalized to 1 on the element, so a dash of 1 spans the whole perimeter and the
-     offset (0 full, 1 empty) reads straight off the remaining fraction. The SVG is rendered in
-     pixel space (LuminousRing measures the box), so the stroke stays a uniform 3px with no stretch. */
+     offset reads straight off the remaining fraction (see ringDashOffset). The SVG is rendered in
+     pixel space (LuminousRing measures the box), so the stroke stays a uniform hairline with no
+     stretch, and the path starts at the top-center seam so the drain never eats an edge. */
   stroke-dasharray: 1;
   transition: stroke-dashoffset 120ms linear;
+  /* Light rides the blur, not the line: a layered gold halo carries the luminosity at 2px, so the
+     ring reads as a glow rather than a heavier stroke. */
   filter: drop-shadow(
-    0 0 3px color-mix(in srgb, var(--color-gold-9) 55%, transparent)
-  );
+      0 0 3px color-mix(in srgb, var(--color-gold-9) 90%, transparent)
+    )
+    drop-shadow(
+      0 0 8px color-mix(in srgb, var(--color-gold-9) 60%, transparent)
+    )
+    drop-shadow(
+      0 0 14px color-mix(in srgb, var(--color-gold-9) 35%, transparent)
+    );
 }
 .vote-ring--igniting {
   animation: vote-ring-ignite 420ms var(--ease-out) both;
@@ -1492,8 +1489,8 @@
     opacity: 1;
   }
 }
-/* Pass: one flash, then dissolve inward (scale down and fade). */
-.vote-ring--passed rect {
+/* Pass: one flash of the arc that was standing (the frozen fraction), then dissolve inward. */
+.vote-ring--passed path {
   transition: none;
 }
 .vote-ring--passed {
@@ -1533,7 +1530,7 @@
 @media (prefers-reduced-motion: reduce) {
   /* No sweep and no pulse: the ring steps down in opacity at coarse intervals instead, and the
      dissolve/fade are instant. Continuous dash transition is off; opacity is set inline in steps. */
-  .vote-ring rect {
+  .vote-ring path {
     transition: none;
     filter: none;
   }
@@ -1618,6 +1615,12 @@
 .hold-btn[data-holding="true"] .hold-fill {
   /* The hold itself is the long linear sweep across the ~600 ms window. */
   transition: transform var(--hold-ms, 600ms) linear;
+  transform: scaleX(1);
+}
+/* The committed state after completion: the fill holds full (no snap-back) so the control reads as
+   sent through the network beat before the vote opens (Wave 15.7). */
+.hold-btn[data-committed="true"] .hold-fill {
+  transition: none;
   transform: scaleX(1);
 }
 

@@ -2,10 +2,17 @@
 // not a confirm dialog. A ~600 ms hold with a fill animation completes the intent; releasing early
 // cancels cleanly. The hold works by pointer (mouse and touch) AND by keyboard (hold Enter or Space
 // on the focused button), and it says so, so the affordance is discoverable without sight of the
-// fill. Focus is never taken by anyone else; this is an ordinary focusable button.
+// fill. Escape cancels an in-progress hold from inside the control (not only via a Radix unmount).
+// Focus is never taken by anyone else; this is an ordinary focusable button.
+//
+// On completion the control holds a brief committed state (Wave 15.7): the fill stays full and the
+// label reads as sent, so the ~network beat before the vote opens does not look like the button
+// ignored you (the fill used to snap straight back). It resets on unmount (the vote opened) or after
+// a short fallback window (a proposal that never echoed).
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const HOLD_MS = 600;
+const COMMITTED_MS = 1400; // the brief held state after completion, before the echo lands
 
 export function HoldButton({
   onComplete,
@@ -22,7 +29,9 @@ export function HoldButton({
   holdMs?: number;
 }) {
   const [holding, setHolding] = useState(false);
+  const [committed, setCommitted] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const committedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const completedRef = useRef(false);
 
   const clear = useCallback(() => {
@@ -33,29 +42,45 @@ export function HoldButton({
   }, []);
 
   const start = useCallback(() => {
-    if (disabled || timerRef.current !== null) return;
+    if (disabled || committed || timerRef.current !== null) return;
     completedRef.current = false;
     setHolding(true);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       completedRef.current = true;
       setHolding(false);
+      // Hold a brief committed state so the control reads as sent through the network beat; it clears
+      // on unmount (the vote opened) or via the fallback timer (a proposal that never echoed).
+      setCommitted(true);
+      committedTimerRef.current = setTimeout(
+        () => setCommitted(false),
+        COMMITTED_MS,
+      );
       onComplete();
     }, holdMs);
-  }, [disabled, holdMs, onComplete]);
+  }, [disabled, committed, holdMs, onComplete]);
 
   const cancel = useCallback(() => {
     clear();
     setHolding(false);
   }, [clear]);
 
-  useEffect(() => clear, [clear]);
+  useEffect(
+    () => () => {
+      clear();
+      if (committedTimerRef.current !== null) {
+        clearTimeout(committedTimerRef.current);
+      }
+    },
+    [clear],
+  );
 
   return (
     <button
       type="button"
       disabled={disabled}
       data-holding={holding ? "true" : "false"}
+      data-committed={committed ? "true" : "false"}
       aria-keyshortcuts="Enter Space"
       aria-label={`${label}. Press and hold to propose a check for the room.`}
       title="Press and hold to propose a check"
@@ -70,6 +95,11 @@ export function HoldButton({
       onPointerLeave={cancel}
       onPointerCancel={cancel}
       onKeyDown={(e) => {
+        // Escape cancels an in-progress hold from inside the control (U10 accessible activation path).
+        if (e.key === "Escape") {
+          if (!completedRef.current) cancel();
+          return;
+        }
         if (e.key !== "Enter" && e.key !== " ") return;
         e.preventDefault(); // Space would scroll; Enter would fire a click
         if (e.repeat) return;
@@ -86,7 +116,7 @@ export function HoldButton({
           reduced motion (styles.css keeps the transition, just linear). Behind the label (-z). */}
       <span
         aria-hidden
-        className="hold-fill absolute inset-0 -z-10 bg-gold-5"
+        className="hold-fill absolute inset-0 -z-10 bg-gold-8"
       />
       {label}
     </button>

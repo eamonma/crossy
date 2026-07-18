@@ -892,13 +892,8 @@ function LiveGame({
     void version;
     return visibleCheckMarks(store.checkedWrongCells, store.overlay);
   }, [store, version]);
-  // Only the grid takes the marked puzzle: every other consumer keys memos off `puzzle`, whose
-  // identity must not churn per store version. At completion zero marks stand (PROTOCOL.md
-  // §10), so the mosaic and analysis surfaces stay untouched by construction.
-  const markedPuzzle = useMemo(
-    () => ({ ...puzzle, wrong: checkMarks }),
-    [puzzle, checkMarks],
-  );
+  // The marked puzzle is built AFTER voteView below, so a passed reveal can hold each standing red
+  // mark back until its own gold wash lands (the spoil fix); see markedPuzzle.
 
   // The check row's gate, derived from SEQUENCED state only (R9), matching the server's own
   // grid-full gate: a just-typed optimistic letter leaves the row disabled for a beat.
@@ -942,6 +937,22 @@ function LiveGame({
   }, [store, version]);
   // A real (non-solo) vote is open: gate the propose control (a fresh proposal needs a fresh hold).
   const voteOpen = voteView.active && voteView.phase === "open";
+
+  // The grid's marks. During a passed reveal (non-reduced) the hook hands back the wrong cells that
+  // have washed in so far; the rest of the standing red is held so the gold wash never plays over
+  // already-red cells (the spoil fix). Otherwise the standing marks paint as usual. Only the grid
+  // takes the marked puzzle: other consumers key memos off `puzzle`, whose identity must not churn.
+  const displayMarks = useMemo(() => {
+    const revealed = voteView.revealedWrongCells;
+    if (revealed === null) return checkMarks;
+    const gated = new Set<number>();
+    for (const cell of checkMarks) if (revealed.has(cell)) gated.add(cell);
+    return gated;
+  }, [checkMarks, voteView.revealedWrongCells]);
+  const markedPuzzle = useMemo(
+    () => ({ ...puzzle, wrong: displayMarks }),
+    [puzzle, displayMarks],
+  );
 
   const presence = useMemo(() => {
     void version;
@@ -1421,7 +1432,9 @@ function LiveGame({
         <ActiveClueHeader
           clue={activeClue}
           completed={boardCompleted}
-          hideStripOnDesktop={voteView.active && voteView.phase === "open"}
+          // Hide the ClueStrip for the surface's WHOLE life, not just the open phase, so the bar swap
+          // is one-for-one across open -> resolution -> withdrawal and the board never lurches.
+          hideStripOnDesktop={voteView.active}
           onOpen={() => openSheetTo("clues")}
           onPrev={() => stepClue("backward")}
           onNext={() => stepClue("forward")}

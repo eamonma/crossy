@@ -99,7 +99,10 @@ export function ClueStrip({
 }) {
   return (
     <div
-      className={`${hidden ? "md:hidden" : "md:flex"} hidden items-baseline px-4 py-1.5 border-b border-dashed border-border-dashed`}
+      // The strip, the vote Proscenium, and the resolution bar all share this one band height
+      // (line 1.75rem + py-1.5 + 1px rule), so swapping the ClueStrip for the vote surface never
+      // shifts the board (Wave 15.7 layout stability; mirrors CheckVoteSurface VOTE_BAND_MIN_H).
+      className={`${hidden ? "md:hidden" : "md:flex"} hidden items-baseline px-4 py-1.5 min-h-[calc(1.75rem+0.75rem+1px)] border-b border-dashed border-border-dashed`}
     >
       {clue ? (
         <>
