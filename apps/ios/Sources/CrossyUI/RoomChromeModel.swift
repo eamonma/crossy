@@ -64,6 +64,13 @@ public final class RoomChromeModel {
     /// the reconnect deadline this is the root's fact to set, not the store's.
     public var kicked = false
 
+    /// The check-vote Bench's posture (Wave 15.8, the strip-first ruling): false is the
+    /// docked strip, true the expanded Bench. Chrome state like the melt, so a composition
+    /// root can script it for screenshots (the -voteBench flag, the -i2cBrowser precedent)
+    /// and the room's one dismiss seam can fold it. The vote's open beat resets it to the
+    /// strip; the strip's tap and the Bench's drag move it.
+    public var voteBenchExpanded = false
+
     /// The room was BORN WITH A SEED (the seeded-birth rule, DESIGN.md §4,
     /// 2026-07-12): a card-tap arrival recorded the tapped row's true member stack
     /// (PROTOCOL.md §12) and seeded the store's roster before the REST fetch, so the

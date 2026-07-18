@@ -132,7 +132,9 @@ public struct SolveScreen: View {
     // `benchVote` mirrors `store.checkVote` so a close callback can read the pre-close vote
     // (the store has already cleared it when the close beat fires); `voteRecess` holds the one
     // calm recess line for its ~2.5 s beat; `voteRingPhase` drives the Meridian ring's
-    // ignite/drain/pass/fade; `voteExpanded` lifts the docked strip into the full Bench;
+    // ignite/drain/pass/fade; `chrome.voteBenchExpanded` lifts the docked strip into the
+    // full Bench (chrome state, so the demo can script the posture, the -i2cBrowser
+    // precedent);
     // `voteFrozenProgress` mirrors the last drained fraction across the close (the store nils
     // the vote, so the ring would otherwise vanish during the breath); `projectedGrid` is the
     // camera's reported grid rect (board-local), the ring's anchor; `voteIgnition` is the
@@ -140,7 +142,6 @@ public struct SolveScreen: View {
     @State private var benchVote: CheckVoteState?
     @State private var voteRecess: CheckVoteRecess?
     @State private var voteRingPhase: CheckVoteRingPhase = .draining
-    @State private var voteExpanded = false
     @State private var voteFrozenProgress: Double?
     @State private var projectedGrid: CGRect?
     @State private var voteIgnition: VoteIgnition?
@@ -319,6 +320,13 @@ public struct SolveScreen: View {
                         voteStrip
                             .padding(.top, 8)
                             .background(Color(rgb: ground.tokens.canvas))
+                            // While the Bench stands the strip RECEDES rather than
+                            // unmounting: its band holds (no layout shift behind the
+                            // Bench), but its duplicate verbs never show through.
+                            .opacity(chrome.voteBenchExpanded ? 0 : 1)
+                            .animation(
+                                reduceMotion ? nil : .crossyChrome,
+                                value: chrome.voteBenchExpanded)
                             .transition(
                                 reduceMotion
                                     ? .opacity
@@ -1128,7 +1136,7 @@ public struct SolveScreen: View {
                 reduceMotion: reduceMotion,
                 memberFor: rosterMemberFor,
                 onExpand: {
-                    withAnimation(reduceMotion ? nil : .crossyChrome) { voteExpanded = true }
+                    withAnimation(reduceMotion ? nil : .crossyChrome) { chrome.voteBenchExpanded = true }
                 },
                 onApprove: { store.castCheckVote(voteSeq: stripModel.voteSeq, approve: true) },
                 onReject: { store.castCheckVote(voteSeq: stripModel.voteSeq, approve: false) })
@@ -1152,7 +1160,7 @@ public struct SolveScreen: View {
         if let ignition = voteIgnition {
             ignitionPulse(ignition)
         }
-        if voteExpanded, let vote = store.checkVote,
+        if chrome.voteBenchExpanded, let vote = store.checkVote,
             CheckVoteBenchModel.shouldPresent(vote: vote),
             let benchModel = checkVoteBenchModel(vote)
         {
@@ -1164,7 +1172,7 @@ public struct SolveScreen: View {
                     memberFor: rosterMemberFor,
                     onCollapse: {
                         withAnimation(reduceMotion ? nil : .crossyChrome) {
-                            voteExpanded = false
+                            chrome.voteBenchExpanded = false
                         }
                     },
                     onApprove: { store.castCheckVote(voteSeq: benchModel.voteSeq, approve: true) },
@@ -1244,7 +1252,7 @@ public struct SolveScreen: View {
             guard let vote = store.checkVote, !vote.isSolo else { return }
             voteRecess = nil
             voteFrozenProgress = nil
-            voteExpanded = false
+            chrome.voteBenchExpanded = false
             // A vote opening while the facts sheet is up would stand behind the modal
             // scrim: dismiss the sheet so the room's moment is visible (Wave 15.8 fix).
             factsPresented = false
@@ -1280,7 +1288,7 @@ public struct SolveScreen: View {
                 expiresAt: vote.expiresAt, asOf: Date())
             // The Bench folds to the strip for the resolution: the calm line is one row,
             // and the chips are history now.
-            withAnimation(reduceMotion ? nil : .crossyChrome) { voteExpanded = false }
+            withAnimation(reduceMotion ? nil : .crossyChrome) { chrome.voteBenchExpanded = false }
             if msg.outcome == .passed {
                 // The reveal (passed): the strip holds "Checking\u{2026}" through the breath;
                 // the ring holds its frozen arc until onPuzzleChecked flashes it at the wash
@@ -1469,7 +1477,7 @@ public struct SolveScreen: View {
             fan.tapAway()
             // The expanded Bench yields to intent the same way: a board touch folds it
             // back to the docked strip (the vote stays visible; play continues, U2).
-            voteExpanded = false
+            chrome.voteBenchExpanded = false
         }
     }
 

@@ -233,14 +233,26 @@ public struct CheckVoteRing: View {
             .animation(
                 reduceMotion ? nil : .linear(duration: Self.drainSmoothing), value: progress)
             .onChange(of: phase) { _, next in
-                guard next == .passing, !reduceMotion else { return }
-                // The pass: flash the standing arc, then dissolve. Two overlapping
-                // animations on the internal beats; the trim never moves.
-                withAnimation(.easeOut(duration: Self.flashInDuration)) { passFlash = true }
-                withAnimation(
-                    .easeOut(duration: Self.dissolveDuration).delay(Self.dissolveDelay)
-                ) {
-                    passDissolved = true
+                switch next {
+                case .igniting, .draining:
+                    // A fresh vote can open while the ring is still mounted from the last
+                    // recess: reset the pass beats so the new arc draws.
+                    passFlash = false
+                    passDissolved = false
+                case .passing:
+                    guard !reduceMotion else { return }
+                    // The pass: flash the standing arc, then dissolve. Two overlapping
+                    // animations on the internal beats; the trim never moves.
+                    withAnimation(.easeOut(duration: Self.flashInDuration)) {
+                        passFlash = true
+                    }
+                    withAnimation(
+                        .easeOut(duration: Self.dissolveDuration).delay(Self.dissolveDelay)
+                    ) {
+                        passDissolved = true
+                    }
+                case .fading:
+                    break
                 }
             }
             .allowsHitTesting(false)

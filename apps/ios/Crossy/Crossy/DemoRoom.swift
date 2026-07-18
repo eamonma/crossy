@@ -58,6 +58,8 @@
 //    scripted ballots are the only ones that land):
 //    -voteOpen              Bee proposes; Ada approves after a beat; the vote stands
 //                           open draining (the strip, the Meridian ring, the ballot)
+//    -voteBench             composes with -voteOpen: land the Bench expanded (the
+//                           strip's tap cannot be synthesized; chrome-model entry)
 //    -voteFail              Bee proposes; Ada rejects; the vote closes failed
 //                           (the recess line "The room keeps solving")
 //    -voteProposer          YOU propose ("Waiting for the room"); the room rejects;
@@ -306,6 +308,12 @@ final class DemoRoom {
         // production path.
         if arguments.contains("-voteOpen") {
             await voteScript(mode: .open)
+            // -voteBench composes with -voteOpen: land the Bench expanded (the strip's tap
+            // cannot be synthesized by simctl; the chrome model is the scripted entry, the
+            // -i2cBrowser precedent).
+            if arguments.contains("-voteBench") {
+                chrome.voteBenchExpanded = true
+            }
         }
         if arguments.contains("-voteFail") {
             await voteScript(mode: .fail)

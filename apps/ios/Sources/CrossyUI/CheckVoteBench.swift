@@ -20,8 +20,12 @@
 // REFERENCE CONSTANTS (Android copies this look):
 //   strip height        52 pt (the bar register), capsule (radius 26), horizontal inset 12
 //   strip padding       16 pt leading/trailing inside the glass
-//   strip proposer puck 24 pt; strip elector pucks 20 pt at 4 pt spacing
-//   strip verbs         34 pt tall capsules, 14 pt horizontal padding, footnote semibold
+//   strip proposer puck 24 pt (shown only when the verbs are absent: the name attributes,
+//                       the row's economy belongs to the question and the verbs)
+//   strip elector pucks 20 pt at 4 pt spacing
+//   strip line          footnote medium, scales to 85% before truncating
+//   strip verbs         34 pt tall capsules, 12 pt horizontal padding, footnote; the fill
+//                       gold for "Check it", ink @ 8% for "Keep solving"
 //   bench corner        26 pt continuous; content padding 20 H / 18 bottom
 //   bench chips         36 pt pucks, 10 pt spacing, wrapping in rows of six
 //   bench verbs         44 pt min height, radius 14 continuous
@@ -148,16 +152,23 @@ public struct CheckVoteStrip: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The live row: proposer puck, the line, then the verbs (an unvoted elector) or the
-    /// elector pucks filling in (everyone else watches the faces, U5).
+    /// The live row: the line, then the verbs (an unvoted elector) or the proposer puck and
+    /// the elector pucks filling in (everyone else watches the faces, U5). When the verbs
+    /// stand the puck yields its slot — the name already attributes, and the row's economy
+    /// belongs to the whole question plus both verbs (the line scales to 85% before it
+    /// truncates, so "wants to check the puzzle" survives ordinary names).
     @ViewBuilder private var liveRow: some View {
-        RosterPuckView(
-            member: CheckVoteChipMember.resolve(userId: model.proposerId, memberFor: memberFor),
-            ground: ground, diameter: 24)
+        if !showsVerbs {
+            RosterPuckView(
+                member: CheckVoteChipMember.resolve(
+                    userId: model.proposerId, memberFor: memberFor),
+                ground: ground, diameter: 24)
+        }
         Text(model.proposalLine)
             .font(.footnote.weight(.medium))
             .foregroundStyle(ink)
             .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .truncationMode(.tail)
             .layoutPriority(-1)
         Spacer(minLength: 6)
@@ -214,7 +225,8 @@ public struct CheckVoteStrip: View {
             Text(title)
                 .font(.footnote.weight(prominent ? .semibold : .medium))
                 .foregroundStyle(prominent ? .white : ink)
-                .padding(.horizontal, 14)
+                .fixedSize()
+                .padding(.horizontal, 12)
                 .frame(height: 34)
                 .background(
                     Capsule().fill(prominent ? AnyShapeStyle(gold) : AnyShapeStyle(ink.opacity(0.08))))
