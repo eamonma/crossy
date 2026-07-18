@@ -244,12 +244,17 @@ fun RoomScreen(
             haptics.play(SolveHaptic.VOTE_PASSED)
         }
     }
-    // During the reveal breath the grid holds the marks back so the beat reads "Checking…" first, THEN
-    // the marks wash in after the breath (not the instant the check closed). Solo has no resolution, so
-    // its instant check is unaffected.
-    val revealingBreath = (voteResolution as? VoteResolution.Passed)?.let {
-        (voteNowMs - it.startedAt) < VoteBenchTiming.REVEAL_BREATH_MS
-    } == true
+    // The reveal beat's mark choreography (D32; UX.md U6). During the breath (0..600ms) the grid holds
+    // all marks back so the beat reads "Checking…" first. After the breath the marks wash in in
+    // ascending cell order over <900ms (the grid owns the per-cell stagger). Reduced motion shows them
+    // all at once at the breath end, no stagger, so the wash gates off there. A solo/bare check has no
+    // resolution, so its instant marks are untouched.
+    val passedReveal = voteResolution as? VoteResolution.Passed
+    val sinceRevealMs = passedReveal?.let { voteNowMs - it.startedAt }
+    val revealingBreath = sinceRevealMs != null && sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS
+    val washingChecks = sinceRevealMs != null && !reduceMotion &&
+        sinceRevealMs >= VoteBenchTiming.REVEAL_BREATH_MS &&
+        sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS + VoteBenchTiming.WASH_MAX_MS + 100L
 
     // The conflict flash (PROTOCOL.md §8, D02): the store detects the trigger, the grid animates the
     // ~300 ms wash in the writer's color. The book is held HERE beside the render model (the iOS
@@ -664,8 +669,9 @@ fun RoomScreen(
                 cursorTint = cursorTint,
                 crossReference = crossReference,
                 // Held back through the reveal breath so a passing vote reads "Checking…" first, then
-                // the marks wash in after the breath (D32 reveal); shown as today otherwise.
+                // the marks wash in ascending (U6, driven by washingChecks); shown as today otherwise.
                 checkedWrong = if (revealingBreath) emptySet() else visibleCheckMarks,
+                washingChecks = washingChecks,
                 flashes = flashes,
                 mosaic = mosaic,
                 showsWordLoupe = showLoupe,

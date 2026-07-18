@@ -152,6 +152,34 @@ class CheckVoteBenchModelTests {
         assertTrue(CheckVoteBenchModel.resolutionComplete(ended, 2500L))
     }
 
+    // --- The ascending mark wash (UX.md U6) ---
+
+    @Test
+    fun theWashStaggersAscendingAndLandsUnder900ms_U6() {
+        // The per-cell delay is min(60, 500/(n-1)); a single mark has no stagger.
+        assertEquals(0.0, CheckWash.perCellDelayMs(1), 0.001)
+        assertEquals(60.0, CheckWash.perCellDelayMs(2), 0.001) // 500/1 clamps to 60
+        assertEquals(500.0 / 9, CheckWash.perCellDelayMs(10), 0.001) // ~55.6, under the 60 cap
+        assertEquals(500.0 / 99, CheckWash.perCellDelayMs(100), 0.001) // tiny stagger for a dense board
+        // The whole wash stays under 900 ms for every n (the last start + one 360 ms coat).
+        for (n in intArrayOf(1, 2, 3, 10, 50, 100, 1000)) {
+            assertTrue(CheckWash.totalMs(n) < 900.0, "n=$n wash must land under 900 ms, was ${CheckWash.totalMs(n)}")
+        }
+    }
+
+    @Test
+    fun eachMarkFadesInOverItsCoatAfterItsStaggeredStart_U6() {
+        val n = 4
+        val delay = CheckWash.perCellDelayMs(n) // 60 ms (500/3 -> clamped)
+        // The first mark starts at 0 and is full at one coat; a later mark waits its stagger.
+        assertEquals(0.0, CheckWash.progress(0, n, 0.0), 0.001, "rank 0 begins at the wash start")
+        assertEquals(1.0, CheckWash.progress(0, n, CheckWash.COAT_MS), 0.001, "rank 0 full after one coat")
+        assertEquals(0.0, CheckWash.progress(2, n, 2 * delay), 0.001, "rank 2 only begins at its stagger")
+        assertEquals(1.0, CheckWash.progress(2, n, 2 * delay + CheckWash.COAT_MS), 0.001, "rank 2 full one coat later")
+        assertEquals(0.5, CheckWash.progress(1, n, delay + CheckWash.COAT_MS / 2), 0.001, "mid-coat is half in")
+        assertEquals(1.0, CheckWash.progress(3, n, 10_000.0), 0.001, "clamps to full")
+    }
+
     // --- TalkBack (polite) ---
 
     @Test

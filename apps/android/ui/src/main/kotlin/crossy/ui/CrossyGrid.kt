@@ -99,6 +99,13 @@ fun CrossyGrid(
     // full-cell check-token coat, identical for all (a room act, never a personal color), above the
     // cross-reference wash and below the current-cell fill. No animation, no timeout: pure state.
     checkedWrong: Set<Int> = emptySet(),
+    // The passing check vote's flagship reveal beat (PROTOCOL.md §10, D32; UX.md U6): while true, the
+    // `checkedWrong` marks wash in in ascending cell order rather than appearing at once, each cell's
+    // coat animating in over ~360 ms with a per-cell stagger, the whole wash under 900 ms. The grid
+    // owns the wash clock (it captures its own frame-clock start when this rises), so the room only
+    // says "wash now." False on every ordinary pass (a snapshot's standing marks, a bare puzzleChecked,
+    // reduced motion), where the marks render immediately exactly as before.
+    washingChecks: Boolean = false,
     // Conflict flashes in flight (GameStore.onConflictFlash routed through RoomScreen). Empty on the
     // happy path; a non-empty book drives a per-frame redraw until it sweeps.
     flashes: FlashBook = FlashBook(),
@@ -182,6 +189,11 @@ fun CrossyGrid(
     // Under Reduce Motion the flash and the bloom are held as a single step (sampled once), but an
     // isolation crossfade is a pure opacity fade, the §7 reduced-motion form itself, so it still runs.
     var now by remember { mutableStateOf(reactionNow()) }
+    // The check-wash origin in the grid's own monotonic clock, captured when the room raises
+    // `washingChecks` (U6). Null when not washing, so the marks render at full weight immediately (the
+    // ordinary-pass path). Decoupling the clock this way lets the room drive the beat with a boolean.
+    var checkWashStart by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(washingChecks) { checkWashStart = if (washingChecks) reactionNow() else null }
     // The mosaic BLOOMS only until it settles; past that the standing wash is a constant.
     val mosaicBlooming = mosaic != null && !mosaic.settled
     // True while an isolation toggle's crossfade runs: the settled frame loop unpauses for just the
@@ -197,11 +209,13 @@ fun CrossyGrid(
         now = reactionNow()
         isolationFading = false
     }
-    LaunchedEffect(flashes, mosaicBlooming, isolationFading, reduceMotion) {
-        if (flashes.isEmpty && !mosaicBlooming && !isolationFading) return@LaunchedEffect
+    LaunchedEffect(flashes, mosaicBlooming, isolationFading, reduceMotion, washingChecks) {
+        if (flashes.isEmpty && !mosaicBlooming && !isolationFading && !washingChecks) return@LaunchedEffect
         now = reactionNow()
         // Reduce Motion holds the flash and the bloom as a single step (no eased motion); only an
-        // isolation crossfade, a pure opacity fade, keeps sampling frames.
+        // isolation crossfade (a pure opacity fade) or the check wash keeps sampling frames. The check
+        // wash never runs under Reduce Motion (the room passes washingChecks=false), so this early
+        // return is safe for it too.
         if (reduceMotion && !isolationFading) return@LaunchedEffect
         while (true) withFrameNanos { now = reactionNow() }
     }
@@ -388,6 +402,22 @@ fun CrossyGrid(
         val offY = cam.offsetY * density
         val visible = cam.visibleCells(vw, vh, rows, cols)
 
+        // The check wash (U6): while washing, each wrong cell's coat fades and scales in on an
+        // ascending-cell-order stagger from the captured start; otherwise every mark is full weight at
+        // once (the ordinary-pass path). The per-cell delay is rank * min(60ms, 500ms/(n-1)) and each
+        // coat animates over ~360ms, so the whole wash lands under 900ms. Sorting a handful of marks per
+        // frame only during the brief wash is cheap; off the wash the map is null and the coat is 1,1.
+        val washStart = checkWashStart.takeIf { washingChecks }
+        val washRank: Map<Int, Int>? =
+            washStart?.let { checkedWrong.sorted().withIndex().associate { (i, cell) -> cell to i } }
+        val washCount = checkedWrong.size
+        fun checkCoat(c: Int): Pair<Float, Float> {
+            val start = washStart ?: return 1f to 1f
+            val rank = washRank?.get(c) ?: 0
+            val p = CheckWash.progress(rank, washCount, (now - start) * 1000.0)
+            return p.toFloat() to (0.6f + 0.4f * p.toFloat())
+        }
+
         fun onScreen(c: Int): Boolean {
             val col = c % cols
             val row = c / cols
@@ -417,7 +447,22 @@ fun CrossyGrid(
                     // paper outright, above the cross-reference wash and below the current-cell fill,
                     // identical for every member (CellFill.CHECK). The caller already suppressed any
                     // cell under a pending overlay.
-                    c in checkedWrong -> drawRect(tokens.check.toColor(), origin, cellSize)
+                    c in checkedWrong -> {
+                        // The room check coat, washed in on the reveal (U6) or full at once otherwise.
+                        val (coatAlpha, coatScale) = checkCoat(c)
+                        if (coatAlpha > 0f) {
+                            if (coatScale >= 0.999f) {
+                                drawRect(tokens.check.toColor().copy(alpha = coatAlpha), origin, cellSize)
+                            } else {
+                                val inset = (1f - coatScale) * cellPx / 2f
+                                drawRect(
+                                    tokens.check.toColor().copy(alpha = coatAlpha),
+                                    Offset(origin.x + inset, origin.y + inset),
+                                    Size(cellPx * coatScale, cellPx * coatScale),
+                                )
+                            }
+                        }
+                    }
                     c in crossReference -> drawRect(tint.copy(alpha = GridModule.CROSS_REFERENCE_ALPHA), origin, cellSize)
                     !showsWordLoupe && c in activeWord -> drawRect(tint.copy(alpha = GridModule.ACTIVE_WORD_ALPHA), origin, cellSize)
                     presence.containsKey(c) ->

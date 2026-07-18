@@ -56,6 +56,30 @@ object VoteBenchTiming {
     const val REDUCED_MOTION_RING_STEPS: Int = 6
 }
 
+/**
+ * The passing reveal's ascending mark wash (PROTOCOL.md §10, D32; UX.md U6), the flagship beat. When
+ * the breath ends the wrong-cell marks appear in ascending cell order, each cell's coat animating in
+ * over [COAT_MS], staggered by [perCellDelayMs] per rank, the whole wash under 900 ms. Pure so the
+ * timing is headlessly pinned (the grid draw pass calls [progress] with its own frame clock); reduced
+ * motion never runs it (the room shows every mark at once at the breath end).
+ */
+object CheckWash {
+    /** Each cell's coat fades and scales in over this long. */
+    const val COAT_MS: Double = 360.0
+
+    /** The per-rank stagger: `min(60 ms, 500 ms / (n - 1))`, so the last cell never starts past 500 ms
+     *  and the whole wash (stagger + one coat) stays under 900 ms for any n. Zero for a single mark. */
+    fun perCellDelayMs(n: Int): Double = if (n > 1) minOf(60.0, 500.0 / (n - 1)) else 0.0
+
+    /** The whole wash's duration for n marks: the last cell's start plus one coat. Always under 900 ms. */
+    fun totalMs(n: Int): Double = if (n <= 0) 0.0 else perCellDelayMs(n) * (n - 1) + COAT_MS
+
+    /** The coat progress 0..1 for the cell at ascending [rank] (of [n]) at [elapsedMs] since the wash
+     *  start. Alpha is this; the scale-in is `0.6 + 0.4 * progress`. */
+    fun progress(rank: Int, n: Int, elapsedMs: Double): Double =
+        ((elapsedMs - rank * perCellDelayMs(n)) / COAT_MS).coerceIn(0.0, 1.0)
+}
+
 /** One elector's ballot state for a chip (PROTOCOL.md §10; D32). Unvoted chips render dimmed. */
 enum class ChipVote { APPROVED, REJECTED, UNVOTED }
 
