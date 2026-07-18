@@ -1,32 +1,45 @@
-// The mosaic board: the finished grid drawn in the approved mock's idiom (itself the
-// og.svg board language): square cells, NO rounded corners, gridlines running cell to
-// cell inside a slightly heavier frame. Open cells carry a wash of whoever solved them
-// (the caller decides the fill per cell); blocks are ink on light and near-black on
-// dark, where the gridlines sit a step LIGHTER than the blocks so the lattice reads
-// against Observatory (SHARE.md layout contract).
+// The mosaic board: the finished grid drawn as the bona fide play grid players solved
+// on (apps/web/src/ui/CrosswordGrid.tsx and the board tokens in apps/web/src/styles.css):
+// square cells, NO rounded corners, pale hairlines running cell to cell, a quiet frame
+// registered INSIDE the board edge (the stroke straddles the edge like the game's
+// board-frame rect, so nothing spills outside the board box). Open cells carry a wash
+// of whoever solved them (the caller decides the fill per cell); blocks are the game's
+// near-black cell-block tone on both grounds (SHARE.md layout contract).
 
 export interface BoardStyle {
-  /** Block (black square) fill. */
+  /** Block (black square) fill: the game's --cell-block tone. */
   readonly block: string;
-  /** Gridline color: ink on light; on dark a lifted tone so lines read over blocks. */
+  /** Gridline color: the game's pale --stroke hairline, per ground. */
   readonly line: string;
-  /** Frame color, drawn a touch heavier than the gridlines. */
+  /** Frame color: the game's --board-frame (alpha-black whisper on light). */
   readonly frame: string;
 }
 
-/** The stroke widths the board draws at a given cell size: gridlines at the og.svg
- * ratio (~4.5% of a cell, floored at 1.5), the frame a touch heavier. Exported so a
- * caller sizing a standalone board (completionBoardSvg) can pad for the frame without
- * re-deriving the ratio. */
+/**
+ * The play grid's stroke module, mirrored VERBATIM from apps/web/src/styles.css
+ * (--grid-cell: 36px, --grid-stroke: 0.6px, --grid-frame: 2px). This package imports
+ * nothing (share-card-is-standalone), so the values are a copy; the boardChrome
+ * tripwire test in apps/web pins this copy against the CSS source.
+ */
+export const GRID_MODULE = { cell: 36, line: 0.6, frame: 2 } as const;
+
+/** The stroke widths the board draws at a given cell size: the play grid's ratios
+ * (gridline 0.6/36 ~ 1.67% of a cell, frame 2/36 ~ 5.56%), each with a raster floor
+ * (line 1, frame 1.5) so a hairline survives a 1x PNG pass (og renders a 15-wide at
+ * ~34px cells, where the faithful 0.57px line would alias away; the floor is the one
+ * deliberate nudge, recorded in SHARE.md). The frame draws inside the board edge, so
+ * callers need no padding for it. */
 export function boardStrokes(cell: number): { line: number; frame: number } {
-  const line = Math.max(1.5, round2(cell * 0.045));
-  return { line, frame: round2(line * 1.6) };
+  return {
+    line: Math.max(1, round2(cell * (GRID_MODULE.line / GRID_MODULE.cell))),
+    frame: Math.max(1.5, round2(cell * (GRID_MODULE.frame / GRID_MODULE.cell))),
+  };
 }
 
 /**
  * Render the board group at (x, y): `cell` px squares, `cols` x `rows`, blocks from the
  * mask, every other cell filled by `fillOf(cell)`. Gridline width scales with the cell
- * (the og.svg ratio, ~4.5% of a cell). `classOf`, when given, stamps a class on OPEN
+ * (the play grid's ratio, ~1.67% of a cell). `classOf`, when given, stamps a class on OPEN
  * cell rects only (a block is chrome, never addressable), so a consumer's stylesheet
  * can animate the mosaic without touching the board's geometry; without it the emitted
  * bytes are unchanged.
@@ -71,13 +84,18 @@ export function boardSvg(
     lines.push(`M0 ${r * cell}H${w}`);
   }
 
+  // The frame straddles the board edge from the inside (the play grid's registration:
+  // CrosswordGrid's board-frame rect at x=1,y=1 with width cols*36-2): inset by half
+  // the stroke, so the painted stroke spans exactly [0, frame] and never spills
+  // outside the board box.
+  const inset = round2(frame / 2);
   return (
     `<g transform="translate(${x} ${y})">` +
     rects.join("") +
     (lines.length > 0
       ? `<path d="${lines.join("")}" stroke="${style.line}" stroke-width="${line}" fill="none"/>`
       : "") +
-    `<rect x="0" y="0" width="${w}" height="${h}" fill="none" stroke="${style.frame}" stroke-width="${frame}"/>` +
+    `<rect x="${inset}" y="${inset}" width="${round2(w - frame)}" height="${round2(h - frame)}" fill="none" stroke="${style.frame}" stroke-width="${frame}"/>` +
     `</g>`
   );
 }

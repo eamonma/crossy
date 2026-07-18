@@ -11,9 +11,11 @@ export type {
 } from "./types";
 export type { BoardOnlyOptions } from "./card";
 export {
+  BARE_CELL,
   BOARD_ONLY_CELL,
   BUDGETS,
   DARK_BOARD,
+  LIGHT_BOARD,
   MAX_CREDITS,
   MAX_OG_CREDITS,
   OWNER_TINT,
@@ -21,6 +23,7 @@ export {
   completionCardSvg,
   soloRampColor,
 } from "./card";
+export { GRID_MODULE } from "./board";
 export { BRAND } from "./brand";
 export { mixHex, parseHex } from "./color";
 export { escapeXml, formatClock, truncate } from "./text";
