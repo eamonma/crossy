@@ -55,6 +55,14 @@ object AnalysisCopy {
 
     const val loading: String = "Loading…"
     const val absent: String = "Analysis isn’t available for this game."
+    /** The header affordance that mints and shares the completion card (design/post-game/SHARE.md),
+     *  mirroring web's "Share card" in the Analysis header. The composition root owns the mint,
+     *  download, and system share sheet; this panel only reports the intent. */
+    const val shareCard: String = "Share card"
+
+    /** The share-card button's accessibility hint: what a tap does (the server-rendered poster to the
+     *  system share sheet), never a claim about what shares. */
+    const val shareCardHint: String = "Shares a poster of this solve."
     const val legendCaption: String = "Each square shows who solved it first."
 
     /** The legend caption once the chips can isolate a solver, none isolated: the tappability
@@ -197,6 +205,12 @@ fun AnalysisPanel(
     // or no completed wash), where the chips stay the plain labels they always were. Twin of the iOS
     // onIsolateSolver.
     onIsolateSolver: ((String) -> Unit)? = null,
+    // Mint and share the completion card (design/post-game/SHARE.md; Wave 14.6). Rendered as a "Share
+    // card" affordance in the header on the ready bundle only. Null when the game cannot be shared (the
+    // demo room, previews, an unfinished game), where the affordance never appears. The composition root
+    // closes over the REST mint, the PNG download, and the system share sheet (AD-2, the AvatarImageCache
+    // pattern): this panel only reports the intent, keeping :ui out of the REST and FileProvider rings.
+    onShareCard: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -209,7 +223,7 @@ fun AnalysisPanel(
             AnalysisModel.Phase.Idle, AnalysisModel.Phase.Loading -> Placeholder(AnalysisCopy.loading, ground)
             AnalysisModel.Phase.Absent -> Placeholder(AnalysisCopy.absent, ground)
             is AnalysisModel.Phase.Ready ->
-                Content(phase.bundle, members, selfUserId, ground, isolatedSolverId, onIsolateSolver)
+                Content(phase.bundle, members, selfUserId, ground, isolatedSolverId, onIsolateSolver, onShareCard)
         }
     }
 }
@@ -231,9 +245,20 @@ private fun Content(
     ground: GridGround,
     isolatedSolverId: String? = null,
     onIsolateSolver: ((String) -> Unit)? = null,
+    onShareCard: (() -> Unit)? = null,
 ) {
     val tokens = ground.tokens
-    Eyebrow(ground)
+    // The header row: the gold "Solved together" eyebrow, and (when the game can be shared) the "Share
+    // card" affordance at the trailing edge, mirroring web's Analysis-header placement. The eyebrow
+    // stands alone when there is nothing to share (the demo room, an unfinished game).
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Eyebrow(ground)
+        if (onShareCard != null) ShareCardButton(ground, onShareCard)
+    }
     StatTrio(analysis, ground, modifier = Modifier.padding(top = 12.dp))
 
     val legend = AnalysisPanelModel.legendRows(analysis, members, selfUserId, ground)
@@ -443,6 +468,29 @@ private fun TitleRow(
             }
         }
     }
+}
+
+/** The header's "Share card" affordance (design/post-game/SHARE.md; Wave 14.6): a calm gold-tinted
+ *  capsule, the legend chip's hairline vocabulary, reporting the share intent the composition root
+ *  fulfills. Text-only by choice, so the panel pulls in no icon pack; a button for TalkBack with a
+ *  meaningful hint (onClickLabel). Failures resolve quietly upstream, so no busy or error state lives
+ *  here. */
+@Composable
+private fun ShareCardButton(ground: GridGround, onShareCard: () -> Unit) {
+    val gold = AnalysisPalette.goldText(ground).toColor()
+    val capsule = RoundedCornerShape(percent = 50)
+    Text(
+        AnalysisCopy.shareCard,
+        color = gold,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.6.sp,
+        modifier = Modifier
+            .clip(capsule)
+            .border(1.dp, gold.copy(alpha = 0.4f), capsule)
+            .clickable(role = Role.Button, onClickLabel = AnalysisCopy.shareCardHint) { onShareCard() }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

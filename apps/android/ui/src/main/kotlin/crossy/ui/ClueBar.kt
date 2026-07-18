@@ -91,6 +91,10 @@ fun ClueBar(
     // the legend rows plain (the bloom in flight, previews).
     isolatedSolverId: String? = null,
     onIsolateSolver: ((String) -> Unit)? = null,
+    // The completion card share intent (design/post-game/SHARE.md; Wave 14.6), forwarded to the
+    // analysis panel's header. Null when the game cannot be shared (the demo room, an unfinished
+    // game), where the "Share card" affordance never appears.
+    onShareCard: (() -> Unit)? = null,
 ) {
     val tokens = ground.tokens
     val hasBrowser = acrossRows.isNotEmpty() || downRows.isNotEmpty()
@@ -165,6 +169,7 @@ fun ClueBar(
             onOpenAnalysis = onOpenAnalysis,
             isolatedSolverId = isolatedSolverId,
             onIsolateSolver = onIsolateSolver,
+            onShareCard = onShareCard,
         )
     }
 }
@@ -219,6 +224,7 @@ private fun ClueBrowserSheet(
     onOpenAnalysis: () -> Unit = {},
     isolatedSolverId: String? = null,
     onIsolateSolver: ((String) -> Unit)? = null,
+    onShareCard: (() -> Unit)? = null,
 ) {
     val tokens = ground.tokens
     val sheetState = rememberModalBottomSheetState()
@@ -266,6 +272,7 @@ private fun ClueBrowserSheet(
                     ground = ground,
                     isolatedSolverId = isolatedSolverId,
                     onIsolateSolver = onIsolateSolver,
+                    onShareCard = onShareCard,
                 )
             } else {
                 ClueBrowserSection("Across", acrossRows, ground, onJump)

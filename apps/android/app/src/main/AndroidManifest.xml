@@ -92,6 +92,22 @@
                     android:host="play" />
             </intent-filter>
         </activity>
+
+        <!-- The completion share card's FileProvider (design/post-game/SHARE.md; Wave 14.6): the
+             download of the server-rendered card PNG lands in the cache and is handed to the system
+             share sheet as a content Uri. Not exported and grantUriPermissions, so only a per-share
+             FLAG_GRANT_READ_URI_PERMISSION reaches it; the paths are scoped to one cache subdir
+             (res/xml/file_paths.xml), never the whole cache. Authority is {applicationId}.fileprovider,
+             which ShareCardExport resolves off the package name. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

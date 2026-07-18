@@ -35,6 +35,7 @@ import crossy.protocol.PuzzleView
 import crossy.protocol.PuzzlesListResponse
 import crossy.protocol.Role
 import crossy.protocol.RoleChangeRequest
+import crossy.protocol.ShareResponse
 import crossy.protocol.UpdateDisplayNameRequest
 import crossy.protocol.UpdateReactionSetRequest
 import kotlinx.serialization.DeserializationStrategy
@@ -179,6 +180,16 @@ public class CrossyApiClient(
      *  body; the route reads none. */
     public suspend fun abandonGame(gameId: String): AbandonResponse =
         send(Endpoint("POST", listOf("games", gameId, "abandon")), AbandonResponse.serializer())
+
+    /** `POST /games/{id}/share`: mint (or return) the game's public completion share link (§12;
+     *  design/post-game/SHARE.md). Gated exactly as the analysis endpoint (member + completed):
+     *  a non-member is `NOT_PARTICIPANT`, a not-yet-completed game is `GAME_NOT_FOUND`, both
+     *  surfaced as the typed [CrossyApiError.Api] envelope. Idempotent server-side (one active
+     *  token per game), so a re-POST returns the existing link, never a second live one. No request
+     *  body; the route reads none. The returned `shareUrl` is the sole capability the card URL and
+     *  the system-share text are built from ([ShareCard]); INV-6 holds (no solution content). */
+    public suspend fun mintShare(gameId: String): ShareResponse =
+        send(Endpoint("POST", listOf("games", gameId, "share")), ShareResponse.serializer())
 
     // MARK: - Account (§12: DELETE /account)
 

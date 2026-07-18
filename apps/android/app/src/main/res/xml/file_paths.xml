@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider scope for the completion share card (design/post-game/SHARE.md; ShareCardExport).
+     Exactly one cache subdir is shared: `share-cards/` under the app's cache dir, where the downloaded
+     card PNG lands. Nothing else of the app's storage is reachable through the provider, so a granted
+     read Uri exposes only the card the person chose to share. -->
+<paths>
+    <cache-path name="shared-cards" path="share-cards/" />
+</paths>

@@ -377,6 +377,20 @@ public data class AbandonResponse(
 )
 
 /**
+ * The `POST /games/{id}/share` response (§12; design/post-game/SHARE.md): the game's public
+ * completion share link. `shareUrl` is `{share-origin}/s/{token}` and `token` is the 256-bit
+ * URL-safe capability. Idempotent server-side (one active token per game), member-and-completed
+ * gated exactly as the analysis endpoint, and carrying no solution content (INV-6). The token is a
+ * bare capability string, never parsed here. No iOS twin yet (Android leads the native completion
+ * card; web ships the S1 client card).
+ */
+@Serializable
+public data class ShareResponse(
+    val shareUrl: String,
+    val token: String,
+)
+
+/**
  * The `GET /games/{id}` view (§12): solution-stripped puzzle, membership, session endpoint, the
  * optional `name`, and the member-only `inviteCode`. Twin of `GameView`.
  */
