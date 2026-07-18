@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.withFrameMillis
@@ -224,8 +225,19 @@ fun RoomScreen(
     var pendingVotePass by remember(puzzle) { mutableStateOf(false) }
     var voteNowMs by remember(puzzle) { mutableLongStateOf(System.currentTimeMillis()) }
     var voteOpenedAt by remember(puzzle) { mutableLongStateOf(0L) }
+    // The ring's remaining fraction frozen at the close instant (fix 2): the resolution fades from
+    // where the drain stood instead of snapping the ring back to full. Carried across the pass's
+    // close->puzzleChecked gap so the reveal flashes from the frozen fraction too.
+    var voteRingFractionAtClose by remember(puzzle) { mutableFloatStateOf(1f) }
     val liveVote = rememberUpdatedState(render.checkVote)
     val liveSolo = rememberUpdatedState(render.isSoloRoom)
+    val liveReduceMotion = rememberUpdatedState(reduceMotion)
+    // A disconnect/resync heals the vote wholesale via snapshot with no puzzleChecked event, so a
+    // pending reveal armed at a passing close would strand and replay full vote chrome on a LATER solo
+    // check (solo-zero-chrome, D32; fix 3). Every heal leaves LIVE first, so clear the flag there.
+    LaunchedEffect(render.sync) {
+        if (render.sync != SyncState.LIVE) pendingVotePass = false
+    }
     // The frame clock: while a vote or its resolution is on screen, sample wall-clock each frame so the
     // ring drains smoothly and the resolution withdraws on time. It also retires a finished resolution.
     val voteOnScreen = render.showVoteBench || voteResolution != null
@@ -251,7 +263,9 @@ fun RoomScreen(
     // resolution, so its instant marks are untouched.
     val passedReveal = voteResolution as? VoteResolution.Passed
     val sinceRevealMs = passedReveal?.let { voteNowMs - it.startedAt }
-    val revealingBreath = sinceRevealMs != null && sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS
+    // Reduced motion has no breath: the marks apply instantly rather than being withheld 600 ms (U6;
+    // fix 6). Only the animated path holds the marks back through the breath.
+    val revealingBreath = !reduceMotion && sinceRevealMs != null && sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS
     val washingChecks = sinceRevealMs != null && !reduceMotion &&
         sinceRevealMs >= VoteBenchTiming.REVEAL_BREATH_MS &&
         sinceRevealMs < VoteBenchTiming.REVEAL_BREATH_MS + VoteBenchTiming.WASH_MAX_MS + 100L
@@ -280,7 +294,11 @@ fun RoomScreen(
                 // breath then the marks and "{n} to fix"). The success haptic is NOT played here (the
                 // close event): it is timed to the wash start below. A solo/bare check never sets this.
                 pendingVotePass = false
-                voteResolution = VoteResolution.Passed(checked.wrongCells.size, System.currentTimeMillis())
+                voteResolution = VoteResolution.Passed(
+                    checked.wrongCells.size,
+                    System.currentTimeMillis(),
+                    voteRingFractionAtClose, // flash/fade from the frozen fraction, never a snap-to-full (fix 2)
+                )
             } else {
                 // A solo auto-pass or a bare puzzleChecked (server rollout window): the check lands as
                 // today, one soft thud, no vote chrome (D32 solo suppression; §10 tolerance).
@@ -297,25 +315,44 @@ fun RoomScreen(
                 haptics.play(SolveHaptic.VOTE_OPENED)
             }
         }
+        // A ballot settled (D32; U9): a light tick per ballot. The store fires this only for a truly
+        // applied cast (never on snapshot healing); the self ballot already ticked at its tap, so only
+        // remote ballots tick here (no double tick for the local voter). Fix 7.
+        store.onVoteCast = { cast ->
+            if (cast.by != store.render.value.selfUserId) haptics.play(SolveHaptic.VOTE_BALLOT)
+        }
         // The vote closed (D32): a pass defers its reveal to the puzzleChecked that follows; a fail or
         // cancel shows its one calm line now, with the proposer-only tally from the pre-close vote.
-        // Solo is suppressed (the auto-pass triple shows no chrome). TERMINAL shows no line (the
-        // completion/abandon UI supersedes), so the Bench withdraws with an empty resolution.
+        // Solo is suppressed (the auto-pass triple shows no chrome). A TERMINAL cancellation is silent
+        // (fix 1): no line, no fail haptic, no lingering ring, because the completion/abandon surface
+        // supersedes it.
         store.onVoteClosed = { closed ->
             val vote = liveVote.value
             val solo = liveSolo.value || (vote?.isSolo ?: true)
             if (!solo) {
-                if (closed.outcome == "passed") {
-                    pendingVotePass = true
-                } else {
-                    haptics.play(SolveHaptic.VOTE_FAILED)
-                    voteResolution = VoteResolution.Ended(
-                        reason = closed.reason,
-                        approvalsAtClose = vote?.approvals?.size ?: 0,
-                        needed = vote?.needed ?: 0,
-                        isProposer = vote?.by == store.render.value.selfUserId,
-                        startedAt = System.currentTimeMillis(),
-                    )
+                // Freeze the ring's last open fraction so every resolution fades from where the drain
+                // stood, never snapping back to full (fix 2; U4).
+                voteRingFractionAtClose =
+                    vote?.let { CheckVoteBenchModel.ringFraction(it, voteNowMs, liveReduceMotion.value) } ?: 0f
+                when {
+                    closed.outcome == "passed" -> pendingVotePass = true
+                    closed.reason == "TERMINAL" -> {
+                        // The completion/abandon surface supersedes: withdraw the vote quietly, no
+                        // resolution sliver, no fail haptic, no ring fade beyond immediate removal.
+                        pendingVotePass = false
+                        voteResolution = null
+                    }
+                    else -> {
+                        haptics.play(SolveHaptic.VOTE_FAILED)
+                        voteResolution = VoteResolution.Ended(
+                            reason = closed.reason,
+                            approvalsAtClose = vote?.approvals?.size ?: 0,
+                            needed = vote?.needed ?: 0,
+                            isProposer = vote?.by == store.render.value.selfUserId,
+                            startedAt = System.currentTimeMillis(),
+                            fractionAtClose = voteRingFractionAtClose,
+                        )
+                    }
                 }
             }
         }
@@ -323,6 +360,7 @@ fun RoomScreen(
             store.onConflictFlash = null
             store.onPuzzleChecked = null
             store.onVoteOpened = null
+            store.onVoteCast = null
             store.onVoteClosed = null
         }
     }
@@ -730,7 +768,10 @@ fun RoomScreen(
                 val openVote = render.checkVote?.takeIf { render.showVoteBench }
                 val res = voteResolution
                 if (openVote != null || res != null) {
-                    val fraction = openVote?.let { CheckVoteBenchModel.ringFraction(it, voteNowMs, reduceMotion) } ?: 1f
+                    // While open, the live drain; at close, the fraction frozen into the resolution, so
+                    // the ring fades from where it stood rather than snapping back to full (fix 2).
+                    val fraction = openVote?.let { CheckVoteBenchModel.ringFraction(it, voteNowMs, reduceMotion) }
+                        ?: (res?.fractionAtClose ?: 1f)
                     val ignite = if (reduceMotion || openVote == null) 1f
                         else ((voteNowMs - voteOpenedAt).toFloat() / 300f).coerceIn(0.4f, 1f)
                     val dissolve = if (res is VoteResolution.Passed && !reduceMotion) {
@@ -881,13 +922,17 @@ fun RoomScreen(
               ground = ground,
               nowMillis = voteNowMs,
               reduceMotion = reduceMotion,
-              nameFor = { id -> render.participants.firstOrNull { it.userId == id }?.displayName ?: id },
+              // Null for a departed/unknown elector; the model supplies the collective fallback copy
+              // (never a raw userId, fix 5).
+              nameFor = { id -> render.participants.firstOrNull { it.userId == id }?.displayName },
               colorFor = { id ->
                   val member = render.participants.firstOrNull { it.userId == id }
                   val identity = member?.let { IdentityRoster.colorForWireColor(it.color) ?: IdentityRoster.color(it.userId) }
                       ?: IdentityRoster.color(id)
                   ground.rosterColor(identity).toColor()
               },
+              // The verbs settle disabled while a ballot is in flight (fix 7): no doomed second ballot.
+              ballotPending = render.pendingVoteCommandId != null,
               onApprove = { store.castCheckVote(approve = true); haptics.play(SolveHaptic.VOTE_BALLOT) },
               onKeepSolving = { store.castCheckVote(approve = false); haptics.play(SolveHaptic.VOTE_BALLOT) },
               modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),

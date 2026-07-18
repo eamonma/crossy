@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,10 +43,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import crossy.store.VoteView
 
@@ -64,8 +68,13 @@ fun VoteBench(
     ground: GridGround,
     nowMillis: Long,
     reduceMotion: Boolean,
-    nameFor: (String) -> String,
+    // A departed/unknown elector resolves to null; the model supplies the collective fallback copy so
+    // no raw userId ever reaches the surface (Wave 15.9a).
+    nameFor: (String) -> String?,
     colorFor: (String) -> Color,
+    // A ballot is in flight (the store's pendingVoteCommandId is set): the verbs settle disabled so a
+    // double-tap cannot send a second doomed ballot (Wave 15.9a; fix 7).
+    ballotPending: Boolean,
     onApprove: () -> Unit,
     onKeepSolving: () -> Unit,
     modifier: Modifier = Modifier,
@@ -77,6 +86,10 @@ fun VoteBench(
     var collapsed by remember { mutableStateOf(false) }
     val risen = resolution != null || !collapsed
     val heightFraction by animateFloatAsState(if (risen) 1f else 0f, label = "benchHeight")
+
+    // The drag recognizer keys on Unit so it is never rebuilt mid-gesture (a per-ballot `vote` copy
+    // used to restart it); it reads the latest resolution through an updated state instead of a key.
+    val currentResolution by rememberUpdatedState(resolution)
 
     val gold = AnalysisPalette.goldText(ground).toColor()
 
@@ -91,10 +104,10 @@ fun VoteBench(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .padding(top = 8.dp, bottom = 18.dp)
-                .pointerInput(vote, resolution) {
+                .pointerInput(Unit) {
                     detectVerticalDragGestures { _, dragAmount ->
                         // Down docks, up re-rises. A resolution ignores it (it always shows risen).
-                        if (resolution == null) {
+                        if (currentResolution == null) {
                             if (dragAmount > 6f) collapsed = true
                             if (dragAmount < -6f) collapsed = false
                         }
@@ -113,14 +126,18 @@ fun VoteBench(
             )
 
             when {
-                resolution != null -> ResolutionContent(resolution, nowMillis, gold)
+                resolution != null -> ResolutionContent(resolution, nowMillis, reduceMotion, gold)
                 vote != null -> {
-                    val proposer = nameFor(vote.by)
                     Text(
-                        text = VoteCopy.proposal(proposer),
+                        // The proposer reads the room's pending answer, others read the question, a
+                        // departed proposer stays collective (Wave 15.9a). Capped so a long name can
+                        // never overflow the sheet's layout.
+                        text = CheckVoteBenchModel.proposalLine(vote, selfUserId, nameFor(vote.by)),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
                             .semantics { liveRegion = LiveRegionMode.Polite },
@@ -133,7 +150,11 @@ fun VoteBench(
                         )
                         if (CheckVoteBenchModel.showVerbs(vote, selfUserId)) {
                             Spacer(Modifier.height(18.dp))
-                            Verbs(onApprove = onApprove, onKeepSolving = onKeepSolving)
+                            Verbs(
+                                enabled = !ballotPending,
+                                onApprove = onApprove,
+                                onKeepSolving = onKeepSolving,
+                            )
                         }
                     }
                 }
@@ -147,7 +168,11 @@ fun VoteBench(
 @Composable
 private fun ChipsRow(chips: List<ElectorChip>, colorFor: (String) -> Color) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            // The chips are the room's ONLY tally (U5), so the row speaks one merged summary that
+            // updates per ballot; the individual dots stay decorative (no per-glyph reading).
+            .clearAndSetSemantics { contentDescription = CheckVoteBenchModel.chipsSummary(chips) },
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -177,19 +202,22 @@ private fun ChipsRow(chips: List<ElectorChip>, colorFor: (String) -> Color) {
     }
 }
 
-/** The two verbs, full-width, "Check it" primary. */
+/** The two verbs, full-width, "Check it" primary. Both settle disabled once a ballot is in flight so
+ *  a double-tap cannot send a second doomed ballot (Wave 15.9a; fix 7). */
 @Composable
-private fun Verbs(onApprove: () -> Unit, onKeepSolving: () -> Unit) {
+private fun Verbs(enabled: Boolean, onApprove: () -> Unit, onKeepSolving: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         OutlinedButton(
             onClick = onKeepSolving,
+            enabled = enabled,
             modifier = Modifier.weight(1f),
         ) { Text(VoteCopy.KEEP_SOLVING) }
         Button(
             onClick = onApprove,
+            enabled = enabled,
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(),
         ) { Text(VoteCopy.CHECK_IT) }
@@ -198,8 +226,8 @@ private fun Verbs(onApprove: () -> Unit, onKeepSolving: () -> Unit) {
 
 /** The resolution beat: the one calm line, plus the proposer-only post-fail tally. */
 @Composable
-private fun ResolutionContent(resolution: VoteResolution, nowMillis: Long, goldText: Color) {
-    val line = CheckVoteBenchModel.resolutionLine(resolution, nowMillis)
+private fun ResolutionContent(resolution: VoteResolution, nowMillis: Long, reduceMotion: Boolean, goldText: Color) {
+    val line = CheckVoteBenchModel.resolutionLine(resolution, nowMillis, reduceMotion)
     val tally = CheckVoteBenchModel.proposerTally(resolution)
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),

@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -308,7 +309,13 @@ fun RoomFactsSheet(
                     val fill = holdStartMs?.let { CheckVoteBenchModel.holdFraction(holdNowMs - it) } ?: 0f
 
                     val gesture = when {
-                        !check.isEnabled -> Modifier
+                        // The grid-short disabled row: name it and mark it disabled so TalkBack does
+                        // not present it as an actionable control (fix 8). The hint carries the reason.
+                        !check.isEnabled -> Modifier.clearAndSetSemantics {
+                            contentDescription =
+                                "Check puzzle, unavailable. " + (check.hint?.let { "$it to fill." } ?: "Fill the grid to check.")
+                            disabled()
+                        }
                         holdToPropose -> Modifier
                             .pointerInput(check.isEnabled) {
                                 awaitEachGesture {
@@ -324,7 +331,8 @@ fun RoomFactsSheet(
                             }
                             // The accessible activation path (U3): TalkBack cannot perform a timed
                             // hold, so a custom click action proposes directly. The label names the act.
-                            .semantics {
+                            // clearAndSetSemantics so the child Texts are not read twice (fix 8).
+                            .clearAndSetSemantics {
                                 contentDescription = "Check puzzle. Hold to propose a room vote."
                                 onClick(label = "Propose check") { proposeCheck(); true }
                             }
