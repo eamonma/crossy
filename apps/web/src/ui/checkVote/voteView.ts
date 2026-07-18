@@ -3,12 +3,12 @@
 // Proscenium, the ring, the chips, and the mobile strip render from it: the exact copy, the
 // remaining-time clamp, solo detection, the elector chips, and the resolution lines. Kept pure and
 // data-in/data-out so the whole vote UX is testable under the node suite, the roomActions.ts posture.
-import type { Participant } from "@crossy/protocol";
 import type {
+  CheckVoteCloseReason,
   CheckVoteOutcome,
-  CheckVoteReason,
-  OpenCheckVote,
-} from "../../store/checkVoteWire";
+  CheckVoteView,
+  Participant,
+} from "@crossy/protocol";
 
 /** The check vote's timebox (DESIGN.md D32 open question CHECK_VOTE_TTL_MS). The ring is the only
  * clock, and it drains over this window; the server's `expiresAt` is authoritative, this is only the
@@ -46,7 +46,7 @@ export function failedTallyLine(approvals: number, needed: number): string {
  */
 export function closeLine(
   outcome: CheckVoteOutcome,
-  reason: CheckVoteReason | undefined,
+  reason: CheckVoteCloseReason | undefined,
 ): string | null {
   if (outcome === "passed") return null; // the reveal beat, not a calm line
   if (outcome === "failed") {
@@ -120,7 +120,7 @@ export type VoteRole = "proposer" | "elector" | "observer";
 /** This client's standing in the open vote: the proposer (chips, no verbs), an elector (chips and
  * verbs), or an observer (a late joiner or spectator: the Proscenium read-only, no verbs). */
 export function voteRole(
-  vote: OpenCheckVote,
+  vote: CheckVoteView,
   selfUserId: string | null,
 ): VoteRole {
   if (selfUserId !== null && vote.by === selfUserId) return "proposer";
@@ -134,13 +134,13 @@ export type ChipSide = "check" | "keep" | "undecided";
 
 /** Which side an elector's chip has settled to. The proposer is pre-settled to "check" from the
  * start, because their proposal is their approval (§10). */
-export function chipSide(vote: OpenCheckVote, userId: string): ChipSide {
+export function chipSide(vote: CheckVoteView, userId: string): ChipSide {
   if (vote.approvals.includes(userId)) return "check";
   if (vote.rejections.includes(userId)) return "keep";
   return "undecided";
 }
 
-export function hasVoted(vote: OpenCheckVote, userId: string): boolean {
+export function hasVoted(vote: CheckVoteView, userId: string): boolean {
   return chipSide(vote, userId) !== "undecided";
 }
 
@@ -163,7 +163,7 @@ export interface ElectorChip {
  * electorate is frozen for the vote's life, §10) with a placeholder identity.
  */
 export function electorChips(
-  vote: OpenCheckVote,
+  vote: CheckVoteView,
   participants: readonly Participant[],
   selfUserId: string | null,
 ): readonly ElectorChip[] {
@@ -187,7 +187,7 @@ export function electorChips(
 /** The proposer's display name off the participant list, for the proposal line. Falls back to a
  * neutral noun so the line never renders "undefined wants to check the puzzle". */
 export function proposerName(
-  vote: OpenCheckVote,
+  vote: CheckVoteView,
   participants: readonly Participant[],
   selfUserId: string | null,
 ): string {

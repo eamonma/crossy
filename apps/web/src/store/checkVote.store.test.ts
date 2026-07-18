@@ -7,15 +7,15 @@ import { describe, expect, it } from "vitest";
 import { GameStore } from "./gameStore";
 import type { VoteClosedSignal } from "./gameStore";
 import type {
+  Board,
   CheckVoteCastEvent,
   CheckVoteClosedEvent,
   CheckVoteOpenedEvent,
-  OpenCheckVote,
-  WebBoard,
-  WebClientMessage,
-} from "./checkVoteWire";
+  CheckVoteView,
+  ClientMessage,
+} from "@crossy/protocol";
 
-function board(overrides: Partial<WebBoard> = {}): WebBoard {
+function board(overrides: Partial<Board> = {}): Board {
   return {
     seq: 30,
     status: "ongoing",
@@ -36,12 +36,12 @@ function board(overrides: Partial<WebBoard> = {}): WebBoard {
 
 interface Harness {
   store: GameStore;
-  sent: WebClientMessage[];
+  sent: ClientMessage[];
   closes: VoteClosedSignal[];
 }
 
-function makeStore(welcomeBoard: WebBoard, self = "u1"): Harness {
-  const sent: WebClientMessage[] = [];
+function makeStore(welcomeBoard: Board, self = "u1"): Harness {
+  const sent: ClientMessage[] = [];
   const store = new GameStore({ transport: { send: (m) => sent.push(m) } });
   const closes: VoteClosedSignal[] = [];
   store.subscribeVoteClosed((c) => closes.push(c));
@@ -95,7 +95,7 @@ describe("§6/§7 checkVoteOpened is sequenced: applied under the seq gate, appr
     const { store } = makeStore(board());
     store.receive(opened());
     expect(store.seq).toBe(31);
-    expect(store.checkVote).toEqual<OpenCheckVote>({
+    expect(store.checkVote).toEqual<CheckVoteView>({
       openedSeq: 31,
       by: "u1",
       electorate: ["u1", "u2", "u3"],
@@ -201,7 +201,7 @@ describe("§10 a passed close then puzzleChecked applies marks; the count is per
 describe("§4 the open vote rides every snapshot: replaced wholesale (INV-5)", () => {
   it("a reconnect mid-vote reconstructs the whole vote from board.checkVote", () => {
     const { store } = makeStore(board());
-    const midVote: OpenCheckVote = {
+    const midVote: CheckVoteView = {
       openedSeq: 31,
       by: "u1",
       electorate: ["u1", "u2", "u3"],

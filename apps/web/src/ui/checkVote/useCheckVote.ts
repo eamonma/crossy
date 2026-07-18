@@ -6,7 +6,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSyncExternalStore } from "react";
 import type { GameStore, VoteClosedSignal } from "../../store/gameStore";
-import type { OpenCheckVote } from "../../store/checkVoteWire";
+// The wire vote object (board.checkVote); aliased so it does not clash with this hook's own
+// CheckVoteView view-model type below.
+import type { CheckVoteView as OpenCheckVote } from "@crossy/protocol";
 import {
   CHECKING_LINE,
   closeLine,

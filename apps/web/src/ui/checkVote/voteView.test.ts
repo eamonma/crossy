@@ -2,8 +2,7 @@
 // The remaining-time clamp, solo detection, the elector chips, and every copy string are pinned here
 // so the ceremony's semantics and words cannot drift.
 import { describe, expect, it } from "vitest";
-import type { Participant } from "@crossy/protocol";
-import type { OpenCheckVote } from "../../store/checkVoteWire";
+import type { CheckVoteView, Participant } from "@crossy/protocol";
 import {
   CHECK_VERB,
   KEEP_VERB,
@@ -23,7 +22,7 @@ import {
   voteRole,
 } from "./voteView";
 
-const vote: OpenCheckVote = {
+const vote: CheckVoteView = {
   openedSeq: 31,
   by: "u1",
   electorate: ["u1", "u2", "u3"],
@@ -134,7 +133,7 @@ describe("§6 roles and chips (the room reads faces, not numbers)", () => {
   it("the proposer chip is pre-settled to the check side; others start undecided", () => {
     expect(chipSide(vote, "u1")).toBe("check");
     expect(chipSide(vote, "u2")).toBe("undecided");
-    const withKeep: OpenCheckVote = { ...vote, rejections: ["u2"] };
+    const withKeep: CheckVoteView = { ...vote, rejections: ["u2"] };
     expect(chipSide(withKeep, "u2")).toBe("keep");
   });
 

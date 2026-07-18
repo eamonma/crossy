@@ -5,24 +5,30 @@
 // speaks wire types from packages/protocol and sends through an injected transport,
 // so tests need no socket.
 import type {
+  Board,
   Cell,
+  CheckVoteCastEvent,
+  CheckVoteClosedEvent,
+  CheckVoteOpenedEvent,
+  CheckVoteView,
   Cursor,
   Direction,
+  ErrorCode,
   GameStatus,
   Participant,
   ReactionNotice,
+  ServerMessage,
   Stats,
 } from "@crossy/protocol";
 import type { GameTransport } from "./transport";
-import type {
-  CheckVoteClosedEvent,
-  CheckVoteCastEvent,
-  CheckVoteOpenedEvent,
-  OpenCheckVote,
-  WebBoard,
-  WebServerMessage,
-} from "./checkVoteWire";
-import { isCheckVoteErrorCode } from "./checkVoteWire";
+
+/** The four non-fatal vote errors (PROTOCOL.md §11): they clear the optimistic intent, no drama. */
+const VOTE_ERROR_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  "VOTE_PENDING",
+  "NO_VOTE_OPEN",
+  "NOT_ELECTOR",
+  "ALREADY_VOTED",
+]);
 
 /**
  * The store's connection state. Three of these are the PROTOCOL.md section 7 wire
@@ -132,7 +138,7 @@ export class GameStore {
   // The open check vote (PROTOCOL.md §4, §6, §10; D32), reconciled like any sequenced state: the
   // three vote events advance it under the seq gate, and every snapshot replaces it wholesale so a
   // reconnect mid-vote heals the whole thing with no delta replay. `null` when none is open.
-  private checkVoteValue: OpenCheckVote | null = null;
+  private checkVoteValue: CheckVoteView | null = null;
   // A local, optimistic vote intent (the proposer's proposal or an elector's ballot), keyed by the
   // command's id so the four non-fatal vote errors (§11) and the authoritative echo both clear it
   // with no drama. It is NEVER reconciled state: the wire's vote is the truth, this only lets the
@@ -208,7 +214,7 @@ export class GameStore {
     return this.checkCountValue;
   }
   /** The open check vote (PROTOCOL.md §4, §10; D32), or null when none is open. Indices-free (INV-6). */
-  get checkVote(): OpenCheckVote | null {
+  get checkVote(): CheckVoteView | null {
     return this.checkVoteValue;
   }
   /**
@@ -363,13 +369,12 @@ export class GameStore {
     if (this.statusValue !== "ongoing") return;
     const id = commandId ?? this.newCommandId();
     this.pendingVoteValue = { commandId: id, kind: "ballot", approve };
-    // Bridge cast: castCheckVote is not yet in @crossy/protocol's ClientMessage (see checkVoteWire).
     this.transport.send({
       type: "castCheckVote",
       commandId: id,
       voteSeq,
       approve,
-    } as unknown as Parameters<GameTransport["send"]>[0]);
+    });
     this.bump();
   }
 
@@ -408,7 +413,7 @@ export class GameStore {
     this.bump();
   }
 
-  receive(message: WebServerMessage): void {
+  receive(message: ServerMessage): void {
     switch (message.type) {
       case "welcome":
         this.selfUserIdValue = message.self.userId;
@@ -455,7 +460,7 @@ export class GameStore {
           if (
             this.pendingVoteValue !== null &&
             this.pendingVoteValue.commandId === message.commandId &&
-            isCheckVoteErrorCode(message.code)
+            VOTE_ERROR_CODES.has(message.code)
           ) {
             this.pendingVoteValue = null;
             this.bump();
@@ -685,7 +690,7 @@ export class GameStore {
    * confirmed by recentCommandIds drops; aged out drops without re-send; otherwise
    * re-add and re-send (MUST, not MAY). Duplicates drop by commandId.
    */
-  private applySnapshot(board: WebBoard): void {
+  private applySnapshot(board: Board): void {
     this.seqValue = board.seq;
     this.statusValue = board.status;
     this.firstFillAtValue = board.firstFillAt;
