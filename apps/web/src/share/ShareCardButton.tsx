@@ -16,13 +16,15 @@ export function ShareCardButton({
   size?: "sm" | "lg";
 }) {
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  // rest | sent (a quiet check, label unchanged) | copied (check + "Copied", so the user
+  // knows the image went to the clipboard, not a file). Mirrors CopyButton's beat.
+  const [feedback, setFeedback] = useState<"rest" | "sent" | "copied">("rest");
 
   useEffect(() => {
-    if (!done) return;
-    const id = window.setTimeout(() => setDone(false), 1600);
+    if (feedback === "rest") return;
+    const id = window.setTimeout(() => setFeedback("rest"), 1600);
     return () => window.clearTimeout(id);
-  }, [done]);
+  }, [feedback]);
 
   async function run(): Promise<void> {
     if (busy) return;
@@ -30,11 +32,15 @@ export function ShareCardButton({
     try {
       const mod = await import("./shareCardExport");
       const outcome = await mod.shareCompletionCard(input);
-      // The brief check marks a card that left the building (sheet or download);
-      // a canceled sheet or a failure just returns the button to rest, no scolding.
-      setDone(outcome === "shared" || outcome === "downloaded");
+      // A copy tells the user where the image went; a shared sheet or a download keeps the
+      // quiet check with the unchanged label; a canceled sheet or a failure returns the
+      // button to rest, no scolding.
+      if (outcome === "copied") setFeedback("copied");
+      else if (outcome === "shared" || outcome === "downloaded")
+        setFeedback("sent");
+      else setFeedback("rest");
     } catch {
-      setDone(false);
+      setFeedback("rest");
     } finally {
       setBusy(false);
     }
@@ -47,8 +53,8 @@ export function ShareCardButton({
       onClick={() => void run()}
       disabled={busy}
     >
-      {done ? <CheckIcon /> : <Share2Icon />}
-      Share card
+      {feedback === "rest" ? <Share2Icon /> : <CheckIcon />}
+      {feedback === "copied" ? "Copied" : "Share card"}
     </Button>
   );
 }

@@ -95,10 +95,29 @@ The rules that make it Crossy:
 
 - **S1, the client card (this PR).** `packages/share-card` and its rule, the additive
   `puzzleTitle`/`puzzleAuthor` on `GET /games/{id}` (PROTOCOL §12), and the web Share
-  button (completion overlay action row, Analysis header), which assembles the data,
-  rasterizes the SVG at 2x to PNG, and hands it to `navigator.share` when the platform
-  can share files, else downloads it. No clipboard image writes. Exit: a finished room
-  exports a correct card on both grounds; a solo solve exports the ramp card.
+  button (completion overlay action row, Analysis header), which assembles the data and
+  rasterizes the SVG at 2x to PNG. Exit: a finished room exports a correct card on both
+  grounds; a solo solve exports the ramp card.
+  - **The channel order (Wave 14.2, user direction supersedes the original "no clipboard
+    image writes" rule).** The card takes the first channel the platform genuinely
+    offers, and each channel gates on its own capability, decided by the pure
+    `selectShareChannel({canShareFiles, canWriteClipboardImage})`:
+    1. **Share sheet.** `navigator.share`/`navigator.canShare({files})` where they take
+       files (mobile, and desktops with a real sheet). An `AbortError` means the user
+       closed the sheet: quiet, no fallback. Any other share failure falls to download.
+    2. **Clipboard copy.** When no share sheet takes files, write the PNG through
+       `navigator.clipboard.write` with an `image/png` `ClipboardItem`. Support is
+       `navigator.clipboard?.write` present AND `ClipboardItem` defined AND
+       (`ClipboardItem.supports?.("image/png") ?? true`). A write that throws (permission,
+       flake) falls through to download. **The Safari constraint:** the `ClipboardItem`
+       must be constructed synchronously inside the user gesture with a _Promise_ for the
+       blob (`new ClipboardItem({ "image/png": pendingRasterizePromise })`); awaiting the
+       rasterize first and then constructing the item throws `NotAllowedError` in Safari.
+       So the export kicks off the rasterize, holds the pending promise, decides the
+       channel, and hands that unsettled promise to the item. The button shows a check and
+       "Copied" for the confirm beat so the user knows the image went to the clipboard,
+       not a file.
+    3. **Download.** The anchor-download floor, always available.
 - **S2, the share link (done, Wave 13.2).** A completed game mints a public share URL
   whose OG image is the og variant, rendered server-side from the analysis bundle by the
   same package (the standalone rule is what makes this a lift, not a port). Exit met:
