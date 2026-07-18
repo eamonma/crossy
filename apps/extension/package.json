@@ -6,6 +6,7 @@
   "scripts": {
     "build": "esbuild src/content.ts src/nyt/content.ts src/amuselabs/content.ts src/web-signal/content.ts src/auth/callback-content.ts src/popup.ts src/options.ts src/background.ts --bundle --format=iife --outbase=src --outdir=dist --log-level=warning && cp public/manifest.json public/popup.html public/options.html public/ui.css dist/ && mkdir -p dist/icons && cp public/icons/*.png dist/icons/",
     "build:firefox": "pnpm run build && node scripts/build-firefox.mjs",
+    "package": "pnpm run build:firefox && node scripts/package.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
