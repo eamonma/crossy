@@ -32,6 +32,7 @@ import {
   emptyCellsHint,
   showRoomActions,
 } from "./roomActions";
+import { HoldButton } from "./checkVote/HoldButton";
 import type { Bearer } from "./homeData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +85,13 @@ export interface RoomActions {
    * sends only while still full (R2). Returns whether it sent; the dialog closes quietly
    * either way, because when stale the row is already disabled again with its hint. */
   onCheckPuzzle: () => boolean;
+  /** Solo (the only connected host/solver): the proposal auto-passes at the server, so the solo
+   * client keeps the confirm dialog (there is no room to interpose). Multiplayer drops the dialog
+   * for hold-to-propose (PROTOCOL.md §10 client guidance; D32; the UX spec beat 1). */
+  solo: boolean;
+  /** A check vote is already open: a fresh proposal would be VOTE_PENDING, and a new proposal needs
+   * a fresh deliberate hold (the UX spec beat 5), so the propose control rests while a vote stands. */
+  voteOpen: boolean;
 }
 
 function CopyRow({
@@ -295,18 +303,35 @@ export function RoomActionsPanel({
         </PopoverDescription>
       </PopoverHeader>
       <div className="flex flex-col gap-1.5">
-        <Button
-          variant="secondary"
-          size="sm"
-          className="w-full justify-center"
-          disabled={!full}
-          onClick={() => setConfirmOpen(true)}
-        >
-          Check puzzle
-        </Button>
+        {/* A vote is already open: the propose control rests (a fresh proposal needs a fresh hold,
+            the UX spec beat 5), and the surface above the grid carries the ceremony. */}
+        {actions.voteOpen ? (
+          <p className="m-0 text-center text-1 text-text-subtle">
+            A check vote is open above the board.
+          </p>
+        ) : actions.solo ? (
+          // Solo: keep the confirm dialog, the ceremony there is no room to interpose.
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-full justify-center"
+            disabled={!full}
+            onClick={() => setConfirmOpen(true)}
+          >
+            Check puzzle
+          </Button>
+        ) : (
+          // Multiplayer: hold-to-propose opens the room vote; no confirm dialog (D32; beat 1).
+          <HoldButton
+            label="Check puzzle"
+            disabled={!full}
+            className="w-full"
+            onComplete={() => actions.onCheckPuzzle()}
+          />
+        )}
         {/* Below a full grid the row teaches the gate instead of erroring into it (§5);
             once checks exist, the neutral record rides the same quiet register (R10). */}
-        {!full && (
+        {!full && !actions.voteOpen && (
           <p className="m-0 text-center text-1 text-text-subtle">
             {emptyCellsHint(actions.emptyCount)}
           </p>

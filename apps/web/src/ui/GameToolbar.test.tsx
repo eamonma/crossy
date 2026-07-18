@@ -26,6 +26,8 @@ function actions(overrides: Partial<RoomActions> = {}): RoomActions {
     emptyCount: 0,
     checkCount: 0,
     onCheckPuzzle: () => true,
+    solo: true,
+    voteOpen: false,
     ...overrides,
   };
 }

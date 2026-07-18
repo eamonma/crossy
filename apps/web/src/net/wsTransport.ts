@@ -4,13 +4,11 @@
 // unit-tested); heartbeats go out every 15 seconds (section 9). End-to-end against
 // the real session service is Wave 2.2's gate; the unit suite (wsTransport.test.ts)
 // covers token resolution and the INV-11 throw-versus-null handling in sendHello.
-import {
-  PROTOCOL_VERSION,
-  decodeServerMessage,
-  encode,
-} from "@crossy/protocol";
-import type { ClientMessage, ServerMessage } from "@crossy/protocol";
+import { PROTOCOL_VERSION, encode } from "@crossy/protocol";
+import type { ClientMessage } from "@crossy/protocol";
 import type { GameTransport } from "../store/transport";
+import { decodeWebServerMessage } from "../store/checkVoteWire";
+import type { WebServerMessage } from "../store/checkVoteWire";
 import { BackoffSchedule } from "./backoff";
 
 const HEARTBEAT_INTERVAL_MS = 15_000; // PROTOCOL.md section 9
@@ -29,8 +27,9 @@ export interface WsTransportOptions {
    * section 7 backoff and a later hello retries.
    */
   getToken: () => Promise<string | null>;
-  /** A codec-decoded frame arrived; typically store.receive. */
-  onMessage: (message: ServerMessage) => void;
+  /** A codec-decoded frame arrived; typically store.receive. Carries the vote-aware frames
+   * (checkVoteWire) the base protocol codec does not yet type (PROTOCOL.md §6; D32). */
+  onMessage: (message: WebServerMessage) => void;
   /** The socket dropped; typically store.connectionLost. Reconnection is internal. */
   onConnectionLost: () => void;
   /** Injectable for tests and non-browser contexts; defaults to the browser API. */
@@ -70,7 +69,7 @@ export class WsTransport implements GameTransport {
         console.warn("crossy: dropped a non-JSON frame");
         return;
       }
-      const decoded = decodeServerMessage(raw);
+      const decoded = decodeWebServerMessage(raw);
       if (!decoded.ok) {
         // Unknown notice types: ignore and log (PROTOCOL.md section 3).
         console.warn(`crossy: dropped a frame (${decoded.error.detail})`);

@@ -1411,3 +1411,246 @@
   --radius-3xl: var(--radius-6);
   --radius-4xl: calc(var(--radius-6) * 1.5);
 }
+
+/*
+ * The check vote (PROTOCOL.md §4, §6, §10; D32). The ceremony is part of the board's fabric, not a
+ * notification: it reuses the identity chips, the panel face, the type scale, and the app's easings
+ * (200-400 ms, --ease-out / --ease-standard). The ring is the ONLY clock, so there is no countdown
+ * text anywhere; its drain is driven by inline style from expiresAt. Motion is the exception, not
+ * the rule, so every piece has a reduced-motion answer.
+ */
+
+/* The Proscenium and the mobile strip slide-and-fade in as one object; they withdraw the same way. */
+.vote-surface-enter {
+  animation: vote-surface-in 260ms var(--ease-out) both;
+}
+.vote-surface-leave {
+  animation: vote-surface-out 220ms var(--ease-standard) both;
+}
+@keyframes vote-surface-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes vote-surface-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vote-surface-enter,
+  .vote-surface-leave {
+    animation: none;
+  }
+}
+
+/* The luminous ring: a halo OUTSIDE the grid, offset off the board's edge, ~3px, warm brand gold
+ * (the solo-gold ramp hue, --color-gold-9 = #978365; never a roster color, and it lives outside the
+ * grid so it never overlaps the cell highlight grammar). The stroke drains via stroke-dashoffset,
+ * set inline from remaining time (pathLength=1). The ring is decorative (aria-hidden). */
+.vote-ring {
+  position: absolute;
+  inset: calc(-1 * var(--vote-ring-offset, 10px));
+  width: auto;
+  height: auto;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 2;
+}
+.vote-ring rect {
+  fill: none;
+  stroke: var(--color-gold-9);
+  stroke-width: var(--vote-ring-weight, 3);
+  stroke-linecap: round;
+  /* The SVG stretches to the board's aspect (preserveAspectRatio none), so keep the stroke a
+     constant weight on both axes rather than letting the scale thicken one side. */
+  vector-effect: non-scaling-stroke;
+  /* pathLength is normalized to 1 on the element, so a dash of 1 spans the whole perimeter and the
+     offset (0 full, 1 empty) reads straight off the remaining fraction. */
+  stroke-dasharray: 1;
+  transition: stroke-dashoffset 120ms linear;
+  filter: drop-shadow(
+    0 0 3px color-mix(in srgb, var(--color-gold-9) 55%, transparent)
+  );
+}
+.vote-ring--igniting {
+  animation: vote-ring-ignite 420ms var(--ease-out) both;
+}
+@keyframes vote-ring-ignite {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+/* Pass: one flash, then dissolve inward (scale down and fade). */
+.vote-ring--passed rect {
+  transition: none;
+}
+.vote-ring--passed {
+  animation: vote-ring-pass 640ms var(--ease-standard) both;
+  transform-origin: center;
+}
+@keyframes vote-ring-pass {
+  0% {
+    opacity: 1;
+  }
+  22% {
+    opacity: 1;
+    filter: drop-shadow(
+      0 0 10px color-mix(in srgb, var(--color-gold-9) 85%, transparent)
+    );
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.965);
+    filter: drop-shadow(
+      0 0 0 color-mix(in srgb, var(--color-gold-9) 0%, transparent)
+    );
+  }
+}
+/* Fail / cancel: the ring fades quietly. */
+.vote-ring--fading {
+  animation: vote-ring-fade 420ms var(--ease-standard) both;
+}
+@keyframes vote-ring-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No sweep and no pulse: the ring steps down in opacity at coarse intervals instead, and the
+     dissolve/fade are instant. Continuous dash transition is off; opacity is set inline in steps. */
+  .vote-ring rect {
+    transition: none;
+    filter: none;
+  }
+  .vote-ring--igniting,
+  .vote-ring--passed,
+  .vote-ring--fading {
+    animation: none;
+  }
+}
+
+/* Beat 1 pulse: a brief flash traveling from the proposer's cursor out to the ring. Decorative. */
+.vote-pulse {
+  position: absolute;
+  width: 12%;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  transform: translate(-50%, -50%) scale(0.2);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-gold-9) 55%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 3;
+  animation: vote-pulse 520ms var(--ease-out) both;
+}
+@keyframes vote-pulse {
+  0% {
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(9);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vote-pulse {
+    display: none;
+  }
+}
+
+/* An elector chip settling to its side: a small tick pop. Undecided chips render dimmed. */
+.vote-chip {
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
+}
+.vote-chip--undecided {
+  opacity: 0.4;
+}
+.vote-chip--settling {
+  animation: vote-chip-tick 240ms var(--ease-out) both;
+}
+@keyframes vote-chip-tick {
+  0% {
+    transform: scale(0.82);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vote-chip,
+  .vote-chip--settling {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Hold-to-propose: the fill sweeps to full over the hold window while pressed, and snaps back on an
+ * early release. The width is the affordance, so it stays under reduced motion (just no easing). */
+.hold-fill {
+  transform-origin: left center;
+  transform: scaleX(0);
+  /* Resting/reset is a quick ease-out, so an early release snaps back cleanly. */
+  transition: transform 160ms var(--ease-out);
+}
+.hold-btn[data-holding="true"] .hold-fill {
+  /* The hold itself is the long linear sweep across the ~600 ms window. */
+  transition: transform var(--hold-ms, 600ms) linear;
+  transform: scaleX(1);
+}
+
+/* The reveal wash: the wrong-cell marks wash across in ascending-cell-index stagger, each a brief
+ * gold flash settling into the standing mark under it (the marks themselves already applied). Per
+ * cell delay is set inline; the whole wash stays under ~900 ms. */
+.check-wash-cell {
+  position: absolute;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-gold-9) 70%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  animation: check-wash 360ms var(--ease-out) both;
+  animation-delay: var(--wash-delay, 0ms);
+}
+@keyframes check-wash {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  45% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .check-wash-cell {
+    display: none;
+  }
+}
