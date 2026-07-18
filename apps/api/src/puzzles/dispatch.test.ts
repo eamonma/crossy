@@ -9,6 +9,7 @@
  *
  * Test names cite the invariant they defend so coverage is greppable.
  */
+import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vitest";
 import { dispatchIngest } from "./dispatch";
 import { translateXwordInfo } from "./ingest";
@@ -26,6 +27,63 @@ function xwordDoc(): Record<string, unknown> {
       down: ["1. up top", "2. and beside"],
     },
   };
+}
+
+/** A valid `.puz` file (a 1x2 all-playable row) as base64, built with real checksums. Small on
+ * purpose: dispatch only needs one accepted puz to prove the registry route, the full parse is
+ * pinned in puz.test.ts. */
+function minimalPuz(): string {
+  const cksum = (bytes: Buffer, seed = 0): number => {
+    let sum = seed & 0xffff;
+    for (const b of bytes) {
+      sum = (sum >>> 1) | ((sum & 1) << 15);
+      sum = (sum + b) & 0xffff;
+    }
+    return sum;
+  };
+  const grid = "AB"; // one across word, no down words
+  const clues = ["1a"];
+  const title = "";
+  const author = "";
+  const copyright = "";
+  const solution = Buffer.from(grid, "latin1");
+  const player = Buffer.from("--", "latin1");
+  const stringBlock = Buffer.concat([
+    Buffer.from("\0\0\0", "latin1"), // empty title, author, copyright
+    Buffer.from("1a\0", "latin1"),
+    Buffer.from("\0", "latin1"), // empty notepad
+  ]);
+  const textChecksum = (seed: number): number => {
+    // title/author/copyright/notepad are all empty (contribute nothing); one clue, no NUL.
+    return cksum(Buffer.from(clues[0]!, "latin1"), seed);
+  };
+  const header = Buffer.alloc(0x34);
+  header.write("ACROSS&DOWN\0", 0x02, "latin1");
+  header.write("1.3\0", 0x18, "latin1");
+  header.writeUInt8(2, 0x2c); // width
+  header.writeUInt8(1, 0x2d); // height
+  header.writeUInt16LE(clues.length, 0x2e);
+  const cib = cksum(header.subarray(0x2c, 0x34));
+  header.writeUInt16LE(cib, 0x0e);
+  let global = cksum(solution, cib);
+  global = cksum(player, global);
+  global = textChecksum(global);
+  header.writeUInt16LE(global, 0x00);
+  const partials = [cib, cksum(solution), cksum(player), textChecksum(0)];
+  const mask = "ICHEATED";
+  for (let i = 0; i < 4; i += 1) {
+    header.writeUInt8((partials[i]! & 0xff) ^ mask.charCodeAt(i), 0x10 + i);
+    header.writeUInt8(
+      ((partials[i]! >> 8) & 0xff) ^ mask.charCodeAt(i + 4),
+      0x14 + i,
+    );
+  }
+  void title;
+  void author;
+  void copyright;
+  return Buffer.concat([header, solution, player, stringBlock]).toString(
+    "base64",
+  );
 }
 
 /** Assert acceptance and narrow to the ok result. */
@@ -95,10 +153,10 @@ describe("envelope dispatch: the {format, document} envelope (PROTOCOL.md sectio
 
   it("rejects an unknown format as UNKNOWN_FORMAT, naming the format", () => {
     const message = expectReject(
-      { format: "puz", document: "not parsed" },
+      { format: "nonesuch", document: "not parsed" },
       "UNKNOWN_FORMAT",
     );
-    expect(message).toContain("puz");
+    expect(message).toContain("nonesuch");
   });
 
   it("matches registry names exactly, never case-folded (stable identifiers, no INV-1 surface)", () => {
@@ -114,6 +172,19 @@ describe("envelope dispatch: the {format, document} envelope (PROTOCOL.md sectio
       { format: "constructor", document: xwordDoc() },
       "UNKNOWN_FORMAT",
     );
+  });
+
+  it("routes the puz format to translatePuz (its document is base64 file bytes, not JSON)", () => {
+    // The puz translator takes a base64 STRING, so a non-string document is the translator's own
+    // VALIDATION, not the envelope's UNKNOWN_FORMAT: this proves puz is registered and reached.
+    const objectDoc = expectReject(
+      { format: "puz", document: xwordDoc() },
+      "VALIDATION",
+    );
+    expect(objectDoc).toContain("base64");
+    // And a well-formed base64 puz file tags the accepted result with the puz format.
+    const r = accept({ format: "puz", document: minimalPuz() });
+    expect(r.format).toBe("puz");
   });
 });
 
