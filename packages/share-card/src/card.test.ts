@@ -8,6 +8,7 @@ import {
   soloRampColor,
   BUDGETS,
   DARK_BOARD,
+  LIGHT_BOARD,
   OWNER_TINT,
 } from "./card";
 import { BRAND } from "./brand";
@@ -103,14 +104,14 @@ describe("geometry: the mask decides the board (SHARE.md layout contract)", () =
     expect(og.svg).toContain('viewBox="0 0 1200 630"');
   });
 
-  it("draws every cell once, blocks in board ink, white cells washed (both variants)", () => {
+  it("draws every cell once, blocks in the game's cell-block tone, white cells washed (both variants)", () => {
     const d = fixture();
     for (const variant of ["portrait", "og"] as const) {
       const { svg } = completionCardSvg(d, { ground: "light", variant });
       expect(svg.match(/data-cell="/g)?.length).toBe(25);
-      expect(cellRect(svg, 4).fill).toBe(BRAND.ink);
-      expect(cellRect(svg, 20).fill).toBe(BRAND.ink);
-      expect(cellRect(svg, 0).fill).not.toBe(BRAND.ink);
+      expect(cellRect(svg, 4).fill).toBe(LIGHT_BOARD.block);
+      expect(cellRect(svg, 20).fill).toBe(LIGHT_BOARD.block);
+      expect(cellRect(svg, 0).fill).not.toBe(LIGHT_BOARD.block);
     }
   });
 
@@ -308,18 +309,24 @@ describe("the solo ramp (fill order, gold only where the brand allows it)", () =
 });
 
 describe("the board-only render (the share page's replay hero, SHARE.md S3)", () => {
-  it("emits a standalone padded viewBox with the full row-major mask and zero text nodes (INV-6: no letter-shaped field exists, and the board draws no text at all)", () => {
+  it("emits a standalone viewBox exactly the board box with the full row-major mask and zero text nodes (INV-6: no letter-shaped field exists, and the board draws no text at all)", () => {
     const d = fixture();
     const board = completionBoardSvg(d, { ground: "light" });
-    // 5 cols x 40px cell plus the frame padding on both sides.
+    // 5 cols x 40px cell, no padding: the frame straddles the board edge from the
+    // inside (the play grid's registration), so nothing spills or clips.
     expect(board.svg).toMatch(
       /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 [\d.]+ [\d.]+">/,
     );
-    expect(board.width).toBeGreaterThan(5 * 40);
+    expect(board.width).toBe(5 * 40);
     expect(board.height).toBe(board.width); // 5x5 stays square
     expect(board.svg.match(/data-cell="/g)?.length).toBe(25);
     expect(board.svg).not.toContain("<text");
-    expect(cellRect(board.svg, 4).fill).toBe(BRAND.ink);
+    expect(cellRect(board.svg, 4).fill).toBe(LIGHT_BOARD.block);
+    // The frame rect: inset by half its stroke (40px cell -> 2.22 frame, 1.11 inset),
+    // width the board minus one full stroke. Inside-registered, like the game board.
+    expect(board.svg).toContain(
+      `<rect x="1.11" y="1.11" width="197.78" height="197.78" fill="none" stroke="${LIGHT_BOARD.frame}" stroke-width="2.22"/>`,
+    );
   });
 
   it("agrees with the card's mosaic: the identical OWNER_TINT wash per cell, per ground", () => {

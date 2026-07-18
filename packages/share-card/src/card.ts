@@ -11,9 +11,10 @@
 //   - No text measurement exists here, so every run is anchored (start/middle/end),
 //     flowed through tspans on one line, or truncated against the grapheme budgets in
 //     BUDGETS below.
-//   - The board is the og.svg idiom: square cells, no rounded corners, gridlines and
-//     frame in the board chrome tones. Open cells carry OWNER_TINT of the owner's
-//     roster hex over the card face; blocks are ink on light and near-black on dark.
+//   - The board is the bona fide play grid: square cells, no rounded corners, the
+//     game's pale hairlines and quiet inside-registered frame (LIGHT_BOARD/DARK_BOARD,
+//     mirrored from apps/web/src/styles.css). Open cells carry OWNER_TINT of the
+//     owner's roster hex over the card face; blocks are the game's cell-block tone.
 //   - Gold appears only where the brand puts it: the mark's Y cell and the solo ramp.
 //     Never in text or chrome.
 import type {
@@ -23,7 +24,7 @@ import type {
   ShareCardSolver,
 } from "./types";
 import { BRAND, lockupSvg } from "./brand";
-import { boardStrokes, boardSvg } from "./board";
+import { boardSvg } from "./board";
 import { mixHex } from "./color";
 import { escapeXml, formatClock, truncate } from "./text";
 
@@ -31,18 +32,34 @@ import { escapeXml, formatClock, truncate } from "./text";
  * mock's dial: full-strength hex is a loud quilt, 80% keeps the wash legible. */
 export const OWNER_TINT = 0.8;
 
-/** The dark board chrome, judged against Observatory (#121118), verbatim from the
- * ratified mock: blocks sink near-black, gridlines and frame lift a step above them
- * so the lattice reads. Light uses brand ink for all three. */
-export const DARK_BOARD = {
-  block: "#0A0910",
-  line: "#33313A",
-  frame: "#3A3742",
+/** The board chrome, mirrored VERBATIM from the play grid's tokens in
+ * apps/web/src/styles.css (this package imports nothing, so these are copies; the
+ * boardChrome tripwire test in apps/web pins them against the CSS source):
+ * block = --cell-block, line = --stroke, frame = --board-frame, per ground. The light
+ * frame is the game's alpha-black whisper (#00000026), kept AS alpha rather than
+ * flattened against a ground: it straddles the board edge over the outer cells'
+ * varying tints, never one flat color, and both resvg and canvas composite it
+ * correctly. */
+export const LIGHT_BOARD = {
+  block: "#21201c",
+  line: "#dad9d6",
+  frame: "#00000026",
 } as const;
 
-/** An open cell nobody owns (defensive; a completed grid owns all): a whisper off the
- * face so the board never reads as holes. From the mock's cell base tones. */
-const BARE_CELL = { light: "#F7F5F0", dark: "#1B1A21" } as const;
+/** Dark ground: the :root[data-theme="dark"] values of the same tokens. Blocks sink
+ * below the sand scale (the game's judgment) and the frame is the solid lifted
+ * sand-7, because an alpha-black frame vanishes on a dark board. */
+export const DARK_BOARD = {
+  block: "#0b0b0a",
+  line: "#494844",
+  frame: "#494844",
+} as const;
+
+/** An open cell nobody owns (defensive; a completed grid owns all): the game's
+ * --cell-default cell ground per theme, so a bare square reads as an unfilled play
+ * grid cell, sitting a step off the card face (paper-bright on Studio, lifted on
+ * Observatory). Exported for the apps/web tripwire. */
+export const BARE_CELL = { light: "#fdfdfc", dark: "#2a2a28" } as const;
 
 /** The solo ramp's pale end (the FIRST end is pale, the LAST square lands full gold),
  * per ground; the gold end is the brand gold itself. Light is the mock's hex. */
@@ -106,10 +123,7 @@ function paletteOf(ground: "light" | "dark"): Palette {
     ink,
     muted: mixHex(ink, face, 0.35),
     hairline: mixHex(ink, face, 0.82),
-    board:
-      ground === "light"
-        ? { block: BRAND.ink, line: BRAND.ink, frame: BRAND.ink }
-        : DARK_BOARD,
+    board: ground === "light" ? LIGHT_BOARD : DARK_BOARD,
     bareCell: BARE_CELL[ground],
   };
 }
@@ -610,12 +624,13 @@ export interface BoardOnlyOptions {
 
 /**
  * The bare finished mosaic as a standalone SVG: the same board idiom, chrome, and cell
- * fills as the card variants (square cells, ink or DARK_BOARD gridlines, OWNER_TINT
- * wash or the solo ramp), with nothing else on the canvas. viewBox pads by half the
- * frame stroke so the frame never clips; there are no width/height attributes, so the
- * consumer sizes it (the share page's replay hero). Same purity contract as the card:
- * same data, same bytes. INV-6 holds as everywhere here: the input carries owners,
- * order, and colors; no letter-shaped field exists, and the board emits no text at all.
+ * fills as the card variants (square cells, the play grid's hairlines and chrome,
+ * OWNER_TINT wash or the solo ramp), with nothing else on the canvas. The frame
+ * straddles the board edge from the inside (boardSvg), so the viewBox is exactly the
+ * board box and nothing clips; there are no width/height attributes, so the consumer
+ * sizes it (the share page's replay hero). Same purity contract as the card: same
+ * data, same bytes. INV-6 holds as everywhere here: the input carries owners, order,
+ * and colors; no letter-shaped field exists, and the board emits no text at all.
  */
 export function completionBoardSvg(
   data: ShareCardData,
@@ -623,16 +638,15 @@ export function completionBoardSvg(
 ): RenderedCard {
   const p = paletteOf(options.ground);
   const cell = BOARD_ONLY_CELL;
-  const pad = boardStrokes(cell).frame / 2;
-  const w = round2(data.cols * cell + 2 * pad);
-  const h = round2(data.rows * cell + 2 * pad);
+  const w = data.cols * cell;
+  const h = data.rows * cell;
   const fillOf =
     options.painting === "fillOrder"
       ? soloFill(data, options.ground, p)
       : ownersFill(data, options.ground, p);
   const board = boardSvg(
-    pad,
-    pad,
+    0,
+    0,
     data.cols,
     data.rows,
     cell,
@@ -649,8 +663,4 @@ export function completionBoardSvg(
     width: w,
     height: h,
   };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }

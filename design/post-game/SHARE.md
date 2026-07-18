@@ -69,10 +69,33 @@ The rules that make it Crossy:
   text. Card faces are the brand grounds, Studio `#F2F1EC` and Observatory `#121118`;
   ink `#1D1B18`, bone `#EDEAE2`. Gold `#978365` appears only where the brand puts it,
   the mark's Y cell and the solo ramp; never in text or chrome.
-- **The board is the og.svg board.** Square cells, no rounded corners, gridlines
-  running cell to cell inside a slightly heavier frame. On light, blocks and lines are
-  ink. On dark, blocks sink near-black (`#0A0910`) and the gridlines lift a step above
-  them so the lattice reads against Observatory.
+- **The board is the bona fide play grid** (Wave 14.1; it launched as the og.svg
+  marketing lattice, near-black gridlines at 4.5% of a cell, and read as a different
+  product than the board players solved on). The card mirrors the in-game renderer's
+  system (`apps/web/src/ui/CrosswordGrid.tsx`, tokens in `apps/web/src/styles.css`):
+  square cells, no rounded corners, pale hairlines at the game's 0.6/36 module
+  (~1.67% of a cell), a frame at 2/36 (~5.56%) registered INSIDE the board edge
+  (stroke straddles the edge, nothing spills outside the board box), blocks and cell
+  grounds the game's own `--cell-block` / `--cell-default`, gridlines `--stroke`,
+  frame `--board-frame`. Light: blocks `#21201c`, lines `#dad9d6`, frame the game's
+  alpha-black whisper `#00000026`, bare cells `#fdfdfc`. Dark: blocks `#0b0b0a`,
+  lines and frame `#494844`, bare cells `#2a2a28`. The package stays standalone, so
+  the values are hardcoded copies (`LIGHT_BOARD`/`DARK_BOARD`/`BARE_CELL`/
+  `GRID_MODULE`); a tripwire test in apps/web (`src/share/boardChrome.test.ts`) pins
+  the copies against the CSS source so a game-board restyle flags the card.
+  Deliberate deviations from token-faithful, for the raster:
+  - **Stroke floors.** The faithful hairline at og size (15-wide, ~34px cells) is
+    0.57px and aliases away in a 1x PNG pass, so `boardStrokes` floors the line at
+    1px and the frame at 1.5px; above ~60px cells the pure ratios take over.
+  - **The light frame stays alpha.** `#00000026` is kept as alpha, not flattened
+    against a ground: the inside-registered frame overlays the outer cells' varying
+    tints, never one flat color, and resvg and canvas both composite it correctly.
+    At og size it is a whisper, as in the game; the mosaic's tint edge defines the
+    board, the frame just closes it.
+  - **The wash base stays the card face.** OWNER_TINT mixes into Studio/Observatory,
+    not the game's `--cell-default`: at 80% tint the base contributes a fifth of a
+    near-identical color, and keeping it preserves continuity with every S2 card
+    already in the wild. Bare (unowned) cells DO use the game's `--cell-default`.
 - **The wash.** An open cell is the owner's roster hex mixed 80% into the card face
   (pure-TS mix, both grounds): full-strength hex is a loud quilt that buries the type.
   A tuning dial, not a law.
