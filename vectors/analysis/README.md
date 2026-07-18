@@ -246,6 +246,36 @@ every legacy fixture is single-sitting (the D29 identity).
   Wave 12.2 reader asserts the equality and then awards the sheet, closing the
   events-to-awards pipeline.
 
+## The title labels (`title-labels.json`)
+
+`title-labels.json` freezes the cross-client display LABELS for the solver titles: the
+film-credit name a surface paints for a wire title key (`saboteur` -> `"The saboteur"`).
+It is a data table, `{ purpose, labels: [{ key, label }] }`, in the `roster.json` shape,
+not a reducer case array, and its `labels` are in the engine `TITLE_LADDER` rank order so
+a reader can pin coverage as well as content.
+
+The labels were client-owned prose (`design/post-game/SHARE.md`, wave S2): the wire carries
+only the key and the evidence number (`titles` on `GET /games/{id}/analysis`), and each client
+worded the label itself. They are promoted to shared normative ground here because the
+server-rendered share card now renders them in its credits block (native apps consume the server
+card PNG, not a client render; `design/post-game/SHARE.md`), so forking them server-side would
+break "never fork a string". **LABELS ONLY:** the evidence/detail line under a label
+(`"Overwrote 7 correct squares"`) interpolates the solve's own stats and stays client-owned; it is
+not pinned here. Content is the web `TITLE_COPY` labels verbatim, the ratified card copy; the three
+client twins were byte-identical when promoted, so nothing was reconciled.
+
+Consumers, each pinned by a local test that reads this file:
+
+- Web: `apps/web/src/ui/titlesReadout.test.ts` pins `TITLE_COPY` labels.
+- iOS: `apps/ios/Tests/CrossyUITests/TitleLabelsVectorTests.swift` pins `TitleLadder` labels.
+- Android: `apps/android/ui/src/test/kotlin/crossy/ui/TitleLabelsVectorTests.kt` pins `TitleLadder`
+  labels.
+- API: `apps/api/src/share/titleLabels.test.ts` pins the server card's `TITLE_LABELS`.
+
+A client MUST still ignore an unknown key (PROTOCOL.md §12): the ladder grows server-first, and a
+label absent here means a surface renders one fewer credit, never a crash. INV-6 holds trivially:
+labels are display strings, no cell, no letter.
+
 ## Why a separate family, not under `v1/`
 
 `vectors/v1/` is a closed registry whose runner throws on an unrecognized family. These pin
@@ -280,10 +310,12 @@ vectors/
     sequence.json      the ordered who-fell-when: each cell with atSeconds, sorted by (at, seq)
     titles.json        the solver-titles stat sheet and award ladder (four clusters: the Wave 10 pair plus the D29-fast-follow revisit pair)
     sittings.json      the sitting partition and active-time remap, plus the wire projection (two clusters)
+    title-labels.json  the cross-client display LABELS for the title keys (key -> label; a data table, not a reducer case array)
 ```
 
 One JSON file per projection, a bare array of cases, UTF-8, prettier-formatted (matches `v1/`,
 `first-correct/`). `titles.json` and `sittings.json` hold clusters keyed by reducer (above).
+`title-labels.json` is a data table, not a case array (below), the one departure in this family.
 
 ## Case shape
 

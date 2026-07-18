@@ -104,6 +104,30 @@ describe("share card render (SHARE.md wave S2)", () => {
     expect(withFonts.length).not.toBe(withoutFonts.length);
   });
 
+  it("renders the film-credit title label in the og credits (Wave 14.4: the server card gains credits)", () => {
+    // The server card now credits a titled solver with the pinned label (cardData.ts maps the
+    // bundle's title keys through titleLabels.ts). The og variant compresses credits to titles only,
+    // so the label rides the SVG text; a bare name+chip is what shipped before. This drives the same
+    // og render the server rasterizes, proving the credit surface renders (LABELS ONLY, no detail).
+    const titled: ShareCardData = {
+      ...DATA,
+      solvers: [
+        {
+          name: "Alice",
+          colorLight: "#6F66D4",
+          colorDark: "#9D95FF",
+          title: { label: "The saboteur" },
+        },
+        { name: "Bob", colorLight: "#DE5722", colorDark: "#FF7A50" },
+      ],
+    };
+    const { svg } = completionCardSvg(titled, {
+      ground: "light",
+      variant: "og",
+    });
+    expect(svg).toContain("The saboteur");
+  });
+
   it("INV-6: nothing letter-shaped can enter the render (owners, counts, names only)", () => {
     // The render's input type is ShareCardData: owners (indices), counts, and display metadata. There
     // is no field a board letter could ride, so a leak is a compile error, not a runtime strip. This

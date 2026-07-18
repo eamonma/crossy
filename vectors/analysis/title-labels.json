@@ -1,0 +1,21 @@
+{
+  "purpose": "The cross-client display LABELS for the post-game solver titles (the D29 award ladder; design/post-game/TITLES.md, PROTOCOL.md §12). The wire (GET /games/{id}/analysis `titles`) carries only a lowercase-kebab key and an evidence number; the label is the film-credit name a client paints for that key (\"The saboteur\"). These strings were client-owned prose until the server-rendered share card had to render them (native apps consume the server card PNG, not a client render; design/post-game/SHARE.md), so the labels are promoted here to shared normative ground. Frozen so web (apps/web/src/ui/titlesReadout.ts TITLE_COPY), iOS (apps/ios/Sources/CrossyUI/TitleLadder.swift), Android (apps/android/ui/src/main/kotlin/crossy/ui/TitleLadder.kt), and the server card (apps/api/src/share/titleLabels.ts) all render one title as the same words. LABELS ONLY: the evidence/detail line under a label (\"Overwrote 7 correct squares\") interpolates the solve's own stats and stays client-owned; it is not pinned here. Content is the web TITLE_COPY labels verbatim, the ratified card copy. Order is the engine TITLE_LADDER rank order (packages/engine/src/titles.ts), so a reader can also pin coverage; the wire already orders titles by rank, so this order is for coverage, not a sort a client applies. A client MUST still ignore an unknown key (PROTOCOL.md §12 forward compatibility): the ladder grows server-first, and a label absent here means an older client renders one fewer credit, never a crash.",
+  "labels": [
+    { "key": "saboteur", "label": "The saboteur" },
+    { "key": "one-hit-wonder", "label": "The one-hit wonder" },
+    { "key": "ice-breaker", "label": "The ice breaker" },
+    { "key": "bullseye", "label": "The bullseye" },
+    { "key": "headliner", "label": "The headliner" },
+    { "key": "sprinter", "label": "The sprinter" },
+    { "key": "meddler", "label": "The meddler" },
+    { "key": "marathoner", "label": "The marathoner" },
+    { "key": "quick-starter", "label": "The quick starter" },
+    { "key": "closer", "label": "The closer" },
+    { "key": "specialist", "label": "The specialist" },
+    { "key": "long-hauler", "label": "The long hauler" },
+    { "key": "wanderer", "label": "The wanderer" },
+    { "key": "scribbler", "label": "The scribbler" },
+    { "key": "collector", "label": "The collector" },
+    { "key": "workhorse", "label": "The workhorse" }
+  ]
+}
