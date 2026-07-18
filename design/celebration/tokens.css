@@ -1,0 +1,156 @@
+/* Real Crossy tokens, lifted verbatim from apps/web/src/styles.css (light theme).
+   The mocks import this so their color, type, radius, and shadow are the product's,
+   not an approximation. */
+:root {
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --color-sand-1: #fdfdfc;
+  --color-sand-2: #f9f9f8;
+  --color-sand-3: #f1f0ef;
+  --color-sand-4: #e9e8e6;
+  --color-sand-5: #e2e1de;
+  --color-sand-6: #dad9d6;
+  --color-sand-7: #cfceca;
+  --color-sand-8: #bcbbb5;
+  --color-sand-9: #8d8d86;
+  --color-sand-10: #82827c;
+  --color-sand-11: #63635e;
+  --color-sand-12: #21201c;
+  --color-sand-25: #ffffff;
+
+  --color-gold-1: #fdfdfc;
+  --color-gold-2: #faf9f2;
+  --color-gold-3: #f2f0e7;
+  --color-gold-4: #eae6db;
+  --color-gold-5: #e1dccf;
+  --color-gold-6: #d8d0bf;
+  --color-gold-7: #cbc0a8;
+  --color-gold-8: #b9a88d;
+  --color-gold-9: #978365;
+  --color-gold-10: #8c7a5e;
+  --color-gold-11: #71624b;
+  --color-gold-12: #3b352b;
+  --color-gold-25: #fbfaf4;
+
+  --color-green-9: #30a46c;
+  --color-green-11: #218358;
+  --color-indigo-9: #3e63dd;
+  --color-red-9: #e5484d;
+
+  --color-background: var(--color-sand-2);
+  --color-panel: var(--color-sand-25);
+  --color-panel-feature: var(--color-gold-25);
+  --color-text: var(--color-sand-12);
+  --color-text-muted: var(--color-sand-11);
+  --color-text-subtle: var(--color-sand-10);
+  --color-text-accent: var(--color-gold-11);
+  --color-border: var(--color-sand-6);
+  --color-border-strong: var(--color-sand-7);
+  --color-border-dashed: var(--color-sand-8);
+  --color-solid: var(--color-gold-9);
+
+  --radius-3: 6px;
+  --radius-4: 8px;
+  --radius-5: 12px;
+  --radius-6: 16px;
+
+  --shadow-lg:
+    0 8px 24px -6px rgb(30 27 20 / 0.14), 0 2px 6px -2px rgb(30 27 20 / 0.08);
+  --shadow-xl:
+    0 16px 48px -12px rgb(30 27 20 / 0.22), 0 4px 12px -4px rgb(30 27 20 / 0.1);
+
+  --tracking-caps: 0.06em;
+  --cell-block: var(--color-sand-12);
+  --cell-default: var(--color-sand-1);
+  --stroke: var(--color-sand-6);
+  --letter: var(--color-sand-12);
+  --clue-number: var(--color-sand-11);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: var(--color-text);
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+}
+
+.caps {
+  font-size: 0.9em;
+  font-weight: 600;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+/* A faithful reduction of the projector layout: board hero left, rail right, the
+   dashed divider between. Type is em-scaled off the rail base, as PartyView does. */
+.party {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+.stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px dashed var(--color-border-dashed);
+  padding: 3vmin;
+  position: relative;
+  overflow: hidden;
+}
+.rail {
+  width: 34%;
+  min-width: 20rem;
+  max-width: 38rem;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4vmin;
+  font-size: 1.5rem;
+}
+
+/* The board: a plain CSS grid of cells, letters in the numeral/letter tokens. Enough
+   to read as the finished puzzle at projector scale without the SVG renderer. */
+.board {
+  display: grid;
+  gap: 0;
+  background: var(--stroke);
+  border: 2px solid var(--color-sand-a6, rgba(0, 0, 0, 0.15));
+  box-shadow: var(--shadow-lg);
+}
+.cell {
+  background: var(--cell-default);
+  width: 130px;
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 68px;
+  font-weight: 500;
+  color: var(--letter);
+  position: relative;
+  border: 0.6px solid var(--stroke);
+}
+.cell.block {
+  background: var(--cell-block);
+}
+.cell .num {
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--clue-number);
+}
