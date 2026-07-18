@@ -21,6 +21,11 @@ public enum ErrorCode: String, Codable, Sendable, Equatable, CaseIterable {
     case rateLimited = "RATE_LIMITED"
     case unknownType = "UNKNOWN_TYPE"
     case internalError = "INTERNAL"
+    // The check-vote rejections (PROTOCOL.md §10, §11; D32), all non-fatal.
+    case votePending = "VOTE_PENDING"
+    case noVoteOpen = "NO_VOTE_OPEN"
+    case notElector = "NOT_ELECTOR"
+    case alreadyVoted = "ALREADY_VOTED"
 }
 
 /// Fatality classification (PROTOCOL.md §11). `always`/`never` are fixed; `varies` is
@@ -41,7 +46,8 @@ extension ErrorCode {
             .protocolVersionUnsupported:
             return .always
         case .gameNotOngoing, .invalidCell, .invalidValue, .gridNotFull, .roleForbidden,
-            .rateLimited, .unknownType:
+            .rateLimited, .unknownType,
+            .votePending, .noVoteOpen, .notElector, .alreadyVoted:
             return .never
         case .internalError:
             return .varies

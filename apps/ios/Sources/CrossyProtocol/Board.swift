@@ -211,6 +211,35 @@ public struct Stats: Sendable, Equatable, Codable {
     }
 }
 
+/// The open check vote as it rides a board snapshot (PROTOCOL.md §4, §10; D32), null when
+/// none is open. A client reconnecting mid-vote heals the whole vote from this with no delta
+/// replay. `openedSeq` is the vote's identity (the `voteSeq` a ballot names); `electorate`,
+/// `approvals`, `rejections` are ascending userId arrays (INV-1); `needed` is the carried
+/// strict majority; `expiresAt` is the absolute ISO 8601 timeout, adapter-stamped. Carries no
+/// cell values or answers (INV-6).
+public struct BoardCheckVote: Sendable, Equatable, Codable {
+    public let openedSeq: Int
+    public let by: String
+    public let electorate: [String]
+    public let approvals: [String]
+    public let rejections: [String]
+    public let needed: Int
+    public let expiresAt: String
+
+    public init(
+        openedSeq: Int, by: String, electorate: [String], approvals: [String],
+        rejections: [String], needed: Int, expiresAt: String
+    ) {
+        self.openedSeq = openedSeq
+        self.by = by
+        self.electorate = electorate
+        self.approvals = approvals
+        self.rejections = rejections
+        self.needed = needed
+        self.expiresAt = expiresAt
+    }
+}
+
 /// The full board snapshot (PROTOCOL.md §4). `cells` has length `rows * cols`.
 /// `recentCommandIds` is the last K applied `commandId`s for snapshot reconciliation
 /// (§8). Reconnect always transfers the whole board; there are no deltas (§1). Twin of
@@ -231,6 +260,10 @@ public struct Board: Sendable, Equatable, Codable {
     /// The game's total accepted checks, `0` before the first; permanent, never reset
     /// (PROTOCOL.md §4, §10; D27). Decoded tolerantly (default 0) like the marks.
     public let checkCount: Int
+    /// The open check vote (PROTOCOL.md §4, §10; D32), nil when none is open. Rides every
+    /// snapshot so a reconnect mid-vote heals the whole vote. Decoded tolerantly (a pre-vote
+    /// server omits the key; default nil), the avatarUrl posture toward additive fields.
+    public let checkVote: BoardCheckVote?
     public let participants: [Participant]
     public let cursors: [Cursor]
     public let recentCommandIds: [String]
@@ -245,6 +278,7 @@ public struct Board: Sendable, Equatable, Codable {
         cells: [Cell],
         checkedWrongCells: [Int] = [],
         checkCount: Int = 0,
+        checkVote: BoardCheckVote? = nil,
         participants: [Participant],
         cursors: [Cursor],
         recentCommandIds: [String],
@@ -258,6 +292,7 @@ public struct Board: Sendable, Equatable, Codable {
         self.cells = cells
         self.checkedWrongCells = checkedWrongCells
         self.checkCount = checkCount
+        self.checkVote = checkVote
         self.participants = participants
         self.cursors = cursors
         self.recentCommandIds = recentCommandIds
@@ -273,6 +308,7 @@ public struct Board: Sendable, Equatable, Codable {
         case cells
         case checkedWrongCells
         case checkCount
+        case checkVote
         case participants
         case cursors
         case recentCommandIds
@@ -292,6 +328,9 @@ public struct Board: Sendable, Equatable, Codable {
         // still throws (PROTOCOL.md §4).
         checkedWrongCells = try container.decodeIfPresent([Int].self, forKey: .checkedWrongCells) ?? []
         checkCount = try container.decodeIfPresent(Int.self, forKey: .checkCount) ?? 0
+        // Absent (pre-vote server) or explicit null both mean no vote open; a present
+        // object decodes to the open vote (PROTOCOL.md §4, §10; D32).
+        checkVote = try container.decodeIfPresent(BoardCheckVote.self, forKey: .checkVote)
         participants = try container.decode([Participant].self, forKey: .participants)
         cursors = try container.decode([Cursor].self, forKey: .cursors)
         recentCommandIds = try container.decode([String].self, forKey: .recentCommandIds)
@@ -308,6 +347,9 @@ public struct Board: Sendable, Equatable, Codable {
         try container.encode(cells, forKey: .cells)
         try container.encode(checkedWrongCells, forKey: .checkedWrongCells)
         try container.encode(checkCount, forKey: .checkCount)
+        // Encoded only when a vote is open, matching the wire's absent-means-none (the
+        // marks/count posture keeps them always present; the vote object does not).
+        try container.encodeIfPresent(checkVote, forKey: .checkVote)
         try container.encode(participants, forKey: .participants)
         try container.encode(cursors, forKey: .cursors)
         try container.encode(recentCommandIds, forKey: .recentCommandIds)
