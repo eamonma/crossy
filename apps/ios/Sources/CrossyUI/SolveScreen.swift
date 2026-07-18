@@ -569,35 +569,7 @@ public struct SolveScreen: View {
         // The facts sheet (owner ruling 2026-07-12): the time pill's tap presents
         // it, the ShareQRSheet register. A mid-solve surface only, so openFacts
         // gates the summon to `ongoing` and a terminal transition dismisses it.
-        .sheet(isPresented: $factsPresented) {
-            RoomFactsSheet(
-                ground: ground,
-                content: factsContent,
-                operations: factsPanelOperations,
-                // The headline Time is active time (owner ruling, D29): the stats
-                // twin's preference rule, wall-clock fallback for frozen pre-D29 rows.
-                solveTimeSeconds: store.stats?.headlineSolveSeconds,
-                firstFillAt: store.firstFillAt,
-                completedAt: store.completedAt ?? store.abandonedAt,
-                // The confirm-time race resolves in layers (design R2): fullness
-                // re-derives from SEQUENCED state at the confirm tap — a teammate
-                // emptying a cell between render and confirm quietly falls back
-                // to the row, already disabled again — and a server GRID_NOT_FULL
-                // stays silent (§11 non-fatal; the newly empty cell and the row's
-                // hint are the explanation). The send is the store's intent (R1);
-                // the sheet closes so the marks land in view.
-                onCheckPuzzle: {
-                    guard store.filledCount == puzzle.playableCellCount else { return }
-                    store.checkPuzzle()
-                    factsPresented = false
-                },
-                // The abandon's terminal transition dismisses the sheet through
-                // observeRoomState anyway; closing here too keeps it prompt.
-                onEndGame: {
-                    onEndGame()
-                    factsPresented = false
-                })
-        }
+        .sheet(isPresented: $factsPresented) { factsSheet }
         // The clarity beat (DESIGN.md §4, §8): every standing surface reads the
         // flag through the environment; below iOS 26 the fallback stays inert.
         .environment(\.chromeClarified, completion.isClarityBeat)
@@ -981,6 +953,13 @@ public struct SolveScreen: View {
         }
     }
 
+    /// Solo = the only connected host/solver (the electorate would be one), so the vote
+    /// auto-passes and the Check control keeps the plain confirm (PROTOCOL.md §10, D32; Wave
+    /// 15.5). Spectators never vote, so they never count toward multiplayer.
+    private var isSoloRoom: Bool {
+        store.participants.filter { $0.connected && $0.role != .spectator }.count <= 1
+    }
+
     /// Cells rendering non-null (the INV-10 composite), for the browser's
     /// de-emphasis rule.
     private var filledCells: Set<Int> {
@@ -1031,6 +1010,41 @@ public struct SolveScreen: View {
             selfUserId: store.selfUserId,
             ground: ground)
         return word.sorted().flatMap { marks[$0] ?? [] }
+    }
+
+    /// The facts sheet, extracted so its initializer type-checks in reasonable time (the
+    /// large-initializer split; the vote's soloRoom flag pushed the inline call over the
+    /// solver's budget).
+    private var factsSheet: some View {
+        RoomFactsSheet(
+            ground: ground,
+            content: factsContent,
+            operations: factsPanelOperations,
+            // The headline Time is active time (owner ruling, D29): the stats
+            // twin's preference rule, wall-clock fallback for frozen pre-D29 rows.
+            solveTimeSeconds: store.stats?.headlineSolveSeconds,
+            firstFillAt: store.firstFillAt,
+            completedAt: store.completedAt ?? store.abandonedAt,
+            // The confirm-time race resolves in layers (design R2): fullness re-derives from
+            // SEQUENCED state at the propose tap — a teammate emptying a cell between render
+            // and propose quietly falls back to the row, already disabled again — and a server
+            // GRID_NOT_FULL / VOTE_PENDING stays quiet (§11 non-fatal). The send is the store's
+            // intent (R1); the sheet closes so the vote or the marks land in view.
+            onCheckPuzzle: {
+                guard store.filledCount == puzzle.playableCellCount else { return }
+                store.checkPuzzle()
+                factsPresented = false
+            },
+            // The abandon's terminal transition dismisses the sheet through observeRoomState
+            // anyway; closing here too keeps it prompt.
+            onEndGame: {
+                onEndGame()
+                factsPresented = false
+            },
+            // Solo keeps the plain confirm; a multiplayer room proposes through the
+            // hold-to-propose control, opening the vote for the room (PROTOCOL.md §10, D32;
+            // Wave 15.5). Solo is the only connected host/solver (the electorate of one).
+            soloRoom: isSoloRoom)
     }
 
     // MARK: - The check vote (PROTOCOL.md §10, D32; Wave 15.5)
