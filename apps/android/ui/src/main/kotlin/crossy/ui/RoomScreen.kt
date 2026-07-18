@@ -235,6 +235,21 @@ fun RoomScreen(
             voteResolution?.let { if (CheckVoteBenchModel.resolutionComplete(it, voteNowMs)) voteResolution = null }
         }
     }
+    // The success haptic is timed to the WASH START, not the close event (D32 reveal beat): after the
+    // "Checking…" breath, when the ring flash-dissolves and the marks wash in. A resolution replaced
+    // or withdrawn before the breath cancels this cleanly (the key change).
+    LaunchedEffect(voteResolution) {
+        if (voteResolution is VoteResolution.Passed) {
+            delay(VoteBenchTiming.REVEAL_BREATH_MS)
+            haptics.play(SolveHaptic.VOTE_PASSED)
+        }
+    }
+    // During the reveal breath the grid holds the marks back so the beat reads "Checking…" first, THEN
+    // the marks wash in after the breath (not the instant the check closed). Solo has no resolution, so
+    // its instant check is unaffected.
+    val revealingBreath = (voteResolution as? VoteResolution.Passed)?.let {
+        (voteNowMs - it.startedAt) < VoteBenchTiming.REVEAL_BREATH_MS
+    } == true
 
     // The conflict flash (PROTOCOL.md §8, D02): the store detects the trigger, the grid animates the
     // ~300 ms wash in the writer's color. The book is held HERE beside the render model (the iOS
@@ -256,10 +271,10 @@ fun RoomScreen(
         // so no gate is needed here. The marks and count themselves are state the grid and facts read.
         store.onPuzzleChecked = { checked ->
             if (pendingVotePass) {
-                // A passing vote's reveal (D32): the success double timed to the wash, and the Bench's
-                // reveal line ("Checking…" then "{n} to fix"). A solo/bare check never sets this flag.
+                // A passing vote's reveal (D32): open the reveal beat ("Checking…" then the ~600 ms
+                // breath then the marks and "{n} to fix"). The success haptic is NOT played here (the
+                // close event): it is timed to the wash start below. A solo/bare check never sets this.
                 pendingVotePass = false
-                haptics.play(SolveHaptic.VOTE_PASSED)
                 voteResolution = VoteResolution.Passed(checked.wrongCells.size, System.currentTimeMillis())
             } else {
                 // A solo auto-pass or a bare puzzleChecked (server rollout window): the check lands as
@@ -267,12 +282,15 @@ fun RoomScreen(
                 haptics.play(SolveHaptic.CHECK_LANDED)
             }
         }
-        // The vote opened (D32): the firm click and the ring's ignite origin. Snapshot healing stays
-        // silent (the store fires this only under the §7 seq gate).
-        store.onVoteOpened = {
-            voteResolution = null
-            voteOpenedAt = System.currentTimeMillis()
-            haptics.play(SolveHaptic.VOTE_OPENED)
+        // The vote opened (D32): the firm click and the ring's ignite origin. Solo is suppressed at the
+        // source (a solo electorate of one shows no chrome and no haptic, not for a frame): only a real
+        // multi-elector vote rings and clicks. Snapshot healing stays silent (the §7 seq gate).
+        store.onVoteOpened = { opened ->
+            if (opened.electorate.size > 1) {
+                voteResolution = null
+                voteOpenedAt = System.currentTimeMillis()
+                haptics.play(SolveHaptic.VOTE_OPENED)
+            }
         }
         // The vote closed (D32): a pass defers its reveal to the puzzleChecked that follows; a fail or
         // cancel shows its one calm line now, with the proposer-only tally from the pre-close vote.
@@ -621,6 +639,10 @@ fun RoomScreen(
                 // SEQUENCED state at the confirm tap (a teammate emptying a cell between render and
                 // confirm quietly falls back to the disabled row), and a server GRID_NOT_FULL stays
                 // silent (§11 non-fatal). The send is the store's intent (R1, no overlay entry).
+                // Multiplayer proposes a public vote, so the check control holds to propose (U3, D32);
+                // solo auto-passes and keeps the confirm. The grid-full gate re-derives at the propose
+                // moment (R2); a GRID_NOT_FULL / VOTE_PENDING answer is non-fatal and silent (§11).
+                isSolo = render.isSoloRoom,
                 onCheckPuzzle = {
                     if (store.render.value.filledCount == geometry.playableCellCount) store.checkPuzzle()
                 },
@@ -641,7 +663,9 @@ fun RoomScreen(
                 ground = ground,
                 cursorTint = cursorTint,
                 crossReference = crossReference,
-                checkedWrong = visibleCheckMarks,
+                // Held back through the reveal breath so a passing vote reads "Checking…" first, then
+                // the marks wash in after the breath (D32 reveal); shown as today otherwise.
+                checkedWrong = if (revealingBreath) emptySet() else visibleCheckMarks,
                 flashes = flashes,
                 mosaic = mosaic,
                 showsWordLoupe = showLoupe,
