@@ -218,6 +218,16 @@ public enum ArrivalCopy {
     public static let settingsEndOfWordSubtitle = "Once the word is full"
     public static let settingsEndOfWordNextClue = "Next clue"
     public static let settingsEndOfWordFirstBlank = "First blank"
+    /// The swipe-sensitivity picker (root DESIGN.md §5), its three option labels, and
+    /// the footer that explains the tradeoff. The strings are verbatim contract shared
+    /// with the Android twin, so both surfaces read the same.
+    public static let settingsSwipeSensitivityTitle = "Swipe sensitivity"
+    public static let settingsSwipeSensitivityRelaxed = "Relaxed"
+    public static let settingsSwipeSensitivityStandard = "Standard"
+    public static let settingsSwipeSensitivityPrecise = "Precise"
+    public static let settingsSwipeSensitivityFooter =
+        "How readily a swipe on the grid turns the page. Relaxed accepts shorter, "
+        + "looser swipes; Precise waits for a deliberate one."
 
     // Reactions (Wave 8.5; PROTOCOL.md §9, D25): the personal send set editor.
     /// The quiet caps header over the reactions block.

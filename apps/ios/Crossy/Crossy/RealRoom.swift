@@ -76,6 +76,15 @@ final class RealRoom {
     /// slice 1), so a change in Settings reaches this open room live. The default keeps
     /// the pre-slice behavior for the harness composition, which sets none.
     private let navigationPrefs: () -> BoardNavigation.NavigationPrefs
+    /// The person's swipe-sensitivity preference, read fresh each time the room's view
+    /// rebuilds (personal-settings), so a change in Settings reaches this open room's
+    /// next swipe. The default keeps the standard thresholds for the harness
+    /// composition, which sets none.
+    private let swipeTuningProvider: () -> SwipeTuning
+
+    /// The live swipe thresholds this room's board reads (RealRoomView threads them
+    /// into SolveScreen); reading it in the view body tracks the @Observable store.
+    var swipeTuning: SwipeTuning { swipeTuningProvider() }
 
     /// The harness composition: every fact including the token is injected
     /// (RoomConfig, the CROSSY_IT_* pattern). No settings surface, so the pre-slice
@@ -110,12 +119,14 @@ final class RealRoom {
         gameId: String,
         tokenProvider: any BearerTokenProviding,
         seed: RoomArrivalSeed? = nil,
-        navigationPrefs: @escaping () -> BoardNavigation.NavigationPrefs = { .default }
+        navigationPrefs: @escaping () -> BoardNavigation.NavigationPrefs = { .default },
+        swipeTuning: @escaping () -> SwipeTuning = { .standard }
     ) {
         self.gameId = gameId
         self.sessionBaseURL = sessionBaseURL
         self.tokenProvider = tokenProvider
         self.navigationPrefs = navigationPrefs
+        self.swipeTuningProvider = swipeTuning
         let placeholder = GridPuzzle(rows: 1, cols: 1, blocks: [])
         puzzle = placeholder
         clues = .empty

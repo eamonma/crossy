@@ -650,7 +650,8 @@ struct ArrivalRootView: View {
                         // arrival. RealRoom seeds the store's roster and the share
                         // payload from it before the REST fetch.
                         seed: roomSeeds[gameId],
-                        navigationPrefs: { typingPrefs.navigationPrefs }),
+                        navigationPrefs: { typingPrefs.navigationPrefs },
+                        swipeTuning: { typingPrefs.swipeTuning }),
                     // The model's shared personal-set store (D25): the fan is born
                     // wearing the synced five and follows a Settings edit live.
                     reactionSets: model.reactionSets,

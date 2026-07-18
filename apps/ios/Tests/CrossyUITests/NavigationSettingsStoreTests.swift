@@ -59,4 +59,29 @@ final class NavigationSettingsStoreTests: XCTestCase {
         store.endOfWordIsNextClue = false
         XCTAssertEqual(store.navigationPrefs.endOfWord, .firstBlank)
     }
+
+    // MARK: - Swipe sensitivity (root DESIGN §5: the per-device preset)
+
+    func test_unsetDevice_readsStandardSwipeSensitivity_rootDesign5() {
+        let store = NavigationSettingsStore(defaults: defaults)
+        XCTAssertEqual(store.swipeSensitivity, .standard)
+        XCTAssertEqual(store.swipeTuning, .standard)
+    }
+
+    func test_swipeSensitivity_persistsAcrossAFreshRead_rootDesign5() {
+        let first = NavigationSettingsStore(defaults: defaults)
+        first.swipeSensitivity = .precise
+
+        let second = NavigationSettingsStore(defaults: defaults)
+        XCTAssertEqual(second.swipeSensitivity, .precise)
+        XCTAssertEqual(second.swipeTuning, .precise)
+    }
+
+    func test_unrecognizedStoredSwipeString_readsStandard_rootDesign5() {
+        // A value the app no longer knows (a downgrade, a hand-edited default) must
+        // degrade to the standard preset, never trap the person on a broken setting.
+        defaults.set("turbo", forKey: "input.swipeSensitivity")
+        let store = NavigationSettingsStore(defaults: defaults)
+        XCTAssertEqual(store.swipeSensitivity, .standard)
+    }
 }

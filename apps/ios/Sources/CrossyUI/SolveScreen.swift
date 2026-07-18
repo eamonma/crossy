@@ -88,6 +88,12 @@ public struct SolveScreen: View {
     /// 2026-07-14): detached and floating by default, the in-bar corner variant
     /// behind the launch flag so the A/B stays possible.
     private let reactionFanPlacement: ReactionFanPlacement
+    /// The person's live swipe-sensitivity preference resolved to thresholds
+    /// (NavigationSettingsStore.swipeTuning), threaded into the board's gesture layer
+    /// the way navigationPrefs feeds the cursor. The composition root reads the store
+    /// live, so a Settings change reaches an open room's next swipe. Standard is the
+    /// pre-preference behavior for callers that pass none.
+    private let swipeTuning: SwipeTuning
     @State private var model: SelectionModel
     @State private var chrome: RoomChromeModel
     @State private var completion = CompletionModel()
@@ -178,7 +184,8 @@ public struct SolveScreen: View {
         fetchAnalysis: (() async -> RoomAnalysis?)? = nil,
         prepareShareCard: (@MainActor (GridGround) async -> Bool)? = nil,
         reactionFanPlacement: ReactionFanPlacement = .floating,
-        reactionSets: ReactionSetStore? = nil
+        reactionSets: ReactionSetStore? = nil,
+        swipeTuning: SwipeTuning = .standard
     ) {
         self.store = store
         self.puzzle = puzzle
@@ -203,6 +210,7 @@ public struct SolveScreen: View {
         self.prepareShareCard = prepareShareCard
         self.reactionFanPlacement = reactionFanPlacement
         self.reactionSets = reactionSets
+        self.swipeTuning = swipeTuning
         // The fan is born wearing the personal five (or the defaults); the onChange
         // below re-dresses it if the set changes while the room stands.
         _fan = State(
@@ -728,6 +736,9 @@ public struct SolveScreen: View {
                 keepClear: .keepClear(
                     board: chromeFrames[.board], topInset: roomTopInset,
                     clueSlot: chromeFrames[.clueBarSlot]),
+                // The person's swipe-sensitivity preference (root DESIGN.md §5),
+                // threaded live from Settings so the next swipe honors a change.
+                swipeTuning: swipeTuning,
                 // A swipe never becomes a tap, so the yield law needs
                 // its own hook here (DESIGN.md §4): panels pour back,
                 // the swipe still navigates.
