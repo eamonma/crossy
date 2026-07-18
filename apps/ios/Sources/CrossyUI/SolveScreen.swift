@@ -136,6 +136,12 @@ public struct SolveScreen: View {
     @State private var voteRecess: CheckVoteRecess?
     @State private var voteRingPhase: CheckVoteRingPhase = .draining
     @State private var voteCollapsed = false
+    /// The mark wash (U6): the reference-date instant a passing check's coats begin revealing
+    /// in ascending cell order. Set on a live attributed check (never on snapshot healing, never
+    /// under Reduce Motion), a breath after the marks apply, and retired once the wash finishes;
+    /// the token guards the retirement against a newer wash.
+    @State private var checkWashStartedAt: TimeInterval?
+    @State private var checkWashToken = 0
     @State private var relay = CursorRelayThrottle()
     @State private var relayTrailing: Task<Void, Never>?
     /// The reaction sticker book (Wave 7.5; PROTOCOL.md §9): beside the store, never
@@ -351,13 +357,6 @@ public struct SolveScreen: View {
                 ConfettiOverlay(field: confettiField, startedAt: confettiStart)
             }
 
-            // The check vote (PROTOCOL.md §10, D32; Wave 15.5): the gold ring around the
-            // grid and the non-modal Bench. It floats above the board yet leaves it fully
-            // interactive (play continues during a vote), and it never appears for a solo
-            // electorate (the auto-pass shows no chrome). The clue chrome docks below via the
-            // room's own overlay stack; the vote Bench sits at the bottom edge like the deck.
-            checkVoteLayer
-
             // The room's top chrome is the system navigation bar's items now
             // (the toolbar-adoption ruling, DESIGN.md §4): the pieces goo into
             // the Rooms Join item across the #132 zoom push. The hand-drawn
@@ -423,6 +422,13 @@ public struct SolveScreen: View {
                     // well above this, so it is inert then.
                     .ignoresSafeArea(.container, edges: .bottom)
             }
+
+            // The check vote (PROTOCOL.md §10, D32; Wave 15.5): the gold ring around the grid
+            // and the non-modal Bench. Mounted ABOVE the clue chrome so that when both stand,
+            // the vote's collapsed strip is never buried (the collision ruling): the grid stays
+            // fully interactive beneath it (play continues during a vote), and it never appears
+            // for a solo electorate (the auto-pass shows no chrome for a frame).
+            checkVoteLayer
 
             // The DETACHED fan, the default placement (owner lean 2026-07-14:
             // "separate from clue bar"): a lone glass button floating 10 pt above
@@ -712,6 +718,10 @@ public struct SolveScreen: View {
                 // recesses toward paper. One truth on CompletionModel, read by
                 // the legend rows and this draw pass alike.
                 mosaicIsolation: completion.isolation,
+                // The check mark wash (Wave 15.5, U6): a passing check reveals its coats
+                // in ascending cell order from this instant. Nil except during the reveal
+                // (and always nil under Reduce Motion), where the coats draw instantly.
+                checkWashStartedAt: checkWashStartedAt,
                 // The approved directional loupe belongs only to the settled completed board's
                 // Analysis reading. The Clues tab keeps the established frozen paper treatment.
                 showsWordLoupe: analysisResting && completion.mosaicSettled,
@@ -1159,10 +1169,10 @@ public struct SolveScreen: View {
                 return
             }
             if msg.outcome == .passed {
-                // The reveal (passed): the ring flashes and dissolves inward while the Bench
-                // holds "Checking\u{2026}"; onPuzzleChecked lands the marks and swaps in
-                // "{n} to fix". The pass haptic is timed to that mark wash, not here.
-                voteRingPhase = .passing
+                // The reveal (passed): the Bench holds "Checking\u{2026}" through the breath; the
+                // ring keeps its steady draw until onPuzzleChecked flashes it inward at the wash
+                // start (so the flash, the marks, and the success haptic land together, U6). The
+                // ring stays visible because the recess Bench mounts it.
                 let token = (voteRecess?.token ?? 0) + 1
                 withAnimation(reduceMotion ? nil : .crossyChrome) {
                     voteRecess = CheckVoteRecess(
@@ -1191,22 +1201,47 @@ public struct SolveScreen: View {
             }
             scheduleRecessWithdraw(token: token, after: 2500)
         }
-        // The check landing (PROTOCOL.md §6, §10; D32). An attributed check (carrying `by`) is
-        // a passing vote's mark wash: play the success pattern timed to it, and after a short
-        // breath swap the Bench's "Checking\u{2026}" for "{n} to fix", then withdraw. A bare
-        // check (the rollout window, no `by`) keeps the legacy soft thud and no vote reveal.
+        // The check landing (PROTOCOL.md §6, §10; D32). A multiplayer pass reveal (the Bench is
+        // on "Checking\u{2026}") runs the U6 ceremony: the just-applied coats hide, and after a
+        // ~600 ms breath they wash in ascending cell order (< 900 ms) while the success haptic
+        // fires timed to that wash start and the Bench swaps to "{n} to fix". A solo pass and a
+        // bare rollout check (no `by`, no Bench) are instant: the haptic plays now, no wash.
         store.onPuzzleChecked = { msg in
-            SolveHaptics.shared.play(msg.by != nil ? .checkVotePassed : .checkLanded)
-            guard msg.by != nil, let model = voteRecess?.model else { return }
+            guard msg.by != nil, let model = voteRecess?.model else {
+                // Solo pass (attributed, no Bench) or a bare check: instant, no wash.
+                SolveHaptics.shared.play(msg.by != nil ? .checkVotePassed : .checkLanded)
+                return
+            }
             let count = msg.wrongCells.count
-            let token = (voteRecess?.token ?? 0) + 1
+            let recessToken = (voteRecess?.token ?? 0) + 1
+            guard !reduceMotion else {
+                // Reduce Motion: no breath, no wash. The coats are already at full opacity
+                // (checkWashStartedAt stays nil); swap the line and play the success now.
+                SolveHaptics.shared.play(.checkVotePassed)
+                voteRecess = CheckVoteRecess(
+                    model: model, line: CheckVoteCopy.toFix(count), tally: nil, token: recessToken)
+                scheduleRecessWithdraw(token: recessToken, after: 2500)
+                return
+            }
+            // Hide the coats now (a future start makes every reveal 0 during the breath), then
+            // wash them in. The ring flash-dissolves at the wash start with them.
+            let breathMilliseconds = 600
+            let start = Date().timeIntervalSinceReferenceDate + Double(breathMilliseconds) / 1000
+            checkWashStartedAt = start
+            let washToken = checkWashToken + 1
+            checkWashToken = washToken
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 600))
-                withAnimation(reduceMotion ? nil : .crossyChrome) {
+                try? await Task.sleep(for: .milliseconds(breathMilliseconds))
+                SolveHaptics.shared.play(.checkVotePassed)  // timed to the wash start
+                voteRingPhase = .passing
+                withAnimation(.crossyChrome) {
                     voteRecess = CheckVoteRecess(
-                        model: model, line: CheckVoteCopy.toFix(count), tally: nil, token: token)
+                        model: model, line: CheckVoteCopy.toFix(count), tally: nil, token: recessToken)
                 }
-                scheduleRecessWithdraw(token: token, after: 2500)
+                // Retire the wash once it finishes (< 900 ms), re-pausing the grid timeline.
+                try? await Task.sleep(for: .milliseconds(950))
+                if checkWashToken == washToken { checkWashStartedAt = nil }
+                scheduleRecessWithdraw(token: recessToken, after: 2500)
             }
         }
     }

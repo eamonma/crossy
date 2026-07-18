@@ -70,9 +70,10 @@ public struct CheckVoteRing: View {
             ZStack {
                 // The draining halo. When motion is allowed the trim sweeps from full to empty
                 // with the remaining time; under Reduce Motion the full ring stands and only
-                // its opacity steps (no trim sweep, no pulse).
+                // its opacity steps (no trim sweep, no pulse). The pass flash draws the whole
+                // ring (trim 1) so the bloom-and-dissolve reads as a complete halo, not a stub.
                 shape
-                    .trim(from: 0, to: reduceMotion ? 1 : CGFloat(progress))
+                    .trim(from: 0, to: (reduceMotion || phase == .passing) ? 1 : CGFloat(progress))
                     .stroke(
                         gold,
                         style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
