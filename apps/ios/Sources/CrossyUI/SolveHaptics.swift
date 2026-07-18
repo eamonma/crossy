@@ -41,6 +41,17 @@ public enum SolveHaptic: Equatable, Sendable {
     /// celebration pattern. Fired off the store's live-event beat only
     /// (GameStore.onPuzzleChecked); snapshot healing stays silent.
     case checkLanded
+    /// A check vote opened (PROTOCOL.md §6, §10; D32, Wave 15.5): a medium impact, the
+    /// room's attention called. Heavier than a tick: a vote is a floor motion, not a wave.
+    case checkVoteOpened
+    /// A ballot filed (yours or a teammate's): a light selection tick, the division counting.
+    case checkVoteBallot
+    /// The vote passed: the completion success pattern, timed to the start of the mark wash
+    /// (the reveal's breath), so the hand and the marks land together.
+    case checkVotePassed
+    /// The vote failed or lapsed: two soft light impacts, a quiet "not this time" that never
+    /// reads as a celebration or a knock.
+    case checkVoteFailed
 }
 
 /// Starting values for the I2e device tuning pass (DESIGN.md §7: tuned on
@@ -59,6 +70,12 @@ public enum SolveHapticTuning {
     /// The room check's landing thud: heavier than a sticker's wave, lighter
     /// than the local word thud.
     public static let checkLandedIntensity: Double = 0.8
+    /// The vote grammar (Wave 15.5): the open is a medium call to the floor; each ballot a
+    /// light selection tick; the fail is two soft light taps read as one gesture.
+    public static let checkVoteOpenedIntensity: Double = 0.9
+    public static let checkVoteBallotIntensity: Double = 0.6
+    public static let checkVoteFailedIntensity: Double = 0.5
+    public static let checkVoteFailedGapMilliseconds: Int = 110
 }
 
 /// The exactly-when derivation. Feed every observed (filled, selection) pair;
@@ -157,11 +174,13 @@ public final class SolveHaptics {
     #if canImport(UIKit)
         private let tick = UIImpactFeedbackGenerator(style: .light)
         private let thud = UIImpactFeedbackGenerator(style: .soft)
+        private let medium = UIImpactFeedbackGenerator(style: .medium)
         private let pattern = UINotificationFeedbackGenerator()
 
         public func prepare() {
             tick.prepare()
             thud.prepare()
+            medium.prepare()
             pattern.prepare()
         }
 
@@ -195,6 +214,24 @@ public final class SolveHaptics {
             case .checkLanded:
                 thud.impactOccurred(intensity: SolveHapticTuning.checkLandedIntensity)
                 thud.prepare()
+            case .checkVoteOpened:
+                medium.impactOccurred(intensity: SolveHapticTuning.checkVoteOpenedIntensity)
+                medium.prepare()
+            case .checkVoteBallot:
+                tick.impactOccurred(intensity: SolveHapticTuning.checkVoteBallotIntensity)
+                tick.prepare()
+            case .checkVotePassed:
+                // The vote's own pass, timed to the mark wash: the completion success two-beat.
+                pattern.notificationOccurred(.success)
+            case .checkVoteFailed:
+                thud.impactOccurred(intensity: SolveHapticTuning.checkVoteFailedIntensity)
+                Task { @MainActor in
+                    try? await Task.sleep(
+                        for: .milliseconds(SolveHapticTuning.checkVoteFailedGapMilliseconds))
+                    self.thud.impactOccurred(
+                        intensity: SolveHapticTuning.checkVoteFailedIntensity)
+                    self.thud.prepare()
+                }
             }
         }
     #else

@@ -48,6 +48,11 @@ public struct CrossyGridView: View {
     /// toward paper. Presentation only — it exists only once the record has
     /// settled (the model gates the toggle), and nil is the full blurred field.
     private let mosaicIsolation: MosaicIsolation?
+    /// The reference-date instant a live check's marks begin washing in (Wave 15.5, U6): while
+    /// non-nil and unfinished the check coats reveal in ascending cell order rather than popping.
+    /// The caller sets it only for a live puzzleChecked (never on snapshot healing) and only when
+    /// motion is allowed; nil draws every coat at full opacity (the Reduce Motion / instant path).
+    private let checkWashStartedAt: TimeInterval?
     /// The completed Analysis tab's directional loupe. It is a clear glass view above the Canvas,
     /// never a grid fill; the caller gates it to the settled post-game mosaic.
     private let showsWordLoupe: Bool
@@ -119,6 +124,7 @@ public struct CrossyGridView: View {
         mosaicOwners: [Int: String]? = nil,
         mosaicSettled: Bool = false,
         mosaicIsolation: MosaicIsolation? = nil,
+        checkWashStartedAt: TimeInterval? = nil,
         showsWordLoupe: Bool = false,
         occlusion: GridOcclusion = .none,
         keepClear: GridOcclusion? = nil,
@@ -137,6 +143,7 @@ public struct CrossyGridView: View {
         self.mosaicOwners = mosaicOwners
         self.mosaicSettled = mosaicSettled
         self.mosaicIsolation = mosaicIsolation
+        self.checkWashStartedAt = checkWashStartedAt
         self.showsWordLoupe = showsWordLoupe
         self.occlusion = occlusion
         self.keepClear = keepClear ?? occlusion
@@ -184,10 +191,19 @@ public struct CrossyGridView: View {
                     settled: mosaicSettled,
                     isolation: mosaicIsolation)
             }
+            // The mark wash (Wave 15.5, U6): a passing check reveals its coats in ascending
+            // cell order rather than popping. Snapshotted like the mosaic so @Observable
+            // registers the checkedWrong read; withheld under Reduce Motion (nil start), where
+            // the coats draw at full opacity (the instant path). The standing marks are the
+            // wash's cells, ascending.
+            let wash: CheckWash? = checkWashStartedAt.map {
+                CheckWash(cells: store.checkedWrong.sorted(), startedAt: $0)
+            }
             // The timeline drives redraws only while a flash decays, the mosaic
-            // BLOOMS, or an isolation toggle crossfades; a settled mosaic is a
-            // constant field, so it pauses like rest
-            // (the Canvas redraws only when the snapshot inputs change).
+            // BLOOMS, the mark wash reveals, or an isolation toggle crossfades; a
+            // settled mosaic is a constant field, so it pauses like rest (the Canvas
+            // redraws only when the snapshot inputs change). The wash's own start
+            // param clears when it finishes (the caller retires it), which re-pauses.
             // Reaction stickers deliberately do NOT ride this Canvas: per-frame
             // Canvas redraws re-rasterize the emoji at every intermediate scale,
             // which read as entry shake on device (owner finding 2026-07-14). They
@@ -197,13 +213,13 @@ public struct CrossyGridView: View {
                 .animation(
                     minimumInterval: nil,
                     paused: flashes.isEmpty && (mosaic?.settled ?? true)
-                        && !isolationFading)
+                        && !isolationFading && wash == nil)
             ) { timeline in
                 let now = timeline.date.timeIntervalSinceReferenceDate
                 Canvas { context, size in
                     Self.draw(
                         frame: frame, camera: camera, ground: ground,
-                        flashes: flashes, mosaic: mosaic, now: now,
+                        flashes: flashes, mosaic: mosaic, wash: wash, now: now,
                         context: &context, viewport: size)
                 }
             }
@@ -492,7 +508,7 @@ extension CrossyGridView {
     /// closure is not actor-isolated, and the snapshot means it needs nothing that is.
     private nonisolated static func draw(
         frame: GridFrame, camera: GridCamera, ground: GridGround,
-        flashes: FlashBook, mosaic: MosaicWash?, now: TimeInterval,
+        flashes: FlashBook, mosaic: MosaicWash?, wash: CheckWash?, now: TimeInterval,
         context: inout GraphicsContext, viewport: CGSize
     ) {
         let puzzle = frame.puzzle
@@ -502,7 +518,7 @@ extension CrossyGridView {
         let visible = camera.visibleCells(
             viewport: viewport, rows: puzzle.rows, cols: puzzle.cols)
 
-        drawFills(frame, visible, tokens, &context)
+        drawFills(frame, visible, tokens, wash, now, &context)
         // The settled record's blurred color field lives UNDER everything that
         // must stay crisp: blocks (redrawn inside the field pass), hairlines,
         // numbers, letters, and the closing frame all draw after it.
@@ -529,7 +545,8 @@ extension CrossyGridView {
     /// a base coat, then the highlight level's tint over it.
     private nonisolated static func drawFills(
         _ frame: GridFrame, _ visible: (rows: Range<Int>, cols: Range<Int>),
-        _ tokens: GroundTokens, _ context: inout GraphicsContext
+        _ tokens: GroundTokens, _ wash: CheckWash?, _ now: TimeInterval,
+        _ context: inout GraphicsContext
     ) {
         for row in visible.rows {
             for col in visible.cols {
@@ -540,11 +557,14 @@ extension CrossyGridView {
                 context.fill(Path(rect), with: .color(Color(rgb: base)))
                 switch fill {
                 case .check:
-                    // The room's shared mark (PROTOCOL.md §10, D27): the check
+                    // The room's shared mark (PROTOCOL.md §10, D32): the check
                     // coat replaces the paper outright, a token per ground, never
                     // a personal color — the marks are room state, identical for
-                    // every member.
-                    context.fill(Path(rect), with: .color(Color(rgb: tokens.check)))
+                    // every member. During a live wash the coat reveals in ascending
+                    // cell order (Wave 15.5, U6); no wash draws it at full.
+                    let reveal = wash?.reveal(cell: cell, now: now) ?? 1
+                    context.fill(
+                        Path(rect), with: .color(Color(rgb: tokens.check).opacity(reveal)))
                 case .current:
                     context.fill(
                         Path(rect),

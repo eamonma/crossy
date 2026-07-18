@@ -100,7 +100,26 @@ func buildBoardState(_ given: [String: Any]) -> BoardState {
         cells: cells,
         filledCount: filledCount,
         checkedWrong: Set(checkedWrong),
-        checkCount: intValue(given["checkCount"]) ?? 0)
+        checkCount: intValue(given["checkCount"]) ?? 0,
+        // The open vote (check family; PROTOCOL §10, D32). Optional and null across every
+        // `given`, but parsed so a pre-populated vote would reconstruct faithfully (INV-9).
+        checkVote: buildCheckVote(given["checkVote"]))
+}
+
+/// Build the open vote from a `given.checkVote` scalar: nil for an explicit null or absent
+/// key, else the frozen electorate and the two ascending ballot arrays (PROTOCOL §10, D32).
+func buildCheckVote(_ raw: Any?) -> CheckVote? {
+    guard let object = raw as? [String: Any] else { return nil }
+    let strings: ([String: Any], String) -> [String] = { obj, key in
+        (obj[key] as? [Any] ?? []).compactMap { $0 as? String }
+    }
+    return CheckVote(
+        openedSeq: intValue(object["openedSeq"]) ?? 0,
+        by: object["by"] as? String ?? "",
+        commandId: object["commandId"] as? String ?? "",
+        electorate: strings(object, "electorate"),
+        approvals: strings(object, "approvals"),
+        rejections: strings(object, "rejections"))
 }
 
 /// The set of filled cell indices from a navigation case's `given.fills`.
@@ -160,7 +179,103 @@ func serializeState(_ state: BoardState) -> [String: Any] {
         // The wire and the vectors list the standing marks ascending (PROTOCOL §10).
         "checkedWrong": state.checkedWrong.sorted(),
         "checkCount": state.checkCount,
+        // The open vote, null when none (check family; PROTOCOL §10, D32). Unasserted by the
+        // reducer/completion shapes, whose `then.state` never lists it (the assertion rule
+        // ignores unlisted fields).
+        "checkVote": serializeCheckVote(state.checkVote),
     ]
+}
+
+/// Serialize the open vote to the `then.state.checkVote` JSON shape, or NSNull when none. The
+/// electorate and the two ballot arrays are already ascending in state (PROTOCOL §10, D32).
+func serializeCheckVote(_ vote: CheckVote?) -> Any {
+    guard let vote = vote else { return NSNull() }
+    return [
+        "openedSeq": vote.openedSeq,
+        "by": vote.by,
+        "commandId": vote.commandId,
+        "electorate": vote.electorate,
+        "approvals": vote.approvals,
+        "rejections": vote.rejections,
+    ]
+}
+
+/// A `when` entry as the vote driver's command, plain data (INV-9). `checkPuzzle` carries the
+/// proposer and the frozen electorate (the driver's `checkProposal` view); `castCheckVote` and
+/// `expireCheckVote` are the two other vote commands; anything else is a cell mutation
+/// (PROTOCOL §5, §10; D32).
+func asVoteCommand(_ w: [String: Any]) -> CrossyEngine.VoteCommand {
+    let commandId = w["commandId"] as? String ?? ""
+    switch w["type"] as? String {
+    case "checkPuzzle":
+        let electorate = (w["electorate"] as? [Any] ?? []).compactMap { $0 as? String }
+        return .checkProposal(commandId: commandId, by: w["by"] as? String ?? "", electorate: electorate)
+    case "castCheckVote":
+        return .castCheckVote(
+            commandId: commandId, by: w["by"] as? String ?? "",
+            voteSeq: intValue(w["voteSeq"]) ?? -1, approve: (w["approve"] as? Bool) ?? false)
+    case "expireCheckVote":
+        return .expireCheckVote
+    case "placeLetter":
+        return .placeLetter(
+            commandId: commandId, cell: intValue(w["cell"]) ?? -1,
+            value: w["value"] as? String ?? "", by: w["by"] as? String ?? "",
+            at: w["at"] as? String ?? "")
+    default:
+        return .clearCell(
+            commandId: commandId, cell: intValue(w["cell"]) ?? -1, by: w["by"] as? String ?? "",
+            at: w["at"] as? String ?? "")
+    }
+}
+
+/// Serialize one vote-driver event to its `then.events` JSON shape. Reuses the completion
+/// serializers for the shared events; the three vote events are the additions (D32).
+func serializeVoteEvent(_ event: CrossyEngine.VoteEvent) -> [String: Any] {
+    switch event {
+    case .cellSet(let cellSet):
+        return serializeCellSet(cellSet)
+    case .gameCompleted(let completed):
+        return ["type": "gameCompleted", "seq": completed.seq]
+    case .puzzleChecked(let checked):
+        var dict: [String: Any] = [
+            "type": "puzzleChecked",
+            "seq": checked.seq,
+            "wrongCells": checked.wrongCells,
+            "checkCount": checked.checkCount,
+            "commandId": checked.commandId,
+        ]
+        // `by` is present under the vote flow (the proposer), absent on the legacy path.
+        if let by = checked.by { dict["by"] = by }
+        return dict
+    case .checkVoteOpened(let opened):
+        return [
+            "type": "checkVoteOpened",
+            "seq": opened.seq,
+            "by": opened.by,
+            "electorate": opened.electorate,
+            "needed": opened.needed,
+            "commandId": opened.commandId,
+        ]
+    case .checkVoteCast(let cast):
+        return [
+            "type": "checkVoteCast",
+            "seq": cast.seq,
+            "voteSeq": cast.voteSeq,
+            "by": cast.by,
+            "approve": cast.approve,
+            "commandId": cast.commandId,
+        ]
+    case .checkVoteClosed(let closed):
+        var dict: [String: Any] = [
+            "type": "checkVoteClosed",
+            "seq": closed.seq,
+            "voteSeq": closed.voteSeq,
+            "outcome": closed.outcome.rawValue,
+        ]
+        // `reason` accompanies every non-passing outcome, absent when passed (D32).
+        if let reason = closed.reason { dict["reason"] = reason.rawValue }
+        return dict
+    }
 }
 
 func serializeCellSet(_ event: CellSet) -> [String: Any] {

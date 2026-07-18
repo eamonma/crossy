@@ -7,6 +7,7 @@ import CrossyProtocol
 
 final class WireErrorTableTests: XCTestCase {
     // The §11 table: code -> fatality. `INTERNAL` is varies (fatal:true means reconnect).
+    // The four check-vote codes (D32, amended 2026-07-18) are all non-fatal.
     private static let table: [String: Fatality] = [
         "UNAUTHORIZED": .always,
         "NOT_PARTICIPANT": .always,
@@ -21,9 +22,13 @@ final class WireErrorTableTests: XCTestCase {
         "RATE_LIMITED": .never,
         "UNKNOWN_TYPE": .never,
         "INTERNAL": .varies,
+        "VOTE_PENDING": .never,
+        "NO_VOTE_OPEN": .never,
+        "NOT_ELECTOR": .never,
+        "ALREADY_VOTED": .never,
     ]
 
-    func test_listsExactlyTheThirteenSection11Codes() throws {
+    func test_listsExactlyTheSection11Codes() throws {
         XCTAssertEqual(
             Set(ErrorCode.allCases.map(\.rawValue)),
             Set(Self.table.keys))

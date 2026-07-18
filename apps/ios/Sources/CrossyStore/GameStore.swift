@@ -60,6 +60,48 @@ public struct ConflictFlash: Sendable, Equatable {
     }
 }
 
+/// The open check vote as the store holds it for the view (PROTOCOL.md §4, §10; D32), the
+/// render-facing twin of the wire `BoardCheckVote`. `openedSeq` is the vote's identity (the
+/// `voteSeq` a ballot names); `electorate` is the frozen ascending eligible voters; `approvals`
+/// and `rejections` are the ascending userIds voted each way, `approvals` opening as `[by]`;
+/// `needed` is the carried strict majority; `expiresAt` is the absolute ISO 8601 timeout. It
+/// is created by `checkVoteOpened`, updated by each `checkVoteCast`, cleared by
+/// `checkVoteClosed`, and reconstructed wholesale from every snapshot.
+public struct CheckVoteState: Sendable, Equatable {
+    public let openedSeq: Int
+    public let by: String
+    public let electorate: [String]
+    public var approvals: [String]
+    public var rejections: [String]
+    public let needed: Int
+    public let expiresAt: String
+
+    public init(
+        openedSeq: Int, by: String, electorate: [String], approvals: [String],
+        rejections: [String], needed: Int, expiresAt: String
+    ) {
+        self.openedSeq = openedSeq
+        self.by = by
+        self.electorate = electorate
+        self.approvals = approvals
+        self.rejections = rejections
+        self.needed = needed
+        self.expiresAt = expiresAt
+    }
+
+    /// Reconstruct from a board snapshot's `checkVote` (a reconnect mid-vote heals fully).
+    public init(_ wire: BoardCheckVote) {
+        self.init(
+            openedSeq: wire.openedSeq, by: wire.by, electorate: wire.electorate,
+            approvals: wire.approvals, rejections: wire.rejections, needed: wire.needed,
+            expiresAt: wire.expiresAt)
+    }
+
+    /// Is this a solo electorate (the proposer alone)? The vote auto-passes; the UI shows no
+    /// vote chrome (PROTOCOL.md §10, D32; Wave 15.5 UX).
+    public var isSolo: Bool { electorate.count <= 1 }
+}
+
 /// One GameStore per connected game (ARCHITECTURE.md §3): the client mirror of the
 /// server's per-game actor. `@MainActor` and `@Observable` (AD-3): SwiftUI reads it
 /// synchronously with no hop, and every transition is O(1)-ish work the main thread
@@ -125,6 +167,11 @@ public final class GameStore {
     public private(set) var checkedWrong: Set<Int> = []
     /// The game's total accepted checks; permanent, never reset (PROTOCOL.md §10).
     public private(set) var checkCount: Int = 0
+    /// The open check vote (PROTOCOL.md §4, §10; D32), nil when none is open. Created by
+    /// `checkVoteOpened`, updated by `checkVoteCast`, cleared by `checkVoteClosed`, and
+    /// reconstructed wholesale from every snapshot so a reconnect mid-vote heals fully. The
+    /// vote events are sequenced, so this rides the §7 seq gate exactly like `checkedWrong`.
+    public private(set) var checkVote: CheckVoteState?
     public private(set) var selfUserId: String?
     /// The last non-fatal rejection, surfaced for the UI (PROTOCOL.md §8: a non-fatal
     /// error clears the matching overlay entry and surfaces the rejection).
@@ -156,6 +203,16 @@ public final class GameStore {
     /// state (`checkedWrong`/`checkCount`); this only surfaces the beat for the
     /// view's haptic. Set by the composition root.
     @ObservationIgnored public var onPuzzleChecked: (@MainActor (PuzzleCheckedMessage) -> Void)?
+
+    /// A check vote opened, cast, or closed (PROTOCOL.md §6, §10; D32): the onPuzzleChecked
+    /// pattern for the three vote beats. Fired only under the §7 seq gate, so snapshot healing
+    /// (a reconnect welcome carrying an open vote) stays silent and the view animates the ring
+    /// and the Bench only on a live transition, never on history arriving. The vote state
+    /// itself is `checkVote`; these only surface the beats for haptics and motion. Set by the
+    /// composition root.
+    @ObservationIgnored public var onCheckVoteOpened: (@MainActor (CheckVoteOpenedMessage) -> Void)?
+    @ObservationIgnored public var onCheckVoteCast: (@MainActor (CheckVoteCastMessage) -> Void)?
+    @ObservationIgnored public var onCheckVoteClosed: (@MainActor (CheckVoteClosedMessage) -> Void)?
 
     /// Inbound reactions hand off to the view layer through this, the onConflictFlash
     /// pattern: the store holds NOTHING for a reaction (never stored, never sequenced,
@@ -312,20 +369,63 @@ public final class GameStore {
         emit(.heartbeat(HeartbeatMessage()))
     }
 
-    /// Request the room-wide check (PROTOCOL.md §5, §10; D27): one command marks
-    /// every wrong cell for everyone. Minted like every mutation intent, but no
-    /// overlay entry — a check is not a cell write, so there is nothing to paint
-    /// optimistically and nothing for §8's reconciliation to re-send. Gated like
-    /// sendMutation: refused before the first welcome and after a terminal status
-    /// (the server would answer GAME_NOT_ONGOING). The grid-full gate is the UI's
-    /// confirm step plus the server's own check; a `GRID_NOT_FULL` rejection is
-    /// non-fatal and silent (§11; design R2) — `lastRejection` records it, and the
-    /// error path's overlay clear is a no-op because no entry carries this id.
+    /// Propose the room check (PROTOCOL.md §5, §10; D32): one `checkPuzzle` opens an
+    /// attributed, timeboxed majority vote instead of checking immediately (the wire type
+    /// stays `checkPuzzle`; the server freezes the electorate from live presence). Minted like
+    /// every mutation intent, but no overlay entry — a proposal is not a cell write, so there
+    /// is nothing to paint optimistically and nothing for §8's reconciliation to re-send.
+    /// Gated like sendMutation: refused before the first welcome and after a terminal status
+    /// (the server would answer GAME_NOT_ONGOING). The grid-full gate is the UI's proposal
+    /// step plus the server's own check; a `GRID_NOT_FULL` or `VOTE_PENDING` rejection is
+    /// non-fatal and quiet (§11) — `lastRejection` records it, and the error path's overlay
+    /// clear is a no-op because no entry carries this id.
     public func checkPuzzle(commandId: String? = nil) {
         if sync == .connecting { return }
         if status != .ongoing { return }
         let id = commandId ?? newCommandId()
         emit(.checkPuzzle(CheckPuzzleMessage(commandId: id)))
+    }
+
+    /// Cast one ballot on the open check vote (PROTOCOL.md §5, §10; D32). `voteSeq` names the
+    /// open vote (its `checkVoteOpened` seq, held here as `checkVote.openedSeq`); `approve` is
+    /// the ballot. No overlay entry — a ballot is not a cell write. Gated like the other
+    /// intents. The four non-fatal rejections (`NO_VOTE_OPEN`, `NOT_ELECTOR`, `ALREADY_VOTED`,
+    /// `GAME_NOT_ONGOING`) are handled quietly by the generic error path: they carry this
+    /// command's id but no overlay entry, so the clear is a no-op and only `lastRejection`
+    /// records them.
+    public func castCheckVote(voteSeq: Int, approve: Bool, commandId: String? = nil) {
+        if sync == .connecting { return }
+        if status != .ongoing { return }
+        let id = commandId ?? newCommandId()
+        emit(.castCheckVote(CastCheckVoteMessage(commandId: id, voteSeq: voteSeq, approve: approve)))
+    }
+
+    /// The vote's remaining time, `expiresAt` − `now` clamped to `[0, CHECK_VOTE_TTL]` = 30 s
+    /// (PROTOCOL.md §10, D32), or nil when no vote is open or `expiresAt` does not parse. The
+    /// only clock the vote UI needs; the store holds no timer, so `now` arrives as data (the
+    /// caller's display link). Clamped both ways: a server/client skew never shows a negative
+    /// or an over-long ring, and an already-lapsed vote reads as 0.
+    public func checkVoteRemaining(asOf now: Date) -> TimeInterval? {
+        guard let vote = checkVote, let expires = Self.parseISO8601(vote.expiresAt) else {
+            return nil
+        }
+        return min(Self.checkVoteTTLSeconds, max(0, expires.timeIntervalSince(now)))
+    }
+
+    /// The check-vote timebox, `CHECK_VOTE_TTL_MS` = 30,000 ms (PROTOCOL.md §10), the ring's
+    /// full-drain span and the clamp ceiling.
+    public static let checkVoteTTLSeconds: TimeInterval = 30
+
+    /// Parse a wire ISO 8601 timestamp (server clock, §3), tolerating fractional seconds. The
+    /// wire type is a string; parsing to `Date` is a consumer concern, done only here for the
+    /// ring, never as a codec transform.
+    private static func parseISO8601(_ text: String) -> Date? {
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFraction.date(from: text) { return date }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: text)
     }
 
     private func sendMutation(cell: Int, value: String?, commandId: String?) {
@@ -447,7 +547,46 @@ public final class GameStore {
             applySequenced(event.seq) {
                 checkedWrong = Set(event.wrongCells)
                 checkCount = event.checkCount
+                // The passing close already cleared the vote; clear again defensively so a
+                // bare puzzleChecked in the server rollout window (no open vote, PROTOCOL.md
+                // tolerance) applies marks with zero vote UI and never strands stale chrome.
+                checkVote = nil
                 onPuzzleChecked?(event)
+            }
+        case .checkVoteOpened(let event):
+            // Sequenced (PROTOCOL.md §6, §10; D32): a proposal opened a vote. The electorate
+            // is frozen and approvals open as `[by]` (the proposal is the proposer's approval);
+            // a solo electorate resolves in the same command (a checkVoteClosed and
+            // puzzleChecked follow). Surfaced for the view only when it truly applied.
+            applySequenced(event.seq) {
+                checkVote = CheckVoteState(
+                    openedSeq: event.seq, by: event.by, electorate: event.electorate,
+                    approvals: [event.by], rejections: [], needed: event.needed,
+                    expiresAt: event.expiresAt)
+                onCheckVoteOpened?(event)
+            }
+        case .checkVoteCast(let event):
+            // Sequenced ballot (PROTOCOL.md §6, §10; D32): record it on the matching open vote,
+            // keeping the userId arrays ascending (INV-1). A ballot naming a different vote (a
+            // race the server would never emit) touches nothing.
+            applySequenced(event.seq) {
+                if var vote = checkVote, vote.openedSeq == event.voteSeq {
+                    if event.approve {
+                        vote.approvals = (vote.approvals + [event.by]).sorted()
+                    } else {
+                        vote.rejections = (vote.rejections + [event.by]).sorted()
+                    }
+                    checkVote = vote
+                }
+                onCheckVoteCast?(event)
+            }
+        case .checkVoteClosed(let event):
+            // Sequenced close (PROTOCOL.md §6, §10; D32): clear the open vote whatever the
+            // outcome. A `passed` close is followed by one puzzleChecked at the next seq (the
+            // marks and count land there); a `failed` or `cancelled` close changes neither.
+            applySequenced(event.seq) {
+                checkVote = nil
+                onCheckVoteClosed?(event)
             }
         case .kicked(let notice):
             // Followed by close 1008; the transport surfaces the closure. Nothing to
@@ -528,6 +667,11 @@ public final class GameStore {
         // and resync heal the check state with no delta replay.
         checkedWrong = Set(board.checkedWrongCells)
         checkCount = board.checkCount
+        // The open vote rides every snapshot too (PROTOCOL.md §4, §10; D32): a reconnect
+        // mid-vote reconstructs the whole vote wholesale (electorate, tallies, needed,
+        // expiresAt), null when none is open. No beat callback fires: this is history healing,
+        // not a live transition (the onCheckVote* callbacks are for the §7 gate only).
+        checkVote = board.checkVote.map(CheckVoteState.init)
         participants = board.participants
         cursors = Dictionary(
             board.cursors.map { ($0.userId, $0) },

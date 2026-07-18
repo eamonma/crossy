@@ -238,7 +238,13 @@ struct RoomFactsSheet: View {
     let onCheckPuzzle: () -> Void
     /// End the game (host abandon). Confirmed here first, then reported.
     let onEndGame: () -> Void
+    /// Solo rooms keep the plain confirm dialog (there is no room to interpose on the
+    /// auto-pass); a multiplayer room proposes through a hold-to-propose control that opens
+    /// the vote (PROTOCOL.md §10, D32; Wave 15.5). Defaults true so existing callers are
+    /// unchanged.
+    var soloRoom: Bool = true
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var confirmingCheck = false
     @State private var confirmingEnd = false
 
@@ -374,7 +380,32 @@ struct RoomFactsSheet: View {
     /// confirm is the end-game register exactly but non-destructive (D27: the
     /// client interposes the one confirmation; the command is the confirmed
     /// intent) — plain tint, no red.
+    @ViewBuilder
     private func checkRow(_ check: FactsOperations.Check) -> some View {
+        if soloRoom {
+            soloCheckRow(check)
+        } else {
+            // Multiplayer: press-and-hold to propose the room vote (PROTOCOL.md §10, D32; Wave
+            // 15.5). The vote is the ceremony now, so there is no confirm dialog; releasing
+            // early cancels, the completed hold opens the vote for the room to decide.
+            VStack(spacing: 4) {
+                HoldToProposeButton(
+                    title: "Check puzzle", ground: ground, reduceMotion: reduceMotion,
+                    enabled: check.isEnabled, onPropose: onCheckPuzzle)
+                if let hint = check.hint {
+                    Text(verbatim: hint)
+                        .font(.system(size: 13, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(quiet)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+        }
+    }
+
+    /// The solo Check control: the plain confirm dialog (there is no room to interpose on the
+    /// auto-pass, so a solo client keeps a confirmation step, PROTOCOL.md §10 client guidance).
+    private func soloCheckRow(_ check: FactsOperations.Check) -> some View {
         Button(action: { confirmingCheck = true }) {
             HStack(spacing: 12) {
                 Image(systemName: "checkmark.circle")

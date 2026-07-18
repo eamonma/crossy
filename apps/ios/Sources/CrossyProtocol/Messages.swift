@@ -236,9 +236,11 @@ public struct ReactMessage: Sendable, Equatable, Codable {
     }
 }
 
-/// Request the room-wide check (PROTOCOL.md §5, §10; D27): one command marks every
-/// incorrect entry for everyone, without revealing answers. Legal only while the game
-/// is ongoing and the grid is full; the server broadcasts the sequenced puzzleChecked.
+/// Propose the room-wide check (PROTOCOL.md §5, §10; D32): one command opens an attributed,
+/// timeboxed majority vote instead of checking immediately. Legal only while the game is
+/// ongoing, the grid is full, and no vote is already open; the server broadcasts the
+/// sequenced checkVoteOpened. The wire type stays `checkPuzzle`; the electorate is assembled
+/// server-side from live presence, never sent by the client.
 public struct CheckPuzzleMessage: Sendable, Equatable, Codable {
     public static let wireType = "checkPuzzle"
 
@@ -263,6 +265,48 @@ public struct CheckPuzzleMessage: Sendable, Equatable, Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(Self.wireType, forKey: .type)
         try container.encode(commandId, forKey: .commandId)
+    }
+}
+
+/// Cast one immutable ballot on the open check vote (PROTOCOL.md §5, §10; D32). `voteSeq`
+/// names the open vote (the checkVoteOpened `seq`); `approve` is the ballot. One ballot per
+/// elector; the proposer never casts one (their proposal already approved). The server
+/// broadcasts the sequenced checkVoteCast, or rejects non-fatally (NO_VOTE_OPEN, NOT_ELECTOR,
+/// ALREADY_VOTED, ROLE_FORBIDDEN, GAME_NOT_ONGOING).
+public struct CastCheckVoteMessage: Sendable, Equatable, Codable {
+    public static let wireType = "castCheckVote"
+
+    public let commandId: String
+    public let voteSeq: Int
+    public let approve: Bool
+
+    public init(commandId: String, voteSeq: Int, approve: Bool) {
+        self.commandId = commandId
+        self.voteSeq = voteSeq
+        self.approve = approve
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type
+        case commandId
+        case voteSeq
+        case approve
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        commandId = try container.decode(String.self, forKey: .commandId)
+        voteSeq = try container.decode(Int.self, forKey: .voteSeq)
+        approve = try container.decode(Bool.self, forKey: .approve)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(commandId, forKey: .commandId)
+        try container.encode(voteSeq, forKey: .voteSeq)
+        try container.encode(approve, forKey: .approve)
     }
 }
 
@@ -426,27 +470,33 @@ public struct GameCompletedMessage: Sendable, Equatable, Codable {
     }
 }
 
-/// Broadcast for every accepted checkPuzzle (PROTOCOL.md §6, §10; D27). Sequenced: an
-/// accepted check mutates durable state (the standing marks and the permanent count),
-/// so it consumes a `seq` and rides the §7 gap check like cellSet. `wrongCells` lists,
-/// ascending, every playable cell whose value fails the comparator; indices only, never
-/// values or answers (INV-6), and never empty (the §10 gates). Deliberately no `by`:
-/// a check is a room act recorded neutrally; the sender recognizes its own `commandId`
-/// echo, which is all a client needs. `at` is stamped by the session adapter from the
-/// server clock, like gameCompleted's.
+/// Emitted only as the immediate successor of a passing checkVoteClosed (PROTOCOL.md §6,
+/// §10; D32). Sequenced: an accepted check mutates durable state (the standing marks and
+/// the permanent count), so it consumes a `seq` and rides the §7 gap check like cellSet.
+/// `wrongCells` lists, ascending, every playable cell whose value fails the comparator at
+/// close time; indices only, never values or answers (INV-6), and never empty (the §10
+/// gates). `by` is the proposer, the same id checkVoteOpened carried: D32 overturns the
+/// earlier wire neutrality and the check is now fully attributed. Decoded tolerantly (a
+/// pre-vote server omits it) so a bare puzzleChecked in the rollout window still applies.
+/// `at` is stamped by the session adapter from the server clock, like gameCompleted's.
 public struct PuzzleCheckedMessage: Sendable, Equatable, Codable {
     public static let wireType = "puzzleChecked"
 
     public let seq: Int
     public let wrongCells: [Int]
     public let checkCount: Int
+    public let by: String?
     public let commandId: String
     public let at: String
 
-    public init(seq: Int, wrongCells: [Int], checkCount: Int, commandId: String, at: String) {
+    public init(
+        seq: Int, wrongCells: [Int], checkCount: Int, by: String? = nil, commandId: String,
+        at: String
+    ) {
         self.seq = seq
         self.wrongCells = wrongCells
         self.checkCount = checkCount
+        self.by = by
         self.commandId = commandId
         self.at = at
     }
@@ -456,6 +506,7 @@ public struct PuzzleCheckedMessage: Sendable, Equatable, Codable {
         case seq
         case wrongCells
         case checkCount
+        case by
         case commandId
         case at
     }
@@ -466,6 +517,7 @@ public struct PuzzleCheckedMessage: Sendable, Equatable, Codable {
         seq = try container.decode(Int.self, forKey: .seq)
         wrongCells = try container.decode([Int].self, forKey: .wrongCells)
         checkCount = try container.decode(Int.self, forKey: .checkCount)
+        by = try container.decodeIfPresent(String.self, forKey: .by)
         commandId = try container.decode(String.self, forKey: .commandId)
         at = try container.decode(String.self, forKey: .at)
     }
@@ -476,9 +528,185 @@ public struct PuzzleCheckedMessage: Sendable, Equatable, Codable {
         try container.encode(seq, forKey: .seq)
         try container.encode(wrongCells, forKey: .wrongCells)
         try container.encode(checkCount, forKey: .checkCount)
+        try container.encodeIfPresent(by, forKey: .by)
         try container.encode(commandId, forKey: .commandId)
         try container.encode(at, forKey: .at)
     }
+}
+
+/// Broadcast for every accepted checkPuzzle (PROTOCOL.md §6, §10; D32): a proposal opened
+/// an attributed, timeboxed room vote. Sequenced: it consumes a `seq` and rides the §7 gap
+/// check. `by` is the proposer, `electorate` the frozen ascending eligible voters (INV-1),
+/// `needed` the carried strict majority floor(E/2)+1, `expiresAt` the absolute timeout, and
+/// `commandId` echoes the proposal. A solo electorate passes at open (a checkVoteClosed and
+/// puzzleChecked follow in the same command). `at` is adapter-stamped.
+public struct CheckVoteOpenedMessage: Sendable, Equatable, Codable {
+    public static let wireType = "checkVoteOpened"
+
+    public let seq: Int
+    public let by: String
+    public let electorate: [String]
+    public let needed: Int
+    public let expiresAt: String
+    public let commandId: String
+    public let at: String
+
+    public init(
+        seq: Int, by: String, electorate: [String], needed: Int, expiresAt: String,
+        commandId: String, at: String
+    ) {
+        self.seq = seq
+        self.by = by
+        self.electorate = electorate
+        self.needed = needed
+        self.expiresAt = expiresAt
+        self.commandId = commandId
+        self.at = at
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, seq, by, electorate, needed, expiresAt, commandId, at
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        seq = try container.decode(Int.self, forKey: .seq)
+        by = try container.decode(String.self, forKey: .by)
+        electorate = try container.decode([String].self, forKey: .electorate)
+        needed = try container.decode(Int.self, forKey: .needed)
+        expiresAt = try container.decode(String.self, forKey: .expiresAt)
+        commandId = try container.decode(String.self, forKey: .commandId)
+        at = try container.decode(String.self, forKey: .at)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(seq, forKey: .seq)
+        try container.encode(by, forKey: .by)
+        try container.encode(electorate, forKey: .electorate)
+        try container.encode(needed, forKey: .needed)
+        try container.encode(expiresAt, forKey: .expiresAt)
+        try container.encode(commandId, forKey: .commandId)
+        try container.encode(at, forKey: .at)
+    }
+}
+
+/// Broadcast for every accepted castCheckVote (PROTOCOL.md §6, §10; D32). Sequenced. `voteSeq`
+/// identifies the vote (the checkVoteOpened `seq`), `by` the voter, `approve` the ballot,
+/// `commandId` echoes the ballot command. `at` is adapter-stamped.
+public struct CheckVoteCastMessage: Sendable, Equatable, Codable {
+    public static let wireType = "checkVoteCast"
+
+    public let seq: Int
+    public let voteSeq: Int
+    public let by: String
+    public let approve: Bool
+    public let commandId: String
+    public let at: String
+
+    public init(
+        seq: Int, voteSeq: Int, by: String, approve: Bool, commandId: String, at: String
+    ) {
+        self.seq = seq
+        self.voteSeq = voteSeq
+        self.by = by
+        self.approve = approve
+        self.commandId = commandId
+        self.at = at
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, seq, voteSeq, by, approve, commandId, at
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        seq = try container.decode(Int.self, forKey: .seq)
+        voteSeq = try container.decode(Int.self, forKey: .voteSeq)
+        by = try container.decode(String.self, forKey: .by)
+        approve = try container.decode(Bool.self, forKey: .approve)
+        commandId = try container.decode(String.self, forKey: .commandId)
+        at = try container.decode(String.self, forKey: .at)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(seq, forKey: .seq)
+        try container.encode(voteSeq, forKey: .voteSeq)
+        try container.encode(by, forKey: .by)
+        try container.encode(approve, forKey: .approve)
+        try container.encode(commandId, forKey: .commandId)
+        try container.encode(at, forKey: .at)
+    }
+}
+
+/// Broadcast once when a check vote resolves (PROTOCOL.md §6, §10; D32). Sequenced. `voteSeq`
+/// names the vote; `outcome` is `passed`, `failed`, or `cancelled`; `reason` is absent when
+/// passed, else REJECTED / EXPIRED (failed) or GRID_BROKEN / TERMINAL (cancelled). A passed
+/// close is immediately followed by one puzzleChecked at the next seq. `at` is adapter-stamped.
+public struct CheckVoteClosedMessage: Sendable, Equatable, Codable {
+    public static let wireType = "checkVoteClosed"
+
+    public let seq: Int
+    public let voteSeq: Int
+    public let outcome: CheckVoteOutcome
+    public let reason: CheckVoteCloseReason?
+    public let at: String
+
+    public init(
+        seq: Int, voteSeq: Int, outcome: CheckVoteOutcome, reason: CheckVoteCloseReason? = nil,
+        at: String
+    ) {
+        self.seq = seq
+        self.voteSeq = voteSeq
+        self.outcome = outcome
+        self.reason = reason
+        self.at = at
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, seq, voteSeq, outcome, reason, at
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try expectWireType(container, CodingKeys.type, Self.wireType)
+        seq = try container.decode(Int.self, forKey: .seq)
+        voteSeq = try container.decode(Int.self, forKey: .voteSeq)
+        outcome = try container.decode(CheckVoteOutcome.self, forKey: .outcome)
+        reason = try container.decodeIfPresent(CheckVoteCloseReason.self, forKey: .reason)
+        at = try container.decode(String.self, forKey: .at)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(Self.wireType, forKey: .type)
+        try container.encode(seq, forKey: .seq)
+        try container.encode(voteSeq, forKey: .voteSeq)
+        try container.encode(outcome, forKey: .outcome)
+        try container.encodeIfPresent(reason, forKey: .reason)
+        try container.encode(at, forKey: .at)
+    }
+}
+
+/// The outcome of a closed check vote (PROTOCOL.md §10; D32). Raw values are the wire strings.
+public enum CheckVoteOutcome: String, Sendable, Equatable, Codable {
+    case passed
+    case failed
+    case cancelled
+}
+
+/// The close reason accompanying a non-passing outcome (PROTOCOL.md §10; D32); absent when
+/// passed. Raw values are the wire codes.
+public enum CheckVoteCloseReason: String, Sendable, Equatable, Codable {
+    case rejected = "REJECTED"
+    case expired = "EXPIRED"
+    case gridBroken = "GRID_BROKEN"
+    case terminal = "TERMINAL"
 }
 
 /// The game was abandoned by the host (PROTOCOL.md §6; INV-4).
@@ -855,6 +1083,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
     case moveCursor(MoveCursorMessage)
     case react(ReactMessage)
     case checkPuzzle(CheckPuzzleMessage)
+    case castCheckVote(CastCheckVoteMessage)
     case heartbeat(HeartbeatMessage)
     case requestSync(RequestSyncMessage)
 
@@ -867,6 +1096,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
         case .moveCursor: return MoveCursorMessage.wireType
         case .react: return ReactMessage.wireType
         case .checkPuzzle: return CheckPuzzleMessage.wireType
+        case .castCheckVote: return CastCheckVoteMessage.wireType
         case .heartbeat: return HeartbeatMessage.wireType
         case .requestSync: return RequestSyncMessage.wireType
         }
@@ -888,6 +1118,8 @@ public enum ClientMessage: Sendable, Equatable, Codable {
             self = .react(try ReactMessage(from: decoder))
         case CheckPuzzleMessage.wireType:
             self = .checkPuzzle(try CheckPuzzleMessage(from: decoder))
+        case CastCheckVoteMessage.wireType:
+            self = .castCheckVote(try CastCheckVoteMessage(from: decoder))
         case HeartbeatMessage.wireType:
             self = .heartbeat(try HeartbeatMessage(from: decoder))
         case RequestSyncMessage.wireType:
@@ -905,6 +1137,7 @@ public enum ClientMessage: Sendable, Equatable, Codable {
         case .moveCursor(let message): try message.encode(to: encoder)
         case .react(let message): try message.encode(to: encoder)
         case .checkPuzzle(let message): try message.encode(to: encoder)
+        case .castCheckVote(let message): try message.encode(to: encoder)
         case .heartbeat(let message): try message.encode(to: encoder)
         case .requestSync(let message): try message.encode(to: encoder)
         }
@@ -919,6 +1152,9 @@ public enum ServerMessage: Sendable, Equatable, Codable {
     case cellSet(CellSetMessage)
     case gameCompleted(GameCompletedMessage)
     case puzzleChecked(PuzzleCheckedMessage)
+    case checkVoteOpened(CheckVoteOpenedMessage)
+    case checkVoteCast(CheckVoteCastMessage)
+    case checkVoteClosed(CheckVoteClosedMessage)
     case gameAbandoned(GameAbandonedMessage)
     // Ephemeral notices: no seq (§6).
     case welcome(WelcomeMessage)
@@ -936,6 +1172,9 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .cellSet: return CellSetMessage.wireType
         case .gameCompleted: return GameCompletedMessage.wireType
         case .puzzleChecked: return PuzzleCheckedMessage.wireType
+        case .checkVoteOpened: return CheckVoteOpenedMessage.wireType
+        case .checkVoteCast: return CheckVoteCastMessage.wireType
+        case .checkVoteClosed: return CheckVoteClosedMessage.wireType
         case .gameAbandoned: return GameAbandonedMessage.wireType
         case .welcome: return WelcomeMessage.wireType
         case .sync: return SyncMessage.wireType
@@ -956,6 +1195,9 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .cellSet(let message): return message.seq
         case .gameCompleted(let message): return message.seq
         case .puzzleChecked(let message): return message.seq
+        case .checkVoteOpened(let message): return message.seq
+        case .checkVoteCast(let message): return message.seq
+        case .checkVoteClosed(let message): return message.seq
         case .gameAbandoned(let message): return message.seq
         case .welcome, .sync, .playerConnected, .playerDisconnected, .cursor,
             .reaction, .kicked, .error:
@@ -973,6 +1215,12 @@ public enum ServerMessage: Sendable, Equatable, Codable {
             self = .gameCompleted(try GameCompletedMessage(from: decoder))
         case PuzzleCheckedMessage.wireType:
             self = .puzzleChecked(try PuzzleCheckedMessage(from: decoder))
+        case CheckVoteOpenedMessage.wireType:
+            self = .checkVoteOpened(try CheckVoteOpenedMessage(from: decoder))
+        case CheckVoteCastMessage.wireType:
+            self = .checkVoteCast(try CheckVoteCastMessage(from: decoder))
+        case CheckVoteClosedMessage.wireType:
+            self = .checkVoteClosed(try CheckVoteClosedMessage(from: decoder))
         case GameAbandonedMessage.wireType:
             self = .gameAbandoned(try GameAbandonedMessage(from: decoder))
         case WelcomeMessage.wireType:
@@ -1001,6 +1249,9 @@ public enum ServerMessage: Sendable, Equatable, Codable {
         case .cellSet(let message): try message.encode(to: encoder)
         case .gameCompleted(let message): try message.encode(to: encoder)
         case .puzzleChecked(let message): try message.encode(to: encoder)
+        case .checkVoteOpened(let message): try message.encode(to: encoder)
+        case .checkVoteCast(let message): try message.encode(to: encoder)
+        case .checkVoteClosed(let message): try message.encode(to: encoder)
         case .gameAbandoned(let message): try message.encode(to: encoder)
         case .welcome(let message): try message.encode(to: encoder)
         case .sync(let message): try message.encode(to: encoder)
