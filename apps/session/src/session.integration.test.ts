@@ -272,6 +272,22 @@ class TestClient {
     });
   }
 
+  /**
+   * Resolve with the error frame carrying `commandId`. Non-fatal errors accumulate in the stream
+   * (a §11 code per rejected command), so waiting on the type alone (`waitForType("error")`) returns
+   * a stale earlier error; matching the commandId waits for the one this command produced (§8, §11).
+   */
+  waitForError(commandId: string): Promise<ServerMessage> {
+    return this.waitUntil(
+      () =>
+        this.received.find(
+          (f) =>
+            f.msg.type === "error" &&
+            (f.msg as { commandId?: string }).commandId === commandId,
+        )?.msg,
+    );
+  }
+
   waitForClose(): Promise<{ code: number; reason: string }> {
     if (this.closeInfo !== null) return Promise.resolve(this.closeInfo);
     return new Promise((resolve) => this.closeWaiters.push(resolve));
@@ -852,7 +868,7 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
     } as unknown as StateSnapshot;
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, [], poisoned),
+      flushToPostgres(sessionPool, gameId, events, [], [], poisoned),
     ).rejects.toThrow();
 
     // Neither the event nor the snapshot landed: the transaction was all-or-nothing.
@@ -896,7 +912,7 @@ describe("write-behind flush atomicity and rehydrate (INV-5; DESIGN.md §6)", ()
       stats: null,
       recentCommandIds: ["c-1", "c-2"],
     };
-    await flushToPostgres(sessionPool, gameId, events, [], snap);
+    await flushToPostgres(sessionPool, gameId, events, [], [], snap);
 
     // Rehydrate via the same read path the actor uses on first connect.
     const loadedRow = await loadGameRow(adminPool, gameId);
@@ -1224,7 +1240,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(3, 0, "X", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, [], stale),
+      flushToPostgres(sessionPool, gameId, events, [], [], stale),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     // The stored row is byte-identical: the stale board, status, and seq never landed.
@@ -1261,7 +1277,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(3, 0, "X", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, [], stale),
+      flushToPostgres(sessionPool, gameId, events, [], [], stale),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     const ev = await adminPool.query(
@@ -1305,7 +1321,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(9, 0, "Z", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, [], regressing),
+      flushToPostgres(sessionPool, gameId, events, [], [], regressing),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     expect(await storedRow(gameId)).toEqual(before);
@@ -1343,7 +1359,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(9, 0, "Z", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, [], regressing),
+      flushToPostgres(sessionPool, gameId, events, [], [], regressing),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     expect(await storedRow(gameId)).toEqual(before);
@@ -1383,7 +1399,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     );
 
     await expect(
-      flushToPostgres(sessionPool, gameId, [], [], switching),
+      flushToPostgres(sessionPool, gameId, [], [], [], switching),
     ).rejects.toBeInstanceOf(SnapshotRegressionError);
 
     expect(await storedRow(gameId)).toEqual(before);
@@ -1418,7 +1434,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     });
 
     await expect(
-      flushToPostgres(sessionPool, gameId, [], [], retry),
+      flushToPostgres(sessionPool, gameId, [], [], [], retry),
     ).resolves.toBeUndefined();
 
     const after = await storedRow(gameId);
@@ -1460,7 +1476,7 @@ describe("snapshot guard: a stale writer cannot clobber a newer game_state (INV-
     const events = [makeCellSet(2, 1, "B", userId)];
 
     await expect(
-      flushToPostgres(sessionPool, gameId, events, [], advanced),
+      flushToPostgres(sessionPool, gameId, events, [], [], advanced),
     ).resolves.toBeUndefined();
 
     const after = await storedRow(gameId);
@@ -1630,138 +1646,564 @@ describe("sittings stats authoritative over cell_events (PROTOCOL.md §4; D29)",
   });
 });
 
-describe("room check: one deliberate act, marked for everyone, neutral on the wire (PROTOCOL.md §10; D27)", () => {
-  it("broadcasts a sequenced puzzleChecked with no by, snapshots the marks, and persists the check_events row (INV-6, INV-5)", async () => {
-    const checker = randomUUID();
-    const watcher = randomUUID();
-    const gameId = await seedGame({
-      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
-      members: [
-        { userId: checker, role: "solver" },
-        { userId: watcher, role: "solver" },
-      ],
-    });
-    const first = await connectAndHello(gameId, checker);
-    const second = await connectAndHello(gameId, watcher);
-
-    // Fill the grid with one wrong letter: A, X, C (seqs 1-3).
-    first.client.sendJson(placeLetter(0, "A"));
-    first.client.sendJson(placeLetter(1, "X"));
-    first.client.sendJson(placeLetter(2, "C"));
-    await first.client.waitForCount("cellSet", 3);
-
-    // The accepted check consumes seq 4 and broadcasts to the WHOLE room, sender included.
-    const check = { type: "checkPuzzle", commandId: randomUUID() };
-    first.client.sendJson(check);
-    const checkedFrames = await Promise.all([
-      first.client.waitForType("puzzleChecked"),
-      second.client.waitForType("puzzleChecked"),
-    ]);
-    for (const frame of checkedFrames) {
-      expect(frame).toMatchObject({
-        type: "puzzleChecked",
-        seq: 4,
-        wrongCells: [1],
-        checkCount: 1,
-        commandId: check.commandId,
-      });
-      expect((frame as { at: string }).at).toEqual(expect.any(String));
-    }
-    // Neutrality is structural (D27, INV-6-style): the RAW frame carries no `by`, so no
-    // client can attribute the check. The decoded shape proves nothing; the bytes do.
-    for (const client of [first.client, second.client]) {
-      const raw = client.rawOfType("puzzleChecked")[0]!;
-      expect(Object.keys(JSON.parse(raw) as object)).not.toContain("by");
-    }
-
-    // The snapshot heals the marks with no delta replay (PROTOCOL.md §4).
-    second.client.sendJson({ type: "requestSync" });
-    const sync = (await second.client.waitForType("sync")) as SyncMessage;
-    expect(sync.board.checkedWrongCells).toEqual([1]);
-    expect(sync.board.checkCount).toBe(1);
-    expect(sync.board.seq).toBe(4);
-
-    // Correcting the marked cell completes the game (the completion interplay: the mark
-    // clears on the value change and a full correct board completes; seqs 5-6).
-    second.client.sendJson(placeLetter(1, "B"));
-    const completed = (await first.client.waitForType("gameCompleted")) as {
-      seq: number;
-      stats: { checkCount: number };
-    };
-    expect(completed.seq).toBe(6);
-    // The permanent count froze into the stats (PROTOCOL.md §4, §10).
-    expect(completed.stats.checkCount).toBe(1);
-
-    // Persistence (DESIGN.md §9, D27): the check_events row carries the acting user the
-    // wire never did, in the same transaction discipline as the snapshot (INV-5); the
-    // terminal flush ran synchronously before the broadcast, so the rows are committed.
-    const checkRows = await adminPool.query<{ seq: string; user_id: string }>(
-      "select seq, user_id from check_events where game_id = $1",
-      [gameId],
-    );
-    expect(checkRows.rows).toHaveLength(1);
-    expect(Number(checkRows.rows[0]!.seq)).toBe(4);
-    expect(checkRows.rows[0]!.user_id).toBe(checker);
-
-    // The persisted board snapshot carries the check facts (marks cleared by the
-    // correction, count permanent), so a rehydrated actor serves them back (INV-5).
-    const gs = await adminPool.query<{
-      board: { checkedWrongCells: number[]; checkCount: number };
-      stats: { checkCount: number };
-    }>("select board, stats from game_state where game_id = $1", [gameId]);
-    expect(gs.rows[0]!.board.checkedWrongCells).toEqual([]);
-    expect(gs.rows[0]!.board.checkCount).toBe(1);
-    expect(gs.rows[0]!.stats.checkCount).toBe(1);
-
-    // A check on a terminal board is refused (INV-4; PROTOCOL.md §10): GAME_NOT_ONGOING.
-    const lateCheck = { type: "checkPuzzle", commandId: randomUUID() };
-    first.client.sendJson(lateCheck);
-    const late = (await first.client.waitForType("error")) as {
-      code: string;
-      fatal: boolean;
-      commandId: string;
-    };
-    expect(late.code).toBe("GAME_NOT_ONGOING");
-    expect(late.fatal).toBe(false);
-    expect(late.commandId).toBe(lateCheck.commandId);
-
-    first.client.close();
-    second.client.close();
+describe("room check vote: the proposer proposes, the room decides (PROTOCOL.md §10; D32)", () => {
+  const checkPuzzle = (): Record<string, unknown> => ({
+    type: "checkPuzzle",
+    commandId: randomUUID(),
+  });
+  const castCheckVote = (
+    voteSeq: number,
+    approve: boolean,
+  ): Record<string, unknown> => ({
+    type: "castCheckVote",
+    commandId: randomUUID(),
+    voteSeq,
+    approve,
   });
 
-  it("rejects a check below a full grid with GRID_NOT_FULL, consuming no seq (PROTOCOL.md §5, §10, §11; INV-2)", async () => {
+  it("opens an attributed vote, a decisive approval passes it, and the check lands with by, marks, and persistence (INV-5, INV-6; D32)", async () => {
+    // A dedicated server that flushes after every accepted command, so the persistence assertions
+    // below see the vote lifecycle in Postgres without waiting on the default ~25-event threshold
+    // (the vote passes but never completes the game, so no terminal flush fires).
+    const voteServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushEventThreshold: 1, flushIntervalMs: 600_000 },
+      internalBearer: INTERNAL_BEARER,
+    });
+    try {
+      const checker = randomUUID();
+      const watcher = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [
+          { userId: checker, role: "solver" },
+          { userId: watcher, role: "solver" },
+        ],
+      });
+      const first = await connectAndHelloOn(voteServer, gameId, checker);
+      const second = await connectAndHelloOn(voteServer, gameId, watcher);
+
+      // Fill the grid with one wrong letter: A, X, C (seqs 1-3).
+      first.client.sendJson(placeLetter(0, "A"));
+      first.client.sendJson(placeLetter(1, "X"));
+      first.client.sendJson(placeLetter(2, "C"));
+      await first.client.waitForCount("cellSet", 3);
+
+      // The proposal opens a vote at seq 4, broadcast to the WHOLE room; no immediate check (D32).
+      const propose = checkPuzzle();
+      first.client.sendJson(propose);
+      const opened = (await second.client.waitForType(
+        "checkVoteOpened",
+      )) as unknown as {
+        seq: number;
+        by: string;
+        electorate: string[];
+        needed: number;
+        expiresAt: string;
+        commandId: string;
+      };
+      expect(opened).toMatchObject({
+        seq: 4,
+        by: checker,
+        electorate: [checker, watcher].sort(),
+        needed: 2,
+        commandId: propose.commandId,
+      });
+      expect(typeof opened.expiresAt).toBe("string");
+      // No puzzleChecked yet: the vote is still open (needed 2, only the proposer's approval).
+      expect(first.client.ofType("puzzleChecked")).toHaveLength(0);
+
+      // The snapshot heals a reconnecting client mid-vote with the whole §4 checkVote (no delta replay).
+      second.client.sendJson({ type: "requestSync" });
+      const midVote = (await second.client.waitForType("sync")) as SyncMessage;
+      expect(midVote.board.checkVote).toMatchObject({
+        openedSeq: 4,
+        by: checker,
+        approvals: [checker],
+        rejections: [],
+        needed: 2,
+      });
+
+      // A decisive approval closes the vote passed and fires the check, attributed to the proposer.
+      second.client.sendJson(castCheckVote(4, true));
+      const checkedFrames = await Promise.all([
+        first.client.waitForType("puzzleChecked"),
+        second.client.waitForType("puzzleChecked"),
+      ]);
+      for (const frame of checkedFrames) {
+        expect(frame).toMatchObject({
+          type: "puzzleChecked",
+          wrongCells: [1],
+          checkCount: 1,
+          by: checker,
+          commandId: propose.commandId,
+        });
+      }
+      // Attribution is now on the wire (D32 overturns the D27 neutrality): the RAW frame carries by.
+      const rawChecked = first.client.rawOfType("puzzleChecked")[0]!;
+      expect(Object.keys(JSON.parse(rawChecked) as object)).toContain("by");
+
+      // The close preceded the check: checkVoteClosed(passed) at seq 6, puzzleChecked at seq 7.
+      const closed = (await first.client.waitForType(
+        "checkVoteClosed",
+      )) as unknown as {
+        seq: number;
+        outcome: string;
+      };
+      expect(closed).toMatchObject({ seq: 6, outcome: "passed" });
+      const checked = first.client.ofType("puzzleChecked")[0] as {
+        seq: number;
+      };
+      expect(checked.seq).toBe(7);
+
+      // The snapshot heals the marks and clears the vote (PROTOCOL.md §4). This is the SECOND sync
+      // (the first was the mid-vote heal above), so read the latest rather than the stale first frame.
+      second.client.sendJson({ type: "requestSync" });
+      const syncs = (await second.client.waitForCount(
+        "sync",
+        2,
+      )) as SyncMessage[];
+      const sync = syncs[syncs.length - 1]!;
+      expect(sync.board.checkedWrongCells).toEqual([1]);
+      expect(sync.board.checkCount).toBe(1);
+      expect(sync.board.checkVote).toBeNull();
+      expect(sync.board.seq).toBe(7);
+
+      await waitForLastSeq(gameId, 7);
+      // check_events keeps the proposer whose vote passed (DESIGN.md §9); check_vote_events keeps the
+      // whole lifecycle, one row per consumed seq (opened, cast, closed).
+      const checkRows = await adminPool.query<{ seq: string; user_id: string }>(
+        "select seq, user_id from check_events where game_id = $1",
+        [gameId],
+      );
+      expect(checkRows.rows).toEqual([{ seq: "7", user_id: checker }]);
+      const voteRows = await adminPool.query<{
+        seq: string;
+        kind: string;
+        user_id: string | null;
+        approve: boolean | null;
+        vote_seq: string;
+        electorate: string[] | null;
+        outcome: string | null;
+      }>(
+        "select seq, kind, user_id, approve, vote_seq, electorate, outcome from check_vote_events where game_id = $1 order by seq",
+        [gameId],
+      );
+      expect(
+        voteRows.rows.map((r) => [r.kind, Number(r.seq), r.outcome]),
+      ).toEqual([
+        ["opened", 4, null],
+        ["cast", 5, null],
+        ["closed", 6, "passed"],
+      ]);
+      expect(voteRows.rows[0]).toMatchObject({
+        user_id: checker,
+        vote_seq: "4",
+        electorate: [checker, watcher].sort(),
+      });
+      expect(voteRows.rows[1]).toMatchObject({
+        user_id: watcher,
+        approve: true,
+      });
+
+      first.client.close();
+      second.client.close();
+    } finally {
+      await voteServer.close();
+    }
+  });
+
+  it("a solo electorate passes at open: the checkVoteOpened/closed/puzzleChecked triple in one command (§10)", async () => {
     const userId = randomUUID();
     const gameId = await seedGame({
       snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
       members: [{ userId, role: "solver" }],
     });
     const { client } = await connectAndHello(gameId, userId);
+    client.sendJson(placeLetter(0, "A"));
+    client.sendJson(placeLetter(1, "X"));
+    client.sendJson(placeLetter(2, "C"));
+    await client.waitForCount("cellSet", 3);
 
+    client.sendJson(checkPuzzle());
+    const opened = (await client.waitForType("checkVoteOpened")) as unknown as {
+      needed: number;
+      electorate: string[];
+    };
+    expect(opened).toMatchObject({ needed: 1, electorate: [userId] });
+    const closed = (await client.waitForType("checkVoteClosed")) as unknown as {
+      outcome: string;
+    };
+    expect(closed.outcome).toBe("passed");
+    const checked = (await client.waitForType("puzzleChecked")) as unknown as {
+      by: string;
+      wrongCells: number[];
+    };
+    expect(checked).toMatchObject({ by: userId, wrongCells: [1] });
+    client.close();
+  });
+
+  it("a decisive rejection closes the vote failed REJECTED, marking and counting nothing (§10)", async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    const c = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: a, role: "host" },
+        { userId: b, role: "solver" },
+        { userId: c, role: "solver" },
+      ],
+    });
+    const ca = await connectAndHello(gameId, a);
+    const cb = await connectAndHello(gameId, b);
+    const cc = await connectAndHello(gameId, c);
+    ca.client.sendJson(placeLetter(0, "A"));
+    ca.client.sendJson(placeLetter(1, "X"));
+    ca.client.sendJson(placeLetter(2, "C"));
+    await ca.client.waitForCount("cellSet", 3);
+
+    ca.client.sendJson(checkPuzzle()); // needed 2, approvals [a]
+    await cb.client.waitForType("checkVoteOpened");
+    cb.client.sendJson(castCheckVote(4, false)); // 3 - 1 = 2: still open
+    await cb.client.waitForType("checkVoteCast");
+    cc.client.sendJson(castCheckVote(4, false)); // 3 - 2 = 1 < 2: majority unreachable
+    const closed = (await cc.client.waitForType(
+      "checkVoteClosed",
+    )) as unknown as {
+      outcome: string;
+      reason: string;
+    };
+    expect(closed).toMatchObject({ outcome: "failed", reason: "REJECTED" });
+
+    ca.client.sendJson({ type: "requestSync" });
+    const sync = (await ca.client.waitForType("sync")) as SyncMessage;
+    expect(sync.board.checkVote).toBeNull();
+    expect(sync.board.checkCount).toBe(0);
+    expect(sync.board.checkedWrongCells).toEqual([]);
+    expect(ca.client.ofType("puzzleChecked")).toHaveLength(0);
+
+    ca.client.close();
+    cb.client.close();
+    cc.client.close();
+  });
+
+  it("the timebox closes an open vote failed EXPIRED when the timer fires (§10)", async () => {
+    const ttlServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushIntervalMs: 600_000, checkVoteTtlMs: 250 },
+      internalBearer: INTERNAL_BEARER,
+    });
+    try {
+      const a = randomUUID();
+      const b = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [
+          { userId: a, role: "solver" },
+          { userId: b, role: "solver" },
+        ],
+      });
+      const ca = await connectAndHelloOn(ttlServer, gameId, a);
+      const cb = await connectAndHelloOn(ttlServer, gameId, b);
+      ca.client.sendJson(placeLetter(0, "A"));
+      ca.client.sendJson(placeLetter(1, "X"));
+      ca.client.sendJson(placeLetter(2, "C"));
+      await ca.client.waitForCount("cellSet", 3);
+
+      ca.client.sendJson(checkPuzzle()); // needed 2, opens and stays open
+      await cb.client.waitForType("checkVoteOpened");
+      // No ballot: the timebox elapses and the session feeds the engine expireCheckVote.
+      const closed = (await cb.client.waitForType(
+        "checkVoteClosed",
+      )) as unknown as {
+        outcome: string;
+        reason: string;
+      };
+      expect(closed).toMatchObject({ outcome: "failed", reason: "EXPIRED" });
+      expect(cb.client.ofType("puzzleChecked")).toHaveLength(0);
+
+      ca.client.close();
+      cb.client.close();
+    } finally {
+      await ttlServer.close();
+    }
+  });
+
+  it("a clear mid-vote cancels it GRID_BROKEN; an in-place correction cancels it TERMINAL before completion (§10)", async () => {
+    // Case 1: a clear that empties a cell breaks the full grid.
+    const a = randomUUID();
+    const b = randomUUID();
+    const gid1 = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: a, role: "solver" },
+        { userId: b, role: "solver" },
+      ],
+    });
+    const c1a = await connectAndHello(gid1, a);
+    await connectAndHello(gid1, b);
+    c1a.client.sendJson(placeLetter(0, "A"));
+    c1a.client.sendJson(placeLetter(1, "X"));
+    c1a.client.sendJson(placeLetter(2, "C"));
+    await c1a.client.waitForCount("cellSet", 3);
+    c1a.client.sendJson(checkPuzzle());
+    await c1a.client.waitForType("checkVoteOpened");
+    c1a.client.sendJson(clearCell(0));
+    const broken = (await c1a.client.waitForType(
+      "checkVoteClosed",
+    )) as unknown as {
+      outcome: string;
+      reason: string;
+    };
+    expect(broken).toMatchObject({
+      outcome: "cancelled",
+      reason: "GRID_BROKEN",
+    });
+    c1a.client.close();
+
+    // Case 2: an in-place correction makes the grid full and correct: it completes the game.
+    const c = randomUUID();
+    const d = randomUUID();
+    const gid2 = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: c, role: "solver" },
+        { userId: d, role: "solver" },
+      ],
+    });
+    const c2 = await connectAndHello(gid2, c);
+    await connectAndHello(gid2, d);
+    c2.client.sendJson(placeLetter(0, "A"));
+    c2.client.sendJson(placeLetter(1, "X"));
+    c2.client.sendJson(placeLetter(2, "C"));
+    await c2.client.waitForCount("cellSet", 3);
+    c2.client.sendJson(checkPuzzle());
+    await c2.client.waitForType("checkVoteOpened");
+    c2.client.sendJson(placeLetter(1, "B")); // corrects the last wrong cell: full and correct
+    const cancelled = (await c2.client.waitForType(
+      "checkVoteClosed",
+    )) as unknown as {
+      seq: number;
+      outcome: string;
+      reason: string;
+    };
+    expect(cancelled).toMatchObject({
+      outcome: "cancelled",
+      reason: "TERMINAL",
+    });
+    const completed = (await c2.client.waitForType(
+      "gameCompleted",
+    )) as unknown as {
+      seq: number;
+    };
+    // Ordering: cellSet, checkVoteClosed(TERMINAL), gameCompleted (the terminal event stays last).
+    expect(completed.seq).toBeGreaterThan(cancelled.seq);
+    c2.client.close();
+  });
+
+  it("an abandon mid-vote closes the vote TERMINAL before gameAbandoned (§10; INV-4)", async () => {
+    const hostId = randomUUID();
+    const other = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: hostId, role: "host" },
+        { userId: other, role: "solver" },
+      ],
+    });
+    const host = await connectAndHello(gameId, hostId);
+    await connectAndHello(gameId, other);
+    host.client.sendJson(placeLetter(0, "A"));
+    host.client.sendJson(placeLetter(1, "X"));
+    host.client.sendJson(placeLetter(2, "C"));
+    await host.client.waitForCount("cellSet", 3);
+    host.client.sendJson(checkPuzzle()); // opens (needed 2), stays open
+    await host.client.waitForType("checkVoteOpened");
+
+    const res = await postMembershipChanged(gameId, {
+      change: "abandon",
+      by: hostId,
+    });
+    expect(res.status).toBe(200);
+
+    const closed = (await host.client.waitForType(
+      "checkVoteClosed",
+    )) as unknown as {
+      seq: number;
+      outcome: string;
+      reason: string;
+    };
+    expect(closed).toMatchObject({ outcome: "cancelled", reason: "TERMINAL" });
+    const abandoned = (await host.client.waitForType(
+      "gameAbandoned",
+    )) as unknown as {
+      seq: number;
+      by: string;
+    };
+    expect(abandoned.by).toBe(hostId);
+    // The vote close precedes gameAbandoned, mirroring the completion ordering (D32).
+    expect(abandoned.seq).toBeGreaterThan(closed.seq);
+    host.client.close();
+  });
+
+  it("crash rehydrate closes an already-expired vote EXPIRED, healing the reconnect (§10; INV-5)", async () => {
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+    });
+    // Seed a persisted game_state carrying an open vote whose deadline already passed (a crash
+    // between the open and the timer). The board object shape matches what the actor flushes (D32).
+    const board = {
+      cells: [
+        { v: "X", by: userId },
+        { v: "B", by: userId },
+        { v: "C", by: userId },
+      ],
+      checkedWrongCells: [],
+      checkCount: 0,
+      checkVote: {
+        openedSeq: 4,
+        by: userId,
+        commandId: randomUUID(),
+        electorate: [userId, randomUUID()].sort(),
+        approvals: [userId],
+        rejections: [],
+        expiresAt: "2020-01-01T00:00:00.000Z",
+      },
+    };
+    await adminPool.query(
+      `insert into game_state (game_id, status, board, last_seq, first_fill_at)
+       values ($1, 'ongoing', $2::jsonb, 4, '2026-07-08T00:00:00.000Z')`,
+      [gameId, JSON.stringify(board)],
+    );
+
+    // The first connection hydrates the actor, which reconciles the stale vote against the clock:
+    // the welcome snapshot already heals to no open vote at the advanced seq.
+    const { welcome } = await connectAndHello(gameId, userId);
+    const w = welcome as unknown as { board: SyncMessage["board"] };
+    expect(w.board.checkVote).toBeNull();
+    expect(w.board.seq).toBe(5);
+
+    // The close consumed a seq and persisted an EXPIRED check_vote_events row.
+    await waitForLastSeq(gameId, 5);
+    const voteRows = await adminPool.query<{
+      kind: string;
+      reason: string | null;
+    }>(
+      "select kind, reason from check_vote_events where game_id = $1 order by seq",
+      [gameId],
+    );
+    expect(voteRows.rows).toEqual([{ kind: "closed", reason: "EXPIRED" }]);
+  });
+
+  it("rejects a proposal below a full grid with GRID_NOT_FULL, consuming no seq (§10, §11; INV-2)", async () => {
+    const userId = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [{ userId, role: "solver" }],
+    });
+    const { client } = await connectAndHello(gameId, userId);
     client.sendJson(placeLetter(0, "A"));
     await client.waitForCount("cellSet", 1);
 
     const early = { type: "checkPuzzle", commandId: randomUUID() };
     client.sendJson(early);
-    const refused = (await client.waitForType("error")) as {
+    const refused = (await client.waitForType("error")) as unknown as {
       code: string;
       fatal: boolean;
       commandId: string;
     };
-    expect(refused.code).toBe("GRID_NOT_FULL");
-    expect(refused.fatal).toBe(false);
-    expect(refused.commandId).toBe(early.commandId);
-
+    expect(refused).toMatchObject({
+      code: "GRID_NOT_FULL",
+      fatal: false,
+      commandId: early.commandId,
+    });
     // A rejection consumes no seq (INV-2): the next accepted mutation takes seq 2.
     client.sendJson(placeLetter(1, "X"));
     const sets = (await client.waitForCount("cellSet", 2)) as Array<{
       seq: number;
     }>;
     expect(sets[1]?.seq).toBe(2);
-
     client.close();
   });
 
-  it("refuses a spectator's checkPuzzle with ROLE_FORBIDDEN, the same gate as the cell mutations (PROTOCOL.md §5, §11)", async () => {
+  it("surfaces the four vote error codes as non-fatal errors with the commandId (§11; D32)", async () => {
+    const a = randomUUID();
+    const b = randomUUID();
+    const gameId = await seedGame({
+      snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+      members: [
+        { userId: a, role: "host" },
+        { userId: b, role: "solver" },
+      ],
+    });
+    const ca = await connectAndHello(gameId, a);
+    const cb = await connectAndHello(gameId, b);
+    ca.client.sendJson(placeLetter(0, "A"));
+    ca.client.sendJson(placeLetter(1, "X"));
+    ca.client.sendJson(placeLetter(2, "C"));
+    await ca.client.waitForCount("cellSet", 3);
+
+    // NO_VOTE_OPEN: a ballot before any vote is open. Errors accumulate in the stream, so each
+    // assertion below waits on the error carrying ITS commandId, not merely the first error (§8).
+    const early = castCheckVote(4, true);
+    ca.client.sendJson(early);
+    expect(
+      await ca.client.waitForError(early.commandId as string),
+    ).toMatchObject({ code: "NO_VOTE_OPEN", fatal: false });
+
+    // Open a vote (needed 2, electorate [a, b]).
+    ca.client.sendJson(checkPuzzle());
+    await cb.client.waitForType("checkVoteOpened");
+
+    // VOTE_PENDING: a second proposal while one is open.
+    const second = checkPuzzle();
+    ca.client.sendJson(second);
+    expect(
+      await ca.client.waitForError(second.commandId as string),
+    ).toMatchObject({ code: "VOTE_PENDING" });
+
+    // ALREADY_VOTED: the proposer casting a ballot (already approved at proposal time).
+    const dup = castCheckVote(4, true);
+    ca.client.sendJson(dup);
+    expect(await ca.client.waitForError(dup.commandId as string)).toMatchObject(
+      {
+        code: "ALREADY_VOTED",
+      },
+    );
+
+    // NO_VOTE_OPEN also covers a stale voteSeq naming a vote that is not open.
+    const stale = castCheckVote(999, true);
+    cb.client.sendJson(stale);
+    expect(
+      await cb.client.waitForError(stale.commandId as string),
+    ).toMatchObject({ code: "NO_VOTE_OPEN" });
+
+    // NOT_ELECTOR: a host/solver who joined after the electorate froze. Seed the user row before
+    // the membership row (memberships.user_id references users, §8).
+    const late = randomUUID();
+    await insertUser(late, "Latecomer");
+    await adminPool.query(
+      "insert into memberships (game_id, user_id, role) values ($1, $2, 'solver')",
+      [gameId, late],
+    );
+    const cl = await connectAndHello(gameId, late);
+    const notElector = castCheckVote(4, true);
+    cl.client.sendJson(notElector);
+    expect(
+      await cl.client.waitForError(notElector.commandId as string),
+    ).toMatchObject({ code: "NOT_ELECTOR" });
+
+    ca.client.close();
+    cb.client.close();
+    cl.client.close();
+  });
+
+  it("refuses a spectator's proposal and ballot with ROLE_FORBIDDEN, the same gate as the cell mutations (§5, §11)", async () => {
     const spectatorId = randomUUID();
     const gameId = await seedGame({
       snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
@@ -1772,17 +2214,27 @@ describe("room check: one deliberate act, marked for everyone, neutral on the wi
     });
     const { client } = await connectAndHello(gameId, spectatorId);
 
-    const cmd = { type: "checkPuzzle", commandId: randomUUID() };
-    client.sendJson(cmd);
-    const forbidden = (await client.waitForType("error")) as {
-      code: string;
-      fatal: boolean;
-      commandId: string;
-    };
-    expect(forbidden.code).toBe("ROLE_FORBIDDEN");
-    expect(forbidden.fatal).toBe(false);
-    expect(forbidden.commandId).toBe(cmd.commandId);
+    const propose = { type: "checkPuzzle", commandId: randomUUID() };
+    client.sendJson(propose);
+    expect(await client.waitForType("error")).toMatchObject({
+      code: "ROLE_FORBIDDEN",
+      fatal: false,
+      commandId: propose.commandId,
+    });
 
+    const ballot = {
+      type: "castCheckVote",
+      commandId: randomUUID(),
+      voteSeq: 4,
+      approve: true,
+    };
+    client.sendJson(ballot);
+    // Await the ballot's own error frame (the propose error already sits in the stream), so the
+    // read is not racing the async reply (§8): the spectator ballot hits the same role gate.
+    expect(await client.waitForError(ballot.commandId)).toMatchObject({
+      code: "ROLE_FORBIDDEN",
+      fatal: false,
+    });
     client.close();
   });
 });

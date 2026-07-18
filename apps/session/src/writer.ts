@@ -34,11 +34,30 @@ export class SnapshotRegressionError extends Error {
 }
 
 /**
+ * The open check vote as the board snapshot persists it (DESIGN.md §9, D32). It carries the engine
+ * `CheckVote` fields (so a rehydrated actor resumes the same vote, `commandId` included, and a
+ * passing close after rehydrate still attributes `puzzleChecked`) plus the session-owned `expiresAt`
+ * (the engine models no clock, INV-9), so the timer re-arms for the remaining time or the vote
+ * closes EXPIRED on crash rehydrate. Server-side only; the wire §4 object drops `commandId` and
+ * derives `needed` (adapt.ts checkVoteToWire). INV-6: no cell values or answers.
+ */
+export interface PersistedCheckVote {
+  readonly openedSeq: number;
+  readonly by: string;
+  readonly commandId: string;
+  readonly electorate: readonly string[];
+  readonly approvals: readonly string[];
+  readonly rejections: readonly string[];
+  readonly expiresAt: string;
+}
+
+/**
  * The board jsonb the snapshot persists (PROTOCOL.md §4 facts, DESIGN.md §9): the per-cell
- * array plus the standing room-check marks and the permanent count, so the marks survive
- * passivation with the board they describe (D27). hydrate.ts reads this shape back, and
- * still accepts the pre-check bare cell array a legacy row holds (expand/contract: the
- * reader widened before any writer produced the new shape).
+ * array plus the standing room-check marks, the permanent count, and the open check vote (D32), so
+ * all of it survives passivation with the board it describes (D27, D32). hydrate.ts reads this
+ * shape back, and still accepts the pre-check bare cell array a legacy row holds and a pre-vote
+ * object with no `checkVote` (expand/contract: the reader widened before any writer produced the
+ * new shape).
  */
 export interface BoardSnapshot {
   /** Full per-cell array, length rows*cols; black/never-written cells are {v:null,by:null}. */
@@ -47,6 +66,8 @@ export interface BoardSnapshot {
   readonly checkedWrongCells: readonly number[];
   /** Total accepted checks, permanent and never reset (PROTOCOL.md §10). */
   readonly checkCount: number;
+  /** The open vote, or `null` when none (D32). Absent on a pre-vote row (expand/contract). */
+  readonly checkVote?: PersistedCheckVote | null;
 }
 
 /**
@@ -57,6 +78,27 @@ export interface BoardSnapshot {
 export interface CheckEventRow {
   readonly seq: number;
   readonly userId: string;
+  readonly at: string;
+}
+
+/**
+ * One vote lifecycle event awaiting its check_vote_events row (DESIGN.md §9, D32). Buffered and
+ * flushed exactly like a `CheckEventRow`, in the same transaction as the snapshot that carries the
+ * vote state (INV-5). `kind` is `opened`, `cast`, or `closed`; `userId` is the proposer on `opened`,
+ * the voter on `cast`, and null on `closed`; `approve` is the ballot on `cast`; `voteSeq` is the
+ * opening event's seq (the vote's identity); `electorate` is the frozen array on `opened`; `outcome`
+ * and `reason` are set on `closed`. Every field but the wire event's server-only companions matches
+ * the row shape §9 names. INV-6: no cell values or answers.
+ */
+export interface VoteEventRow {
+  readonly seq: number;
+  readonly kind: "opened" | "cast" | "closed";
+  readonly userId: string | null;
+  readonly approve: boolean | null;
+  readonly voteSeq: number;
+  readonly electorate: readonly string[] | null;
+  readonly outcome: string | null;
+  readonly reason: string | null;
   readonly at: string;
 }
 
@@ -105,6 +147,36 @@ async function insertCheckEvents(
        values ($1, $2, $3, $4)
        on conflict (game_id, seq) do nothing`,
       [gameId, check.seq, check.userId, check.at],
+    );
+  }
+}
+
+/** Append buffered vote events to the immutable check_vote_events log (D32). INSERT only (§9). */
+async function insertVoteEvents(
+  client: PoolClient,
+  gameId: string,
+  voteEvents: readonly VoteEventRow[],
+): Promise<void> {
+  for (const row of voteEvents) {
+    // Same retry guard as cell_events / check_events: ON CONFLICT DO NOTHING is still an INSERT,
+    // so the log stays append-only at the grant layer.
+    await client.query(
+      `insert into check_vote_events
+         (game_id, seq, kind, user_id, approve, vote_seq, electorate, outcome, reason, at)
+       values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)
+       on conflict (game_id, seq) do nothing`,
+      [
+        gameId,
+        row.seq,
+        row.kind,
+        row.userId,
+        row.approve,
+        row.voteSeq,
+        row.electorate === null ? null : JSON.stringify(row.electorate),
+        row.outcome,
+        row.reason,
+        row.at,
+      ],
     );
   }
 }
@@ -224,11 +296,13 @@ export async function flushToPostgres(
   gameId: string,
   events: readonly CellSet[],
   checks: readonly CheckEventRow[],
+  voteEvents: readonly VoteEventRow[],
   snap: StateSnapshot,
 ): Promise<void> {
   await inTransaction(pool, async (client) => {
     await insertEvents(client, gameId, events);
     await insertCheckEvents(client, gameId, checks);
+    await insertVoteEvents(client, gameId, voteEvents);
     await upsertSnapshot(client, gameId, snap);
   });
 }
@@ -246,6 +320,7 @@ export async function flushTerminalToPostgres(
   gameId: string,
   events: readonly CellSet[],
   checks: readonly CheckEventRow[],
+  voteEvents: readonly VoteEventRow[],
   buildSnapshot: (
     participantCount: number,
     eventAtMs: readonly number[],
@@ -257,6 +332,7 @@ export async function flushTerminalToPostgres(
   return inTransaction(pool, async (client) => {
     await insertEvents(client, gameId, events);
     await insertCheckEvents(client, gameId, checks);
+    await insertVoteEvents(client, gameId, voteEvents);
     const participantCount = await countDistinctWriters(client, gameId);
     const eventAtMs = await selectEventTimesAsc(client, gameId);
     const { snap, stats } = buildSnapshot(participantCount, eventAtMs);
@@ -271,21 +347,27 @@ export async function flushTerminalToPostgres(
  * stays testable and IO stays at the boundary.
  */
 export interface GamePersistence {
-  /** Write-behind flush: buffered events, buffered checks, and the snapshot in one transaction. */
+  /**
+   * Write-behind flush: buffered cellSets, buffered checks, buffered vote events (D32), and the
+   * snapshot in one transaction, so every consumed seq stays accounted for with the snapshot that
+   * carries its state (INV-5).
+   */
   flush(
     gameId: string,
     events: readonly CellSet[],
     checks: readonly CheckEventRow[],
+    voteEvents: readonly VoteEventRow[],
     snap: StateSnapshot,
   ): Promise<void>;
   /**
-   * Terminal flush: append both logs, read the authoritative participantCount and the log's
+   * Terminal flush: append all three logs, read the authoritative participantCount and the log's
    * event timestamps (seq order, epoch ms; the sittings inputs, D29), upsert snapshot.
    */
   flushTerminal(
     gameId: string,
     events: readonly CellSet[],
     checks: readonly CheckEventRow[],
+    voteEvents: readonly VoteEventRow[],
     buildSnapshot: (
       participantCount: number,
       eventAtMs: readonly number[],
@@ -299,9 +381,9 @@ export interface GamePersistence {
 /** Bind the persistence port to a `pg` Pool (the crossy_session-role connection, §9). */
 export function createPgPersistence(pool: Pool): GamePersistence {
   return {
-    flush: (gameId, events, checks, snap) =>
-      flushToPostgres(pool, gameId, events, checks, snap),
-    flushTerminal: (gameId, events, checks, build) =>
-      flushTerminalToPostgres(pool, gameId, events, checks, build),
+    flush: (gameId, events, checks, voteEvents, snap) =>
+      flushToPostgres(pool, gameId, events, checks, voteEvents, snap),
+    flushTerminal: (gameId, events, checks, voteEvents, build) =>
+      flushTerminalToPostgres(pool, gameId, events, checks, voteEvents, build),
   };
 }

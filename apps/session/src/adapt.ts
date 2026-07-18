@@ -11,12 +11,20 @@ import type {
   Command,
   PlaceLetter,
   ClearCell,
+  CheckVote,
+  CheckVoteCast,
+  CheckVoteClosed,
+  CheckVoteOpened,
   PuzzleChecked,
 } from "@crossy/engine";
 import type {
   Board,
   Cell,
   CellSetMessage,
+  CheckVoteCastEvent,
+  CheckVoteClosedEvent,
+  CheckVoteOpenedEvent,
+  CheckVoteView,
   ClearCellMessage,
   Cursor,
   Participant,
@@ -79,15 +87,15 @@ export function cellSetToWire(
 }
 
 /**
- * An engine `puzzleChecked` event to the wire frame (PROTOCOL.md §6, §10). The adapter stamps
- * `at` from the server clock, like `gameCompleted`'s. Deliberately no `by`: the wire event is
- * neutral by construction (D27); the actor keeps the sender server-side in check_events only.
+ * An engine `puzzleChecked` event to the wire frame (PROTOCOL.md §6, §10; D32). The adapter stamps
+ * `at` from the server clock, like `gameCompleted`'s, and carries `by` (the proposer the engine
+ * supplies): the check is now a fully attributed room act (D32 overturns D27's wire neutrality).
  */
 export function puzzleCheckedToWire(
   event: PuzzleChecked,
   at: string,
 ): PuzzleCheckedEvent {
-  return {
+  const frame: PuzzleCheckedEvent = {
     type: "puzzleChecked",
     seq: event.seq,
     wrongCells: [...event.wrongCells],
@@ -95,6 +103,92 @@ export function puzzleCheckedToWire(
     commandId: event.commandId,
     at,
   };
+  // The vote path always supplies `by`; the field stays optional on the wire (additive, §14).
+  return event.by === undefined ? frame : { ...frame, by: event.by };
+}
+
+/** The strict majority the wire carries (PROTOCOL.md §10): floor(E / 2) + 1. */
+function neededFor(electorate: readonly string[]): number {
+  return Math.floor(electorate.length / 2) + 1;
+}
+
+/**
+ * The open check vote to the §4 board object (PROTOCOL.md §4, §10; D32). `needed` derives from the
+ * frozen electorate and `expiresAt` is the session-owned absolute timeout (the engine models
+ * neither, INV-9); the ballot arrays are copied so the wire view never aliases actor state. The
+ * proposal's `commandId` stays server-side (it is not a §4 field).
+ */
+export function checkVoteToWire(
+  vote: CheckVote,
+  expiresAt: string,
+): CheckVoteView {
+  return {
+    openedSeq: vote.openedSeq,
+    by: vote.by,
+    electorate: [...vote.electorate],
+    approvals: [...vote.approvals],
+    rejections: [...vote.rejections],
+    needed: neededFor(vote.electorate),
+    expiresAt,
+  };
+}
+
+/**
+ * An engine `checkVoteOpened` event to the wire frame (PROTOCOL.md §6, §10; D32). The adapter
+ * stamps `at` and `expiresAt` (the session owns the wall clock, INV-9); every other field is the
+ * engine's.
+ */
+export function checkVoteOpenedToWire(
+  event: CheckVoteOpened,
+  at: string,
+  expiresAt: string,
+): CheckVoteOpenedEvent {
+  return {
+    type: "checkVoteOpened",
+    seq: event.seq,
+    by: event.by,
+    electorate: [...event.electorate],
+    needed: event.needed,
+    expiresAt,
+    commandId: event.commandId,
+    at,
+  };
+}
+
+/** An engine `checkVoteCast` event to the wire frame (PROTOCOL.md §6, §10; D32). `at` is stamped. */
+export function checkVoteCastToWire(
+  event: CheckVoteCast,
+  at: string,
+): CheckVoteCastEvent {
+  return {
+    type: "checkVoteCast",
+    seq: event.seq,
+    voteSeq: event.voteSeq,
+    by: event.by,
+    approve: event.approve,
+    commandId: event.commandId,
+    at,
+  };
+}
+
+/**
+ * An engine `checkVoteClosed` event to the wire frame (PROTOCOL.md §6, §10; D32). `at` is stamped;
+ * `reason` rides only a non-passing close (the engine leaves it absent on a pass).
+ */
+export function checkVoteClosedToWire(
+  event: CheckVoteClosed,
+  at: string,
+): CheckVoteClosedEvent {
+  const frame: CheckVoteClosedEvent = {
+    type: "checkVoteClosed",
+    seq: event.seq,
+    voteSeq: event.voteSeq,
+    outcome: event.outcome,
+    at,
+  };
+  return event.reason === undefined
+    ? frame
+    : { ...frame, reason: event.reason };
 }
 
 /**
@@ -114,6 +208,12 @@ export interface BoardExtras {
   readonly abandonedAt: string | null;
   readonly stats: Stats | null;
   readonly recentCommandIds: readonly string[];
+  /**
+   * The open check vote as the §4 object, or `null` when none (PROTOCOL.md §4, §10; D32). The actor
+   * builds it from its engine `checkVote` plus the session-owned `expiresAt`; it rides every
+   * snapshot so a reconnecting client heals a mid-vote with no delta replay.
+   */
+  readonly checkVote: CheckVoteView | null;
 }
 
 /**
@@ -149,6 +249,9 @@ export function buildBoard(state: BoardState, extras: BoardExtras): Board {
     // resync heal the check state with no delta replay (PROTOCOL.md §4, §10).
     checkedWrongCells: checkedWrongAscending(state),
     checkCount: state.checkCount,
+    // The open vote (or null) rides every snapshot too, so a client reconnecting mid-vote heals
+    // the whole vote from the snapshot alone (PROTOCOL.md §4, §10; D32).
+    checkVote: extras.checkVote,
     seq: state.seq,
     status: state.status,
     firstFillAt: state.firstFillAt,

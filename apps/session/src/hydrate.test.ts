@@ -114,3 +114,71 @@ describe("hydrateGame room-check state round-trip (PROTOCOL.md §4, §10; D27; I
     expect(hydrated.boardState.checkCount).toBe(0);
   });
 });
+
+describe("hydrateGame open-vote round-trip (PROTOCOL.md §4, §10; D32; INV-5)", () => {
+  const openVoteBoard = {
+    cells: [
+      { v: "X", by: "u1" },
+      { v: "B", by: "u1" },
+      { v: "C", by: "u2" },
+    ],
+    checkedWrongCells: [],
+    checkCount: 0,
+    checkVote: {
+      openedSeq: 4,
+      by: "u1",
+      commandId: "c-open",
+      electorate: ["u1", "u2", "u3"],
+      approvals: ["u1"],
+      rejections: [],
+      expiresAt: "2026-07-08T00:05:00.000Z",
+    },
+  };
+
+  it("restores the engine checkVote (without expiresAt) and carries expiresAt beside it (INV-9)", () => {
+    const hydrated = hydrateGame(snapshot, {
+      ...completedRow,
+      status: "ongoing",
+      completedAt: null,
+      stats: null,
+      lastSeq: 4,
+      board: openVoteBoard,
+    });
+    // The engine board carries the pure vote fields, no clock (INV-9).
+    expect(hydrated.boardState.checkVote).toEqual({
+      openedSeq: 4,
+      by: "u1",
+      commandId: "c-open",
+      electorate: ["u1", "u2", "u3"],
+      approvals: ["u1"],
+      rejections: [],
+    });
+    // The session-owned expiresAt rides HydratedGame separately, so the actor re-arms or expires.
+    expect(hydrated.checkVoteExpiresAt).toBe("2026-07-08T00:05:00.000Z");
+  });
+
+  it("reads a legacy bare-array board and a pre-vote object as no open vote (expand/contract, §9)", () => {
+    const legacy = hydrateGame(snapshot, {
+      ...completedRow,
+      status: "ongoing",
+      completedAt: null,
+      stats: null,
+    });
+    expect(legacy.boardState.checkVote).toBeNull();
+    expect(legacy.checkVoteExpiresAt).toBeNull();
+
+    const preVote = hydrateGame(snapshot, {
+      ...completedRow,
+      status: "ongoing",
+      completedAt: null,
+      stats: null,
+      board: {
+        cells: [{ v: "A", by: "u1" }],
+        checkedWrongCells: [],
+        checkCount: 0,
+      },
+    });
+    expect(preVote.boardState.checkVote).toBeNull();
+    expect(preVote.checkVoteExpiresAt).toBeNull();
+  });
+});

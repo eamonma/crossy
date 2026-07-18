@@ -53,14 +53,31 @@ export interface ReactMessage {
 }
 
 /**
- * The room-wide check (PROTOCOL.md §5, §10; D27). Legal for host or solver while the game is
- * ongoing and the grid is full; otherwise GAME_NOT_ONGOING or GRID_NOT_FULL (§11). The command is
- * the confirmed intent (a client interposes its own confirmation, §10); an accepted check
- * broadcasts one sequenced `puzzleChecked` to the whole room.
+ * Propose a room check (PROTOCOL.md §5, §10; D32). Legal for host or solver while the game is
+ * ongoing, the grid is full, and no vote is already open; otherwise GAME_NOT_ONGOING,
+ * GRID_NOT_FULL, or VOTE_PENDING (§11). Since D32 it no longer checks immediately: it opens an
+ * attributed, timeboxed majority vote (one `checkVoteOpened`, §6), and a passing vote is the
+ * accepted check. On a solo electorate the vote passes at open, so a `checkVoteClosed` and
+ * `puzzleChecked` follow in the same command.
  */
 export interface CheckPuzzleMessage {
   readonly type: "checkPuzzle";
   readonly commandId: string;
+}
+
+/**
+ * Cast one immutable ballot on the open check vote (PROTOCOL.md §5, §10; D32). Legal for host or
+ * solver; its gates in order are ROLE_FORBIDDEN, GAME_NOT_ONGOING, NO_VOTE_OPEN (no open vote, or a
+ * stale `voteSeq` naming a closed one), NOT_ELECTOR (sender outside the frozen electorate), and
+ * ALREADY_VOTED (the proposer approved at proposal time, and a ballot is one per elector). `voteSeq`
+ * names the vote (its `checkVoteOpened` `seq`); `approve` is the direction. An accepted ballot
+ * broadcasts one `checkVoteCast`, and may resolve the vote (a decisive close follows).
+ */
+export interface CastCheckVoteMessage {
+  readonly type: "castCheckVote";
+  readonly commandId: string;
+  readonly voteSeq: number;
+  readonly approve: boolean;
 }
 
 /** Liveness ping, every 15 s (PROTOCOL.md §5, §9). */
@@ -81,6 +98,7 @@ export type ClientMessage =
   | MoveCursorMessage
   | ReactMessage
   | CheckPuzzleMessage
+  | CastCheckVoteMessage
   | HeartbeatMessage
   | RequestSyncMessage;
 
@@ -122,19 +140,86 @@ export interface GameAbandonedMessage {
 }
 
 /**
- * Emitted for every accepted `checkPuzzle` and broadcast to the whole room (PROTOCOL.md §6, §10).
- * `wrongCells` lists, ascending, every playable cell failing the comparator: indices only, never
- * values or answers (INV-6), and never empty (the §10 full-grid gate). `checkCount` is the game's
- * total accepted checks including this one, permanent and never reset. Deliberately no `by`:
- * neutrality is structural (D27); the sender recognizes its own `commandId` echo. `at` is stamped
- * by the session adapter from the server clock, like `gameCompleted`'s.
+ * Emitted only as the immediate successor of a `checkVoteClosed` whose `outcome` is `passed`, and
+ * broadcast to the whole room (PROTOCOL.md §6, §10; D32). `wrongCells` lists, ascending, every
+ * playable cell failing the comparator at close time: indices only, never values or answers
+ * (INV-6), and never empty (the §10 lifecycle keeps the board full and imperfect at any pass).
+ * `checkCount` is the game's total accepted checks including this one, permanent and never reset.
+ * `by` is the proposer, the same id `checkVoteOpened` carried: the check is a fully attributed room
+ * act (D32 overturns D27's wire neutrality). It is optional on the type so a pre-vote producer still
+ * typechecks; the session always sets it. `at` is stamped by the session adapter, like
+ * `gameCompleted`'s.
  */
 export interface PuzzleCheckedEvent {
   readonly type: "puzzleChecked";
   readonly seq: number;
   readonly wrongCells: readonly number[];
   readonly checkCount: number;
+  readonly by?: string;
   readonly commandId: string;
+  readonly at: string;
+}
+
+/**
+ * Emitted for every accepted `checkPuzzle` and broadcast to the whole room (PROTOCOL.md §6, §10;
+ * D32). It proposes an attributed, timeboxed vote rather than checking at once. `by` is the
+ * proposer; `electorate` is the frozen ascending userId array of eligible voters, always including
+ * `by`; `needed` = `floor(electorate.length / 2) + 1` is the strict majority; `expiresAt` is the
+ * absolute ISO 8601 timeout, adapter-stamped from the server clock like `at`; `commandId` echoes
+ * the proposal. On a solo electorate the vote passes at open (a `checkVoteClosed` and
+ * `puzzleChecked` follow immediately, same command processing).
+ */
+export interface CheckVoteOpenedEvent {
+  readonly type: "checkVoteOpened";
+  readonly seq: number;
+  readonly by: string;
+  readonly electorate: readonly string[];
+  readonly needed: number;
+  readonly expiresAt: string;
+  readonly commandId: string;
+  readonly at: string;
+}
+
+/**
+ * Emitted for every accepted `castCheckVote` and broadcast to the whole room (PROTOCOL.md §6, §10;
+ * D32). `voteSeq` identifies the vote (its `checkVoteOpened` `seq`); `by` is the voter; `approve` is
+ * the ballot; `commandId` echoes the ballot command; `at` is adapter-stamped.
+ */
+export interface CheckVoteCastEvent {
+  readonly type: "checkVoteCast";
+  readonly seq: number;
+  readonly voteSeq: number;
+  readonly by: string;
+  readonly approve: boolean;
+  readonly commandId: string;
+  readonly at: string;
+}
+
+/** A vote's terminal outcome (PROTOCOL.md §6, §10; D32). */
+export type CheckVoteOutcome = "passed" | "failed" | "cancelled";
+
+/**
+ * The close reason on a non-passing outcome (PROTOCOL.md §6, §10; D32); absent when `passed`.
+ * `REJECTED` (majority unreachable) or `EXPIRED` (timebox) accompany `failed`; `GRID_BROKEN` (a
+ * clear emptied a cell) or `TERMINAL` (a mutation completed or abandoned the game) accompany
+ * `cancelled`.
+ */
+export type CheckVoteCloseReason =
+  "REJECTED" | "EXPIRED" | "GRID_BROKEN" | "TERMINAL";
+
+/**
+ * Emitted once when a vote resolves and broadcast to the whole room (PROTOCOL.md §6, §10; D32).
+ * `voteSeq` names the vote (its `checkVoteOpened` `seq`). `reason` is absent when `passed`. A
+ * `passed` close is immediately followed by one `puzzleChecked` at the next `seq`; a `failed` or
+ * `cancelled` close changes no marks or count. `at` is adapter-stamped. It carries no `commandId`:
+ * a close is a server-driven resolution, not a command echo.
+ */
+export interface CheckVoteClosedEvent {
+  readonly type: "checkVoteClosed";
+  readonly seq: number;
+  readonly voteSeq: number;
+  readonly outcome: CheckVoteOutcome;
+  readonly reason?: CheckVoteCloseReason;
   readonly at: string;
 }
 
@@ -143,7 +228,10 @@ export type SequencedEvent =
   | CellSetMessage
   | GameCompletedMessage
   | GameAbandonedMessage
-  | PuzzleCheckedEvent;
+  | PuzzleCheckedEvent
+  | CheckVoteOpenedEvent
+  | CheckVoteCastEvent
+  | CheckVoteClosedEvent;
 
 // --- Server to client: ephemeral notices (PROTOCOL.md §6) ---
 

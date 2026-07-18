@@ -14,6 +14,10 @@ export type ErrorCode =
   | "INVALID_CELL"
   | "INVALID_VALUE"
   | "GRID_NOT_FULL"
+  | "VOTE_PENDING"
+  | "NO_VOTE_OPEN"
+  | "NOT_ELECTOR"
+  | "ALREADY_VOTED"
   | "ROLE_FORBIDDEN"
   | "RATE_LIMITED"
   | "UNKNOWN_TYPE"
@@ -52,6 +56,22 @@ export const ERROR_CODES: Readonly<Record<ErrorCode, ErrorSpec>> = {
   GRID_NOT_FULL: {
     fatal: false,
     meaning: "checkPuzzle while a playable cell is empty",
+  },
+  VOTE_PENDING: {
+    fatal: false,
+    meaning: "checkPuzzle while a check vote is already open",
+  },
+  NO_VOTE_OPEN: {
+    fatal: false,
+    meaning: "castCheckVote with no matching open vote, or a stale voteSeq",
+  },
+  NOT_ELECTOR: {
+    fatal: false,
+    meaning: "castCheckVote from a sender outside the frozen electorate",
+  },
+  ALREADY_VOTED: {
+    fatal: false,
+    meaning: "castCheckVote from a sender who has already voted",
   },
   ROLE_FORBIDDEN: { fatal: false, meaning: "a spectator sent a mutation" },
   RATE_LIMITED: { fatal: false, meaning: "slow down" },

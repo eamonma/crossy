@@ -40,6 +40,7 @@ import type {
   CheckEventRow,
   GamePersistence,
   StateSnapshot,
+  VoteEventRow,
 } from "../../apps/session/src/writer";
 import { GameStore } from "../../apps/web/src/store/gameStore";
 
@@ -68,6 +69,7 @@ export interface FlushRecord {
 export class RecordingPersistence implements GamePersistence {
   readonly log: CellSet[] = [];
   readonly checkLog: CheckEventRow[] = [];
+  readonly voteLog: VoteEventRow[] = [];
   readonly flushes: FlushRecord[] = [];
   snapshot: StateSnapshot | null = null;
 
@@ -75,10 +77,12 @@ export class RecordingPersistence implements GamePersistence {
     _gameId: string,
     events: readonly CellSet[],
     checks: readonly CheckEventRow[],
+    voteEvents: readonly VoteEventRow[],
     snap: StateSnapshot,
   ): Promise<void> {
     this.append(events);
     this.appendChecks(checks);
+    this.appendVoteEvents(voteEvents);
     this.snapshot = snap;
     this.flushes.push({
       batch: events.length,
@@ -91,6 +95,7 @@ export class RecordingPersistence implements GamePersistence {
     _gameId: string,
     events: readonly CellSet[],
     checks: readonly CheckEventRow[],
+    voteEvents: readonly VoteEventRow[],
     buildSnapshot: (
       participantCount: number,
       eventAtMs: readonly number[],
@@ -101,6 +106,7 @@ export class RecordingPersistence implements GamePersistence {
   ): Promise<import("@crossy/protocol").Stats> {
     this.append(events);
     this.appendChecks(checks);
+    this.appendVoteEvents(voteEvents);
     const participantCount = new Set(this.log.map((e) => e.by)).size;
     // Mirror the real terminal read (D29): the whole log's timestamps in seq order.
     const eventAtMs = [...this.log]
@@ -128,6 +134,13 @@ export class RecordingPersistence implements GamePersistence {
     for (const check of checks) {
       if (this.checkLog.some((c) => c.seq === check.seq)) continue;
       this.checkLog.push(check);
+    }
+  }
+
+  private appendVoteEvents(voteEvents: readonly VoteEventRow[]): void {
+    for (const row of voteEvents) {
+      if (this.voteLog.some((v) => v.seq === row.seq)) continue;
+      this.voteLog.push(row);
     }
   }
 }

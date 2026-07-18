@@ -13,6 +13,7 @@
 import type {
   Board,
   Cell,
+  CheckVoteView,
   Cursor,
   Direction,
   GameStatus,
@@ -23,8 +24,14 @@ import type {
 import { ERROR_CODES } from "./errors";
 import type { ErrorCode } from "./errors";
 import type {
+  CastCheckVoteMessage,
   CellSetMessage,
   CheckPuzzleMessage,
+  CheckVoteCastEvent,
+  CheckVoteCloseReason,
+  CheckVoteClosedEvent,
+  CheckVoteOpenedEvent,
+  CheckVoteOutcome,
   ClearCellMessage,
   ClientMessage,
   CursorMessage,
@@ -136,6 +143,32 @@ function asStatus(x: unknown, what: string): GameStatus {
   return s;
 }
 
+function asCheckVoteOutcome(x: unknown, what: string): CheckVoteOutcome {
+  const s = asString(x, what);
+  if (s !== "passed" && s !== "failed" && s !== "cancelled") {
+    fail(`${what}: "passed", "failed", or "cancelled" required`);
+  }
+  return s;
+}
+
+function asCheckVoteCloseReason(
+  x: unknown,
+  what: string,
+): CheckVoteCloseReason {
+  const s = asString(x, what);
+  if (
+    s !== "REJECTED" &&
+    s !== "EXPIRED" &&
+    s !== "GRID_BROKEN" &&
+    s !== "TERMINAL"
+  ) {
+    fail(
+      `${what}: "REJECTED", "EXPIRED", "GRID_BROKEN", or "TERMINAL" required`,
+    );
+  }
+  return s;
+}
+
 function asErrorCode(x: unknown, what: string): ErrorCode {
   const s = asString(x, what);
   if (!Object.prototype.hasOwnProperty.call(ERROR_CODES, s)) {
@@ -187,6 +220,19 @@ function decodeParticipant(x: unknown, what: string): Participant {
     color: asString(o.color, `${what}.color`),
     role: asRole(o.role, `${what}.role`),
     connected: asBoolean(o.connected, `${what}.connected`),
+  };
+}
+
+function decodeCheckVoteView(x: unknown, what: string): CheckVoteView {
+  const o = asObject(x, what);
+  return {
+    openedSeq: asInt(o.openedSeq, `${what}.openedSeq`),
+    by: asString(o.by, `${what}.by`),
+    electorate: asStringArray(o.electorate, `${what}.electorate`),
+    approvals: asStringArray(o.approvals, `${what}.approvals`),
+    rejections: asStringArray(o.rejections, `${what}.rejections`),
+    needed: asInt(o.needed, `${what}.needed`),
+    expiresAt: asString(o.expiresAt, `${what}.expiresAt`),
   };
 }
 
@@ -251,6 +297,16 @@ function decodeBoardOrThrow(x: unknown, what: string): Board {
       `${what}.checkedWrongCells`,
     ),
     checkCount: asInt(o.checkCount, `${what}.checkCount`),
+    // The open check vote (PROTOCOL.md §4, §10; D32): `null` when none, else the object. Additive
+    // (§14): a snapshot from a pre-vote server omits the key, so copy it only when present.
+    ...(o.checkVote === undefined
+      ? {}
+      : {
+          checkVote:
+            o.checkVote === null
+              ? null
+              : decodeCheckVoteView(o.checkVote, `${what}.checkVote`),
+        }),
     participants: o.participants.map((p, i) =>
       decodeParticipant(p, `${what}.participants[${i}]`),
     ),
@@ -316,6 +372,15 @@ function decodeCheckPuzzle(o: Record<string, unknown>): CheckPuzzleMessage {
   };
 }
 
+function decodeCastCheckVote(o: Record<string, unknown>): CastCheckVoteMessage {
+  return {
+    type: "castCheckVote",
+    commandId: asString(o.commandId, "commandId"),
+    voteSeq: asInt(o.voteSeq, "voteSeq"),
+    approve: asBoolean(o.approve, "approve"),
+  };
+}
+
 /**
  * Decode a client-to-server frame (PROTOCOL.md §5). An unrecognized `type` yields
  * `kind: "unknown_type"`, which the server maps to UNKNOWN_TYPE (§5). A structural problem yields
@@ -338,6 +403,8 @@ export function decodeClientMessage(raw: unknown): Decoded<ClientMessage> {
         return { ok: true, value: decodeReact(o) };
       case "checkPuzzle":
         return { ok: true, value: decodeCheckPuzzle(o) };
+      case "castCheckVote":
+        return { ok: true, value: decodeCastCheckVote(o) };
       case "heartbeat":
         return { ok: true, value: { type: "heartbeat" } };
       case "requestSync":
@@ -455,14 +522,60 @@ function decodeReaction(o: Record<string, unknown>): ReactionNotice {
 }
 
 function decodePuzzleChecked(o: Record<string, unknown>): PuzzleCheckedEvent {
-  return {
-    type: "puzzleChecked",
+  const base = {
+    type: "puzzleChecked" as const,
     seq: asInt(o.seq, "seq"),
     wrongCells: asNonNegativeIntArray(o.wrongCells, "wrongCells"),
     checkCount: asInt(o.checkCount, "checkCount"),
     commandId: asString(o.commandId, "commandId"),
     at: asString(o.at, "at"),
   };
+  // `by` is the proposer (PROTOCOL.md §6, §10; D32). Optional on the wire: a pre-vote server
+  // omitted it, so copy it only when present (additive, §14).
+  return o.by === undefined ? base : { ...base, by: asString(o.by, "by") };
+}
+
+function decodeCheckVoteOpened(
+  o: Record<string, unknown>,
+): CheckVoteOpenedEvent {
+  return {
+    type: "checkVoteOpened",
+    seq: asInt(o.seq, "seq"),
+    by: asString(o.by, "by"),
+    electorate: asStringArray(o.electorate, "electorate"),
+    needed: asInt(o.needed, "needed"),
+    expiresAt: asString(o.expiresAt, "expiresAt"),
+    commandId: asString(o.commandId, "commandId"),
+    at: asString(o.at, "at"),
+  };
+}
+
+function decodeCheckVoteCast(o: Record<string, unknown>): CheckVoteCastEvent {
+  return {
+    type: "checkVoteCast",
+    seq: asInt(o.seq, "seq"),
+    voteSeq: asInt(o.voteSeq, "voteSeq"),
+    by: asString(o.by, "by"),
+    approve: asBoolean(o.approve, "approve"),
+    commandId: asString(o.commandId, "commandId"),
+    at: asString(o.at, "at"),
+  };
+}
+
+function decodeCheckVoteClosed(
+  o: Record<string, unknown>,
+): CheckVoteClosedEvent {
+  const base = {
+    type: "checkVoteClosed" as const,
+    seq: asInt(o.seq, "seq"),
+    voteSeq: asInt(o.voteSeq, "voteSeq"),
+    outcome: asCheckVoteOutcome(o.outcome, "outcome"),
+    at: asString(o.at, "at"),
+  };
+  // `reason` is absent on a `passed` close and present otherwise (PROTOCOL.md §6, §10; D32).
+  return o.reason === undefined
+    ? base
+    : { ...base, reason: asCheckVoteCloseReason(o.reason, "reason") };
 }
 
 function decodeKicked(o: Record<string, unknown>): KickedMessage {
@@ -503,6 +616,12 @@ export function decodeServerMessage(raw: unknown): Decoded<ServerMessage> {
         return { ok: true, value: decodeGameAbandoned(o) };
       case "puzzleChecked":
         return { ok: true, value: decodePuzzleChecked(o) };
+      case "checkVoteOpened":
+        return { ok: true, value: decodeCheckVoteOpened(o) };
+      case "checkVoteCast":
+        return { ok: true, value: decodeCheckVoteCast(o) };
+      case "checkVoteClosed":
+        return { ok: true, value: decodeCheckVoteClosed(o) };
       case "playerConnected":
         return { ok: true, value: decodePlayerConnected(o) };
       case "playerDisconnected":

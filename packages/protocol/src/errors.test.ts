@@ -14,6 +14,10 @@ const TABLE: Record<ErrorCode, Fatality> = {
   INVALID_CELL: false,
   INVALID_VALUE: false,
   GRID_NOT_FULL: false,
+  VOTE_PENDING: false,
+  NO_VOTE_OPEN: false,
+  NOT_ELECTOR: false,
+  ALREADY_VOTED: false,
   ROLE_FORBIDDEN: false,
   RATE_LIMITED: false,
   UNKNOWN_TYPE: false,
@@ -21,7 +25,7 @@ const TABLE: Record<ErrorCode, Fatality> = {
 };
 
 describe("error codes (PROTOCOL.md §11)", () => {
-  it("lists exactly the thirteen protocol error codes", () => {
+  it("lists exactly the seventeen protocol error codes (four vote codes added, D32)", () => {
     expect(Object.keys(ERROR_CODES).sort()).toEqual(Object.keys(TABLE).sort());
   });
 

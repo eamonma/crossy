@@ -15,15 +15,22 @@
 // none of them can race the others.
 
 import {
-  applyWithCompletion,
+  applyWithVote,
   SITTING_GAP_MS,
   type BoardState,
   type CellSet,
-  type PuzzleChecked,
+  type CheckVoteCast,
+  type CheckVoteClosed,
+  type CheckVoteOpened,
   type RejectionCode,
+  type VoteCommand,
+  type VoteEvent,
+  type VoteRejectionCode,
 } from "@crossy/engine";
 import type {
+  CastCheckVoteMessage,
   CheckPuzzleMessage,
+  CheckVoteView,
   ClearCellMessage,
   Cursor,
   Direction,
@@ -37,6 +44,10 @@ import {
   buildBoard,
   cellSetToWire,
   checkedWrongAscending,
+  checkVoteCastToWire,
+  checkVoteClosedToWire,
+  checkVoteOpenedToWire,
+  checkVoteToWire,
   puzzleCheckedToWire,
   toEngineCommand,
 } from "./adapt";
@@ -47,10 +58,24 @@ import type { EngineSolution, HydratedGame } from "./hydrate";
 import { Mailbox } from "./mailbox";
 import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
 import { createInertEmitter } from "./push/emitter";
-import type { CheckEventRow, GamePersistence, StateSnapshot } from "./writer";
+import type {
+  CheckEventRow,
+  GamePersistence,
+  PersistedCheckVote,
+  StateSnapshot,
+  VoteEventRow,
+} from "./writer";
 
 /** The last K applied commandIds kept for idempotency and the board payload (DESIGN.md §6). */
 const RECENT_COMMAND_LIMIT = 64;
+
+/**
+ * The check-vote timebox (PROTOCOL.md §10; D32; DESIGN.md §15, adopted-by-default). When a vote
+ * opens the session stamps `expiresAt` = now + this onto the broadcast and the snapshot, arms a
+ * timer, and feeds the engine an `expireCheckVote` input when it fires. The session owns the wall
+ * clock; the engine models no timeout (INV-9).
+ */
+export const CHECK_VOTE_TTL_MS = 30_000;
 
 /**
  * Write-behind thresholds (DESIGN.md §15, D14; adopted-by-default, tune with measurement).
@@ -59,13 +84,62 @@ const RECENT_COMMAND_LIMIT = 64;
 export const FLUSH_EVENT_THRESHOLD = 25;
 export const FLUSH_INTERVAL_MS = 5_000;
 
-/** Human-readable text for each engine rejection (PROTOCOL.md §11). */
-const REJECTION_MESSAGE: Record<RejectionCode, string> = {
+/** Human-readable text for each engine rejection, including the vote gates (PROTOCOL.md §11; D32). */
+const REJECTION_MESSAGE: Record<RejectionCode | VoteRejectionCode, string> = {
   GAME_NOT_ONGOING: "the game is no longer ongoing",
   INVALID_CELL: "cell is out of range or a black square",
   INVALID_VALUE: "value must match ^[A-Z0-9]{1,10}$ after normalization",
   GRID_NOT_FULL: "the grid must be full before a check",
+  VOTE_PENDING: "a check vote is already open",
+  NO_VOTE_OPEN: "no matching open check vote",
+  NOT_ELECTOR: "you are not an elector on this vote",
+  ALREADY_VOTED: "you have already voted on this check",
 };
+
+/** The check_vote_events row for an `opened` event (D32): user_id = proposer, electorate frozen. */
+function openedVoteRow(event: CheckVoteOpened, at: string): VoteEventRow {
+  return {
+    seq: event.seq,
+    kind: "opened",
+    userId: event.by,
+    approve: null,
+    voteSeq: event.seq,
+    electorate: [...event.electorate],
+    outcome: null,
+    reason: null,
+    at,
+  };
+}
+
+/** The check_vote_events row for a `cast` ballot (D32): user_id = voter, approve = the ballot. */
+function castVoteRow(event: CheckVoteCast, at: string): VoteEventRow {
+  return {
+    seq: event.seq,
+    kind: "cast",
+    userId: event.by,
+    approve: event.approve,
+    voteSeq: event.voteSeq,
+    electorate: null,
+    outcome: null,
+    reason: null,
+    at,
+  };
+}
+
+/** The check_vote_events row for a `closed` event (D32): user_id null, outcome/reason set. */
+function closedVoteRow(event: CheckVoteClosed, at: string): VoteEventRow {
+  return {
+    seq: event.seq,
+    kind: "closed",
+    userId: null,
+    approve: null,
+    voteSeq: event.voteSeq,
+    electorate: null,
+    outcome: event.outcome,
+    reason: event.reason ?? null,
+    at,
+  };
+}
 
 /** A live socket the actor can address. The concrete socket wrapper lives in server.ts. */
 export interface Connection {
@@ -86,6 +160,12 @@ export interface Connection {
 export interface ActorOptions {
   readonly flushEventThreshold?: number;
   readonly flushIntervalMs?: number;
+  /**
+   * The check-vote timebox in ms (PROTOCOL.md §10; D32); defaults to CHECK_VOTE_TTL_MS (30 s). Tests
+   * inject a small value to exercise expiry without a real 30 s wait, the same affordance
+   * livenessTimeoutMs and passivateAfterMs give their timers.
+   */
+  readonly checkVoteTtlMs?: number;
 }
 
 export class GameActor {
@@ -116,9 +196,25 @@ export class GameActor {
    * the wire event is neutral by construction (PROTOCOL.md §6).
    */
   private pendingChecks: CheckEventRow[] = [];
+  /**
+   * Accepted-but-unflushed vote lifecycle events, appended to check_vote_events on the next flush in
+   * the same transaction as the snapshot carrying the vote state (DESIGN.md §6, §9; D32). Buffered
+   * exactly like `pendingChecks`, so every consumed vote seq stays accounted for (INV-5).
+   */
+  private pendingVoteEvents: VoteEventRow[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly flushEventThreshold: number;
   private readonly flushIntervalMs: number;
+  private readonly checkVoteTtlMs: number;
+
+  /**
+   * The open vote's absolute timeout (PROTOCOL.md §10; D32), null when no vote is open. The session
+   * owns the wall clock: it stamps this at open, rides it on the broadcast and every snapshot, and
+   * fires `voteTimer` at it. The engine `checkVote` models no clock (INV-9), so this is its companion.
+   */
+  private voteExpiresAt: string | null;
+  /** The armed expiry timer for the open vote (D32); null when no vote is open. */
+  private voteTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * When the actor last lost its final socket (or hydration time, for an actor that has
@@ -166,12 +262,59 @@ export class GameActor {
     this.roomName = hydrated.roomName;
     this.recentCommandIds = [...hydrated.recentCommandIds];
     this.stats = hydrated.stats;
+    this.voteExpiresAt = hydrated.checkVoteExpiresAt;
     this.idleSince = now();
     this.flushEventThreshold =
       options.flushEventThreshold ?? FLUSH_EVENT_THRESHOLD;
     this.flushIntervalMs = options.flushIntervalMs ?? FLUSH_INTERVAL_MS;
+    this.checkVoteTtlMs = options.checkVoteTtlMs ?? CHECK_VOTE_TTL_MS;
     this.pushEmitter = pushEmitter ?? createInertEmitter();
     this.analytics = analytics ?? createNoopAnalytics();
+    this.reconcileHydratedVote();
+  }
+
+  /**
+   * Reconcile a hydrated open vote with the wall clock on crash rehydrate (PROTOCOL.md §10; D32).
+   * A vote whose deadline already passed closes `failed` `EXPIRED`, consuming a seq and persisting
+   * a check_vote_events row (no broadcast: no socket is attached yet, so the welcome snapshot heals
+   * it); a vote still in the future re-arms the timer for the remaining time. With no open vote this
+   * is a no-op. The engine expiry input drives the close (INV-9); the session owns the clock.
+   */
+  private reconcileHydratedVote(): void {
+    const vote = this.state.checkVote;
+    if (vote === undefined || vote === null) return;
+    const expiresAt = this.voteExpiresAt;
+    const expiredAtRest =
+      expiresAt === null || Date.parse(expiresAt) <= this.now().getTime();
+    if (!expiredAtRest) {
+      this.armVoteTimer(expiresAt);
+      return;
+    }
+    const at = this.now().toISOString();
+    const result = applyWithVote(
+      this.state,
+      { type: "expireCheckVote" },
+      this.solution,
+    );
+    if (result.events.length === 0) return; // defensive: no vote to close
+    this.state = result.state;
+    for (const event of result.events) {
+      if (event.type === "checkVoteClosed") {
+        this.pendingVoteEvents.push(closedVoteRow(event, at));
+      }
+    }
+    this.voteExpiresAt = null;
+    // Persist the close promptly and deterministically, behind the constructor, through the mailbox
+    // (single writer). The state is already correct for a synchronous welcome; this only durably
+    // records the consumed seq (INV-5).
+    void this.mailbox
+      .post(() => this.doFlush())
+      .catch((error: unknown) => {
+        console.error(
+          `hydrate-expiry flush fault for game ${this.gameId}:`,
+          error,
+        );
+      });
   }
 
   /**
@@ -351,35 +494,52 @@ export class GameActor {
 
   /** How many events are buffered but not yet flushed (drain and tests read this). */
   get pendingFlushCount(): number {
-    return this.pending.length + this.pendingChecks.length;
+    return (
+      this.pending.length +
+      this.pendingChecks.length +
+      this.pendingVoteEvents.length
+    );
   }
 
   /**
    * Enqueue a mutation on the mailbox. Every mutation for this game runs through this one
    * queue, so however many sockets send concurrently, the commands take one total order
    * and seq stays contiguous (INV-2). The returned promise settles when the command has
-   * been applied, flushed if the completion path fired, and broadcast. `checkPuzzle` rides
-   * the same queue: a room check is a sequenced mutation of check state (PROTOCOL.md §10).
+   * been applied, flushed if the completion path fired, and broadcast. `checkPuzzle` and
+   * `castCheckVote` ride the same queue: a proposal and a ballot are sequenced mutations of the
+   * vote state (PROTOCOL.md §10; D32), fed to the engine's vote driver like any other command.
    */
   submit(
     connection: Connection,
-    message: PlaceLetterMessage | ClearCellMessage | CheckPuzzleMessage,
+    message:
+      | PlaceLetterMessage
+      | ClearCellMessage
+      | CheckPuzzleMessage
+      | CastCheckVoteMessage,
   ): Promise<void> {
     return this.mailbox.post(() => this.handleMutation(connection, message));
   }
 
   /**
-   * Apply one mutation. Runs inside the mailbox (see `submit`), so it is the single
-   * writer of this game's state. Broadcasts one `cellSet` per accepted command, buffers
-   * it for the write-behind flush, and on the completing move flushes synchronously then
-   * broadcasts `gameCompleted` (INV-3). A rejection unicasts a §11 error.
+   * Apply one command through the engine's vote driver (PROTOCOL.md §10; D32). Runs inside the
+   * mailbox (see `submit`), so it is the single writer of this game's state. A cell mutation runs
+   * two-phase completion and cancels an open vote when it completes or breaks the grid; a
+   * `checkPuzzle` opens a vote (freezing the electorate assembled here from live presence); a
+   * `castCheckVote` records a ballot and may resolve the vote. Each accepted command broadcasts its
+   * sequenced events (adapter-stamped) and buffers them for the write-behind flush; a completing
+   * move flushes synchronously then broadcasts `gameCompleted` (INV-3). A rejection unicasts a §11
+   * error carrying the offending `commandId`, exactly like the cell mutations.
    */
   private async handleMutation(
     connection: Connection,
-    message: PlaceLetterMessage | ClearCellMessage | CheckPuzzleMessage,
+    message:
+      | PlaceLetterMessage
+      | ClearCellMessage
+      | CheckPuzzleMessage
+      | CastCheckVoteMessage,
   ): Promise<void> {
-    // Role gate (DESIGN.md §3 step 2): spectators send nothing that mutates the board,
-    // the room check included (PROTOCOL.md §5: checkPuzzle is host or solver).
+    // Role gate (DESIGN.md §3 step 2): spectators send nothing that mutates the board, the vote
+    // proposal and ballot included (PROTOCOL.md §5: checkPuzzle and castCheckVote are host/solver).
     if (connection.role === "spectator") {
       connection.send(
         errorFrame("ROLE_FORBIDDEN", "spectators cannot mutate the board", {
@@ -393,16 +553,40 @@ export class GameActor {
     // silently, no event and no error.
     if (this.recentCommandIds.includes(message.commandId)) return;
 
-    const at = this.now().toISOString();
+    const nowDate = this.now();
+    const at = nowDate.toISOString();
 
+    // Translate the wire command into the engine's vote command. A proposal carries the electorate
+    // frozen from live presence (INV-9: the engine gets it as data) and the session stamps the
+    // vote's absolute `expiresAt` = now + TTL, attached to the broadcast checkVoteOpened.
+    let command: VoteCommand;
+    let openedExpiresAt: string | undefined;
     if (message.type === "checkPuzzle") {
-      await this.handleCheck(connection, message, at);
-      return;
+      command = {
+        type: "checkPuzzle",
+        commandId: message.commandId,
+        by: connection.userId,
+        electorate: this.assembleElectorate(connection.userId),
+      };
+      openedExpiresAt = new Date(
+        nowDate.getTime() + this.checkVoteTtlMs,
+      ).toISOString();
+    } else if (message.type === "castCheckVote") {
+      command = {
+        type: "castCheckVote",
+        commandId: message.commandId,
+        by: connection.userId,
+        voteSeq: message.voteSeq,
+        approve: message.approve,
+      };
+    } else {
+      command = toEngineCommand(message, connection.userId, at);
     }
 
-    const command = toEngineCommand(message, connection.userId, at);
-
-    const result = applyWithCompletion(this.state, command, this.solution);
+    // Capture whether firstFillAt was already set before applying: the reducer sets it once, on the
+    // first placeLetter (PROTOCOL.md §4). A null-to-value transition means this cellSet is that fill.
+    const hadFirstFillBefore = this.state.firstFillAt !== null;
+    const result = applyWithVote(this.state, command, this.solution);
 
     if (result.error !== undefined) {
       connection.send(
@@ -413,84 +597,172 @@ export class GameActor {
       return;
     }
 
-    // Capture whether firstFillAt was already set before applying: the reducer sets it
-    // once, on the first placeLetter (PROTOCOL.md §4). A null-to-value transition here
-    // means this command's cellSet is the first fill.
-    const hadFirstFillBefore = this.state.firstFillAt !== null;
     this.state = result.state;
     this.recordCommandId(message.commandId);
 
-    // The first fill's cellSet carries firstFillAt so already-connected clients start the
-    // shared timer on the delta, not only at their next snapshot (PROTOCOL.md §6). It rides
-    // exactly this one event; every later cellSet omits it.
+    // The first fill's cellSet carries firstFillAt so already-connected clients start the shared
+    // timer on the delta, not only at their next snapshot (PROTOCOL.md §6). Rides exactly that one
+    // event; every later cellSet omits it.
     const firstFillDelta =
       !hadFirstFillBefore && this.state.firstFillAt !== null
         ? this.state.firstFillAt
         : undefined;
 
-    let completion: number | null = null;
-    for (const event of result.events) {
-      if (event.type === "cellSet") {
-        // Buffer for the write-behind flush, then broadcast immediately (DESIGN.md §3
-        // steps 4 and 5): Postgres is never on the keystroke path.
-        this.pending.push(event);
-        this.broadcast(cellSetToWire(event, firstFillDelta));
-        continue;
-      }
-      // gameCompleted: the engine emits {type, seq}; the actor drives the terminal flush.
-      completion = event.seq;
-    }
+    const completion = this.emitVoteEvents(
+      result.events,
+      at,
+      openedExpiresAt,
+      firstFillDelta,
+    );
+
+    // Reconcile the timer with the post-command vote state: a newly opened vote arms it, any close
+    // (pass, reject, expiry, cancellation) cancels it (PROTOCOL.md §10; D32).
+    this.reconcileVoteTimer(result.events, openedExpiresAt);
 
     if (completion !== null) {
       await this.completeGame(completion, at, connection.userId);
       return;
     }
-    // A non-terminal fill changed the counts: feed the debounced fill push (fire-and-forget). The
-    // policy dedupes a no-op fill (same counts) and holds intermediate states, so calling per
-    // accepted mutation is safe. Emitted after the broadcast so the WS path is never delayed.
-    this.pushEmitter.onFill(this.gameId, this.boardFacts());
+    // A non-terminal cell fill changed the counts: feed the debounced fill push (fire-and-forget).
+    // The vote commands set no cell, so they never touch the fill push. Emitted after the broadcast
+    // so the WS path is never delayed.
+    if (message.type === "placeLetter" || message.type === "clearCell") {
+      this.pushEmitter.onFill(this.gameId, this.boardFacts());
+    }
     await this.afterMutationFlush();
   }
 
   /**
-   * The room check (PROTOCOL.md §5, §6, §10; D27). Runs inside the mailbox via `submit`,
-   * behind the same role gate and commandId dedup as the cell mutations. The engine's check
-   * gate decides (GAME_NOT_ONGOING / GRID_NOT_FULL reject through the standard §11 path,
-   * consuming no seq); an acceptance broadcasts one sequenced `puzzleChecked` with the
-   * adapter-stamped `at` and NO `by` (neutral by construction), while the acting user is
-   * retained server-side in the pending check_events row for the next flush (DESIGN.md §9).
+   * Broadcast and buffer each event the vote driver produced (PROTOCOL.md §6, §10; D32), in engine
+   * order. cellSets append to cell_events and broadcast; a `puzzleChecked` appends to check_events
+   * (user_id = the proposer the engine names on `by`) and broadcasts with `by`; the three vote
+   * events append to check_vote_events and broadcast adapter-stamped (`expiresAt` on the open). A
+   * `gameCompleted` is not broadcast here: its seq is returned so `completeGame` flushes
+   * synchronously first (INV-3). Since the terminal event stays last, everything before it is
+   * broadcast in order.
    */
-  private async handleCheck(
-    connection: Connection,
-    message: CheckPuzzleMessage,
+  private emitVoteEvents(
+    events: readonly VoteEvent[],
     at: string,
-  ): Promise<void> {
-    const result = applyWithCompletion(
-      this.state,
-      { type: "checkPuzzle", commandId: message.commandId },
-      this.solution,
-    );
+    openedExpiresAt: string | undefined,
+    firstFillDelta: string | undefined,
+  ): number | null {
+    let completion: number | null = null;
+    for (const event of events) {
+      switch (event.type) {
+        case "cellSet":
+          this.pending.push(event);
+          this.broadcast(cellSetToWire(event, firstFillDelta));
+          break;
+        case "puzzleChecked":
+          // user_id is the proposer whose vote passed (DESIGN.md §9); the vote path always sets `by`.
+          this.pendingChecks.push({ seq: event.seq, userId: event.by!, at });
+          this.broadcast(puzzleCheckedToWire(event, at));
+          break;
+        case "checkVoteOpened":
+          this.pendingVoteEvents.push(openedVoteRow(event, at));
+          this.broadcast(checkVoteOpenedToWire(event, at, openedExpiresAt!));
+          break;
+        case "checkVoteCast":
+          this.pendingVoteEvents.push(castVoteRow(event, at));
+          this.broadcast(checkVoteCastToWire(event, at));
+          break;
+        case "checkVoteClosed":
+          this.pendingVoteEvents.push(closedVoteRow(event, at));
+          this.broadcast(checkVoteClosedToWire(event, at));
+          break;
+        case "gameCompleted":
+          completion = event.seq;
+          break;
+      }
+    }
+    return completion;
+  }
 
-    if (result.error !== undefined) {
-      connection.send(
-        errorFrame(result.error, REJECTION_MESSAGE[result.error], {
-          commandId: message.commandId,
-        }),
-      );
+  /**
+   * The electorate frozen at proposal accept time (PROTOCOL.md §10; D32): the host and solver
+   * members with a live socket on this actor, always including the proposer, ascending ASCII
+   * (INV-1). Spectators never vote. Assembled from the cached connection roles (verified at
+   * handshake, refreshed on a role change, INV-8), so it needs no Postgres read on the hot path.
+   */
+  private assembleElectorate(proposerId: string): string[] {
+    const electors = new Set<string>([proposerId]);
+    for (const conn of this.connections) {
+      if (conn.role === "host" || conn.role === "solver") {
+        electors.add(conn.userId);
+      }
+    }
+    return [...electors].sort();
+  }
+
+  /**
+   * Reconcile the expiry timer with the post-command vote state (PROTOCOL.md §10; D32). A vote that
+   * just opened (and did not auto-pass) arms the timer at the stamped `expiresAt`; a closed vote (or
+   * a solo auto-pass) cancels it. A ballot that leaves the vote open leaves the timer running at its
+   * original deadline: the timebox never resets on a ballot.
+   */
+  private reconcileVoteTimer(
+    events: readonly VoteEvent[],
+    openedExpiresAt: string | undefined,
+  ): void {
+    if (this.state.checkVote === undefined || this.state.checkVote === null) {
+      this.cancelVoteTimer();
       return;
     }
+    const opened = events.some((e) => e.type === "checkVoteOpened");
+    if (opened && openedExpiresAt !== undefined) {
+      this.armVoteTimer(openedExpiresAt);
+    }
+  }
 
-    // An accepted check emits exactly one puzzleChecked (PROTOCOL.md §10); it sets no
-    // cell, so it can never trigger completion.
-    const event = result.events[0] as PuzzleChecked;
+  /** Arm the expiry timer at `expiresAt` (PROTOCOL.md §10; D32), replacing any prior one. */
+  private armVoteTimer(expiresAt: string): void {
+    this.cancelVoteTimer();
+    this.voteExpiresAt = expiresAt;
+    const delay = Math.max(0, Date.parse(expiresAt) - this.now().getTime());
+    this.voteTimer = setTimeout(() => {
+      this.voteTimer = null;
+      // Feed the expiry through the mailbox so it is serialized with commands (single writer, one
+      // total order). An expiry racing a close is a silent no-op by contract.
+      void this.mailbox
+        .post(() => this.handleExpiry())
+        .catch((error: unknown) => {
+          console.error(`vote-expiry fault for game ${this.gameId}:`, error);
+        });
+    }, delay);
+    this.voteTimer.unref?.();
+  }
+
+  /** Cancel the expiry timer and clear the session-owned `expiresAt` (the vote is closing). */
+  private cancelVoteTimer(): void {
+    if (this.voteTimer !== null) {
+      clearTimeout(this.voteTimer);
+      this.voteTimer = null;
+    }
+    this.voteExpiresAt = null;
+  }
+
+  /**
+   * Close the open vote on the timer firing (PROTOCOL.md §10; D32): feed the engine an
+   * `expireCheckVote` input, which closes it `failed` `EXPIRED`. With no vote open (the timer raced
+   * a close) it is a silent no-op. Runs inside the mailbox (posted by the timer), so it never races
+   * a command.
+   */
+  private async handleExpiry(): Promise<void> {
+    const at = this.now().toISOString();
+    const result = applyWithVote(
+      this.state,
+      { type: "expireCheckVote" },
+      this.solution,
+    );
+    if (result.events.length === 0) {
+      // No vote open: the timer raced a close. Ensure the timer state is clear and stop.
+      this.cancelVoteTimer();
+      return;
+    }
     this.state = result.state;
-    this.recordCommandId(message.commandId);
-    this.pendingChecks.push({
-      seq: event.seq,
-      userId: connection.userId,
-      at,
-    });
-    this.broadcast(puzzleCheckedToWire(event, at));
+    this.emitVoteEvents(result.events, at, undefined, undefined);
+    this.cancelVoteTimer();
     await this.afterMutationFlush();
   }
 
@@ -508,10 +780,12 @@ export class GameActor {
     this.completedAt = at;
     const events = this.pending;
     const checks = this.pendingChecks;
+    const voteEvents = this.pendingVoteEvents;
     const stats = await this.persistence.flushTerminal(
       this.gameId,
       events,
       checks,
+      voteEvents,
       (participantCount, eventAtMs) => {
         const s = this.computeStats(
           terminalSeq,
@@ -525,6 +799,7 @@ export class GameActor {
     this.stats = stats;
     this.pending = [];
     this.pendingChecks = [];
+    this.pendingVoteEvents = [];
     this.cancelFlushTimer();
     this.broadcast({
       type: "gameCompleted",
@@ -552,15 +827,33 @@ export class GameActor {
   }
 
   /**
-   * Terminal abandon (INV-4). Takes the next seq, marks the state abandoned, flushes the
-   * buffered events plus the abandoned snapshot SYNCHRONOUSLY in one transaction, then
-   * broadcasts `gameAbandoned` (persisted before broadcast, like completion). The terminal
-   * event consumes a seq but is never appended to cell_events (DESIGN.md §9), so only the
-   * pending cellSets go to the log; the snapshot carries the terminal seq and status.
+   * Terminal abandon (INV-4). Closes an open vote `cancelled` `TERMINAL` first (BEFORE
+   * `gameAbandoned`, mirroring the engine's completion ordering; the engine models no abandon, so
+   * the actor composes it, PROTOCOL.md §10; D32), then takes the next seq, marks the state
+   * abandoned, flushes the buffered events plus the abandoned snapshot SYNCHRONOUSLY in one
+   * transaction, and broadcasts `gameAbandoned` (persisted before broadcast, like completion). The
+   * terminal event consumes a seq but is never appended to cell_events (DESIGN.md §9); the vote
+   * close consumes its own seq and lands in check_vote_events like any close.
    */
   private async doAbandon(by: string): Promise<void> {
     if (this.state.status !== "ongoing") return; // INV-4: a terminal state is final
     const at = this.now().toISOString();
+    // Close an open vote first, so the ordering is checkVoteClosed(TERMINAL), then gameAbandoned.
+    const vote = this.state.checkVote;
+    if (vote !== undefined && vote !== null) {
+      const closeSeq = this.state.seq + 1;
+      const closed: CheckVoteClosed = {
+        type: "checkVoteClosed",
+        seq: closeSeq,
+        voteSeq: vote.openedSeq,
+        outcome: "cancelled",
+        reason: "TERMINAL",
+      };
+      this.state = { ...this.state, seq: closeSeq, checkVote: null };
+      this.pendingVoteEvents.push(closedVoteRow(closed, at));
+      this.broadcast(checkVoteClosedToWire(closed, at));
+      this.cancelVoteTimer();
+    }
     const seq = this.state.seq + 1;
     this.state = { ...this.state, status: "abandoned", seq };
     this.abandonedAt = at;
@@ -569,10 +862,12 @@ export class GameActor {
       this.gameId,
       events,
       this.pendingChecks,
+      this.pendingVoteEvents,
       this.snapshotForFlush(),
     );
     this.pending = [];
     this.pendingChecks = [];
+    this.pendingVoteEvents = [];
     this.cancelFlushTimer();
     this.broadcast({ type: "gameAbandoned", seq, at, by });
     // Terminal moment (PROTOCOL.md "Live Activity push"): end the island with the frozen partial
@@ -633,14 +928,17 @@ export class GameActor {
     if (this.pendingFlushCount === 0) return;
     const events = this.pending;
     const checks = this.pendingChecks;
+    const voteEvents = this.pendingVoteEvents;
     await this.persistence.flush(
       this.gameId,
       events,
       checks,
+      voteEvents,
       this.snapshotForFlush(),
     );
     this.pending = [];
     this.pendingChecks = [];
+    this.pendingVoteEvents = [];
   }
 
   /**
@@ -656,12 +954,13 @@ export class GameActor {
   private snapshotForFlush(stats: Stats | null = this.stats): StateSnapshot {
     return {
       status: this.state.status,
-      // The marks and count persist with the board they describe, in one jsonb, so a
-      // rehydrated actor serves exactly the snapshot it flushed (INV-5; D27).
+      // The marks, count, and open vote persist with the board they describe, in one jsonb, so a
+      // rehydrated actor serves exactly the snapshot it flushed (INV-5; D27, D32).
       board: {
         cells: boardCells(this.state),
         checkedWrongCells: checkedWrongAscending(this.state),
         checkCount: this.state.checkCount,
+        checkVote: this.persistedCheckVote(),
       },
       lastSeq: this.state.seq,
       firstFillAt: this.state.firstFillAt,
@@ -690,7 +989,39 @@ export class GameActor {
       abandonedAt: this.abandonedAt,
       stats: this.stats,
       recentCommandIds: this.recentCommandIds,
+      checkVote: this.wireCheckVote(),
     });
+  }
+
+  /**
+   * The open vote as the persisted snapshot shape (DESIGN.md §9; D32), or null when none. Carries
+   * the engine fields plus the session-owned `expiresAt` so a rehydrated actor resumes or expires
+   * the vote (writer.ts PersistedCheckVote). Defensive null when `expiresAt` is unset, which cannot
+   * happen while a vote is open.
+   */
+  private persistedCheckVote(): PersistedCheckVote | null {
+    const vote = this.state.checkVote;
+    if (vote === undefined || vote === null || this.voteExpiresAt === null) {
+      return null;
+    }
+    return {
+      openedSeq: vote.openedSeq,
+      by: vote.by,
+      commandId: vote.commandId,
+      electorate: [...vote.electorate],
+      approvals: [...vote.approvals],
+      rejections: [...vote.rejections],
+      expiresAt: this.voteExpiresAt,
+    };
+  }
+
+  /** The open vote as the §4 wire object (PROTOCOL.md §4; D32), or null when none is open. */
+  private wireCheckVote(): CheckVoteView | null {
+    const vote = this.state.checkVote;
+    if (vote === undefined || vote === null || this.voteExpiresAt === null) {
+      return null;
+    }
+    return checkVoteToWire(vote, this.voteExpiresAt);
   }
 
   private recordCommandId(commandId: string): void {
