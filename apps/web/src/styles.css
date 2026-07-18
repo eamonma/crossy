@@ -1472,11 +1472,9 @@
   stroke: var(--color-gold-9);
   stroke-width: var(--vote-ring-weight, 3);
   stroke-linecap: round;
-  /* The SVG stretches to the board's aspect (preserveAspectRatio none), so keep the stroke a
-     constant weight on both axes rather than letting the scale thicken one side. */
-  vector-effect: non-scaling-stroke;
   /* pathLength is normalized to 1 on the element, so a dash of 1 spans the whole perimeter and the
-     offset (0 full, 1 empty) reads straight off the remaining fraction. */
+     offset (0 full, 1 empty) reads straight off the remaining fraction. The SVG is rendered in
+     pixel space (LuminousRing measures the box), so the stroke stays a uniform 3px with no stretch. */
   stroke-dasharray: 1;
   transition: stroke-dashoffset 120ms linear;
   filter: drop-shadow(
@@ -1626,19 +1624,22 @@
 /* The reveal wash: the wrong-cell marks wash across in ascending-cell-index stagger, each a brief
  * gold flash settling into the standing mark under it (the marks themselves already applied). Per
  * cell delay is set inline; the whole wash stays under ~900 ms. */
+/* The wash tiles are SVG <rect>s in the grid's own viewBox (VoteBoardOverlay), so they land exactly
+ * on the cell rects at any board aspect. The per-cell delay chain already includes the ~600 ms
+ * breath, so tile zero starts after "Checking…" has held still, never during it. */
 .check-wash-cell {
-  position: absolute;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--color-gold-9) 70%, transparent);
+  fill: color-mix(in srgb, var(--color-gold-9) 70%, transparent);
   pointer-events: none;
   opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
   animation: check-wash 360ms var(--ease-out) both;
   animation-delay: var(--wash-delay, 0ms);
 }
 @keyframes check-wash {
   0% {
     opacity: 0;
-    transform: scale(0.6);
+    transform: scale(0.7);
   }
   45% {
     opacity: 0.9;
