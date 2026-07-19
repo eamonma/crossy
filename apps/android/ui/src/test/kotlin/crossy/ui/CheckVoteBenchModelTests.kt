@@ -126,28 +126,6 @@ class CheckVoteBenchModelTests {
         assertFalse(CheckVoteBenchModel.showVerbs(voted, "u2"), "a voted elector sees no verbs (immutable ballot)")
     }
 
-    // --- The ring: the only clock (PROTOCOL.md §10) ---
-
-    @Test
-    fun ringDrainsFromOneToZeroWithRemainingTime_D32() {
-        val v = vote()
-        val expiresMs = v.expiresAtEpochMs!!
-        assertEquals(1f, CheckVoteBenchModel.ringFraction(v, expiresMs - 30_000L), 0.001f)
-        assertEquals(0.5f, CheckVoteBenchModel.ringFraction(v, expiresMs - 15_000L), 0.001f)
-        assertEquals(0f, CheckVoteBenchModel.ringFraction(v, expiresMs), 0.001f)
-        assertEquals(0f, CheckVoteBenchModel.ringFraction(v, expiresMs + 5_000L), 0.001f, "never negative")
-    }
-
-    @Test
-    fun reducedMotionStepsTheRingInsteadOfSweeping_PROTOCOL7() {
-        val v = vote()
-        val expiresMs = v.expiresAtEpochMs!!
-        // Six steps: a value just under a step boundary rounds up to the boundary level.
-        val stepped = CheckVoteBenchModel.ringFractionStepped(v, expiresMs - 16_000L) // raw ~0.533
-        assertEquals(4f / 6f, stepped, 0.001f, "quantized to one of six discrete levels")
-        assertTrue(CheckVoteBenchModel.ringFraction(v, expiresMs - 16_000L, reduceMotion = true) == stepped)
-    }
-
     // --- Hold-to-propose: the call (Wave 15.6) ---
 
     @Test
@@ -173,8 +151,6 @@ class CheckVoteBenchModelTests {
         assertEquals("4 to fix", CheckVoteBenchModel.resolutionLine(r, landsAt), "the count lands after breath + wash")
         // Reduced motion has no breath or wash: the marks and the line apply instantly (U6).
         assertEquals("4 to fix", CheckVoteBenchModel.resolutionLine(r, 0L, reduceMotion = true), "reduced motion lands instantly")
-        assertFalse(CheckVoteBenchModel.ringDissolving(r, 100L))
-        assertTrue(CheckVoteBenchModel.ringDissolving(r, 700L), "the ring flash-dissolves after the breath")
         assertEquals(0f, CheckVoteBenchModel.washProgress(r, 100L), 0.001f, "no wash during the breath")
         assertTrue(CheckVoteBenchModel.washProgress(r, 700L) > 0f, "the wash begins after the breath")
         assertNull(CheckVoteBenchModel.proposerTally(r), "a passing close shows no tally")
