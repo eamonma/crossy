@@ -50,6 +50,12 @@ public enum Motion {
         public static let celebrationResponse: TimeInterval = 0.45
         public static let celebrationDampingFraction: Double = 0.78
 
+        /// The check-vote card's arrival (Wave 15.10): a people surface, so it lands
+        /// with a whisper of life — between the chrome's stillness and the
+        /// celebration's bounce. Withdrawal always rides the chrome spring.
+        public static let voteCardResponse: TimeInterval = 0.40
+        public static let voteCardDampingFraction: Double = 0.85
+
         /// The key deck press pop (apps/ios/DESIGN.md §7, ID-4). Deliberately
         /// tighter than `chromeResponse` so the pop reads at sixty presses a
         /// minute; the value is the SP-i2 rig's, the geometry the owner confirmed

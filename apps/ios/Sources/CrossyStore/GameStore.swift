@@ -206,8 +206,8 @@ public final class GameStore {
 
     /// A check vote opened, cast, or closed (PROTOCOL.md §6, §10; D32): the onPuzzleChecked
     /// pattern for the three vote beats. Fired only under the §7 seq gate, so snapshot healing
-    /// (a reconnect welcome carrying an open vote) stays silent and the view animates the ring
-    /// and the Bench only on a live transition, never on history arriving. The vote state
+    /// (a reconnect welcome carrying an open vote) stays silent and the view presents the vote
+    /// card's beats only on a live transition, never on history arriving. The vote state
     /// itself is `checkVote`; these only surface the beats for haptics and motion. Set by the
     /// composition root.
     @ObservationIgnored public var onCheckVoteOpened: (@MainActor (CheckVoteOpenedMessage) -> Void)?
@@ -412,8 +412,9 @@ public final class GameStore {
         return min(Self.checkVoteTTLSeconds, max(0, expires.timeIntervalSince(now)))
     }
 
-    /// The check-vote timebox, `CHECK_VOTE_TTL_MS` = 30,000 ms (PROTOCOL.md §10), the ring's
-    /// full-drain span and the clamp ceiling.
+    /// The check-vote timebox, `CHECK_VOTE_TTL_MS` = 30,000 ms (PROTOCOL.md §10), the clamp
+    /// ceiling for `checkVoteRemaining`. A store fact only: no client clock renders (owner
+    /// ruling 2026-07-18; the timebox is felt as the lapse line).
     public static let checkVoteTTLSeconds: TimeInterval = 30
 
     /// Parse a wire ISO 8601 timestamp (server clock, §3), tolerating fractional seconds. The

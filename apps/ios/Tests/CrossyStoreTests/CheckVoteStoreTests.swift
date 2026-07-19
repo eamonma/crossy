@@ -1,7 +1,7 @@
 // The check-vote store behaviors (PROTOCOL.md §4, §6, §10; D32), the Wave 15.5 twin of the
 // room-check store tests above. The vote events are sequenced, so they ride the §7 seq gate
 // exactly like cellSet and puzzleChecked; the open vote rides every snapshot, so a reconnect
-// mid-vote reconstructs it wholesale; the ring's remaining time clamps to the timebox; a solo
+// mid-vote reconstructs it wholesale; the remaining time clamps to the timebox; a solo
 // electorate auto-passes with no lingering vote; and a bare puzzleChecked in the server
 // rollout window applies marks with no vote state. The four non-fatal rejections are handled
 // by the generic error path (they carry no overlay entry). Mirrors the web store's vote suite.
@@ -199,7 +199,7 @@ final class CheckVoteStoreTests: XCTestCase {
         XCTAssertNil(store.checkVote, "the snapshot replaces sequenced state wholesale, vote included")
     }
 
-    // MARK: - Remaining time clamp (PROTOCOL.md §10; the ring's only clock)
+    // MARK: - Remaining time clamp (PROTOCOL.md §10; a store fact — no client clock renders)
 
     func test_remainingTimeClampsToTheTimebox_PROTOCOL10() {
         let store = makeLiveStore(board(seq: 30))
