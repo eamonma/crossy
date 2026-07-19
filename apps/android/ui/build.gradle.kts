@@ -30,6 +30,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    // BackHandler for the check-vote card's predictive-back dismissal (Wave 15.12).
+    implementation(libs.activity.compose)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.core)
