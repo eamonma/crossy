@@ -5,6 +5,13 @@
 package crossy.ui
 
 import crossy.store.SyncState
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -63,5 +70,97 @@ class RoomWeatherTests {
         assertNull(RoomWeather.label(SyncState.CONNECTING))
         assertNull(RoomWeather.label(SyncState.LIVE))
         assertNull(RoomWeather.label(SyncState.RESYNCING))
+    }
+
+    // The reconnect-overlay grace window (Track A-android; the web and iOS 2000 ms twin): the chrome
+    // waits out RECONNECT_OVERLAY_GRACE_MS of continuous non-live before it speaks, and clears the
+    // instant the room returns to live. Driven on the test scheduler (the SessionDriverTests idiom).
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `A-android a non-live blink under the grace window never shows the overlay`() = runTest {
+        val sync = MutableStateFlow(SyncState.LIVE)
+        val seen = mutableListOf<Boolean>()
+        val job = launch { RoomWeather.overlayGrace(sync).collect { seen.add(it) } }
+        runCurrent()
+
+        sync.value = SyncState.RECONNECTING
+        advanceTimeBy(RoomWeather.RECONNECT_OVERLAY_GRACE_MS - 1)
+        runCurrent()
+
+        // A ~200 ms Railway reconnect recovers before the window elapses: the chrome never spoke.
+        assertEquals(listOf(false), seen)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `A-android non-live past the grace window shows the overlay`() = runTest {
+        val sync = MutableStateFlow(SyncState.LIVE)
+        val seen = mutableListOf<Boolean>()
+        val job = launch { RoomWeather.overlayGrace(sync).collect { seen.add(it) } }
+        runCurrent()
+
+        sync.value = SyncState.RECONNECTING
+        advanceTimeBy(RoomWeather.RECONNECT_OVERLAY_GRACE_MS)
+        runCurrent()
+
+        assertEquals(listOf(false, true), seen)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `A-android recovery to live hides the overlay at once`() = runTest {
+        val sync = MutableStateFlow(SyncState.LIVE)
+        val seen = mutableListOf<Boolean>()
+        val job = launch { RoomWeather.overlayGrace(sync).collect { seen.add(it) } }
+        runCurrent()
+
+        sync.value = SyncState.RECONNECTING
+        advanceUntilIdle() // past the window: the overlay is up
+        assertEquals(listOf(false, true), seen)
+
+        sync.value = SyncState.LIVE
+        runCurrent() // no virtual time passes: the overlay clears immediately on recovery
+        assertEquals(listOf(false, true, false), seen)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `A-android recovery before the window cancels the pending timer`() = runTest {
+        val sync = MutableStateFlow(SyncState.LIVE)
+        val seen = mutableListOf<Boolean>()
+        val job = launch { RoomWeather.overlayGrace(sync).collect { seen.add(it) } }
+        runCurrent()
+
+        sync.value = SyncState.RESYNCING
+        advanceTimeBy(RoomWeather.RECONNECT_OVERLAY_GRACE_MS - 1)
+        runCurrent()
+        sync.value = SyncState.LIVE // recovered before the window: the armed timer is cancelled
+        advanceUntilIdle() // let any stranded timer fire; it must not
+
+        assertEquals(listOf(false), seen)
+        job.cancel()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `A-android a resyncing to reconnecting bounce is one unbroken non-live stretch`() = runTest {
+        val sync = MutableStateFlow(SyncState.LIVE)
+        val seen = mutableListOf<Boolean>()
+        val job = launch { RoomWeather.overlayGrace(sync).collect { seen.add(it) } }
+        runCurrent()
+
+        sync.value = SyncState.RESYNCING
+        advanceTimeBy(RoomWeather.RECONNECT_OVERLAY_GRACE_MS / 2)
+        runCurrent()
+        sync.value = SyncState.RECONNECTING // a bounce mid-window must not reset the shared timer
+        advanceTimeBy(RoomWeather.RECONNECT_OVERLAY_GRACE_MS / 2)
+        runCurrent()
+
+        // The window is measured from the first non-live instant, not the bounce: the overlay shows.
+        assertEquals(listOf(false, true), seen)
+        job.cancel()
     }
 }

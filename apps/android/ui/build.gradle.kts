@@ -35,6 +35,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit.jupiter)
+    // Test-only: virtual time for the reconnect-overlay grace flow (RoomWeatherGraceTests drives
+    // RoomWeather.overlayGrace on the test scheduler, the SessionDriverTests idiom).
+    testImplementation(libs.kotlinx.coroutines.test)
     // Test-only: the JVM twin of the vector readers, so TitleLabelsVectorTests can pin
     // TitleLadder's labels to vectors/analysis/title-labels.json (the DisplayNameVectorTests idiom).
     testImplementation(libs.kotlinx.serialization.json)
