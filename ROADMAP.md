@@ -1405,3 +1405,24 @@ rollout window.
   never dismisses a pending vote), the haptic grammar, and the Kotlin engine port,
   rebinding check and draining `apps/android/vectors.skip.json`. Exit: the JUnit
   vector runner executes every check case; the Bench ships the grammar.
+
+### The follow-through (audit and device tuning, 2026-07-18)
+
+A three-platform UX audit of the shipped client waves, then owner tuning on a
+physical iPhone, rewrote the venue rulings twice; `design/check-vote/UX.md` carries
+the final law (no clock renders anywhere; iOS/Android present a native blocking
+card; web keeps the Proscenium). The waves, all merged except where noted:
+
+- **15.7 web fixes** (#325): zero layout shift (one fixed band height), the reveal
+  no longer pre-paints marks, copy model ("Waiting for the room"), AA contrast,
+  mobile strip overflow, ballot feel.
+- **15.8 iOS strip-first Bench + Meridian ring**: scrapped unmerged at device
+  tuning (#326 closed) — the ring and strip did not survive the hand.
+- **15.9a Android mechanical** (#324): TERMINAL silence, TalkBack tally, copy
+  model, reveal beats, ballot feedback. **15.9b** (#328): ring removal.
+- **15.10 iOS card** (#330): the native centered blocking card, the reference
+  implementation; elector non-dismissible, sheet grammar for everyone else, the
+  pass condenses to a status capsule. Owner-tuned and merged.
+- **15.11 web ring removal** (#329).
+- **15.12 Android card**: transcribes the tuned 15.10 card into Compose, replacing
+  the Bench. In flight.
