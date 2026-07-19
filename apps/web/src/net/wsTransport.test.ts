@@ -14,11 +14,12 @@ function flush(): Promise<void> {
 }
 
 /** A minimal WebSocket stand-in: the transport only uses onopen/onmessage/onclose,
- * send, close, and readyState. */
+ * send, close, and readyState. onclose receives a CloseEvent-shaped object, as the browser
+ * delivers, so the transport can read code/reason/wasClean for its Track D close log. */
 class FakeSocket {
   onopen: (() => void) | null = null;
   onmessage: ((event: MessageEvent) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
   readyState = 0; // CONNECTING
   readonly sent: string[] = [];
   readonly closedWith: number[] = [];
@@ -30,7 +31,7 @@ class FakeSocket {
   close(code?: number): void {
     this.readyState = 3; // CLOSED
     this.closedWith.push(code ?? 0);
-    this.onclose?.();
+    this.fireClose(code ?? 0, true);
   }
 
   /** Drive the open handshake as the browser would. */
@@ -40,9 +41,13 @@ class FakeSocket {
   }
 
   /** A server-side or transport drop: onclose fires without a deliberate close. */
-  drop(): void {
+  drop(code = 1006): void {
     this.readyState = 3;
-    this.onclose?.();
+    this.fireClose(code, false);
+  }
+
+  private fireClose(code: number, wasClean: boolean): void {
+    this.onclose?.({ code, reason: "", wasClean } as CloseEvent);
   }
 }
 
@@ -224,5 +229,30 @@ describe("INV-11: sessions outlive access tokens (a transient token failure is n
     deferreds[1]!.resolve("token-live");
     await flush();
     expect(helloToken(sockets[1]!.sent[0])).toBe("token-live");
+  });
+});
+
+describe("Track D observability: the transport logs one greppable line on every socket close", () => {
+  it("logs the close code, wasClean flag, and socket age on a transport drop", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const { sockets, transport } = makeTransport(() => Promise.resolve("t1"));
+
+    transport.connect();
+    sockets[0]!.open();
+    await flush();
+
+    // A 1006 transport drop (the Railway edge reap this whole track chases): one close line.
+    sockets[0]!.drop(1006);
+
+    const line = info.mock.calls.find(
+      (c) =>
+        typeof c[0] === "string" && c[0].startsWith("crossy: socket closed"),
+    );
+    expect(line).toBeDefined();
+    expect(line![0]).toContain("code=1006");
+    expect(line![0]).toContain("wasClean=false");
+    expect(line![0]).toContain("socketAgeMs=");
+    // Non-browser test context: the document guard keeps visibility inert, never a crash.
+    expect(line![0]).toContain("visibility=unknown");
   });
 });

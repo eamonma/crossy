@@ -79,8 +79,19 @@ export class WsTransport implements GameTransport {
       this.options.onMessage(decoded.value);
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event: CloseEvent) => {
       this.stopHeartbeat();
+      // One greppable close line (Track D observability): the client half of the disconnect
+      // investigation. document.visibilityState distinguishes a background-tab reap from a real
+      // drop; guarded so tests and non-browser contexts never touch `document`. Computed before
+      // openedAt is zeroed below so the age is the true socket lifetime.
+      const socketAgeMs = this.openedAt > 0 ? Date.now() - this.openedAt : 0;
+      const visibility =
+        typeof document !== "undefined" ? document.visibilityState : "unknown";
+      console.info(
+        `crossy: socket closed code=${event.code} reason=${JSON.stringify(event.reason)} ` +
+          `wasClean=${event.wasClean} socketAgeMs=${socketAgeMs} visibility=${visibility}`,
+      );
       this.socket = null;
       if (this.closedDeliberately) return;
       // Both fatal-error closes (1008) and transport drops land here; the store is

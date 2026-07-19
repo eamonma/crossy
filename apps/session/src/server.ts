@@ -395,6 +395,11 @@ function handleConnection(
   let live = false;
   let actor: GameActor | null = null;
   let connection: Connection | null = null;
+  // Observability (Track D): the socket's open wall-clock, for the close-line age, and whether
+  // this close is a liveness reap rather than a client-initiated or transport drop. Counts and
+  // flags only, never frame contents (INV-6).
+  const openedAtMs = Date.now();
+  let livenessFired = false;
 
   const send = (frame: ServerMessage): void => {
     if (ws.readyState === ws.OPEN) {
@@ -416,7 +421,16 @@ function handleConnection(
   };
   const resetLiveness = (): void => {
     clearLiveness();
-    livenessTimer = setTimeout(() => ws.terminate(), deps.livenessTimeoutMs);
+    livenessTimer = setTimeout(() => {
+      // The liveness timer, not the client, is closing this socket. Mark it so the close line
+      // reports a reap, and log a distinct line so a reap is greppable apart from a client or
+      // transport close (Track D).
+      livenessFired = true;
+      console.info(
+        `session: liveness reap game=${gameId} user=${connection?.userId ?? "pre-handshake"}`,
+      );
+      ws.terminate();
+    }, deps.livenessTimeoutMs);
     livenessTimer.unref?.();
   };
   resetLiveness();
@@ -468,11 +482,13 @@ function handleConnection(
       });
   });
 
-  ws.on("close", () => {
+  ws.on("close", (code: number) => {
     clearLiveness();
+    const socketAgeMs = Date.now() - openedAtMs;
+    let wasLast = false;
     if (actor !== null && connection !== null) {
       // If this was the user's last live socket, tell the rest they went away (PROTOCOL.md §9).
-      const wasLast = actor.removeConnection(connection);
+      wasLast = actor.removeConnection(connection);
       if (wasLast) {
         actor.broadcastExcept(connection, {
           type: "playerDisconnected",
@@ -483,6 +499,29 @@ function handleConnection(
         // non-cluster (spectator) change, so this is safe on every last-socket transition.
         deps.pushEmitter?.onPresence(gameId, actor.boardFacts());
       }
+    }
+    // One structured close line (Track D): the disconnect investigation was blind because no
+    // socket close was logged. Ids, the close code, the socket age, the reap flag, and the
+    // last-socket flag only, never frame contents or cell values (INV-6).
+    console.info(
+      `session: socket closed game=${gameId} user=${connection?.userId ?? "pre-handshake"} ` +
+        `code=${code} socketAgeMs=${socketAgeMs} livenessFired=${livenessFired} wasLast=${wasLast}`,
+    );
+    // socket_closed, beside the room_joined capture: the disconnect half of presence, keyed on
+    // the same userId. Pre-handshake sockets have no identity, so they are skipped. Flat scalars,
+    // ids and counts only (INV-6).
+    if (connection !== null) {
+      deps.analytics?.capture({
+        distinctId: connection.userId,
+        event: "socket_closed",
+        properties: {
+          roomId: gameId,
+          closeCode: code,
+          socketAgeMs,
+          wasLast,
+          livenessFired,
+        },
+      });
     }
   });
   ws.on("error", () => {
@@ -575,7 +614,18 @@ function handleConnection(
       case "checkPuzzle":
       case "castCheckVote":
         if (actor !== null && connection !== null) {
-          void actor.submit(connection, message);
+          // submit -> mailbox.post propagates a rejection: handleMutation awaits the write-behind
+          // flush (afterMutationFlush/completeGame), which rejects on any Postgres fault. Without
+          // this catch the rejection is unhandled and Node exits by default, killing every other
+          // game on the process. Catch it here, mirroring the timed-flush catch in actor.ts
+          // ("never crash the actor"): the actor and socket stay alive, the buffer is retained,
+          // and the fault is logged with ids only, never cell values (INV-6).
+          actor.submit(connection, message).catch((error: unknown) => {
+            console.error(
+              `submit fault for game ${gameId} (${message.type} ${message.commandId}):`,
+              error,
+            );
+          });
         }
         return;
       case "requestSync":

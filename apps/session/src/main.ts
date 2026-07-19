@@ -148,7 +148,30 @@ async function main(): Promise<void> {
   process.on("SIGINT", () => shutdown("SIGINT"));
 }
 
+/**
+ * Fail-fast with evidence (Track D). An unhandled rejection or uncaught exception exits the
+ * process (Node's default for the former is already exit-by-default; making both explicit keeps
+ * the posture uniform), but first logs the reason with its stack loudly. Railway restarts the
+ * service, so fail-fast is preserved; the gain is that the next crash is no longer blind, which
+ * is exactly what the disconnect investigation lacked. Registered only when run directly, so an
+ * import (tests) never installs process-wide handlers.
+ */
+function installFatalHandlers(): void {
+  process.on("unhandledRejection", (reason: unknown) => {
+    console.error(
+      "FATAL unhandledRejection:",
+      reason instanceof Error ? (reason.stack ?? reason.message) : reason,
+    );
+    process.exit(1);
+  });
+  process.on("uncaughtException", (error: Error) => {
+    console.error("FATAL uncaughtException:", error.stack ?? error.message);
+    process.exit(1);
+  });
+}
+
 // Start only when run directly, so importing the module has no side effect.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  installFatalHandlers();
   void main();
 }

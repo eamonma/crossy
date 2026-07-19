@@ -15,6 +15,7 @@ covered here does not ship; extending the vocabulary is a reviewed edit to this 
 | ----------------- | ---------- | ------------------------------------------------------------------------------ |
 | `room_created`    | api        | a game is created                                                              |
 | `room_joined`     | session    | a member's first live socket; a reconnect after a full disconnect counts again |
+| `socket_closed`   | session    | a socket closes; skipped for a pre-handshake socket (no identity to key on)    |
 | `solve_completed` | session    | the actor emits `gameCompleted`                                                |
 | `room_abandoned`  | session    | a game reaches `abandoned`                                                     |
 | `signed_in`       | clients    | an interactive sign-in completes (an OAuth return, a guest sign-in)            |

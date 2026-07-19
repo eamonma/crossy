@@ -13,7 +13,7 @@
 //   INV-6  no solution field in any outbound frame (the welcome board)
 
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Pool } from "pg";
 import { WebSocket } from "ws";
 import type { StartedPostgreSqlContainer } from "@testcontainers/postgresql";
@@ -31,6 +31,7 @@ import {
 import type { CellSet } from "@crossy/engine";
 import { createSessionServer } from "./server";
 import type { SessionServer } from "./server";
+import type { Analytics, AnalyticsEvent } from "./analytics/analytics";
 import { createInertEmitter } from "./push/emitter";
 import type { ActivityPushEmitter, BoardFacts } from "./push/emitter";
 import { flushToPostgres, SnapshotRegressionError } from "./writer";
@@ -3513,5 +3514,185 @@ describe("live_activity_tokens read under the session SELECT grant (0007, §12a)
         ["nope", userId, gameId, "sandbox"],
       ),
     ).rejects.toThrow(/permission denied/i);
+  });
+});
+
+describe("Track D observability: socket closes are logged and a flush fault never crashes the actor", () => {
+  /** A recording analytics port: captures every event without a network (the noop shape). */
+  function recordingAnalytics(): {
+    analytics: Analytics;
+    events: AnalyticsEvent[];
+  } {
+    const events: AnalyticsEvent[] = [];
+    return {
+      analytics: {
+        capture: (event) => events.push(event),
+        shutdown: () => Promise.resolve(),
+      },
+      events,
+    };
+  }
+
+  /** Poll a spy until one of its calls' first arg contains `substr`, or fail loudly. */
+  async function waitForLog(
+    spy: ReturnType<typeof vi.spyOn>,
+    substr: string,
+  ): Promise<string> {
+    for (let i = 0; i < 200; i++) {
+      const hit = spy.mock.calls.find(
+        (c) => typeof c[0] === "string" && c[0].includes(substr),
+      );
+      if (hit !== undefined) return hit[0] as string;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(
+      `no log line containing ${JSON.stringify(substr)} was emitted`,
+    );
+  }
+
+  it("logs a submit fault and keeps the actor and socket alive when a mutation's flush rejects", async () => {
+    // Threshold 1 makes every mutation flush inline, awaited inside the mailbox task, so a flush
+    // rejection propagates out of actor.submit exactly as the Postgres-fault path does in
+    // production. Before the server-side .catch this was an unhandled rejection that exits Node.
+    const faultServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      actorOptions: { flushEventThreshold: 1, flushIntervalMs: 600_000 },
+    });
+    const errSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    try {
+      const userId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [{ userId, role: "solver" }],
+      });
+      // Connect first, so the actor hydrates at seq 0 (no game_state row yet).
+      const { client } = await connectAndHelloOn(faultServer, gameId, userId);
+
+      // Now plant a NEWER game_state row (last_seq 100). The actor's flush of seq 1 will trip the
+      // single-writer guard (SnapshotRegressionError), the same shape as a stale-writer fault.
+      await adminPool.query(
+        `insert into game_state (game_id, status, board, last_seq, first_fill_at)
+         values ($1, 'ongoing', $2::jsonb, 100, $3)`,
+        [
+          gameId,
+          JSON.stringify({
+            cells: [
+              { v: null, by: null },
+              { v: null, by: null },
+              { v: null, by: null },
+            ],
+            checkedWrongCells: [],
+            checkCount: 0,
+          }),
+          "2026-07-08T00:00:00.000Z",
+        ],
+      );
+
+      // First mutation: applied and broadcast, then its flush rejects behind the broadcast.
+      client.sendJson(placeLetter(0, "A"));
+      const first = (await client.waitForType("cellSet")) as { seq: number };
+      expect(first.seq).toBe(1);
+
+      // The fault is logged with ids only (INV-6: no cell value in the line), and it names submit.
+      const line = await waitForLog(errSpy, "submit fault");
+      expect(line).toContain(gameId);
+      expect(line).toContain("placeLetter");
+
+      // The socket and actor survive: a second mutation still applies and broadcasts (the frame
+      // handler never rejected, the actor was never killed), and the actor is still cached.
+      client.sendJson(placeLetter(1, "B"));
+      const both = (await client.waitForCount("cellSet", 2)) as Array<{
+        seq: number;
+      }>;
+      expect(both.map((m) => m.seq)).toEqual([1, 2]);
+      expect(faultServer.liveActorCount()).toBe(1);
+
+      client.close();
+    } finally {
+      errSpy.mockRestore();
+      await faultServer.close();
+    }
+  });
+
+  it("logs one structured close line with the code and captures socket_closed on socket close", async () => {
+    const { analytics, events } = recordingAnalytics();
+    const closeServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      analytics,
+    });
+    const infoSpy = vi
+      .spyOn(console, "info")
+      .mockImplementation(() => undefined);
+    try {
+      const userId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [{ userId, role: "solver" }],
+      });
+      const { client } = await connectAndHelloOn(closeServer, gameId, userId);
+      client.close();
+
+      const line = await waitForLog(infoSpy, "session: socket closed");
+      expect(line).toContain(gameId);
+      expect(line).toContain(`user=${userId}`);
+      expect(line).toMatch(/code=\d+/);
+      expect(line).toContain("wasLast=true");
+      expect(line).toContain("livenessFired=false");
+
+      // socket_closed rides beside the close line: flat scalars, ids and counts only (INV-6).
+      const closed = events.find((e) => e.event === "socket_closed");
+      expect(closed).toBeDefined();
+      expect(closed!.distinctId).toBe(userId);
+      expect(closed!.properties).toMatchObject({
+        roomId: gameId,
+        wasLast: true,
+        livenessFired: false,
+      });
+      expect(typeof closed!.properties!["closeCode"]).toBe("number");
+      expect(typeof closed!.properties!["socketAgeMs"]).toBe("number");
+    } finally {
+      infoSpy.mockRestore();
+      await closeServer.close();
+    }
+  });
+
+  it("marks a liveness reap distinctly and reports livenessFired on the close line", async () => {
+    const { analytics, events } = recordingAnalytics();
+    const reapServer = await createSessionServer({
+      authPort: auth,
+      pool: sessionPool,
+      analytics,
+      livenessTimeoutMs: 60,
+    });
+    const infoSpy = vi
+      .spyOn(console, "info")
+      .mockImplementation(() => undefined);
+    try {
+      const userId = randomUUID();
+      const gameId = await seedGame({
+        snapshot: puzzle(1, 3, [], ["A", "B", "C"]),
+        members: [{ userId, role: "solver" }],
+      });
+      const { client } = await connectAndHelloOn(reapServer, gameId, userId);
+
+      // Send nothing: the liveness timer terminates the socket (the 1006 edge-reap shape). The
+      // reap is greppable apart from a client close, and the close line reports the flag.
+      const reap = await waitForLog(infoSpy, "session: liveness reap");
+      expect(reap).toContain(gameId);
+      const closeLine = await waitForLog(infoSpy, "session: socket closed");
+      expect(closeLine).toContain("livenessFired=true");
+
+      const closed = events.find((e) => e.event === "socket_closed");
+      expect(closed?.properties).toMatchObject({ livenessFired: true });
+
+      client.close();
+    } finally {
+      infoSpy.mockRestore();
+      await reapServer.close();
+    }
   });
 });
