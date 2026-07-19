@@ -48,10 +48,8 @@ function view(o: Partial<CheckVoteView> = {}): CheckVoteView {
     onReject: () => {},
     resolutionText: null,
     tallyText: null,
-    ring: null,
     wash: null,
     revealedWrongCells: null,
-    pulse: null,
     ariaMessage: "Ana wants to check the puzzle",
     reducedMotion: true,
     ...o,
@@ -119,7 +117,7 @@ describe("the Proscenium offers the ballot to a not-yet-voted elector (the UX sp
     expect(html).toContain("disabled");
   });
 
-  it("a locally-expired-but-unclosed vote disables the verbs (no live verb on an empty ring)", () => {
+  it("a locally-expired-but-unclosed vote disables the verbs (no live verb on a lapsed vote)", () => {
     const html = renderToStaticMarkup(
       <CheckVoteSurface view={view({ verbsDisabled: true })} />,
     );

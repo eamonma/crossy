@@ -922,14 +922,11 @@ function LiveGame({
   }, [store, puzzle]);
 
   // The check-vote surface (PROTOCOL.md §6, §10; D32). The store owns the vote; this view owns the
-  // ceremony (the Proscenium, the ring, the chips, the reveal). Solo detection keeps the confirm
-  // dialog and suppresses all vote chrome for the auto-pass; a real vote drives the whole surface.
+  // ceremony (the Proscenium, the chips, the reveal). Solo detection keeps the confirm dialog and
+  // suppresses all vote chrome for the auto-pass; a real vote drives the whole surface.
   const voteView = useCheckVote({
     store,
     selfUserId: store.selfUserId,
-    cols: puzzle.cols,
-    rows: puzzle.rows,
-    selfCell: selection.cell,
   });
   const solo = useMemo(() => {
     void version;
@@ -1547,9 +1544,9 @@ function LiveGame({
                     onCellClick={onCellClick}
                     onFlashEnd={onFlashEnd}
                   />
-                  {/* The luminous ring (outside the grid), the beat-1 pulse, and the reveal wash.
-                      Decorative and pointer-transparent; the vote's state lives in the Proscenium
-                      text and the polite live region (PROTOCOL.md §6; D32; the UX spec). */}
+                  {/* The reveal wash across the wrong cells on a passed vote. Decorative and
+                      pointer-transparent; the vote's state lives in the Proscenium text and the
+                      polite live region (PROTOCOL.md §6; D32; the UX spec). */}
                   <VoteBoardOverlay
                     view={voteView}
                     cols={puzzle.cols}

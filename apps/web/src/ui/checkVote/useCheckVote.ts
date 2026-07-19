@@ -1,8 +1,10 @@
 // The check-vote view state (PROTOCOL.md §6, §10; D32). The store owns correctness; this hook owns
 // the choreography: the five beats (the call, the floor, the division, the reveal, the recess), the
-// ring's clock tick, the polite announcements, and the copy resolved through voteView. It reads the
-// store and forwards the store's vote-closed signal into React state so the reveal and the recess
-// can play AFTER the vote leaves state. Motion respects prefers-reduced-motion throughout.
+// polite announcements, and the copy resolved through voteView. It reads the store and forwards the
+// store's vote-closed signal into React state so the reveal and the recess can play AFTER the vote
+// leaves state. Motion respects prefers-reduced-motion throughout. No clock renders (Wave 15.11 ring
+// removal): expiry is felt only as the calm "The vote lapsed" line, and the chips settling are the
+// vote's only live signal.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSyncExternalStore } from "react";
 import type { GameStore, VoteClosedSignal } from "../../store/gameStore";
@@ -16,7 +18,6 @@ import {
   failedTallyLine,
   proposalLine,
   proposalSubject,
-  remainingFraction,
   remainingMs,
   toFixLine,
   voteRole,
@@ -40,17 +41,6 @@ const RECESS_MS = 2500; // the single calm line on a non-passing close
 
 export type VotePhase = "idle" | "open" | "revealing" | "recess";
 
-export interface CheckVoteRing {
-  /** The drain fraction, 1 (whole ring) down to 0 (empty). While open it tracks the live clock;
-   * once the vote closes it holds the fraction that was standing at close, so the pass flash lights
-   * the arc that was actually there and the fail fade dissolves from it (Wave 15.7 freeze). */
-  readonly fraction: number;
-  /** "open" drains; "passed" flashes and dissolves; "failed" fades. */
-  readonly phase: "open" | "passed" | "failed";
-  /** Bumps on each new vote so the ring remounts and replays its ignite. */
-  readonly igniteKey: number;
-}
-
 export interface CheckVoteView {
   /** The Proscenium and the mobile strip render iff active (open, revealing, or recess). */
   readonly active: boolean;
@@ -67,7 +57,7 @@ export interface CheckVoteView {
    * a ballot is in flight, so the block never unmounts mid-click (Wave 15.7). */
   readonly showVerbs: boolean;
   /** A ballot is in flight, or the vote has locally expired but not yet closed: the verbs disable and
-   * fade IN PLACE (never a live verb over an empty ring). */
+   * fade IN PLACE, never leaving a live verb on a vote whose time has run out. */
   readonly verbsDisabled: boolean;
   readonly pending: boolean;
   readonly onApprove: () => void;
@@ -76,7 +66,6 @@ export interface CheckVoteView {
   readonly resolutionText: string | null;
   /** The proposer-only tally after a failed vote ("{approvals} of {needed}"); null for everyone else. */
   readonly tallyText: string | null;
-  readonly ring: CheckVoteRing | null;
   /** The wrong cells to wash in on a pass, ascending, with a key that changes once per reveal. */
   readonly wash: {
     readonly cells: readonly number[];
@@ -87,30 +76,20 @@ export interface CheckVoteView {
    * mark except these", growing on the wash schedule; null means apply marks as usual (idle, or
    * reduced motion, which reveals instantly). */
   readonly revealedWrongCells: ReadonlySet<number> | null;
-  /** The beat-1 pulse origin as board percentages, or null (no cursor, or reduced motion). */
-  readonly pulse: {
-    readonly xPct: number;
-    readonly yPct: number;
-    readonly key: number;
-  } | null;
   /** The polite live-region text (open and resolution), announced without stealing focus. */
   readonly ariaMessage: string;
   readonly reducedMotion: boolean;
 }
 
 /**
- * Drive the check-vote surface from the store. `selfCell` is the local cursor cell, the pulse origin
- * when self is the proposer; `cols`/`rows` place that origin. Everything the surface renders comes
- * from here, and every copy string flows through voteView, so the ceremony is one testable seam.
+ * Drive the check-vote surface from the store. Everything the surface renders comes from here, and
+ * every copy string flows through voteView, so the ceremony is one testable seam.
  */
 export function useCheckVote(input: {
   store: GameStore;
   selfUserId: string | null;
-  cols: number;
-  rows: number;
-  selfCell: number;
 }): CheckVoteView {
-  const { store, selfUserId, cols, rows, selfCell } = input;
+  const { store, selfUserId } = input;
   useSyncExternalStore(store.subscribe, store.getVersion);
   const reducedMotion = prefersReducedMotion();
 
@@ -118,9 +97,9 @@ export function useCheckVote(input: {
   const participants = store.participants;
 
   // A solo electorate of one auto-passes at the server (the open, close, and check arrive
-  // back-to-back). It renders as an INSTANT check: no Proscenium, no ring, not for one frame (the
-  // UX spec). We suppress the whole vote surface for it and let the marks apply as an ordinary
-  // check; the solo client's confirm dialog was the ceremony.
+  // back-to-back). It renders as an INSTANT check: no Proscenium, not for one frame (the UX spec).
+  // We suppress the whole vote surface for it and let the marks apply as an ordinary check; the solo
+  // client's confirm dialog was the ceremony.
   const soloVote = rawVote !== null && rawVote.electorate.length <= 1;
   const vote = soloVote ? null : rawVote;
 
@@ -134,29 +113,20 @@ export function useCheckVote(input: {
     wasProposer: boolean;
   } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [igniteKey, setIgniteKey] = useState(0);
   const [washKey, setWashKey] = useState(0);
-  const [pulseKey, setPulseKey] = useState(0);
   // The wrong cells revealed so far in the current pass wash: empty at reveal start (the breath), then
   // grown per the wash schedule, so the standing red mark for a cell appears only as its own gold wash
   // fires (the spoil fix). Only consulted during a non-reduced revealing phase.
   const [revealedCells, setRevealedCells] = useState<ReadonlySet<number>>(
     () => new Set(),
   );
-  // The drain fraction standing at the instant the vote closed, frozen so the pass flash lights the
-  // arc that was actually there and the fail fade dissolves from it (the store nulls expiresAt at
-  // close, which otherwise animated an empty ring).
-  const frozenFractionRef = useRef(0);
 
   // Refs so the close handler reads the latest vote/marks without re-subscribing.
   const lastVoteRef = useRef<OpenCheckVote | null>(vote);
   lastVoteRef.current = vote;
   const lastOpenedSeqRef = useRef<number | null>(vote?.openedSeq ?? null);
-  const pulseOriginRef = useRef<{ xPct: number; yPct: number } | null>(null);
-  const selfCellRef = useRef(selfCell);
-  selfCellRef.current = selfCell;
 
-  // A new vote just opened: ignite the ring and fire the pulse from the proposer's cursor.
+  // A new vote just opened: advance the beat machine to "open".
   useEffect(() => {
     if (vote === null) return;
     if (lastOpenedSeqRef.current === vote.openedSeq && phase === "open") return;
@@ -164,24 +134,8 @@ export function useCheckVote(input: {
       lastOpenedSeqRef.current = vote.openedSeq;
       setPhase("open");
       setClose(null);
-      setIgniteKey((k) => k + 1);
-      if (!reducedMotion) {
-        const originCell =
-          vote.by === selfUserId
-            ? selfCellRef.current
-            : (store.cursors.get(vote.by)?.cell ?? null);
-        if (originCell !== null && cols > 0 && rows > 0) {
-          pulseOriginRef.current = {
-            xPct: ((originCell % cols) + 0.5) * (100 / cols),
-            yPct: (Math.floor(originCell / cols) + 0.5) * (100 / rows),
-          };
-          setPulseKey((k) => k + 1);
-        } else {
-          pulseOriginRef.current = null;
-        }
-      }
     }
-  }, [vote, phase, reducedMotion, selfUserId, store, cols, rows]);
+  }, [vote, phase]);
 
   // The vote-closed signal drives the reveal (passed) or the recess (failed/cancelled). Captured
   // from the store's forward, because the store clears `checkVote` on close.
@@ -196,9 +150,6 @@ export function useCheckVote(input: {
         setClose(null);
         return;
       }
-      // Freeze the arc that was standing at close, for both the pass flash and the quiet fade.
-      frozenFractionRef.current =
-        v.expiresAt !== null ? remainingFraction(v.expiresAt, Date.now()) : 0;
       if (signal.outcome === "passed") {
         setPhase("revealing");
         setRevealedCells(new Set()); // hold every standing mark back until its wash fires
@@ -284,8 +235,9 @@ export function useCheckVote(input: {
     return () => window.clearTimeout(id);
   }, [phase, washKey, reducedMotion]);
 
-  // The ring's clock: tick while open so the drain tracks real time. Coarse under reduced motion
-  // (the ring steps down instead of sweeping), fine otherwise. No timer while resolving.
+  // The local-expiry clock: tick while open so `expiredLocally` (below) can dim the verbs the moment
+  // the vote's time runs out, before the server's close lands. No clock renders (Wave 15.11); this
+  // drives only the verb dimming. Coarse under reduced motion, fine otherwise. No timer while resolving.
   useEffect(() => {
     if (phase !== "open") return;
     const period = reducedMotion ? 2000 : 100;
@@ -312,8 +264,8 @@ export function useCheckVote(input: {
     selfUserId !== null &&
     (vote.approvals.includes(selfUserId) ||
       vote.rejections.includes(selfUserId));
-  // The vote has run out of time locally but the close has not landed yet: the ring is empty, so a
-  // live verb must not sit on it. The verbs stay mounted (so the block never slides) but disable.
+  // The vote has run out of time locally but the close has not landed yet: a live verb must not sit
+  // on a lapsed vote. The verbs stay mounted (so the block never slides) but disable.
   const expiredLocally =
     vote !== null &&
     phase === "open" &&
@@ -352,39 +304,12 @@ export function useCheckVote(input: {
       : { self: false, name: "" };
   const proposalText = vote !== null ? proposalLine(proposal) : "";
 
-  // Open: the fraction tracks the live clock. Resolving: the frozen fraction captured at close, so
-  // the pass flash lights the arc that was standing and the fail fade dissolves from it.
-  const ringFraction =
-    phase === "open"
-      ? vote?.expiresAt != null
-        ? remainingFraction(vote.expiresAt, nowMs)
-        : 0
-      : frozenFractionRef.current;
-
-  const ring: CheckVoteRing | null = active
-    ? {
-        fraction: ringFraction,
-        phase:
-          phase === "revealing"
-            ? "passed"
-            : phase === "recess"
-              ? "failed"
-              : "open",
-        igniteKey,
-      }
-    : null;
-
   const wash =
     phase === "revealing" && !reducedMotion
       ? {
           cells: [...store.checkedWrongCells].sort((a, b) => a - b),
           key: washKey,
         }
-      : null;
-
-  const pulse =
-    phase === "open" && pulseOriginRef.current !== null && !reducedMotion
-      ? { ...pulseOriginRef.current, key: pulseKey }
       : null;
 
   // Suppress the standing red per-cell during a non-reduced pass reveal; null everywhere else lets the
@@ -417,10 +342,8 @@ export function useCheckVote(input: {
     },
     resolutionText,
     tallyText,
-    ring,
     wash,
     revealedWrongCells,
-    pulse,
     ariaMessage,
     reducedMotion,
   };
