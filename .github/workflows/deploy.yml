@@ -42,12 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     # Maps the push diff onto the {api, session, web} build+roll set. workflow_dispatch is the
     # manual escape hatch and forces a FULL deploy (all three), so the filters run only for
-    # push; dispatch takes the all-true branch in `decide`. No checkout: dorny/paths-filter
-    # diffs github.event.before..sha via the compare API for push events.
+    # push; dispatch takes the all-true branch in `decide`.
     outputs:
       service_list: ${{ steps.decide.outputs.service_list }} # JSON array, e.g. ["api","web"]; drives the build matrix and the roll loop
       any: ${{ steps.decide.outputs.any }} # 'true' when service_list is non-empty
     steps:
+      # dorny/paths-filter uses the API only on pull_request events; on push it diffs
+      # github.event.before..sha with LOCAL git, so it needs a checkout (shallow is fine,
+      # the action deepens the fetch itself). Without this the job dies with "not a git
+      # repository" and every push to main deploys nothing.
+      - uses: actions/checkout@v4
+        if: ${{ github.event_name == 'push' }}
       # Positive filters, default 'some' quantifier: a service is in the set if any changed
       # file sits under its app dir; a shared input (packages, lockfile, deploy, ...) rolls all
       # three. 'some' means a file matches the rule if it hits AT LEAST ONE pattern.
