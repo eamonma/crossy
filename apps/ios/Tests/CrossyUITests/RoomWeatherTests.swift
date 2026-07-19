@@ -95,3 +95,135 @@ final class RoomWeatherTests: XCTestCase {
         XCTAssertGreaterThan(RoomWeather.boardDimOpacity, 0.2)
     }
 }
+
+// The reconnect overlay grace (Track A-ios, PROTOCOL.md §7): the non-live pair
+// (resyncing, reconnecting) surfaces its weather only after the connection has
+// been continuously non-live for RoomWeather.reconnectOverlayGraceSeconds, and
+// hides the instant it recovers. Railway's edge recycles a healthy socket on a
+// schedule and reconnect-and-resync heals in ~200 ms, so a bare recycle must
+// never flash the overlay. Pure and clock-injected, pinned headlessly here.
+final class ReconnectOverlayGateTests: XCTestCase {
+    private let epoch = Date(timeIntervalSinceReferenceDate: 1000)
+    private var grace: Double { RoomWeather.reconnectOverlayGraceSeconds }
+
+    func test_graceMatchesTheWebConstant_2000ms_protocol7() {
+        // The iOS window is the twin of the web's RECONNECT_OVERLAY_GRACE_MS.
+        XCTAssertEqual(RoomWeather.reconnectOverlayGraceSeconds, 2)
+    }
+
+    func test_nonLivePairIsWithheldUntilTheGraceElapses_protocol7() {
+        var gate = ReconnectOverlayGate()
+        gate.observe(.reconnecting, now: epoch)
+        // Just short of the window: still presented as live (no overlay).
+        XCTAssertFalse(gate.overlayPresented(now: epoch.addingTimeInterval(grace - 0.001)))
+        XCTAssertEqual(
+            gate.presentedSync(.reconnecting, now: epoch.addingTimeInterval(grace - 0.001)), .live)
+        // At the window it surfaces its true register.
+        XCTAssertTrue(gate.overlayPresented(now: epoch.addingTimeInterval(grace)))
+        XCTAssertEqual(
+            gate.presentedSync(.reconnecting, now: epoch.addingTimeInterval(grace)), .reconnecting)
+    }
+
+    func test_resyncingIsGatedByTheSameWindow_protocol7() {
+        var gate = ReconnectOverlayGate()
+        gate.observe(.resyncing, now: epoch)
+        XCTAssertEqual(
+            gate.presentedSync(.resyncing, now: epoch.addingTimeInterval(grace - 0.5)), .live)
+        XCTAssertEqual(
+            gate.presentedSync(.resyncing, now: epoch.addingTimeInterval(grace)), .resyncing)
+    }
+
+    func test_recoveryHidesTheOverlayImmediately_protocol7() {
+        var gate = ReconnectOverlayGate()
+        gate.observe(.reconnecting, now: epoch)
+        // Recover well past the window: live clears the origin, so the overlay is
+        // gone at once with no lingering grace.
+        gate.observe(.live, now: epoch.addingTimeInterval(grace + 5))
+        XCTAssertNil(gate.nonLiveSince)
+        XCTAssertFalse(gate.overlayPresented(now: epoch.addingTimeInterval(grace + 5)))
+        XCTAssertEqual(gate.presentedSync(.live, now: epoch.addingTimeInterval(grace + 5)), .live)
+    }
+
+    func test_bounceBetweenTheNonLivePairSharesOneOrigin_noFlicker_protocol7() {
+        var gate = ReconnectOverlayGate()
+        gate.observe(.resyncing, now: epoch)
+        // A gap that becomes a drop mid-grace: the origin does NOT move, so the
+        // window is measured from the first non-live instant, never restarted.
+        gate.observe(.reconnecting, now: epoch.addingTimeInterval(1.5))
+        XCTAssertEqual(gate.nonLiveSince, epoch)
+        // Still withheld a hair before the ORIGINAL deadline.
+        XCTAssertEqual(
+            gate.presentedSync(.reconnecting, now: epoch.addingTimeInterval(grace - 0.001)), .live)
+        // Surfaces at the original deadline, in its current register.
+        XCTAssertEqual(
+            gate.presentedSync(.reconnecting, now: epoch.addingTimeInterval(grace)), .reconnecting)
+    }
+
+    func test_connectingIsNeverGated_theFirstConnectKeepsItsQuietRegister_protocol7() {
+        var gate = ReconnectOverlayGate()
+        // A first connect passes through untouched (a first join has lost nothing,
+        // DESIGN.md §8); it never stamps a non-live origin.
+        gate.observe(.connecting, now: epoch)
+        XCTAssertNil(gate.nonLiveSince)
+        XCTAssertEqual(gate.presentedSync(.connecting, now: epoch.addingTimeInterval(grace)), .connecting)
+    }
+
+    func test_secondsUntilPresented_isTheRemainingWindowThenNil() throws {
+        var gate = ReconnectOverlayGate()
+        XCTAssertNil(gate.secondsUntilPresented(now: epoch), "live has nothing to wake for")
+        gate.observe(.reconnecting, now: epoch)
+        XCTAssertEqual(
+            try XCTUnwrap(gate.secondsUntilPresented(now: epoch)), grace, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(gate.secondsUntilPresented(now: epoch.addingTimeInterval(1.5))),
+            grace - 1.5, accuracy: 0.0001)
+        // Once the window has elapsed the overlay already shows, so there is
+        // nothing left to schedule.
+        XCTAssertNil(gate.secondsUntilPresented(now: epoch.addingTimeInterval(grace)))
+    }
+}
+
+// The chrome model owns the grace-gated presentation the room feeds into
+// RoomWeather.from (Track A-ios). Clock-injected so the flip is pinned without a
+// real sleep; the one-shot wake it arms merely re-runs this same recompute at the
+// deadline. Presentation only: the store's SyncState is never touched.
+@MainActor
+final class ReconnectGraceModelTests: XCTestCase {
+    private let epoch = Date(timeIntervalSinceReferenceDate: 1000)
+    private var grace: Double { RoomWeather.reconnectOverlayGraceSeconds }
+
+    func test_presentedSyncWithholdsThePairUntilTheGraceElapses_protocol7() {
+        let chrome = RoomChromeModel()
+        chrome.observeReconnectGrace(.live, now: epoch)
+        XCTAssertEqual(chrome.presentedSync, .live)
+        // Drop: within the window the room still reads live (no overlay, input on).
+        chrome.observeReconnectGrace(.reconnecting, now: epoch)
+        XCTAssertEqual(chrome.presentedSync, .live)
+        chrome.observeReconnectGrace(.reconnecting, now: epoch.addingTimeInterval(grace - 0.5))
+        XCTAssertEqual(chrome.presentedSync, .live)
+        // At the window the true register surfaces.
+        chrome.observeReconnectGrace(.reconnecting, now: epoch.addingTimeInterval(grace))
+        XCTAssertEqual(chrome.presentedSync, .reconnecting)
+    }
+
+    func test_recoveryRevertsPresentedSyncImmediately_protocol7() {
+        let chrome = RoomChromeModel()
+        chrome.observeReconnectGrace(.reconnecting, now: epoch)
+        chrome.observeReconnectGrace(.reconnecting, now: epoch.addingTimeInterval(grace))
+        XCTAssertEqual(chrome.presentedSync, .reconnecting)
+        // Welcome lands: back to live at once, and the pending wake is cancelled.
+        chrome.observeReconnectGrace(.live, now: epoch.addingTimeInterval(grace + 0.2))
+        XCTAssertEqual(chrome.presentedSync, .live)
+    }
+
+    func test_bounceKeepsOneSharedTimer_noFlicker_protocol7() {
+        let chrome = RoomChromeModel()
+        chrome.observeReconnectGrace(.resyncing, now: epoch)
+        // A resyncing-to-reconnecting bounce mid-grace stays withheld against the
+        // ORIGINAL origin, never restarting the window.
+        chrome.observeReconnectGrace(.reconnecting, now: epoch.addingTimeInterval(1.5))
+        XCTAssertEqual(chrome.presentedSync, .live)
+        chrome.observeReconnectGrace(.reconnecting, now: epoch.addingTimeInterval(grace))
+        XCTAssertEqual(chrome.presentedSync, .reconnecting)
+    }
+}

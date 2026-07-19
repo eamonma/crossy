@@ -69,6 +69,15 @@ public struct RoomWeather: Equatable, Sendable {
     /// honest hush, light enough that the room never dims dead.
     public static let boardDimOpacity: Double = 0.45
 
+    /// The reconnect overlay grace (Track A-ios; twin of the web's
+    /// RECONNECT_OVERLAY_GRACE_MS, 2000 ms). The non-live pair (resyncing,
+    /// reconnecting; PROTOCOL.md §7) shows its weather only after the connection
+    /// has been continuously non-live this long. Railway's edge recycles a
+    /// healthy socket on a schedule and reconnect-and-resync heals in ~200 ms, so
+    /// a bare recycle must never flash the overlay. Presentation only: the store's
+    /// state machine, the transport, and the backoff are untouched.
+    public static let reconnectOverlayGraceSeconds: Double = 2
+
     /// Whole seconds until the next dial, floored at zero; nil when there is no
     /// deadline to count toward (the adapter has not scheduled one).
     public static func countdownSeconds(retryAt: Date?, now: Date) -> Int? {
@@ -83,5 +92,60 @@ public struct RoomWeather: Equatable, Sendable {
             return "Reconnecting"
         }
         return "Back in \(seconds)s"
+    }
+}
+
+/// The grace gate for the non-live pair (PROTOCOL.md §7 resyncing/reconnecting).
+/// Pure and clock-injected, the RoomWeather.countdownSeconds posture: the view
+/// model folds observations and reads a `now`, so tests pin the timing headlessly.
+/// Live and connecting clear the origin, so recovery hides the overlay
+/// immediately; the non-live pair shares ONE origin, so a bounce between
+/// resyncing and reconnecting never restarts the grace and the overlay never
+/// flickers. The first-connect `connecting` register keeps its own quiet handling
+/// and is never gated here (a first join has lost nothing).
+public struct ReconnectOverlayGate: Equatable, Sendable {
+    /// The instant the connection last went non-live from a live or connecting
+    /// state, nil while live or connecting.
+    public private(set) var nonLiveSince: Date?
+
+    public init() {}
+
+    /// Fold one connection-state observation at `now`.
+    public mutating func observe(_ sync: SyncState, now: Date) {
+        switch sync {
+        case .live, .connecting:
+            nonLiveSince = nil
+        case .resyncing, .reconnecting:
+            if nonLiveSince == nil { nonLiveSince = now }
+        }
+    }
+
+    /// True once the connection has been continuously non-live for the grace
+    /// window. False while live or connecting, so recovery hides at once.
+    public func overlayPresented(now: Date) -> Bool {
+        guard let since = nonLiveSince else { return false }
+        return now.timeIntervalSince(since) >= RoomWeather.reconnectOverlayGraceSeconds
+    }
+
+    /// The sync state the room presents: the non-live pair reads as `live` until
+    /// the grace elapses (calm dot, board undimmed, input on), then reveals its
+    /// true register; `live` and `connecting` pass through untouched.
+    public func presentedSync(_ sync: SyncState, now: Date) -> SyncState {
+        switch sync {
+        case .live, .connecting:
+            return sync
+        case .resyncing, .reconnecting:
+            return overlayPresented(now: now) ? sync : .live
+        }
+    }
+
+    /// Seconds until the overlay would present, nil when it already shows or the
+    /// connection is live or connecting (nothing to wake for). The view model arms
+    /// a one-shot timer with this so the room re-renders into the overlay when the
+    /// grace elapses with no further state change.
+    public func secondsUntilPresented(now: Date) -> Double? {
+        guard let since = nonLiveSince else { return nil }
+        let remaining = RoomWeather.reconnectOverlayGraceSeconds - now.timeIntervalSince(since)
+        return remaining > 0 ? remaining : nil
     }
 }
