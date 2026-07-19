@@ -226,4 +226,68 @@ class CheckVoteBenchModelTests {
         assertEquals("The vote lapsed", CheckVoteBenchModel.resolutionAnnouncement(VoteResolution.Ended("EXPIRED", 1, 2, false, 0L)))
         assertNull(CheckVoteBenchModel.resolutionAnnouncement(VoteResolution.Ended("TERMINAL", 1, 2, false, 0L)))
     }
+
+    // --- The card's viewer role (PROTOCOL.md §10, D32; Wave 15.12) ---
+
+    @Test
+    fun theViewerRoleIsProposerElectorOrNonElector_D32() {
+        val v = vote(by = "u1", electorate = listOf("u1", "u2", "u3"))
+        assertEquals(CheckVoteRole.PROPOSER, CheckVoteBenchModel.role(v, "u1"), "the proposer")
+        assertEquals(CheckVoteRole.ELECTOR, CheckVoteBenchModel.role(v, "u2"), "an elector")
+        assertEquals(CheckVoteRole.NON_ELECTOR, CheckVoteBenchModel.role(v, "u9"), "off the electorate reads only")
+        assertEquals(CheckVoteRole.NON_ELECTOR, CheckVoteBenchModel.role(v, null), "no self is a reader")
+    }
+
+    // --- The card's dismissal policy (Wave 15.12 card ruling, mirror of iOS CheckVoteCardPolicy) ---
+
+    @Test
+    fun onlyAnElectorWithACastableBallotIsHeldByTheCard_D32() {
+        // The elector's ballot is the exit: their card never dismisses while a ballot is open.
+        assertFalse(CheckVoteCardPolicy.isDismissible(CheckVoteRole.ELECTOR, hasOpenBallot = true))
+        // Everyone without a castable ballot may put the card away and return to the board.
+        assertTrue(CheckVoteCardPolicy.isDismissible(CheckVoteRole.ELECTOR, hasOpenBallot = false), "a voted elector may dismiss")
+        assertTrue(CheckVoteCardPolicy.isDismissible(CheckVoteRole.PROPOSER, hasOpenBallot = false), "the proposer has no ballot")
+        assertTrue(CheckVoteCardPolicy.isDismissible(CheckVoteRole.NON_ELECTOR, hasOpenBallot = false), "a non-elector reads only")
+    }
+
+    @Test
+    fun theCardBindsTheDismissalToTheLiveVoteAndSelf_D32() {
+        val v = vote(approvals = listOf("u1")) // u1 proposer/approved, u2/u3 unvoted electors
+        assertFalse(CheckVoteBenchModel.cardDismissible(v, "u2"), "an unvoted elector is held by their ballot")
+        assertTrue(CheckVoteBenchModel.cardDismissible(v, "u1"), "the proposer may dismiss")
+        assertTrue(CheckVoteBenchModel.cardDismissible(v, "u9"), "a non-elector may dismiss")
+        val voted = vote(approvals = listOf("u1", "u2"))
+        assertTrue(CheckVoteBenchModel.cardDismissible(voted, "u2"), "a rejoined already-voted elector may dismiss")
+    }
+
+    // --- The open announcement, per role (Wave 15.12, mirror of iOS CheckVoteAnnouncement.opened) ---
+
+    @Test
+    fun theOpenAnnouncementSpeaksPerRole_a11y() {
+        assertEquals(
+            "Check proposed. Waiting for the room.",
+            CheckVoteBenchModel.openAnnouncement(CheckVoteRole.PROPOSER, "Ana"),
+        )
+        assertEquals(
+            "Ana wants to check the puzzle. Actions available.",
+            CheckVoteBenchModel.openAnnouncement(CheckVoteRole.ELECTOR, "Ana"),
+        )
+        assertEquals(
+            "Ana wants to check the puzzle.",
+            CheckVoteBenchModel.openAnnouncement(CheckVoteRole.NON_ELECTOR, "Ana"),
+        )
+    }
+
+    // --- The close announcement joins the line and the proposer's tally (mirror of iOS closed()) ---
+
+    @Test
+    fun theCloseAnnouncementJoinsTheLineAndTheProposerTally_a11y() {
+        val proposerFail = VoteResolution.Ended("REJECTED", approvalsAtClose = 1, needed = 2, isProposer = true, startedAt = 0L)
+        assertEquals("The room keeps solving. 1 of 2.", CheckVoteBenchModel.closeAnnouncement(proposerFail))
+        val roomFail = VoteResolution.Ended("REJECTED", approvalsAtClose = 1, needed = 2, isProposer = false, startedAt = 0L)
+        assertEquals("The room keeps solving.", CheckVoteBenchModel.closeAnnouncement(roomFail), "the room never hears the tally")
+        val terminal = VoteResolution.Ended("TERMINAL", 1, 2, isProposer = true, startedAt = 0L)
+        assertNull(CheckVoteBenchModel.closeAnnouncement(terminal), "a terminal close is silent")
+        assertNull(CheckVoteBenchModel.closeAnnouncement(VoteResolution.Passed(2, 0L)), "a pass speaks through the capsule, not the card")
+    }
 }

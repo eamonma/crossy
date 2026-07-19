@@ -95,10 +95,16 @@ fun ClueBar(
     // analysis panel's header. Null when the game cannot be shared (the demo room, an unfinished
     // game), where the "Share card" affordance never appears.
     onShareCard: (() -> Unit)? = null,
+    // The "vote wins the stage" signal (Wave 15.12, U8): a bump collapses an open browser sheet so a
+    // pending check vote is never hidden behind it. Zero (the default) never collapses.
+    collapseSignal: Int = 0,
 ) {
     val tokens = ground.tokens
     val hasBrowser = acrossRows.isNotEmpty() || downRows.isNotEmpty()
     var expanded by remember { mutableStateOf(false) }
+    // A vote opening (collapseSignal bumps) closes the browser: the card wins the stage. Guarded so the
+    // first composition (signal 0) never force-closes; only a bump after an open collapses it.
+    LaunchedEffect(collapseSignal) { if (collapseSignal > 0) expanded = false }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = tokens.cell.toColor(),

@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -224,8 +226,22 @@ fun RoomScreen(
     var voteResolution by remember(puzzle) { mutableStateOf<VoteResolution?>(null) }
     var pendingVotePass by remember(puzzle) { mutableStateOf(false) }
     var voteNowMs by remember(puzzle) { mutableLongStateOf(System.currentTimeMillis()) }
+    // The blocking card's dismissal (Wave 15.12): a viewer without a castable ballot (the proposer, a
+    // non-elector, a rejoined already-voted elector) may put the card away and return to the board while
+    // the vote runs; an elector's ballot is the only exit, so their card can never set this. A fresh
+    // proposal always re-presents (reset at open). The vote stays live; the resolution re-presents.
+    var voteCardDismissed by remember(puzzle) { mutableStateOf(false) }
+    // The clue browser dismiss nonce (Wave 15.12; the "vote wins the stage" ruling): a new vote opening
+    // bumps this, and ClueBar collapses its open browser sheet so a pending vote is never hidden behind
+    // a modal. The facts sheet is closed directly (its open state lives here).
+    var voteStageNonce by remember(puzzle) { mutableIntStateOf(0) }
     val liveVote = rememberUpdatedState(render.checkVote)
     val liveSolo = rememberUpdatedState(render.isSoloRoom)
+    // The polite TalkBack announcer (U10; twin of iOS announceVote): the vote's beats post through the
+    // host view so a screen-reader solver hears the room's motion without focus theft. The pure strings
+    // are CheckVoteBenchModel's; only the posting lives here.
+    val hostView = LocalView.current
+    fun announceVote(line: String?) { line?.let { hostView.announceForAccessibility(it) } }
     // A disconnect/resync heals the vote wholesale via snapshot with no puzzleChecked event, so a
     // pending reveal armed at a passing close would strand and replay full vote chrome on a LATER solo
     // check (solo-zero-chrome, D32; fix 3). Every heal leaves LIVE first, so clear the flag there.
@@ -245,10 +261,13 @@ fun RoomScreen(
     // "Checking…" breath, when the ring flash-dissolves and the marks wash in. A resolution replaced
     // or withdrawn before the breath cancels this cleanly (the key change).
     LaunchedEffect(voteResolution) {
-        if (voteResolution is VoteResolution.Passed) {
-            delay(VoteBenchTiming.REVEAL_BREATH_MS)
-            haptics.play(SolveHaptic.VOTE_PASSED)
-        }
+        val passed = voteResolution as? VoteResolution.Passed ?: return@LaunchedEffect
+        delay(VoteBenchTiming.REVEAL_BREATH_MS)
+        haptics.play(SolveHaptic.VOTE_PASSED)
+        // "{n} to fix" lands LAST (U6): announce it after the wash settles, mirroring the capsule's
+        // text turning from "Checking…" to the count (reduced motion has no wash, so it lands at once).
+        if (!reduceMotion) delay(VoteBenchTiming.WASH_MAX_MS)
+        announceVote(CheckVoteBenchModel.resolutionAnnouncement(passed))
     }
     // The reveal beat's mark choreography (D32; UX.md U6). During the breath (0..600ms) the grid holds
     // all marks back so the beat reads "Checking…" first. After the breath the marks wash in in
@@ -304,7 +323,23 @@ fun RoomScreen(
         store.onVoteOpened = { opened ->
             if (opened.electorate.size > 1) {
                 voteResolution = null
-                haptics.play(SolveHaptic.VOTE_OPENED)
+                // A fresh question always re-presents the card, superseding any standing dismissal.
+                voteCardDismissed = false
+                // The vote wins the stage (the collision ruling, U8): the facts sheet and an open clue
+                // browser yield, so a pending vote is never hidden behind a modal sheet.
+                factsOpen = false
+                voteStageNonce += 1
+                haptics.play(SolveHaptic.VOTE_OPENED) // one firm click: the floor is called
+                // The polite open announcement, per role (U10), from the vote the store just set.
+                store.render.value.checkVote?.let { v ->
+                    val proposerName = store.render.value.participants.firstOrNull { it.userId == v.by }?.displayName
+                        ?: VoteCopy.PROPOSER_FALLBACK
+                    announceVote(
+                        CheckVoteBenchModel.openAnnouncement(
+                            CheckVoteBenchModel.role(v, store.render.value.selfUserId), proposerName,
+                        ),
+                    )
+                }
             }
         }
         // A ballot settled (D32; U9): a light tick per ballot. The store fires this only for a truly
@@ -322,22 +357,32 @@ fun RoomScreen(
             val solo = liveSolo.value || (vote?.isSolo ?: true)
             if (!solo) {
                 when {
-                    closed.outcome == "passed" -> pendingVotePass = true
+                    closed.outcome == "passed" -> {
+                        // The pass: the card condenses to the "Checking…" capsule and yields the board to
+                        // the breath and the wash (onPuzzleChecked). The success haptic fires there, timed
+                        // to the wash (U6), never here.
+                        pendingVotePass = true
+                        announceVote(VoteCopy.CHECKING)
+                    }
                     closed.reason == "TERMINAL" -> {
                         // The completion/abandon surface supersedes: withdraw the vote quietly, no
-                        // resolution sliver, no fail haptic.
+                        // resolution sliver, no fail haptic, no line.
                         pendingVotePass = false
                         voteResolution = null
                     }
                     else -> {
+                        // The recess (U7): two soft ticks, the one calm line (plus the proposer's tally)
+                        // re-presents in the card for ~2.5 s, scrim lifted, then withdraws.
                         haptics.play(SolveHaptic.VOTE_FAILED)
-                        voteResolution = VoteResolution.Ended(
+                        val ended = VoteResolution.Ended(
                             reason = closed.reason,
                             approvalsAtClose = vote?.approvals?.size ?: 0,
                             needed = vote?.needed ?: 0,
                             isProposer = vote?.by == store.render.value.selfUserId,
                             startedAt = System.currentTimeMillis(),
                         )
+                        voteResolution = ended
+                        announceVote(CheckVoteBenchModel.closeAnnouncement(ended))
                     }
                 }
             }
@@ -768,6 +813,19 @@ fun RoomScreen(
                         .background(ground.tokens.canvas.toColor().copy(alpha = RoomWeather.boardDimOpacity.toFloat())),
                 )
             }
+            // The pass's condensed voice (U6): the card has yielded the board to the wash, so the count
+            // rides a small capsule just above the clue bar (the board is the star; this is the caption).
+            // "Checking…" holds through the breath and the wash, then "{n} to fix" lands last (the
+            // resolutionLine timing). A fail/lapse never lands here (its card carries the calm line).
+            (voteResolution as? VoteResolution.Passed)?.let { passed ->
+                CheckVoteBenchModel.resolutionLine(passed, voteNowMs, reduceMotion)?.let { line ->
+                    CheckVoteStatusCapsule(
+                        text = line,
+                        ground = ground,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                    )
+                }
+            }
         }
         ClueBar(
             clue = activeClue,
@@ -804,6 +862,8 @@ fun RoomScreen(
             // renders it only when the room is completed and this intent is wired (the demo room passes
             // null, so no affordance appears there).
             onShareCard = onShareCard,
+            // The vote wins the stage (U8): a new vote opening collapses an open browser sheet.
+            collapseSignal = voteStageNonce,
         )
         if (frozen) {
             // A terminal room retires the deck for everyone (iOS SolveScreen; #205 solved, #235
@@ -859,33 +919,34 @@ fun RoomScreen(
               modifier = Modifier.matchParentSize(),
           )
       }
-      // The Bench (PROTOCOL.md §10, D32): the vote's venue, a NON-MODAL bottom sheet overlaying the
-      // room's bottom with no scrim, so the grid stays fully interactive above it. It installs no
-      // BackHandler, so predictive back keeps navigating the room while the Bench stays docked. Solo
-      // is suppressed (showVoteBench is false for a solo electorate). Its chips borrow the existing
-      // identity colors; its verbs cast the ballot and tick.
-      if (render.showVoteBench || voteResolution != null) {
-          VoteBench(
+      // The check-vote card (PROTOCOL.md §10, D32; Wave 15.12): the vote's venue, a native centered
+      // BLOCKING card over its scrim (the room's own material, one modal shadow), mounted as the room's
+      // top overlay so nothing reaches the deck or grid beneath it. A viewer without a castable ballot
+      // may put it away and return to the board; a fail/lapse re-presents the calm line for its recess.
+      // Solo is suppressed (showVoteBench is false for a solo electorate). The pass speaks through the
+      // status capsule above the clue bar, not here.
+      if (render.showVoteBench || voteResolution is VoteResolution.Ended) {
+          CheckVoteCardLayer(
               vote = render.checkVote?.takeIf { render.showVoteBench },
               resolution = voteResolution,
+              dismissed = voteCardDismissed,
               selfUserId = render.selfUserId,
               ground = ground,
-              nowMillis = voteNowMs,
               reduceMotion = reduceMotion,
               // Null for a departed/unknown elector; the model supplies the collective fallback copy
-              // (never a raw userId, fix 5).
+              // (never a raw userId).
               nameFor = { id -> render.participants.firstOrNull { it.userId == id }?.displayName },
-              colorFor = { id ->
-                  val member = render.participants.firstOrNull { it.userId == id }
-                  val identity = member?.let { IdentityRoster.colorForWireColor(it.color) ?: IdentityRoster.color(it.userId) }
-                      ?: IdentityRoster.color(id)
-                  ground.rosterColor(identity).toColor()
-              },
-              // The verbs settle disabled while a ballot is in flight (fix 7): no doomed second ballot.
+              wireColorFor = { id -> render.participants.firstOrNull { it.userId == id }?.color },
+              avatarFor = { id -> render.participants.firstOrNull { it.userId == id }?.avatarUrl },
+              avatars = avatars,
+              // The verbs settle disabled while a ballot is in flight: no doomed second ballot.
               ballotPending = render.pendingVoteCommandId != null,
-              onApprove = { store.castCheckVote(approve = true); haptics.play(SolveHaptic.VOTE_BALLOT) },
-              onKeepSolving = { store.castCheckVote(approve = false); haptics.play(SolveHaptic.VOTE_BALLOT) },
-              modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+              // Casting a ballot is the elector's exit (owner ruling): the card withdraws with the ballot
+              // on the wire; the resolution re-presents when the room answers.
+              onApprove = { store.castCheckVote(approve = true); haptics.play(SolveHaptic.VOTE_BALLOT); voteCardDismissed = true },
+              onKeepSolving = { store.castCheckVote(approve = false); haptics.play(SolveHaptic.VOTE_BALLOT); voteCardDismissed = true },
+              onDismiss = { voteCardDismissed = true },
+              modifier = Modifier.matchParentSize(),
           )
       }
     }

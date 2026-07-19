@@ -90,6 +90,25 @@ object CheckWash {
 enum class ChipVote { APPROVED, REJECTED, UNVOTED }
 
 /**
+ * The viewer's relation to an open vote (PROTOCOL.md §10, D32; Wave 15.12 card): the proposer sees
+ * pucks and no verbs (their proposal already approved), an unvoted elector sees the two verbs, and a
+ * non-elector reads only. The card's dismissal policy reads this. Twin of iOS CheckVoteViewerRole.
+ */
+enum class CheckVoteRole { PROPOSER, ELECTOR, NON_ELECTOR }
+
+/**
+ * The card's dismissal policy (Wave 15.12 card ruling, mirror of iOS CheckVoteCardPolicy): the wire
+ * has no vote-cancel, so a blocking card with no verb could hold its viewer the whole timebox. The
+ * elector's ballot is the exit and their card never dismisses while it is castable; everyone without
+ * a castable ballot — the proposer, a non-elector, a rejoined already-voted elector — may put the
+ * card away and return to the board. The vote stays live in the store; the resolution re-presents.
+ */
+object CheckVoteCardPolicy {
+    fun isDismissible(role: CheckVoteRole, hasOpenBallot: Boolean): Boolean =
+        !(role == CheckVoteRole.ELECTOR && hasOpenBallot)
+}
+
+/**
  * One elector chip: the frozen identity (existing avatar/color keyed by userId), the ballot state,
  * and the two role flags the Bench reads. `isProposer` opened in APPROVED; `isSelf` is the local
  * elector. No count is derived here (the room never sees a tally): the chips are the whole tally the
@@ -206,6 +225,26 @@ object CheckVoteBenchModel {
         return selfUserId in vote.electorate && !vote.hasVoted(selfUserId)
     }
 
+    /**
+     * The viewer's role in an open vote (Wave 15.12): the proposer, an elector, or a reader. A null
+     * self, or a self off the electorate that is not the proposer, reads only. Twin of iOS
+     * CheckVoteCardModel.viewerRole.
+     */
+    fun role(vote: VoteView, selfUserId: String?): CheckVoteRole = when {
+        selfUserId != null && selfUserId == vote.by -> CheckVoteRole.PROPOSER
+        selfUserId != null && selfUserId in vote.electorate -> CheckVoteRole.ELECTOR
+        else -> CheckVoteRole.NON_ELECTOR
+    }
+
+    /**
+     * Whether the local viewer's card may be dismissed back to the board (Wave 15.12 card policy).
+     * Only a still-unvoted elector is held (their ballot is the exit); the proposer, a non-elector,
+     * and a rejoined already-voted elector may all put it away while the vote runs. Binds the pure
+     * [CheckVoteCardPolicy] to the live vote and the local identity.
+     */
+    fun cardDismissible(vote: VoteView, selfUserId: String?): Boolean =
+        CheckVoteCardPolicy.isDismissible(role(vote, selfUserId), hasOpenBallot = showVerbs(vote, selfUserId))
+
     // --- Hold-to-propose (the call) ---
 
     /** The hold fill, 0..1 over [VoteBenchTiming.HOLD_MS]; the control proposes the vote at 1.0. */
@@ -284,5 +323,30 @@ object CheckVoteBenchModel {
             "GRID_BROKEN" -> VoteCopy.GRID_BROKEN
             else -> null
         }
+    }
+
+    /**
+     * The polite open announcement, per role (U10, Wave 15.12; mirror of iOS CheckVoteAnnouncement
+     * .opened): an elector hears the question and that actions exist; the proposer hears their
+     * proposal confirmed; a non-elector hears the question alone (no actions to offer).
+     */
+    fun openAnnouncement(role: CheckVoteRole, proposerName: String): String = when (role) {
+        CheckVoteRole.PROPOSER -> "Check proposed. ${VoteCopy.WAITING_FOR_ROOM}."
+        CheckVoteRole.ELECTOR -> "${VoteCopy.proposal(proposerName)}. Actions available."
+        CheckVoteRole.NON_ELECTOR -> "${VoteCopy.proposal(proposerName)}."
+    }
+
+    /**
+     * The polite close announcement for the resolution CARD (U10, Wave 15.12; mirror of iOS
+     * CheckVoteAnnouncement.closed): the one calm line joined with the proposer's tally when it
+     * stands, each ended with a period. Null for a terminal close and for a pass (the pass speaks
+     * "Checking…" and "{n} to fix" through the status capsule, not the card).
+     */
+    fun closeAnnouncement(resolution: VoteResolution): String? = when (resolution) {
+        is VoteResolution.Ended -> {
+            val line = resolutionAnnouncement(resolution) ?: return null
+            listOfNotNull(line, proposerTally(resolution)).joinToString(" ") { "$it." }
+        }
+        is VoteResolution.Passed -> null
     }
 }

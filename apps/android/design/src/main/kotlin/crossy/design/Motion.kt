@@ -45,6 +45,13 @@ object Motion {
         const val celebrationResponseMs: Int = 450
         const val celebrationDampingFraction: Double = 0.78
 
+        /// The check-vote card's arrival (Wave 15.12, mirror of iOS voteCardResponse /
+        /// voteCardDampingFraction): a people surface, so it lands with a whisper of life,
+        /// between the chrome's stillness and the celebration's bounce. Withdrawal always
+        /// rides the chrome spring.
+        const val voteCardResponseMs: Int = 400
+        const val voteCardDampingFraction: Double = 0.85
+
         /// The key deck press pop (apps/ios/DESIGN.md §7, ID-4). Deliberately tighter than
         /// `chromeResponseMs` so the pop reads at sixty presses a minute; the value is the
         /// SP-i2 rig's, the geometry the owner confirmed on hardware. Damping stays at the
