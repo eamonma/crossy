@@ -4,8 +4,14 @@ name: Deploy
 # ruleset requires a PR plus the two green checks ("lint + typecheck + unit" and "M1
 # Playwright smoke"), so anything on main already passed CI. This workflow therefore does
 # NOT re-run lint / typecheck / test / smoke: re-running them would be pure latency with no
-# added safety. It builds and pushes the three images, applies the committed expand-only
-# migrations (guarded) ahead of the roll, and rolls each Railway service onto the new image.
+# added safety. It builds and pushes the changed images, applies the committed expand-only
+# migrations (guarded) ahead of the roll, and rolls each changed Railway service onto its
+# new image.
+#
+# Selective roll (Track B): a push builds and rolls ONLY the services whose inputs changed.
+# A docs-only or client-only merge used to restart the session service under live solvers
+# and drop every WebSocket; now it rolls nothing. The `changes` job maps changed paths to
+# services and FAILS OPEN: any file matched by no list rolls all three (see its catch-all).
 on:
   push:
     branches: [main]
@@ -31,16 +37,118 @@ permissions:
   packages: write # push images to ghcr.io/eamonma/*
 
 jobs:
+  changes:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    # Maps the push diff onto the {api, session, web} build+roll set. workflow_dispatch is the
+    # manual escape hatch and forces a FULL deploy (all three), so the filters run only for
+    # push; dispatch takes the all-true branch in `decide`. No checkout: dorny/paths-filter
+    # diffs github.event.before..sha via the compare API for push events.
+    outputs:
+      service_list: ${{ steps.decide.outputs.service_list }} # JSON array, e.g. ["api","web"]; drives the build matrix and the roll loop
+      any: ${{ steps.decide.outputs.any }} # 'true' when service_list is non-empty
+    steps:
+      # Positive filters, default 'some' quantifier: a service is in the set if any changed
+      # file sits under its app dir; a shared input (packages, lockfile, deploy, ...) rolls all
+      # three. 'some' means a file matches the rule if it hits AT LEAST ONE pattern.
+      - name: Match app and shared inputs
+        id: positive
+        if: ${{ github.event_name == 'push' }}
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - 'apps/api/**'
+            session:
+              - 'apps/session/**'
+            web:
+              - 'apps/web/**'
+            shared:
+              - 'packages/**'
+              - 'vectors/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - '.node-version'
+              - 'deploy/**'
+      # Catch-all, 'every' quantifier: a file matches this filter only if it satisfies ALL
+      # rules, so `unknown` is true exactly when some changed file clears '**' yet dodges every
+      # known path (the service dirs, the shared inputs, and the known-inert paths below). An
+      # unmatched file fails open to a full roll: SAFETY RULE, never a silent skip. This list is
+      # the exact complement of the positive filters plus the inert set; keep the three in sync.
+      - name: Detect unmatched (fail-open) inputs
+        id: catchall
+        if: ${{ github.event_name == 'push' }}
+        uses: dorny/paths-filter@v3
+        with:
+          predicate-quantifier: "every"
+          filters: |
+            unknown:
+              - '**'
+              - '!apps/api/**'
+              - '!apps/session/**'
+              - '!apps/web/**'
+              - '!packages/**'
+              - '!vectors/**'
+              - '!pnpm-lock.yaml'
+              - '!package.json'
+              - '!pnpm-workspace.yaml'
+              - '!.node-version'
+              - '!deploy/**'
+              - '!**/*.md'
+              - '!design/**'
+              - '!reports/**'
+              - '!.claude/**'
+              - '!.github/**'
+              - '!apps/ios/**'
+              - '!apps/android/**'
+              - '!apps/extension/**'
+              - '!e2e/**'
+              - '!scripts/**'
+              - '!.idea/**'
+      - name: Decide build/roll set
+        id: decide
+        env:
+          DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
+          # Empty on dispatch (the filters are push-only); the DISPATCH branch wins first there.
+          API: ${{ steps.positive.outputs.api }}
+          SESSION: ${{ steps.positive.outputs.session }}
+          WEB: ${{ steps.positive.outputs.web }}
+          SHARED: ${{ steps.positive.outputs.shared }}
+          UNKNOWN: ${{ steps.catchall.outputs.unknown }}
+        run: |
+          set -euo pipefail
+          # workflow_dispatch, a shared input, or an unmatched file all roll ALL three; otherwise
+          # roll exactly the services whose own app dir changed.
+          if [ "$DISPATCH" = "true" ] || [ "$SHARED" = "true" ] || [ "$UNKNOWN" = "true" ]; then
+            api=true; session=true; web=true
+          else
+            api="$API"; session="$SESSION"; web="$WEB"
+          fi
+          # Roll set as a JSON array (the build matrix requires JSON); empty means roll nothing.
+          list=$(jq -cn --arg api "$api" --arg session "$session" --arg web "$web" \
+            '[{k:"api",v:$api},{k:"session",v:$session},{k:"web",v:$web}] | map(select(.v == "true") | .k)')
+          any=$(echo "$list" | jq -r 'length > 0')
+          {
+            echo "service_list=$list"
+            echo "any=$any"
+          } >> "$GITHUB_OUTPUT"
+
   build-and-push:
     name: Build and push images (GHCR)
+    needs: changes
     # migrations_only is a schema-only escape hatch that builds and rolls NOTHING (rolling
-    # non-main code from a branch would violate main-is-golden). Skip the build under it; on a
-    # push and on a normal dispatch, inputs.migrations_only is empty/false, so this runs.
-    if: ${{ !inputs.migrations_only }}
+    # non-main code from a branch would violate main-is-golden). Skip the build under it. Also
+    # skip when nothing rolls (docs-only push): `any` is false, the matrix would be empty, and
+    # rolling a service without a fresh build is the pointless restart this track kills. On a
+    # push with changes and on a normal dispatch, both conditions hold and this runs.
+    if: ${{ !inputs.migrations_only && needs.changes.outputs.any == 'true' }}
     runs-on: ubuntu-latest
     strategy:
+      # Build only the changed services. The roll loop consumes the SAME list, so build set and
+      # roll set are identical by construction: skipping a build always skips that roll.
       matrix:
-        service: [api, session, web]
+        service: ${{ fromJSON(needs.changes.outputs.service_list) }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -81,7 +189,8 @@ jobs:
     # did not yet exist (a production 500 until the owner applied the migration by hand).
     #
     # Runs after a successful build (push / normal dispatch) or when build was skipped
-    # (migrations_only). A failed build stops migrate too, so schema and code advance together.
+    # (migrations_only, or a docs-only push that builds nothing). A failed build stops migrate,
+    # so schema and code advance together. Schema landing ahead of a no-op roll is harmless.
     if: ${{ always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') }}
     steps:
       # workflow_dispatch checks out the SELECTED ref, so migrations_only can apply an expand
@@ -127,24 +236,30 @@ jobs:
   roll:
     name: Roll Railway services
     runs-on: ubuntu-latest
-    needs: [build-and-push, migrate]
-    # Roll only when this is a full deploy: build succeeded AND migrate succeeded, and never
-    # under migrations_only (it builds nothing and may run from a branch; rolling that would
-    # violate main-is-golden). If migrate fails (guard block, missing secret, or apply error),
-    # roll is skipped, so new code never serves traffic against schema that was not applied.
-    if: ${{ always() && needs.build-and-push.result == 'success' && needs.migrate.result == 'success' && !inputs.migrations_only }}
+    needs: [changes, build-and-push, migrate]
+    # Roll when the build did not fail (success, or skipped on a docs-only push that changed no
+    # service) AND migrate succeeded, and never under migrations_only (it builds nothing and may
+    # run from a branch; rolling that would violate main-is-golden). Tolerating a skipped build
+    # lets the roll loop run and roll nothing on a docs-only push; a FAILED build blocks it, so
+    # code never serves before its image built. If migrate fails, roll is skipped, so new code
+    # never serves against schema that was not applied.
+    if: ${{ always() && (needs.build-and-push.result == 'success' || needs.build-and-push.result == 'skipped') && needs.migrate.result == 'success' && !inputs.migrations_only }}
     steps:
       - name: Install Railway CLI
         run: npm install -g @railway/cli@4
       # RAILWAY_TOKEN is a Railway PROJECT token scoped to crossy/production. The owner mints
       # it and stores it as a GitHub Actions secret (referenced, never created here). It scopes
       # every command below to that project + environment, so no `railway link` is needed.
-      - name: Roll each service onto the new image
+      - name: Roll each changed service onto the new image
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          # Same list the build matrix used; empty ([]) on a docs-only push, so the loop rolls
+          # nothing. railway redeploy re-pulls :latest, so rolling without a fresh build is a
+          # pointless restart (the exact bug this track kills): never roll what did not build.
+          SERVICE_LIST: ${{ needs.changes.outputs.service_list }}
         run: |
           set -euo pipefail
-          for svc in api session web; do
+          for svc in $(echo "${SERVICE_LIST:-[]}" | jq -r '.[]'); do
             echo "redeploying $svc..."
             # redeploy re-pulls the :latest tag the service is connected to. For a digest-pinned
             # roll, swap this for:
