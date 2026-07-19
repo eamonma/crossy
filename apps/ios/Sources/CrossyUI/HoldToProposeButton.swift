@@ -24,9 +24,21 @@ public struct HoldToProposeButton: View {
 
     @State private var fill: CGFloat = 0
     @State private var pressing = false
+    /// The Reduce Motion stepper: while pressing, a task advances the fill in quarters
+    /// (U3's stepped state; the old binary fill read armed at touch-down, then did nothing).
+    @State private var stepTask: Task<Void, Never>?
 
     /// The hold that counts as a proposal (~600 ms).
     public static let holdDuration: Double = 0.6
+
+    /// The Reduce Motion fill at `elapsed` seconds into the hold: quarters, starting at
+    /// 0.25 on touch-down and advancing every holdDuration/4 (150 ms), reaching full one
+    /// step before the commit so the state is legible without a sweep. Pure, pinned in
+    /// HoldToProposeSteppedFillTests.
+    public static func steppedFill(elapsed: Double) -> Double {
+        let quarter = holdDuration / 4
+        return min(1, 0.25 * ((elapsed / quarter).rounded(.down) + 1))
+    }
 
     public init(
         title: String,
@@ -54,7 +66,9 @@ public struct HoldToProposeButton: View {
             GeometryReader { geo in
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(gold.opacity(0.28))
-                    .frame(width: geo.size.width * (reduceMotion ? (pressing ? 1 : 0) : fill))
+                    // With motion the fill sweeps under the finger; under Reduce Motion
+                    // `fill` is set by the quarter stepper (no sweep, honest progress).
+                    .frame(width: geo.size.width * fill)
             }
             Text(title)
                 .font(.body.weight(.semibold))
@@ -80,8 +94,23 @@ public struct HoldToProposeButton: View {
                 pressing = isPressing
                 if isPressing {
                     onHoldBegan()
-                    withAnimation(reduceMotion ? nil : .linear(duration: Self.holdDuration)) {
-                        fill = 1
+                    if reduceMotion {
+                        // The stepped fill (U3): quarters advancing every 150 ms, no sweep.
+                        fill = CGFloat(Self.steppedFill(elapsed: 0))
+                        stepTask?.cancel()
+                        stepTask = Task { @MainActor in
+                            let quarter = Self.holdDuration / 4
+                            for step in 1...3 {
+                                try? await Task.sleep(for: .seconds(quarter))
+                                guard !Task.isCancelled, pressing else { return }
+                                fill = CGFloat(
+                                    Self.steppedFill(elapsed: Double(step) * quarter))
+                            }
+                        }
+                    } else {
+                        withAnimation(.linear(duration: Self.holdDuration)) {
+                            fill = 1
+                        }
                     }
                 } else {
                     // Released before the threshold: cancel and drain the fill back.
@@ -102,6 +131,7 @@ public struct HoldToProposeButton: View {
     }
 
     private func resetFill() {
+        stepTask?.cancel()
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { fill = 0 }
         pressing = false
     }

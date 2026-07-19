@@ -64,6 +64,52 @@ final class RoomFactsSheetLayoutTests: XCTestCase {
             152 + RoomFactsSheetLayout.checkedLineGap
                 + RoomFactsSheetLayout.checkedLineHeight)
     }
+
+    // The multiplayer check row is the 48 pt hold-to-propose control, not a 44 pt list
+    // row: the detent must count the control's real height, plus the hint's gap and line
+    // when the grid is short, or the sheet clips its last row by ~25 pt (R7: every
+    // conditional counted honestly; the Wave 15.10 fix, measured on device in the audit).
+    func test_height_holdProposeRowCountsItsControlHonestly_R7() {
+        let plain = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 2)
+        let hold = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 2,
+            holdCheckRow: true, holdHint: false)
+        XCTAssertEqual(
+            hold,
+            plain - RoomFactsSheetLayout.operationRowHeight
+                + RoomFactsSheetLayout.holdControlHeight)
+        let hinted = RoomFactsSheetLayout.height(
+            hasDetail: true, hasCheckedLine: false, operationRows: 2,
+            holdCheckRow: true, holdHint: true)
+        XCTAssertEqual(
+            hinted,
+            hold + RoomFactsSheetLayout.holdHintGap + RoomFactsSheetLayout.holdHintHeight)
+    }
+
+    // Without a check row the hold flags are inert: the arithmetic cannot invent a slot.
+    func test_height_holdFlagsAreInertWithoutRows_R7() {
+        XCTAssertEqual(
+            RoomFactsSheetLayout.height(
+                hasDetail: true, hasCheckedLine: false, operationRows: 0,
+                holdCheckRow: true, holdHint: true),
+            RoomFactsSheetLayout.height(
+                hasDetail: true, hasCheckedLine: false, operationRows: 0))
+    }
+}
+
+// The hold-to-propose fill under Reduce Motion (U3): the fill is a STEPPED state, never a
+// continuous sweep — quarters advancing across the hold, full just before the commit. The
+// old binary fill read as armed at touch-down and then did nothing.
+final class HoldToProposeSteppedFillTests: XCTestCase {
+    func test_reducedMotionFillStepsInQuarters_U3() {
+        XCTAssertEqual(HoldToProposeButton.steppedFill(elapsed: 0), 0.25)
+        XCTAssertEqual(HoldToProposeButton.steppedFill(elapsed: 0.10), 0.25)
+        XCTAssertEqual(HoldToProposeButton.steppedFill(elapsed: 0.16), 0.5)
+        XCTAssertEqual(HoldToProposeButton.steppedFill(elapsed: 0.31), 0.75)
+        XCTAssertEqual(HoldToProposeButton.steppedFill(elapsed: 0.46), 1.0)
+        XCTAssertEqual(HoldToProposeButton.steppedFill(elapsed: 0.9), 1.0, "never past full")
+    }
 }
 
 // The headline clock: one pure rule, the server's stat first (stats arrive only
