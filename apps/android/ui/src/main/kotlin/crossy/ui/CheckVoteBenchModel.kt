@@ -1,11 +1,10 @@
 // The check vote's presentation model (PROTOCOL.md §10, D32; Wave 15.6 UX), the pure half of the
-// Bench and the ring. It owns the normative copy, the five-beat phase machine, the elector chip
-// states, the ring's drain, and the hold-to-propose timing, all as pure functions of the store's
-// VoteView plus a frame clock. Compose imports NONE of this: the composables (VoteBench, VoteRing)
-// read these functions and paint, so the copy and the timing are headlessly tested (the ReactionModel
-// / StickerEnvelope idiom). Nothing here holds a clock or a color; `now` and the ground arrive at the
-// call site. The web UI is not the spec (CLAUDE.md): this is the app's own idiom, the Bench and the
-// ring, not a dialog and a countdown.
+// Bench. It owns the normative copy, the five-beat phase machine, the elector chip states, and the
+// hold-to-propose timing, all as pure functions of the store's VoteView plus a frame clock. Compose
+// imports NONE of this: the composable (VoteBench) reads these functions and paints, so the copy and
+// the timing are headlessly tested (the ReactionModel / StickerEnvelope idiom). Nothing here holds a
+// clock or a color; `now` and the ground arrive at the call site. The web UI is not the spec
+// (CLAUDE.md): this is the app's own idiom, the Bench, not a dialog and a countdown.
 
 package crossy.ui
 
@@ -13,8 +12,8 @@ import crossy.store.VoteView
 
 /**
  * The vote's copy, exact and in one place (Wave 15.6 spec). No counts are ever shown to the room and
- * no countdown digits appear anywhere: the ring is the only clock. The post-fail tally is the one
- * count, and it is the proposer's alone.
+ * no countdown digits appear anywhere: the vote surfaces no clock (Wave 15.9b). The post-fail tally
+ * is the one count, and it is the proposer's alone.
  */
 object VoteCopy {
     /** The proposal line under the proposer, and the polite open announcement (TalkBack). */
@@ -53,7 +52,7 @@ object VoteBenchTiming {
     /** Press-and-hold to propose in multiplayer; early release cancels. */
     const val HOLD_MS: Long = 600L
 
-    /** The breath after a passing close, "Checking…" before the ring flash and the mark wash. */
+    /** The breath after a passing close, "Checking…" before the mark wash. */
     const val REVEAL_BREATH_MS: Long = 600L
 
     /** The wrong-cell wash budget: marks paint in ascending cell order within this. */
@@ -61,9 +60,6 @@ object VoteBenchTiming {
 
     /** The recess: the one calm line lingers, then the Bench withdraws. No try-again affordance. */
     const val RECESS_MS: Long = 2_500L
-
-    /** Discrete ring levels under reduced motion (a stepped drain instead of a continuous sweep). */
-    const val REDUCED_MOTION_RING_STEPS: Int = 6
 }
 
 /**
@@ -116,16 +112,10 @@ data class ElectorChip(
 sealed interface VoteResolution {
     val startedAt: Long
 
-    /** The ring's remaining fraction the instant the vote closed (Wave 15.9a). The resolution fades
-     *  from this frozen value instead of snapping the drained ring back to full (U4): a failed vote
-     *  drains-then-fades, and a pass flashes-then-dissolves, both from where the clock stood. */
-    val fractionAtClose: Float
-
     /** A passing close: the check ran. `wrongCells` is the count for "{n} to fix". */
     data class Passed(
         val wrongCells: Int,
         override val startedAt: Long,
-        override val fractionAtClose: Float = 1f,
     ) : VoteResolution
 
     /**
@@ -139,7 +129,6 @@ sealed interface VoteResolution {
         val needed: Int,
         val isProposer: Boolean,
         override val startedAt: Long,
-        override val fractionAtClose: Float = 1f,
     ) : VoteResolution
 }
 
@@ -217,33 +206,9 @@ object CheckVoteBenchModel {
         return selfUserId in vote.electorate && !vote.hasVoted(selfUserId)
     }
 
-    // --- The ring (the only clock) ---
-
-    /**
-     * The ring's remaining fraction, 1.0 at open draining to 0.0 at expiry (PROTOCOL.md §10). The
-     * halo draws this share of its full length; it is the only clock, so no digits accompany it.
-     */
-    fun ringFraction(vote: VoteView, nowMillis: Long): Float =
-        (vote.remainingMillis(nowMillis).toFloat() / CHECK_VOTE_TTL_MS_FLOAT).coerceIn(0f, 1f)
-
-    /**
-     * The stepped ring fraction under reduced motion: the continuous drain quantized to
-     * [VoteBenchTiming.REDUCED_MOTION_RING_STEPS] discrete levels, so the halo steps its opacity
-     * instead of sweeping (the §7 reduced-motion form). Ceil so a just-opened vote reads full.
-     */
-    fun ringFractionStepped(vote: VoteView, nowMillis: Long): Float {
-        val steps = VoteBenchTiming.REDUCED_MOTION_RING_STEPS
-        val raw = ringFraction(vote, nowMillis)
-        return (kotlin.math.ceil(raw * steps) / steps).coerceIn(0f, 1f)
-    }
-
-    /** The ring fraction for the active motion mode: continuous, or stepped under reduced motion. */
-    fun ringFraction(vote: VoteView, nowMillis: Long, reduceMotion: Boolean): Float =
-        if (reduceMotion) ringFractionStepped(vote, nowMillis) else ringFraction(vote, nowMillis)
-
     // --- Hold-to-propose (the call) ---
 
-    /** The hold fill, 0..1 over [VoteBenchTiming.HOLD_MS]; the control ignites the ring at 1.0. */
+    /** The hold fill, 0..1 over [VoteBenchTiming.HOLD_MS]; the control proposes the vote at 1.0. */
     fun holdFraction(heldMillis: Long): Float =
         (heldMillis.toFloat() / VoteBenchTiming.HOLD_MS).coerceIn(0f, 1f)
 
@@ -289,11 +254,6 @@ object CheckVoteBenchModel {
         else -> null
     }
 
-    /** Whether the ring should be flash-dissolving (a passing reveal, after the breath). */
-    fun ringDissolving(resolution: VoteResolution, nowMillis: Long): Boolean =
-        resolution is VoteResolution.Passed &&
-            nowMillis - resolution.startedAt >= VoteBenchTiming.REVEAL_BREATH_MS
-
     /**
      * The mark-wash progress 0..1 over [VoteBenchTiming.WASH_MAX_MS], starting after the breath on a
      * passing close; 0 before the breath and for any non-passing close. The grid paints wrong-cell
@@ -325,6 +285,4 @@ object CheckVoteBenchModel {
             else -> null
         }
     }
-
-    private const val CHECK_VOTE_TTL_MS_FLOAT: Float = 30_000f
 }

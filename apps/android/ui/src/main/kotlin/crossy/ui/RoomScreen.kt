@@ -215,23 +215,17 @@ fun RoomScreen(
     var stickers by remember(puzzle) { mutableStateOf(emptyList<ReactionSticker>()) }
     var reactionSentAt by remember(puzzle) { mutableStateOf(emptyList<Double>()) }
 
-    // The check vote UX (PROTOCOL.md §10, D32; Wave 15.6): the Bench, the ring, and the resolution
-    // beat. The store owns the vote state; here the composable owns the transient resolution (a
-    // closed vote animating out, whose count and tally are snapshotted since the store has cleared
-    // `checkVote`), a frame clock the ring drains against, and the ignite origin. Solo is suppressed:
+    // The check vote UX (PROTOCOL.md §10, D32; Wave 15.6): the Bench and the resolution beat. The
+    // store owns the vote state; here the composable owns the transient resolution (a closed vote
+    // animating out, whose count and tally are snapshotted since the store has cleared `checkVote`)
+    // and a frame clock the resolution withdraws and the mark wash time against. Solo is suppressed:
     // the store's render never sets showVoteBench for a solo electorate, so none of this renders for
     // the auto-pass triple, not for a frame.
     var voteResolution by remember(puzzle) { mutableStateOf<VoteResolution?>(null) }
     var pendingVotePass by remember(puzzle) { mutableStateOf(false) }
     var voteNowMs by remember(puzzle) { mutableLongStateOf(System.currentTimeMillis()) }
-    var voteOpenedAt by remember(puzzle) { mutableLongStateOf(0L) }
-    // The ring's remaining fraction frozen at the close instant (fix 2): the resolution fades from
-    // where the drain stood instead of snapping the ring back to full. Carried across the pass's
-    // close->puzzleChecked gap so the reveal flashes from the frozen fraction too.
-    var voteRingFractionAtClose by remember(puzzle) { mutableFloatStateOf(1f) }
     val liveVote = rememberUpdatedState(render.checkVote)
     val liveSolo = rememberUpdatedState(render.isSoloRoom)
-    val liveReduceMotion = rememberUpdatedState(reduceMotion)
     // A disconnect/resync heals the vote wholesale via snapshot with no puzzleChecked event, so a
     // pending reveal armed at a passing close would strand and replay full vote chrome on a LATER solo
     // check (solo-zero-chrome, D32; fix 3). Every heal leaves LIVE first, so clear the flag there.
@@ -239,7 +233,7 @@ fun RoomScreen(
         if (render.sync != SyncState.LIVE) pendingVotePass = false
     }
     // The frame clock: while a vote or its resolution is on screen, sample wall-clock each frame so the
-    // ring drains smoothly and the resolution withdraws on time. It also retires a finished resolution.
+    // resolution withdraws on time and the mark wash advances. It also retires a finished resolution.
     val voteOnScreen = render.showVoteBench || voteResolution != null
     LaunchedEffect(voteOnScreen) {
         while (voteOnScreen) {
@@ -297,7 +291,6 @@ fun RoomScreen(
                 voteResolution = VoteResolution.Passed(
                     checked.wrongCells.size,
                     System.currentTimeMillis(),
-                    voteRingFractionAtClose, // flash/fade from the frozen fraction, never a snap-to-full (fix 2)
                 )
             } else {
                 // A solo auto-pass or a bare puzzleChecked (server rollout window): the check lands as
@@ -305,13 +298,12 @@ fun RoomScreen(
                 haptics.play(SolveHaptic.CHECK_LANDED)
             }
         }
-        // The vote opened (D32): the firm click and the ring's ignite origin. Solo is suppressed at the
-        // source (a solo electorate of one shows no chrome and no haptic, not for a frame): only a real
-        // multi-elector vote rings and clicks. Snapshot healing stays silent (the §7 seq gate).
+        // The vote opened (D32): the firm click. Solo is suppressed at the source (a solo electorate of
+        // one shows no chrome and no haptic, not for a frame): only a real multi-elector vote clicks.
+        // Snapshot healing stays silent (the §7 seq gate).
         store.onVoteOpened = { opened ->
             if (opened.electorate.size > 1) {
                 voteResolution = null
-                voteOpenedAt = System.currentTimeMillis()
                 haptics.play(SolveHaptic.VOTE_OPENED)
             }
         }
@@ -324,21 +316,16 @@ fun RoomScreen(
         // The vote closed (D32): a pass defers its reveal to the puzzleChecked that follows; a fail or
         // cancel shows its one calm line now, with the proposer-only tally from the pre-close vote.
         // Solo is suppressed (the auto-pass triple shows no chrome). A TERMINAL cancellation is silent
-        // (fix 1): no line, no fail haptic, no lingering ring, because the completion/abandon surface
-        // supersedes it.
+        // (fix 1): no line, no fail haptic, because the completion/abandon surface supersedes it.
         store.onVoteClosed = { closed ->
             val vote = liveVote.value
             val solo = liveSolo.value || (vote?.isSolo ?: true)
             if (!solo) {
-                // Freeze the ring's last open fraction so every resolution fades from where the drain
-                // stood, never snapping back to full (fix 2; U4).
-                voteRingFractionAtClose =
-                    vote?.let { CheckVoteBenchModel.ringFraction(it, voteNowMs, liveReduceMotion.value) } ?: 0f
                 when {
                     closed.outcome == "passed" -> pendingVotePass = true
                     closed.reason == "TERMINAL" -> {
                         // The completion/abandon surface supersedes: withdraw the vote quietly, no
-                        // resolution sliver, no fail haptic, no ring fade beyond immediate removal.
+                        // resolution sliver, no fail haptic.
                         pendingVotePass = false
                         voteResolution = null
                     }
@@ -350,7 +337,6 @@ fun RoomScreen(
                             needed = vote?.needed ?: 0,
                             isProposer = vote?.by == store.render.value.selfUserId,
                             startedAt = System.currentTimeMillis(),
-                            fractionAtClose = voteRingFractionAtClose,
                         )
                     }
                 }
@@ -759,42 +745,6 @@ fun RoomScreen(
                 reduceMotion = reduceMotion,
                 modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
             )
-            // The vote ring (PROTOCOL.md §10, D32): a warm-gold halo just outside the grid bounds,
-            // draining with the remaining time. The ONLY clock (no digits anywhere). It is hit-inert
-            // (a decorative Canvas), so grid taps pass through: the grid above stays fully interactive
-            // during a vote. Shows for a live multi-elector vote (never solo) or a resolution fading
-            // out; ignites on open, flash-dissolves on a pass, fades quietly on a fail/cancel.
-            run {
-                val openVote = render.checkVote?.takeIf { render.showVoteBench }
-                val res = voteResolution
-                if (openVote != null || res != null) {
-                    // While open, the live drain; at close, the fraction frozen into the resolution, so
-                    // the ring fades from where it stood rather than snapping back to full (fix 2).
-                    val fraction = openVote?.let { CheckVoteBenchModel.ringFraction(it, voteNowMs, reduceMotion) }
-                        ?: (res?.fractionAtClose ?: 1f)
-                    val ignite = if (reduceMotion || openVote == null) 1f
-                        else ((voteNowMs - voteOpenedAt).toFloat() / 300f).coerceIn(0.4f, 1f)
-                    val dissolve = if (res is VoteResolution.Passed && !reduceMotion) {
-                        ((voteNowMs - res.startedAt - VoteBenchTiming.REVEAL_BREATH_MS).toFloat() / 400f).coerceIn(0f, 1f)
-                    } else {
-                        0f
-                    }
-                    val ringAlpha = if (res is VoteResolution.Ended) {
-                        (1f - (voteNowMs - res.startedAt).toFloat() / VoteBenchTiming.RECESS_MS).coerceIn(0f, 1f)
-                    } else {
-                        1f
-                    }
-                    VoteRing(
-                        fraction = fraction,
-                        ground = ground,
-                        ignite = ignite,
-                        dissolve = dissolve,
-                        alpha = ringAlpha,
-                        reduceMotion = reduceMotion,
-                        modifier = Modifier.fillMaxWidth().aspectRatio(geometry.cols.toFloat() / geometry.rows),
-                    )
-                }
-            }
             // The floating fan at the grid's trailing-bottom corner (near the clue bar's trailing
             // corner). It is composed here, OUTSIDE the terminal deck retirement below, so it stays
             // visible in any status (reactions are legal post-completion, §9). Gated only before the
