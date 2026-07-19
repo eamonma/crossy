@@ -1,6 +1,11 @@
 import * as React from "react";
 import { Avatar as AvatarPrimitive } from "radix-ui";
 
+import {
+  hasAvatarLoadFailed,
+  recordAvatarLoadFailure,
+  subscribeAvatarLoadFailures,
+} from "@/components/ui/avatar-load-failures";
 import { cn } from "@/lib/utils";
 
 function Avatar({
@@ -29,10 +34,33 @@ function Avatar({
 
 function AvatarImage({
   className,
+  src,
+  onLoadingStatusChange,
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  // Known-missing avatars stay missing for the whole session: server-resolved URLs
+  // can be Gravatar d=404, PROTOCOL.md section 4 treats a load error as absence, and
+  // Radix retries the load on every mount, so remounting rosters would re-fetch the
+  // same 404 forever. On the first error the src is recorded in a shared negative
+  // cache and every mounted avatar for it drops its image; the sibling
+  // AvatarFallback at each call site already shows.
+  const getSnapshot = () => typeof src === "string" && hasAvatarLoadFailed(src);
+  const failed = React.useSyncExternalStore(
+    subscribeAvatarLoadFailures,
+    getSnapshot,
+    // Server snapshot so the .tsx suites' react-dom/server renders don't throw.
+    getSnapshot,
+  );
+  if (failed) return null;
   return (
     <AvatarPrimitive.Image
+      src={src}
+      onLoadingStatusChange={(status) => {
+        if (status === "error" && typeof src === "string") {
+          recordAvatarLoadFailure(src);
+        }
+        onLoadingStatusChange?.(status);
+      }}
       data-slot="avatar-image"
       className={cn(
         // Radix only mounts this <img> once it has finished loading, so it never
