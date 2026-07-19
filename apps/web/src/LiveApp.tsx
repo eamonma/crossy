@@ -84,6 +84,10 @@ import type { IsolationControl } from "./ui/AnalysisPanel";
 import { nextIsolation } from "./ui/mosaicIsolation";
 import { useGameAnalysis } from "./ui/useGameAnalysis";
 import { useReplayClock } from "./ui/useReplayClock";
+import {
+  useDelayedFlag,
+  RECONNECT_OVERLAY_GRACE_MS,
+} from "./hooks/useDelayedFlag";
 import type { PanelTab } from "./ui/PanelTabs";
 import type { AnalysisTab } from "./ui/Clues";
 import { TopBar } from "./ui/TopBar";
@@ -808,6 +812,14 @@ function LiveGame({
   // snapshot makes it live (item 3/4). `connecting` is only ever the pre-first-welcome
   // state, so this reads as "have we synced once"; a later drop goes `reconnecting`.
   const awaitingFirstSync = store.sync === "connecting";
+  // The status pill renders only after a non-live sync state has held past the grace window, so a
+  // routine edge proxy cycle (recovery ~200ms) never flashes it; it hides the instant we recover.
+  // The two non-live states collapse to one boolean here, so a resyncing <-> reconnecting bounce
+  // shares a single grace timer.
+  const showReconnectPill = useDelayedFlag(
+    store.sync === "resyncing" || store.sync === "reconnecting",
+    RECONNECT_OVERLAY_GRACE_MS,
+  );
   const isSpectator = role === "spectator";
   // A guest (or a client the server refused) cannot upgrade: show the sign-in deal, not the tap.
   const needsFullAccount = ready.isAnonymous || blockedByAccount;
@@ -1627,8 +1639,9 @@ function LiveGame({
         {/* The status pill speaks only to a lost-then-recovering connection: `resyncing`
             (a gap) and `reconnecting` (a post-drop backoff). The honest first connect is
             `connecting`, covered by the pre-welcome de-emphasis above, so it never shows
-            the pill (item 3). */}
-        {(store.sync === "resyncing" || store.sync === "reconnecting") && (
+            the pill (item 3). It waits out the grace window (showReconnectPill) so a routine
+            proxy cycle stays silent; the text still switches with the live sync state once shown. */}
+        {showReconnectPill && (
           <div
             className="absolute top-12 inset-x-0 flex justify-center z-[var(--z-toast)] pointer-events-none"
             aria-live="polite"

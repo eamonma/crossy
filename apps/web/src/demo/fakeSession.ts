@@ -20,8 +20,12 @@ const SELF_COLOR = "#3e63dd"; // indigo-9, matching the presence chrome
 const TEAMMATE_COLORS = ["#e5484d", "#12a594", "#ffb224", "#8e4ec6"];
 
 const ECHO_DELAY_MS = 150; // long enough that the pending overlay is real
-const RESYNC_DELAY_MS = 700; // long enough that the Resyncing pill is visible
-const RECONNECT_DELAY_MS = 1400; // long enough that the Reconnecting pill is visible
+// Comfortably past RECONNECT_OVERLAY_GRACE_MS (2000ms), like RECONNECT_DELAY_MS below: the Resyncing
+// pill shares the same grace window, so the demo gap must outlast it to keep the pill demonstrable.
+const RESYNC_DELAY_MS = 2600;
+// Comfortably past RECONNECT_OVERLAY_GRACE_MS (2000ms): the pill only renders once a non-live sync
+// state has held past that grace window, so the demo drop must outlast it to stay demonstrable.
+const RECONNECT_DELAY_MS = 3400;
 
 // The demo teammate's reaction rotation. 🔥 is deliberately OUTSIDE the v1 send set so the demo
 // proves receive-any: the client renders whatever well-formed emoji arrives (PROTOCOL.md §9).

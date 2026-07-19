@@ -17,6 +17,10 @@ import {
 } from "react";
 import type { Grid } from "@crossy/engine";
 import { boardById, boards } from "./domain/boards";
+import {
+  useDelayedFlag,
+  RECONNECT_OVERLAY_GRACE_MS,
+} from "./hooks/useDelayedFlag";
 import type { Clue } from "./domain/types";
 import { createFakeSession, SELF_USER_ID } from "./demo/fakeSession";
 import type { FakeSession } from "./demo/fakeSession";
@@ -326,6 +330,13 @@ function DemoApp({
 
   const store = session.store;
   const version = useSyncExternalStore(store.subscribe, store.getVersion);
+  // The same grace as the live surfaces: the pill renders only after a non-live sync state has held
+  // past the window, so the demo's fake drop must outlast it (fakeSession RECONNECT_DELAY_MS) to stay
+  // demonstrable. `connecting` is the pre-first-welcome state and shows no pill.
+  const showReconnectPill = useDelayedFlag(
+    store.sync === "resyncing" || store.sync === "reconnecting",
+    RECONNECT_OVERLAY_GRACE_MS,
+  );
   // Reactions on the demo board (Wave 7.3): the same hook the live game uses, so send + local echo
   // + receive-any + the leader HUD run without a backend. The "Teammate reacts" button below drives
   // the receive path through the fake session. The set resolves from the identity session like the
@@ -596,7 +607,7 @@ function DemoApp({
         className="min-h-7 flex justify-center items-center mb-1"
         aria-live="polite"
       >
-        {store.sync !== "live" && (
+        {showReconnectPill && (
           <span className="inline-block px-3 py-0.5 rounded-full border border-border bg-panel text-text-muted text-1 font-semibold">
             {store.sync === "resyncing" ? "Resyncing..." : "Reconnecting..."}
           </span>
