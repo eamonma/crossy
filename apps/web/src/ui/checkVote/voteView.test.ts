@@ -13,18 +13,14 @@ import {
   REVEAL_BREATH_MS,
   chipSide,
   closeLine,
-  coarseOpacityStep,
   contrastRatio,
   electorChips,
   failedTallyLine,
   isSoloElector,
-  meridianPath,
   proposalLine,
   proposalSubject,
   proposerName,
-  remainingFraction,
   remainingMs,
-  ringDashOffset,
   toFixLine,
   voteRole,
   washPerCellMs,
@@ -96,25 +92,11 @@ describe("§10 remaining time clamps to [0, TTL] (clock skew is never trusted)",
   it("past expiry clamps to 0, never negative", () => {
     expect(remainingMs(expiresAt, at + 5_000)).toBe(0);
   });
-  it("a future beyond the TTL clamps to the TTL (a skewed clock cannot overfill the ring)", () => {
+  it("a future beyond the TTL clamps to the TTL (a skewed clock cannot overfill the window)", () => {
     expect(remainingMs(expiresAt, at - 999_999)).toBe(CHECK_VOTE_TTL_MS);
   });
   it("a malformed expiresAt reads as expired", () => {
     expect(remainingMs("not-a-date", at)).toBe(0);
-  });
-  it("the fraction runs 1 down to 0", () => {
-    expect(remainingFraction(expiresAt, at - CHECK_VOTE_TTL_MS)).toBe(1);
-    expect(remainingFraction(expiresAt, at)).toBe(0);
-  });
-});
-
-describe("reduced-motion ring steps down in coarse opacity intervals", () => {
-  it("quantizes the drain fraction up to the next 1/steps", () => {
-    expect(coarseOpacityStep(1)).toBe(1);
-    expect(coarseOpacityStep(0.76, 4)).toBe(1);
-    expect(coarseOpacityStep(0.5, 4)).toBe(0.5);
-    expect(coarseOpacityStep(0.1, 4)).toBe(0.25);
-    expect(coarseOpacityStep(0, 4)).toBe(0);
   });
 });
 
@@ -223,27 +205,6 @@ describe("the reveal wash schedule (timings are verified correct; do not change)
     expect(steps[0]!.delayMs).toBe(REVEAL_BREATH_MS);
     expect(steps[1]!.delayMs).toBe(REVEAL_BREATH_MS + 60);
     expect(steps[2]!.delayMs).toBe(REVEAL_BREATH_MS + 120);
-  });
-});
-
-describe("the Meridian ring geometry and drain (Wave 15.7)", () => {
-  it("draws a parallel-offset rounded rect starting at the top-center seam", () => {
-    // w=200,h=100,weight=2: inset box is 198x98 from (1,1); top-center is (100,1).
-    const d = meridianPath(200, 100, 9, 2);
-    expect(d.startsWith("M 100 1 ")).toBe(true);
-    expect(d.trim().endsWith("Z")).toBe(true);
-  });
-
-  it("drains clockwise from the seam: the glow occupies [1-fraction, 1] via a negative offset", () => {
-    // Full time reads as a whole ring (offset 0); as it drains the offset runs to -1 (empty at seam).
-    expect(ringDashOffset(1, false)).toBe(0);
-    expect(ringDashOffset(0.25, false)).toBeCloseTo(-0.75);
-    expect(ringDashOffset(0, false)).toBe(-1);
-  });
-
-  it("reduced motion holds the ring whole (offset 0) regardless of fraction", () => {
-    expect(ringDashOffset(0.25, true)).toBe(0);
-    expect(ringDashOffset(0, true)).toBe(0);
   });
 });
 

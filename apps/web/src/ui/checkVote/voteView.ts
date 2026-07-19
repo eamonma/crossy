@@ -1,8 +1,8 @@
 // Pure derivations for the check-vote surface (PROTOCOL.md §4, §6, §10; DESIGN.md D32). The store
 // owns the wire state (checkVote, the three events, the ballot intent); this module owns what the
-// Proscenium, the ring, the chips, and the mobile strip render from it: the exact copy, the
-// remaining-time clamp, solo detection, the elector chips, and the resolution lines. Kept pure and
-// data-in/data-out so the whole vote UX is testable under the node suite, the roomActions.ts posture.
+// Proscenium, the chips, and the mobile strip render from it: the exact copy, the remaining-time
+// clamp, solo detection, the elector chips, and the resolution lines. Kept pure and data-in/data-out
+// so the whole vote UX is testable under the node suite, the roomActions.ts posture.
 import type {
   CheckVoteCloseReason,
   CheckVoteOutcome,
@@ -10,9 +10,9 @@ import type {
   Participant,
 } from "@crossy/protocol";
 
-/** The check vote's timebox (DESIGN.md D32 open question CHECK_VOTE_TTL_MS). The ring is the only
- * clock, and it drains over this window; the server's `expiresAt` is authoritative, this is only the
- * clamp ceiling that keeps clock skew from ever showing more than a full ring. */
+/** The check vote's timebox (DESIGN.md D32 open question CHECK_VOTE_TTL_MS). No clock renders (Wave
+ * 15.11 ring removal); the server's `expiresAt` is authoritative, and this is only the clamp ceiling
+ * that keeps clock skew from ever reading more than a full window for the local-expiry verb dimming. */
 export const CHECK_VOTE_TTL_MS = 30_000;
 
 // --- Copy (exact strings; the UX spec is normative for this wave) ---
@@ -73,7 +73,8 @@ export function closeLine(
 // --- Timebox ---
 
 /** Remaining milliseconds, clamped to [0, ttlMs] (the UX spec: never trust it below 0 or above the
- * TTL, clock skew). A malformed or absent `expiresAt` reads as expired. */
+ * TTL, clock skew). A malformed or absent `expiresAt` reads as expired. Drives the local-expiry verb
+ * dimming (Wave 15.7); no clock renders it. */
 export function remainingMs(
   expiresAt: string,
   nowMs: number,
@@ -82,22 +83,6 @@ export function remainingMs(
   const expires = Date.parse(expiresAt);
   if (Number.isNaN(expires)) return 0;
   return Math.min(ttlMs, Math.max(0, expires - nowMs));
-}
-
-/** The ring's drain fraction, 1 at open falling to 0 at expiry. */
-export function remainingFraction(
-  expiresAt: string,
-  nowMs: number,
-  ttlMs: number = CHECK_VOTE_TTL_MS,
-): number {
-  return remainingMs(expiresAt, nowMs, ttlMs) / ttlMs;
-}
-
-/** The coarse step the ring drops to under prefers-reduced-motion (no continuous sweep): the drain
- * fraction quantized up to the next 1/steps, so it steps down at coarse intervals instead. */
-export function coarseOpacityStep(fraction: number, steps: number = 4): number {
-  const clamped = Math.min(1, Math.max(0, fraction));
-  return Math.ceil(clamped * steps) / steps;
 }
 
 // --- The reveal wash schedule (U6; the timings are verified correct, so they are pinned here) ---
@@ -126,60 +111,6 @@ export function washSchedule(cells: readonly number[]): readonly WashStep[] {
     cell,
     delayMs: REVEAL_BREATH_MS + Math.round(rank * per),
   }));
-}
-
-// --- The Meridian ring (U4; Wave 15.7): a true parallel offset of the square-cornered board ---
-
-/**
- * The ring's drain, expressed as a stroke-dashoffset against a path of pathLength 1 whose start is
- * the top-center seam (meridianPath). The remaining glow occupies [1-fraction, 1], so the gap opens
- * at the seam and widens CLOCKWISE as time drains: offset 0 is a whole ring, offset -1 is empty at
- * the seam. Reduced motion holds the ring whole (offset 0) and steps opacity instead of sweeping.
- */
-export function ringDashOffset(
-  fraction: number,
-  reducedMotion: boolean,
-): number {
-  if (reducedMotion) return 0;
-  const f = Math.min(1, Math.max(0, fraction));
-  return f - 1;
-}
-
-/**
- * A rounded-rect path that is a parallel offset of the square board, drawn CLOCKWISE from the
- * top-center seam so the drain reads as a clock, not a rendering glitch. The corner radius equals the
- * offset gap (passed in), which makes the curve optically parallel to the square board corner. The
- * geometry is in the SVG's pixel space (LuminousRing measures the halo box 1:1), so `weight` insets
- * the stroke centerline by half its width on every edge.
- */
-export function meridianPath(
-  w: number,
-  h: number,
-  radius: number,
-  weight: number,
-): string {
-  const x0 = weight / 2;
-  const y0 = weight / 2;
-  const boxW = Math.max(0, w - weight);
-  const boxH = Math.max(0, h - weight);
-  const r = Math.max(0, Math.min(radius, boxW / 2, boxH / 2));
-  const cx = x0 + boxW / 2;
-  const right = x0 + boxW;
-  const bottom = y0 + boxH;
-  const n = (v: number): string => String(Math.round(v * 1000) / 1000);
-  return [
-    `M ${n(cx)} ${n(y0)}`, // the top-center seam
-    `H ${n(right - r)}`,
-    `A ${n(r)} ${n(r)} 0 0 1 ${n(right)} ${n(y0 + r)}`, // top-right corner, clockwise
-    `V ${n(bottom - r)}`,
-    `A ${n(r)} ${n(r)} 0 0 1 ${n(right - r)} ${n(bottom)}`, // bottom-right
-    `H ${n(x0 + r)}`,
-    `A ${n(r)} ${n(r)} 0 0 1 ${n(x0)} ${n(bottom - r)}`, // bottom-left
-    `V ${n(y0 + r)}`,
-    `A ${n(r)} ${n(r)} 0 0 1 ${n(x0 + r)} ${n(y0)}`, // top-left
-    `H ${n(cx)}`, // back along the top to the seam
-    "Z",
-  ].join(" ");
 }
 
 // --- Contrast (WCAG relative luminance; the audit gate for the ceremony's controls) ---

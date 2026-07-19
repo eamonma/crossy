@@ -5,8 +5,9 @@
 //
 // Input discipline (the UX spec): the verbs are keyboard-reachable buttons but focus is NEVER stolen
 // (nothing here calls .focus()), so a solver typing into the grid loses no keystroke when the vote
-// opens. The lifecycle is announced through a polite aria-live region; the ring is decorative and
-// lives elsewhere, so the state a screen reader hears is this text.
+// opens. The lifecycle is announced through a polite aria-live region, so the state a screen reader
+// hears is this text. No clock renders (Wave 15.11): the chips settling are the vote's only live
+// signal, and expiry reads as the calm "The vote lapsed" line.
 import {
   CHECK_VERB,
   CHECK_VERB_INK,
