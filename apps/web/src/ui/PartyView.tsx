@@ -32,6 +32,10 @@ import { visibleCheckMarks } from "./roomActions";
 import { ClueText } from "./ClueText";
 import { buildShareUrl } from "../domain/invite";
 import { useElapsedSeconds, formatDuration } from "./gameTime";
+import {
+  useDelayedFlag,
+  RECONNECT_OVERLAY_GRACE_MS,
+} from "../hooks/useDelayedFlag";
 import { useWakeLock } from "./useWakeLock";
 import { CapsLabel, Logo } from "./primitives";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -218,6 +222,9 @@ export function PartyView({
 
   const title = name ?? `${puzzle.cols} × ${puzzle.rows}`;
   const live = store.sync === "live" || store.sync === "connecting";
+  // The reconnect note renders only after the connection has stayed non-live past the grace window,
+  // so a routine edge proxy cycle (recovery ~200ms) never flashes it; it clears on recovery.
+  const showReconnectNote = useDelayedFlag(!live, RECONNECT_OVERLAY_GRACE_MS);
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background text-text">
@@ -281,7 +288,7 @@ export function PartyView({
             {progress.solved} of {progress.total} clues
           </span>
         </div>
-        {!live && (
+        {showReconnectNote && (
           <div
             className="mt-[0.4em] text-[0.9em] text-text-subtle"
             aria-live="polite"
