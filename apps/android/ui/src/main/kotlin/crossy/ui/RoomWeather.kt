@@ -12,8 +12,38 @@ package crossy.ui
 import crossy.store.SyncState
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 object RoomWeather {
+    /** The grace window a lost connection waits out before the room announces it (the web and iOS
+     *  twins carry the same 2000 ms). Railway's edge proxy cycles drop healthy sockets, and a
+     *  reconnect-and-resync measures ~200 ms end to end, so the raw non-live state would flicker the
+     *  weather pill and dim the board for a blink. Chrome waits this long before it speaks. */
+    const val RECONNECT_OVERLAY_GRACE_MS: Long = 2000L
+
+    /** The debounced flag every reconnect/resync surface reads (the pill's word and dot, the board
+     *  dim): true once [sync] has stood continuously non-live for RECONNECT_OVERLAY_GRACE_MS, false
+     *  the instant it returns to live. One shared timer covers both non-live registers, so a
+     *  resyncing<->reconnecting bounce reads as one unbroken non-live stretch and cannot flash the
+     *  chrome; flatMapLatest cancels the pending timer on recovery, so a live snapshot clears the
+     *  overlay at once. Presentation only: input is never gated by this (the grid and fan stay live
+     *  through the window), it only holds back the announcement. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun overlayGrace(sync: Flow<SyncState>): Flow<Boolean> =
+        sync.map { it != SyncState.LIVE }
+            .distinctUntilChanged()
+            .flatMapLatest { nonLive ->
+                if (nonLive) flow { delay(RECONNECT_OVERLAY_GRACE_MS); emit(true) } else flowOf(false)
+            }
+            .distinctUntilChanged()
+
     /** The weather dot's three registers (apps/ios RoomWeather.Dot, DESIGN.md §8): a calm steady dot
      *  when live, a breathing pulse while a snapshot is on its way (resyncing), and a hollow ring
      *  while the room is dimmed (connecting or reconnecting). Achromatic: weather is the room's state,

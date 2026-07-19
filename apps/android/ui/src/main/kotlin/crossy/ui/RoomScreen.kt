@@ -56,6 +56,7 @@ import crossy.store.RenderModel
 import crossy.store.SyncState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @Composable
@@ -128,6 +129,16 @@ fun RoomScreen(
 ) {
     val render by store.render.collectAsStateWithLifecycle()
     val ground = if (isSystemInDarkTheme()) GridGround.OBSERVATORY else GridGround.STUDIO
+
+    // The reconnect/resync chrome waits out a grace window (RoomWeather.RECONNECT_OVERLAY_GRACE_MS):
+    // Railway's proxy cycles drop healthy sockets and reconnect-resync in ~200 ms, so a raw non-live
+    // state would flicker the pill's word and dot and dim the board for a blink. One debounced flag
+    // gates every announcement, so a resyncing<->reconnecting bounce cannot flash chrome and a
+    // recovery to live clears it at once. `chromeSync` reads live until the window elapses; the raw
+    // `render.sync` still drives input (the fan below, the store), which is never held back.
+    val overlayFlag = remember(store) { RoomWeather.overlayGrace(store.render.map { it.sync }) }
+    val overlayVisible by overlayFlag.collectAsStateWithLifecycle(initialValue = false)
+    val chromeSync = if (overlayVisible) render.sync else SyncState.LIVE
 
     val geometry = remember(puzzle) { GridGeometry.from(puzzle) }
     val navGeom = remember(geometry) { BoardNavigation.Geometry(geometry.cols, geometry.rows, geometry.blocks) }
@@ -657,7 +668,9 @@ fun RoomScreen(
             participants = render.participants,
             cursors = render.cursors,
             selfUserId = render.selfUserId,
-            sync = render.sync,
+            // The debounced connection state (RoomWeather.overlayGrace): the pill reads live until a
+            // lost connection has stood past the grace window, so a fast reconnect never flickers it.
+            sync = chromeSync,
             status = render.status,
             firstFillAt = render.firstFillAt,
             // The clock freezes at either terminal instant (ID-2): completion by design, and a
@@ -805,8 +818,9 @@ fun RoomScreen(
             // Reconnecting (and the pre-welcome connecting state) dims the board (DESIGN.md §8;
             // RoomWeather.boardDimmed): a paper wash at 0.45, never a modal or a spinner. It carries
             // no pointer input, so taps still reach the grid and the fan beneath it; input stays live
-            // and the store holds it gracefully (PROTOCOL.md §8).
-            if (RoomWeather.boardDimmed(render.sync)) {
+            // and the store holds it gracefully (PROTOCOL.md §8). Reads the debounced `chromeSync`, so
+            // the wash waits out the grace window and never blinks over a ~200 ms reconnect.
+            if (RoomWeather.boardDimmed(chromeSync)) {
                 Box(
                     Modifier
                         .matchParentSize()
