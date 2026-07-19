@@ -15,6 +15,7 @@
 
 import CoreGraphics
 import CrossyDesign
+import CrossyStore
 import Foundation
 import Observation
 
@@ -77,9 +78,62 @@ public final class RoomChromeModel {
     /// both paths.
     public var seeded = false
 
+    /// The connection state the room presents, grace-gated (Track A-ios). The
+    /// non-live pair (resyncing, reconnecting; PROTOCOL.md §7) reads as `live`
+    /// until it has been continuously non-live for
+    /// RoomWeather.reconnectOverlayGraceSeconds, then reveals its true register;
+    /// recovery reverts it at once. The room feeds this into RoomWeather.from
+    /// instead of the raw store state, so a routine Railway edge recycle never
+    /// flashes the overlay. Presentation only: the store's SyncState, the
+    /// transport, and the backoff are untouched, and input stays enabled
+    /// throughout the window (the board dim is a non-interactive wash).
+    public private(set) var presentedSync: SyncState = .connecting
+
+    @ObservationIgnored private var overlayGate = ReconnectOverlayGate()
+    /// The last observed store state, so the one-shot wake resolves the CURRENT
+    /// register (a resyncing to reconnecting bounce updates this without
+    /// restarting the shared grace timer).
+    @ObservationIgnored private var observedSync: SyncState = .connecting
+    @ObservationIgnored private var overlayGraceTask: Task<Void, Never>?
+
     @ObservationIgnored private var meltSettleTask: Task<Void, Never>?
 
     public init() {}
+
+    // MARK: Reconnect overlay grace (Track A-ios, PROTOCOL.md §7)
+
+    /// Fold one store connection-state observation, updating `presentedSync`. The
+    /// room calls this on every SyncState change (and once on appear). One shared
+    /// timer for the non-live pair: it arms only when the non-live ORIGIN changes,
+    /// so a bounce between resyncing and reconnecting leaves the running grace
+    /// alone and the overlay never flickers; recovery cancels it and reverts
+    /// `presentedSync` immediately. `now` is injected so tests pin the timing.
+    public func observeReconnectGrace(_ sync: SyncState, now: Date = Date()) {
+        let previousSince = overlayGate.nonLiveSince
+        observedSync = sync
+        overlayGate.observe(sync, now: now)
+        presentedSync = overlayGate.presentedSync(sync, now: now)
+        // The origin is unchanged (a repeat observation of the same non-live
+        // state, e.g. the status observer firing): leave the running timer be.
+        guard overlayGate.nonLiveSince != previousSince else { return }
+        overlayGraceTask?.cancel()
+        overlayGraceTask = nil
+        guard let remaining = overlayGate.secondsUntilPresented(now: now) else { return }
+        overlayGraceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled, let self else { return }
+            // Resolve the CURRENT register: the wake fires the pair's true
+            // weather (which the bounce may have swapped) with no wire change.
+            self.presentedSync = self.overlayGate.presentedSync(self.observedSync, now: Date())
+            self.overlayGraceTask = nil
+        }
+    }
+
+    /// Cancel the pending grace wake (room teardown). Idempotent.
+    public func cancelReconnectGrace() {
+        overlayGraceTask?.cancel()
+        overlayGraceTask = nil
+    }
 
     public var isBrowserOpen: Bool { meltProgress > 0 }
 

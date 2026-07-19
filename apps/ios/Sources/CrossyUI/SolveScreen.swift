@@ -261,7 +261,12 @@ public struct SolveScreen: View {
     }
 
     private var room: some View {
-        let weather = RoomWeather.from(sync: store.sync)
+        // The weather is grace-gated (Track A-ios, PROTOCOL.md §7): the non-live
+        // pair reads as live until it has held for RoomWeather
+        // .reconnectOverlayGraceSeconds, so a routine Railway edge recycle
+        // (reconnect-and-resync heals in ~200 ms) never flashes the overlay.
+        // `chrome.presentedSync` is folded in observeRoomState; input is untouched.
+        let weather = RoomWeather.from(sync: chrome.presentedSync)
         let members = rosterMembers
         let spectating = RosterList.selfIsSpectator(members, selfUserId: store.selfUserId)
         let status = roomStatus
@@ -693,6 +698,9 @@ public struct SolveScreen: View {
         .onDisappear {
             relayTrailing?.cancel()
             relay.trailingCancelled()
+            // Cancel the pending reconnect-grace wake (Track A-ios): no timer
+            // outlives the room.
+            chrome.cancelReconnectGrace()
         }
     }
 
@@ -909,6 +917,11 @@ public struct SolveScreen: View {
     }
 
     private func observeRoomState() {
+        // Grace-gate the reconnect overlay (Track A-ios, PROTOCOL.md §7): fold the
+        // current connection state so the non-live pair only surfaces after it has
+        // held for the grace window, and reverts the instant it recovers. Called
+        // on every sync change and once on appear; presentation only.
+        chrome.observeReconnectGrace(store.sync)
         // The room's own moments yield like any touch (DESIGN.md §4): the one
         // observed transition into a terminal status pours back the melt and
         // dismisses the facts sheet. A fold, not a render fact, so a reconnect
