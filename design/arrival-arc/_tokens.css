@@ -1,0 +1,134 @@
+/*
+ * Real Crossy tokens, copied verbatim from apps/web/src/styles.css (the @theme + :root
+ * custom-property blocks), so these mockups paint in the shipping palette, type scale,
+ * spacing, radius, and shadow, not an approximation. Each mockup inlines this block; nothing
+ * links the app build. Tailwind utility names in the app map onto these values; here the
+ * mockups use the raw var(--*) directly.
+ *
+ * Kept as a reference copy for reviewers. Each .html file inlines the same block in a <style>
+ * so it is fully self-contained and screenshots offline.
+ */
+:root {
+  /* Type families. Display serif is Harfang Pro in production (Typekit); Newsreader is the
+     self-hosted fallback and is what these offline mockups render. */
+  --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-sans:
+    "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  /* Type weights */
+  --font-weight-light: 300;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Type size scale */
+  --text-0: 0.6875rem;
+  --text-1: 0.75rem;
+  --text-2: 0.875rem;
+  --text-3: 1rem;
+  --text-4: 1.125rem;
+  --text-5: 1.25rem;
+  --text-6: 1.5rem;
+  --text-7: 1.75rem;
+  --text-8: 2.1875rem;
+  --text-9: 3.75rem;
+  --tracking-caps: 0.06em;
+
+  /* Sand neutral */
+  --color-sand-1: #fdfdfc;
+  --color-sand-2: #f9f9f8;
+  --color-sand-3: #f1f0ef;
+  --color-sand-4: #e9e8e6;
+  --color-sand-5: #e2e1de;
+  --color-sand-6: #dad9d6;
+  --color-sand-7: #cfceca;
+  --color-sand-8: #bcbbb5;
+  --color-sand-9: #8d8d86;
+  --color-sand-10: #82827c;
+  --color-sand-11: #63635e;
+  --color-sand-12: #21201c;
+  --color-sand-25: #ffffff;
+  --color-gold-25: #fbfaf4;
+
+  /* Gold accent */
+  --color-gold-3: #f2f0e7;
+  --color-gold-4: #eae6db;
+  --color-gold-5: #e1dccf;
+  --color-gold-6: #d8d0bf;
+  --color-gold-7: #cbc0a8;
+  --color-gold-8: #b9a88d;
+  --color-gold-9: #978365;
+  --color-gold-10: #8c7a5e;
+  --color-gold-11: #71624b;
+  --color-gold-12: #3b352b;
+
+  /* Supporting state */
+  --color-yellow-4: #fff394;
+  --color-blue-3: #e6f4fe;
+  --color-blue-9: #0090ff;
+  --color-amber-3: #fff7c2;
+  --color-indigo-9: #3e63dd;
+  --color-indigo-11: #3a5bc7;
+  --color-green-11: #218358;
+
+  /* Semantic aliases */
+  --color-background: var(--color-sand-2);
+  --color-panel: var(--color-sand-25);
+  --color-panel-feature: var(--color-gold-25);
+  --color-text: var(--color-sand-12);
+  --color-text-muted: var(--color-sand-11);
+  --color-text-subtle: var(--color-sand-10);
+  --color-text-accent: var(--color-gold-11);
+  --color-border: var(--color-sand-6);
+  --color-border-strong: var(--color-sand-7);
+  --color-border-dashed: var(--color-sand-8);
+  --color-solid: var(--color-gold-9);
+  --color-focus-ring: var(--color-gold-8);
+
+  /* Spacing (Radix 9-step) */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 24px;
+  --spacing-6: 32px;
+  --spacing-7: 40px;
+  --spacing-8: 48px;
+  --spacing-9: 64px;
+
+  /* Radius */
+  --radius-1: 3px;
+  --radius-2: 4px;
+  --radius-3: 6px;
+  --radius-4: 8px;
+  --radius-5: 12px;
+  --radius-6: 16px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+  --shadow-md:
+    0 2px 4px -1px rgb(30 27 20 / 0.06), 0 4px 10px -2px rgb(30 27 20 / 0.08);
+  --shadow-lg:
+    0 8px 24px -6px rgb(30 27 20 / 0.14), 0 2px 6px -2px rgb(30 27 20 / 0.08);
+  --shadow-xl:
+    0 16px 48px -12px rgb(30 27 20 / 0.22), 0 4px 12px -4px rgb(30 27 20 / 0.1);
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Board paint */
+  --cell-block: var(--color-sand-12);
+  --cell-default: var(--color-sand-1);
+  --cell-current: var(--color-yellow-4);
+  --cell-word: var(--color-blue-3);
+  --cell-teammate: var(--color-gold-5);
+  --stroke: var(--color-sand-6);
+  --letter: var(--color-sand-12);
+  --clue-number: var(--color-sand-11);
+}

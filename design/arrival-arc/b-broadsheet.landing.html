@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossy — Direction B: The Broadsheet (landing)</title>
+    <style>
+      :root {
+        --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+        --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --text-1: 0.75rem;
+        --text-2: 0.875rem;
+        --text-3: 1rem;
+        --text-4: 1.125rem;
+        --text-5: 1.25rem;
+        --text-6: 1.5rem;
+        --tracking-caps: 0.06em;
+        --color-sand-1: #fdfdfc;
+        --color-sand-2: #f9f9f8;
+        --color-sand-3: #f1f0ef;
+        --color-sand-4: #e9e8e6;
+        --color-sand-6: #dad9d6;
+        --color-sand-7: #cfceca;
+        --color-sand-8: #bcbbb5;
+        --color-sand-9: #8d8d86;
+        --color-sand-10: #82827c;
+        --color-sand-11: #63635e;
+        --color-sand-12: #21201c;
+        --color-sand-25: #ffffff;
+        --color-gold-9: #978365;
+        --color-gold-11: #71624b;
+        --color-gold-12: #3b352b;
+        --color-gold-25: #fbfaf4;
+        --color-background: var(--color-sand-2);
+        --color-panel: var(--color-sand-25);
+        --color-panel-feature: var(--color-gold-25);
+        --color-text: var(--color-sand-12);
+        --color-text-muted: var(--color-sand-11);
+        --color-text-subtle: var(--color-sand-10);
+        --color-text-accent: var(--color-gold-11);
+        --color-border: var(--color-sand-6);
+        --color-border-strong: var(--color-sand-7);
+        --color-border-dashed: var(--color-sand-8);
+        --color-solid: var(--color-gold-9);
+        --radius-3: 6px;
+        --radius-4: 8px;
+        --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+        --shadow-md:
+          0 2px 4px -1px rgb(30 27 20 / 0.06),
+          0 4px 10px -2px rgb(30 27 20 / 0.08);
+        --cell-default: var(--color-sand-1);
+        --cell-block: var(--color-sand-12);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-background);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+      h1,
+      h2 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        margin: 0;
+      }
+      main {
+        padding: 16px;
+      }
+      .sheet {
+        min-height: calc(100vh - 32px);
+        background: var(--color-panel);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-3);
+        box-shadow: var(--shadow-sm);
+        padding: 40px 56px 48px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Masthead: the wordmark, a dateline, one quiet account link. Newspaper nameplate. */
+      .masthead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-bottom: 20px;
+        border-bottom: 2px solid var(--color-sand-12);
+      }
+      .nameplate {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .nameplate svg {
+        width: 28px;
+        height: 28px;
+      }
+      .nameplate .word {
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: 24px;
+        letter-spacing: -0.00625em;
+      }
+      .dateline {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-subtle);
+      }
+      .masthead-right {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+      }
+      .link {
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+        text-decoration: none;
+      }
+      .signin {
+        display: inline-flex;
+        align-items: center;
+        height: 34px;
+        padding: 0 14px;
+        font-size: var(--text-2);
+        font-weight: 500;
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-3);
+        color: var(--color-text);
+        text-decoration: none;
+        background: var(--color-panel);
+      }
+
+      /* The lead: an oversized serif headline in ranged-left lines, each closed by a dashed
+         rule, the current landing's one confident gesture, given a full front page. */
+      .lead {
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+        gap: 56px;
+        align-items: center;
+        padding-top: 8px;
+      }
+      .headline {
+        font-family: var(--font-display);
+        font-weight: 500;
+        font-size: clamp(3.5rem, 7.4vw, 6.5rem);
+        line-height: 0.9;
+        letter-spacing: -0.025em;
+        margin: 0;
+      }
+      .headline .row {
+        padding-bottom: 10px;
+        margin-bottom: 14px;
+        border-bottom: 1px dashed var(--color-border-dashed);
+      }
+      .headline .row:last-child {
+        border-bottom: 0;
+        margin-bottom: 0;
+      }
+      .headline .muted {
+        color: var(--color-text-muted);
+      }
+      .headline .accent {
+        color: var(--color-gold-12);
+      }
+      .standfirst {
+        margin-top: 28px;
+        font-size: var(--text-5);
+        line-height: 1.55;
+        color: var(--color-text-muted);
+        max-width: 34rem;
+      }
+      .standfirst .drop {
+        font-family: var(--font-display);
+        font-size: var(--text-5);
+      }
+      .cta-row {
+        margin-top: 32px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 46px;
+        padding: 0 22px;
+        border-radius: var(--radius-3);
+        font-family: var(--font-sans);
+        font-size: var(--text-4);
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        text-decoration: none;
+      }
+      .btn-primary {
+        background: var(--color-solid);
+        color: #fff;
+        box-shadow: var(--shadow-sm);
+      }
+      .btn-text {
+        color: var(--color-text-muted);
+        font-size: var(--text-3);
+        background: transparent;
+        border: 0;
+        cursor: pointer;
+      }
+
+      /* The plate: the puzzle silhouette printed as an engraving beside the headline, framed
+         and captioned like a newspaper cut. This is the app's own Silhouette component. */
+      .plate {
+        justify-self: center;
+        max-width: 380px;
+        width: 100%;
+      }
+      .plate-frame {
+        background: var(--color-panel-feature);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-4);
+        padding: 28px;
+        box-shadow: var(--shadow-md);
+      }
+      .silhouette {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .plate-caption {
+        margin-top: 14px;
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-subtle);
+        text-align: center;
+      }
+
+      /* The footer strip: three plain lines about what it is. Set as a running index, not a
+         feature grid: no icons, no cards, three sentences separated by dashed rules. */
+      .index {
+        margin-top: 40px;
+        padding-top: 24px;
+        border-top: 2px solid var(--color-sand-12);
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+      .index .col {
+        padding: 0 28px;
+        border-left: 1px dashed var(--color-border-dashed);
+      }
+      .index .col:first-child {
+        padding-left: 0;
+        border-left: 0;
+      }
+      .index .num {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        color: var(--color-gold-11);
+      }
+      .index h2 {
+        font-family: var(--font-display);
+        font-size: var(--text-5);
+        margin: 8px 0 6px;
+      }
+      .index p {
+        font-size: var(--text-2);
+        line-height: 1.55;
+        color: var(--color-text-muted);
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="sheet">
+        <header class="masthead">
+          <span class="nameplate">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="16" width="8" height="8" fill="#21201c" />
+              <rect x="8" y="8" width="8" height="8" fill="#21201c" />
+              <rect y="16" width="8" height="8" fill="#21201c" />
+              <rect x="16" y="16" width="8" height="8" fill="#978365" />
+              <path
+                d="M8 0v24M16 0v24M0 8h24M0 16h24"
+                stroke="#21201c"
+                stroke-width="1.25"
+              />
+            </svg>
+            <span class="word">Crossy</span>
+          </span>
+          <span class="dateline">The collaborative crossword</span>
+          <div class="masthead-right">
+            <a class="link" href="#">Terms</a>
+            <a class="link" href="#">Privacy</a>
+            <a class="signin" href="#">Sign in</a>
+          </div>
+        </header>
+
+        <section class="lead">
+          <div class="col-lead">
+            <h1 class="headline">
+              <div class="row muted">A puzzle</div>
+              <div class="row">reads better</div>
+              <div class="row accent">with company.</div>
+            </h1>
+            <p class="standfirst">
+              Load a crossword you already have. Send one link. Now the two of
+              you fill the same grid at once, and every letter your friend types
+              lands in front of you.
+            </p>
+            <div class="cta-row">
+              <a class="btn btn-primary" href="#">
+                Start a puzzle
+                <svg width="16" height="16" viewBox="0 0 15 15" fill="none">
+                  <path
+                    d="M8.15 3.15l4 4 .35.35-.35.35-4 4-.7-.7L11.29 8H2.5V7h8.79L7.45 3.85z"
+                    fill="#fff"
+                  />
+                </svg>
+              </a>
+              <button class="btn-text">See a finished one</button>
+            </div>
+          </div>
+
+          <div class="plate">
+            <div class="plate-frame">
+              <!-- The real Silhouette: a solution-free 15x15 mask printed as an engraving.
+                   Blocks are the near-black ink; the paper is the default cell. -->
+              <svg
+                class="silhouette"
+                viewBox="0 0 15 15"
+                preserveAspectRatio="xMidYMid meet"
+                aria-hidden
+              >
+                <rect
+                  x="0"
+                  y="0"
+                  width="15"
+                  height="15"
+                  fill="var(--cell-default)"
+                />
+                <!-- a symmetric block pattern, 180-degree rotation, like a real grid -->
+                <g fill="var(--cell-block)">
+                  <rect x="4" y="0" width="1" height="1" />
+                  <rect x="10" y="0" width="1" height="1" />
+                  <rect x="4" y="1" width="1" height="1" />
+                  <rect x="10" y="1" width="1" height="1" />
+                  <rect x="3" y="2" width="1" height="1" />
+                  <rect x="11" y="2" width="1" height="1" />
+                  <rect x="0" y="3" width="3" height="1" />
+                  <rect x="7" y="3" width="1" height="1" />
+                  <rect x="12" y="3" width="3" height="1" />
+                  <rect x="6" y="4" width="1" height="1" />
+                  <rect x="8" y="4" width="1" height="1" />
+                  <rect x="5" y="5" width="1" height="1" />
+                  <rect x="9" y="5" width="1" height="1" />
+                  <rect x="0" y="6" width="1" height="1" />
+                  <rect x="7" y="6" width="1" height="1" />
+                  <rect x="14" y="6" width="1" height="1" />
+                  <rect x="3" y="7" width="1" height="1" />
+                  <rect x="11" y="7" width="1" height="1" />
+                  <rect x="0" y="8" width="1" height="1" />
+                  <rect x="7" y="8" width="1" height="1" />
+                  <rect x="14" y="8" width="1" height="1" />
+                  <rect x="5" y="9" width="1" height="1" />
+                  <rect x="9" y="9" width="1" height="1" />
+                  <rect x="6" y="10" width="1" height="1" />
+                  <rect x="8" y="10" width="1" height="1" />
+                  <rect x="0" y="11" width="3" height="1" />
+                  <rect x="7" y="11" width="1" height="1" />
+                  <rect x="12" y="11" width="3" height="1" />
+                  <rect x="3" y="12" width="1" height="1" />
+                  <rect x="11" y="12" width="1" height="1" />
+                  <rect x="4" y="13" width="1" height="1" />
+                  <rect x="10" y="13" width="1" height="1" />
+                  <rect x="4" y="14" width="1" height="1" />
+                  <rect x="10" y="14" width="1" height="1" />
+                </g>
+                <g
+                  stroke="var(--color-border)"
+                  stroke-width="0.04"
+                  shape-rendering="crispEdges"
+                >
+                  <line x1="1" y1="0" x2="1" y2="15" />
+                  <line x1="2" y1="0" x2="2" y2="15" />
+                  <line x1="3" y1="0" x2="3" y2="15" />
+                  <line x1="4" y1="0" x2="4" y2="15" />
+                  <line x1="5" y1="0" x2="5" y2="15" />
+                  <line x1="6" y1="0" x2="6" y2="15" />
+                  <line x1="7" y1="0" x2="7" y2="15" />
+                  <line x1="8" y1="0" x2="8" y2="15" />
+                  <line x1="9" y1="0" x2="9" y2="15" />
+                  <line x1="10" y1="0" x2="10" y2="15" />
+                  <line x1="11" y1="0" x2="11" y2="15" />
+                  <line x1="12" y1="0" x2="12" y2="15" />
+                  <line x1="13" y1="0" x2="13" y2="15" />
+                  <line x1="14" y1="0" x2="14" y2="15" />
+                  <line x1="0" y1="1" x2="15" y2="1" />
+                  <line x1="0" y1="2" x2="15" y2="2" />
+                  <line x1="0" y1="3" x2="15" y2="3" />
+                  <line x1="0" y1="4" x2="15" y2="4" />
+                  <line x1="0" y1="5" x2="15" y2="5" />
+                  <line x1="0" y1="6" x2="15" y2="6" />
+                  <line x1="0" y1="7" x2="15" y2="7" />
+                  <line x1="0" y1="8" x2="15" y2="8" />
+                  <line x1="0" y1="9" x2="15" y2="9" />
+                  <line x1="0" y1="10" x2="15" y2="10" />
+                  <line x1="0" y1="11" x2="15" y2="11" />
+                  <line x1="0" y1="12" x2="15" y2="12" />
+                  <line x1="0" y1="13" x2="15" y2="13" />
+                  <line x1="0" y1="14" x2="15" y2="14" />
+                </g>
+                <rect
+                  x="0"
+                  y="0"
+                  width="15"
+                  height="15"
+                  fill="none"
+                  stroke="var(--color-border-strong)"
+                  stroke-width="0.08"
+                />
+              </svg>
+              <div class="plate-caption">Today · 15 × 15 · by A. Reyes</div>
+            </div>
+          </div>
+        </section>
+
+        <footer class="index">
+          <div class="col">
+            <span class="num">01</span>
+            <h2>Bring your own puzzle</h2>
+            <p>
+              The ones you already read, from the papers you already have. A
+              browser add-on carries them in for you.
+            </p>
+          </div>
+          <div class="col">
+            <span class="num">02</span>
+            <h2>One link, no accounts to chase</h2>
+            <p>
+              Friends open the link and land right on the grid. They can sign in
+              later without losing a letter.
+            </p>
+          </div>
+          <div class="col">
+            <span class="num">03</span>
+            <h2>Solve on any screen</h2>
+            <p>
+              The web, the iPhone app, or a television across the room. The same
+              board, wherever the group is sitting.
+            </p>
+          </div>
+        </footer>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossy — Direction A: The Open Grid (landing)</title>
+    <style>
+      /* --- Real Crossy tokens (copied from apps/web/src/styles.css) --- */
+      :root {
+        --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+        --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --text-1: 0.75rem;
+        --text-2: 0.875rem;
+        --text-3: 1rem;
+        --text-4: 1.125rem;
+        --text-5: 1.25rem;
+        --text-6: 1.5rem;
+        --text-8: 2.1875rem;
+        --tracking-caps: 0.06em;
+        --color-sand-1: #fdfdfc;
+        --color-sand-2: #f9f9f8;
+        --color-sand-3: #f1f0ef;
+        --color-sand-4: #e9e8e6;
+        --color-sand-5: #e2e1de;
+        --color-sand-6: #dad9d6;
+        --color-sand-7: #cfceca;
+        --color-sand-8: #bcbbb5;
+        --color-sand-9: #8d8d86;
+        --color-sand-10: #82827c;
+        --color-sand-11: #63635e;
+        --color-sand-12: #21201c;
+        --color-sand-25: #ffffff;
+        --color-gold-25: #fbfaf4;
+        --color-gold-4: #eae6db;
+        --color-gold-5: #e1dccf;
+        --color-gold-6: #d8d0bf;
+        --color-gold-8: #b9a88d;
+        --color-gold-9: #978365;
+        --color-gold-11: #71624b;
+        --color-gold-12: #3b352b;
+        --color-yellow-4: #fff394;
+        --color-blue-3: #e6f4fe;
+        --color-indigo-9: #3e63dd;
+        --color-indigo-11: #3a5bc7;
+        --color-background: var(--color-sand-2);
+        --color-panel: var(--color-sand-25);
+        --color-panel-feature: var(--color-gold-25);
+        --color-text: var(--color-sand-12);
+        --color-text-muted: var(--color-sand-11);
+        --color-text-subtle: var(--color-sand-10);
+        --color-text-accent: var(--color-gold-11);
+        --color-border: var(--color-sand-6);
+        --color-border-strong: var(--color-sand-7);
+        --color-border-dashed: var(--color-sand-8);
+        --color-solid: var(--color-gold-9);
+        --radius-3: 6px;
+        --radius-4: 8px;
+        --radius-5: 12px;
+        --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+        --shadow-md:
+          0 2px 4px -1px rgb(30 27 20 / 0.06),
+          0 4px 10px -2px rgb(30 27 20 / 0.08);
+        --shadow-lg:
+          0 8px 24px -6px rgb(30 27 20 / 0.14),
+          0 2px 6px -2px rgb(30 27 20 / 0.08);
+        --cell-default: var(--color-sand-1);
+        --cell-block: var(--color-sand-12);
+        --cell-current: var(--color-yellow-4);
+        --cell-word: var(--color-blue-3);
+        --cell-teammate: var(--color-gold-5);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-background);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+      h1,
+      h2 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        margin: 0;
+      }
+
+      /* Top bar: the shipping panel recipe (hairline, radius, shadow-sm). */
+      .topbar {
+        padding: 16px 16px 0;
+      }
+      .topbar-inner {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        background: var(--color-panel);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-3);
+      }
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .logo-mark {
+        width: 24px;
+        height: 24px;
+      }
+      .logo-word {
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: 18px;
+        letter-spacing: -0.00625em;
+      }
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .topbar-link {
+        font-size: var(--text-1);
+        color: var(--color-text-subtle);
+        text-decoration: none;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        padding: 0 12px;
+        font-size: var(--text-2);
+        font-weight: 500;
+        color: var(--color-text);
+        background: var(--color-sand-3);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-3);
+        cursor: pointer;
+      }
+
+      /* Stage: two columns. Left is the argument, right is the live grid. */
+      main {
+        padding: 16px;
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+        gap: 40px;
+        align-items: center;
+        min-height: calc(100vh - 96px);
+        padding: 56px 64px;
+        background: var(--color-panel-feature);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-3);
+        box-shadow: var(--shadow-sm);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .eyebrow {
+        font-size: var(--text-1);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-accent);
+      }
+      .lede {
+        font-size: clamp(2.75rem, 4.4vw, 4rem);
+        line-height: 0.98;
+        letter-spacing: -0.02em;
+        color: var(--color-gold-12);
+        margin-top: 16px;
+      }
+      .lede .soft {
+        color: var(--color-sand-11);
+      }
+      .sub {
+        font-size: var(--text-4);
+        line-height: 1.7;
+        color: var(--color-text-muted);
+        max-width: 30rem;
+        margin-top: 20px;
+      }
+      .cta-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 28px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 44px;
+        padding: 0 20px;
+        border-radius: var(--radius-3);
+        font-family: var(--font-sans);
+        font-size: var(--text-3);
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .btn-primary {
+        background: var(--color-solid);
+        color: #fff;
+        box-shadow: var(--shadow-sm);
+      }
+      .btn-secondary {
+        background: var(--color-panel);
+        color: var(--color-text);
+        border-color: var(--color-border-strong);
+      }
+      .hint {
+        margin-top: 20px;
+        font-size: var(--text-2);
+        color: var(--color-text-subtle);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .kbd {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        padding: 2px 6px;
+        border-radius: var(--radius-3);
+        background: var(--color-sand-25);
+        border: 1px solid var(--color-border);
+        color: var(--color-text-muted);
+      }
+
+      /* The live board object. It is the product, sitting on the page like a plate. */
+      .boardwrap {
+        justify-self: center;
+        width: 100%;
+        max-width: 520px;
+      }
+      .board-card {
+        background: var(--color-panel);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-5);
+        box-shadow: var(--shadow-lg);
+        padding: 24px;
+      }
+      .board-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+      .board-title {
+        font-family: var(--font-display);
+        font-size: var(--text-5);
+        color: var(--color-text);
+      }
+      .presence {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: var(--text-1);
+        color: var(--color-text-muted);
+      }
+      .avatars {
+        display: flex;
+      }
+      .avatar {
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 11px;
+        font-weight: 600;
+        box-shadow: 0 0 0 2px var(--color-panel);
+        margin-left: -5px;
+      }
+      .avatar.me {
+        background: var(--color-gold-4);
+        color: var(--color-gold-11);
+        margin-left: 0;
+      }
+      .avatar.bee {
+        background: var(--color-indigo-9);
+        color: #fff;
+      }
+
+      /* SVG grid uses board paint tokens directly, exactly like the app renderer. */
+      .grid {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .clueline {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px dashed var(--color-border-dashed);
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+      }
+      .clue-num {
+        font-family: var(--font-mono);
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+        white-space: nowrap;
+      }
+      .clue-text {
+        font-size: var(--text-4);
+        color: var(--color-text);
+        line-height: 1.4;
+      }
+
+      /* A quiet second row under the board: the presence caption in plain words. */
+      .caption {
+        margin-top: 14px;
+        text-align: center;
+        font-size: var(--text-2);
+        color: var(--color-text-subtle);
+      }
+      .caption b {
+        color: var(--color-gold-11);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <span class="logo">
+          <svg class="logo-mark" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <rect x="16" width="8" height="8" fill="#21201c" />
+            <rect x="8" y="8" width="8" height="8" fill="#21201c" />
+            <rect y="16" width="8" height="8" fill="#21201c" />
+            <rect x="16" y="16" width="8" height="8" fill="#978365" />
+            <path
+              d="M8 0v24M16 0v24M0 8h24M0 16h24"
+              stroke="#21201c"
+              stroke-width="1.25"
+            />
+          </svg>
+          <span class="logo-word">Crossy</span>
+        </span>
+        <div class="topbar-right">
+          <a class="topbar-link" href="#">Terms</a>
+          <a class="topbar-link" href="#">Privacy</a>
+          <button class="chip">Sign in</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="stage">
+        <div class="pitch">
+          <span class="eyebrow">A crossword built for two</span>
+          <h1 class="lede">
+            The grid<br />
+            fills up<br />
+            <span class="soft">when a friend</span><br />
+            <span class="soft">joins in.</span>
+          </h1>
+          <p class="sub">
+            Bring any puzzle you already read. Share one link. Everyone types on
+            the same grid, live, and you watch each other work.
+          </p>
+          <div class="cta-row">
+            <button class="btn btn-primary">
+              Start a puzzle
+              <svg width="16" height="16" viewBox="0 0 15 15" fill="none">
+                <path
+                  d="M8.15 3.15l4 4 .35.35-.35.35-4 4-.7-.7L11.29 8H2.5V7h8.79L7.45 3.85z"
+                  fill="#fff"
+                />
+              </svg>
+            </button>
+            <button class="btn btn-secondary">See how it works</button>
+          </div>
+          <p class="hint">
+            <span class="kbd">↳</span> Or just start typing in the grid to the
+            right.
+          </p>
+        </div>
+
+        <div class="boardwrap">
+          <div class="board-card">
+            <div class="board-head">
+              <span class="board-title">Monday Mini</span>
+              <div class="presence">
+                <div class="avatars">
+                  <span class="avatar me">Y</span>
+                  <span class="avatar bee">B</span>
+                </div>
+                <span>Bee is here</span>
+              </div>
+            </div>
+
+            <!-- 5x5 mini: the real preview puzzle. Solution:
+                 # D A S H / F O R C E / A N G E L / S O U N D / T R E E #
+                 Corner blocks {0,24}. Bee opened 7-Across (SOUND: S O U) and parks on
+                 the next empty cell; the current cell (yellow) and its across word (blue)
+                 are lit, exactly as the live board paints them. -->
+            <svg
+              class="grid"
+              viewBox="0 0 250 250"
+              role="img"
+              aria-label="A five by five crossword, partly filled by a teammate"
+            >
+              <!-- paper -->
+              <rect
+                x="0"
+                y="0"
+                width="250"
+                height="250"
+                fill="var(--cell-default)"
+              />
+              <!-- word highlight on the active across word (row 3, SOUND) -->
+              <rect
+                x="0"
+                y="150"
+                width="250"
+                height="50"
+                fill="var(--cell-word)"
+              />
+              <!-- teammate-touched cells: SOU already placed -->
+              <rect
+                x="0"
+                y="150"
+                width="50"
+                height="50"
+                fill="var(--cell-teammate)"
+              />
+              <rect
+                x="50"
+                y="150"
+                width="50"
+                height="50"
+                fill="var(--cell-teammate)"
+              />
+              <rect
+                x="100"
+                y="150"
+                width="50"
+                height="50"
+                fill="var(--cell-teammate)"
+              />
+              <!-- current cell (the visitor's caret), 4th cell of SOUND -->
+              <rect
+                x="150"
+                y="150"
+                width="50"
+                height="50"
+                fill="var(--cell-current)"
+              />
+              <!-- block cells -->
+              <rect
+                x="0"
+                y="0"
+                width="50"
+                height="50"
+                fill="var(--cell-block)"
+              />
+              <rect
+                x="200"
+                y="200"
+                width="50"
+                height="50"
+                fill="var(--cell-block)"
+              />
+              <!-- grid lines -->
+              <g stroke="var(--stroke)" stroke-width="1">
+                <line x1="50" y1="0" x2="50" y2="250" />
+                <line x1="100" y1="0" x2="100" y2="250" />
+                <line x1="150" y1="0" x2="150" y2="250" />
+                <line x1="200" y1="0" x2="200" y2="250" />
+                <line x1="0" y1="50" x2="250" y2="50" />
+                <line x1="0" y1="100" x2="250" y2="100" />
+                <line x1="0" y1="150" x2="250" y2="150" />
+                <line x1="0" y1="200" x2="250" y2="200" />
+              </g>
+              <rect
+                x="0.5"
+                y="0.5"
+                width="249"
+                height="249"
+                fill="none"
+                stroke="var(--color-sand-8)"
+                stroke-width="1"
+              />
+              <!-- clue numbers -->
+              <g
+                font-family="var(--font-mono)"
+                font-size="9"
+                fill="var(--clue-number)"
+              >
+                <text x="54" y="12">1</text>
+                <text x="104" y="12">2</text>
+                <text x="154" y="12">3</text>
+                <text x="204" y="12">4</text>
+                <text x="4" y="62">5</text>
+                <text x="4" y="112">6</text>
+                <text x="4" y="162">7</text>
+                <text x="4" y="212">8</text>
+              </g>
+              <!-- letters already down. Row 1: DASH. Row 2: FORCE. Row 3: SOU (teammate). -->
+              <g
+                font-family="var(--font-sans)"
+                font-size="26"
+                font-weight="500"
+                fill="var(--letter)"
+                text-anchor="middle"
+              >
+                <text x="75" y="35">D</text>
+                <text x="125" y="35">A</text>
+                <text x="175" y="35">S</text>
+                <text x="225" y="35">H</text>
+                <text x="25" y="85">F</text>
+                <text x="75" y="85">O</text>
+                <text x="125" y="85">R</text>
+                <text x="175" y="85">C</text>
+                <text x="225" y="85">E</text>
+                <text x="25" y="185">S</text>
+                <text x="75" y="185">O</text>
+                <text x="125" y="185">U</text>
+              </g>
+              <!-- Bee's cursor flag on cell she last touched -->
+              <rect
+                x="100"
+                y="150"
+                width="50"
+                height="4"
+                fill="var(--color-indigo-9)"
+              />
+            </svg>
+
+            <div class="clueline">
+              <span class="clue-num">7A</span>
+              <span class="clue-text">What a full room makes</span>
+            </div>
+          </div>
+          <p class="caption">
+            <b>Bee</b> started this one and left it open. Type a letter to jump
+            in.
+          </p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

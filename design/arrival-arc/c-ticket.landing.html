@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossy — Direction C: The Ticket (landing)</title>
+    <style>
+      :root {
+        --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+        --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --text-1: 0.75rem;
+        --text-2: 0.875rem;
+        --text-3: 1rem;
+        --text-4: 1.125rem;
+        --text-5: 1.25rem;
+        --text-6: 1.5rem;
+        --tracking-caps: 0.06em;
+        --color-sand-2: #f9f9f8;
+        --color-sand-3: #f1f0ef;
+        --color-sand-4: #e9e8e6;
+        --color-sand-6: #dad9d6;
+        --color-sand-7: #cfceca;
+        --color-sand-8: #bcbbb5;
+        --color-sand-9: #8d8d86;
+        --color-sand-10: #82827c;
+        --color-sand-11: #63635e;
+        --color-sand-12: #21201c;
+        --color-sand-25: #ffffff;
+        --color-gold-4: #eae6db;
+        --color-gold-5: #e1dccf;
+        --color-gold-9: #978365;
+        --color-gold-11: #71624b;
+        --color-gold-12: #3b352b;
+        --color-gold-25: #fbfaf4;
+        --color-indigo-9: #3e63dd;
+        --color-yellow-4: #fff394;
+        --color-blue-3: #e6f4fe;
+        --color-background: var(--color-sand-2);
+        --color-panel: var(--color-sand-25);
+        --color-panel-feature: var(--color-gold-25);
+        --color-text: var(--color-sand-12);
+        --color-text-muted: var(--color-sand-11);
+        --color-text-subtle: var(--color-sand-10);
+        --color-text-accent: var(--color-gold-11);
+        --color-border: var(--color-sand-6);
+        --color-border-strong: var(--color-sand-7);
+        --color-border-dashed: var(--color-sand-8);
+        --color-solid: var(--color-gold-9);
+        --radius-3: 6px;
+        --radius-4: 8px;
+        --radius-5: 12px;
+        --radius-6: 16px;
+        --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+        --shadow-lg:
+          0 8px 24px -6px rgb(30 27 20 / 0.14),
+          0 2px 6px -2px rgb(30 27 20 / 0.08);
+        --shadow-xl:
+          0 16px 48px -12px rgb(30 27 20 / 0.22),
+          0 4px 12px -4px rgb(30 27 20 / 0.1);
+        --cell-default: #fdfdfc;
+        --cell-block: var(--color-sand-12);
+        --cell-current: var(--color-yellow-4);
+        --cell-word: var(--color-blue-3);
+        --cell-teammate: var(--color-gold-5);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-background);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+      h1 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        margin: 0;
+      }
+
+      .topbar {
+        padding: 16px 16px 0;
+      }
+      .topbar-inner {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        background: var(--color-panel);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-3);
+      }
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .logo .word {
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: 18px;
+        letter-spacing: -0.00625em;
+      }
+      .topbar-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .topbar-link {
+        font-size: var(--text-1);
+        color: var(--color-text-subtle);
+        text-decoration: none;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        height: 32px;
+        padding: 0 12px;
+        font-size: var(--text-2);
+        font-weight: 500;
+        background: var(--color-sand-3);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-3);
+        cursor: pointer;
+      }
+
+      main {
+        min-height: calc(100vh - 96px);
+        display: grid;
+        place-items: center;
+        padding: 48px 16px;
+      }
+
+      /* The ticket. Two stubs held together by a perforation: the dashed rule (the system's
+         structural device) with a punched notch on each edge. The stub carries the pitch; the
+         tray carries the action. Every arrival screen is a variant of this one object. */
+      .ticket {
+        width: 100%;
+        max-width: 900px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        background: var(--color-panel);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-6);
+        box-shadow: var(--shadow-xl);
+        position: relative;
+        overflow: hidden;
+      }
+      /* the perforation: a vertical dashed rule with two round notches punched at top and
+         bottom, so the two halves read as one tearable ticket. */
+      .perf {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 57.5%;
+        width: 0;
+        border-left: 1px dashed var(--color-border-dashed);
+      }
+      .notch {
+        position: absolute;
+        left: 57.5%;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--color-background);
+        border: 1px solid var(--color-border-strong);
+        transform: translate(-50%, -50%);
+      }
+      .notch.top {
+        top: 0;
+      }
+      .notch.bottom {
+        top: 100%;
+      }
+
+      /* The stub: the pitch, printed on the gold-cream feature face. */
+      .stub {
+        background: var(--color-panel-feature);
+        padding: 44px 48px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-accent);
+      }
+      .stub h1 {
+        font-size: clamp(2.4rem, 4vw, 3.4rem);
+        line-height: 0.98;
+        letter-spacing: -0.02em;
+        color: var(--color-gold-12);
+        margin-top: 12px;
+      }
+      .stub p {
+        font-size: var(--text-4);
+        line-height: 1.6;
+        color: var(--color-text-muted);
+        margin: 18px 0 0;
+        max-width: 26rem;
+      }
+      .facts {
+        margin-top: 26px;
+        display: flex;
+        gap: 26px;
+      }
+      .fact .k {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-subtle);
+      }
+      .fact .v {
+        font-family: var(--font-display);
+        font-size: var(--text-5);
+        color: var(--color-text);
+        margin-top: 4px;
+      }
+
+      /* The tray: the action, on the plain panel face. */
+      .tray {
+        padding: 44px 48px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 12px;
+      }
+      .tray .title {
+        font-family: var(--font-display);
+        font-size: var(--text-6);
+        margin: 0 0 4px;
+      }
+      .tray .sub {
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+        margin: 0 0 12px;
+      }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        height: 48px;
+        width: 100%;
+        border-radius: var(--radius-3);
+        font-family: var(--font-sans);
+        font-size: var(--text-3);
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .btn-primary {
+        background: var(--color-solid);
+        color: #fff;
+        box-shadow: var(--shadow-sm);
+      }
+      .btn-dark {
+        background: var(--color-sand-12);
+        color: #fff;
+      }
+      .divide {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--color-text-subtle);
+        font-size: var(--text-1);
+        margin: 4px 0;
+      }
+      .divide::before,
+      .divide::after {
+        content: "";
+        flex: 1;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .barcode {
+        margin-top: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .barcode .mini {
+        width: 44px;
+        height: 44px;
+        flex-shrink: 0;
+      }
+      .barcode .cap {
+        font-size: var(--text-1);
+        color: var(--color-text-subtle);
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <span class="logo">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden
+          >
+            <rect x="16" width="8" height="8" fill="#21201c" />
+            <rect x="8" y="8" width="8" height="8" fill="#21201c" />
+            <rect y="16" width="8" height="8" fill="#21201c" />
+            <rect x="16" y="16" width="8" height="8" fill="#978365" />
+            <path
+              d="M8 0v24M16 0v24M0 8h24M0 16h24"
+              stroke="#21201c"
+              stroke-width="1.25"
+            />
+          </svg>
+          <span class="word">Crossy</span>
+        </span>
+        <div class="topbar-right">
+          <a class="topbar-link" href="#">Terms</a>
+          <a class="topbar-link" href="#">Privacy</a>
+          <button class="chip">Sign in</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="ticket">
+        <span class="perf"></span>
+        <span class="notch top"></span>
+        <span class="notch bottom"></span>
+
+        <div class="stub">
+          <span class="eyebrow">A collaborative crossword</span>
+          <h1>One grid,<br />everyone<br />at once.</h1>
+          <p>
+            Bring a puzzle, share a link, and solve it together in real time.
+          </p>
+          <div class="facts">
+            <div class="fact">
+              <div class="k">Bring</div>
+              <div class="v">Any puzzle</div>
+            </div>
+            <div class="fact">
+              <div class="k">Invite</div>
+              <div class="v">One link</div>
+            </div>
+            <div class="fact">
+              <div class="k">Play on</div>
+              <div class="v">Web · iPhone</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tray">
+          <div class="title">Start a room</div>
+          <p class="sub">Pick a puzzle. Send the link.</p>
+          <button class="btn btn-primary">
+            Create a game
+            <svg width="16" height="16" viewBox="0 0 15 15" fill="none">
+              <path
+                d="M8.15 3.15l4 4 .35.35-.35.35-4 4-.7-.7L11.29 8H2.5V7h8.79L7.45 3.85z"
+                fill="#fff"
+              />
+            </svg>
+          </button>
+          <div class="divide">already have a room?</div>
+          <button class="btn btn-dark">Sign in to your rooms</button>
+          <div class="barcode">
+            <!-- the ticket's "stub art": the app's 3x3 crossword mark, standing in for a
+                 barcode, so the object reads as a real ticket without a foreign graphic. -->
+            <svg class="mini" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <rect x="16" width="8" height="8" fill="#21201c" />
+              <rect x="8" y="8" width="8" height="8" fill="#21201c" />
+              <rect y="16" width="8" height="8" fill="#21201c" />
+              <rect x="16" y="16" width="8" height="8" fill="#978365" />
+              <path
+                d="M8 0v24M16 0v24M0 8h24M0 16h24"
+                stroke="#21201c"
+                stroke-width="1.25"
+              />
+            </svg>
+            <span class="cap">
+              Apple or Discord to host. Guests join with one tap, no account
+              needed.
+            </span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

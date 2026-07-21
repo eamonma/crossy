@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crossy — Direction C: The Ticket (invitee arrival)</title>
+    <style>
+      :root {
+        --font-display: "Newsreader", Georgia, "Times New Roman", serif;
+        --font-sans:
+          "Schibsted Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+        --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+        --text-1: 0.75rem;
+        --text-2: 0.875rem;
+        --text-3: 1rem;
+        --text-4: 1.125rem;
+        --text-5: 1.25rem;
+        --text-6: 1.5rem;
+        --tracking-caps: 0.06em;
+        --color-sand-2: #f9f9f8;
+        --color-sand-3: #f1f0ef;
+        --color-sand-4: #e9e8e6;
+        --color-sand-6: #dad9d6;
+        --color-sand-7: #cfceca;
+        --color-sand-8: #bcbbb5;
+        --color-sand-9: #8d8d86;
+        --color-sand-10: #82827c;
+        --color-sand-11: #63635e;
+        --color-sand-12: #21201c;
+        --color-sand-25: #ffffff;
+        --color-gold-4: #eae6db;
+        --color-gold-5: #e1dccf;
+        --color-gold-9: #978365;
+        --color-gold-11: #71624b;
+        --color-gold-12: #3b352b;
+        --color-gold-25: #fbfaf4;
+        --color-indigo-9: #3e63dd;
+        --color-green-11: #218358;
+        --color-background: var(--color-sand-2);
+        --color-panel: var(--color-sand-25);
+        --color-panel-feature: var(--color-gold-25);
+        --color-text: var(--color-sand-12);
+        --color-text-muted: var(--color-sand-11);
+        --color-text-subtle: var(--color-sand-10);
+        --color-text-accent: var(--color-gold-11);
+        --color-border: var(--color-sand-6);
+        --color-border-strong: var(--color-sand-7);
+        --color-border-dashed: var(--color-sand-8);
+        --color-solid: var(--color-gold-9);
+        --radius-3: 6px;
+        --radius-4: 8px;
+        --radius-6: 16px;
+        --shadow-sm: 0 1px 2px 0 rgb(30 27 20 / 0.05);
+        --shadow-xl:
+          0 16px 48px -12px rgb(30 27 20 / 0.22),
+          0 4px 12px -4px rgb(30 27 20 / 0.1);
+        --cell-default: #fdfdfc;
+        --cell-block: var(--color-sand-12);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+      }
+      body {
+        font-family: var(--font-sans);
+        background: var(--color-background);
+        color: var(--color-text);
+        -webkit-font-smoothing: antialiased;
+        min-height: 100vh;
+      }
+      h1 {
+        font-family: var(--font-display);
+        font-weight: 500;
+        margin: 0;
+      }
+      .topbar {
+        padding: 16px 16px 0;
+      }
+      .topbar-inner {
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        background: var(--color-panel);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-3);
+      }
+      .logo {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .logo .word {
+        font-family: var(--font-display);
+        font-weight: 600;
+        font-size: 18px;
+        letter-spacing: -0.00625em;
+      }
+
+      main {
+        min-height: calc(100vh - 96px);
+        display: grid;
+        place-items: center;
+        padding: 48px 16px;
+      }
+      .ticket {
+        width: 100%;
+        max-width: 900px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+        background: var(--color-panel);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-6);
+        box-shadow: var(--shadow-xl);
+        position: relative;
+        overflow: hidden;
+      }
+      .perf {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 52.5%;
+        border-left: 1px dashed var(--color-border-dashed);
+      }
+      .notch {
+        position: absolute;
+        left: 52.5%;
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        background: var(--color-background);
+        border: 1px solid var(--color-border-strong);
+        transform: translate(-50%, -50%);
+      }
+      .notch.top {
+        top: 0;
+      }
+      .notch.bottom {
+        top: 100%;
+      }
+
+      /* The stub: the named invitation. Room name, host, silhouette-as-stub-art, roster. */
+      .stub {
+        background: var(--color-panel-feature);
+        padding: 40px 44px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-accent);
+      }
+      .stub h1 {
+        font-size: clamp(2rem, 3.4vw, 2.9rem);
+        line-height: 1.02;
+        letter-spacing: -0.015em;
+        color: var(--color-gold-12);
+        margin-top: 10px;
+      }
+      .roomrow {
+        margin-top: 22px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .roomrow .silh {
+        width: 76px;
+        height: 76px;
+        flex-shrink: 0;
+        border-radius: var(--radius-4);
+        border: 1px solid var(--color-border-strong);
+        background: var(--color-panel);
+        padding: 5px;
+        box-shadow: var(--shadow-sm);
+      }
+      .roomrow .meta .name {
+        font-family: var(--font-display);
+        font-size: var(--text-6);
+        color: var(--color-text);
+      }
+      .roomrow .meta .facts {
+        margin-top: 4px;
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+      }
+      .roster {
+        margin-top: 24px;
+        padding-top: 18px;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .roster-head {
+        font-family: var(--font-mono);
+        font-size: var(--text-1);
+        text-transform: uppercase;
+        letter-spacing: var(--tracking-caps);
+        color: var(--color-text-subtle);
+        margin-bottom: 12px;
+      }
+      .roster-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 5px 0;
+        font-size: var(--text-3);
+        color: var(--color-text);
+      }
+      .avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: #fff;
+      }
+      .avatar.host {
+        background: var(--color-indigo-9);
+      }
+      .avatar.s2 {
+        background: var(--color-gold-9);
+      }
+      .roster-row .live {
+        margin-left: auto;
+        font-size: var(--text-1);
+        color: var(--color-green-11);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .roster-row .live::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--color-green-11);
+      }
+
+      /* The tray: two ways in. Sign in to solve, or watch as a guest. */
+      .tray {
+        padding: 40px 44px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      .tray .title {
+        font-family: var(--font-display);
+        font-size: var(--text-6);
+        margin: 0 0 4px;
+      }
+      .tray .sub {
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+        margin: 0 0 18px;
+        line-height: 1.5;
+      }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        height: 48px;
+        width: 100%;
+        border-radius: var(--radius-3);
+        font-family: var(--font-sans);
+        font-size: var(--text-3);
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        margin-bottom: 10px;
+      }
+      .btn-dark {
+        background: var(--color-sand-12);
+        color: #fff;
+      }
+      .divide {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--color-text-subtle);
+        font-size: var(--text-1);
+        margin: 4px 0 12px;
+      }
+      .divide::before,
+      .divide::after {
+        content: "";
+        flex: 1;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .btn-ghost {
+        background: var(--color-panel);
+        color: var(--color-text);
+        border-color: var(--color-border-strong);
+      }
+      .keepseat {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border-radius: var(--radius-4);
+        background: var(--color-sand-3);
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+        line-height: 1.5;
+      }
+      .keepseat b {
+        color: var(--color-text);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <span class="logo">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden
+          >
+            <rect x="16" width="8" height="8" fill="#21201c" />
+            <rect x="8" y="8" width="8" height="8" fill="#21201c" />
+            <rect y="16" width="8" height="8" fill="#21201c" />
+            <rect x="16" y="16" width="8" height="8" fill="#978365" />
+            <path
+              d="M8 0v24M16 0v24M0 8h24M0 16h24"
+              stroke="#21201c"
+              stroke-width="1.25"
+            />
+          </svg>
+          <span class="word">Crossy</span>
+        </span>
+      </div>
+    </header>
+
+    <main>
+      <div class="ticket">
+        <span class="perf"></span>
+        <span class="notch top"></span>
+        <span class="notch bottom"></span>
+
+        <div class="stub">
+          <span class="eyebrow">Marta invited you</span>
+          <h1>Come solve this<br />one with us.</h1>
+
+          <div class="roomrow">
+            <svg
+              class="silh"
+              viewBox="0 0 15 15"
+              preserveAspectRatio="xMidYMid meet"
+              aria-hidden
+            >
+              <rect
+                x="0"
+                y="0"
+                width="15"
+                height="15"
+                fill="var(--cell-default)"
+              />
+              <g fill="var(--cell-block)">
+                <rect x="4" y="0" width="1" height="1" />
+                <rect x="10" y="0" width="1" height="1" />
+                <rect x="0" y="3" width="3" height="1" />
+                <rect x="12" y="3" width="3" height="1" />
+                <rect x="7" y="3" width="1" height="1" />
+                <rect x="5" y="5" width="1" height="1" />
+                <rect x="9" y="5" width="1" height="1" />
+                <rect x="0" y="6" width="1" height="1" />
+                <rect x="14" y="6" width="1" height="1" />
+                <rect x="7" y="6" width="1" height="1" />
+                <rect x="0" y="8" width="1" height="1" />
+                <rect x="14" y="8" width="1" height="1" />
+                <rect x="7" y="8" width="1" height="1" />
+                <rect x="5" y="9" width="1" height="1" />
+                <rect x="9" y="9" width="1" height="1" />
+                <rect x="0" y="11" width="3" height="1" />
+                <rect x="12" y="11" width="3" height="1" />
+                <rect x="7" y="11" width="1" height="1" />
+                <rect x="4" y="14" width="1" height="1" />
+                <rect x="10" y="14" width="1" height="1" />
+              </g>
+              <g
+                stroke="var(--color-border)"
+                stroke-width="0.04"
+                shape-rendering="crispEdges"
+              >
+                <line x1="1" y1="0" x2="1" y2="15" />
+                <line x1="2" y1="0" x2="2" y2="15" />
+                <line x1="3" y1="0" x2="3" y2="15" />
+                <line x1="4" y1="0" x2="4" y2="15" />
+                <line x1="5" y1="0" x2="5" y2="15" />
+                <line x1="6" y1="0" x2="6" y2="15" />
+                <line x1="7" y1="0" x2="7" y2="15" />
+                <line x1="8" y1="0" x2="8" y2="15" />
+                <line x1="9" y1="0" x2="9" y2="15" />
+                <line x1="10" y1="0" x2="10" y2="15" />
+                <line x1="11" y1="0" x2="11" y2="15" />
+                <line x1="12" y1="0" x2="12" y2="15" />
+                <line x1="13" y1="0" x2="13" y2="15" />
+                <line x1="14" y1="0" x2="14" y2="15" />
+                <line x1="0" y1="1" x2="15" y2="1" />
+                <line x1="0" y1="2" x2="15" y2="2" />
+                <line x1="0" y1="3" x2="15" y2="3" />
+                <line x1="0" y1="4" x2="15" y2="4" />
+                <line x1="0" y1="5" x2="15" y2="5" />
+                <line x1="0" y1="6" x2="15" y2="6" />
+                <line x1="0" y1="7" x2="15" y2="7" />
+                <line x1="0" y1="8" x2="15" y2="8" />
+                <line x1="0" y1="9" x2="15" y2="9" />
+                <line x1="0" y1="10" x2="15" y2="10" />
+                <line x1="0" y1="11" x2="15" y2="11" />
+                <line x1="0" y1="12" x2="15" y2="12" />
+                <line x1="0" y1="13" x2="15" y2="13" />
+                <line x1="0" y1="14" x2="15" y2="14" />
+              </g>
+              <rect
+                x="0"
+                y="0"
+                width="15"
+                height="15"
+                fill="none"
+                stroke="var(--color-border-strong)"
+                stroke-width="0.08"
+              />
+            </svg>
+            <div class="meta">
+              <div class="name">Sunday with the Hendersons</div>
+              <div class="facts">15 × 15 · started 20 minutes ago</div>
+            </div>
+          </div>
+
+          <div class="roster">
+            <div class="roster-head">In the room now</div>
+            <div class="roster-row">
+              <span class="avatar host">M</span>
+              <span>Marta, host</span>
+              <span class="live">solving</span>
+            </div>
+            <div class="roster-row">
+              <span class="avatar s2">J</span>
+              <span>Jonah</span>
+              <span class="live">solving</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tray">
+          <div class="title">Take a seat</div>
+          <p class="sub">Solve with them, or watch first.</p>
+          <button class="btn btn-dark">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path
+                d="M17.05 12.536c-.03-2.943 2.404-4.353 2.514-4.42-1.371-2.005-3.504-2.279-4.26-2.309-1.813-.183-3.54 1.068-4.458 1.068-.918 0-2.336-1.041-3.842-1.013-1.977.029-3.8 1.15-4.816 2.921-2.053 3.562-.525 8.83 1.474 11.72.977 1.414 2.141 3.001 3.667 2.944 1.472-.058 2.028-.953 3.807-.953 1.779 0 2.28.953 3.837.925 1.583-.029 2.585-1.442 3.552-2.861 1.119-1.643 1.579-3.234 1.606-3.317-.035-.016-3.083-1.184-3.114-4.695zM14.13 3.995c.812-.983 1.359-2.351 1.21-3.712-1.169.047-2.586.779-3.425 1.761-.752.871-1.411 2.263-1.234 3.598 1.303.101 2.636-.663 3.449-1.647z"
+              />
+            </svg>
+            Sign in with Apple
+          </button>
+          <button class="btn btn-dark">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path
+                d="M20.317 4.369A19.79 19.79 0 0 0 15.432 3c-.21.375-.455.88-.624 1.28a18.27 18.27 0 0 0-5.617 0A12.6 12.6 0 0 0 8.56 3a19.7 19.7 0 0 0-4.886 1.372C.533 9.045-.32 13.6.099 18.087a19.9 19.9 0 0 0 6.063 3.058c.492-.669.93-1.38 1.307-2.127a12.9 12.9 0 0 1-2.06-.99c.173-.127.342-.26.505-.395a14.2 14.2 0 0 0 12.174 0c.165.14.334.272.505.395-.657.388-1.35.72-2.063.991.377.746.815 1.457 1.307 2.126a19.8 19.8 0 0 0 6.067-3.058c.492-5.2-.838-9.71-3.594-13.718ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.096 2.157 2.42 0 1.334-.955 2.419-2.157 2.419Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.42 2.157-2.42 1.21 0 2.176 1.096 2.157 2.42 0 1.334-.947 2.419-2.157 2.419Z"
+              />
+            </svg>
+            Sign in with Discord
+          </button>
+          <div class="divide">or</div>
+          <button class="btn btn-ghost">Watch as a guest</button>
+          <div class="keepseat">
+            <b>Watch now, sign in later.</b> Your seat and your progress carry
+            over.
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>
