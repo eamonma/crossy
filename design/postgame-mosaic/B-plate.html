@@ -1,0 +1,203 @@
+<!doctype html>
+<!--
+  Direction B: THE PLATE.
+  The solve settles into a made thing: a color-field print of the board where every cell
+  is its writer's roster color at full strength and the letters knock out. It reads like a
+  Panton poster of your solve, an object you'd frame, signed by the room. This is the
+  strongest "nonephemeral" statement: the completion becomes an artifact with weight, and
+  a retrospective grows around a plate that already feels like a keepsake.
+  The moment is the same plate arriving (ink flips to color, confetti optional); this frame
+  is the settled keepsake as you'd reopen it.
+  Ships on today's data: per-cell `by` is all the plate needs.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crossy — the plate (B)</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <script src="./grid-inline.js"></script>
+    <style>
+      .stage {
+        width: 1440px;
+        height: 900px;
+        background: var(--color-background);
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+      .mat {
+        width: 1120px;
+        background: var(--color-panel);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-4);
+        box-shadow: var(--shadow-xl);
+        padding: 44px 56px 40px;
+        display: grid;
+        grid-template-columns: 1fr 300px;
+        gap: 48px;
+        align-items: start;
+      }
+      .plate-wrap {
+        position: relative;
+      }
+      /* the print sits in a thin gold rule, like a plate in a mount */
+      .plate {
+        border: 2px solid var(--color-gold-8);
+        border-radius: var(--radius-2);
+        padding: 10px;
+        background: var(--color-gold-2);
+      }
+      .plate .board-fit {
+        width: 100%;
+      }
+      .plate-caption {
+        margin-top: 16px;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        font-size: var(--text-1);
+        color: var(--color-text-subtle);
+      }
+      .side {
+        display: flex;
+        flex-direction: column;
+        gap: 28px;
+        padding-top: 4px;
+      }
+      .side .eyebrow {
+        color: var(--color-gold-11);
+      }
+      .side h1 {
+        font-family: var(--font-display);
+        font-size: var(--text-8);
+        font-weight: 500;
+        line-height: 0.98;
+        margin-top: 8px;
+      }
+      .side .sub {
+        color: var(--color-text-muted);
+        font-size: var(--text-2);
+        margin-top: 10px;
+      }
+      .rows {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .frow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 11px 0;
+        border-bottom: 1px dashed var(--color-border-dashed);
+      }
+      .frow .k {
+        color: var(--color-text-subtle);
+      }
+      .frow .v {
+        font-family: var(--font-mono);
+        font-size: var(--text-3);
+      }
+      .signed {
+      }
+      .signed .caps {
+        color: var(--color-text-subtle);
+        display: block;
+        margin-bottom: 12px;
+      }
+      .sig-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 5px 0;
+      }
+      .sig-dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+      }
+      .sig-name {
+        font-size: var(--text-2);
+        font-weight: 500;
+      }
+      .sig-role {
+        margin-left: auto;
+        font-size: var(--text-1);
+        color: var(--color-text-subtle);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="mat">
+        <div class="plate-wrap">
+          <div class="plate">
+            <div class="board-fit" id="board"></div>
+          </div>
+          <div class="plate-caption">
+            <span>Crossy · Sunday, at the kitchen table</span>
+            <span>15 × 15 · 186 cells</span>
+          </div>
+        </div>
+
+        <div class="side">
+          <div>
+            <span class="caps eyebrow">Solved together</span>
+            <h1>Sunday, at the kitchen table</h1>
+            <div class="sub">
+              Finished March 9. The color of each square is the hand that placed
+              it.
+            </div>
+          </div>
+
+          <div class="rows">
+            <div class="frow">
+              <span class="caps k">Time</span><span class="v">41:12</span>
+            </div>
+            <div class="frow">
+              <span class="caps k">Solvers</span><span class="v">5</span>
+            </div>
+            <div class="frow">
+              <span class="caps k">Entries</span><span class="v">214</span>
+            </div>
+          </div>
+
+          <div class="signed">
+            <span class="caps">Signed</span>
+            <div id="signed"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./mosaic-lib.js"></script>
+    <script>
+      const grid = Mosaic.loadGrid();
+      // The plate: full solid fill, letters knock out white on their writer's color.
+      const board = Mosaic.renderBoard(grid, {
+        tint: 1,
+        solidFill: true,
+        ink: true,
+        numbers: false,
+        frameColor: "transparent",
+      });
+      document.getElementById("board").appendChild(board);
+
+      // "Signed": the room, ordered by contribution, each with a swatch.
+      const order = grid.solvers
+        .map((s, i) => ({ ...s, i, count: grid.counts[i] }))
+        .sort((a, b) => b.count - a.count);
+      const signed = document.getElementById("signed");
+      order.forEach((s, idx) => {
+        const row = document.createElement("div");
+        row.className = "sig-row";
+        row.innerHTML =
+          `<span class="sig-dot" style="background:${s.color}"></span>` +
+          `<span class="sig-name">${s.name}</span>` +
+          `<span class="sig-role">${idx === 0 ? "host · " + s.count : s.count + " squares"}</span>`;
+        signed.appendChild(row);
+      });
+    </script>
+  </body>
+</html>

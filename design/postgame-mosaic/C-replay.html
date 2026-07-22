@@ -1,0 +1,292 @@
+<!doctype html>
+<!--
+  Direction C: THE REPLAY SEED.  (NEEDS PROTOCOL WORK)
+  The mosaic is not a still, it is a time-lapse. At completion the board paints itself on
+  cell by cell in the order it was actually solved, each cell arriving in its writer's
+  color. The moment IS the replay: forty minutes of five people compressed into four
+  seconds. The settled surface keeps a scrubber under the board, frozen at the end, so
+  the artifact is a thing you can replay and, later, scrub. This is the visual stub the
+  chess.com/Lichess retrospective grows directly out of: the timeline is already here,
+  the analytics just hang facts off it.
+  The still below is the replay paused near the end (about 78% solved), so the
+  in-progress cells still read as a live fill.
+  NEEDS PROTOCOL WORK: the wire carries only last-writer-per-cell (`by`), not fill ORDER
+  or per-cell timestamps. Ordered replay needs the event log (per-cell `seq`/`at`)
+  exposed to the client, an Archive read model (DESIGN.md section 9 / D16), not today's
+  snapshot. The still frame is honest about that: it is what the seed looks like once the
+  order data lands.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Crossy — replay seed (C)</title>
+    <link rel="stylesheet" href="./tokens.css" />
+    <script src="./grid-inline.js"></script>
+    <style>
+      .stage {
+        width: 1440px;
+        height: 900px;
+        background: var(--color-background);
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+      .panel {
+        width: 980px;
+        background: var(--color-panel);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-4);
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+      }
+      .head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 24px 28px 18px;
+      }
+      .head .eyebrow {
+        color: var(--color-gold-11);
+      }
+      .head h1 {
+        font-family: var(--font-display);
+        font-size: var(--text-7);
+        font-weight: 500;
+        margin-top: 6px;
+      }
+      .head .facts {
+        display: flex;
+        gap: 22px;
+        padding-top: 6px;
+      }
+      .head .fact {
+        text-align: right;
+      }
+      .head .fact .k {
+        display: block;
+        color: var(--color-text-subtle);
+        font-size: var(--text-1);
+        font-weight: 600;
+        letter-spacing: var(--tracking-caps);
+        text-transform: uppercase;
+      }
+      .head .fact .v {
+        font-family: var(--font-mono);
+        font-size: var(--text-4);
+      }
+      .body {
+        display: grid;
+        grid-template-columns: 1fr 260px;
+        gap: 32px;
+        padding: 8px 28px 24px;
+      }
+      .board-fit {
+        width: 100%;
+      }
+      .side {
+        padding-top: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .side .section-label {
+        color: var(--color-text-subtle);
+        display: block;
+        margin-bottom: 12px;
+      }
+
+      /* the scrubber: the seed the retrospective grows from */
+      .scrubber {
+        padding: 18px 28px 26px;
+        border-top: 1px dashed var(--color-border-dashed);
+      }
+      .transport {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .play {
+        width: 44px;
+        height: 44px;
+        border-radius: 999px;
+        border: none;
+        background: var(--color-gold-9);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        flex: none;
+      }
+      .track {
+        position: relative;
+        flex: 1;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--color-sand-4);
+      }
+      /* the fill line, colored in segments by who was writing when (the seed of a timeline) */
+      .seg {
+        position: absolute;
+        top: 0;
+        height: 100%;
+      }
+      .seg:first-child {
+        border-radius: 999px 0 0 999px;
+      }
+      .knob {
+        position: absolute;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        background: var(--color-panel);
+        border: 2px solid var(--color-gold-9);
+        transform: translate(-50%, -50%);
+        box-shadow: var(--shadow-sm);
+      }
+      .clock {
+        font-family: var(--font-mono);
+        font-size: var(--text-2);
+        color: var(--color-text-muted);
+        min-width: 92px;
+        text-align: right;
+      }
+      .scrub-hint {
+        margin-top: 12px;
+        font-size: var(--text-1);
+        color: var(--color-text-subtle);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: var(--text-0);
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--color-gold-11);
+        background: var(--color-gold-3);
+        border: 1px solid var(--color-gold-6);
+        border-radius: 999px;
+        padding: 3px 9px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="panel">
+        <div class="head">
+          <div>
+            <span class="caps eyebrow">Solved together</span>
+            <h1>Sunday, at the kitchen table</h1>
+          </div>
+          <div class="facts">
+            <div class="fact">
+              <span class="k">Time</span><span class="v">41:12</span>
+            </div>
+            <div class="fact">
+              <span class="k">Solvers</span><span class="v">5</span>
+            </div>
+            <div class="fact">
+              <span class="k">Entries</span><span class="v">214</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="body">
+          <div class="board-fit" id="board"></div>
+          <div class="side">
+            <div>
+              <span class="caps section-label">Who filled what</span>
+              <div id="ledger"></div>
+            </div>
+            <div>
+              <span class="caps section-label">Replay</span>
+              <span class="tag">Needs the event log</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="scrubber">
+          <div class="transport">
+            <button class="play" aria-label="Play the solve">▶</button>
+            <div class="track" id="track">
+              <div class="knob" id="knob"></div>
+            </div>
+            <div class="clock">32:04 / 41:12</div>
+          </div>
+          <div class="scrub-hint">
+            Scrub the solve. The board fills in the order it was written, each
+            square in its hand.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./mosaic-lib.js"></script>
+    <script>
+      const grid = Mosaic.loadGrid();
+      // The replay paused near the end: paint ~78% of cells (in a deterministic order) at
+      // full tint, leave the rest as plain paper, so the still reads as a fill in flight.
+      const openCells = [];
+      for (let i = 0; i < grid.rows * grid.cols; i++)
+        if (!grid.blocks.includes(i)) openCells.push(i);
+      // a deterministic "solve order": reading order lightly shuffled, good enough for a still
+      const order = openCells.slice().sort((a, b) => {
+        const ha = ((a * 2654435761) >>> 0) % 97,
+          hb = ((b * 2654435761) >>> 0) % 97;
+        return a * 5 + ha - (b * 5 + hb);
+      });
+      const cut = Math.floor(order.length * 0.78);
+      const written = new Set(order.slice(0, cut));
+
+      // Custom render: written cells tinted + inked, unwritten cells blank paper.
+      const partial = {
+        ...grid,
+        // hide letters and attribution on not-yet-written cells by pointing them at a
+        // sentinel the renderer treats as absent
+        letters: grid.letters.map((v, i) => (v && !written.has(i) ? null : v)),
+      };
+      // build a masked attribution: unwritten cells get no tint
+      const maskedAttr = {};
+      for (const k in grid.attribution)
+        if (written.has(Number(k))) maskedAttr[k] = grid.attribution[k];
+      partial.attribution = maskedAttr;
+
+      const board = Mosaic.renderBoard(partial, {
+        tint: 1,
+        ink: true,
+        numbers: true,
+      });
+      document.getElementById("board").appendChild(board);
+      document
+        .getElementById("ledger")
+        .appendChild(Mosaic.renderLedger(grid, { compact: true }));
+
+      // The scrubber track: colored segments seeded from contribution shares, the stub of
+      // a real per-time who-was-writing timeline.
+      const track = document.getElementById("track");
+      const knob = document.getElementById("knob");
+      const total = grid.counts.reduce((a, b) => a + b, 0);
+      // a plausible time-ordering of solvers for the segment sequence
+      const seq = [0, 2, 1, 3, 2, 4, 0, 3, 1, 4, 0, 2];
+      let acc = 0;
+      const per = 100 / seq.length;
+      seq.forEach((si) => {
+        const seg = document.createElement("div");
+        seg.className = "seg";
+        seg.style.left = acc + "%";
+        seg.style.width = per + "%";
+        seg.style.background = grid.solvers[si].color;
+        seg.style.opacity = 0.85;
+        track.insertBefore(seg, knob);
+        acc += per;
+      });
+      knob.style.left = "78%";
+    </script>
+  </body>
+</html>
