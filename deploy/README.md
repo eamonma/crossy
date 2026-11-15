@@ -5,17 +5,15 @@ verified: 8eced56
 
 # Crossy deploy (Wave 2.2)
 
-Production deploys happen only from CI, off `main`, never from a laptop. `main` is golden:
-a ruleset requires a PR plus the two green checks (`lint + typecheck + unit` and
-`M1 Playwright smoke`), so anything on `main` already passed CI. The `Deploy` workflow
-(`.github/workflows/deploy.yml`) builds the images whose inputs changed, pushes them to
-GHCR, and rolls the matching Railway services onto them (see What happens on a push to
-main). Railway and the hosted database live behind Railway Pro and a
-Supabase project the owner creates in `us-east-1` (co-located with the Railway `us-east`
-region, per the Wave 0.2c region note and SP3).
+Production services build directly from the private `eamonma/crossy` GitHub repository.
+Each service follows `main`, uses `apps/<service>/Dockerfile` with the repository root as
+build context, and has **Wait for CI** enabled. This works on Railway Hobby without private
+registry credentials. The repository and container images remain private.
 
-Everything in this directory is repo code. It provisions and verifies but performs no
-account mutation on its own. The owner runs the provisioning script and sets the secrets.
+The `Deploy` GitHub workflow applies migrations. Railway waits for that workflow and the
+other GitHub Actions checks to finish successfully before building and deploying the commit.
+Its migration concurrency group never cancels queued runs. `main` still requires a PR and
+green checks. No laptop upload or Railway CI token is needed.
 
 ## Topology
 
@@ -102,66 +100,35 @@ token.
 
 ### CI / GitHub (not Railway service variables)
 
-| Secret                   | Where                 | Meaning                                                                                                                                                                                                                                              |
-| ------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RAILWAY_TOKEN`          | GitHub Actions secret | Railway PROJECT token scoped to `crossy`/`production`. Rolls services.                                                                                                                                                                               |
-| `MIGRATION_DATABASE_URL` | GitHub Actions secret | Hosted Postgres privileged DSN over the SESSION pooler, NOT the direct host (IPv6-only; see Migrations + roles). Read on EVERY deploy: the migrate job applies expand-only migrations ahead of the roll. Its absence fails the deploy (never skips). |
+`MIGRATION_DATABASE_URL` is the privileged Postgres DSN stored in GitHub Actions secrets.
+It uses the session pooler (port 5432), never the transaction pooler. The Deploy workflow
+requires it on every push to main. `RAILWAY_TOKEN` is obsolete and can be removed once the
+source deployment transition is verified.
 
-## GHCR private pull
+## Railway source configuration
 
-The repo is private, so the pushed packages `ghcr.io/eamonma/crossy-{api,session,web}`
-default to PRIVATE. CI pushes them with the built-in `GITHUB_TOKEN` (no PAT minted). Railway
-must be given a credential to PULL them (Railway Pro supports private registries). The
-Railway CLI cannot set registry credentials, so this is a dashboard step per service:
+For each production service (`api`, `session`, `web`):
 
-> Railway > project `crossy` > service > Settings > Source (Image) > Private registry
-> credentials
->
-> - username: a GitHub username (or a machine account)
-> - password: a token with `read:packages` for `ghcr.io/eamonma/crossy-*`
->   (a fine-grained PAT or a classic PAT with `read:packages`)
+1. Connect the private `eamonma/crossy` repository and branch `main`.
+2. Keep the build context at the repository root. Set Dockerfile path to
+   `apps/api/Dockerfile`, `apps/session/Dockerfile`, or `apps/web/Dockerfile` respectively.
+3. Enable **Wait for CI** on the GitHub deployment trigger. Verify this after reconnecting
+   the source; losing it permits code to deploy before migrations.
+4. Use `/health` for API/session health checks and `/` for web.
+5. Set watch patterns for that service's app directory, `packages/**`, `vectors/**`,
+   `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `package.json`, `.node-version`, `deploy/**`,
+   `.github/workflows/deploy.yml`, and `.dockerignore`. Documentation-only changes do not
+   restart the session service. Add new shared build inputs to all three services.
+6. Remove obsolete registry credentials. No GHCR token is required.
 
-Open decision, do NOT resolve silently: the alternative is to make each package public
-(GHCR > package > Package settings > Change visibility). That removes the pull-credential
-step but publishes the image layers. Pick deliberately; the default here is private + a pull
-credential.
+The historical `provision.sh` creates GHCR image sources and is not the bootstrap for this
+configuration. Do not run it to recreate the current deployment.
 
-## Owner-action checklist
-
-Run in order. Steps marked (dashboard) cannot be done by the CLI.
-
-1. Create the Supabase project in `us-east-1` (dashboard). Note the project ref and the two
-   connection strings (Project Settings > Database): the DIRECT connection (port 5432) and
-   the pooled connection. Set `SUPABASE_ISSUER = https://<ref>.supabase.co/auth/v1`.
-2. Authenticate the Railway CLI: `railway login`. Optionally `export RAILWAY_WORKSPACE_ID=...`.
-3. Dry-run then run provisioning:
-   `./deploy/provision.sh --dry-run` then `./deploy/provision.sh`. It creates the project,
-   three services, domains, region, variables (INTERNAL_BEARER_TOKEN generated), and connects
-   the GHCR images. It refuses to run if a project named `crossy` already exists.
-   Tip: migrating and binding roles first (steps 5 and 6 here) lets you export
-   `SUPABASE_ISSUER`, `DATABASE_URL_API`, and `DATABASE_URL_SESSION` before provisioning,
-   so the script writes real values and step 6 disappears. CLI v5 notes: `railway add`
-   prompts for optional extras (Esc skips the variables prompt), and an auto-update
-   mid-run can invalidate the login session; `railway login` and `railway link -p crossy
--e production` restore it.
-4. Add a GHCR pull credential to EACH service (dashboard; see GHCR private pull above).
-5. Apply migrations and bind the service login roles (see Migrations + roles below). This
-   needs the Supabase project, so it cannot run before step 1.
-6. Replace the placeholder variables on api and session (dashboard or `railway variables`):
-   `SUPABASE_ISSUER`, and `DATABASE_URL` (api = `crossy_api` pooled DSN, session =
-   `crossy_session` pooled DSN).
-7. Add the two GitHub Actions secrets (dashboard: GitHub repo > Settings > Secrets and
-   variables > Actions):
-   - `RAILWAY_TOKEN`: a Railway project token (dashboard: project > Settings > Tokens).
-   - `MIGRATION_DATABASE_URL`: the privileged `postgres` DSN over the SESSION pooler,
-     `postgresql://postgres.<ref>:<password>@aws-0-us-east-1.pooler.supabase.com:5432/postgres`
-     (dashboard: Connect > Session pooler). NOT the direct DSN: `db.<ref>.supabase.co` has
-     no A record (IPv6-only) and GitHub runners have no IPv6 route, so the direct host fails
-     from Actions with ENETUNREACH. NOT the transaction pooler (port 6543): DDL and advisory
-     locks break there. The migrate job reads this secret on EVERY deploy and fails the
-     deploy if it is absent, so set it before the first pipeline deploy.
-8. Trigger the deploy: push to `main`, or run the `Deploy` workflow via workflow_dispatch.
-9. Verify: `node deploy/verify.mjs --api https://<api> --web https://<web> --session wss://<session>`.
+A source connection can be pinned to a commit for controlled recovery. Reconnect it without
+a commit pin to resume main autodeploys, then verify **Wait for CI** again. Manual redeploys
+for credential rotation must reuse a previously verified build. A manual workflow dispatch
+applies migrations only; use Railway's Deploy Latest Commit for a manual code rollout after
+confirming the selected commit's checks passed.
 
 ## Migrations + roles on hosted Postgres
 
@@ -190,7 +157,7 @@ idempotent, so there is nothing to gain from a manual gate for the additive case
 deliberateness that DESIGN.md section 9 calls for now lives in PR review plus the guard below,
 not in a hand-run job.
 
-On every deploy (push to `main` and `workflow_dispatch`) the `migrate` job runs BEFORE `roll`:
+On every push to `main` and manual workflow dispatch, the `migrate` job runs:
 
 1. `deploy/migration-guard.mjs` (plain node, no install) scans every committed migration
    against a conservative deny-list (DROP, RENAME, TRUNCATE, ALTER COLUMN ... TYPE,
@@ -206,8 +173,7 @@ On every deploy (push to `main` and `workflow_dispatch`) the `migrate` job runs 
 2. `deploy/migrate.ts` applies the migrations over `MIGRATION_DATABASE_URL` (the session
    pooler: the runner cannot reach the IPv6-only direct host).
 
-Because migrate precedes roll in the same pipeline, expand-before-code is enforced by job
-ordering: by the time the new image serves traffic its columns exist, and the old code
+Because Railway waits for the migration workflow to succeed, expand-before-code holds: by the time the new image serves traffic its columns exist, and the old code
 meanwhile ignores the additive columns (expand/contract, DESIGN.md section 9). If
 `MIGRATION_DATABASE_URL` is absent the job FAILS rather than skipping: a skipped migration with
 pending schema is exactly the outage this closes.
@@ -340,32 +306,13 @@ actions, in order:
 
 ## What happens on a push to main
 
-Deploys are selective (#334): before it, every merge rebuilt and redeployed everything,
-and a docs-only push once restarted the session service under live solvers and dropped
-every WebSocket.
-
-1. A PR merges to `main`. It already passed the required checks, so `Deploy` does NOT re-run
-   lint / typecheck / test / smoke (a comment in the workflow says so).
-2. `changes` (dorny/paths-filter over the push diff; on push the action diffs local git, so
-   it needs a checkout first, #339) maps changed paths to a service list. A file under an
-   app dir selects that service; a shared input (`packages/`, `vectors/`, the lockfile,
-   `deploy/`, ...) selects all three; docs and other known-inert paths select nothing. The
-   SAFETY catch-all: any changed file matched by no rule rolls ALL THREE (fail open to a
-   full deploy, never a silent skip). `workflow_dispatch` forces a full roll.
-3. `build-and-push` builds `apps/<svc>/Dockerfile` for each listed service (context = repo
-   root) and pushes `ghcr.io/eamonma/crossy-<svc>` tagged `:latest` and `:<sha>`. A
-   docs-only push builds nothing.
-4. `migrate` still runs on every push, tolerating a skipped build: the guard, then the
-   committed migrations against hosted Postgres (see Migration flow above). It runs BEFORE
-   `roll`, so expand-before-code holds by job ordering. If the guard trips or
-   `MIGRATION_DATABASE_URL` is absent, the deploy fails here and `roll` does not run.
-5. `roll` runs `railway redeploy --service <svc> --yes` (scoped by `RAILWAY_TOKEN`) over the
-   SAME computed list the build matrix used: build set and roll set are identical by
-   construction, so a skipped build always skips that roll and an empty list rolls nothing.
-   Railway pulls the private images with the pull credential from the checklist. The `:<sha>`
-   tag stays available for rollback (connect a service to `crossy-<svc>:<sha>`).
-6. Rolled services restart against the hosted Postgres and the Supabase JWKS. Run
-   `deploy/verify.mjs` to confirm.
+1. A reviewed PR merges to main. GitHub runs CI and the Deploy migration workflow.
+2. Railway queues deployments only for services whose watch patterns match the changes.
+3. Wait for CI holds those deployments until all GitHub Actions workflows finish. A failed
+   migration workflow blocks deployment; migration runs must never be cancelled.
+4. Railway builds each selected service with its committed Dockerfile and deploys it behind
+   its existing domains. Health checks must pass before the replacement serves traffic.
+5. Run `deploy/verify.mjs` to confirm HTTPS, WebSocket negotiation, and private-port isolation.
 
 ## Post-deploy verification
 
@@ -457,7 +404,7 @@ kept in sync by that PR-then-owner-apply discipline, the same shape as the rest 
 
 ## Files
 
-- `provision.sh`: create-only, idempotent Railway bootstrap (`--dry-run` prints the plan).
+- `provision.sh`: historical GHCR bootstrap; not for the current source deployment setup.
 - `supabase-auth.toml`: audited record of the Supabase auth session policy (config-as-code; a
   record, not an applier; see "Supabase auth session policy" above).
 - `migration-guard.mjs`: plain-node guard run before `migrate.ts` in the pipeline
